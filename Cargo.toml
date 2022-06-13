@@ -1,0 +1,13 @@
+[package]
+name = "faer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+gemm = "0.4"
+reborrow = "0.2"
+dyn-stack = "0.3"
+assert2 = "0.3"
+lazy_static = "1.4"
