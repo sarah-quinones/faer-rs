@@ -2050,6 +2050,38 @@ impl<T> Drop for RawMatrix<T> {
     }
 }
 
+struct BlockGuard<T> {
+    ptr: *mut T,
+    nrows: usize,
+    ncols: usize,
+    cs: isize,
+}
+struct ColGuard<T> {
+    ptr: *mut T,
+    nrows: usize,
+}
+
+impl<T> Drop for BlockGuard<T> {
+    fn drop(&mut self) {
+        for j in 0..self.ncols {
+            let ptr_j = self.ptr.wrapping_offset(j as isize * self.cs);
+            // SAFETY: this is safe because we created these elements and need to
+            // drop them
+            let slice = unsafe { std::slice::from_raw_parts_mut(ptr_j, self.nrows) };
+            unsafe { std::ptr::drop_in_place(slice) };
+        }
+    }
+}
+impl<T> Drop for ColGuard<T> {
+    fn drop(&mut self) {
+        let ptr = self.ptr;
+        // SAFETY: this is safe because we created these elements and need to
+        // drop them
+        let slice = unsafe { std::slice::from_raw_parts_mut(ptr, self.nrows) };
+        unsafe { std::ptr::drop_in_place(slice) };
+    }
+}
+
 /// Owning 2D matrix stored in column major format.
 pub struct Matrix<T> {
     raw: RawMatrix<T>,
@@ -2127,6 +2159,55 @@ impl<T> Matrix<T> {
         }
     }
 
+    /// Returns a pointer to the data of the matrix.
+    #[inline]
+    pub fn as_ptr(&self) -> *const T {
+        self.raw.ptr.as_ptr()
+    }
+
+    /// Returns a mutable pointer to the data of the matrix.
+    #[inline]
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.raw.ptr.as_ptr()
+    }
+
+    /// Returns the number of rows of the matrix.
+    #[inline]
+    pub fn nrows(&self) -> usize {
+        self.nrows
+    }
+
+    /// Returns the number of columns of the matrix.
+    #[inline]
+    pub fn ncols(&self) -> usize {
+        self.ncols
+    }
+
+    /// Returns the row capacity, that is, the number of rows that the matrix is able to hold
+    /// without needing to reallocate, excluding column insertions.
+    #[inline]
+    pub fn row_capacity(&self) -> usize {
+        self.raw.row_capacity
+    }
+
+    /// Returns the column capacity, that is, the number of columns that the matrix is able to hold
+    /// without needing to reallocate, excluding row insertions.
+    #[inline]
+    pub fn col_capacity(&self) -> usize {
+        self.raw.col_capacity
+    }
+
+    /// Returns the offset between the first elements of two successive rows in the matrix.
+    /// Always returns `1` since the matrix is column major.
+    pub fn row_stride(&self) -> isize {
+        1
+    }
+
+    /// Returns the offset between the first elements of two successive columns in the matrix.
+    pub fn col_stride(&self) -> isize {
+        self.row_capacity() as isize
+    }
+
     #[cold]
     fn do_reserve_exact(&mut self, mut new_row_capacity: usize, mut new_col_capacity: usize) {
         use std::mem::ManuallyDrop;
@@ -2167,7 +2248,7 @@ impl<T> Matrix<T> {
                 .ok()
                 .unwrap_or_else(|| capacity_overflow());
 
-            // SAFETY: 
+            // SAFETY:
             // * old_ptr is non null and is the return value of some previous call to alloc
             // * old_layout is the same layout that was used to provide the old allocation
             // * new_cap_bytes is non zero since new_row_capacity and new_col_capacity are larger
@@ -2244,42 +2325,186 @@ impl<T> Matrix<T> {
         }
     }
 
-    /// Returns a pointer to the data of the matrix.
-    #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        self.raw.ptr.as_ptr()
+    unsafe fn erase_block(
+        &mut self,
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+    ) {
+        debug_fancy_assert!(row_start <= row_end);
+        debug_fancy_assert!(col_start <= col_end);
+
+        let ptr = self.as_mut_ptr();
+
+        for j in col_start..col_end {
+            let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
+            for i in row_start..row_end {
+                // SAFETY: this points to a valid matrix element at index (i, j), which
+                // is within bounds
+                let ptr_ij = ptr_j.add(i);
+
+                // SAFETY: we drop an object that is within its lifetime since the matrix
+                // contains valid elements at each index within bounds
+                std::ptr::drop_in_place(ptr_ij);
+            }
+        }
     }
 
-    /// Returns a mutable pointer to the data of the matrix.
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.raw.ptr.as_ptr()
+    unsafe fn insert_block_with<F: Fn(usize, usize) -> T>(
+        &mut self,
+        f: &F,
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+    ) {
+        debug_fancy_assert!(row_start <= row_end);
+        debug_fancy_assert!(col_start <= col_end);
+
+        let ptr = self.as_mut_ptr();
+
+        let mut block_guard = BlockGuard::<T> {
+            ptr: ptr.wrapping_add(row_start),
+            nrows: row_end - row_start,
+            ncols: 0,
+            cs: self.col_stride(),
+        };
+
+        for j in col_start..col_end {
+            let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
+
+            // create a guard for the same purpose as the previous one
+            let mut col_guard = ColGuard::<T> {
+                // SAFETY: same as above
+                ptr: ptr_j.wrapping_add(row_start),
+                nrows: 0,
+            };
+
+            for i in row_start..row_end {
+                // SAFETY:
+                // * pointer to element at index (i, j), which is within the
+                // allocation since we reserved enough space
+                // * writing to this memory region is sound since it is properly
+                // aligned and valid for writes
+                let ptr_ij = ptr_j.add(i);
+                std::ptr::write(ptr_ij, f(i, j));
+                col_guard.nrows += 1;
+            }
+            std::mem::forget(col_guard);
+            block_guard.ncols += 1;
+        }
+        std::mem::forget(block_guard);
     }
 
-    /// Returns the number of rows of the matrix.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.nrows
+    fn erase_last_cols(&mut self, new_ncols: usize) {
+        let old_ncols = self.ncols();
+
+        debug_fancy_assert!(new_ncols <= old_ncols);
+
+        // change the size before dropping the elements, since if one of them panics the
+        // matrix drop function will double drop them.
+        self.ncols = new_ncols;
+
+        unsafe {
+            self.erase_block(0, self.nrows(), new_ncols, old_ncols);
+        }
     }
 
-    /// Returns the number of columns of the matrix.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.ncols
+    fn erase_last_rows(&mut self, new_nrows: usize) {
+        let old_nrows = self.nrows();
+
+        debug_fancy_assert!(new_nrows <= old_nrows);
+
+        // see comment above
+        self.nrows = new_nrows;
+        unsafe {
+            self.erase_block(new_nrows, old_nrows, 0, self.ncols());
+        }
     }
 
-    /// Returns the row capacity, that is, the number of rows that the matrix is able to hold
-    /// without needing to reallocate, excluding column insertions.
-    #[inline]
-    pub fn row_capacity(&self) -> usize {
-        self.raw.row_capacity
+    unsafe fn insert_last_cols_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_ncols: usize) {
+        let old_ncols = self.ncols();
+
+        debug_fancy_assert!(new_ncols > old_ncols);
+
+        self.insert_block_with(f, 0, self.nrows(), old_ncols, new_ncols);
+        self.ncols = new_ncols;
     }
 
-    /// Returns the column capacity, that is, the number of columns that the matrix is able to hold
-    /// without needing to reallocate, excluding row insertions.
+    unsafe fn insert_last_rows_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_nrows: usize) {
+        let old_nrows = self.nrows();
+
+        debug_fancy_assert!(new_nrows > old_nrows);
+
+        self.insert_block_with(f, old_nrows, new_nrows, 0, self.ncols());
+        self.nrows = new_nrows;
+    }
+
+    /// Resizes the matrix in-place so that the new dimensions are `(new_nrows, new_ncols)`.
+    /// Elements that are now out of bounds are dropped, while new elements are created with the
+    /// given function `f`, so that elements at position `(i, j)` are created by calling `f(i, j)`.
+    pub fn resize_with<F: Fn(usize, usize) -> T>(
+        &mut self,
+        f: F,
+        new_nrows: usize,
+        new_ncols: usize,
+    ) {
+        let old_nrows = self.nrows();
+        let old_ncols = self.ncols();
+
+        if new_ncols <= old_ncols {
+            self.erase_last_cols(new_ncols);
+            if new_nrows <= old_nrows {
+                self.erase_last_rows(new_nrows);
+            } else {
+                self.reserve_exact(new_nrows, new_ncols);
+                unsafe {
+                    self.insert_last_rows_with(&f, new_nrows);
+                }
+            }
+        } else {
+            if new_nrows <= old_nrows {
+                self.erase_last_rows(new_nrows);
+            } else {
+                self.reserve_exact(new_nrows, new_ncols);
+                unsafe {
+                    self.insert_last_rows_with(&f, new_nrows);
+                }
+            }
+            self.reserve_exact(new_nrows, new_ncols);
+            unsafe {
+                self.insert_last_cols_with(&f, new_ncols);
+            }
+        }
+    }
+
+    /// Returns a view over the matrix.
     #[inline]
-    pub fn col_capacity(&self) -> usize {
-        self.raw.col_capacity
+    pub fn as_ref(&self) -> MatrixSlice<'_, T> {
+        unsafe {
+            MatrixSlice::<'_, T>::from_raw_parts(
+                self.as_ptr(),
+                self.nrows(),
+                self.ncols(),
+                1,
+                self.col_stride(),
+            )
+        }
+    }
+
+    /// Returns a mutable view over the matrix.
+    #[inline]
+    pub fn as_mut(&mut self) -> MatrixSliceMut<'_, T> {
+        unsafe {
+            MatrixSliceMut::<'_, T>::from_raw_parts(
+                self.as_mut_ptr(),
+                self.nrows(),
+                self.ncols(),
+                1,
+                self.col_stride(),
+            )
+        }
     }
 }
 
@@ -2302,6 +2527,26 @@ impl<T> Drop for Matrix<T> {
     }
 }
 
+impl<T: Debug> Debug for Matrix<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<T> Index<(usize, usize)> for Matrix<T> {
+    type Output = T;
+
+    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
+        self.as_ref().get(i, j).unwrap()
+    }
+}
+
+impl<T> IndexMut<(usize, usize)> for Matrix<T> {
+    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
+        self.as_mut().get(i, j).unwrap()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2310,9 +2555,6 @@ mod tests {
     fn basic_slice() {
         let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let slice = unsafe { MatrixSlice::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
-
-        dbg!(slice);
-        dbg!(slice.t());
 
         assert_eq!(slice.rb().get(0, 0), Some(&1.0));
         assert_eq!(slice.rb().get(0, 1), Some(&2.0));
@@ -2326,18 +2568,19 @@ mod tests {
 
         assert_eq!(slice.rb().get(2, 0), None);
 
-        for r in slice.into_row_iter() {
-            dbg!(r);
+        // miri tests
+        for r in slice.rb().into_row_iter() {
+            for _ in r {}
         }
-        for r in slice.into_row_iter().rev() {
-            dbg!(r);
+        for r in slice.rb().into_row_iter().rev() {
+            for _ in r.into_iter().rev() {}
         }
 
-        for c in slice.into_col_iter() {
-            dbg!(c);
+        for c in slice.rb().into_col_iter() {
+            for _ in c {}
         }
-        for c in slice.into_col_iter().rev() {
-            dbg!(c);
+        for c in slice.rb().into_col_iter().rev() {
+            for _ in c.into_iter().rev() {}
         }
     }
 
@@ -2358,30 +2601,19 @@ mod tests {
 
         fancy_assert!(slice.rb_mut().get(2, 0) == None);
 
+        // miri tests
         for r in slice.rb_mut().into_row_iter() {
-            dbg!(&r);
-            for e in r {
-                dbg!(e);
-            }
+            for _ in r {}
         }
         for r in slice.rb_mut().into_row_iter().rev() {
-            dbg!(&r);
-            for e in r.into_iter().rev() {
-                dbg!(e);
-            }
+            for _ in r.into_iter().rev() {}
         }
 
         for c in slice.rb_mut().into_col_iter() {
-            dbg!(&c);
-            for e in c {
-                dbg!(e);
-            }
+            for _ in c {}
         }
         for c in slice.rb_mut().into_col_iter().rev() {
-            dbg!(&c);
-            for e in c.into_iter().rev() {
-                dbg!(e);
-            }
+            for _ in c.into_iter().rev() {}
         }
     }
 
@@ -2444,6 +2676,42 @@ mod tests {
         m.reserve_exact(2, 3);
         fancy_assert!(m.row_capacity() == 2);
         fancy_assert!(m.col_capacity() == 3);
+    }
+
+    #[test]
+    fn resize() {
+        let mut m = Matrix::new();
+        let f = |i, j| i as f64 - j as f64;
+        m.resize_with(f, 2, 3);
+        fancy_assert!(m[(0, 0)] == 0.0);
+        fancy_assert!(m[(0, 1)] == -1.0);
+        fancy_assert!(m[(0, 2)] == -2.0);
+        fancy_assert!(m[(1, 0)] == 1.0);
+        fancy_assert!(m[(1, 1)] == 0.0);
+        fancy_assert!(m[(1, 2)] == -1.0);
+
+        m.resize_with(f, 1, 2);
+        fancy_assert!(m[(0, 0)] == 0.0);
+        fancy_assert!(m[(0, 1)] == -1.0);
+
+        m.resize_with(f, 2, 1);
+        fancy_assert!(m[(0, 0)] == 0.0);
+        fancy_assert!(m[(1, 0)] == 1.0);
+
+        m.resize_with(f, 1, 2);
+        fancy_assert!(m[(0, 0)] == 0.0);
+        fancy_assert!(m[(0, 1)] == -1.0);
+    }
+
+    #[test]
+    fn resize_zst() {
+        // miri test
+        let mut m = Matrix::new();
+        let f = |_i, _j| ();
+        m.resize_with(f, 2, 3);
+        m.resize_with(f, 1, 2);
+        m.resize_with(f, 2, 1);
+        m.resize_with(f, 1, 2);
     }
 
     #[test]
