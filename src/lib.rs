@@ -354,13 +354,11 @@ impl<'a, T> MatrixSlice<'a, T> {
 
     /// Returns a reference to the element at position (i, j), or `None` if the indices are out of
     /// bounds.
-    pub fn get(self, i: usize, j: usize) -> Option<&'a T> {
-        if i < self.nrows() && j < self.ncols() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(i, j)) }
-        } else {
-            None
-        }
+    pub fn get(self, i: usize, j: usize) -> &'a T {
+        fancy_assert!(i < self.nrows());
+        fancy_assert!(j < self.ncols());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(i, j) }
     }
 
     /// Returns the `i`-th row of the matrix, with no bound checks.
@@ -658,13 +656,11 @@ impl<'a, T> MatrixSliceMut<'a, T> {
 
     /// Returns a mutable reference to the element at position (i, j), or `None` if the indices are
     /// out of bounds.
-    pub fn get(self, i: usize, j: usize) -> Option<&'a mut T> {
-        if i < self.nrows() && j < self.ncols() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(i, j)) }
-        } else {
-            None
-        }
+    pub fn get(self, i: usize, j: usize) -> &'a mut T {
+        fancy_assert!(i < self.nrows());
+        fancy_assert!(j < self.ncols());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(i, j) }
     }
 
     /// Returns the `i`-th row of the matrix, with no bound checks.
@@ -903,13 +899,10 @@ impl<'a, T> RowSlice<'a, T> {
 
     /// Returns a reference to the element at position (0, j), or `None` if the index is out of
     /// bounds.
-    pub fn get(self, j: usize) -> Option<&'a T> {
-        if j < self.ncols() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(j)) }
-        } else {
-            None
-        }
+    pub fn get(self, j: usize) -> &'a T {
+        fancy_assert!(j < self.ncols());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(j) }
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
@@ -1054,13 +1047,10 @@ impl<'a, T> RowSliceMut<'a, T> {
 
     /// Returns a mutable reference to the element at position (0, j), or `None` if the index is
     /// out of bounds.
-    pub fn get(self, j: usize) -> Option<&'a mut T> {
-        if j < self.ncols() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(j)) }
-        } else {
-            None
-        }
+    pub fn get(self, j: usize) -> &'a mut T {
+        fancy_assert!(j < self.ncols());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(j) }
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
@@ -1195,13 +1185,10 @@ impl<'a, T> ColSlice<'a, T> {
 
     /// Returns a reference to the element at position (i, 0), or `None` if the index is out of
     /// bounds.
-    pub fn get(self, i: usize) -> Option<&'a T> {
-        if i < self.nrows() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(i)) }
-        } else {
-            None
-        }
+    pub fn get(self, i: usize) -> &'a T {
+        fancy_assert!(i < self.nrows());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(i) }
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
@@ -1345,13 +1332,10 @@ impl<'a, T> ColSliceMut<'a, T> {
 
     /// Returns a mutable reference to the element at position (i, 0), or `None` if the index is
     /// out of bounds.
-    pub fn get(self, i: usize) -> Option<&'a mut T> {
-        if i < self.nrows() {
-            // SAFETY: bounds have been checked.
-            unsafe { Some(self.get_unchecked(i)) }
-        } else {
-            None
-        }
+    pub fn get(self, i: usize) -> &'a mut T {
+        fancy_assert!(i < self.nrows());
+        // SAFETY: bounds have been checked.
+        unsafe { self.get_unchecked(i) }
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
@@ -1373,19 +1357,19 @@ impl<'a, T> Index<(usize, usize)> for MatrixSlice<'a, T> {
     type Output = T;
 
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.get(i, j).unwrap()
+        self.get(i, j)
     }
 }
 impl<'a, T> Index<(usize, usize)> for MatrixSliceMut<'a, T> {
     type Output = T;
 
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.rb().get(i, j).unwrap()
+        self.rb().get(i, j)
     }
 }
 impl<'a, T> IndexMut<(usize, usize)> for MatrixSliceMut<'a, T> {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
-        self.rb_mut().get(i, j).unwrap()
+        self.rb_mut().get(i, j)
     }
 }
 
@@ -1393,19 +1377,19 @@ impl<'a, T> Index<usize> for RowSlice<'a, T> {
     type Output = T;
 
     fn index(&self, j: usize) -> &Self::Output {
-        self.get(j).unwrap()
+        self.get(j)
     }
 }
 impl<'a, T> Index<usize> for RowSliceMut<'a, T> {
     type Output = T;
 
     fn index(&self, j: usize) -> &Self::Output {
-        self.rb().get(j).unwrap()
+        self.rb().get(j)
     }
 }
 impl<'a, T> IndexMut<usize> for RowSliceMut<'a, T> {
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
-        self.rb_mut().get(j).unwrap()
+        self.rb_mut().get(j)
     }
 }
 
@@ -1413,19 +1397,19 @@ impl<'a, T> Index<usize> for ColSlice<'a, T> {
     type Output = T;
 
     fn index(&self, j: usize) -> &Self::Output {
-        self.get(j).unwrap()
+        self.get(j)
     }
 }
 impl<'a, T> Index<usize> for ColSliceMut<'a, T> {
     type Output = T;
 
     fn index(&self, j: usize) -> &Self::Output {
-        self.rb().get(j).unwrap()
+        self.rb().get(j)
     }
 }
 impl<'a, T> IndexMut<usize> for ColSliceMut<'a, T> {
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
-        self.rb_mut().get(j).unwrap()
+        self.rb_mut().get(j)
     }
 }
 
@@ -1979,8 +1963,13 @@ struct RawMatrix<T> {
 }
 
 #[cold]
-fn capacity_overflow() -> ! {
+fn capacity_overflow_impl() -> ! {
     panic!("capacity overflow")
+}
+
+#[cold]
+fn capacity_overflow<T>() -> T {
+    capacity_overflow_impl();
 }
 
 impl<T> RawMatrix<T> {
@@ -1994,19 +1983,19 @@ impl<T> RawMatrix<T> {
         } else {
             let cap = row_capacity
                 .checked_mul(col_capacity)
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
             let cap_bytes = cap
                 .checked_mul(std::mem::size_of::<T>())
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
             if cap_bytes > isize::MAX as usize {
-                capacity_overflow();
+                capacity_overflow::<()>();
             }
 
             use std::alloc::{alloc, handle_alloc_error, Layout};
 
             let layout = Layout::from_size_align(cap_bytes, align_for::<T>())
                 .ok()
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
 
             let ptr = if layout.size() == 0 {
                 std::ptr::NonNull::<T>::dangling()
@@ -2089,6 +2078,12 @@ pub struct Matrix<T> {
     ncols: usize,
 }
 
+impl<T> Default for Matrix<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Matrix<T> {
     /// Returns a new matrix with dimensions `(0, 0)`. This does not allocate.
     #[inline]
@@ -2157,6 +2152,19 @@ impl<T> Matrix<T> {
             nrows: 0,
             ncols: 0,
         }
+    }
+
+    /// Set the dimensions of the matrix.
+    ///
+    /// # Safety
+    ///
+    /// * `nrows` must be less than `self.row_capacity()`.
+    /// * `ncols` must be less than `self.col_capacity()`.
+    /// * The elements that were previously out of bounds but are now in bounds must be
+    /// initialized.
+    pub unsafe fn set_dims(&mut self, nrows: usize, ncols: usize) {
+        self.nrows = nrows;
+        self.ncols = ncols;
     }
 
     /// Returns a pointer to the data of the matrix.
@@ -2231,13 +2239,13 @@ impl<T> Matrix<T> {
 
             let new_cap = new_row_capacity
                 .checked_mul(new_col_capacity)
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
             let new_cap_bytes = new_cap
                 .checked_mul(std::mem::size_of::<T>())
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
 
             if new_cap_bytes > isize::MAX as usize {
-                capacity_overflow();
+                capacity_overflow::<()>();
             }
 
             // SAFETY: this shouldn't overflow since we already checked that it's valid during
@@ -2246,7 +2254,7 @@ impl<T> Matrix<T> {
                 unsafe { Layout::from_size_align_unchecked(old_cap_bytes, align_for::<T>()) };
             let new_layout = Layout::from_size_align(new_cap_bytes, align_for::<T>())
                 .ok()
-                .unwrap_or_else(|| capacity_overflow());
+                .unwrap_or_else(capacity_overflow);
 
             // SAFETY:
             // * old_ptr is non null and is the return value of some previous call to alloc
@@ -2283,8 +2291,8 @@ impl<T> Matrix<T> {
                 // memory region less than isize::MAX bytes in size.
                 // * new and old allocation can't overlap, so copy_nonoverlapping is fine here.
                 unsafe {
-                    let old_ptr = old_ptr.offset((j * self.row_capacity()) as isize);
-                    let new_ptr = new_ptr.offset((j * new_row_capacity) as isize);
+                    let old_ptr = old_ptr.add(j * self.row_capacity());
+                    let new_ptr = new_ptr.add(j * new_row_capacity);
                     std::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.nrows());
                 }
             }
@@ -2315,13 +2323,11 @@ impl<T> Matrix<T> {
     pub fn reserve_exact(&mut self, row_capacity: usize, col_capacity: usize) {
         if self.row_capacity() >= row_capacity && self.col_capacity() >= col_capacity {
             // do nothing
+        } else if std::mem::size_of::<T>() == 0 {
+            self.raw.row_capacity = self.row_capacity().max(row_capacity);
+            self.raw.col_capacity = self.col_capacity().max(col_capacity);
         } else {
-            if std::mem::size_of::<T>() == 0 {
-                self.raw.row_capacity = self.row_capacity().max(row_capacity);
-                self.raw.col_capacity = self.col_capacity().max(col_capacity);
-            } else {
-                self.do_reserve_exact(row_capacity, col_capacity);
-            }
+            self.do_reserve_exact(row_capacity, col_capacity);
         }
     }
 
@@ -2537,14 +2543,51 @@ impl<T> Index<(usize, usize)> for Matrix<T> {
     type Output = T;
 
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.as_ref().get(i, j).unwrap()
+        self.as_ref().get(i, j)
     }
 }
 
 impl<T> IndexMut<(usize, usize)> for Matrix<T> {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
-        self.as_mut().get(i, j).unwrap()
+        self.as_mut().get(i, j)
     }
+}
+
+macro_rules! __matrix_impl {
+    (@phase2 [$([$($col:expr),*])*] $($v:expr);* ) => {
+        [$([$($col),*],)* [$($v),*]]
+    };
+    (@phase2 [$([$($col:expr),*])*] $($v0:expr, $($v:expr),* );* $(;)?) => {
+        __matrix_impl!(@phase2 [$([$($col),*]),* [$($v0),*]] $($($v),* );*)
+    };
+}
+
+#[macro_export]
+macro_rules! matrix {
+    () => {
+        {
+            compile_error!("number of columns in the matrix is ambiguous");
+        }
+    };
+
+    ($([$($v:expr),* $(,)?] ),* $(,)?) => {
+        {
+            let data = ::core::mem::ManuallyDrop::new(__matrix_impl!(@phase2 [] $($($v),* );*));
+            let data = &*data;
+
+            let ncols = data.len();
+            let nrows = data[0].len();
+            let mut matrix = $crate::Matrix::<_>::with_capacity(nrows, ncols);
+            let dst = matrix.as_mut_ptr();
+            let mut src = data.as_ptr() as *const _;
+            let _ = || src = &data[0][0];
+            unsafe {
+                ::core::ptr::copy_nonoverlapping(src, dst, ncols * nrows);
+                matrix.set_dims(nrows, ncols);
+            }
+            matrix
+        }
+    };
 }
 
 #[cfg(test)]
@@ -2556,17 +2599,13 @@ mod tests {
         let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let slice = unsafe { MatrixSlice::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
 
-        assert_eq!(slice.rb().get(0, 0), Some(&1.0));
-        assert_eq!(slice.rb().get(0, 1), Some(&2.0));
-        assert_eq!(slice.rb().get(0, 2), Some(&3.0));
-        assert_eq!(slice.rb().get(0, 3), None);
+        assert_eq!(slice.rb().get(0, 0), &1.0);
+        assert_eq!(slice.rb().get(0, 1), &2.0);
+        assert_eq!(slice.rb().get(0, 2), &3.0);
 
-        assert_eq!(slice.rb().get(1, 0), Some(&4.0));
-        assert_eq!(slice.rb().get(1, 1), Some(&5.0));
-        assert_eq!(slice.rb().get(1, 2), Some(&6.0));
-        assert_eq!(slice.rb().get(1, 3), None);
-
-        assert_eq!(slice.rb().get(2, 0), None);
+        assert_eq!(slice.rb().get(1, 0), &4.0);
+        assert_eq!(slice.rb().get(1, 1), &5.0);
+        assert_eq!(slice.rb().get(1, 2), &6.0);
 
         // miri tests
         for r in slice.rb().into_row_iter() {
@@ -2589,17 +2628,13 @@ mod tests {
         let mut data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut slice = unsafe { MatrixSliceMut::from_raw_parts(data.as_mut_ptr(), 2, 3, 3, 1) };
 
-        fancy_assert!(slice.rb_mut().get(0, 0) == Some(&mut 1.0));
-        fancy_assert!(slice.rb_mut().get(0, 1) == Some(&mut 2.0));
-        fancy_assert!(slice.rb_mut().get(0, 2) == Some(&mut 3.0));
-        fancy_assert!(slice.rb_mut().get(0, 3) == None);
+        fancy_assert!(slice.rb_mut().get(0, 0) == &mut 1.0);
+        fancy_assert!(slice.rb_mut().get(0, 1) == &mut 2.0);
+        fancy_assert!(slice.rb_mut().get(0, 2) == &mut 3.0);
 
-        fancy_assert!(slice.rb_mut().get(1, 0) == Some(&mut 4.0));
-        fancy_assert!(slice.rb_mut().get(1, 1) == Some(&mut 5.0));
-        fancy_assert!(slice.rb_mut().get(1, 2) == Some(&mut 6.0));
-        fancy_assert!(slice.rb_mut().get(1, 3) == None);
-
-        fancy_assert!(slice.rb_mut().get(2, 0) == None);
+        fancy_assert!(slice.rb_mut().get(1, 0) == &mut 4.0);
+        fancy_assert!(slice.rb_mut().get(1, 1) == &mut 5.0);
+        fancy_assert!(slice.rb_mut().get(1, 2) == &mut 6.0);
 
         // miri tests
         for r in slice.rb_mut().into_row_iter() {
@@ -2676,6 +2711,8 @@ mod tests {
         m.reserve_exact(2, 3);
         fancy_assert!(m.row_capacity() == 2);
         fancy_assert!(m.col_capacity() == 3);
+
+        m.reserve_exact(usize::MAX, usize::MAX);
     }
 
     #[test]
@@ -2701,6 +2738,32 @@ mod tests {
         m.resize_with(f, 1, 2);
         fancy_assert!(m[(0, 0)] == 0.0);
         fancy_assert!(m[(0, 1)] == -1.0);
+    }
+
+    #[test]
+    fn matrix_macro() {
+        let x = matrix![
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0],
+            [10.0, 11.0, 12.0],
+        ];
+
+        fancy_assert!(x[(0, 0)] == 1.0);
+        fancy_assert!(x[(0, 1)] == 2.0);
+        fancy_assert!(x[(0, 2)] == 3.0);
+
+        fancy_assert!(x[(1, 0)] == 4.0);
+        fancy_assert!(x[(1, 1)] == 5.0);
+        fancy_assert!(x[(1, 2)] == 6.0);
+
+        fancy_assert!(x[(2, 0)] == 7.0);
+        fancy_assert!(x[(2, 1)] == 8.0);
+        fancy_assert!(x[(2, 2)] == 9.0);
+
+        fancy_assert!(x[(3, 0)] == 10.0);
+        fancy_assert!(x[(3, 1)] == 11.0);
+        fancy_assert!(x[(3, 2)] == 12.0);
     }
 
     #[test]
