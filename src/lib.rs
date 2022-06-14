@@ -2142,13 +2142,9 @@ impl<T> Matrix<T> {
 
             use std::alloc::{handle_alloc_error, realloc, Layout};
 
-            let old_cap = self
-                .row_capacity()
-                .checked_mul(self.col_capacity())
-                .unwrap_or_else(|| capacity_overflow());
-            let old_cap_bytes = old_cap
-                .checked_mul(std::mem::size_of::<T>())
-                .unwrap_or_else(|| capacity_overflow());
+            // this shouldn't overflow since we already hold this many bytes
+            let old_cap = self.row_capacity() * self.col_capacity();
+            let old_cap_bytes = old_cap * std::mem::size_of::<T>();
 
             let new_cap = new_row_capacity
                 .checked_mul(new_col_capacity)
@@ -2161,12 +2157,22 @@ impl<T> Matrix<T> {
                 capacity_overflow();
             }
 
+            // SAFETY: this shouldn't overflow since we already checked that it's valid during
+            // allocation
             let old_layout =
                 unsafe { Layout::from_size_align_unchecked(old_cap_bytes, align_for::<T>()) };
             let new_layout = Layout::from_size_align(new_cap_bytes, align_for::<T>())
                 .ok()
                 .unwrap_or_else(|| capacity_overflow());
 
+            // SAFETY: 
+            // * old_ptr is non null and is the return value of some previous call to alloc
+            // * old_layout is the same layout that was used to provide the old allocation
+            // * new_cap_bytes is non zero since new_row_capacity and new_col_capacity are larger
+            // than self.row_capacity() and self.col_capacity() respectively, and the computed
+            // product doesn't overflow.
+            // * new_cap_bytes, when rounded up to the nearest multiple of the alignment does not
+            // overflow, since we checked that we can create new_layout with it.
             unsafe {
                 let old_ptr = self.as_mut_ptr();
                 let new_ptr = realloc(old_ptr as *mut u8, old_layout, new_cap_bytes);
@@ -2202,6 +2208,8 @@ impl<T> Matrix<T> {
 
             // deallocate old matrix memory
             let _ = RawMatrix::<T> {
+                // SAFETY: this ptr was checked to be non null, or was acquired from a NonNull
+                // pointer.
                 ptr: unsafe { NonNull::new_unchecked(old_ptr) },
                 row_capacity: self.row_capacity(),
                 col_capacity: self.col_capacity(),
@@ -2276,6 +2284,7 @@ impl<T> Drop for Matrix<T> {
 
         for _ in 0..ncols {
             for i in 0..nrows {
+                // SAFETY: these elements were previously created in this storage.
                 unsafe {
                     std::ptr::drop_in_place(ptr.add(i));
                 }
