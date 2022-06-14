@@ -2034,6 +2034,8 @@ impl<T> Drop for RawMatrix<T> {
     fn drop(&mut self) {
         use std::alloc::{dealloc, Layout};
         // this cannot overflow because we already allocated this much memory
+        // self.row_capacity.wrapping_mul(self.col_capacity) may overflow if T is a zst
+        // but that's fine since we immediately multiply it by 0.
         let alloc_size =
             self.row_capacity.wrapping_mul(self.col_capacity) * std::mem::size_of::<T>();
         if alloc_size != 0 {
@@ -2243,33 +2245,39 @@ impl<T> Matrix<T> {
     }
 
     /// Returns a pointer to the data of the matrix.
+    #[inline]
     pub fn as_ptr(&self) -> *const T {
         self.raw.ptr.as_ptr()
     }
 
     /// Returns a mutable pointer to the data of the matrix.
+    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.raw.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the matrix.
+    #[inline]
     pub fn nrows(&self) -> usize {
         self.nrows
     }
 
     /// Returns the number of columns of the matrix.
+    #[inline]
     pub fn ncols(&self) -> usize {
         self.ncols
     }
 
     /// Returns the row capacity, that is, the number of rows that the matrix is able to hold
     /// without needing to reallocate, excluding column insertions.
+    #[inline]
     pub fn row_capacity(&self) -> usize {
         self.raw.row_capacity
     }
 
     /// Returns the column capacity, that is, the number of columns that the matrix is able to hold
     /// without needing to reallocate, excluding row insertions.
+    #[inline]
     pub fn col_capacity(&self) -> usize {
         self.raw.col_capacity
     }
