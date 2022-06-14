@@ -2554,11 +2554,11 @@ impl<T> IndexMut<(usize, usize)> for Matrix<T> {
 }
 
 macro_rules! __matrix_impl {
-    (@phase2 [$([$($col:expr),*])*] $($v:expr);* ) => {
+    ([$([$($col:expr),*])*] $($v:expr);* ) => {
         [$([$($col),*],)* [$($v),*]]
     };
-    (@phase2 [$([$($col:expr),*])*] $($v0:expr, $($v:expr),* );* $(;)?) => {
-        __matrix_impl!(@phase2 [$([$($col),*]),* [$($v0),*]] $($($v),* );*)
+    ([$([$($col:expr),*])*] $($v0:expr, $($v:expr),* );* $(;)?) => {
+        __matrix_impl!([$([$($col),*]),* [$($v0),*]] $($($v),* );*)
     };
 }
 
@@ -2572,7 +2572,7 @@ macro_rules! matrix {
 
     ($([$($v:expr),* $(,)?] ),* $(,)?) => {
         {
-            let data = ::core::mem::ManuallyDrop::new(__matrix_impl!(@phase2 [] $($($v),* );*));
+            let data = ::core::mem::ManuallyDrop::new(__matrix_impl!([] $($($v),* );*));
             let data = &*data;
 
             let ncols = data.len();
