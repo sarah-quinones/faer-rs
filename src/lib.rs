@@ -2418,6 +2418,27 @@ mod tests {
     }
 
     #[test]
+    fn reserve_zst() {
+        let mut m = Matrix::<()>::new();
+
+        m.reserve_exact(0, 0);
+        fancy_assert!(m.row_capacity() == 0);
+        fancy_assert!(m.col_capacity() == 0);
+
+        m.reserve_exact(1, 1);
+        fancy_assert!(m.row_capacity() == 1);
+        fancy_assert!(m.col_capacity() == 1);
+
+        m.reserve_exact(2, 0);
+        fancy_assert!(m.row_capacity() == 2);
+        fancy_assert!(m.col_capacity() == 1);
+
+        m.reserve_exact(2, 3);
+        fancy_assert!(m.row_capacity() == 2);
+        fancy_assert!(m.col_capacity() == 3);
+    }
+
+    #[test]
     #[should_panic]
     fn cap_overflow_1() {
         let _ = Matrix::<f64>::with_capacity(isize::MAX as usize, 1);
@@ -2427,12 +2448,5 @@ mod tests {
     #[should_panic]
     fn cap_overflow_2() {
         let _ = Matrix::<f64>::with_capacity(isize::MAX as usize, isize::MAX as usize);
-    }
-
-    #[test]
-    fn x() {
-        let mut v: Vec<()> = Vec::new();
-        v.reserve(usize::MAX);
-        v.reserve(1);
     }
 }
