@@ -1,9 +1,16 @@
+use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as debug_fancy_assert};
-use reborrow::{Reborrow, ReborrowMut};
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::ops::{Index, IndexMut};
-use std::ptr::NonNull;
+use core::any::TypeId;
+use core::fmt::Debug;
+use core::marker::PhantomData;
+use core::mem::size_of;
+use core::mem::MaybeUninit;
+use core::ops::{Index, IndexMut};
+use core::ptr::NonNull;
+use dyn_stack::{SizeOverflow, StackReq};
+use reborrow::{IntoConst, Reborrow, ReborrowMut};
+
+pub mod backend;
 
 struct MatrixSliceBase<T> {
     ptr: NonNull<T>,
@@ -19,93 +26,112 @@ struct VecSliceBase<T> {
 }
 impl<T> Copy for MatrixSliceBase<T> {}
 impl<T> Clone for MatrixSliceBase<T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-unsafe impl<T> Sync for MatrixSliceBase<T> {}
-unsafe impl<T> Send for MatrixSliceBase<T> {}
 
 impl<T> Copy for VecSliceBase<T> {}
 impl<T> Clone for VecSliceBase<T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-unsafe impl<T> Sync for VecSliceBase<T> {}
-unsafe impl<T> Send for VecSliceBase<T> {}
 
 /// 2D matrix view.
-pub struct MatrixSlice<'a, T> {
+pub struct MatRef<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
 /// Mutable 2D matrix view.
-pub struct MatrixSliceMut<'a, T> {
+pub struct MatMut<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
 }
 
 /// Row vector view.
-pub struct RowSlice<'a, T> {
+pub struct RowRef<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
 /// Mutable row vector view.
-pub struct RowSliceMut<'a, T> {
+pub struct RowMut<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
 }
 
 /// Column vector view.
-pub struct ColSlice<'a, T> {
+pub struct ColRef<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
 /// Mutable column vector view.
-pub struct ColSliceMut<'a, T> {
+pub struct ColMut<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T> Copy for MatrixSlice<'a, T> {}
-impl<'a, T> Copy for RowSlice<'a, T> {}
-impl<'a, T> Copy for ColSlice<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for MatRef<'a, T> {}
+unsafe impl<'a, T: Sync> Send for MatRef<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for MatMut<'a, T> {}
+unsafe impl<'a, T: Send> Send for MatMut<'a, T> {}
 
-impl<'a, T> Clone for MatrixSlice<'a, T> {
+unsafe impl<'a, T: Sync> Sync for RowRef<'a, T> {}
+unsafe impl<'a, T: Sync> Send for RowRef<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for RowMut<'a, T> {}
+unsafe impl<'a, T: Send> Send for RowMut<'a, T> {}
+
+unsafe impl<'a, T: Sync> Sync for ColRef<'a, T> {}
+unsafe impl<'a, T: Sync> Send for ColRef<'a, T> {}
+unsafe impl<'a, T: Sync> Sync for ColMut<'a, T> {}
+unsafe impl<'a, T: Send> Send for ColMut<'a, T> {}
+
+impl<'a, T> Copy for MatRef<'a, T> {}
+impl<'a, T> Copy for RowRef<'a, T> {}
+impl<'a, T> Copy for ColRef<'a, T> {}
+
+impl<'a, T> Clone for MatRef<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'a, T> Clone for RowSlice<'a, T> {
+impl<'a, T> Clone for RowRef<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'a, T> Clone for ColSlice<'a, T> {
+impl<'a, T> Clone for ColRef<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'b, 'a, T> Reborrow<'b> for MatrixSlice<'a, T> {
-    type Target = MatrixSlice<'b, T>;
+impl<'b, 'a, T> Reborrow<'b> for MatRef<'a, T> {
+    type Target = MatRef<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         *self
     }
 }
-impl<'b, 'a, T> ReborrowMut<'b> for MatrixSlice<'a, T> {
-    type Target = MatrixSlice<'b, T>;
+impl<'b, 'a, T> ReborrowMut<'b> for MatRef<'a, T> {
+    type Target = MatRef<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         *self
     }
 }
 
-impl<'b, 'a, T> Reborrow<'b> for MatrixSliceMut<'a, T> {
-    type Target = MatrixSlice<'b, T>;
+impl<'b, 'a, T> Reborrow<'b> for MatMut<'a, T> {
+    type Target = MatRef<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         Self::Target {
             base: self.base,
@@ -113,40 +139,9 @@ impl<'b, 'a, T> Reborrow<'b> for MatrixSliceMut<'a, T> {
         }
     }
 }
-impl<'b, 'a, T> ReborrowMut<'b> for MatrixSliceMut<'a, T> {
-    type Target = MatrixSliceMut<'b, T>;
-    fn rb_mut(&'b mut self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for RowSlice<'a, T> {
-    type Target = RowSlice<'b, T>;
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowSlice<'a, T> {
-    type Target = RowSlice<'b, T>;
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for RowSliceMut<'a, T> {
-    type Target = RowSlice<'b, T>;
-    fn rb(&'b self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowSliceMut<'a, T> {
-    type Target = RowSliceMut<'b, T>;
+impl<'b, 'a, T> ReborrowMut<'b> for MatMut<'a, T> {
+    type Target = MatMut<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         Self::Target {
             base: self.base,
@@ -155,21 +150,24 @@ impl<'b, 'a, T> ReborrowMut<'b> for RowSliceMut<'a, T> {
     }
 }
 
-impl<'b, 'a, T> Reborrow<'b> for ColSlice<'a, T> {
-    type Target = ColSlice<'b, T>;
+impl<'b, 'a, T> Reborrow<'b> for RowRef<'a, T> {
+    type Target = RowRef<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         *self
     }
 }
-impl<'b, 'a, T> ReborrowMut<'b> for ColSlice<'a, T> {
-    type Target = ColSlice<'b, T>;
+impl<'b, 'a, T> ReborrowMut<'b> for RowRef<'a, T> {
+    type Target = RowRef<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         *self
     }
 }
 
-impl<'b, 'a, T> Reborrow<'b> for ColSliceMut<'a, T> {
-    type Target = ColSlice<'b, T>;
+impl<'b, 'a, T> Reborrow<'b> for RowMut<'a, T> {
+    type Target = RowRef<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         Self::Target {
             base: self.base,
@@ -177,8 +175,9 @@ impl<'b, 'a, T> Reborrow<'b> for ColSliceMut<'a, T> {
         }
     }
 }
-impl<'b, 'a, T> ReborrowMut<'b> for ColSliceMut<'a, T> {
-    type Target = ColSliceMut<'b, T>;
+impl<'b, 'a, T> ReborrowMut<'b> for RowMut<'a, T> {
+    type Target = RowMut<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         Self::Target {
             base: self.base,
@@ -187,7 +186,103 @@ impl<'b, 'a, T> ReborrowMut<'b> for ColSliceMut<'a, T> {
     }
 }
 
-impl<'a, T> MatrixSlice<'a, T> {
+impl<'b, 'a, T> Reborrow<'b> for ColRef<'a, T> {
+    type Target = ColRef<'b, T>;
+    #[inline]
+    fn rb(&'b self) -> Self::Target {
+        *self
+    }
+}
+impl<'b, 'a, T> ReborrowMut<'b> for ColRef<'a, T> {
+    type Target = ColRef<'b, T>;
+    #[inline]
+    fn rb_mut(&'b mut self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'b, 'a, T> Reborrow<'b> for ColMut<'a, T> {
+    type Target = ColRef<'b, T>;
+    #[inline]
+    fn rb(&'b self) -> Self::Target {
+        Self::Target {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
+}
+impl<'b, 'a, T> ReborrowMut<'b> for ColMut<'a, T> {
+    type Target = ColMut<'b, T>;
+    #[inline]
+    fn rb_mut(&'b mut self) -> Self::Target {
+        Self::Target {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> IntoConst for MatRef<'a, T> {
+    type Target = MatRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        self
+    }
+}
+impl<'a, T> IntoConst for MatMut<'a, T> {
+    type Target = MatRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        Self::Target {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> IntoConst for ColRef<'a, T> {
+    type Target = ColRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        self
+    }
+}
+impl<'a, T> IntoConst for ColMut<'a, T> {
+    type Target = ColRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        Self::Target {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> IntoConst for RowRef<'a, T> {
+    type Target = RowRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        self
+    }
+}
+impl<'a, T> IntoConst for RowMut<'a, T> {
+    type Target = RowRef<'a, T>;
+
+    #[inline]
+    fn into_const(self) -> Self::Target {
+        Self::Target {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, T> MatRef<'a, T> {
     /// Returns a matrix slice from the given arguments.  
     /// `ptr`: pointer to the first element of the matrix.  
     /// `nrows`: number of rows of the matrix.  
@@ -202,6 +297,7 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// `ptr.offset(i as isize * row_stride + j as isize * col_stride)` must point to a valid
     /// initialized object of type `T`, unless memory pointing to that address is never read.  
     /// The referenced memory must not be mutated during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(
         ptr: *const T,
         nrows: usize,
@@ -222,31 +318,37 @@ impl<'a, T> MatrixSlice<'a, T> {
     }
 
     /// Returns a pointer to the first element of the matrix.
+    #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the matrix.
+    #[inline]
     pub fn nrows(&self) -> usize {
         self.base.nrows
     }
 
     /// Returns the number of columns of the matrix.
+    #[inline]
     pub fn ncols(&self) -> usize {
         self.base.ncols
     }
 
     /// Returns the offset between the first elements of two successive rows in the matrix.
+    #[inline]
     pub fn row_stride(&self) -> isize {
         self.base.row_stride
     }
 
     /// Returns the offset between the first elements of two successive columns in the matrix.
+    #[inline]
     pub fn col_stride(&self) -> isize {
         self.base.col_stride
     }
 
     /// Returns a pointer to the element at position (i, j) in the matrix.
+    #[inline]
     pub fn ptr_at(self, i: usize, j: usize) -> *const T {
         self.base
             .ptr
@@ -262,6 +364,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *const T {
         debug_fancy_assert!(i < self.nrows());
         debug_fancy_assert!(j < self.ncols());
@@ -279,6 +383,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *const T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -293,6 +399,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     ///
     /// Requires that `i <= self.nrows()`
     /// and `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         debug_fancy_assert!(i <= self.nrows());
         debug_fancy_assert!(j <= self.ncols());
@@ -333,6 +441,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     ///
     /// Requires that `i <= self.nrows()`
     /// and `j <= self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -346,14 +456,18 @@ impl<'a, T> MatrixSlice<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &*self.ptr_in_bounds_at_unchecked(i, j)
     }
 
-    /// Returns a reference to the element at position (i, j), or `None` if the indices are out of
+    /// Returns a reference to the element at position (i, j), or panics if the indices are out of
     /// bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, i: usize, j: usize) -> &'a T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -366,11 +480,13 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
-    pub unsafe fn row_unchecked(self, i: usize) -> RowSlice<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub unsafe fn row_unchecked(self, i: usize) -> RowRef<'a, T> {
         debug_fancy_assert!(i < self.nrows());
         let ncols = self.ncols();
         let cs = self.col_stride();
-        RowSlice::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
+        RowRef::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
     }
 
     /// Returns the `i`-th row of the matrix.
@@ -378,7 +494,9 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`. Otherwise, it panics.
-    pub fn row(self, i: usize) -> RowSlice<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub fn row(self, i: usize) -> RowRef<'a, T> {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked
         unsafe { self.row_unchecked(i) }
@@ -389,11 +507,13 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
-    pub unsafe fn col_unchecked(self, j: usize) -> ColSlice<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub unsafe fn col_unchecked(self, j: usize) -> ColRef<'a, T> {
         debug_fancy_assert!(j < self.ncols());
         let nrows = self.nrows();
         let rs = self.row_stride();
-        ColSlice::from_raw_parts(self.ptr_at(0, j), nrows, rs)
+        ColRef::from_raw_parts(self.ptr_at(0, j), nrows, rs)
     }
 
     /// Returns the `j`-th column of the matrix.
@@ -401,17 +521,20 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `j < self.ncols()`. Otherwise, it panics.
-    pub fn col(self, j: usize) -> ColSlice<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub fn col(self, j: usize) -> ColRef<'a, T> {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
         unsafe { self.col_unchecked(j) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> MatrixSlice<'a, T> {
+    #[inline]
+    pub fn trans(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe {
-            MatrixSlice::from_raw_parts(
+            MatRef::from_raw_parts(
                 ptr,
                 self.ncols(),
                 self.nrows(),
@@ -421,12 +544,42 @@ impl<'a, T> MatrixSlice<'a, T> {
         }
     }
 
+    /// Returns the diagonal of the matrix, as a column vector.
+    ///
+    /// # Safety
+    ///
+    /// Requires that the matrix be square. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn diagonal_unchecked(self) -> ColRef<'a, T> {
+        debug_fancy_assert!(self.nrows() == self.ncols());
+        ColRef::from_raw_parts(
+            self.base.ptr.as_ptr(),
+            self.base.nrows,
+            self.base.row_stride + self.base.col_stride,
+        )
+    }
+
+    /// Returns the diagonal of the matrix, as a column vector.
+    ///
+    /// # Panics
+    ///
+    /// Requires that the matrix be square. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn diagonal(self) -> ColRef<'a, T> {
+        fancy_assert!(self.nrows() == self.ncols());
+        unsafe { self.diagonal_unchecked() }
+    }
+
     /// Returns an iterator over the rows of the matrix.
+    #[inline]
     pub fn into_row_iter(self) -> RowIter<'a, T> {
         RowIter(self)
     }
 
     /// Returns an iterator over the columns of the matrix.
+    #[inline]
     pub fn into_col_iter(self) -> ColIter<'a, T> {
         ColIter(self)
     }
@@ -440,6 +593,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
     /// and `ncols <= self.ncols() - j`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn submatrix_unchecked(
         self,
         i: usize,
@@ -469,6 +624,8 @@ impl<'a, T> MatrixSlice<'a, T> {
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
     /// and `ncols <= self.ncols() - j`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -478,7 +635,7 @@ impl<'a, T> MatrixSlice<'a, T> {
     }
 }
 
-impl<'a, T> MatrixSliceMut<'a, T> {
+impl<'a, T> MatMut<'a, T> {
     /// Returns a mutable matrix slice from the given arguments.  
     /// `ptr`: pointer to the first element of the matrix.  
     /// `nrows`: number of rows of the matrix.  
@@ -496,6 +653,7 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// aliasing).  
     /// The referenced memory must not be accessed by another pointer which was not derived from
     /// the return value, during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(
         ptr: *mut T,
         nrows: usize,
@@ -516,39 +674,37 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     }
 
     /// Returns a mutable pointer to the first element of the matrix.
+    #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the matrix.
+    #[inline]
     pub fn nrows(&self) -> usize {
         self.base.nrows
     }
 
     /// Returns the number of columns of the matrix.
+    #[inline]
     pub fn ncols(&self) -> usize {
         self.base.ncols
     }
 
     /// Returns the offset between the first elements of two successive rows in the matrix.
+    #[inline]
     pub fn row_stride(&self) -> isize {
         self.base.row_stride
     }
 
     /// Returns the offset between the first elements of two successive columns in the matrix.
+    #[inline]
     pub fn col_stride(&self) -> isize {
         self.base.col_stride
     }
 
-    /// Returns an immutable matrix view over the same data.
-    pub fn as_const(self) -> MatrixSlice<'a, T> {
-        MatrixSlice::<'a, T> {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-
     /// Returns a mutable pointer to the element at position (i, j) in the matrix.
+    #[inline]
     pub fn ptr_at(self, i: usize, j: usize) -> *mut T {
         self.base
             .ptr
@@ -564,6 +720,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *mut T {
         debug_fancy_assert!(i < self.nrows());
         debug_fancy_assert!(j < self.ncols());
@@ -581,6 +739,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *mut T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -595,6 +755,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     ///
     /// Requires that `i <= self.nrows()`
     /// and `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         debug_fancy_assert!(i <= self.nrows());
         debug_fancy_assert!(j <= self.ncols());
@@ -635,6 +797,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     ///
     /// Requires that `i <= self.nrows()`
     /// and `j <= self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -648,14 +812,18 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     ///
     /// Requires that `i < self.nrows()`
     /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &mut *self.ptr_in_bounds_at_unchecked(i, j)
     }
 
-    /// Returns a mutable reference to the element at position (i, j), or `None` if the indices are
+    /// Returns a mutable reference to the element at position (i, j), or panics if the indices are
     /// out of bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, i: usize, j: usize) -> &'a mut T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -668,11 +836,13 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
-    pub unsafe fn row_unchecked(self, i: usize) -> RowSliceMut<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub unsafe fn row_unchecked(self, i: usize) -> RowMut<'a, T> {
         debug_fancy_assert!(i < self.nrows());
         let ncols = self.ncols();
         let cs = self.col_stride();
-        RowSliceMut::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
+        RowMut::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
     }
 
     /// Returns the `i`-th row of the matrix.
@@ -680,7 +850,9 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`. Otherwise, it panics.
-    pub fn row(self, i: usize) -> RowSliceMut<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub fn row(self, i: usize) -> RowMut<'a, T> {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked.
         unsafe { self.row_unchecked(i) }
@@ -691,11 +863,13 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
-    pub unsafe fn col_unchecked(self, j: usize) -> ColSliceMut<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub unsafe fn col_unchecked(self, j: usize) -> ColMut<'a, T> {
         debug_fancy_assert!(j < self.ncols());
         let nrows = self.nrows();
         let rs = self.row_stride();
-        ColSliceMut::from_raw_parts(self.ptr_at(0, j), nrows, rs)
+        ColMut::from_raw_parts(self.ptr_at(0, j), nrows, rs)
     }
 
     /// Returns the `j`-th column of the matrix.
@@ -703,17 +877,20 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `j < self.ncols()`. Otherwise, it panics.
-    pub fn col(self, j: usize) -> ColSliceMut<'a, T> {
+    #[track_caller]
+    #[inline]
+    pub fn col(self, j: usize) -> ColMut<'a, T> {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
         unsafe { self.col_unchecked(j) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> MatrixSliceMut<'a, T> {
+    #[inline]
+    pub fn trans(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe {
-            MatrixSliceMut::from_raw_parts(
+            MatMut::from_raw_parts(
                 ptr,
                 self.ncols(),
                 self.nrows(),
@@ -723,12 +900,42 @@ impl<'a, T> MatrixSliceMut<'a, T> {
         }
     }
 
+    /// Returns the diagonal of the matrix, as a column vector.
+    ///
+    /// # Safety
+    ///
+    /// Requires that the matrix be square. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn diagonal_unchecked(self) -> ColMut<'a, T> {
+        debug_fancy_assert!(self.nrows() == self.ncols());
+        ColMut::from_raw_parts(
+            self.base.ptr.as_ptr(),
+            self.base.nrows,
+            self.base.row_stride + self.base.col_stride,
+        )
+    }
+
+    /// Returns the diagonal of the matrix, as a column vector.
+    ///
+    /// # Panics
+    ///
+    /// Requires that the matrix be square. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn diagonal(self) -> ColMut<'a, T> {
+        fancy_assert!(self.nrows() == self.ncols());
+        unsafe { self.diagonal_unchecked() }
+    }
+
     /// Returns an iterator over the rows of the matrix.
+    #[inline]
     pub fn into_row_iter(self) -> RowIterMut<'a, T> {
         RowIterMut(self)
     }
 
     /// Returns an iterator over the columns of the matrix.
+    #[inline]
     pub fn into_col_iter(self) -> ColIterMut<'a, T> {
         ColIterMut(self)
     }
@@ -742,6 +949,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
     /// and `ncols <= self.ncols() - j`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn submatrix_unchecked(
         self,
         i: usize,
@@ -773,6 +982,8 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
     /// and `ncols <= self.ncols() - j`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -782,7 +993,7 @@ impl<'a, T> MatrixSliceMut<'a, T> {
     }
 }
 
-impl<'a, T> RowSlice<'a, T> {
+impl<'a, T> RowRef<'a, T> {
     /// Returns a row vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the row vector.  
     /// `ncols`: number of columns of the row vector.  
@@ -795,6 +1006,7 @@ impl<'a, T> RowSlice<'a, T> {
     /// `ptr.offset(j as isize * col_stride)` must point to a valid
     /// initialized object of type `T`, unless memory pointing to that address is never read.  
     /// The referenced memory must not be mutated during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(ptr: *const T, ncols: usize, col_stride: isize) -> Self {
         Self {
             base: VecSliceBase::<T> {
@@ -807,26 +1019,31 @@ impl<'a, T> RowSlice<'a, T> {
     }
 
     /// Returns a pointer to the first element of the row vector.
+    #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the row vector. Always returns `1`.
+    #[inline]
     pub fn nrows(&self) -> usize {
         1
     }
 
     /// Returns the number of columns of the row vector.
+    #[inline]
     pub fn ncols(&self) -> usize {
         self.base.len
     }
 
     /// Returns the offset between the first elements of two successive columns in the row vector.
+    #[inline]
     pub fn col_stride(&self) -> isize {
         self.base.stride
     }
 
     /// Returns a pointer to the element at position (0, j) in the row vector.
+    #[inline]
     pub fn ptr_at(self, j: usize) -> *const T {
         self.base
             .ptr
@@ -840,6 +1057,8 @@ impl<'a, T> RowSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *const T {
         debug_fancy_assert!(j < self.ncols());
         self.base
@@ -854,6 +1073,8 @@ impl<'a, T> RowSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, j: usize) -> *const T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked
@@ -865,6 +1086,8 @@ impl<'a, T> RowSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
         debug_fancy_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
@@ -880,6 +1103,8 @@ impl<'a, T> RowSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `j <= self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, j: usize) -> (Self, Self) {
         fancy_assert!(j <= self.ncols());
         // SAFETY: bounds have been checked
@@ -891,14 +1116,18 @@ impl<'a, T> RowSlice<'a, T> {
     /// # Safety
     ///
     /// Requires `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &*self.ptr_in_bounds_at_unchecked(j)
     }
 
-    /// Returns a reference to the element at position (0, j), or `None` if the index is out of
+    /// Returns a reference to the element at position (0, j), or panics if the index is out of
     /// bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, j: usize) -> &'a T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
@@ -906,21 +1135,21 @@ impl<'a, T> RowSlice<'a, T> {
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
-    pub fn as_2d(self) -> MatrixSlice<'a, T> {
+    #[inline]
+    pub fn as_2d(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe {
-            MatrixSlice::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride())
-        }
+        unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride()) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> ColSlice<'a, T> {
+    #[inline]
+    pub fn trans(self) -> ColRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe { ColSlice::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
+        unsafe { ColRef::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
 }
 
-impl<'a, T> RowSliceMut<'a, T> {
+impl<'a, T> RowMut<'a, T> {
     /// Returns a mutable row vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the row vector.  
     /// `ncols`: number of columns of the row vector.  
@@ -935,6 +1164,7 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// Additionally, when `j != 0`, this pointer is never equal to `ptr` (no self aliasing).  
     /// The referenced memory must not be accessed by another pointer which was not derived from
     /// the return value, during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(ptr: *mut T, ncols: usize, col_stride: isize) -> Self {
         Self {
             base: VecSliceBase::<T> {
@@ -947,34 +1177,31 @@ impl<'a, T> RowSliceMut<'a, T> {
     }
 
     /// Returns a mutable pointer to the first element of the row vector.
+    #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the row vector. Always returns `1`.
+    #[inline]
     pub fn nrows(&self) -> usize {
         1
     }
 
     /// Returns the number of columns of the row vector.
+    #[inline]
     pub fn ncols(&self) -> usize {
         self.base.len
     }
 
     /// Returns the offset between the first elements of two successive columns in the row vector.
+    #[inline]
     pub fn col_stride(&self) -> isize {
         self.base.stride
     }
 
-    /// Returns an immutable row vector view over the same data.
-    pub fn as_const(self) -> RowSlice<'a, T> {
-        RowSlice::<'a, T> {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-
     /// Returns a mutable pointer to the element at position (0, j) in the row vector.
+    #[inline]
     pub fn ptr_at(self, j: usize) -> *mut T {
         self.base
             .ptr
@@ -988,6 +1215,8 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *mut T {
         debug_fancy_assert!(j < self.ncols());
         self.base
@@ -1002,6 +1231,8 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, j: usize) -> *mut T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked
@@ -1013,6 +1244,8 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
         debug_fancy_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
@@ -1028,6 +1261,8 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `j <= self.ncols()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, j: usize) -> (Self, Self) {
         fancy_assert!(j <= self.ncols());
         // SAFETY: bounds have been checked
@@ -1039,14 +1274,18 @@ impl<'a, T> RowSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires `j < self.ncols()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &mut *self.ptr_in_bounds_at_unchecked(j)
     }
 
-    /// Returns a mutable reference to the element at position (0, j), or `None` if the index is
+    /// Returns a mutable reference to the element at position (0, j), or panics if the index is
     /// out of bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, j: usize) -> &'a mut T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
@@ -1054,21 +1293,21 @@ impl<'a, T> RowSliceMut<'a, T> {
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
-    pub fn as_2d(self) -> MatrixSliceMut<'a, T> {
+    #[inline]
+    pub fn as_2d(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe {
-            MatrixSliceMut::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride())
-        }
+        unsafe { MatMut::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride()) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> ColSliceMut<'a, T> {
+    #[inline]
+    pub fn trans(self) -> ColMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe { ColSliceMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
+        unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
 }
 
-impl<'a, T> ColSlice<'a, T> {
+impl<'a, T> ColRef<'a, T> {
     /// Returns a column vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the column vector.  
     /// `ncols`: number of columns of the column vector.  
@@ -1081,6 +1320,7 @@ impl<'a, T> ColSlice<'a, T> {
     /// `ptr.offset(i as isize * row_stride)` must point to a valid
     /// initialized object of type `T`, unless memory pointing to that address is never read.  
     /// The referenced memory must not be mutated during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(ptr: *const T, nrows: usize, row_stride: isize) -> Self {
         Self {
             base: VecSliceBase::<T> {
@@ -1093,26 +1333,31 @@ impl<'a, T> ColSlice<'a, T> {
     }
 
     /// Returns a pointer to the first element of the column vector.
+    #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the column vector.
+    #[inline]
     pub fn nrows(&self) -> usize {
         self.base.len
     }
 
     /// Returns the number of columns of the column vector. Always returns `1`.
+    #[inline]
     pub fn ncols(&self) -> usize {
         1
     }
 
     /// Returns the offset between the first elements of two successive rows in the column vector.
+    #[inline]
     pub fn row_stride(&self) -> isize {
         self.base.stride
     }
 
     /// Returns a pointer to the element at position (i, 0) in the column vector.
+    #[inline]
     pub fn ptr_at(self, i: usize) -> *const T {
         self.base
             .ptr
@@ -1126,6 +1371,8 @@ impl<'a, T> ColSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *const T {
         debug_fancy_assert!(i < self.nrows());
         self.base
@@ -1140,6 +1387,8 @@ impl<'a, T> ColSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, i: usize) -> *const T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked
@@ -1151,6 +1400,8 @@ impl<'a, T> ColSlice<'a, T> {
     /// # Safety
     ///
     /// Requires that `i <= self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
         debug_fancy_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
@@ -1166,6 +1417,8 @@ impl<'a, T> ColSlice<'a, T> {
     /// # Panics
     ///
     /// Requires that `i <= self.nrows()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, i: usize) -> (Self, Self) {
         fancy_assert!(i <= self.nrows());
         // SAFETY: bounds have been checked
@@ -1177,14 +1430,18 @@ impl<'a, T> ColSlice<'a, T> {
     /// # Safety
     ///
     /// Requires `i < self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &*self.ptr_in_bounds_at_unchecked(i)
     }
 
-    /// Returns a reference to the element at position (i, 0), or `None` if the index is out of
+    /// Returns a reference to the element at position (i, 0), or panics if the index is out of
     /// bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, i: usize) -> &'a T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked.
@@ -1192,21 +1449,21 @@ impl<'a, T> ColSlice<'a, T> {
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
-    pub fn as_2d(self) -> MatrixSlice<'a, T> {
+    #[inline]
+    pub fn as_2d(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe {
-            MatrixSlice::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0)
-        }
+        unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> RowSlice<'a, T> {
+    #[inline]
+    pub fn trans(self) -> RowRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe { RowSlice::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
+        unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
 }
 
-impl<'a, T> ColSliceMut<'a, T> {
+impl<'a, T> ColMut<'a, T> {
     /// Returns a mutable column vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the column vector.  
     /// `ncols`: number of columns of the column vector.  
@@ -1220,6 +1477,7 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// initialized object of type `T`, unless memory pointing to that address is never read.  
     /// Additionally, when `i != 0`, this pointer is never equal to `ptr` (no self aliasing).  
     /// The referenced memory must not be mutated during the lifetime `'a`.
+    #[inline]
     pub unsafe fn from_raw_parts(ptr: *mut T, nrows: usize, row_stride: isize) -> Self {
         Self {
             base: VecSliceBase::<T> {
@@ -1232,34 +1490,31 @@ impl<'a, T> ColSliceMut<'a, T> {
     }
 
     /// Returns a mutable pointer to the first element of the column vector.
+    #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the column vector.
+    #[inline]
     pub fn nrows(&self) -> usize {
         self.base.len
     }
 
     /// Returns the number of columns of the column vector. Always returns `1`.
+    #[inline]
     pub fn ncols(&self) -> usize {
         1
     }
 
     /// Returns the offset between the first elements of two successive rows in the column vector.
+    #[inline]
     pub fn row_stride(&self) -> isize {
         self.base.stride
     }
 
-    /// Returns an immutable column vector view over the same data.
-    pub fn as_const(self) -> ColSlice<'a, T> {
-        ColSlice::<'a, T> {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-
     /// Returns a mutable pointer to the element at position (i, 0) in the column vector.
+    #[inline]
     pub fn ptr_at(self, i: usize) -> *mut T {
         self.base
             .ptr
@@ -1273,6 +1528,8 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *mut T {
         debug_fancy_assert!(i < self.nrows());
         self.base
@@ -1287,6 +1544,8 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn ptr_in_bounds_at(self, i: usize) -> *mut T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked
@@ -1298,6 +1557,8 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i <= self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
         debug_fancy_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
@@ -1313,6 +1574,8 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `i <= self.nrows()`. Otherwise, it panics.
+    #[track_caller]
+    #[inline]
     pub fn split_at(self, i: usize) -> (Self, Self) {
         fancy_assert!(i <= self.nrows());
         // SAFETY: bounds have been checked
@@ -1324,14 +1587,18 @@ impl<'a, T> ColSliceMut<'a, T> {
     /// # Safety
     ///
     /// Requires `i < self.nrows()`. Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
         &mut *self.ptr_in_bounds_at_unchecked(i)
     }
 
-    /// Returns a mutable reference to the element at position (i, 0), or `None` if the index is
+    /// Returns a mutable reference to the element at position (i, 0), or panics if the index is
     /// out of bounds.
+    #[track_caller]
+    #[inline]
     pub fn get(self, i: usize) -> &'a mut T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked.
@@ -1339,151 +1606,181 @@ impl<'a, T> ColSliceMut<'a, T> {
     }
 
     /// Returns an equivalent 2D matrix view over the same data.
-    pub fn as_2d(self) -> MatrixSliceMut<'a, T> {
+    #[inline]
+    pub fn as_2d(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe {
-            MatrixSliceMut::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0)
-        }
+        unsafe { MatMut::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0) }
     }
 
     /// Returns the transpose of `self`.
-    pub fn t(self) -> RowSliceMut<'a, T> {
+    #[inline]
+    pub fn trans(self) -> RowMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
-        unsafe { RowSliceMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
+        unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
 }
 
-impl<'a, T> Index<(usize, usize)> for MatrixSlice<'a, T> {
+impl<'a, T> Index<(usize, usize)> for MatRef<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
         self.get(i, j)
     }
 }
-impl<'a, T> Index<(usize, usize)> for MatrixSliceMut<'a, T> {
+impl<'a, T> Index<(usize, usize)> for MatMut<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
         self.rb().get(i, j)
     }
 }
-impl<'a, T> IndexMut<(usize, usize)> for MatrixSliceMut<'a, T> {
+impl<'a, T> IndexMut<(usize, usize)> for MatMut<'a, T> {
+    #[track_caller]
+    #[inline]
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
         self.rb_mut().get(i, j)
     }
 }
 
-impl<'a, T> Index<usize> for RowSlice<'a, T> {
+impl<'a, T> Index<usize> for RowRef<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, j: usize) -> &Self::Output {
         self.get(j)
     }
 }
-impl<'a, T> Index<usize> for RowSliceMut<'a, T> {
+impl<'a, T> Index<usize> for RowMut<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, j: usize) -> &Self::Output {
         self.rb().get(j)
     }
 }
-impl<'a, T> IndexMut<usize> for RowSliceMut<'a, T> {
+impl<'a, T> IndexMut<usize> for RowMut<'a, T> {
+    #[track_caller]
+    #[inline]
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
         self.rb_mut().get(j)
     }
 }
 
-impl<'a, T> Index<usize> for ColSlice<'a, T> {
+impl<'a, T> Index<usize> for ColRef<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, j: usize) -> &Self::Output {
         self.get(j)
     }
 }
-impl<'a, T> Index<usize> for ColSliceMut<'a, T> {
+impl<'a, T> Index<usize> for ColMut<'a, T> {
     type Output = T;
 
+    #[track_caller]
+    #[inline]
     fn index(&self, j: usize) -> &Self::Output {
         self.rb().get(j)
     }
 }
-impl<'a, T> IndexMut<usize> for ColSliceMut<'a, T> {
+impl<'a, T> IndexMut<usize> for ColMut<'a, T> {
+    #[track_caller]
+    #[inline]
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
         self.rb_mut().get(j)
     }
 }
 
-impl<'a, T> IntoIterator for RowSlice<'a, T> {
+impl<'a, T> IntoIterator for RowRef<'a, T> {
     type Item = &'a T;
     type IntoIter = ElemIter<'a, T>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIter(self.t())
+        ElemIter(self.trans())
     }
 }
-impl<'a, T> IntoIterator for RowSliceMut<'a, T> {
+impl<'a, T> IntoIterator for RowMut<'a, T> {
     type Item = &'a mut T;
     type IntoIter = ElemIterMut<'a, T>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIterMut(self.t())
+        ElemIterMut(self.trans())
     }
 }
 
-impl<'a, T> IntoIterator for ColSlice<'a, T> {
+impl<'a, T> IntoIterator for ColRef<'a, T> {
     type Item = &'a T;
     type IntoIter = ElemIter<'a, T>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         ElemIter(self)
     }
 }
-impl<'a, T> IntoIterator for ColSliceMut<'a, T> {
+impl<'a, T> IntoIterator for ColMut<'a, T> {
     type Item = &'a mut T;
     type IntoIter = ElemIterMut<'a, T>;
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         ElemIterMut(self)
     }
 }
 
-pub struct RowIter<'a, T>(MatrixSlice<'a, T>);
-pub struct ColIter<'a, T>(MatrixSlice<'a, T>);
-pub struct RowIterMut<'a, T>(MatrixSliceMut<'a, T>);
-pub struct ColIterMut<'a, T>(MatrixSliceMut<'a, T>);
-pub struct ElemIter<'a, T>(ColSlice<'a, T>);
-pub struct ElemIterMut<'a, T>(ColSliceMut<'a, T>);
+pub struct RowIter<'a, T>(MatRef<'a, T>);
+pub struct ColIter<'a, T>(MatRef<'a, T>);
+pub struct RowIterMut<'a, T>(MatMut<'a, T>);
+pub struct ColIterMut<'a, T>(MatMut<'a, T>);
+pub struct ElemIter<'a, T>(ColRef<'a, T>);
+pub struct ElemIterMut<'a, T>(ColMut<'a, T>);
 
 impl<'a, T> RowIter<'a, T> {
-    pub fn into_matrix(self) -> MatrixSlice<'a, T> {
+    #[inline]
+    pub fn into_matrix(self) -> MatRef<'a, T> {
         self.0
     }
 }
 impl<'a, T> RowIterMut<'a, T> {
-    pub fn into_matrix(self) -> MatrixSliceMut<'a, T> {
+    #[inline]
+    pub fn into_matrix(self) -> MatMut<'a, T> {
         self.0
     }
 }
 impl<'a, T> ColIter<'a, T> {
-    pub fn into_matrix(self) -> MatrixSlice<'a, T> {
+    #[inline]
+    pub fn into_matrix(self) -> MatRef<'a, T> {
         self.0
     }
 }
 impl<'a, T> ColIterMut<'a, T> {
-    pub fn into_matrix(self) -> MatrixSliceMut<'a, T> {
+    #[inline]
+    pub fn into_matrix(self) -> MatMut<'a, T> {
         self.0
     }
 }
 impl<'a, T> ElemIter<'a, T> {
-    pub fn into_col(self) -> ColSlice<'a, T> {
+    #[inline]
+    pub fn into_col(self) -> ColRef<'a, T> {
         self.0
     }
-    pub fn into_row(self) -> RowSlice<'a, T> {
-        self.0.t()
+    #[inline]
+    pub fn into_row(self) -> RowRef<'a, T> {
+        self.0.trans()
     }
 }
 impl<'a, T> ElemIterMut<'a, T> {
-    pub fn into_col(self) -> ColSliceMut<'a, T> {
+    #[inline]
+    pub fn into_col(self) -> ColMut<'a, T> {
         self.0
     }
-    pub fn into_row(self) -> RowSliceMut<'a, T> {
-        self.0.t()
+    #[inline]
+    pub fn into_row(self) -> RowMut<'a, T> {
+        self.0.trans()
     }
 }
 
@@ -1491,16 +1788,19 @@ impl<'a, T> Copy for RowIter<'a, T> {}
 impl<'a, T> Copy for ColIter<'a, T> {}
 impl<'a, T> Copy for ElemIter<'a, T> {}
 impl<'a, T> Clone for RowIter<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 impl<'a, T> Clone for ColIter<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 impl<'a, T> Clone for ElemIter<'a, T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -1508,24 +1808,28 @@ impl<'a, T> Clone for ElemIter<'a, T> {
 
 impl<'b, 'a, T> Reborrow<'b> for RowIter<'a, T> {
     type Target = RowIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for RowIter<'a, T> {
     type Target = RowIter<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> Reborrow<'b> for RowIterMut<'a, T> {
     type Target = RowIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         RowIter(self.0.rb())
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for RowIterMut<'a, T> {
     type Target = RowIterMut<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         RowIterMut(self.0.rb_mut())
     }
@@ -1533,24 +1837,28 @@ impl<'b, 'a, T> ReborrowMut<'b> for RowIterMut<'a, T> {
 
 impl<'b, 'a, T> Reborrow<'b> for ColIter<'a, T> {
     type Target = ColIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for ColIter<'a, T> {
     type Target = ColIter<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> Reborrow<'b> for ColIterMut<'a, T> {
     type Target = ColIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         ColIter(self.0.rb())
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for ColIterMut<'a, T> {
     type Target = ColIterMut<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         ColIterMut(self.0.rb_mut())
     }
@@ -1558,24 +1866,28 @@ impl<'b, 'a, T> ReborrowMut<'b> for ColIterMut<'a, T> {
 
 impl<'b, 'a, T> Reborrow<'b> for ElemIter<'a, T> {
     type Target = ElemIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for ElemIter<'a, T> {
     type Target = ElemIter<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         *self
     }
 }
 impl<'b, 'a, T> Reborrow<'b> for ElemIterMut<'a, T> {
     type Target = ElemIter<'b, T>;
+    #[inline]
     fn rb(&'b self) -> Self::Target {
         ElemIter(self.0.rb())
     }
 }
 impl<'b, 'a, T> ReborrowMut<'b> for ElemIterMut<'a, T> {
     type Target = ElemIterMut<'b, T>;
+    #[inline]
     fn rb_mut(&'b mut self) -> Self::Target {
         ElemIterMut(self.0.rb_mut())
     }
@@ -1584,6 +1896,7 @@ impl<'b, 'a, T> ReborrowMut<'b> for ElemIterMut<'a, T> {
 impl<'a, T> Iterator for ElemIter<'a, T> {
     type Item = &'a T;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1592,7 +1905,7 @@ impl<'a, T> Iterator for ElemIter<'a, T> {
             let ptr = self.0.base.ptr.as_ptr();
             let rs = self.0.row_stride();
             let top = unsafe { &*ptr };
-            let bot = unsafe { ColSlice::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
+            let bot = unsafe { ColRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
 
             self.0 = bot;
 
@@ -1600,12 +1913,14 @@ impl<'a, T> Iterator for ElemIter<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.nrows();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1613,7 +1928,7 @@ impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
         } else {
             let ptr = self.0.base.ptr.as_ptr();
             let rs = self.0.row_stride();
-            let top = unsafe { ColSlice::from_raw_parts(ptr, nrows - 1, rs) };
+            let top = unsafe { ColRef::from_raw_parts(ptr, nrows - 1, rs) };
             let bot = unsafe { &*ptr.wrapping_offset(rs * (nrows - 1) as isize) };
 
             self.0 = top;
@@ -1626,6 +1941,7 @@ impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
 impl<'a, T> Iterator for ElemIterMut<'a, T> {
     type Item = &'a mut T;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1634,8 +1950,7 @@ impl<'a, T> Iterator for ElemIterMut<'a, T> {
             let ptr = self.0.base.ptr.as_ptr();
             let rs = self.0.row_stride();
             let top = unsafe { &mut *ptr };
-            let bot =
-                unsafe { ColSliceMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
+            let bot = unsafe { ColMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
 
             self.0 = bot;
 
@@ -1643,12 +1958,14 @@ impl<'a, T> Iterator for ElemIterMut<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.nrows();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1656,7 +1973,7 @@ impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
         } else {
             let ptr = self.0.base.ptr.as_ptr();
             let rs = self.0.row_stride();
-            let top = unsafe { ColSliceMut::from_raw_parts(ptr, nrows - 1, rs) };
+            let top = unsafe { ColMut::from_raw_parts(ptr, nrows - 1, rs) };
             let bot = unsafe { &mut *ptr.wrapping_offset(rs * (nrows - 1) as isize) };
 
             self.0 = top;
@@ -1667,8 +1984,9 @@ impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
 }
 
 impl<'a, T> Iterator for RowIter<'a, T> {
-    type Item = RowSlice<'a, T>;
+    type Item = RowRef<'a, T>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1680,7 +1998,7 @@ impl<'a, T> Iterator for RowIter<'a, T> {
             let cs = self.0.col_stride();
             let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
             let bot = unsafe {
-                MatrixSlice::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
+                MatRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
             };
 
             self.0 = bot;
@@ -1689,12 +2007,14 @@ impl<'a, T> Iterator for RowIter<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.nrows();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1704,7 +2024,7 @@ impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
             let ncols = self.0.ncols();
             let rs = self.0.row_stride();
             let cs = self.0.col_stride();
-            let top = unsafe { MatrixSlice::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
+            let top = unsafe { MatRef::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
             let bot = unsafe {
                 Self::Item::from_raw_parts(
                     ptr.wrapping_offset((nrows - 1) as isize * rs),
@@ -1721,8 +2041,9 @@ impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
 }
 
 impl<'a, T> Iterator for RowIterMut<'a, T> {
-    type Item = RowSliceMut<'a, T>;
+    type Item = RowMut<'a, T>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1734,7 +2055,7 @@ impl<'a, T> Iterator for RowIterMut<'a, T> {
             let cs = self.0.col_stride();
             let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
             let bot = unsafe {
-                MatrixSliceMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
+                MatMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
             };
 
             self.0 = bot;
@@ -1743,12 +2064,14 @@ impl<'a, T> Iterator for RowIterMut<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.nrows();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let nrows = self.0.nrows();
         if nrows == 0 {
@@ -1758,7 +2081,7 @@ impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
             let ncols = self.0.ncols();
             let rs = self.0.row_stride();
             let cs = self.0.col_stride();
-            let top = unsafe { MatrixSliceMut::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
+            let top = unsafe { MatMut::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
             let bot = unsafe {
                 Self::Item::from_raw_parts(
                     ptr.wrapping_offset((nrows - 1) as isize * rs),
@@ -1775,8 +2098,9 @@ impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
 }
 
 impl<'a, T> Iterator for ColIter<'a, T> {
-    type Item = ColSlice<'a, T>;
+    type Item = ColRef<'a, T>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let ncols = self.0.ncols();
         if ncols == 0 {
@@ -1788,7 +2112,7 @@ impl<'a, T> Iterator for ColIter<'a, T> {
             let cs = self.0.col_stride();
             let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
             let right = unsafe {
-                MatrixSlice::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
+                MatRef::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
             };
 
             self.0 = right;
@@ -1796,12 +2120,14 @@ impl<'a, T> Iterator for ColIter<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.ncols();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let ncols = self.0.ncols();
         if ncols == 0 {
@@ -1811,7 +2137,7 @@ impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
             let nrows = self.0.nrows();
             let rs = self.0.row_stride();
             let cs = self.0.col_stride();
-            let left = unsafe { MatrixSlice::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
+            let left = unsafe { MatRef::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
             let right = unsafe {
                 Self::Item::from_raw_parts(
                     ptr.wrapping_offset((ncols - 1) as isize * cs),
@@ -1826,8 +2152,9 @@ impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
     }
 }
 impl<'a, T> Iterator for ColIterMut<'a, T> {
-    type Item = ColSliceMut<'a, T>;
+    type Item = ColMut<'a, T>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let ncols = self.0.ncols();
         if ncols == 0 {
@@ -1839,7 +2166,7 @@ impl<'a, T> Iterator for ColIterMut<'a, T> {
             let cs = self.0.col_stride();
             let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
             let right = unsafe {
-                MatrixSliceMut::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
+                MatMut::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
             };
 
             self.0 = right;
@@ -1847,12 +2174,14 @@ impl<'a, T> Iterator for ColIterMut<'a, T> {
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let len = self.0.ncols();
         (len, Some(len))
     }
 }
 impl<'a, T> DoubleEndedIterator for ColIterMut<'a, T> {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let ncols = self.0.ncols();
         if ncols == 0 {
@@ -1862,7 +2191,7 @@ impl<'a, T> DoubleEndedIterator for ColIterMut<'a, T> {
             let nrows = self.0.nrows();
             let rs = self.0.row_stride();
             let cs = self.0.col_stride();
-            let left = unsafe { MatrixSliceMut::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
+            let left = unsafe { MatMut::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
             let right = unsafe {
                 Self::Item::from_raw_parts(
                     ptr.wrapping_offset((ncols - 1) as isize * cs),
@@ -1884,9 +2213,9 @@ impl<'a, T> ExactSizeIterator for ColIterMut<'a, T> {}
 impl<'a, T> ExactSizeIterator for ElemIter<'a, T> {}
 impl<'a, T> ExactSizeIterator for ElemIterMut<'a, T> {}
 
-impl<'a, T: Debug> Debug for MatrixSlice<'a, T> {
+impl<'a, T: Debug> Debug for MatRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct DebugRowSlice<'a, T>(RowSlice<'a, T>);
+        struct DebugRowSlice<'a, T>(RowRef<'a, T>);
 
         impl<'a, T: Debug> Debug for DebugRowSlice<'a, T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1907,56 +2236,242 @@ impl<'a, T: Debug> Debug for MatrixSlice<'a, T> {
             .finish()
     }
 }
-impl<'a, T: Debug> Debug for MatrixSliceMut<'a, T> {
+impl<'a, T: Debug> Debug for MatMut<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().fmt(f)
     }
 }
-impl<'a, T: Debug> Debug for RowSlice<'a, T> {
+impl<'a, T: Debug> Debug for RowRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
-impl<'a, T: Debug> Debug for RowSliceMut<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-
-impl<'a, T: Debug> Debug for ColSlice<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-impl<'a, T: Debug> Debug for ColSliceMut<'a, T> {
+impl<'a, T: Debug> Debug for RowMut<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
 
-fn unique_id<T>() -> usize {
-    unique_id::<T> as usize
+impl<'a, T: Debug> Debug for ColRef<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.rb().as_2d().fmt(f)
+    }
+}
+impl<'a, T: Debug> Debug for ColMut<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.rb().as_2d().fmt(f)
+    }
 }
 
-lazy_static::lazy_static! {
-    static ref SIMD_ALIGN: usize = {
-        if is_x86_feature_detected!("avx") {
-            32
-        } else {
-            16
+#[doc(hidden)]
+pub use num_traits::Zero;
+
+#[doc(hidden)]
+pub enum Either<A, B> {
+    Left(A),
+    Right(B),
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn round_up_to(n: usize, k: usize) -> usize {
+    (n + (k - 1)) / k * k
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn is_vectorizable<T: 'static>() -> bool {
+    TypeId::of::<T>() == TypeId::of::<f64>() || TypeId::of::<T>() == TypeId::of::<f32>()
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn align_for<T: 'static>() -> usize {
+    if is_vectorizable::<T>() {
+        CACHELINE_ALIGN
+    } else {
+        core::mem::align_of::<T>()
+    }
+}
+
+#[doc(hidden)]
+#[inline]
+pub unsafe fn as_uninit<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
+    let len = slice.len();
+    let ptr = slice.as_mut_ptr();
+    core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<T>, len)
+}
+
+#[doc(hidden)]
+#[inline]
+pub unsafe fn from_mut_slice<T>(
+    slice: &mut [T],
+    nrows: usize,
+    ncols: usize,
+    row_stride: usize,
+    col_stride: usize,
+) -> MatMut<'_, T> {
+    MatMut::from_raw_parts(
+        slice.as_mut_ptr(),
+        nrows,
+        ncols,
+        row_stride as isize,
+        col_stride as isize,
+    )
+}
+
+#[doc(hidden)]
+#[inline]
+pub unsafe fn from_uninit_mut_slice<T>(
+    slice: &mut [MaybeUninit<T>],
+    nrows: usize,
+    ncols: usize,
+    row_stride: usize,
+    col_stride: usize,
+) -> MatMut<'_, T> {
+    MatMut::from_raw_parts(
+        slice.as_mut_ptr() as *mut T,
+        nrows,
+        ncols,
+        row_stride as isize,
+        col_stride as isize,
+    )
+}
+
+// https://docs.rs/itertools/0.7.8/src/itertools/lib.rs.html#247-269
+macro_rules! izip {
+    // eg. __izip_closure!(((a, b), c) => (a, b, c) , dd , ee )
+    (@ __closure @ $p:pat => $tup:expr) => {
+        |$p| $tup
+    };
+
+    // The "b" identifier is a different identifier on each recursion level thanks to hygiene.
+    (@ __closure @ $p:pat => ( $($tup:tt)* ) , $_iter:expr $( , $tail:expr )*) => {
+        $crate::izip!(@ __closure @ ($p, b) => ( $($tup)*, b ) $( , $tail )*)
+    };
+
+    ( $first:expr $(,)?) => {
+        {
+            ::core::iter::IntoIterator::into_iter($first)
+        }
+    };
+    ( $first:expr, $($rest:expr),+ $(,)?) => {
+        {
+            #[allow(unused_imports)]
+            ::core::iter::IntoIterator::into_iter($first)
+                $(.zip($rest))*
+                .map($crate::izip!(@ __closure @ a => (a) $( , $rest )*))
         }
     };
 }
 
-fn align_for<T>() -> usize {
-    if unique_id::<T>() == unique_id::<f64>() || unique_id::<T>() == unique_id::<f32>() {
-        *SIMD_ALIGN
-    } else {
-        std::mem::align_of::<T>()
-    }
+pub(crate) use izip;
+
+#[macro_export]
+macro_rules! temp_mat_uninit {
+    {
+        $(
+            let ($id: pat, $stack_id: pat) = temp_mat_uninit::<$ty: ty>(
+                $nrows: expr,
+                $ncols: expr,
+                $stack: expr$(,)?
+            );
+        )*
+    } => {
+        $(
+            let nrows: usize = $nrows;
+            let ncols: usize = $ncols;
+            let (mut temp_data, col_stride, $stack_id) = if $crate::is_vectorizable::<$ty>() {
+                let col_stride = $crate::round_up_to(
+                    nrows,
+                    $crate::align_for::<$ty>() / ::core::mem::size_of::<$ty>()
+                    );
+                let (temp_data, stack) = $stack.make_aligned_uninit::<$ty>(
+                    ncols * col_stride,
+                    $crate::align_for::<$ty>()
+                    );
+                ($crate::Either::Left(temp_data), col_stride, stack)
+            } else {
+                let (temp_data, stack) = $stack.make_aligned_with(
+                    nrows * ncols,
+                    $crate::align_for::<$ty>(),
+                    |_| <$ty as $crate::Zero>::zero()
+                    );
+                ($crate::Either::Right(temp_data), nrows, stack)
+            };
+
+            #[allow(unused_unsafe)]
+            let $id = unsafe {
+                $crate::from_uninit_mut_slice(
+                    match &mut temp_data {
+                        $crate::Either::Left(temp_data) => temp_data,
+                        $crate::Either::Right(temp_data) => $crate::as_uninit(temp_data),
+                    },
+                    nrows,
+                    ncols,
+                    1,
+                    col_stride,
+                )
+            };
+        )*
+    };
 }
 
-struct RawMatrix<T> {
+#[macro_export]
+macro_rules! temp_mat_zeroed {
+    {
+        $(
+            let ($id: pat, $stack_id: pat) = temp_mat_zeroed::<$ty: ty>(
+                $nrows: expr,
+                $ncols: expr,
+                $stack: expr$(,)?
+            );
+        )*
+    } => {
+        $(
+            let nrows: usize = $nrows;
+            let ncols: usize = $ncols;
+            let col_stride = if $crate::is_vectorizable::<$ty>() {
+                $crate::round_up_to(
+                    nrows,
+                    $crate::align_for::<$ty>() / ::core::mem::size_of::<$ty>()
+                )
+            } else {
+                nrows
+            };
+
+            let (mut temp_data, $stack_id) = $stack.make_aligned_with(
+                ncols * col_stride,
+                $crate::align_for::<$ty>(),
+                |_| <$ty as $crate::Zero>::zero(),
+            );
+
+            #[allow(unused_unsafe)]
+            let $id = unsafe {
+                $crate::from_mut_slice(
+                    &mut temp_data,
+                    nrows,
+                    ncols,
+                    1,
+                    col_stride,
+                )
+            };
+        )*
+    };
+}
+
+#[inline]
+pub fn temp_mat_req<T: 'static>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+    let col_stride = if is_vectorizable::<T>() {
+        round_up_to(nrows, align_for::<T>() / size_of::<T>())
+    } else {
+        nrows
+    };
+
+    StackReq::try_new_aligned::<T>(col_stride * ncols, align_for::<T>())
+}
+
+struct RawMat<T: 'static> {
     ptr: NonNull<T>,
     row_capacity: usize,
     col_capacity: usize,
@@ -1972,7 +2487,7 @@ fn capacity_overflow<T>() -> T {
     capacity_overflow_impl();
 }
 
-impl<T> RawMatrix<T> {
+impl<T: 'static> RawMat<T> {
     pub fn new(row_capacity: usize, col_capacity: usize) -> Self {
         if std::mem::size_of::<T>() == 0 {
             Self {
@@ -2019,7 +2534,7 @@ impl<T> RawMatrix<T> {
     }
 }
 
-impl<T> Drop for RawMatrix<T> {
+impl<T> Drop for RawMat<T> {
     fn drop(&mut self) {
         use std::alloc::{dealloc, Layout};
         // this cannot overflow because we already allocated this much memory
@@ -2072,24 +2587,25 @@ impl<T> Drop for ColGuard<T> {
 }
 
 /// Owning 2D matrix stored in column major format.
-pub struct Matrix<T> {
-    raw: RawMatrix<T>,
+pub struct Mat<T: 'static> {
+    raw: RawMat<T>,
     nrows: usize,
     ncols: usize,
 }
 
-impl<T> Default for Matrix<T> {
+impl<T: 'static> Default for Mat<T> {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> Matrix<T> {
+impl<T: 'static> Mat<T> {
     /// Returns a new matrix with dimensions `(0, 0)`. This does not allocate.
     #[inline]
     pub fn new() -> Self {
         Self {
-            raw: RawMatrix::<T> {
+            raw: RawMat::<T> {
                 ptr: NonNull::<T>::dangling(),
                 row_capacity: 0,
                 col_capacity: 0,
@@ -2114,7 +2630,7 @@ impl<T> Matrix<T> {
         col_capacity: usize,
     ) -> Self {
         Self {
-            raw: RawMatrix::<T> {
+            raw: RawMat::<T> {
                 ptr: NonNull::new_unchecked(ptr),
                 row_capacity,
                 col_capacity,
@@ -2128,7 +2644,7 @@ impl<T> Matrix<T> {
     /// number of columns, row capacity and column capacity.
     #[inline]
     pub fn into_raw_parts(self) -> (*mut T, usize, usize, usize, usize) {
-        let mut m = std::mem::ManuallyDrop::<Matrix<T>>::new(self);
+        let mut m = std::mem::ManuallyDrop::<Mat<T>>::new(self);
         (
             m.as_mut_ptr(),
             m.nrows(),
@@ -2148,7 +2664,7 @@ impl<T> Matrix<T> {
     #[inline]
     pub fn with_capacity(row_capacity: usize, col_capacity: usize) -> Self {
         Self {
-            raw: RawMatrix::<T>::new(row_capacity, col_capacity),
+            raw: RawMat::<T>::new(row_capacity, col_capacity),
             nrows: 0,
             ncols: 0,
         }
@@ -2207,11 +2723,13 @@ impl<T> Matrix<T> {
 
     /// Returns the offset between the first elements of two successive rows in the matrix.
     /// Always returns `1` since the matrix is column major.
+    #[inline]
     pub fn row_stride(&self) -> isize {
         1
     }
 
     /// Returns the offset between the first elements of two successive columns in the matrix.
+    #[inline]
     pub fn col_stride(&self) -> isize {
         self.row_capacity() as isize
     }
@@ -2278,7 +2796,7 @@ impl<T> Matrix<T> {
 
             // allocate new memory region
             let new_ptr = {
-                let m = ManuallyDrop::new(RawMatrix::<T>::new(new_row_capacity, new_col_capacity));
+                let m = ManuallyDrop::new(RawMat::<T>::new(new_row_capacity, new_col_capacity));
                 m.ptr.as_ptr()
             };
 
@@ -2298,7 +2816,7 @@ impl<T> Matrix<T> {
             }
 
             // deallocate old matrix memory
-            let _ = RawMatrix::<T> {
+            let _ = RawMat::<T> {
                 // SAFETY: this ptr was checked to be non null, or was acquired from a NonNull
                 // pointer.
                 ptr: unsafe { NonNull::new_unchecked(old_ptr) },
@@ -2487,9 +3005,9 @@ impl<T> Matrix<T> {
 
     /// Returns a view over the matrix.
     #[inline]
-    pub fn as_ref(&self) -> MatrixSlice<'_, T> {
+    pub fn as_ref(&self) -> MatRef<'_, T> {
         unsafe {
-            MatrixSlice::<'_, T>::from_raw_parts(
+            MatRef::<'_, T>::from_raw_parts(
                 self.as_ptr(),
                 self.nrows(),
                 self.ncols(),
@@ -2501,9 +3019,9 @@ impl<T> Matrix<T> {
 
     /// Returns a mutable view over the matrix.
     #[inline]
-    pub fn as_mut(&mut self) -> MatrixSliceMut<'_, T> {
+    pub fn as_mut(&mut self) -> MatMut<'_, T> {
         unsafe {
-            MatrixSliceMut::<'_, T>::from_raw_parts(
+            MatMut::<'_, T>::from_raw_parts(
                 self.as_mut_ptr(),
                 self.nrows(),
                 self.ncols(),
@@ -2514,7 +3032,7 @@ impl<T> Matrix<T> {
     }
 }
 
-impl<T> Drop for Matrix<T> {
+impl<T> Drop for Mat<T> {
     fn drop(&mut self) {
         let mut ptr = self.raw.ptr.as_ptr();
         let nrows = self.nrows;
@@ -2533,37 +3051,41 @@ impl<T> Drop for Matrix<T> {
     }
 }
 
-impl<T: Debug> Debug for Matrix<T> {
+impl<T: Debug> Debug for Mat<T> {
+    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.as_ref().fmt(f)
     }
 }
 
-impl<T> Index<(usize, usize)> for Matrix<T> {
+impl<T> Index<(usize, usize)> for Mat<T> {
     type Output = T;
 
+    #[inline]
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
         self.as_ref().get(i, j)
     }
 }
 
-impl<T> IndexMut<(usize, usize)> for Matrix<T> {
+impl<T> IndexMut<(usize, usize)> for Mat<T> {
+    #[inline]
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
         self.as_mut().get(i, j)
     }
 }
 
-macro_rules! __matrix_impl {
+#[macro_export]
+macro_rules! __transpose_impl {
     ([$([$($col:expr),*])*] $($v:expr);* ) => {
         [$([$($col),*],)* [$($v),*]]
     };
     ([$([$($col:expr),*])*] $($v0:expr, $($v:expr),* );* $(;)?) => {
-        __matrix_impl!([$([$($col),*]),* [$($v0),*]] $($($v),* );*)
+        $crate::__transpose_impl!([$([$($col),*]),* [$($v0),*]] $($($v),* );*)
     };
 }
 
 #[macro_export]
-macro_rules! matrix {
+macro_rules! mat {
     () => {
         {
             compile_error!("number of columns in the matrix is ambiguous");
@@ -2572,20 +3094,22 @@ macro_rules! matrix {
 
     ($([$($v:expr),* $(,)?] ),* $(,)?) => {
         {
-            let data = ::core::mem::ManuallyDrop::new(__matrix_impl!([] $($($v),* );*));
+            let data = ::core::mem::ManuallyDrop::new($crate::__transpose_impl!([] $($($v),* );*));
             let data = &*data;
-
             let ncols = data.len();
-            let nrows = data[0].len();
-            let mut matrix = $crate::Matrix::<_>::with_capacity(nrows, ncols);
-            let dst = matrix.as_mut_ptr();
+            let nrows = (*data.get(0).unwrap()).len();
+
+            let mut m = $crate::Mat::<_>::with_capacity(nrows, ncols);
+            let dst = m.as_mut_ptr();
             let mut src = data.as_ptr() as *const _;
             let _ = || src = &data[0][0];
+
+            #[allow(unused_unsafe)]
             unsafe {
                 ::core::ptr::copy_nonoverlapping(src, dst, ncols * nrows);
-                matrix.set_dims(nrows, ncols);
+                m.set_dims(nrows, ncols);
             }
-            matrix
+            m
         }
     };
 }
@@ -2597,15 +3121,15 @@ mod tests {
     #[test]
     fn basic_slice() {
         let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let slice = unsafe { MatrixSlice::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
+        let slice = unsafe { MatRef::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
 
-        assert_eq!(slice.rb().get(0, 0), &1.0);
-        assert_eq!(slice.rb().get(0, 1), &2.0);
-        assert_eq!(slice.rb().get(0, 2), &3.0);
+        fancy_assert!(slice.rb().get(0, 0) == &1.0);
+        fancy_assert!(slice.rb().get(0, 1) == &2.0);
+        fancy_assert!(slice.rb().get(0, 2) == &3.0);
 
-        assert_eq!(slice.rb().get(1, 0), &4.0);
-        assert_eq!(slice.rb().get(1, 1), &5.0);
-        assert_eq!(slice.rb().get(1, 2), &6.0);
+        fancy_assert!(slice.rb().get(1, 0) == &4.0);
+        fancy_assert!(slice.rb().get(1, 1) == &5.0);
+        fancy_assert!(slice.rb().get(1, 2) == &6.0);
 
         // miri tests
         for r in slice.rb().into_row_iter() {
@@ -2626,7 +3150,7 @@ mod tests {
     #[test]
     fn basic_slice_mut() {
         let mut data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let mut slice = unsafe { MatrixSliceMut::from_raw_parts(data.as_mut_ptr(), 2, 3, 3, 1) };
+        let mut slice = unsafe { MatMut::from_raw_parts(data.as_mut_ptr(), 2, 3, 3, 1) };
 
         fancy_assert!(slice.rb_mut().get(0, 0) == &mut 1.0);
         fancy_assert!(slice.rb_mut().get(0, 1) == &mut 2.0);
@@ -2655,7 +3179,7 @@ mod tests {
     #[test]
     fn empty() {
         {
-            let m = Matrix::<f64>::new();
+            let m = Mat::<f64>::new();
             fancy_assert!(m.nrows() == 0);
             fancy_assert!(m.ncols() == 0);
             fancy_assert!(m.row_capacity() == 0);
@@ -2663,7 +3187,7 @@ mod tests {
         }
 
         {
-            let m = Matrix::<f64>::with_capacity(100, 120);
+            let m = Mat::<f64>::with_capacity(100, 120);
             fancy_assert!(m.nrows() == 0);
             fancy_assert!(m.ncols() == 0);
             fancy_assert!(m.row_capacity() == 100);
@@ -2673,7 +3197,7 @@ mod tests {
 
     #[test]
     fn reserve() {
-        let mut m = Matrix::<f64>::new();
+        let mut m = Mat::<f64>::new();
 
         m.reserve_exact(0, 0);
         fancy_assert!(m.row_capacity() == 0);
@@ -2694,7 +3218,7 @@ mod tests {
 
     #[test]
     fn reserve_zst() {
-        let mut m = Matrix::<()>::new();
+        let mut m = Mat::<()>::new();
 
         m.reserve_exact(0, 0);
         fancy_assert!(m.row_capacity() == 0);
@@ -2717,7 +3241,7 @@ mod tests {
 
     #[test]
     fn resize() {
-        let mut m = Matrix::new();
+        let mut m = Mat::new();
         let f = |i, j| i as f64 - j as f64;
         m.resize_with(f, 2, 3);
         fancy_assert!(m[(0, 0)] == 0.0);
@@ -2742,7 +3266,7 @@ mod tests {
 
     #[test]
     fn matrix_macro() {
-        let x = matrix![
+        let x = mat![
             [1.0, 2.0, 3.0],
             [4.0, 5.0, 6.0],
             [7.0, 8.0, 9.0],
@@ -2769,7 +3293,7 @@ mod tests {
     #[test]
     fn resize_zst() {
         // miri test
-        let mut m = Matrix::new();
+        let mut m = Mat::new();
         let f = |_i, _j| ();
         m.resize_with(f, 2, 3);
         m.resize_with(f, 1, 2);
@@ -2780,12 +3304,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn cap_overflow_1() {
-        let _ = Matrix::<f64>::with_capacity(isize::MAX as usize, 1);
+        let _ = Mat::<f64>::with_capacity(isize::MAX as usize, 1);
     }
 
     #[test]
     #[should_panic]
     fn cap_overflow_2() {
-        let _ = Matrix::<f64>::with_capacity(isize::MAX as usize, isize::MAX as usize);
+        let _ = Mat::<f64>::with_capacity(isize::MAX as usize, isize::MAX as usize);
     }
 }
