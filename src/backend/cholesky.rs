@@ -1,4 +1,9 @@
+use core::ops::Add;
+use core::ops::Mul;
+use core::ops::Neg;
+
 use crate::backend::mul;
+use crate::backend::mul::triangular::BlockStructure;
 use crate::backend::solve;
 use crate::izip;
 use crate::temp_mat_req;
@@ -8,28 +13,37 @@ use crate::MatMut;
 use assert2::assert as fancy_assert;
 use assert2::debug_assert as fancy_debug_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use num_traits::{One, Zero};
+use num_traits::{Inv, One, Zero};
 use reborrow::*;
 
 pub fn cholesky_in_place_left_looking_req<T: 'static>(
-    max_dim: usize,
-    max_block_size: usize,
+    dim: usize,
+    block_size: usize,
     max_n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    let n = max_dim;
-    let bs = max_block_size.min(max_dim);
+    let n = dim;
+    let bs = block_size.min(dim);
 
     match n {
         0 | 1 => return Ok(StackReq::default()),
         _ => (),
     }
 
+    use mul::triangular::BlockStructure::*;
     StackReq::try_all_of([
         temp_mat_req::<T>(bs, n - bs)?,
         StackReq::try_any_of([
-            mul::triangular::mat_mat_accum_dst_lower_half_only_req::<T>(bs, n - bs, max_n_threads)?,
+            mul::triangular::mat_x_mat_req::<T>(
+                TriangularLower,
+                Rectangular,
+                Rectangular,
+                bs,
+                bs,
+                n - bs,
+                max_n_threads,
+            )?,
             cholesky_in_place_left_looking_req::<T>(bs, bs / 2, max_n_threads)?,
-            mul::mat_mat_accum_req::<T>(n - bs, bs, n - bs, max_n_threads)?,
+            mul::mat_x_mat_req::<T>(n - bs, bs, n - bs, max_n_threads)?,
             solve::triangular::solve_tri_lower_with_implicit_unit_diagonal_in_place_req::<T>(
                 bs,
                 bs,
@@ -45,10 +59,9 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + One + Clone + core::ops::Neg<Output = T> + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Div<&'a T, Output = T>,
+    T: Zero + One + Clone + Send + Sync + 'static,
+    for<'a> &'a T:
+        Add<&'a T, Output = T> + Mul<&'a T, Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     let mut matrix = matrix;
 
@@ -61,14 +74,6 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
 
     match n {
         0 | 1 => return,
-        2 => {
-            let d0 = matrix.rb().get_unchecked(0, 0).clone();
-            let l10 = matrix.rb_mut().get_unchecked(1, 0);
-            *l10 = &*l10 / &d0;
-            let l10 = l10.clone();
-            let d1 = matrix.rb_mut().get_unchecked(1, 1);
-            *d1 = &*d1 + &-(&(&l10 * &d0) * &l10);
-        }
         _ => (),
     };
 
@@ -100,7 +105,7 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
 
         // reserve space for L10×D0
         crate::temp_mat_uninit! {
-            let (mut l10xd0, mut stack) = temp_mat_uninit::<T>(block_size, idx, stack);
+            let (mut l10xd0, mut stack) = unsafe { temp_mat_uninit::<T>(block_size, idx, stack) };
         };
 
         for (l10xd0_col, l10_col, d_factor) in izip!(
@@ -115,17 +120,20 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
 
         let l10xd0 = l10xd0.into_const();
 
-        mul::triangular::mat_mat_accum_dst_lower_half_only_unchecked(
+        mul::triangular::mat_x_mat(
             a11.rb_mut(),
+            BlockStructure::TriangularLower,
             l10xd0,
-            l10.trans(),
-            T::one(),
-            -T::one(),
+            BlockStructure::Rectangular,
+            l10.transpose(),
+            BlockStructure::Rectangular,
+            Some(&T::one()),
+            &-&T::one(),
             n_threads_hint,
             stack.rb_mut(),
         );
 
-        cholesky_in_place_left_looking(
+        cholesky_in_place_left_looking_unchecked(
             a11.rb_mut(),
             block_size / 2,
             n_threads_hint,
@@ -140,26 +148,26 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
         let l11 = ld11;
         let d1 = ld11.diagonal_unchecked();
 
-        mul::mat_mat_accum(
+        mul::mat_x_mat(
             a21.rb_mut(),
             l20,
-            l10xd0.trans(),
-            T::one(),
-            -T::one(),
+            l10xd0.transpose(),
+            Some(&T::one()),
+            &-&T::one(),
             n_threads_hint,
             stack.rb_mut(),
         );
 
         solve::triangular::solve_tri_lower_with_implicit_unit_diagonal_in_place_unchecked(
             l11,
-            a21.rb_mut().trans(),
+            a21.rb_mut().transpose(),
             n_threads_hint,
             stack,
         );
 
         let l21xd1 = a21;
         for (l21xd1_col, d1_elem) in izip!(l21xd1.into_col_iter(), d1) {
-            let d1_elem_inv = &T::one() / d1_elem;
+            let d1_elem_inv = d1_elem.inv();
             for l21xd1_elem in l21xd1_col {
                 *l21xd1_elem = &*l21xd1_elem * &d1_elem_inv;
             }
@@ -170,25 +178,29 @@ pub unsafe fn cholesky_in_place_left_looking_unchecked<T>(
 }
 
 pub fn cholesky_in_place_right_looking_req<T: 'static>(
-    max_dim: usize,
+    dim: usize,
     max_n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    if max_dim < 32 {
-        cholesky_in_place_left_looking_req::<T>(max_dim, 16, max_n_threads)
+    if dim < 32 {
+        cholesky_in_place_left_looking_req::<T>(dim, 16, max_n_threads)
     } else {
-        let block_size = max_dim / 2;
-        let rem = max_dim - block_size;
+        let bs = dim / 2;
+        let rem = dim - bs;
         StackReq::try_any_of([
             solve::triangular::solve_tri_lower_with_implicit_unit_diagonal_in_place_req::<T>(
-                block_size,
+                bs,
                 rem,
                 max_n_threads,
             )?,
             StackReq::try_all_of([
-                temp_mat_req::<T>(rem, block_size)?,
-                mul::triangular::mat_mat_accum_dst_lower_half_only_req::<T>(
+                temp_mat_req::<T>(rem, bs)?,
+                mul::triangular::mat_x_mat_req::<T>(
+                    BlockStructure::TriangularLower,
+                    BlockStructure::Rectangular,
+                    BlockStructure::Rectangular,
                     rem,
-                    block_size,
+                    rem,
+                    bs,
                     max_n_threads,
                 )?,
             ])?,
@@ -201,10 +213,9 @@ pub unsafe fn cholesky_in_place_right_looking_unchecked<T>(
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + One + Clone + core::ops::Neg<Output = T> + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Div<&'a T, Output = T>,
+    T: Zero + One + Clone + Neg<Output = T> + Send + Sync + 'static,
+    for<'a> &'a T:
+        Add<&'a T, Output = T> + Mul<&'a T, Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     fancy_debug_assert!(matrix.nrows() == matrix.ncols());
     let mut matrix = matrix;
@@ -226,14 +237,14 @@ pub unsafe fn cholesky_in_place_right_looking_unchecked<T>(
 
         solve::triangular::solve_tri_lower_with_implicit_unit_diagonal_in_place_unchecked(
             l00,
-            a10.rb_mut().trans(),
+            a10.rb_mut().transpose(),
             n_threads_hint,
             stack.rb_mut(),
         );
 
         {
             temp_mat_uninit! {
-                let (mut l10xd0, stack) = temp_mat_uninit::<T>(rem, block_size, stack.rb_mut());
+                let (mut l10xd0, stack) = unsafe { temp_mat_uninit::<T>(rem, block_size, stack.rb_mut()) };
             };
 
             for (l10xd0_col, a10_col, d0_elem) in izip!(
@@ -241,22 +252,25 @@ pub unsafe fn cholesky_in_place_right_looking_unchecked<T>(
                 a10.rb_mut().into_col_iter(),
                 d0,
             ) {
-                let d0_elem_inv = &T::one() / d0_elem;
+                let d0_elem_inv = d0_elem.inv();
                 for (l10xd0_elem, a10_elem) in izip!(l10xd0_col, a10_col) {
                     *l10xd0_elem = a10_elem.clone();
                     *a10_elem = &*a10_elem * &d0_elem_inv;
                 }
             }
 
-            mul::triangular::mat_mat_accum_dst_lower_half_only_unchecked(
+            mul::triangular::mat_x_mat(
                 a11.rb_mut(),
+                BlockStructure::TriangularLower,
                 a10.into_const(),
-                l10xd0.trans().into_const(),
-                T::one(),
-                -T::one(),
+                BlockStructure::Rectangular,
+                l10xd0.transpose().into_const(),
+                BlockStructure::Rectangular,
+                Some(&T::one()),
+                &-&T::one(),
                 n_threads_hint,
                 stack,
-            )
+            );
         }
 
         cholesky_in_place_right_looking_unchecked(a11, n_threads_hint, stack);
@@ -270,10 +284,9 @@ pub fn cholesky_in_place_left_looking<T>(
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + One + Clone + core::ops::Neg<Output = T> + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Div<&'a T, Output = T>,
+    T: Zero + One + Clone + Neg<Output = T> + Send + Sync + 'static,
+    for<'a> &'a T:
+        Add<&'a T, Output = T> + Mul<&'a T, Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     fancy_assert!(
         matrix.ncols() == matrix.nrows(),
@@ -288,10 +301,9 @@ pub fn cholesky_in_place_right_looking<T>(
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + One + Clone + core::ops::Neg<Output = T> + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Div<&'a T, Output = T>,
+    T: Zero + One + Clone + Neg<Output = T> + Send + Sync + 'static,
+    for<'a> &'a T:
+        Add<&'a T, Output = T> + Mul<&'a T, Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     fancy_assert!(
         matrix.ncols() == matrix.nrows(),

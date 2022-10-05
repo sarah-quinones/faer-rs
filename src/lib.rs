@@ -1,5 +1,5 @@
 use aligned_vec::CACHELINE_ALIGN;
-use assert2::{assert as fancy_assert, debug_assert as debug_fancy_assert};
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use core::any::TypeId;
 use core::fmt::Debug;
 use core::marker::PhantomData;
@@ -7,10 +7,49 @@ use core::mem::size_of;
 use core::mem::MaybeUninit;
 use core::ops::{Index, IndexMut};
 use core::ptr::NonNull;
+use dyn_stack::DynStack;
 use dyn_stack::{SizeOverflow, StackReq};
-use reborrow::{IntoConst, Reborrow, ReborrowMut};
+use reborrow::*;
 
 pub mod backend;
+
+#[inline]
+pub fn join_req(
+    req_a: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
+    req_b: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
+    max_n_threads: usize,
+) -> Result<StackReq, SizeOverflow> {
+    if max_n_threads <= 1 {
+        req_a(max_n_threads)?.try_or(req_b(max_n_threads)?)
+    } else {
+        req_a(max_n_threads / 2)?.try_and(req_b(max_n_threads - max_n_threads / 2)?)
+    }
+}
+
+#[track_caller]
+#[inline(always)]
+pub fn join<ReturnA: Send, ReturnB: Send>(
+    op_a: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnA,
+    op_b: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnB,
+    req_a: impl Fn(usize) -> StackReq,
+    n_threads_hint: usize,
+    stack: DynStack<'_>,
+) {
+    let mut stack = stack;
+    if n_threads_hint <= 1 {
+        op_a(n_threads_hint, stack.rb_mut());
+        op_b(n_threads_hint, stack.rb_mut());
+    } else {
+        let req_a = req_a(n_threads_hint / 2);
+        let (mut stack_a_mem, stack_b) =
+            stack.make_aligned_uninit::<u8>(req_a.size_bytes(), req_a.align_bytes());
+        let stack_a = DynStack::new(&mut stack_a_mem);
+        rayon::join(
+            || op_a(n_threads_hint / 2, stack_a),
+            || op_b(n_threads_hint - n_threads_hint / 2, stack_b),
+        );
+    }
+}
 
 struct MatrixSliceBase<T> {
     ptr: NonNull<T>,
@@ -367,8 +406,8 @@ impl<'a, T> MatRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *const T {
-        debug_fancy_assert!(i < self.nrows());
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(i < self.nrows());
+        fancy_debug_assert!(j < self.ncols());
         self.base
             .ptr
             .as_ptr()
@@ -402,8 +441,8 @@ impl<'a, T> MatRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        debug_fancy_assert!(i <= self.nrows());
-        debug_fancy_assert!(j <= self.ncols());
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
         let cs = self.col_stride();
         let rs = self.row_stride();
@@ -483,7 +522,7 @@ impl<'a, T> MatRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn row_unchecked(self, i: usize) -> RowRef<'a, T> {
-        debug_fancy_assert!(i < self.nrows());
+        fancy_debug_assert!(i < self.nrows());
         let ncols = self.ncols();
         let cs = self.col_stride();
         RowRef::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
@@ -510,7 +549,7 @@ impl<'a, T> MatRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn col_unchecked(self, j: usize) -> ColRef<'a, T> {
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(j < self.ncols());
         let nrows = self.nrows();
         let rs = self.row_stride();
         ColRef::from_raw_parts(self.ptr_at(0, j), nrows, rs)
@@ -531,7 +570,7 @@ impl<'a, T> MatRef<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> MatRef<'a, T> {
+    pub fn transpose(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe {
             MatRef::from_raw_parts(
@@ -544,6 +583,20 @@ impl<'a, T> MatRef<'a, T> {
         }
     }
 
+    #[inline]
+    pub fn invert(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = -self.col_stride();
+
+        let ptr = self.ptr_at(
+            if nrows == 0 { 0 } else { nrows - 1 },
+            if ncols == 0 { 0 } else { ncols - 1 },
+        );
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
     /// Returns the diagonal of the matrix, as a column vector.
     ///
     /// # Safety
@@ -552,7 +605,7 @@ impl<'a, T> MatRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn diagonal_unchecked(self) -> ColRef<'a, T> {
-        debug_fancy_assert!(self.nrows() == self.ncols());
+        fancy_debug_assert!(self.nrows() == self.ncols());
         ColRef::from_raw_parts(
             self.base.ptr.as_ptr(),
             self.base.nrows,
@@ -602,10 +655,10 @@ impl<'a, T> MatRef<'a, T> {
         nrows: usize,
         ncols: usize,
     ) -> Self {
-        debug_fancy_assert!(i <= self.nrows());
-        debug_fancy_assert!(j <= self.ncols());
-        debug_fancy_assert!(nrows <= self.nrows() - i);
-        debug_fancy_assert!(ncols <= self.ncols() - j);
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(j <= self.ncols());
+        fancy_debug_assert!(nrows <= self.nrows() - i);
+        fancy_debug_assert!(ncols <= self.ncols() - j);
         Self::from_raw_parts(
             self.rb().ptr_at(i, j),
             nrows,
@@ -723,8 +776,8 @@ impl<'a, T> MatMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *mut T {
-        debug_fancy_assert!(i < self.nrows());
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(i < self.nrows());
+        fancy_debug_assert!(j < self.ncols());
         self.base
             .ptr
             .as_ptr()
@@ -758,8 +811,8 @@ impl<'a, T> MatMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        debug_fancy_assert!(i <= self.nrows());
-        debug_fancy_assert!(j <= self.ncols());
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
         let cs = self.col_stride();
         let rs = self.row_stride();
@@ -839,7 +892,7 @@ impl<'a, T> MatMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn row_unchecked(self, i: usize) -> RowMut<'a, T> {
-        debug_fancy_assert!(i < self.nrows());
+        fancy_debug_assert!(i < self.nrows());
         let ncols = self.ncols();
         let cs = self.col_stride();
         RowMut::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
@@ -866,7 +919,7 @@ impl<'a, T> MatMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn col_unchecked(self, j: usize) -> ColMut<'a, T> {
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(j < self.ncols());
         let nrows = self.nrows();
         let rs = self.row_stride();
         ColMut::from_raw_parts(self.ptr_at(0, j), nrows, rs)
@@ -887,7 +940,7 @@ impl<'a, T> MatMut<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> MatMut<'a, T> {
+    pub fn transpose(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe {
             MatMut::from_raw_parts(
@@ -900,6 +953,20 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
+    #[inline]
+    pub fn invert(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = -self.col_stride();
+
+        let ptr = self.ptr_at(
+            if nrows == 0 { 0 } else { nrows - 1 },
+            if ncols == 0 { 0 } else { ncols - 1 },
+        );
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
     /// Returns the diagonal of the matrix, as a column vector.
     ///
     /// # Safety
@@ -908,7 +975,7 @@ impl<'a, T> MatMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn diagonal_unchecked(self) -> ColMut<'a, T> {
-        debug_fancy_assert!(self.nrows() == self.ncols());
+        fancy_debug_assert!(self.nrows() == self.ncols());
         ColMut::from_raw_parts(
             self.base.ptr.as_ptr(),
             self.base.nrows,
@@ -958,10 +1025,10 @@ impl<'a, T> MatMut<'a, T> {
         nrows: usize,
         ncols: usize,
     ) -> Self {
-        debug_fancy_assert!(i <= self.nrows());
-        debug_fancy_assert!(j <= self.ncols());
-        debug_fancy_assert!(nrows <= self.nrows() - i);
-        debug_fancy_assert!(ncols <= self.ncols() - j);
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(j <= self.ncols());
+        fancy_debug_assert!(nrows <= self.nrows() - i);
+        fancy_debug_assert!(ncols <= self.ncols() - j);
 
         let mut s = self;
         Self::from_raw_parts(
@@ -1060,7 +1127,7 @@ impl<'a, T> RowRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *const T {
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(j < self.ncols());
         self.base
             .ptr
             .as_ptr()
@@ -1089,7 +1156,7 @@ impl<'a, T> RowRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
-        debug_fancy_assert!(j <= self.ncols());
+        fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
         let cs = self.col_stride();
         (
@@ -1143,7 +1210,7 @@ impl<'a, T> RowRef<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> ColRef<'a, T> {
+    pub fn transpose(self) -> ColRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { ColRef::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
@@ -1218,7 +1285,7 @@ impl<'a, T> RowMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *mut T {
-        debug_fancy_assert!(j < self.ncols());
+        fancy_debug_assert!(j < self.ncols());
         self.base
             .ptr
             .as_ptr()
@@ -1247,7 +1314,7 @@ impl<'a, T> RowMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
-        debug_fancy_assert!(j <= self.ncols());
+        fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
         let cs = self.col_stride();
         (
@@ -1301,7 +1368,7 @@ impl<'a, T> RowMut<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> ColMut<'a, T> {
+    pub fn transpose(self) -> ColMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
@@ -1374,7 +1441,7 @@ impl<'a, T> ColRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *const T {
-        debug_fancy_assert!(i < self.nrows());
+        fancy_debug_assert!(i < self.nrows());
         self.base
             .ptr
             .as_ptr()
@@ -1403,7 +1470,7 @@ impl<'a, T> ColRef<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
-        debug_fancy_assert!(i <= self.nrows());
+        fancy_debug_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
         let rs = self.row_stride();
         (
@@ -1457,7 +1524,7 @@ impl<'a, T> ColRef<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> RowRef<'a, T> {
+    pub fn transpose(self) -> RowRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
@@ -1531,7 +1598,7 @@ impl<'a, T> ColMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *mut T {
-        debug_fancy_assert!(i < self.nrows());
+        fancy_debug_assert!(i < self.nrows());
         self.base
             .ptr
             .as_ptr()
@@ -1560,7 +1627,7 @@ impl<'a, T> ColMut<'a, T> {
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
-        debug_fancy_assert!(i <= self.nrows());
+        fancy_debug_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
         let rs = self.row_stride();
         (
@@ -1614,7 +1681,7 @@ impl<'a, T> ColMut<'a, T> {
 
     /// Returns the transpose of `self`.
     #[inline]
-    pub fn trans(self) -> RowMut<'a, T> {
+    pub fn transpose(self) -> RowMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
@@ -1703,7 +1770,7 @@ impl<'a, T> IntoIterator for RowRef<'a, T> {
     type IntoIter = ElemIter<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIter(self.trans())
+        ElemIter(self.transpose())
     }
 }
 impl<'a, T> IntoIterator for RowMut<'a, T> {
@@ -1711,7 +1778,7 @@ impl<'a, T> IntoIterator for RowMut<'a, T> {
     type IntoIter = ElemIterMut<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIterMut(self.trans())
+        ElemIterMut(self.transpose())
     }
 }
 
@@ -1770,7 +1837,7 @@ impl<'a, T> ElemIter<'a, T> {
     }
     #[inline]
     pub fn into_row(self) -> RowRef<'a, T> {
-        self.0.trans()
+        self.0.transpose()
     }
 }
 impl<'a, T> ElemIterMut<'a, T> {
@@ -1780,7 +1847,7 @@ impl<'a, T> ElemIterMut<'a, T> {
     }
     #[inline]
     pub fn into_row(self) -> RowMut<'a, T> {
-        self.0.trans()
+        self.0.transpose()
     }
 }
 
@@ -2340,7 +2407,7 @@ pub unsafe fn from_uninit_mut_slice<T>(
 
 // https://docs.rs/itertools/0.7.8/src/itertools/lib.rs.html#247-269
 macro_rules! izip {
-    // eg. __izip_closure!(((a, b), c) => (a, b, c) , dd , ee )
+    // eg. izip!(((a, b), c) => (a, b, c) , dd , ee )
     (@ __closure @ $p:pat => $tup:expr) => {
         |$p| $tup
     };
@@ -2351,9 +2418,7 @@ macro_rules! izip {
     };
 
     ( $first:expr $(,)?) => {
-        {
-            ::core::iter::IntoIterator::into_iter($first)
-        }
+        ::core::iter::IntoIterator::into_iter($first)
     };
     ( $first:expr, $($rest:expr),+ $(,)?) => {
         {
@@ -2371,11 +2436,13 @@ pub(crate) use izip;
 macro_rules! temp_mat_uninit {
     {
         $(
-            let ($id: pat, $stack_id: pat) = temp_mat_uninit::<$ty: ty>(
-                $nrows: expr,
-                $ncols: expr,
-                $stack: expr$(,)?
-            );
+            let ($id: pat, $stack_id: pat) = unsafe {
+                temp_mat_uninit::<$ty: ty>(
+                    $nrows: expr,
+                    $ncols: expr,
+                    $stack: expr$(,)?
+                )
+            };
         )*
     } => {
         $(
@@ -2597,6 +2664,19 @@ impl<T: 'static> Default for Mat<T> {
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T: Clone> Clone for Mat<T> {
+    fn clone(&self) -> Self {
+        let mut other = Self::with_capacity(self.row_capacity(), self.col_capacity());
+        let this = self.as_ref();
+        other.resize_with(
+            |i, j| unsafe { (*this.ptr_in_bounds_at_unchecked(i, j)).clone() },
+            self.nrows(),
+            self.ncols(),
+        );
+        other
     }
 }
 
@@ -2856,8 +2936,8 @@ impl<T: 'static> Mat<T> {
         col_start: usize,
         col_end: usize,
     ) {
-        debug_fancy_assert!(row_start <= row_end);
-        debug_fancy_assert!(col_start <= col_end);
+        fancy_debug_assert!(row_start <= row_end);
+        fancy_debug_assert!(col_start <= col_end);
 
         let ptr = self.as_mut_ptr();
 
@@ -2883,8 +2963,8 @@ impl<T: 'static> Mat<T> {
         col_start: usize,
         col_end: usize,
     ) {
-        debug_fancy_assert!(row_start <= row_end);
-        debug_fancy_assert!(col_start <= col_end);
+        fancy_debug_assert!(row_start <= row_end);
+        fancy_debug_assert!(col_start <= col_end);
 
         let ptr = self.as_mut_ptr();
 
@@ -2924,7 +3004,7 @@ impl<T: 'static> Mat<T> {
     fn erase_last_cols(&mut self, new_ncols: usize) {
         let old_ncols = self.ncols();
 
-        debug_fancy_assert!(new_ncols <= old_ncols);
+        fancy_debug_assert!(new_ncols <= old_ncols);
 
         // change the size before dropping the elements, since if one of them panics the
         // matrix drop function will double drop them.
@@ -2938,7 +3018,7 @@ impl<T: 'static> Mat<T> {
     fn erase_last_rows(&mut self, new_nrows: usize) {
         let old_nrows = self.nrows();
 
-        debug_fancy_assert!(new_nrows <= old_nrows);
+        fancy_debug_assert!(new_nrows <= old_nrows);
 
         // see comment above
         self.nrows = new_nrows;
@@ -2950,7 +3030,7 @@ impl<T: 'static> Mat<T> {
     unsafe fn insert_last_cols_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_ncols: usize) {
         let old_ncols = self.ncols();
 
-        debug_fancy_assert!(new_ncols > old_ncols);
+        fancy_debug_assert!(new_ncols > old_ncols);
 
         self.insert_block_with(f, 0, self.nrows(), old_ncols, new_ncols);
         self.ncols = new_ncols;
@@ -2959,7 +3039,7 @@ impl<T: 'static> Mat<T> {
     unsafe fn insert_last_rows_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_nrows: usize) {
         let old_nrows = self.nrows();
 
-        debug_fancy_assert!(new_nrows > old_nrows);
+        fancy_debug_assert!(new_nrows > old_nrows);
 
         self.insert_block_with(f, old_nrows, new_nrows, 0, self.ncols());
         self.nrows = new_nrows;

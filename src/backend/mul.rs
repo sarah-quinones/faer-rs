@@ -1,38 +1,34 @@
-use crate::{MatMut, MatRef};
+use core::ops::Add;
+use core::ops::Mul;
+
+use crate::{join, MatMut, MatRef};
 
 use assert2::assert as fancy_assert;
 use assert2::debug_assert as fancy_debug_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use gemm::{gemm, gemm_req};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use reborrow::*;
 
 /// Computes the memory requirements of `mul::mat_mat`.
-pub fn mat_mat_req<T: 'static>(
-    max_dst_rows: usize,
-    max_dst_cols: usize,
-    max_lhs_cols: usize,
+pub fn mat_x_mat_req<T: 'static>(
+    dst_rows: usize,
+    dst_cols: usize,
+    lhs_cols: usize,
     max_n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    gemm_req::<T>(max_dst_rows, max_dst_cols, max_lhs_cols, max_n_threads)
+    let m = dst_rows;
+    let n = dst_cols;
+    let k = lhs_cols;
+    gemm_req::<T>(m, n, k, max_n_threads)
 }
 
-/// Computes the memory requirements of `mul::mat_mat`.
-pub fn mat_mat_accum_req<T: 'static>(
-    max_dst_rows: usize,
-    max_dst_cols: usize,
-    max_lhs_cols: usize,
-    max_n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
-    gemm_req::<T>(max_dst_rows, max_dst_cols, max_lhs_cols, max_n_threads)
-}
-
-/// Computes the matrix product `beta * lhs * rhs` and stores the result in `dst`.
-/// `n_threads_hint` is a hint for how many threads should be used, but the implementation
-/// may use more or less threads internally.
+/// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in `dst`.
+/// `n_threads_hint` is a hint for how many threads should be used, but the implementation may use
+/// more or less threads internally.
 ///
-/// The preexisting values in `dst` are not read so it is allowed to be a view over uninitialized
-/// values if `T: Copy`.
+/// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to be
+/// a view over uninitialized values if `T: Copy`.
 ///
 /// # Safety
 ///
@@ -43,17 +39,18 @@ pub fn mat_mat_accum_req<T: 'static>(
 ///  - `lhs.ncols() == rhs.nrows()`
 #[track_caller]
 #[inline]
-pub unsafe fn mat_mat_unchecked<T>(
+pub unsafe fn mat_x_mat_unchecked<T>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
-    beta: T,
+    alpha: Option<&T>,
+    beta: &T,
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
+    T: Zero + Clone + Send + Sync + 'static,
+    for<'a> &'a T: Add<&'a T, Output = T>,
+    for<'a> &'a T: Mul<&'a T, Output = T>,
 {
     fancy_debug_assert!(dst.nrows() == lhs.nrows());
     fancy_debug_assert!(dst.ncols() == rhs.ncols());
@@ -69,25 +66,46 @@ pub unsafe fn mat_mat_unchecked<T>(
     // SAFETY:
     // * matching operand/destination dimensions.
     // * strides were verified during creation of matrix views.
-    gemm(
-        m,
-        n,
-        k,
-        dst.as_ptr(),
-        dst_col_stride,
-        dst_row_stride,
-        false,
-        lhs.as_ptr(),
-        lhs.col_stride(),
-        lhs.row_stride(),
-        rhs.as_ptr(),
-        rhs.col_stride(),
-        rhs.row_stride(),
-        T::zero(),
-        beta,
-        n_threads_hint,
-        stack,
-    );
+    match alpha {
+        Some(alpha) => gemm(
+            m,
+            n,
+            k,
+            dst.as_ptr(),
+            dst_col_stride,
+            dst_row_stride,
+            true,
+            lhs.as_ptr(),
+            lhs.col_stride(),
+            lhs.row_stride(),
+            rhs.as_ptr(),
+            rhs.col_stride(),
+            rhs.row_stride(),
+            alpha.clone(),
+            beta.clone(),
+            n_threads_hint,
+            stack,
+        ),
+        None => gemm(
+            m,
+            n,
+            k,
+            dst.as_ptr(),
+            dst_col_stride,
+            dst_row_stride,
+            false,
+            lhs.as_ptr(),
+            lhs.col_stride(),
+            lhs.row_stride(),
+            rhs.as_ptr(),
+            rhs.col_stride(),
+            rhs.row_stride(),
+            T::zero(),
+            beta.clone(),
+            n_threads_hint,
+            stack,
+        ),
+    }
 }
 
 /// Computes the matrix product `beta * lhs * rhs` and stores the result in `dst`.
@@ -106,181 +124,1251 @@ pub unsafe fn mat_mat_unchecked<T>(
 ///  - `lhs.ncols() == rhs.nrows()`
 #[track_caller]
 #[inline]
-pub fn mat_mat<T>(
+pub fn mat_x_mat<T>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
-    beta: T,
+    alpha: Option<&T>,
+    beta: &T,
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
+    T: Zero + Clone + Send + Sync + 'static,
+    for<'a> &'a T: Add<&'a T, Output = T>,
+    for<'a> &'a T: Mul<&'a T, Output = T>,
 {
     fancy_assert!(dst.nrows() == lhs.nrows());
     fancy_assert!(dst.ncols() == rhs.ncols());
     fancy_assert!(lhs.ncols() == rhs.nrows());
-    unsafe { mat_mat_unchecked(dst, lhs, rhs, beta, n_threads_hint, stack) }
-}
-
-/// Computes the matrix product `alpha * dst + beta * lhs * rhs` and stores the result in `dst`.
-/// `n_threads_hint` is a hint for how many threads should be used, but the implementation
-/// may use more or less threads internally.
-///
-/// # Safety
-///
-/// Requires that the matrix dimensions be compatible for matrix multiplication.  
-/// i.e.  
-///  - `dst.nrows() == lhs.nrows()`
-///  - `dst.ncols() == rhs.ncols()`
-///  - `lhs.ncols() == rhs.nrows()`
-#[track_caller]
-#[inline]
-pub unsafe fn mat_mat_accum_unchecked<T>(
-    dst: MatMut<'_, T>,
-    lhs: MatRef<'_, T>,
-    rhs: MatRef<'_, T>,
-    alpha: T,
-    beta: T,
-    n_threads_hint: usize,
-    stack: DynStack<'_>,
-) where
-    T: Zero + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-{
-    fancy_debug_assert!(dst.nrows() == lhs.nrows());
-    fancy_debug_assert!(dst.ncols() == rhs.ncols());
-    fancy_debug_assert!(lhs.ncols() == rhs.nrows());
-
-    let m = dst.nrows();
-    let n = dst.ncols();
-    let k = lhs.ncols();
-
-    let dst_col_stride = dst.col_stride();
-    let dst_row_stride = dst.row_stride();
-
-    // SAFETY:
-    // * matching operand/destination dimensions.
-    // * strides were verified during creation of matrix views.
-    gemm(
-        m,
-        n,
-        k,
-        dst.as_ptr(),
-        dst_col_stride,
-        dst_row_stride,
-        true,
-        lhs.as_ptr(),
-        lhs.col_stride(),
-        lhs.row_stride(),
-        rhs.as_ptr(),
-        rhs.col_stride(),
-        rhs.row_stride(),
-        alpha,
-        beta,
-        n_threads_hint,
-        stack,
-    );
-}
-
-/// Computes the matrix product `alpha * dst + beta * lhs * rhs` and stores the result in `dst`.
-/// `n_threads_hint` is a hint for how many threads should be used, but the implementation
-/// may use more or less threads internally.
-///
-/// # Panics
-///
-/// Requires that the matrix dimensions be compatible for matrix multiplication.  
-/// i.e.  
-///  - `dst.nrows() == lhs.nrows()`
-///  - `dst.ncols() == rhs.ncols()`
-///  - `lhs.ncols() == rhs.nrows()`
-#[track_caller]
-#[inline]
-pub fn mat_mat_accum<T>(
-    dst: MatMut<'_, T>,
-    lhs: MatRef<'_, T>,
-    rhs: MatRef<'_, T>,
-    alpha: T,
-    beta: T,
-    n_threads_hint: usize,
-    stack: DynStack<'_>,
-) where
-    T: Zero + Send + Sync + 'static,
-    for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-    for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
-{
-    fancy_assert!(dst.nrows() == lhs.nrows());
-    fancy_assert!(dst.ncols() == rhs.ncols());
-    fancy_assert!(lhs.ncols() == rhs.nrows());
-
-    unsafe { mat_mat_accum_unchecked(dst, lhs, rhs, alpha, beta, n_threads_hint, stack) }
+    unsafe { mat_x_mat_unchecked(dst, lhs, rhs, alpha, beta, n_threads_hint, stack) }
 }
 
 pub mod triangular {
-    use crate::{izip, temp_mat_req, temp_mat_uninit};
-
     use super::*;
+    use crate::{izip, join_req, temp_mat_req, temp_mat_uninit};
 
-    pub fn mat_mat_accum_dst_lower_half_only_req<T: 'static>(
-        max_dst_dim: usize,
-        max_lhs_cols: usize,
-        max_n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n = max_dst_dim;
-        let k = max_lhs_cols;
-        let n_threads = max_n_threads;
-        if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                mat_mat_req::<T>(n, n, k, n_threads)?,
-            ])
-        } else {
-            if n_threads <= 1 {
-                StackReq::try_any_of([
-                    mat_mat_accum_dst_lower_half_only_req::<T>(n / 2, k, n_threads)?,
-                    mat_mat_accum_req::<T>(n - n / 2, n / 2, k, n_threads)?,
-                    mat_mat_accum_dst_lower_half_only_req::<T>(n - n / 2, k, n_threads)?,
-                ])
-            } else {
-                let bot_left_req = mat_mat_accum_req::<T>(n - n / 2, n / 2, k, n_threads / 2)?;
-                let n_threads = n_threads - n_threads / 2;
-                StackReq::try_all_of([
-                    bot_left_req,
-                    if n_threads <= 1 {
-                        StackReq::try_any_of([
-                            mat_mat_accum_dst_lower_half_only_req::<T>(n / 2, k, n_threads)?,
-                            mat_mat_accum_dst_lower_half_only_req::<T>(n - n / 2, k, n_threads)?,
-                        ])?
-                    } else {
-                        StackReq::try_all_of([
-                            mat_mat_accum_dst_lower_half_only_req::<T>(n / 2, k, n_threads / 2)?,
-                            mat_mat_accum_dst_lower_half_only_req::<T>(
-                                n - n / 2,
-                                k,
-                                n_threads - n_threads / 2,
-                            )?,
-                        ])?
-                    },
-                ])
+    #[repr(u8)]
+    #[derive(Copy, Clone, Debug)]
+    pub(crate) enum DiagonalKind {
+        Zero,
+        Unit,
+        Generic,
+    }
+
+    unsafe fn copy_lower<T: Clone + Zero + One>(
+        dst: MatMut<'_, T>,
+        src: MatRef<'_, T>,
+        src_diag: DiagonalKind,
+    ) {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+        fancy_debug_assert!(n == src.nrows());
+        fancy_debug_assert!(n == src.ncols());
+
+        for (j, (mut dst_col, src_col)) in
+            izip!(dst.into_col_iter(), src.into_col_iter()).enumerate()
+        {
+            let diag_ptr = dst_col.rb_mut().ptr_in_bounds_at_unchecked(j);
+            let offset = match src_diag {
+                DiagonalKind::Zero => {
+                    *diag_ptr = T::zero();
+                    1
+                }
+                DiagonalKind::Unit => {
+                    *diag_ptr = T::one();
+                    1
+                }
+                DiagonalKind::Generic => 0,
+            };
+            let (mut dst_prefix, _) = dst_col.rb_mut().split_at_unchecked(j);
+            for i in 0..dst_prefix.nrows() {
+                *dst_prefix.rb_mut().ptr_in_bounds_at_unchecked(i) = T::zero();
+            }
+
+            let (_, src_col) = src_col.split_at_unchecked(j + offset);
+            let (_, mut dst_col) = dst_col.split_at_unchecked(j + offset);
+            for i in 0..dst_col.nrows() {
+                *dst_col.rb_mut().ptr_in_bounds_at_unchecked(i) =
+                    (*src_col.ptr_in_bounds_at_unchecked(i)).clone();
+            }
+        }
+    }
+
+    unsafe fn accum_lower<T: Clone + Zero>(
+        mut dst: MatMut<'_, T>,
+        src: MatRef<'_, T>,
+        skip_diag: bool,
+        alpha: Option<&T>,
+    ) where
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+        fancy_debug_assert!(n == src.nrows());
+        fancy_debug_assert!(n == src.ncols());
+
+        match alpha {
+            Some(alpha) => {
+                for j in 0..n {
+                    for i in (j + skip_diag as usize)..n {
+                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
+                        let src = src.ptr_in_bounds_at_unchecked(i, j);
+                        *dst = &(alpha * &*dst) + &*src;
+                    }
+                }
+            }
+            None => {
+                for j in 0..n {
+                    for i in (j + skip_diag as usize)..n {
+                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
+                        let src = src.ptr_in_bounds_at_unchecked(i, j);
+                        *dst = (&*src).clone();
+                    }
+                }
             }
         }
     }
 
     #[inline]
-    pub unsafe fn mat_mat_accum_dst_lower_half_only_unchecked<T>(
+    unsafe fn copy_upper<T: Clone + Zero + One>(
+        dst: MatMut<'_, T>,
+        src: MatRef<'_, T>,
+        src_diag: DiagonalKind,
+    ) {
+        copy_lower(dst.transpose(), src.transpose(), src_diag)
+    }
+
+    #[track_caller]
+    #[inline]
+    unsafe fn mul<T>(
         dst: MatMut<'_, T>,
         lhs: MatRef<'_, T>,
         rhs: MatRef<'_, T>,
-        alpha: T,
-        beta: T,
-        n_threads_hint: usize,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
         stack: DynStack<'_>,
     ) where
         T: Zero + Clone + Send + Sync + 'static,
-        for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-        for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let (dst, lhs, rhs) = if !transposed {
+            (dst, lhs, rhs)
+        } else {
+            (dst.transpose(), rhs.transpose(), lhs.transpose())
+        };
+        super::mat_x_mat_unchecked(dst, lhs, rhs, alpha, beta, n_threads, stack);
+    }
+
+    fn mat_x_lower_into_lower_impl_req<T: 'static>(
+        n: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(n, n, n, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let temp_dst = if n_threads <= 1 {
+                StackReq::default()
+            } else {
+                temp_mat_req::<T>(rem, bs)?
+            };
+
+            temp_dst.try_and(join_req(
+                |n_threads| {
+                    StackReq::try_any_of([
+                        super::mat_x_mat_req::<T>(rem, bs, rem, n_threads)?,
+                        mat_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
+                    ])
+                },
+                |n_threads| {
+                    StackReq::try_any_of([
+                        mat_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
+                        join_req(
+                            |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads),
+                            |n_threads| mat_x_lower_impl_req::<T>(rem, bs, n_threads),
+                            n_threads,
+                        )?,
+                    ])
+                },
+                n_threads,
+            )?)
+        }
+    }
+
+    unsafe fn mat_x_lower_into_lower_impl_unchecked<T>(
+        dst: MatMut<'_, T>,
+        skip_diag: bool,
+        lhs: MatRef<'_, T>,
+        rhs: MatRef<'_, T>,
+        rhs_diag: DiagonalKind,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        mut stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+        fancy_debug_assert!(n == lhs.nrows());
+        fancy_debug_assert!(n == lhs.ncols());
+        fancy_debug_assert!(n == rhs.nrows());
+        fancy_debug_assert!(n == rhs.ncols());
+
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            temp_mat_uninit! {
+                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+            }
+            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+            mul(
+                temp_dst.rb_mut(),
+                lhs,
+                temp_rhs.into_const(),
+                None,
+                beta,
+                n_threads,
+                transposed,
+                stack,
+            );
+            accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let (mut dst_top_left, _, mut dst_bot_left, dst_bot_right) =
+                dst.split_at_unchecked(bs, bs);
+            let (lhs_top_left, lhs_top_right, lhs_bot_left, lhs_bot_right) =
+                lhs.split_at_unchecked(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
+
+            // lhs_bot_right × rhs_bot_left  => dst_bot_left  | mat × mat => mat |   1
+            // lhs_bot_right × rhs_bot_right => dst_bot_right | mat × low => low |   X
+            //
+            // lhs_top_left  × rhs_top_left  => dst_top_left  | mat × low => low |   X
+            // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => low | 1/2
+            // lhs_bot_left  × rhs_top_left  => dst_bot_left  | mat × low => mat | 1/2
+
+            if n_threads <= 1 {
+                mul(
+                    dst_bot_left.rb_mut(),
+                    lhs_bot_right,
+                    rhs_bot_left,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_lower_into_lower_impl_unchecked(
+                    dst_bot_right,
+                    skip_diag,
+                    lhs_bot_right,
+                    rhs_bot_right,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+
+                mat_x_lower_into_lower_impl_unchecked(
+                    dst_top_left.rb_mut(),
+                    skip_diag,
+                    lhs_top_left,
+                    rhs_top_left,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_mat_into_lower_impl_unchecked(
+                    dst_top_left,
+                    skip_diag,
+                    lhs_top_right,
+                    rhs_bot_left,
+                    Some(&T::one()),
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_lower_impl_unchecked(
+                    dst_bot_left,
+                    lhs_bot_left,
+                    rhs_top_left,
+                    rhs_diag,
+                    Some(&T::one()),
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+            } else {
+                temp_mat_uninit! {
+                    let (mut temp_dst_bot_left, stack) = unsafe { temp_mat_uninit::<T>(rem, bs, stack) };
+                }
+                join(
+                    |n_threads, mut stack| {
+                        mul(
+                            dst_bot_left.rb_mut(),
+                            lhs_bot_right,
+                            rhs_bot_left,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack.rb_mut(),
+                        );
+                        mat_x_lower_into_lower_impl_unchecked(
+                            dst_bot_right,
+                            skip_diag,
+                            lhs_bot_right,
+                            rhs_bot_right,
+                            rhs_diag,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack.rb_mut(),
+                        );
+                    },
+                    |n_threads, mut stack| {
+                        mat_x_lower_into_lower_impl_unchecked(
+                            dst_top_left.rb_mut(),
+                            skip_diag,
+                            lhs_top_left,
+                            rhs_top_left,
+                            rhs_diag,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack.rb_mut(),
+                        );
+                        join(
+                            |n_threads, stack| {
+                                mat_x_mat_into_lower_impl_unchecked(
+                                    dst_top_left,
+                                    skip_diag,
+                                    lhs_top_right,
+                                    rhs_bot_left,
+                                    Some(&T::one()),
+                                    beta,
+                                    n_threads,
+                                    transposed,
+                                    stack,
+                                )
+                            },
+                            |n_threads, stack| {
+                                mat_x_lower_impl_unchecked(
+                                    temp_dst_bot_left.rb_mut(),
+                                    lhs_bot_left,
+                                    rhs_top_left,
+                                    rhs_diag,
+                                    None,
+                                    beta,
+                                    n_threads,
+                                    transposed,
+                                    stack,
+                                )
+                            },
+                            |n_threads| {
+                                mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads).unwrap()
+                            },
+                            n_threads,
+                            stack,
+                        );
+                    },
+                    |n_threads| {
+                        StackReq::any_of([
+                            super::mat_x_mat_req::<T>(rem, bs, rem, n_threads).unwrap(),
+                            mat_x_lower_into_lower_impl_req::<T>(rem, n_threads).unwrap(),
+                        ])
+                    },
+                    n_threads,
+                    stack,
+                );
+                for j in 0..bs {
+                    for i in 0..rem {
+                        let dst = dst_bot_left.rb_mut().ptr_in_bounds_at(i, j);
+                        let src = temp_dst_bot_left.rb().ptr_in_bounds_at(i, j);
+                        *dst = &*dst + (&*src);
+                    }
+                }
+            }
+        }
+    }
+
+    fn mat_x_lower_impl_req<T: 'static>(
+        m: usize,
+        n: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * m <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(m, n, n, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let temp_dst = if n_threads <= 1 {
+                StackReq::empty()
+            } else {
+                temp_mat_req::<T>(m, bs)?
+            };
+
+            temp_dst.try_and(join_req(
+                |n_threads| super::mat_x_mat_req::<T>(m, bs, rem, n_threads),
+                |n_threads| {
+                    join_req(
+                        |n_threads| mat_x_lower_impl_req::<T>(m, bs, n_threads),
+                        |n_threads| mat_x_lower_impl_req::<T>(m, rem, n_threads),
+                        n_threads,
+                    )
+                },
+                n_threads,
+            )?)
+        }
+    }
+
+    unsafe fn mat_x_lower_impl_unchecked<T>(
+        dst: MatMut<'_, T>,
+        lhs: MatRef<'_, T>,
+        rhs: MatRef<'_, T>,
+        rhs_diag: DiagonalKind,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        mut stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = rhs.nrows();
+        let m = lhs.nrows();
+        fancy_debug_assert!(stack.can_hold(mat_x_lower_impl_req::<T>(m, n, n_threads).unwrap()));
+        fancy_debug_assert!(m == lhs.nrows());
+        fancy_debug_assert!(n == lhs.ncols());
+        fancy_debug_assert!(n == rhs.nrows());
+        fancy_debug_assert!(n == rhs.ncols());
+        fancy_debug_assert!(m == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+
+        let n_threads = if n * n * m <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            temp_mat_uninit! {
+                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+            };
+
+            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+            let temp_rhs = temp_rhs.into_const();
+
+            mul(
+                dst, lhs, temp_rhs, alpha, beta, n_threads, transposed, stack,
+            );
+        } else {
+            // split rhs into 3 sections
+            // split lhs and dst into 2 sections
+
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
+            let (_, _, lhs_left, lhs_right) = lhs.split_at_unchecked(0, bs);
+            let (_, _, mut dst_left, mut dst_right) = dst.split_at_unchecked(0, bs);
+
+            if n_threads <= 1 {
+                mat_x_lower_impl_unchecked(
+                    dst_left.rb_mut(),
+                    lhs_left,
+                    rhs_top_left,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mul(
+                    dst_left,
+                    lhs_right,
+                    rhs_bot_left,
+                    Some(&T::one()),
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_lower_impl_unchecked(
+                    dst_right.rb_mut(),
+                    lhs_right,
+                    rhs_bot_right,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack,
+                );
+            } else {
+                temp_mat_uninit! {
+                    let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(m, bs, stack) };
+                }
+
+                join(
+                    |n_threads, stack| {
+                        mul(
+                            temp_dst.rb_mut(),
+                            lhs_right,
+                            rhs_bot_left,
+                            None,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack,
+                        );
+                    },
+                    |n_threads, stack| {
+                        join(
+                            |n_threads, stack| {
+                                mat_x_lower_impl_unchecked(
+                                    dst_left.rb_mut(),
+                                    lhs_left,
+                                    rhs_top_left,
+                                    rhs_diag,
+                                    alpha,
+                                    beta,
+                                    n_threads,
+                                    transposed,
+                                    stack,
+                                )
+                            },
+                            |n_threads, stack| {
+                                mat_x_lower_impl_unchecked(
+                                    dst_right.rb_mut(),
+                                    lhs_right,
+                                    rhs_bot_right,
+                                    rhs_diag,
+                                    alpha,
+                                    beta,
+                                    n_threads,
+                                    transposed,
+                                    stack,
+                                )
+                            },
+                            |n_threads| mat_x_lower_impl_req::<T>(m, bs, n_threads).unwrap(),
+                            n_threads,
+                            stack,
+                        )
+                    },
+                    |n_threads| super::mat_x_mat_req::<T>(m, bs, rem, n_threads).unwrap(),
+                    n_threads,
+                    stack,
+                );
+
+                for (dst_col, temp_dst_col) in izip!(
+                    dst_left.into_col_iter(),
+                    temp_dst.into_const().into_col_iter()
+                ) {
+                    for (dst_elem, temp_dst_elem) in izip!(dst_col, temp_dst_col) {
+                        *dst_elem = &*dst_elem + temp_dst_elem;
+                    }
+                }
+            }
+        }
+    }
+
+    fn lower_x_lower_into_lower_impl_req<T: 'static>(
+        n: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(n, n, n, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+            let temp_dst = if n_threads <= 1 {
+                StackReq::default()
+            } else {
+                temp_mat_req::<T>(n, n)?
+            };
+
+            temp_dst.try_and(join_req(
+                |n_threads| {
+                    StackReq::try_any_of([
+                        lower_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
+                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
+                    ])
+                },
+                |n_threads| {
+                    StackReq::try_any_of([
+                        lower_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
+                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
+                    ])
+                },
+                n_threads,
+            )?)
+        }
+    }
+
+    unsafe fn lower_x_lower_into_lower_impl_unchecked<T>(
+        dst: MatMut<'_, T>,
+        skip_diag: bool,
+        lhs: MatRef<'_, T>,
+        lhs_diag: DiagonalKind,
+        rhs: MatRef<'_, T>,
+        rhs_diag: DiagonalKind,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        mut stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == lhs.nrows());
+        fancy_debug_assert!(n == lhs.ncols());
+        fancy_debug_assert!(n == rhs.nrows());
+        fancy_debug_assert!(n == rhs.ncols());
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            temp_mat_uninit! {
+                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+            };
+
+            copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
+            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+
+            let temp_lhs = temp_lhs.into_const();
+            let temp_rhs = temp_rhs.into_const();
+            mul(
+                temp_dst.rb_mut(),
+                temp_lhs,
+                temp_rhs,
+                None,
+                beta,
+                n_threads,
+                transposed,
+                stack,
+            );
+            accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let (dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
+            let (lhs_top_left, _, lhs_bot_left, lhs_bot_right) = lhs.split_at_unchecked(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
+
+            // lhs_top_left  × rhs_top_left  => dst_top_left  | low × low => low |   X
+            // lhs_bot_left  × rhs_top_left  => dst_bot_left  | mat × low => mat | 1/2
+            // lhs_bot_right × rhs_bot_left  => dst_bot_left  | low × mat => mat | 1/2
+            // lhs_bot_right × rhs_bot_right => dst_bot_right | low × low => low |   X
+
+            if n_threads <= 1 {
+                lower_x_lower_into_lower_impl_unchecked(
+                    dst_top_left,
+                    skip_diag,
+                    lhs_top_left,
+                    lhs_diag,
+                    rhs_top_left,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_lower_impl_unchecked(
+                    dst_bot_left.rb_mut(),
+                    lhs_bot_left,
+                    rhs_top_left,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack.rb_mut(),
+                );
+                mat_x_lower_impl_unchecked(
+                    dst_bot_left.invert().transpose(),
+                    rhs_bot_left.invert().transpose(),
+                    lhs_bot_right.invert().transpose(),
+                    lhs_diag,
+                    Some(&T::one()),
+                    beta,
+                    n_threads,
+                    !transposed,
+                    stack.rb_mut(),
+                );
+                lower_x_lower_into_lower_impl_unchecked(
+                    dst_bot_right,
+                    skip_diag,
+                    lhs_bot_right,
+                    lhs_diag,
+                    rhs_bot_right,
+                    rhs_diag,
+                    alpha,
+                    beta,
+                    n_threads,
+                    transposed,
+                    stack,
+                )
+            } else {
+                temp_mat_uninit! {
+                    let (mut temp_dst_bot_left, stack) = unsafe { temp_mat_uninit::<T>(rem, bs, stack) };
+                }
+                join(
+                    |n_threads, mut stack| {
+                        lower_x_lower_into_lower_impl_unchecked(
+                            dst_top_left,
+                            skip_diag,
+                            lhs_top_left,
+                            lhs_diag,
+                            rhs_top_left,
+                            rhs_diag,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack.rb_mut(),
+                        );
+                        mat_x_lower_impl_unchecked(
+                            dst_bot_left.rb_mut(),
+                            lhs_bot_left,
+                            rhs_top_left,
+                            rhs_diag,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack.rb_mut(),
+                        );
+                    },
+                    |n_threads, mut stack| {
+                        mat_x_lower_impl_unchecked(
+                            temp_dst_bot_left.rb_mut().invert().transpose(),
+                            rhs_bot_left.invert().transpose(),
+                            lhs_bot_right.invert().transpose(),
+                            lhs_diag,
+                            None,
+                            beta,
+                            n_threads,
+                            !transposed,
+                            stack.rb_mut(),
+                        );
+                        lower_x_lower_into_lower_impl_unchecked(
+                            dst_bot_right,
+                            skip_diag,
+                            lhs_bot_right,
+                            lhs_diag,
+                            rhs_bot_right,
+                            rhs_diag,
+                            alpha,
+                            beta,
+                            n_threads,
+                            transposed,
+                            stack,
+                        )
+                    },
+                    |n_threads| {
+                        StackReq::any_of([
+                            lower_x_lower_into_lower_impl_req::<T>(bs, n_threads).unwrap(),
+                            mat_x_lower_impl_req::<T>(rem, bs, n_threads).unwrap(),
+                        ])
+                    },
+                    n_threads,
+                    stack,
+                );
+
+                for (dst_col, temp_dst_col) in izip!(
+                    dst_bot_left.into_col_iter(),
+                    temp_dst_bot_left.into_const().into_col_iter()
+                ) {
+                    for (dst_elem, temp_dst_elem) in izip!(dst_col, temp_dst_col) {
+                        *dst_elem = &*dst_elem + temp_dst_elem;
+                    }
+                }
+            }
+        }
+    }
+
+    fn upper_x_lower_impl_req<T: 'static>(
+        n: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(n, n, n, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            join_req(
+                |n_threads| {
+                    StackReq::try_any_of([
+                        super::mat_x_mat_req::<T>(bs, bs, rem, n_threads)?,
+                        upper_x_lower_impl_req::<T>(bs, n_threads)?,
+                    ])
+                },
+                |n_threads| {
+                    StackReq::try_any_of([
+                        join_req(
+                            |n_threads| mat_x_lower_impl_req::<T>(bs, rem, n_threads),
+                            |n_threads| mat_x_lower_impl_req::<T>(rem, bs, n_threads),
+                            n_threads,
+                        )?,
+                        upper_x_lower_impl_req::<T>(rem, n_threads)?,
+                    ])
+                },
+                n_threads,
+            )
+        }
+    }
+
+    unsafe fn upper_x_lower_impl_unchecked<T>(
+        dst: MatMut<'_, T>,
+        lhs: MatRef<'_, T>,
+        lhs_diag: DiagonalKind,
+        rhs: MatRef<'_, T>,
+        rhs_diag: DiagonalKind,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == lhs.nrows());
+        fancy_debug_assert!(n == lhs.ncols());
+        fancy_debug_assert!(n == rhs.nrows());
+        fancy_debug_assert!(n == rhs.ncols());
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            temp_mat_uninit! {
+                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+            };
+
+            copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
+            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+
+            let temp_lhs = temp_lhs.into_const();
+            let temp_rhs = temp_rhs.into_const();
+            mul(
+                dst, temp_lhs, temp_rhs, alpha, beta, n_threads, transposed, stack,
+            );
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let (mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) =
+                dst.split_at_unchecked(bs, bs);
+            let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_at_unchecked(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
+
+            // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => mat |   1
+            // lhs_top_left  × rhs_top_left  => dst_top_left  | upp × low => mat |   X
+            //
+            // lhs_top_right × rhs_bot_right => dst_top_right | mat × low => mat | 1/2
+            // lhs_bot_right × rhs_bot_left  => dst_bot_left  | upp × mat => mat | 1/2
+            // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => mat |   X
+
+            join(
+                |n_threads, mut stack| {
+                    mul(
+                        dst_top_left.rb_mut(),
+                        lhs_top_right,
+                        rhs_bot_left,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack.rb_mut(),
+                    );
+                    upper_x_lower_impl_unchecked(
+                        dst_top_left,
+                        lhs_top_left,
+                        lhs_diag,
+                        rhs_top_left,
+                        rhs_diag,
+                        Some(&T::one()),
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack.rb_mut(),
+                    )
+                },
+                |n_threads, mut stack| {
+                    join(
+                        |n_threads, stack| {
+                            mat_x_lower_impl_unchecked(
+                                dst_top_right,
+                                lhs_top_right,
+                                rhs_bot_right,
+                                rhs_diag,
+                                alpha,
+                                beta,
+                                n_threads,
+                                transposed,
+                                stack,
+                            )
+                        },
+                        |n_threads, stack| {
+                            mat_x_lower_impl_unchecked(
+                                dst_bot_left.transpose(),
+                                rhs_bot_left.transpose(),
+                                lhs_bot_right.transpose(),
+                                lhs_diag,
+                                alpha,
+                                beta,
+                                n_threads,
+                                !transposed,
+                                stack,
+                            )
+                        },
+                        |n_threads| mat_x_lower_impl_req::<T>(bs, rem, n_threads).unwrap(),
+                        n_threads,
+                        stack.rb_mut(),
+                    );
+
+                    upper_x_lower_impl_unchecked(
+                        dst_bot_right,
+                        lhs_bot_right,
+                        lhs_diag,
+                        rhs_bot_right,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack,
+                    )
+                },
+                |n_threads| {
+                    StackReq::any_of([
+                        super::mat_x_mat_req::<T>(bs, bs, rem, n_threads).unwrap(),
+                        upper_x_lower_impl_req::<T>(bs, n_threads).unwrap(),
+                    ])
+                },
+                n_threads,
+                stack,
+            );
+        }
+    }
+
+    fn upper_x_lower_into_lower_impl_req<T: 'static>(
+        n: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(n, n, n, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            join_req(
+                |n_threads| {
+                    StackReq::try_any_of([
+                        mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads)?,
+                        upper_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
+                    ])
+                },
+                |n_threads| {
+                    StackReq::try_any_of([
+                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
+                        upper_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
+                    ])
+                },
+                n_threads,
+            )
+        }
+    }
+
+    unsafe fn upper_x_lower_into_lower_impl_unchecked<T>(
+        mut dst: MatMut<'_, T>,
+        skip_diag: bool,
+        lhs: MatRef<'_, T>,
+        lhs_diag: DiagonalKind,
+        rhs: MatRef<'_, T>,
+        rhs_diag: DiagonalKind,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        let n = dst.nrows();
+        fancy_debug_assert!(n == lhs.nrows());
+        fancy_debug_assert!(n == lhs.ncols());
+        fancy_debug_assert!(n == rhs.nrows());
+        fancy_debug_assert!(n == rhs.ncols());
+        fancy_debug_assert!(n == dst.nrows());
+        fancy_debug_assert!(n == dst.ncols());
+
+        let n_threads = if n * n * n <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            temp_mat_uninit! {
+                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+            };
+
+            copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
+            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+
+            let temp_lhs = temp_lhs.into_const();
+            let temp_rhs = temp_rhs.into_const();
+            mul(
+                temp_dst.rb_mut(),
+                temp_lhs,
+                temp_rhs,
+                None,
+                beta,
+                n_threads,
+                transposed,
+                stack,
+            );
+
+            accum_lower(dst.rb_mut(), temp_dst.into_const(), skip_diag, alpha);
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+
+            let (mut dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
+            let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_at_unchecked(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
+
+            // lhs_top_left  × rhs_top_left  => dst_top_left  | upp × low => low |   X
+            // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => low | 1/2
+            //
+            // lhs_bot_right × rhs_bot_left  => dst_bot_left  | upp × mat => mat | 1/2
+            // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => low |   X
+
+            join(
+                |n_threads, mut stack| {
+                    mat_x_mat_into_lower_impl_unchecked(
+                        dst_top_left.rb_mut(),
+                        skip_diag,
+                        lhs_top_right,
+                        rhs_bot_left,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack.rb_mut(),
+                    );
+                    upper_x_lower_into_lower_impl_unchecked(
+                        dst_top_left,
+                        skip_diag,
+                        lhs_top_left,
+                        lhs_diag,
+                        rhs_top_left,
+                        rhs_diag,
+                        Some(&T::one()),
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack.rb_mut(),
+                    )
+                },
+                |n_threads, mut stack| {
+                    mat_x_lower_impl_unchecked(
+                        dst_bot_left.transpose(),
+                        rhs_bot_left.transpose(),
+                        lhs_bot_right.transpose(),
+                        lhs_diag,
+                        alpha,
+                        beta,
+                        n_threads,
+                        !transposed,
+                        stack.rb_mut(),
+                    );
+                    upper_x_lower_into_lower_impl_unchecked(
+                        dst_bot_right,
+                        skip_diag,
+                        lhs_bot_right,
+                        lhs_diag,
+                        rhs_bot_right,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack,
+                    )
+                },
+                |n_threads| {
+                    StackReq::any_of([
+                        mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads).unwrap(),
+                        upper_x_lower_into_lower_impl_req::<T>(bs, n_threads).unwrap(),
+                    ])
+                },
+                n_threads,
+                stack,
+            );
+        }
+    }
+
+    fn mat_x_mat_into_lower_impl_req<T: 'static>(
+        n: usize,
+        k: usize,
+        n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = if n * n * k <= 128 * 128 * 128 {
+            1
+        } else {
+            n_threads
+        };
+
+        if n <= 16 {
+            StackReq::try_all_of([
+                temp_mat_req::<T>(n, n)?,
+                super::mat_x_mat_req::<T>(n, n, k, n_threads)?,
+            ])
+        } else {
+            let bs = n / 2;
+            let rem = n - bs;
+            join_req(
+                |n_threads| super::mat_x_mat_req::<T>(rem, bs, k, n_threads),
+                |n_threads| {
+                    join_req(
+                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, k, n_threads),
+                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(rem, k, n_threads),
+                        n_threads,
+                    )
+                },
+                n_threads,
+            )
+        }
+    }
+
+    unsafe fn mat_x_mat_into_lower_impl_unchecked<T>(
+        dst: MatMut<'_, T>,
+        skip_diag: bool,
+        lhs: MatRef<'_, T>,
+        rhs: MatRef<'_, T>,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads: usize,
+        transposed: bool,
+        stack: DynStack<'_>,
+    ) where
+        T: Zero + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
     {
         fancy_debug_assert!(dst.nrows() == dst.ncols());
         fancy_debug_assert!(dst.nrows() == lhs.nrows());
@@ -290,148 +1378,500 @@ pub mod triangular {
         let n = dst.nrows();
         let k = lhs.ncols();
 
-        let mut stack = stack;
-
-        let n_threads_hint = if n * n * k <= 128 * 128 * 128 {
+        let n_threads = if n * n * k <= 128 * 128 * 128 {
             1
         } else {
-            n_threads_hint
+            n_threads
         };
 
         if n <= 16 {
             temp_mat_uninit! {
-                let (mut temp_dst, stack) = temp_mat_uninit::<T>(n, n, stack);
+                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
-            mat_mat_unchecked(temp_dst.rb_mut(), lhs, rhs, beta, n_threads_hint, stack);
-            for (j, (temp_col, col)) in
-                izip!(temp_dst.into_const().into_col_iter(), dst.into_col_iter()).enumerate()
-            {
-                let (_, temp_col) = temp_col.split_at(j);
-                let (_, col) = col.split_at(j);
+            mul(
+                temp_dst.rb_mut(),
+                lhs,
+                rhs,
+                None,
+                beta,
+                n_threads,
+                transposed,
+                stack,
+            );
+            accum_lower(dst, temp_dst.rb(), skip_diag, alpha)
+        } else {
+            let bs = n / 2;
+            let rem = n - n / 2;
+            let (dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
+            let (_, lhs_top, _, lhs_bot) = lhs.split_at_unchecked(bs, 0);
+            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, bs);
 
-                for (temp, out) in izip!(temp_col, col) {
-                    *out = &(&alpha * &*out) + temp;
+            join(
+                |n_threads, stack| {
+                    mul(
+                        dst_bot_left,
+                        lhs_bot,
+                        rhs_left,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack,
+                    )
+                },
+                |n_threads, stack| {
+                    join(
+                        |n_threads, stack| {
+                            mat_x_mat_into_lower_impl_unchecked(
+                                dst_top_left,
+                                skip_diag,
+                                lhs_top,
+                                rhs_left,
+                                alpha,
+                                beta,
+                                n_threads,
+                                transposed,
+                                stack,
+                            )
+                        },
+                        |n_threads, stack| {
+                            mat_x_mat_into_lower_impl_unchecked(
+                                dst_bot_right,
+                                skip_diag,
+                                lhs_bot,
+                                rhs_right,
+                                alpha,
+                                beta,
+                                n_threads,
+                                transposed,
+                                stack,
+                            )
+                        },
+                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, k, n_threads).unwrap(),
+                        n_threads,
+                        stack,
+                    )
+                },
+                |n_threads| super::mat_x_mat_req::<T>(rem, bs, k, n_threads).unwrap(),
+                n_threads,
+                stack,
+            );
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum BlockStructure {
+        Rectangular,
+        TriangularLower,
+        StrictTriangularLower,
+        UnitTriangularLower,
+        TriangularUpper,
+        StrictTriangularUpper,
+        UnitTriangularUpper,
+    }
+
+    impl BlockStructure {
+        #[inline]
+        pub fn is_dense(self) -> bool {
+            matches!(self, BlockStructure::Rectangular)
+        }
+
+        #[inline]
+        pub fn is_lower(self) -> bool {
+            use BlockStructure::*;
+            matches!(
+                self,
+                TriangularLower | StrictTriangularLower | UnitTriangularLower
+            )
+        }
+
+        #[inline]
+        pub fn is_upper(self) -> bool {
+            use BlockStructure::*;
+            matches!(
+                self,
+                TriangularUpper | StrictTriangularUpper | UnitTriangularUpper
+            )
+        }
+
+        #[inline]
+        pub fn transpose(self) -> Self {
+            use BlockStructure::*;
+            match self {
+                Rectangular => Rectangular,
+                TriangularLower => TriangularUpper,
+                StrictTriangularLower => StrictTriangularUpper,
+                UnitTriangularLower => UnitTriangularUpper,
+                TriangularUpper => TriangularLower,
+                StrictTriangularUpper => StrictTriangularLower,
+                UnitTriangularUpper => UnitTriangularLower,
+            }
+        }
+
+        #[inline]
+        pub(crate) fn diag_kind(self) -> DiagonalKind {
+            use BlockStructure::*;
+            match self {
+                Rectangular | TriangularLower | TriangularUpper => DiagonalKind::Generic,
+                StrictTriangularLower | StrictTriangularUpper => DiagonalKind::Zero,
+                UnitTriangularLower | UnitTriangularUpper => DiagonalKind::Unit,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn mat_x_mat_req<T: 'static>(
+        dst_structure: BlockStructure,
+        lhs_structure: BlockStructure,
+        rhs_structure: BlockStructure,
+        dst_rows: usize,
+        dst_cols: usize,
+        lhs_cols: usize,
+        max_n_threads: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_threads = max_n_threads;
+
+        let mut dst_structure = dst_structure;
+        let mut lhs_structure = lhs_structure;
+        let mut rhs_structure = rhs_structure;
+
+        let mut dst_rows = dst_rows;
+        let mut dst_cols = dst_cols;
+
+        // if either the lhs or the rhs is triangular
+        if rhs_structure.is_lower() {
+            // do nothing
+        } else if rhs_structure.is_upper() {
+            // invert dst, lhs and rhs
+            dst_structure = dst_structure.transpose();
+            lhs_structure = lhs_structure.transpose();
+            rhs_structure = rhs_structure.transpose();
+        } else if lhs_structure.is_lower() {
+            // invert and transpose
+            (lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
+            core::mem::swap(&mut dst_rows, &mut dst_cols);
+        } else if lhs_structure.is_upper() {
+            // transpose
+            dst_structure = dst_structure.transpose();
+            (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
+            core::mem::swap(&mut dst_rows, &mut dst_cols);
+        } else {
+            // do nothing
+        }
+
+        let m = dst_rows;
+        let n = dst_cols;
+        let k = lhs_cols;
+
+        if dst_structure.is_dense() {
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                super::mat_x_mat_req::<T>(m, n, k, n_threads)
+            } else {
+                fancy_debug_assert!(rhs_structure.is_lower());
+                if lhs_structure.is_dense() {
+                    mat_x_lower_impl_req::<T>(m, n, n_threads)
+                } else if lhs_structure.is_lower() {
+                    lower_x_lower_into_lower_impl_req::<T>(n, n_threads)
+                } else {
+                    fancy_debug_assert!(lhs_structure.is_upper());
+                    upper_x_lower_impl_req::<T>(n, n_threads)
+                }
+            }
+        } else if dst_structure.is_lower() {
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                mat_x_mat_into_lower_impl_req::<T>(n, k, n_threads)
+            } else {
+                fancy_debug_assert!(rhs_structure.is_lower());
+                if lhs_structure.is_dense() {
+                    mat_x_lower_into_lower_impl_req::<T>(n, n_threads)
+                } else if lhs_structure.is_lower() {
+                    lower_x_lower_into_lower_impl_req::<T>(n, n_threads)
+                } else {
+                    upper_x_lower_into_lower_impl_req::<T>(n, n_threads)
                 }
             }
         } else {
-            let (dst_top_left, _, dst_bot_left, dst_bot_right) =
-                dst.split_at_unchecked(n / 2, n / 2);
-            let (_, lhs_top, _, lhs_bot) = lhs.split_at_unchecked(n / 2, 0);
-            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(n / 2, 0);
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                mat_x_mat_into_lower_impl_req::<T>(m, k, n_threads)
+            } else {
+                fancy_debug_assert!(rhs_structure.is_lower());
+                if lhs_structure.is_dense() {
+                    // lower part of lhs does not contribute to result
+                    upper_x_lower_into_lower_impl_req::<T>(m, n_threads)
+                } else if lhs_structure.is_lower() {
+                    Ok(StackReq::default())
+                } else {
+                    fancy_debug_assert!(lhs_structure.is_upper());
+                    upper_x_lower_into_lower_impl_req::<T>(m, n_threads)
+                }
+            }
+        }
+    }
 
-            if n_threads_hint <= 1 {
-                mat_mat_accum_dst_lower_half_only_unchecked(
-                    dst_top_left,
-                    lhs_top,
-                    rhs_left,
-                    alpha.clone(),
-                    beta.clone(),
-                    n_threads_hint,
-                    stack.rb_mut(),
-                );
-                mat_mat_accum_unchecked(
-                    dst_bot_left,
-                    lhs_bot,
-                    rhs_left,
-                    alpha.clone(),
-                    beta.clone(),
-                    n_threads_hint,
-                    stack.rb_mut(),
-                );
-                mat_mat_accum_dst_lower_half_only_unchecked(
-                    dst_bot_right,
-                    lhs_bot,
-                    rhs_right,
+    #[inline]
+    pub fn mat_x_mat<T>(
+        dst: MatMut<'_, T>,
+        dst_structure: BlockStructure,
+        lhs: MatRef<'_, T>,
+        lhs_structure: BlockStructure,
+        rhs: MatRef<'_, T>,
+        rhs_structure: BlockStructure,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads_hint: usize,
+        stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        fancy_assert!(dst.nrows() == lhs.nrows());
+        fancy_assert!(dst.ncols() == rhs.ncols());
+        fancy_assert!(lhs.ncols() == rhs.nrows());
+
+        if !dst_structure.is_dense() {
+            fancy_assert!(dst.nrows() == dst.ncols());
+        }
+        if !lhs_structure.is_dense() {
+            fancy_assert!(lhs.nrows() == lhs.ncols());
+        }
+        if !rhs_structure.is_dense() {
+            fancy_assert!(rhs.nrows() == rhs.ncols());
+        }
+
+        unsafe {
+            mat_x_mat_unchecked(
+                dst,
+                dst_structure,
+                lhs,
+                lhs_structure,
+                rhs,
+                rhs_structure,
+                alpha,
+                beta,
+                n_threads_hint,
+                stack,
+            )
+        }
+    }
+
+    #[inline]
+    pub unsafe fn mat_x_mat_unchecked<T>(
+        dst: MatMut<'_, T>,
+        dst_structure: BlockStructure,
+        lhs: MatRef<'_, T>,
+        lhs_structure: BlockStructure,
+        rhs: MatRef<'_, T>,
+        rhs_structure: BlockStructure,
+        alpha: Option<&T>,
+        beta: &T,
+        n_threads_hint: usize,
+        stack: DynStack<'_>,
+    ) where
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T>,
+        for<'a> &'a T: Mul<&'a T, Output = T>,
+    {
+        fancy_debug_assert!(dst.nrows() == lhs.nrows());
+        fancy_debug_assert!(dst.ncols() == rhs.ncols());
+        fancy_debug_assert!(lhs.ncols() == rhs.nrows());
+
+        if !dst_structure.is_dense() {
+            fancy_debug_assert!(dst.nrows() == dst.ncols());
+        }
+        if !lhs_structure.is_dense() {
+            fancy_debug_assert!(lhs.nrows() == lhs.ncols());
+        }
+        if !rhs_structure.is_dense() {
+            fancy_debug_assert!(rhs.nrows() == rhs.ncols());
+        }
+
+        let mut dst = dst;
+        let mut lhs = lhs;
+        let mut rhs = rhs;
+
+        let n_threads = n_threads_hint;
+
+        let mut dst_structure = dst_structure;
+        let mut lhs_structure = lhs_structure;
+        let mut rhs_structure = rhs_structure;
+
+        // if either the lhs or the rhs is triangular
+        let transposed = if rhs_structure.is_lower() {
+            // do nothing
+            false
+        } else if rhs_structure.is_upper() {
+            // invert dst, lhs and rhs
+            dst = dst.invert();
+            lhs = lhs.invert();
+            rhs = rhs.invert();
+            dst_structure = dst_structure.transpose();
+            lhs_structure = lhs_structure.transpose();
+            rhs_structure = rhs_structure.transpose();
+            false
+        } else if lhs_structure.is_lower() {
+            // invert and transpose
+            dst = dst.invert().transpose();
+            (lhs, rhs) = (rhs.invert().transpose(), lhs.invert().transpose());
+            (lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
+            true
+        } else if lhs_structure.is_upper() {
+            // transpose
+            dst_structure = dst_structure.transpose();
+            dst = dst.transpose();
+            (lhs, rhs) = (rhs.transpose(), lhs.transpose());
+            (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
+            true
+        } else {
+            // do nothing
+            false
+        };
+
+        let clear_upper = |mut dst: MatMut<'_, T>, skip_diag: bool| match alpha {
+            Some(alpha) => {
+                for j in 0..dst.ncols() {
+                    for i in 0..j + (!skip_diag) as usize {
+                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
+                        *dst = alpha * &*dst;
+                    }
+                }
+            }
+            None => {
+                for j in 0..dst.ncols() {
+                    for i in 0..j + (!skip_diag) as usize {
+                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
+                        *dst = T::zero();
+                    }
+                }
+            }
+        };
+
+        let skip_diag = matches!(
+            dst_structure,
+            BlockStructure::StrictTriangularLower
+                | BlockStructure::StrictTriangularUpper
+                | BlockStructure::UnitTriangularLower
+                | BlockStructure::UnitTriangularUpper
+        );
+        let lhs_diag = lhs_structure.diag_kind();
+        let rhs_diag = rhs_structure.diag_kind();
+
+        if dst_structure.is_dense() {
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                mul(dst, lhs, rhs, alpha, beta, n_threads, transposed, stack);
+            } else {
+                fancy_debug_assert!(rhs_structure.is_lower());
+
+                if lhs_structure.is_dense() {
+                    mat_x_lower_impl_unchecked(
+                        dst, lhs, rhs, rhs_diag, alpha, beta, n_threads, transposed, stack,
+                    )
+                } else if lhs_structure.is_lower() {
+                    clear_upper(dst.rb_mut(), true);
+                    lower_x_lower_into_lower_impl_unchecked(
+                        dst, false, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
+                        transposed, stack,
+                    );
+                } else {
+                    fancy_debug_assert!(lhs_structure.is_upper());
+                    upper_x_lower_impl_unchecked(
+                        dst, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads, transposed,
+                        stack,
+                    )
+                }
+            }
+        } else if dst_structure.is_lower() {
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                mat_x_mat_into_lower_impl_unchecked(
+                    dst, skip_diag, lhs, rhs, alpha, beta, n_threads, transposed, stack,
+                )
+            } else {
+                fancy_debug_assert!(rhs_structure.is_lower());
+                if lhs_structure.is_dense() {
+                    mat_x_lower_into_lower_impl_unchecked(
+                        dst, skip_diag, lhs, rhs, rhs_diag, alpha, beta, n_threads, transposed,
+                        stack,
+                    );
+                } else if lhs_structure.is_lower() {
+                    lower_x_lower_into_lower_impl_unchecked(
+                        dst, skip_diag, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
+                        transposed, stack,
+                    )
+                } else {
+                    upper_x_lower_into_lower_impl_unchecked(
+                        dst, skip_diag, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
+                        transposed, stack,
+                    )
+                }
+            }
+        } else {
+            if lhs_structure.is_dense() && rhs_structure.is_dense() {
+                mat_x_mat_into_lower_impl_unchecked(
+                    dst.transpose(),
+                    skip_diag,
+                    rhs.transpose(),
+                    lhs.transpose(),
                     alpha,
                     beta,
-                    n_threads_hint,
-                    stack.rb_mut(),
-                );
+                    n_threads,
+                    !transposed,
+                    stack,
+                )
             } else {
-                let bot_left_req =
-                    mat_mat_accum_req::<T>(n - n / 2, n / 2, k, n_threads_hint / 2).unwrap();
-                let (mut bot_left_stack_mem, stack) = stack.make_aligned_uninit::<u8>(
-                    bot_left_req.size_bytes(),
-                    bot_left_req.align_bytes(),
-                );
-                let bot_left_stack = DynStack::new(&mut bot_left_stack_mem);
-
-                rayon::join(
-                    || {
-                        let n_threads_hint = n_threads_hint / 2;
-                        mat_mat_accum_unchecked(
-                            dst_bot_left,
-                            lhs_bot,
-                            rhs_left,
-                            alpha.clone(),
-                            beta.clone(),
-                            n_threads_hint,
-                            bot_left_stack,
-                        );
-                    },
-                    || {
-                        let n_threads_hint = n_threads_hint - n_threads_hint / 2;
-                        if n_threads_hint <= 1 {
-                            let mut stack = stack;
-                            mat_mat_accum_dst_lower_half_only_unchecked(
-                                dst_top_left,
-                                lhs_top,
-                                rhs_left,
-                                alpha.clone(),
-                                beta.clone(),
-                                n_threads_hint,
-                                stack.rb_mut(),
-                            );
-                            mat_mat_accum_dst_lower_half_only_unchecked(
-                                dst_bot_right,
-                                lhs_bot,
-                                rhs_right,
-                                alpha.clone(),
-                                beta.clone(),
-                                n_threads_hint,
-                                stack.rb_mut(),
-                            );
-                        } else {
-                            let top_left_req = mat_mat_accum_dst_lower_half_only_req::<T>(
-                                n / 2,
-                                k,
-                                n_threads_hint / 2,
-                            )
-                            .unwrap();
-
-                            let (mut top_left_stack_mem, stack) = stack.make_aligned_uninit::<u8>(
-                                top_left_req.size_bytes(),
-                                top_left_req.align_bytes(),
-                            );
-                            let top_left_stack = DynStack::new(&mut top_left_stack_mem);
-
-                            rayon::join(
-                                || {
-                                    mat_mat_accum_dst_lower_half_only_unchecked(
-                                        dst_top_left,
-                                        lhs_top,
-                                        rhs_left,
-                                        alpha.clone(),
-                                        beta.clone(),
-                                        n_threads_hint / 2,
-                                        top_left_stack,
-                                    );
-                                },
-                                || {
-                                    mat_mat_accum_dst_lower_half_only_unchecked(
-                                        dst_bot_right,
-                                        lhs_bot,
-                                        rhs_right,
-                                        alpha.clone(),
-                                        beta.clone(),
-                                        n_threads_hint - n_threads_hint / 2,
-                                        stack,
-                                    );
-                                },
-                            );
+                fancy_debug_assert!(rhs_structure.is_lower());
+                if lhs_structure.is_dense() {
+                    // lower part of lhs does not contribute to result
+                    upper_x_lower_into_lower_impl_unchecked(
+                        dst.transpose(),
+                        skip_diag,
+                        rhs.transpose(),
+                        rhs_diag,
+                        lhs.transpose(),
+                        lhs_diag,
+                        alpha,
+                        beta,
+                        n_threads,
+                        transposed,
+                        stack,
+                    )
+                } else if lhs_structure.is_lower() {
+                    clear_upper(dst.rb_mut(), true);
+                    if !skip_diag {
+                        match alpha {
+                            Some(alpha) => {
+                                for j in 0..dst.nrows() {
+                                    let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(j, j);
+                                    let lhs = lhs.ptr_in_bounds_at_unchecked(j, j);
+                                    let rhs = rhs.ptr_in_bounds_at_unchecked(j, j);
+                                    *dst = alpha * (&*dst) + beta * &(&*lhs * &*rhs);
+                                }
+                            }
+                            None => {
+                                for j in 0..dst.nrows() {
+                                    let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(j, j);
+                                    let lhs = lhs.ptr_in_bounds_at_unchecked(j, j);
+                                    let rhs = rhs.ptr_in_bounds_at_unchecked(j, j);
+                                    *dst = beta * &(&*lhs * &*rhs);
+                                }
+                            }
                         }
-                    },
-                );
+                    }
+                } else {
+                    fancy_debug_assert!(lhs_structure.is_upper());
+                    upper_x_lower_into_lower_impl_unchecked(
+                        dst.transpose(),
+                        skip_diag,
+                        rhs.transpose(),
+                        rhs_diag,
+                        lhs.transpose(),
+                        lhs_diag,
+                        alpha,
+                        beta,
+                        n_threads,
+                        !transposed,
+                        stack,
+                    )
+                }
             }
         }
     }
@@ -439,43 +1879,245 @@ pub mod triangular {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::mat;
+    use assert_approx_eq::assert_approx_eq;
+    use dyn_stack::GlobalMemBuffer;
+    use rand::random;
+
+    use super::{
+        triangular::{BlockStructure, DiagonalKind},
+        *,
+    };
+    use crate::{mat, Mat};
 
     #[test]
-    fn mul_mul() {
+    fn rectangular() {
         let lhs = mat![[1.0, 2.0], [3.0, 4.0]];
         let rhs = mat![[5.0], [7.0]];
         let mut dst = mat![[0.0], [0.0]];
 
-        let mut mem = dyn_stack::GlobalMemBuffer::new(mat_mat_req::<f64>(2, 1, 2, 4).unwrap());
+        let mut mem = dyn_stack::GlobalMemBuffer::new(mat_x_mat_req::<f64>(2, 1, 2, 4).unwrap());
         let stack = DynStack::new(&mut mem);
-        mat_mat(dst.as_mut(), lhs.as_ref(), rhs.as_ref(), 2.0, 1, stack);
+        super::mat_x_mat(
+            dst.as_mut(),
+            lhs.as_ref(),
+            rhs.as_ref(),
+            None,
+            &2.0,
+            1,
+            stack,
+        );
 
         fancy_assert!(dst[(0, 0)] == 38.0);
         fancy_assert!(dst[(1, 0)] == 86.0);
     }
 
     #[test]
-    fn mul_mul_accum() {
+    fn rectangular_accum() {
         let lhs = mat![[1.0, 2.0], [3.0, 4.0]];
         let rhs = mat![[5.0], [7.0]];
         let mut dst = mat![[4.0], [3.0]];
 
-        let mut mem =
-            dyn_stack::GlobalMemBuffer::new(mat_mat_accum_req::<f64>(2, 1, 2, 4).unwrap());
+        let mut mem = dyn_stack::GlobalMemBuffer::new(mat_x_mat_req::<f64>(2, 1, 2, 4).unwrap());
         let stack = DynStack::new(&mut mem);
-        mat_mat_accum(
+        super::mat_x_mat(
             dst.as_mut(),
             lhs.as_ref(),
             rhs.as_ref(),
-            -2.0,
-            2.0,
+            Some(&-2.0),
+            &2.0,
             1,
             stack,
         );
 
         fancy_assert!(dst[(0, 0)] == 30.0);
         fancy_assert!(dst[(1, 0)] == 80.0);
+    }
+
+    fn generate_structured_matrix(
+        is_dst: bool,
+        nrows: usize,
+        ncols: usize,
+        structure: BlockStructure,
+    ) -> Mat<f64> {
+        let mut mat = Mat::new();
+        mat.resize_with(|_, _| random(), nrows, ncols);
+
+        if !is_dst {
+            let kind = structure.diag_kind();
+            if structure.is_lower() {
+                for j in 0..ncols {
+                    for i in 0..j {
+                        mat[(i, j)] = 0.0;
+                    }
+                }
+            } else if structure.is_upper() {
+                for j in 0..ncols {
+                    for i in j + 1..nrows {
+                        mat[(i, j)] = 0.0;
+                    }
+                }
+            }
+
+            match kind {
+                triangular::DiagonalKind::Zero => {
+                    for i in 0..nrows {
+                        mat[(i, i)] = 0.0;
+                    }
+                }
+                triangular::DiagonalKind::Unit => {
+                    for i in 0..nrows {
+                        mat[(i, i)] = 1.0;
+                    }
+                }
+                triangular::DiagonalKind::Generic => (),
+            }
+        }
+        mat
+    }
+
+    fn run_test_problem(
+        m: usize,
+        n: usize,
+        k: usize,
+        dst_structure: BlockStructure,
+        lhs_structure: BlockStructure,
+        rhs_structure: BlockStructure,
+    ) {
+        let mut dst = generate_structured_matrix(true, m, n, dst_structure);
+        let mut dst_target = dst.clone();
+        let dst_orig = dst.clone();
+        let lhs = generate_structured_matrix(false, m, k, lhs_structure);
+        let rhs = generate_structured_matrix(false, k, n, rhs_structure);
+
+        for n_threads in [1, 12] {
+            triangular::mat_x_mat(
+                dst.as_mut(),
+                dst_structure,
+                lhs.as_ref(),
+                lhs_structure,
+                rhs.as_ref(),
+                rhs_structure,
+                None,
+                &2.5,
+                n_threads,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    triangular::mat_x_mat_req::<f64>(
+                        dst_structure,
+                        lhs_structure,
+                        rhs_structure,
+                        m,
+                        n,
+                        k,
+                        n_threads,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            mat_x_mat(
+                dst_target.as_mut(),
+                lhs.as_ref(),
+                rhs.as_ref(),
+                None,
+                &2.5,
+                n_threads,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    mat_x_mat_req::<f64>(m, n, k, n_threads).unwrap(),
+                )),
+            );
+
+            if dst_structure.is_dense() {
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(dst[(i, j)], dst_target[(i, j)]);
+                    }
+                }
+            } else if dst_structure.is_lower() {
+                for j in 0..n {
+                    if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
+                        for i in 0..j {
+                            assert_eq!(dst[(i, j)], dst_orig[(i, j)]);
+                        }
+                        for i in j..n {
+                            assert_approx_eq!(dst[(i, j)], dst_target[(i, j)]);
+                        }
+                    } else {
+                        for i in 0..=j {
+                            assert_eq!(dst[(i, j)], dst_orig[(i, j)]);
+                        }
+                        for i in j + 1..n {
+                            assert_approx_eq!(dst[(i, j)], dst_target[(i, j)]);
+                        }
+                    }
+                }
+            } else {
+                for j in 0..n {
+                    if matches!(dst_structure.diag_kind(), DiagonalKind::Generic) {
+                        for i in 0..=j {
+                            assert_approx_eq!(dst[(i, j)], dst_target[(i, j)]);
+                        }
+                        for i in j + 1..n {
+                            assert_eq!(dst[(i, j)], dst_orig[(i, j)]);
+                        }
+                    } else {
+                        for i in 0..j {
+                            assert_approx_eq!(dst[(i, j)], dst_target[(i, j)]);
+                        }
+                        for i in j..n {
+                            assert_eq!(dst[(i, j)], dst_orig[(i, j)]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn triangular() {
+        use BlockStructure::*;
+        let structures = [
+            Rectangular,
+            TriangularLower,
+            TriangularUpper,
+            StrictTriangularLower,
+            StrictTriangularUpper,
+            UnitTriangularLower,
+            UnitTriangularUpper,
+        ];
+
+        for dst in structures {
+            for lhs in structures {
+                for rhs in structures {
+                    dbg!(dst, lhs, rhs);
+                    for _ in 0..10 {
+                        let m = random::<usize>() % 200;
+                        let mut n = random::<usize>() % 200;
+                        let mut k = random::<usize>() % 200;
+
+                        match (!dst.is_dense(), !lhs.is_dense(), !rhs.is_dense()) {
+                            (true, true, _) | (true, _, true) | (_, true, true) => {
+                                n = m;
+                                k = m;
+                            }
+                            _ => (),
+                        }
+
+                        if !dst.is_dense() {
+                            n = m;
+                        }
+
+                        if !lhs.is_dense() {
+                            k = m;
+                        }
+
+                        if !rhs.is_dense() {
+                            k = n;
+                        }
+
+                        run_test_problem(m, n, k, dst, lhs, rhs);
+                    }
+                }
+            }
+        }
     }
 }

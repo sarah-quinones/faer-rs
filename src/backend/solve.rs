@@ -6,6 +6,8 @@ use num_traits::{One, Zero};
 use reborrow::*;
 
 pub mod triangular {
+    use core::ops::{Add, Mul, Neg};
+
     use super::*;
 
     pub fn solve_tri_lower_with_implicit_unit_diagonal_in_place_req<T: 'static>(
@@ -15,7 +17,7 @@ pub mod triangular {
     ) -> Result<StackReq, SizeOverflow> {
         let n = max_tril_dim;
         let k = max_rhs_ncols;
-        crate::backend::mul::mat_mat_accum_req::<T>(n - n / 2, n / 2, k, max_n_threads)
+        crate::backend::mul::mat_x_mat_req::<T>(n - n / 2, n / 2, k, max_n_threads)
     }
 
     pub unsafe fn solve_tri_lower_with_implicit_unit_diagonal_in_place_unchecked<T>(
@@ -24,9 +26,8 @@ pub mod triangular {
         n_threads_hint: usize,
         stack: DynStack<'_>,
     ) where
-        T: Zero + One + Clone + core::ops::Neg<Output = T> + Send + Sync + 'static,
-        for<'a> &'a T: core::ops::Add<&'a T, Output = T>,
-        for<'a> &'a T: core::ops::Mul<&'a T, Output = T>,
+        T: Zero + One + Clone + Send + Sync + 'static,
+        for<'a> &'a T: Add<&'a T, Output = T> + Mul<&'a T, Output = T> + Neg<Output = T>,
     {
         fancy_debug_assert!(tril.nrows() == tril.ncols());
         fancy_debug_assert!(rhs.nrows() == tril.ncols());
@@ -51,12 +52,12 @@ pub mod triangular {
             stack.rb_mut(),
         );
 
-        crate::backend::mul::mat_mat_accum(
+        crate::backend::mul::mat_x_mat(
             rhs_bot.rb_mut(),
             tril_bot_left,
             rhs_top.into_const(),
-            T::one(),
-            -T::one(),
+            Some(&T::one()),
+            &-&T::one(),
             n_threads_hint,
             stack.rb_mut(),
         );
