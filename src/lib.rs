@@ -1,3 +1,6 @@
+#![warn(rust_2018_idioms)]
+#![allow(clippy::too_many_arguments)]
+
 use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use core::any::TypeId;
@@ -9,20 +12,31 @@ use core::ops::{Index, IndexMut};
 use core::ptr::NonNull;
 use dyn_stack::DynStack;
 use dyn_stack::{SizeOverflow, StackReq};
+use iter::*;
 use reborrow::*;
 
 pub mod backend;
+
+mod seal {
+    use crate::{MatMut, MatRef};
+
+    pub trait Seal {}
+    impl<'a, T> Seal for MatRef<'a, T> {}
+    impl<'a, T> Seal for MatMut<'a, T> {}
+}
 
 #[inline]
 pub fn join_req(
     req_a: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
     req_b: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
-    max_n_threads: usize,
+    n_threads_a: impl Fn(usize) -> usize,
+    n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    if max_n_threads <= 1 {
-        req_a(max_n_threads)?.try_or(req_b(max_n_threads)?)
+    if n_threads <= 1 {
+        req_a(n_threads)?.try_or(req_b(n_threads)?)
     } else {
-        req_a(max_n_threads / 2)?.try_and(req_b(max_n_threads - max_n_threads / 2)?)
+        let n_threads_a = n_threads_a(n_threads);
+        req_a(n_threads_a)?.try_and(req_b(n_threads - n_threads_a)?)
     }
 }
 
@@ -32,6 +46,7 @@ pub fn join<ReturnA: Send, ReturnB: Send>(
     op_a: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnA,
     op_b: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnB,
     req_a: impl Fn(usize) -> StackReq,
+    n_threads_a: impl Fn(usize) -> usize,
     n_threads_hint: usize,
     stack: DynStack<'_>,
 ) {
@@ -44,9 +59,10 @@ pub fn join<ReturnA: Send, ReturnB: Send>(
         let (mut stack_a_mem, stack_b) =
             stack.make_aligned_uninit::<u8>(req_a.size_bytes(), req_a.align_bytes());
         let stack_a = DynStack::new(&mut stack_a_mem);
+        let n_threads_a = n_threads_a(n_threads_hint);
         rayon::join(
-            || op_a(n_threads_hint / 2, stack_a),
-            || op_b(n_threads_hint - n_threads_hint / 2, stack_b),
+            || op_a(n_threads_a, stack_a),
+            || op_b(n_threads_hint - n_threads_a, stack_b),
         );
     }
 }
@@ -1799,486 +1815,491 @@ impl<'a, T> IntoIterator for ColMut<'a, T> {
     }
 }
 
-pub struct RowIter<'a, T>(MatRef<'a, T>);
-pub struct ColIter<'a, T>(MatRef<'a, T>);
-pub struct RowIterMut<'a, T>(MatMut<'a, T>);
-pub struct ColIterMut<'a, T>(MatMut<'a, T>);
-pub struct ElemIter<'a, T>(ColRef<'a, T>);
-pub struct ElemIterMut<'a, T>(ColMut<'a, T>);
+pub mod iter {
+    use crate::{ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
+    use reborrow::*;
 
-impl<'a, T> RowIter<'a, T> {
-    #[inline]
-    pub fn into_matrix(self) -> MatRef<'a, T> {
-        self.0
-    }
-}
-impl<'a, T> RowIterMut<'a, T> {
-    #[inline]
-    pub fn into_matrix(self) -> MatMut<'a, T> {
-        self.0
-    }
-}
-impl<'a, T> ColIter<'a, T> {
-    #[inline]
-    pub fn into_matrix(self) -> MatRef<'a, T> {
-        self.0
-    }
-}
-impl<'a, T> ColIterMut<'a, T> {
-    #[inline]
-    pub fn into_matrix(self) -> MatMut<'a, T> {
-        self.0
-    }
-}
-impl<'a, T> ElemIter<'a, T> {
-    #[inline]
-    pub fn into_col(self) -> ColRef<'a, T> {
-        self.0
-    }
-    #[inline]
-    pub fn into_row(self) -> RowRef<'a, T> {
-        self.0.transpose()
-    }
-}
-impl<'a, T> ElemIterMut<'a, T> {
-    #[inline]
-    pub fn into_col(self) -> ColMut<'a, T> {
-        self.0
-    }
-    #[inline]
-    pub fn into_row(self) -> RowMut<'a, T> {
-        self.0.transpose()
-    }
-}
+    pub struct RowIter<'a, T>(pub(crate) MatRef<'a, T>);
+    pub struct ColIter<'a, T>(pub(crate) MatRef<'a, T>);
+    pub struct RowIterMut<'a, T>(pub(crate) MatMut<'a, T>);
+    pub struct ColIterMut<'a, T>(pub(crate) MatMut<'a, T>);
+    pub struct ElemIter<'a, T>(pub(crate) ColRef<'a, T>);
+    pub struct ElemIterMut<'a, T>(pub(crate) ColMut<'a, T>);
 
-impl<'a, T> Copy for RowIter<'a, T> {}
-impl<'a, T> Copy for ColIter<'a, T> {}
-impl<'a, T> Copy for ElemIter<'a, T> {}
-impl<'a, T> Clone for RowIter<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
+    impl<'a, T> RowIter<'a, T> {
+        #[inline]
+        pub fn into_matrix(self) -> MatRef<'a, T> {
+            self.0
+        }
     }
-}
-impl<'a, T> Clone for ColIter<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
+    impl<'a, T> RowIterMut<'a, T> {
+        #[inline]
+        pub fn into_matrix(self) -> MatMut<'a, T> {
+            self.0
+        }
     }
-}
-impl<'a, T> Clone for ElemIter<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
+    impl<'a, T> ColIter<'a, T> {
+        #[inline]
+        pub fn into_matrix(self) -> MatRef<'a, T> {
+            self.0
+        }
     }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for RowIter<'a, T> {
-    type Target = RowIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
+    impl<'a, T> ColIterMut<'a, T> {
+        #[inline]
+        pub fn into_matrix(self) -> MatMut<'a, T> {
+            self.0
+        }
     }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowIter<'a, T> {
-    type Target = RowIter<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
+    impl<'a, T> ElemIter<'a, T> {
+        #[inline]
+        pub fn into_col(self) -> ColRef<'a, T> {
+            self.0
+        }
+        #[inline]
+        pub fn into_row(self) -> RowRef<'a, T> {
+            self.0.transpose()
+        }
     }
-}
-impl<'b, 'a, T> Reborrow<'b> for RowIterMut<'a, T> {
-    type Target = RowIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        RowIter(self.0.rb())
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowIterMut<'a, T> {
-    type Target = RowIterMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        RowIterMut(self.0.rb_mut())
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for ColIter<'a, T> {
-    type Target = ColIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ColIter<'a, T> {
-    type Target = ColIter<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> Reborrow<'b> for ColIterMut<'a, T> {
-    type Target = ColIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        ColIter(self.0.rb())
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ColIterMut<'a, T> {
-    type Target = ColIterMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        ColIterMut(self.0.rb_mut())
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for ElemIter<'a, T> {
-    type Target = ElemIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ElemIter<'a, T> {
-    type Target = ElemIter<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> Reborrow<'b> for ElemIterMut<'a, T> {
-    type Target = ElemIter<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        ElemIter(self.0.rb())
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ElemIterMut<'a, T> {
-    type Target = ElemIterMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        ElemIterMut(self.0.rb_mut())
-    }
-}
-
-impl<'a, T> Iterator for ElemIter<'a, T> {
-    type Item = &'a T;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let rs = self.0.row_stride();
-            let top = unsafe { &*ptr };
-            let bot = unsafe { ColRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
-
-            self.0 = bot;
-
-            Some(top)
+    impl<'a, T> ElemIterMut<'a, T> {
+        #[inline]
+        pub fn into_col(self) -> ColMut<'a, T> {
+            self.0
+        }
+        #[inline]
+        pub fn into_row(self) -> RowMut<'a, T> {
+            self.0.transpose()
         }
     }
 
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.nrows();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let rs = self.0.row_stride();
-            let top = unsafe { ColRef::from_raw_parts(ptr, nrows - 1, rs) };
-            let bot = unsafe { &*ptr.wrapping_offset(rs * (nrows - 1) as isize) };
-
-            self.0 = top;
-
-            Some(bot)
+    impl<'a, T> Copy for RowIter<'a, T> {}
+    impl<'a, T> Copy for ColIter<'a, T> {}
+    impl<'a, T> Copy for ElemIter<'a, T> {}
+    impl<'a, T> Clone for RowIter<'a, T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
         }
     }
-}
-
-impl<'a, T> Iterator for ElemIterMut<'a, T> {
-    type Item = &'a mut T;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let rs = self.0.row_stride();
-            let top = unsafe { &mut *ptr };
-            let bot = unsafe { ColMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
-
-            self.0 = bot;
-
-            Some(top)
+    impl<'a, T> Clone for ColIter<'a, T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<'a, T> Clone for ElemIter<'a, T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
         }
     }
 
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.nrows();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let rs = self.0.row_stride();
-            let top = unsafe { ColMut::from_raw_parts(ptr, nrows - 1, rs) };
-            let bot = unsafe { &mut *ptr.wrapping_offset(rs * (nrows - 1) as isize) };
-
-            self.0 = top;
-
-            Some(bot)
+    impl<'b, 'a, T> Reborrow<'b> for RowIter<'a, T> {
+        type Target = RowIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            *self
         }
     }
-}
-
-impl<'a, T> Iterator for RowIter<'a, T> {
-    type Item = RowRef<'a, T>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let ncols = self.0.ncols();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
-            let bot = unsafe {
-                MatRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
-            };
-
-            self.0 = bot;
-
-            Some(top)
+    impl<'b, 'a, T> ReborrowMut<'b> for RowIter<'a, T> {
+        type Target = RowIter<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            *self
+        }
+    }
+    impl<'b, 'a, T> Reborrow<'b> for RowIterMut<'a, T> {
+        type Target = RowIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            RowIter(self.0.rb())
+        }
+    }
+    impl<'b, 'a, T> ReborrowMut<'b> for RowIterMut<'a, T> {
+        type Target = RowIterMut<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            RowIterMut(self.0.rb_mut())
         }
     }
 
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.nrows();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let ncols = self.0.ncols();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let top = unsafe { MatRef::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
-            let bot = unsafe {
-                Self::Item::from_raw_parts(
-                    ptr.wrapping_offset((nrows - 1) as isize * rs),
-                    ncols,
-                    cs,
-                )
-            };
-
-            self.0 = top;
-
-            Some(bot)
+    impl<'b, 'a, T> Reborrow<'b> for ColIter<'a, T> {
+        type Target = ColIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            *self
         }
     }
-}
-
-impl<'a, T> Iterator for RowIterMut<'a, T> {
-    type Item = RowMut<'a, T>;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let ncols = self.0.ncols();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
-            let bot = unsafe {
-                MatMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
-            };
-
-            self.0 = bot;
-
-            Some(top)
+    impl<'b, 'a, T> ReborrowMut<'b> for ColIter<'a, T> {
+        type Target = ColIter<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            *self
+        }
+    }
+    impl<'b, 'a, T> Reborrow<'b> for ColIterMut<'a, T> {
+        type Target = ColIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            ColIter(self.0.rb())
+        }
+    }
+    impl<'b, 'a, T> ReborrowMut<'b> for ColIterMut<'a, T> {
+        type Target = ColIterMut<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            ColIterMut(self.0.rb_mut())
         }
     }
 
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.nrows();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let nrows = self.0.nrows();
-        if nrows == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
-            let ncols = self.0.ncols();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let top = unsafe { MatMut::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
-            let bot = unsafe {
-                Self::Item::from_raw_parts(
-                    ptr.wrapping_offset((nrows - 1) as isize * rs),
-                    ncols,
-                    cs,
-                )
-            };
-
-            self.0 = top;
-
-            Some(bot)
+    impl<'b, 'a, T> Reborrow<'b> for ElemIter<'a, T> {
+        type Target = ElemIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            *self
         }
     }
-}
+    impl<'b, 'a, T> ReborrowMut<'b> for ElemIter<'a, T> {
+        type Target = ElemIter<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            *self
+        }
+    }
+    impl<'b, 'a, T> Reborrow<'b> for ElemIterMut<'a, T> {
+        type Target = ElemIter<'b, T>;
+        #[inline]
+        fn rb(&'b self) -> Self::Target {
+            ElemIter(self.0.rb())
+        }
+    }
+    impl<'b, 'a, T> ReborrowMut<'b> for ElemIterMut<'a, T> {
+        type Target = ElemIterMut<'b, T>;
+        #[inline]
+        fn rb_mut(&'b mut self) -> Self::Target {
+            ElemIterMut(self.0.rb_mut())
+        }
+    }
 
-impl<'a, T> Iterator for ColIter<'a, T> {
-    type Item = ColRef<'a, T>;
+    impl<'a, T> Iterator for ElemIter<'a, T> {
+        type Item = &'a T;
 
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let ncols = self.0.ncols();
-        if ncols == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
             let nrows = self.0.nrows();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
-            let right = unsafe {
-                MatRef::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
-            };
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let rs = self.0.row_stride();
+                let top = unsafe { &*ptr };
+                let bot = unsafe { ColRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
 
-            self.0 = right;
-            Some(left)
+                self.0 = bot;
+
+                Some(top)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.nrows();
+            (len, Some(len))
         }
     }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.ncols();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let ncols = self.0.ncols();
-        if ncols == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
+    impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
             let nrows = self.0.nrows();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let left = unsafe { MatRef::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
-            let right = unsafe {
-                Self::Item::from_raw_parts(
-                    ptr.wrapping_offset((ncols - 1) as isize * cs),
-                    nrows,
-                    rs,
-                )
-            };
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let rs = self.0.row_stride();
+                let top = unsafe { ColRef::from_raw_parts(ptr, nrows - 1, rs) };
+                let bot = unsafe { &*ptr.wrapping_offset(rs * (nrows - 1) as isize) };
 
-            self.0 = left;
-            Some(right)
+                self.0 = top;
+
+                Some(bot)
+            }
         }
     }
-}
-impl<'a, T> Iterator for ColIterMut<'a, T> {
-    type Item = ColMut<'a, T>;
 
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let ncols = self.0.ncols();
-        if ncols == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
+    impl<'a, T> Iterator for ElemIterMut<'a, T> {
+        type Item = &'a mut T;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
             let nrows = self.0.nrows();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
-            let right = unsafe {
-                MatMut::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
-            };
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let rs = self.0.row_stride();
+                let top = unsafe { &mut *ptr };
+                let bot = unsafe { ColMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
 
-            self.0 = right;
-            Some(left)
+                self.0 = bot;
+
+                Some(top)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.nrows();
+            (len, Some(len))
         }
     }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.0.ncols();
-        (len, Some(len))
-    }
-}
-impl<'a, T> DoubleEndedIterator for ColIterMut<'a, T> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Self::Item> {
-        let ncols = self.0.ncols();
-        if ncols == 0 {
-            None
-        } else {
-            let ptr = self.0.base.ptr.as_ptr();
+    impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
             let nrows = self.0.nrows();
-            let rs = self.0.row_stride();
-            let cs = self.0.col_stride();
-            let left = unsafe { MatMut::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
-            let right = unsafe {
-                Self::Item::from_raw_parts(
-                    ptr.wrapping_offset((ncols - 1) as isize * cs),
-                    nrows,
-                    rs,
-                )
-            };
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let rs = self.0.row_stride();
+                let top = unsafe { ColMut::from_raw_parts(ptr, nrows - 1, rs) };
+                let bot = unsafe { &mut *ptr.wrapping_offset(rs * (nrows - 1) as isize) };
 
-            self.0 = left;
-            Some(right)
+                self.0 = top;
+
+                Some(bot)
+            }
         }
     }
-}
 
-impl<'a, T> ExactSizeIterator for RowIter<'a, T> {}
-impl<'a, T> ExactSizeIterator for RowIterMut<'a, T> {}
-impl<'a, T> ExactSizeIterator for ColIter<'a, T> {}
-impl<'a, T> ExactSizeIterator for ColIterMut<'a, T> {}
-impl<'a, T> ExactSizeIterator for ElemIter<'a, T> {}
-impl<'a, T> ExactSizeIterator for ElemIterMut<'a, T> {}
+    impl<'a, T> Iterator for RowIter<'a, T> {
+        type Item = RowRef<'a, T>;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            let nrows = self.0.nrows();
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let ncols = self.0.ncols();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
+                let bot = unsafe {
+                    MatRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
+                };
+
+                self.0 = bot;
+
+                Some(top)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.nrows();
+            (len, Some(len))
+        }
+    }
+    impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
+            let nrows = self.0.nrows();
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let ncols = self.0.ncols();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let top = unsafe { MatRef::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
+                let bot = unsafe {
+                    Self::Item::from_raw_parts(
+                        ptr.wrapping_offset((nrows - 1) as isize * rs),
+                        ncols,
+                        cs,
+                    )
+                };
+
+                self.0 = top;
+
+                Some(bot)
+            }
+        }
+    }
+
+    impl<'a, T> Iterator for RowIterMut<'a, T> {
+        type Item = RowMut<'a, T>;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            let nrows = self.0.nrows();
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let ncols = self.0.ncols();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
+                let bot = unsafe {
+                    MatMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
+                };
+
+                self.0 = bot;
+
+                Some(top)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.nrows();
+            (len, Some(len))
+        }
+    }
+    impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
+            let nrows = self.0.nrows();
+            if nrows == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let ncols = self.0.ncols();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let top = unsafe { MatMut::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
+                let bot = unsafe {
+                    Self::Item::from_raw_parts(
+                        ptr.wrapping_offset((nrows - 1) as isize * rs),
+                        ncols,
+                        cs,
+                    )
+                };
+
+                self.0 = top;
+
+                Some(bot)
+            }
+        }
+    }
+
+    impl<'a, T> Iterator for ColIter<'a, T> {
+        type Item = ColRef<'a, T>;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            let ncols = self.0.ncols();
+            if ncols == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let nrows = self.0.nrows();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
+                let right = unsafe {
+                    MatRef::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
+                };
+
+                self.0 = right;
+                Some(left)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.ncols();
+            (len, Some(len))
+        }
+    }
+    impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
+            let ncols = self.0.ncols();
+            if ncols == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let nrows = self.0.nrows();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let left = unsafe { MatRef::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
+                let right = unsafe {
+                    Self::Item::from_raw_parts(
+                        ptr.wrapping_offset((ncols - 1) as isize * cs),
+                        nrows,
+                        rs,
+                    )
+                };
+
+                self.0 = left;
+                Some(right)
+            }
+        }
+    }
+    impl<'a, T> Iterator for ColIterMut<'a, T> {
+        type Item = ColMut<'a, T>;
+
+        #[inline]
+        fn next(&mut self) -> Option<Self::Item> {
+            let ncols = self.0.ncols();
+            if ncols == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let nrows = self.0.nrows();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
+                let right = unsafe {
+                    MatMut::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
+                };
+
+                self.0 = right;
+                Some(left)
+            }
+        }
+
+        #[inline]
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            let len = self.0.ncols();
+            (len, Some(len))
+        }
+    }
+    impl<'a, T> DoubleEndedIterator for ColIterMut<'a, T> {
+        #[inline]
+        fn next_back(&mut self) -> Option<Self::Item> {
+            let ncols = self.0.ncols();
+            if ncols == 0 {
+                None
+            } else {
+                let ptr = self.0.base.ptr.as_ptr();
+                let nrows = self.0.nrows();
+                let rs = self.0.row_stride();
+                let cs = self.0.col_stride();
+                let left = unsafe { MatMut::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
+                let right = unsafe {
+                    Self::Item::from_raw_parts(
+                        ptr.wrapping_offset((ncols - 1) as isize * cs),
+                        nrows,
+                        rs,
+                    )
+                };
+
+                self.0 = left;
+                Some(right)
+            }
+        }
+    }
+
+    impl<'a, T> ExactSizeIterator for RowIter<'a, T> {}
+    impl<'a, T> ExactSizeIterator for RowIterMut<'a, T> {}
+    impl<'a, T> ExactSizeIterator for ColIter<'a, T> {}
+    impl<'a, T> ExactSizeIterator for ColIterMut<'a, T> {}
+    impl<'a, T> ExactSizeIterator for ElemIter<'a, T> {}
+    impl<'a, T> ExactSizeIterator for ElemIterMut<'a, T> {}
+}
 
 impl<'a, T: Debug> Debug for MatRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2750,6 +2771,31 @@ impl<T: 'static> Mat<T> {
         }
     }
 
+    /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with the provided function.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn with_dims(f: impl Fn(usize, usize) -> T, nrows: usize, ncols: usize) -> Self {
+        let mut this = Self::new();
+        this.resize_with(f, nrows, ncols);
+        this
+    }
+
+    /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with zeros.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn zeros(nrows: usize, ncols: usize) -> Self
+    where
+        T: Zero,
+    {
+        Self::with_dims(|_, _| T::zero(), nrows, ncols)
+    }
+
     /// Set the dimensions of the matrix.
     ///
     /// # Safety
@@ -2758,6 +2804,7 @@ impl<T: 'static> Mat<T> {
     /// * `ncols` must be less than `self.col_capacity()`.
     /// * The elements that were previously out of bounds but are now in bounds must be
     /// initialized.
+    #[inline]
     pub unsafe fn set_dims(&mut self, nrows: usize, ncols: usize) {
         self.nrows = nrows;
         self.ncols = ncols;
@@ -3048,9 +3095,9 @@ impl<T: 'static> Mat<T> {
     /// Resizes the matrix in-place so that the new dimensions are `(new_nrows, new_ncols)`.
     /// Elements that are now out of bounds are dropped, while new elements are created with the
     /// given function `f`, so that elements at position `(i, j)` are created by calling `f(i, j)`.
-    pub fn resize_with<F: Fn(usize, usize) -> T>(
+    pub fn resize_with(
         &mut self,
-        f: F,
+        f: impl Fn(usize, usize) -> T,
         new_nrows: usize,
         new_ncols: usize,
     ) {
@@ -3155,6 +3202,7 @@ impl<T> IndexMut<(usize, usize)> for Mat<T> {
 }
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! __transpose_impl {
     ([$([$($col:expr),*])*] $($v:expr);* ) => {
         [$([$($col),*],)* [$($v),*]]
