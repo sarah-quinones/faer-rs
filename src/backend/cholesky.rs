@@ -1,3 +1,4 @@
+use core::any::TypeId;
 use core::cmp::Ordering;
 use core::ops::Add;
 use core::ops::Div;
@@ -11,6 +12,7 @@ use crate::backend::solve;
 use crate::izip;
 use crate::temp_mat_req;
 use crate::temp_mat_uninit;
+use crate::ColMut;
 use crate::MatMut;
 use crate::MatRef;
 
@@ -19,7 +21,14 @@ use assert2::debug_assert as fancy_debug_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use num_traits::sign::Signed;
 use num_traits::{Inv, One, Zero};
+use pulp::Arch;
 use reborrow::*;
+
+#[inline]
+unsafe fn unreachable_unchecked() -> ! {
+    fancy_debug_assert!(false);
+    core::hint::unreachable_unchecked()
+}
 
 fn cholesky_in_place_left_looking_req<T: 'static>(
     dim: usize,
@@ -285,7 +294,7 @@ unsafe fn cholesky_in_place_unchecked<T>(
 /// The matrix `L` is stored in the strictly lower triangular part of the input matrix, and the
 /// diagonal elements of `D` are stored on the diagonal.
 ///
-/// The strictly upper triangular part of the matrix is untouched.
+/// The strictly upper triangular part of the matrix is not accessed.
 ///
 /// # Warning
 ///
@@ -311,7 +320,7 @@ where
     unsafe { cholesky_in_place_unchecked(matrix, n_threads, stack) }
 }
 
-/// Computes a permutation that reduces the chances of numerical errors during the cholesky
+/// Computes a permutation that reduces the chance of numerical errors during the cholesky
 /// factorization, then stores the result in `perm_indices` and `perm_inv_indices`.
 pub fn compute_cholesky_permutation<'a, T>(
     perm_indices: &'a mut [usize],
@@ -410,6 +419,274 @@ pub fn solve_in_place<T>(
         n_threads,
         stack.rb_mut(),
     );
+}
+
+use core::mem::size_of;
+use pulp::Simd;
+use seq_macro::seq;
+
+macro_rules! generate {
+    ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {
+        #[inline(always)]
+        pub unsafe fn $name<S: Simd, T: 'static>(
+            simd: S,
+            n: usize,
+            l_col: *mut T,
+            w: *mut T,
+            w_col_stride: isize,
+            p_array: *const T,
+            mu_array: *const T,
+        ) {
+            assert_eq!(core::any::TypeId::of::<T>(), core::any::TypeId::of::<$ty>());
+            let l_col = l_col as *mut $ty;
+            let w = w as *mut $ty;
+            let p_array = p_array as *const $ty;
+            let mu_array = mu_array as *const $ty;
+            let lanes = size_of::<$tys>() / size_of::<$ty>();
+
+            let n_vec = n / lanes;
+            let n_rem = n % lanes;
+
+            seq!(I in 0..$r {
+                let p~I = -*p_array.add(I);
+                let mu~I = *mu_array.add(I);
+                let w_col~I = w.offset(I * w_col_stride);
+            });
+
+            // vectorized section
+            {
+                let l_col = l_col as *mut $tys;
+
+                seq!(I in 0..$r {
+                    let p~I = simd.$splat(p~I);
+                    let mu~I = simd.$splat(mu~I);
+                    let w_col~I = w_col~I as *mut $tys;
+                });
+
+                for i in 0..n_vec {
+                    let mut l = *l_col.add(i);
+                    seq!(I in 0..$r {
+                        let mut w~I = *w_col~I.add(i);
+                    });
+
+                    seq!(I in 0..$r {
+                        w~I = simd.$mul_add(p~I, l, w~I);
+                        l = simd.$mul_add(mu~I, w~I, l);
+                    });
+
+                    l_col.add(i).write(l);
+                    seq!(I in 0..$r {
+                        w_col~I.add(i).write(w~I);
+                    });
+                }
+            }
+            // scalar section
+            {
+                for i in n - n_rem..n {
+                    let mut l = *l_col.add(i);
+                    seq!(I in 0..$r {
+                        let mut w~I = *w_col~I.add(i);
+                    });
+
+                    seq!(I in 0..$r {
+                        w~I = $ty::mul_add(p~I, l, w~I);
+                        l = $ty::mul_add(mu~I, w~I, l);
+                    });
+
+                    l_col.add(i).write(l);
+                    seq!(I in 0..$r {
+                        w_col~I.add(i).write(w~I);
+                    });
+                }
+            }
+        }
+    };
+}
+
+macro_rules! generate_generic {
+    ($name: ident, $r: tt) => {
+        #[inline(always)]
+        pub unsafe fn $name<S: Simd, T: 'static>(
+            _simd: S,
+            n: usize,
+            l_col: *mut T,
+            l_row_stride: isize,
+            w: *mut T,
+            w_row_stride: isize,
+            w_col_stride: isize,
+            p_array: *const T,
+            mu_array: *const T,
+        ) where
+            T: Clone,
+            for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T>,
+        {
+            seq!(I in 0..$r {
+                let p~I = &-&*p_array.add(I);
+                let mu~I = &(*mu_array.add(I)).clone();
+                let w_col~I = w.offset(I * w_col_stride);
+            });
+
+            for i in 0..n {
+                let mut l = (*l_col.offset(i as isize * l_row_stride)).clone();
+                seq!(I in 0..$r {
+                    let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
+                });
+
+                seq!(I in 0..$r {
+                    w~I = &(p~I * &l) + &w~I;
+                    l = &(mu~I * &w~I) + &l;
+                });
+
+                *l_col.offset(i as isize * l_row_stride) = l;
+                seq!(I in 0..$r {
+                    *w_col~I.offset(i as isize * w_row_stride) = w~I;
+                });
+            }
+        }
+    };
+}
+
+generate_generic!(rank_1, 1);
+generate_generic!(rank_2, 2);
+generate_generic!(rank_3, 3);
+generate_generic!(rank_4, 4);
+
+generate!(rank_1_f64, 1, f64, S::f64s, f64s_splat, f64s_mul_adde);
+generate!(rank_2_f64, 2, f64, S::f64s, f64s_splat, f64s_mul_adde);
+generate!(rank_3_f64, 3, f64, S::f64s, f64s_splat, f64s_mul_adde);
+generate!(rank_4_f64, 4, f64, S::f64s, f64s_splat, f64s_mul_adde);
+
+generate!(rank_1_f32, 1, f32, S::f32s, f32s_splat, f32s_mul_adde);
+generate!(rank_2_f32, 2, f32, S::f32s, f32s_splat, f32s_mul_adde);
+generate!(rank_3_f32, 3, f32, S::f32s, f32s_splat, f32s_mul_adde);
+generate!(rank_4_f32, 4, f32, S::f32s, f32s_splat, f32s_mul_adde);
+
+struct RankRUpdate<'a, T> {
+    ld: MatMut<'a, T>,
+    w: MatMut<'a, T>,
+    alpha: ColMut<'a, T>,
+    r: &'a mut dyn FnMut() -> usize,
+}
+
+impl<'a, T> pulp::WithSimd for RankRUpdate<'a, T>
+where
+    T: Zero + Clone + 'static,
+    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
+{
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: Simd>(self, s: S) -> Self::Output {
+        let RankRUpdate {
+            mut ld,
+            mut w,
+            mut alpha,
+            r,
+        } = self;
+        let n = ld.nrows();
+        let k = w.ncols();
+
+        fancy_debug_assert!(ld.ncols() == n);
+        fancy_debug_assert!(w.nrows() == n);
+        fancy_debug_assert!(alpha.nrows() == k);
+
+        let l_rs = ld.row_stride();
+        let w_cs = w.col_stride();
+        let w_rs = w.row_stride();
+
+        unsafe {
+            for j in 0..n {
+                let r = (*r)().min(k);
+
+                let mut r_idx = 0;
+                while r_idx < r {
+                    let r_chunk = (r - r_idx).min(4);
+                    let mut p_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+                    let mut mu_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+
+                    let mut dj = ld.rb().get_unchecked(j, j).clone();
+                    for k in 0..r_chunk {
+                        let p = p_array.get_unchecked_mut(k);
+                        let mu = mu_array.get_unchecked_mut(k);
+                        let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
+                        *p = w.rb().get_unchecked(j, r_idx + k).clone();
+                        let new_dj = &dj + &(&(&*alpha * &*p) * &*p);
+                        *mu = &(&*alpha * &*p) * &new_dj.inv();
+                        *alpha = &*alpha + &-&(&new_dj * &(&*mu * &*mu));
+
+                        dj = new_dj;
+                    }
+                    *ld.rb_mut().get_unchecked(j, j) = dj;
+
+                    let rem = n - j - 1;
+
+                    let ld_ptr = ld.rb_mut().ptr_at(j + 1, j);
+                    let w_ptr = w.rb_mut().ptr_at(j + 1, r_idx);
+                    let p = p_array.as_ptr();
+                    let mu = mu_array.as_ptr();
+
+                    if TypeId::of::<T>() == TypeId::of::<f64>() && l_rs == 1 && w_rs == 1 {
+                        match r_chunk {
+                            1 => s.vectorize(|| rank_1_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            2 => s.vectorize(|| rank_2_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            3 => s.vectorize(|| rank_3_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            4 => s.vectorize(|| rank_4_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            _ => unreachable_unchecked(),
+                        };
+                    } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
+                        match r_chunk {
+                            1 => s.vectorize(|| rank_1_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            2 => s.vectorize(|| rank_2_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            3 => s.vectorize(|| rank_3_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            4 => s.vectorize(|| rank_4_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            _ => unreachable_unchecked(),
+                        };
+                    } else {
+                        match r_chunk {
+                            1 => s.vectorize(|| {
+                                rank_1(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)
+                            }),
+                            2 => s.vectorize(|| {
+                                rank_2(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)
+                            }),
+                            3 => s.vectorize(|| {
+                                rank_3(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)
+                            }),
+                            4 => s.vectorize(|| {
+                                rank_4(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)
+                            }),
+                            _ => unreachable_unchecked(),
+                        };
+                    }
+
+                    r_idx += r_chunk;
+                }
+            }
+        }
+    }
+}
+
+pub fn rank_r_update_clobber<T>(
+    cholesky_factors: MatMut<'_, T>,
+    w: MatMut<'_, T>,
+    alpha: ColMut<'_, T>,
+) where
+    T: Zero + Clone + 'static,
+    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
+{
+    let n = cholesky_factors.nrows();
+    let k = w.ncols();
+
+    fancy_assert!(cholesky_factors.ncols() == n);
+    fancy_assert!(w.nrows() == n);
+    fancy_assert!(alpha.nrows() == k);
+
+    Arch::new().dispatch(RankRUpdate {
+        ld: cholesky_factors,
+        w,
+        alpha,
+        r: &mut || k,
+    });
 }
 
 #[cfg(test)]
@@ -557,6 +834,103 @@ mod tests {
         for j in 0..k {
             for i in 0..n {
                 assert_approx_eq!(result[(i, j)], rhs_orig[(i, j)]);
+            }
+        }
+    }
+
+    #[test]
+    pub fn test_update() {
+        use mul::triangular::BlockStructure::*;
+        let random = |_, _| random::<f64>();
+
+        for k in [0, 1, 2, 3, 4, 5] {
+            let n = 511;
+            let mut a = Mat::with_dims(random, n, n);
+            let mut a_updated = a.clone();
+            let mut w = Mat::with_dims(random, n, k);
+            let mut alpha = Mat::with_dims(random, k, 1);
+            let alpha = alpha.as_mut().col(0);
+
+            let mut w_alpha = Mat::zeros(n, k);
+            for j in 0..k {
+                for i in 0..n {
+                    w_alpha[(i, j)] = alpha[j] * w[(i, j)];
+                }
+            }
+
+            mul::triangular::matmul(
+                a_updated.as_mut(),
+                TriangularLower,
+                w_alpha.as_ref(),
+                Rectangular,
+                w.as_ref().transpose(),
+                Rectangular,
+                Some(&1.0),
+                &1.0,
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    mul::triangular::matmul_req::<f64>(
+                        TriangularLower,
+                        Rectangular,
+                        Rectangular,
+                        n,
+                        n,
+                        k,
+                        12,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            raw_cholesky_in_place(
+                a.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
+                )),
+            );
+
+            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
+
+            let mut lxd = Mat::zeros(n, n);
+            for j in 0..n {
+                let dj = a[(j, j)];
+                lxd[(j, j)] = dj;
+                for i in j + 1..n {
+                    lxd[(i, j)] = a[(i, j)] * dj;
+                }
+            }
+
+            let mut a_reconstructed = Mat::zeros(n, n);
+
+            mul::triangular::matmul(
+                a_reconstructed.as_mut(),
+                Rectangular,
+                lxd.as_ref(),
+                TriangularLower,
+                a.as_ref().transpose(),
+                UnitTriangularUpper,
+                None,
+                &1.0,
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    mul::triangular::matmul_req::<f64>(
+                        Rectangular,
+                        TriangularLower,
+                        TriangularUpper,
+                        n,
+                        n,
+                        n,
+                        12,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_updated[(i, j)], 1e-5);
+                }
             }
         }
     }
