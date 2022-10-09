@@ -3204,11 +3204,11 @@ impl<T> IndexMut<(usize, usize)> for Mat<T> {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __transpose_impl {
-    ([$([$($col:expr),*])*] $($v:expr);* ) => {
-        [$([$($col),*],)* [$($v),*]]
+    ([$([$($col:expr),*])*] $($v:expr;)* ) => {
+        [$([$($col,)*],)* [$($v,)*]]
     };
-    ([$([$($col:expr),*])*] $($v0:expr, $($v:expr),* );* $(;)?) => {
-        $crate::__transpose_impl!([$([$($col),*]),* [$($v0),*]] $($($v),* );*)
+    ([$([$($col:expr),*])*] $($v0:expr, $($v:expr),* ;)*) => {
+        $crate::__transpose_impl!([$([$($col),*])* [$($v0),*]] $($($v),* ;)*)
     };
 }
 
@@ -3222,7 +3222,7 @@ macro_rules! mat {
 
     ($([$($v:expr),* $(,)?] ),* $(,)?) => {
         {
-            let data = ::core::mem::ManuallyDrop::new($crate::__transpose_impl!([] $($($v),* );*));
+            let data = ::core::mem::ManuallyDrop::new($crate::__transpose_impl!([] $($($v),* ;)*));
             let data = &*data;
             let ncols = data.len();
             let nrows = (*data.get(0).unwrap()).len();
