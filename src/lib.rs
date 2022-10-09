@@ -17,6 +17,12 @@ use reborrow::*;
 
 pub mod backend;
 
+#[inline]
+unsafe fn unreachable_unchecked() -> ! {
+    fancy_debug_assert!(false);
+    core::hint::unreachable_unchecked()
+}
+
 mod seal {
     use crate::{MatMut, MatRef};
 

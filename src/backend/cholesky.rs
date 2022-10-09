@@ -12,6 +12,7 @@ use crate::backend::solve;
 use crate::izip;
 use crate::temp_mat_req;
 use crate::temp_mat_uninit;
+use crate::unreachable_unchecked;
 use crate::ColMut;
 use crate::MatMut;
 use crate::MatRef;
@@ -23,12 +24,6 @@ use num_traits::sign::Signed;
 use num_traits::{Inv, One, Zero};
 use pulp::Arch;
 use reborrow::*;
-
-#[inline]
-unsafe fn unreachable_unchecked() -> ! {
-    fancy_debug_assert!(false);
-    core::hint::unreachable_unchecked()
-}
 
 fn cholesky_in_place_left_looking_req<T: 'static>(
     dim: usize,
@@ -220,7 +215,7 @@ unsafe fn cholesky_in_place_unchecked<T>(
     n_threads: usize,
     stack: DynStack<'_>,
 ) where
-    T: Zero + One + Clone + Neg<Output = T> + Send + Sync + 'static,
+    T: Zero + One + Clone + Send + Sync + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     // right looking cholesky
@@ -310,7 +305,7 @@ unsafe fn cholesky_in_place_unchecked<T>(
 #[inline]
 pub fn raw_cholesky_in_place<T>(matrix: MatMut<'_, T>, n_threads: usize, stack: DynStack<'_>)
 where
-    T: Zero + One + Clone + Neg<Output = T> + Send + Sync + 'static,
+    T: Zero + One + Clone + Send + Sync + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
 {
     fancy_assert!(
@@ -322,6 +317,7 @@ where
 
 /// Computes a permutation that reduces the chance of numerical errors during the cholesky
 /// factorization, then stores the result in `perm_indices` and `perm_inv_indices`.
+#[track_caller]
 pub fn compute_cholesky_permutation<'a, T>(
     perm_indices: &'a mut [usize],
     perm_inv_indices: &'a mut [usize],
@@ -668,6 +664,7 @@ where
 ///
 /// The matrix `W` and the vector `α` are clobbered, meaning that the values they contain after the
 /// function returns are unspecified.
+#[track_caller]
 pub fn rank_r_update_clobber<T>(
     cholesky_factors: MatMut<'_, T>,
     w: MatMut<'_, T>,
@@ -744,6 +741,7 @@ fn rank_update_indices(start_col: usize, indices: &[usize]) -> impl FnMut() -> u
     }
 }
 
+#[track_caller]
 pub fn delete_rows_and_cols_clobber_req<T: 'static>(
     dim: usize,
     number_of_rows_to_remove: usize,
@@ -752,6 +750,7 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
     StackReq::try_all_of([temp_mat_req::<T>(dim, r)?, temp_mat_req::<T>(r, 1)?])
 }
 
+#[track_caller]
 pub fn delete_rows_and_cols_clobber<T: Clone>(
     cholesky_factors: MatMut<'_, T>,
     indices: &mut [usize],
@@ -770,6 +769,14 @@ pub fn delete_rows_and_cols_clobber<T: Clone>(
     }
 
     indices.sort_unstable();
+    for i in 0..r - 1 {
+        fancy_assert!(indices[i + 1] > indices[i]);
+    }
+    fancy_assert!(indices[r - 1] < n);
+
+    // TODO: check that there are no duplicates
+    // check that they are in bounds
+
     let first = indices[0];
 
     temp_mat_uninit! {
@@ -814,6 +821,169 @@ pub fn delete_rows_and_cols_clobber<T: Clone>(
         alpha,
         r: &mut rank_update_indices(first, indices),
     });
+}
+
+#[track_caller]
+pub fn insert_rows_and_cols_clobber<T>(
+    cholesky_factors_extended: MatMut<'_, T>,
+    insertion_index: usize,
+    inserted_matrix: MatMut<'_, T>,
+    n_threads: usize,
+    stack: DynStack<'_>,
+) where
+    T: Zero + One + Clone + Send + Sync + 'static,
+    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
+{
+    let new_n = cholesky_factors_extended.nrows();
+    let r = inserted_matrix.ncols();
+
+    fancy_assert!(cholesky_factors_extended.ncols() == new_n);
+    fancy_assert!(r < new_n);
+    let old_n = new_n - r;
+
+    fancy_assert!(insertion_index <= old_n);
+
+    if r == 0 {
+        return;
+    }
+
+    let mut current_col = old_n;
+
+    let mut ld = cholesky_factors_extended;
+
+    while current_col != insertion_index {
+        current_col -= 1;
+
+        unsafe {
+            for i in (current_col..old_n).rev() {
+                *ld.rb_mut()
+                    .ptr_in_bounds_at_unchecked(i + r, current_col + r) =
+                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+            }
+        }
+    }
+
+    while current_col != 0 {
+        current_col -= 1;
+        unsafe {
+            for i in (insertion_index..old_n).rev() {
+                *ld.rb_mut().ptr_in_bounds_at_unchecked(i + r, current_col) =
+                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+            }
+        }
+    }
+
+    let (ld00, _, l_bot_left, ld_bot_right) =
+        unsafe { ld.split_at_unchecked(insertion_index, insertion_index) };
+    let ld00 = ld00.into_const();
+    let d0 = unsafe { ld00.diagonal_unchecked() };
+
+    let (_, mut l10, _, l20) = unsafe { l_bot_left.split_at_unchecked(r, 0) };
+    let (mut ld11, _, mut l21, ld22) = unsafe { ld_bot_right.split_at_unchecked(r, r) };
+
+    let (_, mut a01, _, a_bottom) =
+        unsafe { inserted_matrix.split_at_unchecked(insertion_index, 0) };
+    let (_, a11, _, a21) = unsafe { a_bottom.split_at_unchecked(r, 0) };
+
+    let mut stack = stack;
+
+    solve::triangular::solve_unit_lower_triangular_in_place(
+        ld00.rb(),
+        a01.rb_mut(),
+        n_threads,
+        stack.rb_mut(),
+    );
+
+    let a10 = a01.rb().transpose();
+
+    for j in 0..insertion_index {
+        let d0_inv = unsafe { d0.get_unchecked(j) }.inv();
+        for i in 0..r {
+            unsafe {
+                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = a10.get_unchecked(i, j) * &d0_inv;
+            }
+        }
+    }
+
+    for j in 0..r {
+        for i in j..r {
+            unsafe {
+                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    a11.rb().get_unchecked(i, j).clone();
+            }
+        }
+    }
+
+    mul::triangular::matmul(
+        ld11.rb_mut(),
+        BlockStructure::TriangularLower,
+        l10.rb(),
+        BlockStructure::Rectangular,
+        a01.rb(),
+        BlockStructure::Rectangular,
+        Some(&T::one()),
+        &-&T::one(),
+        n_threads,
+        stack.rb_mut(),
+    );
+
+    raw_cholesky_in_place(ld11.rb_mut(), n_threads, stack.rb_mut());
+    let ld11 = ld11.into_const();
+
+    let rem = l21.nrows();
+
+    for j in 0..r {
+        for i in 0..rem {
+            unsafe {
+                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    a21.rb().get_unchecked(i, j).clone();
+            }
+        }
+    }
+
+    mul::matmul(
+        l21.rb_mut(),
+        l20.rb(),
+        a01.rb(),
+        Some(&T::one()),
+        &-&T::one(),
+        n_threads,
+        stack.rb_mut(),
+    );
+
+    solve::triangular::solve_unit_lower_triangular_in_place(
+        ld11,
+        l21.rb_mut().transpose(),
+        n_threads,
+        stack.rb_mut(),
+    );
+
+    let d1 = ld11.into_const().diagonal();
+
+    for j in 0..r {
+        unsafe {
+            let d1_inv = &d1.get_unchecked(j).inv();
+            for i in 0..rem {
+                let dst = l21.rb_mut().get_unchecked(i, j);
+                *dst = &*dst * d1_inv;
+            }
+        }
+    }
+
+    let mut alpha = unsafe { a11.col_unchecked(0) };
+    let mut w = a21;
+
+    for j in 0..r {
+        unsafe {
+            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -ld11.rb().get_unchecked(j, j);
+
+            for i in 0..rem {
+                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get(i, j).clone();
+            }
+        }
+    }
+
+    rank_r_update_clobber(ld22, w, alpha);
 }
 
 #[cfg(test)]
@@ -868,7 +1038,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_roundtrip() {
+    fn test_roundtrip() {
         let n = 511;
         let mut a = Mat::with_dims(|_, _| random::<f64>(), n, n);
         let a_orig = a.clone();
@@ -891,7 +1061,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_solve() {
+    fn test_solve() {
         let n = 4;
         let k = 5;
         let mut a = Mat::with_dims(|_, _| random::<f64>(), n, n);
@@ -974,7 +1144,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_update() {
+    fn test_update() {
         use mul::triangular::BlockStructure::*;
         let random = |_, _| random::<f64>();
 
@@ -1038,8 +1208,8 @@ mod tests {
     }
 
     #[test]
-    pub fn test_delete() {
-        let a = mat![
+    fn test_delete() {
+        let a_orig = mat![
             [1.0, 0.0, 0.0, 0.0],
             [2.0, 5.0, 0.0, 0.0],
             [3.0, 6.0, 8.0, 0.0],
@@ -1047,8 +1217,7 @@ mod tests {
         ];
 
         {
-            let mut a = a.clone();
-            let a_orig = a.clone();
+            let mut a = a_orig.clone();
             let n = a.nrows();
             let r = 2;
 
@@ -1075,8 +1244,7 @@ mod tests {
         }
 
         {
-            let mut a = a.clone();
-            let a_orig = a.clone();
+            let mut a = a_orig.clone();
             let n = a.nrows();
             let r = 2;
 
@@ -1103,8 +1271,7 @@ mod tests {
         }
 
         {
-            let mut a = a.clone();
-            let a_orig = a.clone();
+            let mut a = a_orig.clone();
             let n = a.nrows();
             let r = 3;
 
@@ -1126,6 +1293,169 @@ mod tests {
 
             let a_reconstructed = reconstruct_matrix(a.as_ref().submatrix(0, 0, n - r, n - r));
             assert_approx_eq!(a_reconstructed[(0, 0)], a_orig[(1, 1)]);
+        }
+    }
+
+    #[test]
+    fn test_insert() {
+        let a_orig = mat![
+            [1.0, 2.0, 3.0, 4.0],
+            [2.0, 5.0, 6.0, 7.0],
+            [3.0, 6.0, 8.0, 9.0],
+            [4.0, 7.0, 9.0, 10.0],
+        ];
+
+        {
+            let mut a = a_orig.clone();
+
+            let mut w = mat![
+                [11.0, 17.0],
+                [12.0, 18.0],
+                [13.0, 14.0],
+                [14.0, 20.0],
+                [15.0, 21.0],
+                [16.0, 22.0],
+            ];
+
+            let a_new = mat![
+                [1.0, 2.0, 11.0, 17.0, 3.0, 4.0],
+                [2.0, 5.0, 12.0, 18.0, 6.0, 7.0],
+                [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
+                [17.0, 18.0, 14.0, 20.0, 21.0, 22.0],
+                [3.0, 6.0, 15.0, 21.0, 8.0, 9.0],
+                [4.0, 7.0, 16.0, 22.0, 9.0, 10.0],
+            ];
+
+            let n = a.nrows();
+            let r = w.ncols();
+            let position = 2;
+
+            raw_cholesky_in_place(
+                a.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
+                )),
+            );
+
+            a.resize_with(|_, _| 0.0, n + r, n + r);
+            insert_rows_and_cols_clobber(
+                a.as_mut(),
+                position,
+                w.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<f64>(1024))),
+            );
+
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
+
+            for j in 0..n + r {
+                for i in 0..n + r {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
+                }
+            }
+        }
+
+        {
+            let mut a = a_orig.clone();
+
+            let mut w = mat![
+                [11.0, 12.0],
+                [12.0, 18.0],
+                [13.0, 19.0],
+                [14.0, 20.0],
+                [15.0, 21.0],
+                [16.0, 22.0],
+            ];
+
+            let a_new = mat![
+                [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
+                [12.0, 18.0, 19.0, 20.0, 21.0, 22.0],
+                [13.0, 19.0, 1.0, 2.0, 3.0, 4.0],
+                [14.0, 20.0, 2.0, 5.0, 6.0, 7.0],
+                [15.0, 21.0, 3.0, 6.0, 8.0, 9.0],
+                [16.0, 22.0, 4.0, 7.0, 9.0, 10.0],
+            ];
+
+            let n = a.nrows();
+            let r = w.ncols();
+            let position = 0;
+
+            raw_cholesky_in_place(
+                a.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
+                )),
+            );
+
+            a.resize_with(|_, _| 0.0, n + r, n + r);
+            insert_rows_and_cols_clobber(
+                a.as_mut(),
+                position,
+                w.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<f64>(1024))),
+            );
+
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
+
+            for j in 0..n + r {
+                for i in 0..n + r {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
+                }
+            }
+        }
+
+        {
+            let mut a = a_orig.clone();
+
+            let mut w = mat![
+                [11.0, 17.0],
+                [12.0, 18.0],
+                [13.0, 19.0],
+                [14.0, 20.0],
+                [15.0, 16.0],
+                [16.0, 22.0],
+            ];
+
+            let a_new = mat![
+                [1.0, 2.0, 3.0, 4.0, 11.0, 17.0],
+                [2.0, 5.0, 6.0, 7.0, 12.0, 18.0],
+                [3.0, 6.0, 8.0, 9.0, 13.0, 19.0],
+                [4.0, 7.0, 9.0, 10.0, 14.0, 20.0],
+                [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
+                [17.0, 18.0, 19.0, 20.0, 16.0, 22.0],
+            ];
+
+            let n = a.nrows();
+            let r = w.ncols();
+            let position = 4;
+
+            raw_cholesky_in_place(
+                a.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
+                )),
+            );
+
+            a.resize_with(|_, _| 0.0, n + r, n + r);
+            insert_rows_and_cols_clobber(
+                a.as_mut(),
+                position,
+                w.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<f64>(1024))),
+            );
+
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
+
+            for j in 0..n + r {
+                for i in 0..n + r {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
+                }
+            }
         }
     }
 }
