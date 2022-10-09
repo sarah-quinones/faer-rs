@@ -30,7 +30,7 @@ pub fn matmul_req<T: 'static>(
 
 /// Same as [`matmul`], except that panics become undefined behavior.
 #[inline]
-unsafe fn matmul_unchecked<T>(
+pub unsafe fn matmul_unchecked<T>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
@@ -1677,7 +1677,7 @@ pub mod triangular {
 
     /// Same as [`matmul`], except that panics become undefined behavior.
     #[inline]
-    unsafe fn matmul_unchecked<T>(
+    pub unsafe fn matmul_unchecked<T>(
         dst: MatMut<'_, T>,
         dst_structure: BlockStructure,
         lhs: MatRef<'_, T>,

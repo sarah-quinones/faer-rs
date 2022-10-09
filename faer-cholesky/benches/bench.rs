@@ -2,11 +2,12 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
 use reborrow::*;
 
-use faer::Mat;
+use faer_core::Mat;
 use nalgebra::DMatrix;
 
 pub fn cholesky(c: &mut Criterion) {
-    use faer::backend::cholesky::*;
+    use faer_cholesky::ldlt::compute::*;
+
     for n in [64, 128, 256, 512, 1024] {
         c.bench_function(&format!("faer-st-cholesky-{n}"), |b| {
             let mut mat = Mat::new();

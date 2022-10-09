@@ -15,13 +15,10 @@ use dyn_stack::{SizeOverflow, StackReq};
 use iter::*;
 use reborrow::*;
 
-pub mod backend;
-
-#[inline]
-unsafe fn unreachable_unchecked() -> ! {
-    fancy_debug_assert!(false);
-    core::hint::unreachable_unchecked()
-}
+pub mod mul;
+pub mod permutation;
+pub mod solve;
+pub mod symmetric;
 
 mod seal {
     use crate::{MatMut, MatRef};
@@ -2433,6 +2430,8 @@ pub unsafe fn from_uninit_mut_slice<T>(
 }
 
 // https://docs.rs/itertools/0.7.8/src/itertools/lib.rs.html#247-269
+#[macro_export]
+#[doc(hidden)]
 macro_rules! izip {
     // eg. izip!(((a, b), c) => (a, b, c) , dd , ee )
     (@ __closure @ $p:pat => $tup:expr) => {
@@ -2456,8 +2455,6 @@ macro_rules! izip {
         }
     };
 }
-
-pub(crate) use izip;
 
 #[macro_export]
 macro_rules! temp_mat_uninit {

@@ -23,7 +23,7 @@ pub mod triangular {
         }
         StackReq::try_any_of([
             solve_unit_lower_triangular_in_place_req::<T>(dim / 2, rhs_ncols, n_threads)?,
-            crate::backend::mul::matmul_req::<T>(n - n / 2, n / 2, k, n_threads)?,
+            crate::mul::matmul_req::<T>(n - n / 2, n / 2, k, n_threads)?,
             solve_unit_lower_triangular_in_place_req::<T>(dim - dim / 2, rhs_ncols, n_threads)?,
         ])
     }
@@ -40,7 +40,7 @@ pub mod triangular {
         }
         StackReq::try_any_of([
             solve_unit_upper_triangular_in_place_req::<T>(dim / 2, rhs_ncols, n_threads)?,
-            crate::backend::mul::matmul_req::<T>(n - n / 2, n / 2, k, n_threads)?,
+            crate::mul::matmul_req::<T>(n - n / 2, n / 2, k, n_threads)?,
             solve_unit_upper_triangular_in_place_req::<T>(dim - dim / 2, rhs_ncols, n_threads)?,
         ])
     }
@@ -83,7 +83,7 @@ pub mod triangular {
         }
     }
 
-    pub(crate) unsafe fn solve_unit_lower_triangular_in_place_unchecked<T>(
+    pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T>(
         tril: MatRef<'_, T>,
         rhs: MatMut<'_, T>,
         n_threads: usize,
@@ -115,7 +115,7 @@ pub mod triangular {
             stack.rb_mut(),
         );
 
-        crate::backend::mul::matmul(
+        crate::mul::matmul(
             rhs_bot.rb_mut(),
             tril_bot_left,
             rhs_top.into_const(),
@@ -160,7 +160,7 @@ pub mod triangular {
             stack.rb_mut(),
         );
 
-        crate::backend::mul::matmul(
+        crate::mul::matmul(
             rhs_top.rb_mut(),
             triu_top_right,
             rhs_bot.into_const(),
