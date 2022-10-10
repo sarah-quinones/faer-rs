@@ -1,7 +1,6 @@
 use crate::{MatMut, MatRef};
 
-use assert2::assert as fancy_assert;
-use assert2::debug_assert as fancy_debug_assert;
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use num_traits::{One, Zero};
 use reborrow::*;

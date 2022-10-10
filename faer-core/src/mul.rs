@@ -1,10 +1,8 @@
-use core::ops::Add;
-use core::ops::Mul;
+use core::ops::{Add, Mul};
 
 use crate::{join, MatMut, MatRef};
 
-use assert2::assert as fancy_assert;
-use assert2::debug_assert as fancy_debug_assert;
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use gemm::{gemm, gemm_req};
 use num_traits::{One, Zero};
@@ -132,7 +130,8 @@ pub fn matmul<T>(
 
 pub mod triangular {
     use super::*;
-    use crate::{izip, join_req, temp_mat_req, temp_mat_uninit};
+    use crate::zip::{ColUninit, MatUninit};
+    use crate::{join_req, temp_mat_req, temp_mat_uninit};
 
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
@@ -143,7 +142,7 @@ pub mod triangular {
     }
 
     unsafe fn copy_lower<T: Clone + Zero + One>(
-        dst: MatMut<'_, T>,
+        mut dst: MatMut<'_, T>,
         src: MatRef<'_, T>,
         src_diag: DiagonalKind,
     ) {
@@ -153,37 +152,37 @@ pub mod triangular {
         fancy_debug_assert!(n == src.nrows());
         fancy_debug_assert!(n == src.ncols());
 
-        for (j, (mut dst_col, src_col)) in
-            izip!(dst.into_col_iter(), src.into_col_iter()).enumerate()
-        {
-            let diag_ptr = dst_col.rb_mut().ptr_in_bounds_at_unchecked(j);
-            let offset = match src_diag {
-                DiagonalKind::Zero => {
-                    *diag_ptr = T::zero();
-                    1
+        let strict = match src_diag {
+            DiagonalKind::Zero => {
+                for j in 0..n {
+                    *dst.rb_mut().ptr_in_bounds_at(j, j) = T::zero();
                 }
-                DiagonalKind::Unit => {
-                    *diag_ptr = T::one();
-                    1
-                }
-                DiagonalKind::Generic => 0,
-            };
-            let (mut dst_prefix, _) = dst_col.rb_mut().split_at_unchecked(j);
-            for i in 0..dst_prefix.nrows() {
-                *dst_prefix.rb_mut().ptr_in_bounds_at_unchecked(i) = T::zero();
+                true
             }
+            DiagonalKind::Unit => {
+                for j in 0..n {
+                    *dst.rb_mut().ptr_in_bounds_at(j, j) = T::one();
+                }
+                true
+            }
+            DiagonalKind::Generic => false,
+        };
 
-            let (_, src_col) = src_col.split_at_unchecked(j + offset);
-            let (_, mut dst_col) = dst_col.split_at_unchecked(j + offset);
-            for i in 0..dst_col.nrows() {
-                *dst_col.rb_mut().ptr_in_bounds_at_unchecked(i) =
-                    (*src_col.ptr_in_bounds_at_unchecked(i)).clone();
-            }
-        }
+        MatUninit(dst.rb_mut())
+            .cwise()
+            .for_each_triangular_upper(true, |dst| {
+                *dst = T::zero();
+            });
+        MatUninit(dst)
+            .cwise()
+            .zip_unchecked(src)
+            .for_each_triangular_lower(strict, |dst, src| {
+                *dst = src.clone();
+            });
     }
 
     unsafe fn accum_lower<T: Clone + Zero>(
-        mut dst: MatMut<'_, T>,
+        dst: MatMut<'_, T>,
         src: MatRef<'_, T>,
         skip_diag: bool,
         alpha: Option<&T>,
@@ -198,22 +197,19 @@ pub mod triangular {
 
         match alpha {
             Some(alpha) => {
-                for j in 0..n {
-                    for i in (j + skip_diag as usize)..n {
-                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
-                        let src = src.ptr_in_bounds_at_unchecked(i, j);
+                dst.cwise()
+                    .zip_unchecked(src)
+                    .for_each_triangular_lower(skip_diag, |dst, src| {
                         *dst = &(alpha * &*dst) + &*src;
-                    }
-                }
+                    });
             }
             None => {
-                for j in 0..n {
-                    for i in (j + skip_diag as usize)..n {
-                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
-                        let src = src.ptr_in_bounds_at_unchecked(i, j);
-                        *dst = (*src).clone();
-                    }
-                }
+                MatUninit(dst)
+                    .cwise()
+                    .zip_unchecked(src)
+                    .for_each_triangular_lower(skip_diag, |dst, src| {
+                        *dst = src.clone();
+                    });
             }
         }
     }
@@ -507,13 +503,10 @@ pub mod triangular {
                     n_threads,
                     stack,
                 );
-                for j in 0..bs {
-                    for i in 0..rem {
-                        let dst = dst_bot_left.rb_mut().ptr_in_bounds_at(i, j);
-                        let src = temp_dst_bot_left.rb().ptr_in_bounds_at(i, j);
-                        *dst = &*dst + (&*src);
-                    }
-                }
+                dst_bot_left
+                    .cwise()
+                    .zip(temp_dst_bot_left.into_const())
+                    .for_each(|dst, temp| *dst = &*dst + temp);
             }
         }
     }
@@ -703,14 +696,10 @@ pub mod triangular {
                     stack,
                 );
 
-                for (dst_col, temp_dst_col) in izip!(
-                    dst_left.into_col_iter(),
-                    temp_dst.into_const().into_col_iter()
-                ) {
-                    for (dst_elem, temp_dst_elem) in izip!(dst_col, temp_dst_col) {
-                        *dst_elem = &*dst_elem + temp_dst_elem;
-                    }
-                }
+                dst_left
+                    .cwise()
+                    .zip(temp_dst.into_const())
+                    .for_each(|dst, temp| *dst = &*dst + temp);
             }
         }
     }
@@ -943,14 +932,10 @@ pub mod triangular {
                     stack,
                 );
 
-                for (dst_col, temp_dst_col) in izip!(
-                    dst_bot_left.into_col_iter(),
-                    temp_dst_bot_left.into_const().into_col_iter()
-                ) {
-                    for (dst_elem, temp_dst_elem) in izip!(dst_col, temp_dst_col) {
-                        *dst_elem = &*dst_elem + temp_dst_elem;
-                    }
-                }
+                dst_bot_left
+                    .cwise()
+                    .zip(temp_dst_bot_left.into_const())
+                    .for_each(|dst, temp| *dst = &*dst + temp);
             }
         }
     }
@@ -1603,7 +1588,8 @@ pub mod triangular {
         }
     }
 
-    /// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in `dst`.  
+    /// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in
+    /// `dst`.
     ///
     /// The left hand side and right hand side may be interpreted as triangular depending on the
     /// given corresponding matrix structure.  
@@ -1615,8 +1601,8 @@ pub mod triangular {
     /// - only the strict triangular half (excluding the diagonal) is computed if the structure is
     /// strictly triangular or unit triangular.
     ///
-    /// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to be
-    /// a view over uninitialized values if `T: Copy`.
+    /// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to
+    /// be a view over uninitialized values if `T: Copy`.
     ///
     /// # Panics
     ///
@@ -1745,23 +1731,14 @@ pub mod triangular {
             false
         };
 
-        let clear_upper = |mut dst: MatMut<'_, T>, skip_diag: bool| match alpha {
-            Some(alpha) => {
-                for j in 0..dst.ncols() {
-                    for i in 0..j + (!skip_diag) as usize {
-                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
-                        *dst = alpha * &*dst;
-                    }
-                }
-            }
-            None => {
-                for j in 0..dst.ncols() {
-                    for i in 0..j + (!skip_diag) as usize {
-                        let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
-                        *dst = T::zero();
-                    }
-                }
-            }
+        let clear_upper = |dst: MatMut<'_, T>, skip_diag: bool| match alpha {
+            Some(alpha) => dst
+                .cwise()
+                .for_each_triangular_upper(skip_diag, |dst| *dst = alpha * &*dst),
+
+            None => MatUninit(dst)
+                .cwise()
+                .for_each_triangular_upper(skip_diag, |dst| *dst = T::zero()),
         };
 
         let skip_diag = matches!(
@@ -1852,27 +1829,28 @@ pub mod triangular {
                     stack,
                 )
             } else if lhs_structure.is_lower() {
-                clear_upper(dst.rb_mut(), true);
                 if !skip_diag {
                     match alpha {
                         Some(alpha) => {
-                            for j in 0..dst.nrows() {
-                                let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(j, j);
-                                let lhs = lhs.ptr_in_bounds_at_unchecked(j, j);
-                                let rhs = rhs.ptr_in_bounds_at_unchecked(j, j);
-                                *dst = alpha * (&*dst) + beta * &(&*lhs * &*rhs);
-                            }
+                            dst.rb_mut()
+                                .diagonal_unchecked()
+                                .cwise()
+                                .zip(lhs.diagonal_unchecked())
+                                .zip(rhs.diagonal_unchecked())
+                                .for_each(|dst, lhs, rhs| {
+                                    *dst = alpha * (&*dst) + beta * &(&*lhs * &*rhs)
+                                });
                         }
                         None => {
-                            for j in 0..dst.nrows() {
-                                let dst = dst.rb_mut().ptr_in_bounds_at_unchecked(j, j);
-                                let lhs = lhs.ptr_in_bounds_at_unchecked(j, j);
-                                let rhs = rhs.ptr_in_bounds_at_unchecked(j, j);
-                                *dst = beta * &(&*lhs * &*rhs);
-                            }
+                            ColUninit(dst.rb_mut().diagonal_unchecked())
+                                .cwise()
+                                .zip(lhs.diagonal_unchecked())
+                                .zip(rhs.diagonal_unchecked())
+                                .for_each(|dst, lhs, rhs| *dst = beta * &(&*lhs * &*rhs));
                         }
                     }
                 }
+                clear_upper(dst.rb_mut(), true);
             } else {
                 fancy_debug_assert!(lhs_structure.is_upper());
                 upper_x_lower_into_lower_impl_unchecked(
@@ -1899,10 +1877,8 @@ mod tests {
     use dyn_stack::GlobalMemBuffer;
     use rand::random;
 
-    use super::{
-        triangular::{BlockStructure, DiagonalKind},
-        *,
-    };
+    use super::triangular::{BlockStructure, DiagonalKind};
+    use super::*;
     use crate::{mat, Mat};
 
     #[test]

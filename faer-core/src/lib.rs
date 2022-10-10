@@ -6,12 +6,10 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use core::any::TypeId;
 use core::fmt::Debug;
 use core::marker::PhantomData;
-use core::mem::size_of;
-use core::mem::MaybeUninit;
+use core::mem::{size_of, MaybeUninit};
 use core::ops::{Index, IndexMut};
 use core::ptr::NonNull;
-use dyn_stack::DynStack;
-use dyn_stack::{SizeOverflow, StackReq};
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use iter::*;
 use reborrow::*;
 
@@ -19,13 +17,20 @@ pub mod mul;
 pub mod permutation;
 pub mod solve;
 pub mod symmetric;
+pub mod zip;
+
+use zip::*;
 
 mod seal {
-    use crate::{MatMut, MatRef};
+    use super::*;
 
     pub trait Seal {}
     impl<'a, T> Seal for MatRef<'a, T> {}
     impl<'a, T> Seal for MatMut<'a, T> {}
+    impl<'a, T> Seal for ColRef<'a, T> {}
+    impl<'a, T> Seal for ColMut<'a, T> {}
+    impl<'a, T> Seal for RowRef<'a, T> {}
+    impl<'a, T> Seal for RowMut<'a, T> {}
 }
 
 #[inline]
@@ -705,6 +710,11 @@ impl<'a, T> MatRef<'a, T> {
         fancy_assert!(ncols <= self.ncols() - j);
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
     }
+
+    #[inline]
+    pub fn cwise(self) -> ZipMat<(Self,)> {
+        ZipMat { tuple: (self,) }
+    }
 }
 
 impl<'a, T> MatMut<'a, T> {
@@ -804,8 +814,8 @@ impl<'a, T> MatMut<'a, T> {
             .offset(j as isize * self.col_stride())
     }
 
-    /// Returns a mutable pointer to the element at position (i, j) in the matrix, while asserting that
-    /// it falls within its bounds.
+    /// Returns a mutable pointer to the element at position (i, j) in the matrix, while asserting
+    /// that it falls within its bounds.
     ///
     /// # Panics
     ///
@@ -1077,6 +1087,11 @@ impl<'a, T> MatMut<'a, T> {
         fancy_assert!(ncols <= self.ncols() - j);
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
     }
+
+    #[inline]
+    pub fn cwise(self) -> ZipMat<(Self,)> {
+        ZipMat { tuple: (self,) }
+    }
 }
 
 impl<'a, T> RowRef<'a, T> {
@@ -1137,8 +1152,8 @@ impl<'a, T> RowRef<'a, T> {
             .wrapping_offset(j as isize * self.col_stride())
     }
 
-    /// Returns a pointer to the element at position (0, j) in the row vector, assuming it falls within
-    /// its bounds with no bound checks.
+    /// Returns a pointer to the element at position (0, j) in the row vector, assuming it falls
+    /// within its bounds with no bound checks.
     ///
     /// # Safety
     ///
@@ -1232,6 +1247,11 @@ impl<'a, T> RowRef<'a, T> {
     pub fn transpose(self) -> ColRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { ColRef::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
+    }
+
+    #[inline]
+    pub fn cwise(self) -> ZipRow<(Self,)> {
+        ZipRow { tuple: (self,) }
     }
 }
 
@@ -1391,13 +1411,19 @@ impl<'a, T> RowMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
+
+    #[inline]
+    pub fn cwise(self) -> ZipRow<(Self,)> {
+        ZipRow { tuple: (self,) }
+    }
 }
 
 impl<'a, T> ColRef<'a, T> {
     /// Returns a column vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the column vector.  
     /// `ncols`: number of columns of the column vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the column vector.
+    /// `col_stride`: offset between the first elements of two successive columns in the column
+    /// vector.
     ///
     /// # Safety
     ///
@@ -1451,8 +1477,8 @@ impl<'a, T> ColRef<'a, T> {
             .wrapping_offset(i as isize * self.row_stride())
     }
 
-    /// Returns a pointer to the element at position (i, 0) in the column vector, assuming it falls within
-    /// its bounds with no bound checks.
+    /// Returns a pointer to the element at position (i, 0) in the column vector, assuming it falls
+    /// within its bounds with no bound checks.
     ///
     /// # Safety
     ///
@@ -1467,8 +1493,8 @@ impl<'a, T> ColRef<'a, T> {
             .offset(i as isize * self.row_stride())
     }
 
-    /// Returns a pointer to the element at position (i, 0) in the column vector, while asserting that
-    /// it falls within its bounds.
+    /// Returns a pointer to the element at position (i, 0) in the column vector, while asserting
+    /// that it falls within its bounds.
     ///
     /// # Panics
     ///
@@ -1547,13 +1573,19 @@ impl<'a, T> ColRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
+
+    #[inline]
+    pub fn cwise(self) -> ZipCol<(Self,)> {
+        ZipCol { tuple: (self,) }
+    }
 }
 
 impl<'a, T> ColMut<'a, T> {
     /// Returns a mutable column vector slice from the given arguments.  
     /// `ptr`: pointer to the first element of the column vector.  
     /// `ncols`: number of columns of the column vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the column vector.
+    /// `col_stride`: offset between the first elements of two successive columns in the column
+    /// vector.
     ///
     /// # Safety
     ///
@@ -1703,6 +1735,11 @@ impl<'a, T> ColMut<'a, T> {
     pub fn transpose(self) -> RowMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
+    }
+
+    #[inline]
+    pub fn cwise(self) -> ZipCol<(Self,)> {
+        ZipCol { tuple: (self,) }
     }
 }
 

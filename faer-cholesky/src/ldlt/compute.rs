@@ -1,12 +1,10 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::mul::triangular::BlockStructure;
-use faer_core::permutation::PermutationIndicesMut;
-use faer_core::{izip, mul, solve, temp_mat_req, temp_mat_uninit, MatMut, MatRef};
-use num_traits::{Inv, One, Signed, Zero};
+use faer_core::{izip, mul, solve, temp_mat_req, temp_mat_uninit, MatMut};
+use num_traits::{Inv, One, Zero};
 use reborrow::*;
 
-use core::cmp::Ordering;
 use core::ops::{Add, Mul, Neg};
 
 fn cholesky_in_place_left_looking_req<T: 'static>(
@@ -297,52 +295,4 @@ where
         "only square matrices can be decomposed into cholesky factors",
     );
     unsafe { cholesky_in_place_unchecked(matrix, n_threads, stack) }
-}
-
-/// Computes a permutation that reduces the chance of numerical errors during the cholesky
-/// factorization, then stores the result in `perm_indices` and `perm_inv_indices`.
-#[track_caller]
-pub fn compute_cholesky_permutation<'a, T>(
-    perm_indices: &'a mut [usize],
-    perm_inv_indices: &'a mut [usize],
-    matrix: MatRef<'_, T>,
-) -> PermutationIndicesMut<'a>
-where
-    T: Signed + PartialOrd,
-{
-    let n = matrix.nrows();
-    fancy_assert!(
-        matrix.nrows() == matrix.ncols(),
-        "input matrix must be square",
-    );
-    fancy_assert!(
-        perm_indices.len() == n,
-        "length of permutation must be equal to the matrix dimension",
-    );
-    fancy_assert!(
-        perm_inv_indices.len() == n,
-        "length of inverse permutation must be equal to the matrix dimension",
-    );
-
-    let diag = matrix.diagonal();
-    for (i, p) in perm_indices.iter_mut().enumerate() {
-        *p = i;
-    }
-
-    perm_indices.sort_unstable_by(move |&i, &j| {
-        let lhs = unsafe { diag.get_unchecked(i) }.abs();
-        let rhs = unsafe { diag.get_unchecked(j) }.abs();
-        let cmp = rhs.partial_cmp(&lhs);
-        if let Some(cmp) = cmp {
-            cmp
-        } else {
-            Ordering::Equal
-        }
-    });
-
-    for (i, p) in perm_indices.iter().copied().enumerate() {
-        *unsafe { perm_inv_indices.get_unchecked_mut(p) } = i;
-    }
-
-    unsafe { PermutationIndicesMut::new_unchecked(perm_indices, perm_inv_indices) }
 }

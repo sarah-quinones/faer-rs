@@ -1,4 +1,5 @@
-use crate::{permutation::PermutationIndicesRef, MatMut, MatRef};
+use crate::permutation::PermutationIndicesRef;
+use crate::{MatMut, MatRef};
 use assert2::assert as fancy_assert;
 use reborrow::*;
 

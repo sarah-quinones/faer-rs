@@ -221,7 +221,7 @@ mod tests {
 
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(a_reconstructed[(i, j)], a_updated[(i, j)], 1e-5);
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_updated[(i, j)], 1e-4);
                 }
             }
         }
