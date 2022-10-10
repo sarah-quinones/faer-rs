@@ -59,23 +59,24 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let n = 511;
-        let mut a = Mat::with_dims(|_, _| random::<f64>(), n, n);
-        let a_orig = a.clone();
+        for n in 0..512 {
+            let mut a = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let a_orig = a.clone();
 
-        raw_cholesky_in_place(
-            a.as_mut(),
-            12,
-            DynStack::new(&mut GlobalMemBuffer::new(
-                raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
-            )),
-        );
+            raw_cholesky_in_place(
+                a.as_mut(),
+                12,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
+                )),
+            );
 
-        let a_reconstructed = reconstruct_matrix(a.as_ref());
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
 
-        for j in 0..n {
-            for i in j..n {
-                assert_approx_eq!(a_reconstructed[(i, j)], a_orig[(i, j)]);
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_orig[(i, j)]);
+                }
             }
         }
     }

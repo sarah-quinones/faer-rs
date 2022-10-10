@@ -35,7 +35,7 @@ fn cholesky_in_place_left_looking_req<T: 'static>(
             )?,
             cholesky_in_place_left_looking_req::<T>(bs, bs / 2, n_threads)?,
             mul::matmul_req::<T>(n - bs, bs, n - bs, n_threads)?,
-            solve::triangular::solve_unit_lower_triangular_in_place_req::<T>(bs, bs, n_threads)?,
+            solve::triangular::solve_triangular_in_place_req::<T>(bs, bs, n_threads)?,
         ])?,
     ])
 }
@@ -175,7 +175,7 @@ pub fn raw_cholesky_in_place_req<T: 'static>(
         let bs = dim / 2;
         let rem = dim - bs;
         StackReq::try_any_of([
-            solve::triangular::solve_unit_lower_triangular_in_place_req::<T>(bs, rem, n_threads)?,
+            solve::triangular::solve_triangular_in_place_req::<T>(bs, rem, n_threads)?,
             StackReq::try_all_of([
                 temp_mat_req::<T>(rem, bs)?,
                 faer_core::mul::triangular::matmul_req::<T>(

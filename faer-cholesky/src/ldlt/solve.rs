@@ -13,10 +13,7 @@ pub fn solve_in_place_req<T: 'static>(
     n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
     use solve::triangular::*;
-    StackReq::try_any_of([
-        solve_unit_lower_triangular_in_place_req::<T>(cholesky_dim, rhs_ncols, n_threads)?,
-        solve_unit_upper_triangular_in_place_req::<T>(cholesky_dim, rhs_ncols, n_threads)?,
-    ])
+    solve_triangular_in_place_req::<T>(cholesky_dim, rhs_ncols, n_threads)
 }
 
 #[track_caller]

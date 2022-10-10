@@ -426,7 +426,7 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
     fancy_assert!(insertion_index <= old_dim);
 
     StackReq::try_any_of([
-        solve::triangular::solve_unit_lower_triangular_in_place_req::<T>(
+        solve::triangular::solve_triangular_in_place_req::<T>(
             insertion_index,
             inserted_matrix_ncols,
             n_threads,
@@ -444,7 +444,7 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
             insertion_index,
             n_threads,
         )?,
-        solve::triangular::solve_unit_lower_triangular_in_place_req::<T>(
+        solve::triangular::solve_triangular_in_place_req::<T>(
             inserted_matrix_ncols,
             old_dim - insertion_index,
             n_threads,

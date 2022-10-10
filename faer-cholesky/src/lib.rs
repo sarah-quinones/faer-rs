@@ -5,6 +5,7 @@ use faer_core::MatRef;
 use num_traits::Signed;
 
 pub mod ldlt;
+pub mod ldl;
 
 #[track_caller]
 #[inline]

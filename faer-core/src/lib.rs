@@ -19,6 +19,20 @@ pub mod solve;
 pub mod symmetric;
 pub mod zip;
 
+pub mod float_traits {
+    use num_traits::Float;
+
+    pub trait Sqrt: Sized {
+        fn sqrt(&self) -> Self;
+    }
+
+    impl<T: Float> Sqrt for T {
+        fn sqrt(&self) -> T {
+            <T as Float>::sqrt(*self)
+        }
+    }
+}
+
 use zip::*;
 
 mod seal {
