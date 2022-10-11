@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_solve() {
-        let n = 4;
+        let n = 511;
         let k = 5;
         let mut a = Mat::with_dims(|_, _| random::<f64>(), n, n);
         let mut rhs = Mat::with_dims(|_, _| random::<f64>(), n, k);

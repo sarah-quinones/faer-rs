@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
 use reborrow::*;
 
 use faer_core::Mat;
@@ -9,6 +9,10 @@ pub fn cholesky(c: &mut Criterion) {
     use faer_cholesky::{ldl, ldlt};
 
     for n in [64, 128, 256, 512, 1024] {
+        c.bench_function(&format!("faer-ldlt-req-{n}"), |b| {
+            b.iter(|| ldl::compute::raw_cholesky_in_place_req::<f64>(n, 12).unwrap())
+        });
+
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
             let mut mat = Mat::new();
 

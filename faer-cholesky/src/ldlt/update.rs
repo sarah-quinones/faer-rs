@@ -25,13 +25,13 @@ macro_rules! generate {
             w: *mut T,
             w_col_stride: isize,
             p_array: *const T,
-            mu_array: *const T,
+            beta_array: *const T,
         ) {
             assert_eq!(core::any::TypeId::of::<T>(), core::any::TypeId::of::<$ty>());
             let l_col = l_col as *mut $ty;
             let w = w as *mut $ty;
             let p_array = p_array as *const $ty;
-            let mu_array = mu_array as *const $ty;
+            let beta_array = beta_array as *const $ty;
             let lanes = size_of::<$tys>() / size_of::<$ty>();
 
             let n_vec = n / lanes;
@@ -39,7 +39,7 @@ macro_rules! generate {
 
             seq!(I in 0..$r {
                 let p~I = -*p_array.add(I);
-                let mu~I = *mu_array.add(I);
+                let beta~I = *beta_array.add(I);
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
@@ -49,7 +49,7 @@ macro_rules! generate {
 
                 seq!(I in 0..$r {
                     let p~I = simd.$splat(p~I);
-                    let mu~I = simd.$splat(mu~I);
+                    let beta~I = simd.$splat(beta~I);
                     let w_col~I = w_col~I as *mut $tys;
                 });
 
@@ -61,7 +61,7 @@ macro_rules! generate {
 
                     seq!(I in 0..$r {
                         w~I = simd.$mul_add(p~I, l, w~I);
-                        l = simd.$mul_add(mu~I, w~I, l);
+                        l = simd.$mul_add(beta~I, w~I, l);
                     });
 
                     l_col.add(i).write(l);
@@ -80,7 +80,7 @@ macro_rules! generate {
 
                     seq!(I in 0..$r {
                         w~I = $ty::mul_add(p~I, l, w~I);
-                        l = $ty::mul_add(mu~I, w~I, l);
+                        l = $ty::mul_add(beta~I, w~I, l);
                     });
 
                     l_col.add(i).write(l);
@@ -105,14 +105,14 @@ macro_rules! generate_generic {
             w_row_stride: isize,
             w_col_stride: isize,
             p_array: *const T,
-            mu_array: *const T,
+            beta_array: *const T,
         ) where
             T: Clone,
             for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T>,
         {
             seq!(I in 0..$r {
                 let p~I = &-&*p_array.add(I);
-                let mu~I = &(*mu_array.add(I)).clone();
+                let beta~I = &(*beta_array.add(I)).clone();
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
@@ -124,7 +124,7 @@ macro_rules! generate_generic {
 
                 seq!(I in 0..$r {
                     w~I = &(p~I * &l) + &w~I;
-                    l = &(mu~I * &w~I) + &l;
+                    l = &(beta~I * &w~I) + &l;
                 });
 
                 *l_col.offset(i as isize * l_row_stride) = l;
@@ -167,6 +167,10 @@ where
 
     #[inline(always)]
     fn with_simd<S: Simd>(self, s: S) -> Self::Output {
+        // On the Modification of LDLT Factorizations
+        // By R. Fletcher and M. J. D. Powell
+        // https://www.ams.org/journals/mcom/1974-28-128/S0025-5718-1974-0359297-1/S0025-5718-1974-0359297-1.pdf
+
         let RankRUpdate {
             mut ld,
             mut w,
@@ -192,17 +196,18 @@ where
                 while r_idx < r {
                     let r_chunk = (r - r_idx).min(4);
                     let mut p_array = [T::zero(), T::zero(), T::zero(), T::zero()];
-                    let mut mu_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+                    let mut beta_array = [T::zero(), T::zero(), T::zero(), T::zero()];
 
                     let mut dj = ld.rb().get_unchecked(j, j).clone();
                     for k in 0..r_chunk {
                         let p = p_array.get_unchecked_mut(k);
-                        let mu = mu_array.get_unchecked_mut(k);
+                        let beta = beta_array.get_unchecked_mut(k);
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
                         *p = w.rb().get_unchecked(j, r_idx + k).clone();
-                        let new_dj = &dj + &(&(&*alpha * &*p) * &*p);
-                        *mu = &(&*alpha * &*p) * &new_dj.inv();
-                        *alpha = &*alpha + &-&(&new_dj * &(&*mu * &*mu));
+                        let alpha_p = &*alpha * &*p;
+                        let new_dj = &dj + &(&alpha_p * &*p);
+                        *beta = &alpha_p * &new_dj.inv();
+                        *alpha = &*alpha + &-&(&new_dj * &(&*beta * &*beta));
 
                         dj = new_dj;
                     }
@@ -210,33 +215,41 @@ where
 
                     let rem = n - j - 1;
 
-                    let ld_ptr = ld.rb_mut().ptr_at(j + 1, j);
+                    let l_ptr = ld.rb_mut().ptr_at(j + 1, j);
                     let w_ptr = w.rb_mut().ptr_at(j + 1, r_idx);
                     let p = p_array.as_ptr();
-                    let mu = mu_array.as_ptr();
+                    let beta = beta_array.as_ptr();
 
                     if TypeId::of::<T>() == TypeId::of::<f64>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| rank_1_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            2 => s.vectorize(|| rank_2_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            3 => s.vectorize(|| rank_3_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            4 => s.vectorize(|| rank_4_f64(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            1 => s.vectorize(|| rank_1_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            2 => s.vectorize(|| rank_2_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            3 => s.vectorize(|| rank_3_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            4 => s.vectorize(|| rank_4_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             _ => unreachable_unchecked(),
                         };
                     } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| rank_1_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            2 => s.vectorize(|| rank_2_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            3 => s.vectorize(|| rank_3_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
-                            4 => s.vectorize(|| rank_4_f32(s, rem, ld_ptr, w_ptr, w_cs, p, mu)),
+                            1 => s.vectorize(|| rank_1_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            2 => s.vectorize(|| rank_2_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            3 => s.vectorize(|| rank_3_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            4 => s.vectorize(|| rank_4_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             _ => unreachable_unchecked(),
                         };
                     } else {
                         match r_chunk {
-                            1 => s.vectorize(|| r1(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)),
-                            2 => s.vectorize(|| r2(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)),
-                            3 => s.vectorize(|| r3(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)),
-                            4 => s.vectorize(|| r4(s, rem, ld_ptr, l_rs, w_ptr, w_rs, w_cs, p, mu)),
+                            1 => {
+                                s.vectorize(|| r1(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
+                            }
+                            2 => {
+                                s.vectorize(|| r2(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
+                            }
+                            3 => {
+                                s.vectorize(|| r3(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
+                            }
+                            4 => {
+                                s.vectorize(|| r4(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
+                            }
                             _ => unreachable_unchecked(),
                         };
                     }
@@ -282,7 +295,7 @@ pub fn rank_r_update_clobber<T>(
     });
 }
 
-fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
@@ -315,7 +328,10 @@ fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) 
     });
 }
 
-fn rank_update_indices(start_col: usize, indices: &[usize]) -> impl FnMut() -> usize + '_ {
+pub(crate) fn rank_update_indices(
+    start_col: usize,
+    indices: &[usize],
+) -> impl FnMut() -> usize + '_ {
     let mut current_col = start_col;
     let mut current_r = 0;
     move || {
@@ -368,9 +384,6 @@ pub fn delete_rows_and_cols_clobber<T: Clone>(
     }
     fancy_assert!(indices[r - 1] < n);
 
-    // TODO: check that there are no duplicates
-    // check that they are in bounds
-
     let first = indices[0];
 
     temp_mat_uninit! {
@@ -405,7 +418,6 @@ pub fn delete_rows_and_cols_clobber<T: Clone>(
     });
     let mut cholesky_factors = cholesky_factors;
     delete_rows_and_cols_triangular(cholesky_factors.rb_mut(), indices);
-    // rank_r_update_clobber(cholesky_factors, w, alpha);
 
     Arch::new().dispatch(RankRUpdate {
         ld: unsafe {

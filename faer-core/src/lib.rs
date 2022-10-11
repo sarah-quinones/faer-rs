@@ -13,9 +13,12 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use iter::*;
 use reborrow::*;
 
+pub mod complex_mul;
 pub mod mul;
-pub mod permutation;
+
 pub mod solve;
+
+pub mod permutation;
 pub mod symmetric;
 pub mod zip;
 
@@ -622,6 +625,27 @@ impl<'a, T> MatRef<'a, T> {
     }
 
     #[inline]
+    pub fn invert_rows(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = self.col_stride();
+
+        let ptr = self.ptr_at(if nrows == 0 { 0 } else { nrows - 1 }, 0);
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[inline]
+    pub fn invert_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = self.row_stride();
+        let col_stride = -self.col_stride();
+        let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[inline]
     pub fn invert(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
@@ -996,6 +1020,26 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
+    #[inline]
+    pub fn invert_rows(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = self.col_stride();
+
+        let ptr = self.ptr_at(if nrows == 0 { 0 } else { nrows - 1 }, 0);
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[inline]
+    pub fn invert_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = self.row_stride();
+        let col_stride = -self.col_stride();
+        let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
     #[inline]
     pub fn invert(self) -> Self {
         let nrows = self.nrows();

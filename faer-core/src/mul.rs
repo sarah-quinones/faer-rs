@@ -14,6 +14,7 @@ fn split_half(n_threads: usize) -> usize {
 }
 
 /// Computes the memory requirements of [`matmul`].
+#[inline]
 pub fn matmul_req<T: 'static>(
     dst_rows: usize,
     dst_cols: usize,
@@ -1307,13 +1308,7 @@ pub mod triangular {
         k: usize,
         n_threads: usize,
     ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * k <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
+        if n <= 32 {
             StackReq::try_all_of([
                 temp_mat_req::<T>(n, n)?,
                 super::matmul_req::<T>(n, n, k, n_threads)?,
@@ -1359,13 +1354,7 @@ pub mod triangular {
         let n = dst.nrows();
         let k = lhs.ncols();
 
-        let n_threads = if n * n * k <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
+        if n <= 32 {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };

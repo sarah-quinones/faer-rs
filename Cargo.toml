@@ -3,3 +3,9 @@ members = [
     "faer-core",
     "faer-cholesky",
 ]
+
+[profile.release]
+debug-assertions = true
+
+[profile.bench]
+debug-assertions = false
