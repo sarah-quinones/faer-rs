@@ -1,16 +1,16 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
+use dyn_stack::{DynStack, GlobalMemBuffer};
 use reborrow::*;
 
 use faer_core::Mat;
 use nalgebra::DMatrix;
 
 pub fn cholesky(c: &mut Criterion) {
-    use faer_cholesky::{ldl, ldlt};
+    use faer_cholesky::{ldlt, llt};
 
     for n in [64, 128, 256, 512, 1024] {
         c.bench_function(&format!("faer-ldlt-req-{n}"), |b| {
-            b.iter(|| ldl::compute::raw_cholesky_in_place_req::<f64>(n, 12).unwrap())
+            b.iter(|| llt::compute::raw_cholesky_in_place_req::<f64>(n, 12).unwrap())
         });
 
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
@@ -46,36 +46,31 @@ pub fn cholesky(c: &mut Criterion) {
             })
         });
 
-        c.bench_function(&format!("faer-st-ldl-{n}"), |b| {
+        c.bench_function(&format!("faer-st-llt-{n}"), |b| {
             let mut mat = Mat::new();
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem =
-                GlobalMemBuffer::new(ldl::compute::raw_cholesky_in_place_req::<f64>(n, 1).unwrap());
+                GlobalMemBuffer::new(llt::compute::raw_cholesky_in_place_req::<f64>(n, 1).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                ldl::compute::raw_cholesky_in_place(mat.as_mut(), 1, stack.rb_mut()).unwrap();
+                llt::compute::raw_cholesky_in_place(mat.as_mut(), 1, stack.rb_mut()).unwrap();
             })
         });
 
-        c.bench_function(&format!("faer-mt-ldl-{n}"), |b| {
+        c.bench_function(&format!("faer-mt-llt-{n}"), |b| {
             let mut mat = Mat::new();
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
-                ldl::compute::raw_cholesky_in_place_req::<f64>(n, rayon::current_num_threads())
+                llt::compute::raw_cholesky_in_place_req::<f64>(n, rayon::current_num_threads())
                     .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                ldl::compute::raw_cholesky_in_place(
-                    mat.as_mut(),
-                    rayon::current_num_threads(),
-                    stack.rb_mut(),
-                )
-                .unwrap();
+                llt::compute::raw_cholesky_in_place(mat.as_mut(), 12, stack.rb_mut()).unwrap();
             })
         });
 

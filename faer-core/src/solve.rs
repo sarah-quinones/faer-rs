@@ -16,7 +16,7 @@ pub mod triangular {
     ) -> Result<StackReq, SizeOverflow> {
         let n = dim;
         let k = rhs_ncols;
-        if n <= 1 {
+        if n <= 4 {
             return Ok(StackReq::default());
         }
         StackReq::try_any_of([

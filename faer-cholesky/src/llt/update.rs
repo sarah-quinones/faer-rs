@@ -13,7 +13,7 @@ use pulp::{Arch, Simd};
 use reborrow::*;
 use seq_macro::seq;
 
-use crate::ldl::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
+use crate::llt::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
 use crate::ldlt::update::{delete_rows_and_cols_triangular, rank_update_indices};
 use crate::unreachable_unchecked;
 

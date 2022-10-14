@@ -13,9 +13,7 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use iter::*;
 use reborrow::*;
 
-pub mod complex_mul;
 pub mod mul;
-
 pub mod solve;
 
 pub mod permutation;
