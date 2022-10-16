@@ -40,7 +40,7 @@ pub fn lu(c: &mut Criterion) {
                     mat.as_mut(),
                     &mut perm,
                     &mut perm_inv,
-                    12,
+                    rayon::current_num_threads(),
                     stack.rb_mut(),
                 );
             })
@@ -85,7 +85,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut row_perm_inv,
                     &mut col_perm,
                     &mut col_perm_inv,
-                    12,
+                    rayon::current_num_threads(),
                     stack.rb_mut(),
                 );
             })

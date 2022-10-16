@@ -10,7 +10,10 @@ pub fn cholesky(c: &mut Criterion) {
 
     for n in [64, 128, 256, 512, 1024] {
         c.bench_function(&format!("faer-ldlt-req-{n}"), |b| {
-            b.iter(|| llt::compute::raw_cholesky_in_place_req::<f64>(n, 12).unwrap())
+            b.iter(|| {
+                llt::compute::raw_cholesky_in_place_req::<f64>(n, rayon::current_num_threads())
+                    .unwrap()
+            })
         });
 
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
@@ -70,7 +73,12 @@ pub fn cholesky(c: &mut Criterion) {
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                llt::compute::raw_cholesky_in_place(mat.as_mut(), 12, stack.rb_mut()).unwrap();
+                llt::compute::raw_cholesky_in_place(
+                    mat.as_mut(),
+                    rayon::current_num_threads(),
+                    stack.rb_mut(),
+                )
+                .unwrap();
             })
         });
 

@@ -55,7 +55,7 @@ pub fn solve(c: &mut Criterion) {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut(),
-                    12,
+                    rayon::current_num_threads(),
                     stack.rb_mut(),
                 );
             })
@@ -71,7 +71,7 @@ pub fn solve(c: &mut Criterion) {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut().transpose(),
-                    12,
+                    rayon::current_num_threads(),
                     stack.rb_mut(),
                 );
             })
