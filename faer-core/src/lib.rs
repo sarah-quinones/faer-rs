@@ -17,7 +17,6 @@ pub mod mul;
 pub mod solve;
 
 pub mod permutation;
-pub mod symmetric;
 pub mod zip;
 
 pub mod float_traits {

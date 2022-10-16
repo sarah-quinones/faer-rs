@@ -278,7 +278,7 @@ unsafe fn cholesky_in_place_unchecked<T>(
 /// The cholesky decomposition may have poor numerical stability properties when used with non
 /// positive definite matrices. In the general case, it is recommended to first permute the matrix
 /// using [`compute_cholesky_permutation`] and
-/// [`apply_symmetric_permutation`](faer_core::symmetric::apply_symmetric_permutation).
+/// [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric).
 ///
 /// # Panics
 ///

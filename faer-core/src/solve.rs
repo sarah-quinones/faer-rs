@@ -1,7 +1,8 @@
+use core::ops::{Add, Mul, Neg};
+
 use crate::{MatMut, MatRef};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use core::ops::{Add, Mul, Neg};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use num_traits::{Inv, One, Zero};
 use reborrow::*;

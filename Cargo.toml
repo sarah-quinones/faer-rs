@@ -2,6 +2,7 @@
 members = [
     "faer-core",
     "faer-cholesky",
+    "faer-lu",
 ]
 
 [profile.release]

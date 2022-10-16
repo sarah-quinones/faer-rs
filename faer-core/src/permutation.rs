@@ -1,5 +1,7 @@
-use assert2::debug_assert as fancy_debug_assert;
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
+
+use crate::{MatMut, MatRef};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PermutationIndicesRef<'a> {
@@ -10,8 +12,8 @@ pub struct PermutationIndicesRef<'a> {
 impl<'a> PermutationIndicesRef<'a> {
     /// Returns the permutation as an array.
     #[inline]
-    pub fn into_array(self) -> &'a [usize] {
-        self.forward
+    pub fn into_arrays(self) -> (&'a [usize], &'a [usize]) {
+        (self.forward, self.inverse)
     }
 
     /// Returns the inverse permutation.
@@ -39,8 +41,8 @@ impl<'a> PermutationIndicesRef<'a> {
 impl<'a> PermutationIndicesMut<'a> {
     /// Returns the permutation as an array.
     #[inline]
-    pub fn into_array(self) -> &'a mut [usize] {
-        self.forward
+    pub unsafe fn into_arrays(self) -> (&'a mut [usize], &'a mut [usize]) {
+        (self.forward, self.inverse)
     }
 
     /// Returns the inverse permutation.
@@ -111,4 +113,97 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationIndicesMut<'a> {
             inverse: &mut *self.inverse,
         }
     }
+}
+
+/// Computes a symmetric permutation of the source matrix using the given permutation, and stores
+/// the result in the destination matrix.
+///
+/// Both the source and the destination are interpreted as symmetric matrices, and only their lower
+/// triangular part is accessed.
+pub fn permute_rows_and_cols_symmetric<T: Clone>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
+    perm_indices: PermutationIndicesRef<'_>,
+) {
+    let mut dst = dst;
+    let n = src.nrows();
+    fancy_assert!(src.nrows() == src.ncols(), "source matrix must be square",);
+    fancy_assert!(
+        dst.nrows() == dst.ncols(),
+        "destination matrix must be square",
+    );
+    fancy_assert!(
+        src.nrows() == dst.nrows(),
+        "source and destination matrices must have the same shape",
+    );
+    fancy_assert!(
+        perm_indices.into_arrays().0.len() == n,
+        "permutation must have the same length as the dimension of the matrices"
+    );
+
+    let perm = perm_indices.into_arrays().0;
+    let src_tril = |i, j| unsafe {
+        if i > j {
+            src.get_unchecked(i, j)
+        } else {
+            src.get_unchecked(j, i)
+        }
+    };
+    for j in 0..n {
+        for i in j..n {
+            unsafe {
+                *dst.rb_mut().get_unchecked(i, j) =
+                    src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j)).clone();
+            }
+        }
+    }
+}
+
+#[inline]
+pub unsafe fn permute_rows_unchecked<T: Clone>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
+    perm_indices: PermutationIndicesRef<'_>,
+) {
+    let mut dst = dst;
+    let m = src.nrows();
+    let n = src.ncols();
+    fancy_debug_assert!(
+        (src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()),
+        "source and destination matrices must have the same shape",
+    );
+    fancy_debug_assert!(
+        perm_indices.into_arrays().0.len() == m,
+        "permutation must have the same length as the number of rows of the matrices"
+    );
+
+    let perm = perm_indices.into_arrays().0;
+
+    for j in 0..n {
+        for i in 0..m {
+            unsafe {
+                *dst.rb_mut().get_unchecked(i, j) =
+                    src.get_unchecked(*perm.get_unchecked(i), j).clone();
+            }
+        }
+    }
+}
+
+#[track_caller]
+#[inline]
+pub fn permute_rows<T: Clone>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
+    perm_indices: PermutationIndicesRef<'_>,
+) {
+    fancy_assert!(
+        (src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()),
+        "source and destination matrices must have the same shape",
+    );
+    fancy_assert!(
+        perm_indices.into_arrays().0.len() == src.nrows(),
+        "permutation must have the same length as the number of rows of the matrices"
+    );
+
+    unsafe { permute_rows_unchecked(dst, src, perm_indices) };
 }

@@ -1,30 +1,29 @@
 [package]
-name = "faer-core"
+name = "faer-lu"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gemm = { version = "0.8", default-features = false, path = "../../gemm" }
+faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
 pulp = { version = "0.4", default-features = false, path = "../../pulp" }
 reborrow = "0.5"
 dyn-stack = "0.8"
 assert2 = "0.3"
 num-traits = "0.2"
-num-complex = "0.4"
-aligned-vec = "0.5"
-rayon = "1.5"
 seq-macro = "0.3"
+bytemuck = "1.12"
 
 [features]
 default = ["std"]
-std = ["gemm/std", "pulp/std"]
-nightly = ["gemm/nightly", "pulp/nightly"]
+std = ["faer-core/std", "pulp/std"]
+nightly = ["faer-core/nightly", "pulp/nightly"]
 
 [dev-dependencies]
 criterion = "0.3"
 rand = "0.8.5"
 nalgebra = "0.31.0"
 assert_approx_eq = "1.1.0"
+rayon = "1.5"
 
 [[bench]]
 name = "bench"
