@@ -8,7 +8,14 @@ use num_traits::{Inv, One, Zero};
 use reborrow::*;
 
 pub mod triangular {
+    use crate::{join, join_req};
+
     use super::*;
+
+    #[inline]
+    fn split_half(n_threads: usize) -> usize {
+        n_threads / 2
+    }
 
     pub fn solve_triangular_in_place_req<T: 'static>(
         dim: usize,
@@ -17,6 +24,16 @@ pub mod triangular {
     ) -> Result<StackReq, SizeOverflow> {
         let n = dim;
         let k = rhs_ncols;
+
+        if n_threads > 1 && k > 16 {
+            return join_req(
+                |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads),
+                |n_threads| solve_triangular_in_place_req::<T>(n, k - k / 2, n_threads),
+                split_half,
+                n_threads,
+            );
+        }
+
         if n <= 4 {
             return Ok(StackReq::default());
         }
@@ -112,10 +129,30 @@ pub mod triangular {
         T: Zero + One + Clone + Send + Sync + 'static,
         for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T>,
     {
+        let n = tril.nrows();
+        let k = rhs.ncols();
+
+        if n_threads > 1 && k > 32 {
+            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+            join(
+                |n_threads, stack| {
+                    solve_unit_lower_triangular_in_place_unchecked(tril, rhs_left, n_threads, stack)
+                },
+                |n_threads, stack| {
+                    solve_unit_lower_triangular_in_place_unchecked(
+                        tril, rhs_right, n_threads, stack,
+                    )
+                },
+                |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads).unwrap(),
+                split_half,
+                n_threads,
+                stack,
+            );
+            return;
+        }
+
         fancy_debug_assert!(tril.nrows() == tril.ncols());
         fancy_debug_assert!(rhs.nrows() == tril.ncols());
-
-        let n = tril.nrows();
 
         if n <= 4 {
             match n {
@@ -248,6 +285,26 @@ pub mod triangular {
         T: Zero + One + Clone + Send + Sync + 'static,
         for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
     {
+        let n = tril.nrows();
+        let k = rhs.ncols();
+
+        if n_threads > 1 && k > 32 {
+            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+            join(
+                |n_threads, stack| {
+                    solve_lower_triangular_in_place_unchecked(tril, rhs_left, n_threads, stack)
+                },
+                |n_threads, stack| {
+                    solve_lower_triangular_in_place_unchecked(tril, rhs_right, n_threads, stack)
+                },
+                |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads).unwrap(),
+                split_half,
+                n_threads,
+                stack,
+            );
+            return;
+        }
+
         fancy_debug_assert!(tril.nrows() == tril.ncols());
         fancy_debug_assert!(rhs.nrows() == tril.ncols());
 

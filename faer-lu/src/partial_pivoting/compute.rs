@@ -130,6 +130,7 @@ where
             mat_right.rb_mut(),
             tmp_right.rb(),
             PermutationIndicesRef::new_unchecked(perm, perm_inv),
+            n_threads,
         );
     }
 
@@ -178,6 +179,7 @@ where
             mat_bot_left,
             tmp_bot_left.rb(),
             PermutationIndicesRef::new_unchecked(tmp_perm, tmp_perm_inv),
+            n_threads,
         );
     }
 
@@ -230,6 +232,7 @@ where
                     right.rb_mut(),
                     tmp_right.rb(),
                     PermutationIndicesRef::new_unchecked(perm, perm_inv),
+                    n_threads,
                 );
             }
             solve_unit_lower_triangular_in_place(left.rb(), right, n_threads, stack);

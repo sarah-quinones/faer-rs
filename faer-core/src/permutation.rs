@@ -1,4 +1,5 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use dyn_stack::DynStack;
 use reborrow::*;
 
 use crate::{MatMut, MatRef};
@@ -160,10 +161,11 @@ pub fn permute_rows_and_cols_symmetric<T: Clone>(
 }
 
 #[inline]
-pub unsafe fn permute_rows_unchecked<T: Clone>(
+pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
+    n_threads: usize,
 ) {
     let mut dst = dst;
     let m = src.nrows();
@@ -179,6 +181,19 @@ pub unsafe fn permute_rows_unchecked<T: Clone>(
 
     let perm = perm_indices.into_arrays().0;
 
+    if n > 1 && n_threads > 1 {
+        let (_, _, dst0, dst1) = dst.split_at_unchecked(0, n / 2);
+        let (_, _, src0, src1) = src.split_at_unchecked(0, n / 2);
+        crate::join(
+            |n_threads, _| permute_rows_unchecked(dst0, src0, perm_indices, n_threads),
+            |n_threads, _| permute_rows_unchecked(dst1, src1, perm_indices, n_threads),
+            |_| dyn_stack::StackReq::default(),
+            |_| 0,
+            0,
+            DynStack::new(&mut []),
+        );
+        return;
+    }
     for j in 0..n {
         for i in 0..m {
             unsafe {
@@ -191,10 +206,11 @@ pub unsafe fn permute_rows_unchecked<T: Clone>(
 
 #[track_caller]
 #[inline]
-pub fn permute_rows<T: Clone>(
+pub fn permute_rows<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
+    n_threads: usize,
 ) {
     fancy_assert!(
         (src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()),
@@ -205,5 +221,5 @@ pub fn permute_rows<T: Clone>(
         "permutation must have the same length as the number of rows of the matrices"
     );
 
-    unsafe { permute_rows_unchecked(dst, src, perm_indices) };
+    unsafe { permute_rows_unchecked(dst, src, perm_indices, n_threads) };
 }
