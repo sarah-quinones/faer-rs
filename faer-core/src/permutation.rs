@@ -34,7 +34,6 @@ impl<'a> PermutationIndicesRef<'a> {
     /// permutations of each other.
     #[inline]
     pub unsafe fn new_unchecked(forward: &'a [usize], inverse: &'a [usize]) -> Self {
-        fancy_debug_assert!(forward.len() == inverse.len());
         Self { forward, inverse }
     }
 }
@@ -63,7 +62,6 @@ impl<'a> PermutationIndicesMut<'a> {
     /// permutations of each other.
     #[inline]
     pub unsafe fn new_unchecked(forward: &'a mut [usize], inverse: &'a mut [usize]) -> Self {
-        fancy_debug_assert!(forward.len() == inverse.len());
         Self { forward, inverse }
     }
 }
@@ -193,12 +191,13 @@ pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
             DynStack::new(&mut []),
         );
         return;
-    }
-    for j in 0..n {
-        for i in 0..m {
-            unsafe {
-                *dst.rb_mut().get_unchecked(i, j) =
-                    src.get_unchecked(*perm.get_unchecked(i), j).clone();
+    } else {
+        for j in 0..n {
+            for i in 0..m {
+                unsafe {
+                    *dst.rb_mut().get_unchecked(i, j) =
+                        src.get_unchecked(*perm.get_unchecked(i), j).clone();
+                }
             }
         }
     }

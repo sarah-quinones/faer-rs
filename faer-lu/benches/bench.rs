@@ -8,7 +8,7 @@ use faer_core::Mat;
 pub fn lu(c: &mut Criterion) {
     use faer_lu::{full_pivoting, partial_pivoting};
 
-    for n in [64, 128, 256, 512, 1024] {
+    for n in [64, 128, 256, 512, 1024, 4096] {
         c.bench_function(&format!("faer-st-plu-{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
             let mut perm = vec![0; n];
