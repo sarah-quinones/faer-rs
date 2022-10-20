@@ -17,6 +17,26 @@ pub mod triangular {
         n_threads / 2
     }
 
+    #[inline]
+    // we want remainder to be a multiple of register size
+    fn blocksize<T: 'static>(n: usize) -> usize {
+        let base_rem = n / 2;
+        n - if n >= 32 {
+            (base_rem + 15) / 16 * 16
+        } else if n >= 16 {
+            (base_rem + 7) / 8 * 8
+        } else if n >= 8 {
+            (base_rem + 3) / 4 * 4
+        } else {
+            base_rem
+        }
+    }
+
+    #[inline]
+    fn recursion_threshold<T: 'static>() -> usize {
+        4
+    }
+
     pub fn solve_triangular_in_place_req<T: 'static>(
         dim: usize,
         rhs_ncols: usize,
@@ -25,7 +45,7 @@ pub mod triangular {
         let n = dim;
         let k = rhs_ncols;
 
-        if n_threads > 1 && k > 16 {
+        if n_threads > 1 && k > 32 {
             return join_req(
                 |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads),
                 |n_threads| solve_triangular_in_place_req::<T>(n, k - k / 2, n_threads),
@@ -34,13 +54,15 @@ pub mod triangular {
             );
         }
 
-        if n <= 4 {
+        if n <= recursion_threshold::<T>() {
             return Ok(StackReq::default());
         }
+        let bs = blocksize::<T>(n);
+
         StackReq::try_any_of([
             solve_triangular_in_place_req::<T>(dim / 2, rhs_ncols, n_threads)?,
             solve_triangular_in_place_req::<T>(dim - dim / 2, rhs_ncols, n_threads)?,
-            crate::mul::matmul_req::<T>(n - n / 2, n / 2, k, n_threads)?,
+            crate::mul::matmul_req::<T>(n - bs, bs, k, n_threads)?,
         ])
     }
 
@@ -154,7 +176,7 @@ pub mod triangular {
         fancy_debug_assert!(tril.nrows() == tril.ncols());
         fancy_debug_assert!(rhs.nrows() == tril.ncols());
 
-        if n <= 4 {
+        if n <= recursion_threshold::<T>() {
             match n {
                 0 => (),
                 1 => (),
@@ -227,13 +249,13 @@ pub mod triangular {
                             *x3 = y3;
                         });
                 }
-                _ => (),
+                _ => unreachable!(),
             };
             return;
         }
 
         let mut stack = stack;
-        let bs = n / 2;
+        let bs = blocksize::<T>(n);
 
         let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
         let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
@@ -310,7 +332,7 @@ pub mod triangular {
 
         let n = tril.nrows();
 
-        if n <= 4 {
+        if n <= recursion_threshold::<T>() {
             match n {
                 0 => (),
                 1 => {
@@ -401,13 +423,13 @@ pub mod triangular {
                             *x3 = y3;
                         });
                 }
-                _ => (),
+                _ => unreachable!(),
             };
             return;
         }
 
         let mut stack = stack;
-        let bs = n / 2;
+        let bs = blocksize::<T>(n);
 
         let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
         let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);

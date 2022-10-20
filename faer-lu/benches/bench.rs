@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
+use dyn_stack::{DynStack, GlobalMemBuffer};
 use rand::random;
 use reborrow::*;
 
@@ -8,13 +8,15 @@ use faer_core::Mat;
 pub fn lu(c: &mut Criterion) {
     use faer_lu::{full_pivoting, partial_pivoting};
 
-    for n in [64, 128, 256, 512, 1024, 4096] {
+    for n in [64, 128, 256, 512, 1023, 1024, 4096] {
         c.bench_function(&format!("faer-st-plu-{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, 1).unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
@@ -32,7 +34,14 @@ pub fn lu(c: &mut Criterion) {
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                partial_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    rayon::current_num_threads(),
+                )
+                .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
@@ -53,7 +62,9 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                full_pivoting::compute::lu_in_place_req::<f64>(n, n, 1).unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
@@ -75,7 +86,10 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                full_pivoting::compute::lu_in_place_req::<f64>(n, n, rayon::current_num_threads())
+                    .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {

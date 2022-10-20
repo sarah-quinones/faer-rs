@@ -1,13 +1,14 @@
 use core::ops::{Add, Mul, Neg};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use dyn_stack::DynStack;
-use faer_core::mul::matmul;
-use faer_core::permutation::{
-    permute_rows_unchecked, PermutationIndicesMut, PermutationIndicesRef,
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use faer_core::mul::{matmul, matmul_req};
+use faer_core::permutation::PermutationIndicesMut;
+use faer_core::solve::triangular::{
+    solve_triangular_in_place_req, solve_unit_lower_triangular_in_place,
 };
-use faer_core::solve::triangular::solve_unit_lower_triangular_in_place;
-use faer_core::{temp_mat_uninit, ColMut, MatMut};
+use faer_core::zip::ColUninit;
+use faer_core::{temp_mat_req, temp_mat_uninit, ColMut, MatMut};
 use num_traits::{Inv, One, Signed, Zero};
 use reborrow::*;
 
@@ -41,6 +42,15 @@ unsafe fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
     core::mem::swap(&mut *ptr_i, &mut *ptr_j);
 }
 
+fn lu_unblocked_req<T: 'static>(
+    m: usize,
+    n: usize,
+    n_threads: usize,
+) -> Result<StackReq, SizeOverflow> {
+    matmul_req::<T>(m, n, 1, n_threads)
+}
+
+#[inline(never)]
 unsafe fn lu_in_place_unblocked<T>(
     mut matrix: MatMut<'_, T>,
     col_start: usize,
@@ -64,7 +74,7 @@ where
 
     let mut n_transpositions = 0;
 
-    for j in 0..n {
+    for (j, t) in transpositions.iter_mut().enumerate() {
         let mut max = T::zero();
         let mut imax = j;
 
@@ -76,7 +86,7 @@ where
             }
         }
 
-        transpositions[j] = imax - j;
+        *t = imax - j;
 
         if imax != j {
             n_transpositions += 1;
@@ -117,8 +127,46 @@ where
     )
 }
 
-fn recursion_threshold<T: 'static>() -> usize {
+fn recursion_threshold<T: 'static>(_m: usize) -> usize {
     16
+}
+
+#[inline]
+// we want remainder to be a multiple of register size
+fn blocksize<T: 'static>(n: usize) -> usize {
+    let base_rem = n / 2;
+    n - if n >= 32 {
+        (base_rem + 15) / 16 * 16
+    } else if n >= 16 {
+        (base_rem + 7) / 8 * 8
+    } else if n >= 8 {
+        (base_rem + 3) / 4 * 4
+    } else {
+        base_rem
+    }
+}
+
+fn lu_recursive_req<T: 'static>(
+    m: usize,
+    n: usize,
+    n_threads: usize,
+) -> Result<StackReq, SizeOverflow> {
+    if n <= recursion_threshold::<T>(m) {
+        return lu_unblocked_req::<T>(m, n, n_threads);
+    }
+
+    let bs = blocksize::<T>(n);
+
+    StackReq::try_any_of([
+        lu_recursive_req::<T>(m, bs, n_threads)?,
+        solve_triangular_in_place_req::<T>(bs, n - bs, n_threads)?,
+        matmul_req::<T>(m - bs, n - bs, bs, n_threads)?,
+        StackReq::try_all_of([
+            StackReq::try_new::<usize>(m - bs)?,
+            lu_recursive_req::<T>(m - bs, n - bs, n_threads)?,
+        ])?,
+        temp_mat_req::<T>(m, 1)?,
+    ])
 }
 
 unsafe fn lu_in_place_impl<T>(
@@ -140,11 +188,11 @@ where
     fancy_debug_assert!(m >= n);
     fancy_debug_assert!(perm.len() == m);
 
-    if n <= recursion_threshold::<T>() {
+    if n <= recursion_threshold::<T>(m) {
         return lu_in_place_unblocked(matrix, col_start, n, perm, transpositions, n_threads, stack);
     }
 
-    let bs = n / 2;
+    let bs = blocksize::<T>(n);
 
     let mut n_transpositions = 0;
 
@@ -200,49 +248,33 @@ where
         perm[bs..].copy_from_slice(tmp_perm);
     }
 
-    if n_transpositions >= m - m / 8 {
+    if n_transpositions >= m - m / 2 {
         // use permutations
-        {
-            let (_, _, left, _) = matrix.rb_mut().split_at_unchecked(0, col_start);
-            temp_mat_uninit! {
-                let (mut tmp_left, _) = unsafe {
-                    temp_mat_uninit::<T>(m, col_start, stack.rb_mut())
-                };
-            }
-
-            tmp_left
-                .rb_mut()
-                .cwise()
-                .zip_unchecked(left.rb())
-                .for_each(|a, b| *a = b.clone());
-
-            permute_rows_unchecked(
-                left,
-                tmp_left.rb(),
-                PermutationIndicesRef::new_unchecked(perm, &[]),
-                n_threads,
-            );
+        temp_mat_uninit! {
+            let (tmp_col, _) = unsafe {
+                temp_mat_uninit::<T>(m, 1, stack.rb_mut())
+            };
         }
-        {
-            let (_, _, _, right) = matrix.rb_mut().split_at_unchecked(0, col_start + n);
-            temp_mat_uninit! {
-                let (mut tmp_right, _) = unsafe {
-                    temp_mat_uninit::<T>(m, full_n - col_start - n, stack.rb_mut())
-                };
-            }
 
-            tmp_right
-                .rb_mut()
+        let mut tmp_col = tmp_col.col_unchecked(0);
+        let mut func = |j| {
+            let mut col = matrix.rb_mut().col_unchecked(j);
+            ColUninit(tmp_col.rb_mut())
                 .cwise()
-                .zip_unchecked(right.rb())
+                .zip_unchecked(col.rb())
                 .for_each(|a, b| *a = b.clone());
 
-            permute_rows_unchecked(
-                right,
-                tmp_right.rb(),
-                PermutationIndicesRef::new_unchecked(perm, &[]),
-                n_threads,
-            );
+            for i in 0..m {
+                *col.rb_mut().get_unchecked(i) =
+                    tmp_col.rb().get_unchecked(*perm.get_unchecked(i)).clone();
+            }
+        };
+
+        for j in 0..col_start {
+            func(j);
+        }
+        for j in col_start + n..full_n {
+            func(j);
         }
     } else {
         // use transpositions
@@ -315,6 +347,18 @@ where
     n_transpositions
 }
 
+pub fn lu_in_place_req<T: 'static>(
+    m: usize,
+    n: usize,
+    n_threads: usize,
+) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_any_of([
+        StackReq::try_new::<usize>(n.min(m))?,
+        lu_recursive_req::<T>(m, n.min(m), n_threads)?,
+        solve_triangular_in_place_req::<T>(n.min(m), n - n.min(m), n_threads)?,
+    ])
+}
+
 pub fn lu_in_place<'out, T>(
     matrix: MatMut<'_, T>,
     perm: &'out mut [usize],
@@ -329,6 +373,7 @@ where
     fancy_assert!(perm.len() == matrix.nrows());
     fancy_assert!(perm_inv.len() == matrix.nrows());
     let mut matrix = matrix;
+    let mut stack = stack;
     let m = matrix.nrows();
     let n = matrix.ncols();
 
@@ -337,17 +382,19 @@ where
             *perm.get_unchecked_mut(i) = i;
         }
 
-        let (mut transpositions, mut stack) = stack.make_with(n.min(m), |_| 0);
+        let n_transpositions = {
+            let (mut transpositions, mut stack) = stack.rb_mut().make_with(n.min(m), |_| 0);
 
-        let n_transpositions = lu_in_place_impl(
-            matrix.rb_mut(),
-            0,
-            n.min(m),
-            perm,
-            &mut transpositions,
-            n_threads,
-            stack.rb_mut(),
-        );
+            lu_in_place_impl(
+                matrix.rb_mut(),
+                0,
+                n.min(m),
+                perm,
+                &mut transpositions,
+                n_threads,
+                stack.rb_mut(),
+            )
+        };
 
         let (_, _, left, right) = matrix.split_at_unchecked(0, n.min(m));
 
@@ -369,7 +416,7 @@ where
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{GlobalMemBuffer, StackReq};
+    use dyn_stack::GlobalMemBuffer;
     use faer_core::{mul, Mat, MatRef};
     use rand::random;
 
@@ -511,7 +558,7 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, 1).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
             lu_in_place(mat.as_mut(), &mut perm, &mut perm_inv, 1, stack.rb_mut());

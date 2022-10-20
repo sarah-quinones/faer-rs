@@ -3,7 +3,7 @@ use std::mem::{size_of, transmute_copy};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, StackReq};
 use faer_core::mul::matmul;
 use faer_core::permutation::PermutationIndicesMut;
 use faer_core::{ColRef, MatMut, MatRef, RowRef};
@@ -627,6 +627,18 @@ unsafe fn swap_cols<T>(mut col_j: faer_core::ColMut<T>, mut col_max: faer_core::
     }
 }
 
+pub fn lu_in_place_req<T: 'static>(
+    m: usize,
+    n: usize,
+    n_threads: usize,
+) -> Result<StackReq, dyn_stack::SizeOverflow> {
+    let _n_threads = n_threads;
+    StackReq::try_all_of([
+        StackReq::try_new::<usize>(m)?,
+        StackReq::try_new::<usize>(n)?,
+    ])
+}
+
 pub fn lu_in_place<'out, T>(
     matrix: MatMut<'_, T>,
     row_perm: &'out mut [usize],
@@ -693,7 +705,7 @@ where
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{GlobalMemBuffer, StackReq};
+    use dyn_stack::GlobalMemBuffer;
     use faer_core::{mul, Mat};
     use rand::random;
 
@@ -833,7 +845,7 @@ mod tests {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, 1).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
             lu_in_place(
