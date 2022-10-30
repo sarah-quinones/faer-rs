@@ -19,6 +19,8 @@ pub mod solve;
 pub mod permutation;
 pub mod zip;
 
+pub mod householder;
+
 pub mod float_traits {
     use num_traits::Float;
 

@@ -45,7 +45,7 @@ pub mod triangular {
         let n = dim;
         let k = rhs_ncols;
 
-        if n_threads > 1 && k > 32 {
+        if n_threads > 1 && k > 64 && n <= 128 {
             return join_req(
                 |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads),
                 |n_threads| solve_triangular_in_place_req::<T>(n, k - k / 2, n_threads),
@@ -154,7 +154,7 @@ pub mod triangular {
         let n = tril.nrows();
         let k = rhs.ncols();
 
-        if n_threads > 1 && k > 32 {
+        if n_threads > 1 && k > 64 && n <= 128 {
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
             join(
                 |n_threads, stack| {
@@ -310,7 +310,7 @@ pub mod triangular {
         let n = tril.nrows();
         let k = rhs.ncols();
 
-        if n_threads > 1 && k > 32 {
+        if n_threads > 1 && k > 64 && n <= 128 {
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
             join(
                 |n_threads, stack| {

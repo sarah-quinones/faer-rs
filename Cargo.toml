@@ -3,6 +3,7 @@ members = [
     "faer-core",
     "faer-cholesky",
     "faer-lu",
+    "faer-qr",
 ]
 
 [profile.release]

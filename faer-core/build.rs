@@ -139,7 +139,7 @@ impl<{generics_decl}> ZipMat<({generics_use},)> {{
                 }}
             }} else if {args_is_row_major} {{
                 for i in strict as usize..nrows {{
-                    for j in 0..i + !strict as usize {{
+                    for j in 0..(i + !strict as usize).min(ncols) {{
                         op({args_get_row_major_unchecked});
                     }}
                 }}

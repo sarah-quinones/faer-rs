@@ -24,12 +24,11 @@ pub fn matmul_req<T: 'static>(
     let m = dst_rows;
     let n = dst_cols;
     let k = lhs_cols;
-    gemm_req::<T>(m, n, k, n_threads)
+    StackReq::try_all_of([gemm_req::<T>(m, n, k, n_threads)?])
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
-#[inline]
-pub unsafe fn matmul_unchecked<T>(
+unsafe fn gemm_wrapper_unchecked<T>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
@@ -94,6 +93,53 @@ pub unsafe fn matmul_unchecked<T>(
             n_threads,
             stack,
         ),
+    }
+}
+
+/// Same as [`matmul`], except that panics become undefined behavior.
+#[inline]
+pub unsafe fn matmul_unchecked<T>(
+    dst: MatMut<'_, T>,
+    lhs: MatRef<'_, T>,
+    rhs: MatRef<'_, T>,
+    alpha: Option<&T>,
+    beta: &T,
+    n_threads: usize,
+    stack: DynStack<'_>,
+) where
+    T: Zero + Clone + Send + Sync + 'static,
+    for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
+{
+    let mut dst = dst;
+
+    let dst_colmajor = dst.row_stride().abs() < dst.col_stride().abs();
+    let lhs_colmajor = lhs.row_stride().abs() < lhs.col_stride().abs();
+    let rhs_colmajor = rhs.row_stride().abs() < rhs.col_stride().abs();
+
+    let k = lhs.ncols();
+
+    let do_transpose_if_dst_col_major = match (lhs_colmajor, rhs_colmajor) {
+        _ if k <= 2 => false,
+        (true, true) => false,
+        (true, false) => false,
+        (false, true) => false,
+        (false, false) => true,
+    };
+
+    let do_transpose = do_transpose_if_dst_col_major == dst_colmajor;
+
+    if !do_transpose {
+        gemm_wrapper_unchecked(dst.rb_mut(), lhs, rhs, alpha, beta, n_threads, stack)
+    } else {
+        gemm_wrapper_unchecked(
+            dst.rb_mut().transpose(),
+            rhs.transpose(),
+            lhs.transpose(),
+            alpha,
+            beta,
+            n_threads,
+            stack,
+        )
     }
 }
 
