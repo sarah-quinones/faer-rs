@@ -24,7 +24,10 @@ pub fn matmul_req<T: 'static>(
     let m = dst_rows;
     let n = dst_cols;
     let k = lhs_cols;
-    StackReq::try_all_of([gemm_req::<T>(m, n, k, n_threads)?])
+    StackReq::try_any_of([
+        gemm_req::<T>(m, n, k, n_threads)?,
+        gemm_req::<T>(n, m, k, n_threads)?,
+    ])
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
@@ -47,6 +50,8 @@ unsafe fn gemm_wrapper_unchecked<T>(
     let m = dst.nrows();
     let n = dst.ncols();
     let k = lhs.ncols();
+
+    fancy_debug_assert!(stack.can_hold(gemm_req::<T>(m, n, k, n_threads).unwrap()));
 
     let dst_col_stride = dst.col_stride();
     let dst_row_stride = dst.row_stride();
@@ -1354,7 +1359,7 @@ pub mod triangular {
         k: usize,
         n_threads: usize,
     ) -> Result<StackReq, SizeOverflow> {
-        if n <= 64 {
+        if n <= 32 {
             StackReq::try_all_of([
                 temp_mat_req::<T>(n, n)?,
                 super::matmul_req::<T>(n, n, k, n_threads)?,
@@ -1399,8 +1404,11 @@ pub mod triangular {
 
         let n = dst.nrows();
         let k = lhs.ncols();
+        fancy_debug_assert!(
+            stack.can_hold(mat_x_mat_into_lower_impl_req::<T>(n, k, n_threads).unwrap())
+        );
 
-        if n <= 64 {
+        if n <= 32 {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
@@ -1726,6 +1734,19 @@ pub mod triangular {
         if !rhs_structure.is_dense() {
             fancy_debug_assert!(rhs.nrows() == rhs.ncols());
         }
+
+        fancy_debug_assert!(stack.can_hold(
+            matmul_req::<T>(
+                dst_structure,
+                lhs_structure,
+                rhs_structure,
+                dst.nrows(),
+                dst.ncols(),
+                lhs.ncols(),
+                n_threads
+            )
+            .unwrap()
+        ));
 
         let mut dst = dst;
         let mut lhs = lhs;

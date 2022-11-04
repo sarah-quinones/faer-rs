@@ -145,6 +145,8 @@ pub fn raw_cholesky_in_place_req<T: 'static>(
         let bs = (dim / 2).min(128);
         let rem = dim - bs;
         StackReq::try_any_of([
+            raw_cholesky_in_place_req::<T>(bs, n_threads)?,
+            raw_cholesky_in_place_req::<T>(rem, n_threads)?,
             solve::triangular::solve_triangular_in_place_req::<T>(bs, rem, n_threads)?,
             faer_core::mul::triangular::matmul_req::<T>(
                 BlockStructure::TriangularLower,
