@@ -19,7 +19,7 @@ std = ["faer-core/std", "pulp/std"]
 nightly = ["faer-core/nightly", "pulp/nightly"]
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 rand = "0.8.5"
 nalgebra = "0.31.0"
 assert_approx_eq = "1.1.0"

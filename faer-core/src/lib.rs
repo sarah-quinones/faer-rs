@@ -60,7 +60,8 @@ pub fn join_req(
         req_a(n_threads)?.try_or(req_b(n_threads)?)
     } else {
         let n_threads_a = n_threads_a(n_threads);
-        req_a(n_threads_a)?.try_and(req_b(n_threads - n_threads_a)?)
+        let n_threads_b = n_threads - n_threads_a;
+        req_a(n_threads_a)?.try_and(req_b(n_threads_b)?)
     }
 }
 
@@ -71,23 +72,21 @@ pub fn join<ReturnA: Send, ReturnB: Send>(
     op_b: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnB,
     req_a: impl Fn(usize) -> StackReq,
     n_threads_a: impl Fn(usize) -> usize,
-    n_threads_hint: usize,
+    n_threads: usize,
     stack: DynStack<'_>,
 ) {
     let mut stack = stack;
-    if n_threads_hint <= 1 {
-        op_a(n_threads_hint, stack.rb_mut());
-        op_b(n_threads_hint, stack.rb_mut());
+    if n_threads <= 1 {
+        op_a(n_threads, stack.rb_mut());
+        op_b(n_threads, stack.rb_mut());
     } else {
-        let req_a = req_a(n_threads_hint / 2);
+        let n_threads_a = n_threads_a(n_threads);
+        let n_threads_b = n_threads - n_threads_a;
+        let req_a = req_a(n_threads_a);
         let (mut stack_a_mem, stack_b) =
             stack.make_aligned_uninit::<u8>(req_a.size_bytes(), req_a.align_bytes());
         let stack_a = DynStack::new(&mut stack_a_mem);
-        let n_threads_a = n_threads_a(n_threads_hint);
-        rayon::join(
-            || op_a(n_threads_a, stack_a),
-            || op_b(n_threads_hint - n_threads_a, stack_b),
-        );
+        rayon::join(|| op_a(n_threads_a, stack_a), || op_b(n_threads_b, stack_b));
     }
 }
 

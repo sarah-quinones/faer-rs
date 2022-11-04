@@ -1354,7 +1354,7 @@ pub mod triangular {
         k: usize,
         n_threads: usize,
     ) -> Result<StackReq, SizeOverflow> {
-        if n <= 32 {
+        if n <= 64 {
             StackReq::try_all_of([
                 temp_mat_req::<T>(n, n)?,
                 super::matmul_req::<T>(n, n, k, n_threads)?,
@@ -1400,7 +1400,7 @@ pub mod triangular {
         let n = dst.nrows();
         let k = lhs.ncols();
 
-        if n <= 32 {
+        if n <= 64 {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };

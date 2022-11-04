@@ -142,7 +142,7 @@ pub fn raw_cholesky_in_place_req<T: 'static>(
     if dim < 32 {
         cholesky_in_place_left_looking_req::<T>(dim, 16, n_threads)
     } else {
-        let bs = dim / 2;
+        let bs = (dim / 2).min(128);
         let rem = dim - bs;
         StackReq::try_any_of([
             solve::triangular::solve_triangular_in_place_req::<T>(bs, rem, n_threads)?,
@@ -178,7 +178,7 @@ where
     if n < 32 {
         cholesky_in_place_left_looking_unchecked(matrix, 16, n_threads, stack)
     } else {
-        let block_size = n / 2;
+        let block_size = (n / 2).min(128);
         let (mut l00, _, mut a10, mut a11) =
             matrix.rb_mut().split_at_unchecked(block_size, block_size);
 
