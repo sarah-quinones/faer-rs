@@ -58,9 +58,6 @@ mod tests {
             None,
             &1.0,
             12,
-            DynStack::new(&mut GlobalMemBuffer::new(
-                mul::matmul_req::<f64>(n, n, n, 12).unwrap(),
-            )),
         );
 
         ata

@@ -119,7 +119,6 @@ unsafe fn make_householder_factor_unblocked<T>(
                 Some(&T::one()),
                 &factor,
                 1,
-                stack.rb_mut(),
             );
 
             temp_mat_uninit! {
@@ -225,7 +224,6 @@ unsafe fn make_householder_top_right<T>(
         None,
         &-&T::one(),
         n_threads,
-        stack.rb_mut(),
     );
 }
 
@@ -385,7 +383,6 @@ mod tests {
             Some(&1.0),
             &-1.0,
             1,
-            placeholder_stack!(),
         );
         matmul(
             q_bot_right,
@@ -394,7 +391,6 @@ mod tests {
             Some(&1.0),
             &-1.0,
             1,
-            placeholder_stack!(),
         );
 
         for k in (0..size).rev() {
@@ -435,7 +431,6 @@ mod tests {
                 None,
                 &1.0,
                 1,
-                placeholder_stack!(),
             );
             matmul(
                 qtq.as_mut(),
@@ -444,7 +439,6 @@ mod tests {
                 None,
                 &1.0,
                 1,
-                placeholder_stack!(),
             );
 
             for i in 0..m {
@@ -482,7 +476,6 @@ mod tests {
                 None,
                 &1.0,
                 1,
-                placeholder_stack!(),
             );
             matmul(
                 qtq.as_mut(),
@@ -491,7 +484,6 @@ mod tests {
                 None,
                 &1.0,
                 1,
-                placeholder_stack!(),
             );
 
             for i in 0..m {

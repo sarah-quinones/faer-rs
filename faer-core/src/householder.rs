@@ -48,7 +48,7 @@ pub unsafe fn apply_househodler_on_the_left<T>(
         let (_, first_row, _, last_rows) = matrix.split_at_unchecked(1, 0);
         let mut first_row = first_row.row_unchecked(0);
         temp_mat_uninit! {
-            let (tmp, mut stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+            let (tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
         }
         let mut tmp = tmp.transpose().row_unchecked(0);
 
@@ -64,7 +64,6 @@ pub unsafe fn apply_househodler_on_the_left<T>(
             Some(&T::one()),
             &T::one(),
             1,
-            stack.rb_mut(),
         );
 
         first_row
@@ -80,7 +79,6 @@ pub unsafe fn apply_househodler_on_the_left<T>(
             Some(&T::one()),
             &-householder_coeff,
             1,
-            stack,
         )
     }
 }
@@ -132,7 +130,6 @@ pub unsafe fn apply_block_househodler_on_the_left<T>(
             Some(&T::one()),
             &T::one(),
             n_threads,
-            stack.rb_mut(),
         );
 
         triangular::matmul(
@@ -178,6 +175,5 @@ pub unsafe fn apply_block_househodler_on_the_left<T>(
         Some(&T::one()),
         &-&T::one(),
         n_threads,
-        stack.rb_mut(),
     )
 }

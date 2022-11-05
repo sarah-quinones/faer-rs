@@ -4,7 +4,6 @@ use core::ops::{Add, Mul, Neg};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::matmul_req;
 use faer_core::mul::triangular::BlockStructure;
 use faer_core::{mul, solve, temp_mat_req, temp_mat_uninit, ColMut, MatMut};
 use num_traits::{Inv, One, Zero};
@@ -443,19 +442,7 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
             inserted_matrix_ncols,
             n_threads,
         )?,
-        matmul_req::<T>(
-            inserted_matrix_ncols,
-            inserted_matrix_ncols,
-            insertion_index,
-            n_threads,
-        )?,
         raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, n_threads)?,
-        matmul_req::<T>(
-            old_dim - insertion_index,
-            inserted_matrix_ncols,
-            insertion_index,
-            n_threads,
-        )?,
         solve::triangular::solve_triangular_in_place_req::<T>(
             inserted_matrix_ncols,
             old_dim - insertion_index,
@@ -589,7 +576,6 @@ pub fn insert_rows_and_cols_clobber<T>(
         Some(&T::one()),
         &-&T::one(),
         n_threads,
-        stack.rb_mut(),
     );
 
     solve::triangular::solve_unit_lower_triangular_in_place(

@@ -2,7 +2,7 @@ use core::ops::{Add, Mul, Neg};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::{matmul, matmul_req};
+use faer_core::mul::matmul;
 use faer_core::permutation::PermutationIndicesMut;
 use faer_core::solve::triangular::{
     solve_triangular_in_place_req, solve_unit_lower_triangular_in_place,
@@ -43,11 +43,11 @@ unsafe fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
 }
 
 fn lu_unblocked_req<T: 'static>(
-    m: usize,
-    n: usize,
-    n_threads: usize,
+    _m: usize,
+    _n: usize,
+    _n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    matmul_req::<T>(m, n, 1, n_threads)
+    Ok(StackReq::default())
 }
 
 #[inline(never)]
@@ -103,7 +103,7 @@ where
     n_transpositions
 }
 
-unsafe fn update<T>(mut matrix: MatMut<T>, j: usize, n_threads: usize, stack: DynStack<'_>)
+unsafe fn update<T>(mut matrix: MatMut<T>, j: usize, n_threads: usize, _stack: DynStack<'_>)
 where
     T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
@@ -123,7 +123,6 @@ where
         Some(&T::one()),
         &-&T::one(),
         n_threads,
-        stack,
     )
 }
 
@@ -160,7 +159,6 @@ fn lu_recursive_req<T: 'static>(
     StackReq::try_any_of([
         lu_recursive_req::<T>(m, bs, n_threads)?,
         solve_triangular_in_place_req::<T>(bs, n - bs, n_threads)?,
-        matmul_req::<T>(m - bs, n - bs, bs, n_threads)?,
         StackReq::try_all_of([
             StackReq::try_new::<usize>(m - bs)?,
             lu_recursive_req::<T>(m - bs, n - bs, n_threads)?,
@@ -224,7 +222,6 @@ where
         Some(&T::one()),
         &-&T::one(),
         n_threads,
-        stack.rb_mut(),
     );
 
     {

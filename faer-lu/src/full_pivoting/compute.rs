@@ -516,7 +516,6 @@ where
             Some(&T::one()),
             &-&T::one(),
             1,
-            DynStack::new(&mut []),
         );
         best_in_matrix(dst.rb())
     }

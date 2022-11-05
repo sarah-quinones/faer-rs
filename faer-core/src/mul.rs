@@ -4,30 +4,13 @@ use crate::{join, MatMut, MatRef};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use gemm::{gemm, gemm_req};
+use gemm::gemm;
 use num_traits::{One, Zero};
 use reborrow::*;
 
 #[inline]
 fn split_half(n_threads: usize) -> usize {
     n_threads / 2
-}
-
-/// Computes the memory requirements of [`matmul`].
-#[inline]
-pub fn matmul_req<T: 'static>(
-    dst_rows: usize,
-    dst_cols: usize,
-    lhs_cols: usize,
-    n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
-    let m = dst_rows;
-    let n = dst_cols;
-    let k = lhs_cols;
-    StackReq::try_any_of([
-        gemm_req::<T>(m, n, k, n_threads)?,
-        gemm_req::<T>(n, m, k, n_threads)?,
-    ])
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
@@ -38,7 +21,6 @@ unsafe fn gemm_wrapper_unchecked<T>(
     alpha: Option<&T>,
     beta: &T,
     n_threads: usize,
-    stack: DynStack<'_>,
 ) where
     T: Zero + Clone + Send + Sync + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
@@ -50,8 +32,6 @@ unsafe fn gemm_wrapper_unchecked<T>(
     let m = dst.nrows();
     let n = dst.ncols();
     let k = lhs.ncols();
-
-    fancy_debug_assert!(stack.can_hold(gemm_req::<T>(m, n, k, n_threads).unwrap()));
 
     let dst_col_stride = dst.col_stride();
     let dst_row_stride = dst.row_stride();
@@ -77,7 +57,6 @@ unsafe fn gemm_wrapper_unchecked<T>(
             alpha.clone(),
             beta.clone(),
             n_threads,
-            stack,
         ),
         None => gemm(
             m,
@@ -96,7 +75,6 @@ unsafe fn gemm_wrapper_unchecked<T>(
             T::zero(),
             beta.clone(),
             n_threads,
-            stack,
         ),
     }
 }
@@ -110,7 +88,6 @@ pub unsafe fn matmul_unchecked<T>(
     alpha: Option<&T>,
     beta: &T,
     n_threads: usize,
-    stack: DynStack<'_>,
 ) where
     T: Zero + Clone + Send + Sync + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
@@ -134,7 +111,7 @@ pub unsafe fn matmul_unchecked<T>(
     let do_transpose = do_transpose_if_dst_col_major == dst_colmajor;
 
     if !do_transpose {
-        gemm_wrapper_unchecked(dst.rb_mut(), lhs, rhs, alpha, beta, n_threads, stack)
+        gemm_wrapper_unchecked(dst.rb_mut(), lhs, rhs, alpha, beta, n_threads)
     } else {
         gemm_wrapper_unchecked(
             dst.rb_mut().transpose(),
@@ -143,7 +120,6 @@ pub unsafe fn matmul_unchecked<T>(
             alpha,
             beta,
             n_threads,
-            stack,
         )
     }
 }
@@ -169,7 +145,6 @@ pub fn matmul<T>(
     alpha: Option<&T>,
     beta: &T,
     n_threads: usize,
-    stack: DynStack<'_>,
 ) where
     T: Zero + Clone + Send + Sync + 'static,
     for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
@@ -177,7 +152,7 @@ pub fn matmul<T>(
     fancy_assert!(dst.nrows() == lhs.nrows());
     fancy_assert!(dst.ncols() == rhs.ncols());
     fancy_assert!(lhs.ncols() == rhs.nrows());
-    unsafe { matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads, stack) }
+    unsafe { matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads) }
 }
 
 pub mod triangular {
@@ -284,7 +259,6 @@ pub mod triangular {
         beta: &T,
         n_threads: usize,
         transposed: bool,
-        stack: DynStack<'_>,
     ) where
         T: Zero + Clone + Send + Sync + 'static,
         for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
@@ -294,7 +268,7 @@ pub mod triangular {
         } else {
             (dst.transpose(), rhs.transpose(), lhs.transpose())
         };
-        super::matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads, stack);
+        super::matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads);
     }
 
     fn mat_x_lower_into_lower_impl_req<T: 'static>(
@@ -308,11 +282,7 @@ pub mod triangular {
         };
 
         if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(n, n, n, n_threads)?,
-            ])
+            StackReq::try_all_of([temp_mat_req::<T>(n, n)?, temp_mat_req::<T>(n, n)?])
         } else {
             let bs = n / 2;
             let rem = n - bs;
@@ -325,10 +295,7 @@ pub mod triangular {
 
             temp_dst.try_and(join_req(
                 |n_threads| {
-                    StackReq::try_any_of([
-                        super::matmul_req::<T>(rem, bs, rem, n_threads)?,
-                        mat_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
-                    ])
+                    StackReq::try_any_of([mat_x_lower_into_lower_impl_req::<T>(rem, n_threads)?])
                 },
                 |n_threads| {
                     StackReq::try_any_of([
@@ -379,7 +346,7 @@ pub mod triangular {
         if n <= 16 {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             }
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
             mul(
@@ -390,7 +357,6 @@ pub mod triangular {
                 beta,
                 n_threads,
                 transposed,
-                stack,
             );
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
@@ -419,7 +385,6 @@ pub mod triangular {
                     beta,
                     n_threads,
                     transposed,
-                    stack.rb_mut(),
                 );
                 mat_x_lower_into_lower_impl_unchecked(
                     dst_bot_right,
@@ -482,7 +447,6 @@ pub mod triangular {
                             beta,
                             n_threads,
                             transposed,
-                            stack.rb_mut(),
                         );
                         mat_x_lower_into_lower_impl_unchecked(
                             dst_bot_right,
@@ -545,12 +509,7 @@ pub mod triangular {
                             stack,
                         );
                     },
-                    |n_threads| {
-                        StackReq::any_of([
-                            super::matmul_req::<T>(rem, bs, rem, n_threads).unwrap(),
-                            mat_x_lower_into_lower_impl_req::<T>(rem, n_threads).unwrap(),
-                        ])
-                    },
+                    |n_threads| mat_x_lower_into_lower_impl_req::<T>(rem, n_threads).unwrap(),
                     split_half,
                     n_threads,
                     stack,
@@ -575,10 +534,7 @@ pub mod triangular {
         };
 
         if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(m, n, n, n_threads)?,
-            ])
+            temp_mat_req::<T>(n, n)
         } else {
             let bs = n / 2;
             let rem = n - bs;
@@ -590,7 +546,7 @@ pub mod triangular {
             };
 
             temp_dst.try_and(join_req(
-                |n_threads| super::matmul_req::<T>(m, bs, rem, n_threads),
+                |_| Ok(StackReq::default()),
                 |n_threads| {
                     join_req(
                         |n_threads| mat_x_lower_impl_req::<T>(m, bs, n_threads),
@@ -637,21 +593,18 @@ pub mod triangular {
 
         if n <= 16 {
             temp_mat_uninit! {
-                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
 
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
             let temp_rhs = temp_rhs.into_const();
 
-            mul(
-                dst, lhs, temp_rhs, alpha, beta, n_threads, transposed, stack,
-            );
+            mul(dst, lhs, temp_rhs, alpha, beta, n_threads, transposed);
         } else {
             // split rhs into 3 sections
             // split lhs and dst into 2 sections
 
             let bs = n / 2;
-            let rem = n - bs;
 
             let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
             let (_, _, lhs_left, lhs_right) = lhs.split_at_unchecked(0, bs);
@@ -677,7 +630,6 @@ pub mod triangular {
                     beta,
                     n_threads,
                     transposed,
-                    stack.rb_mut(),
                 );
                 mat_x_lower_impl_unchecked(
                     dst_right.rb_mut(),
@@ -696,7 +648,7 @@ pub mod triangular {
                 }
 
                 join(
-                    |n_threads, stack| {
+                    |n_threads, _| {
                         mul(
                             temp_dst.rb_mut(),
                             lhs_right,
@@ -705,7 +657,6 @@ pub mod triangular {
                             beta,
                             n_threads,
                             transposed,
-                            stack,
                         );
                     },
                     |n_threads, stack| {
@@ -742,7 +693,7 @@ pub mod triangular {
                             stack,
                         )
                     },
-                    |n_threads| super::matmul_req::<T>(m, bs, rem, n_threads).unwrap(),
+                    |_| StackReq::default(),
                     split_half,
                     n_threads,
                     stack,
@@ -771,7 +722,6 @@ pub mod triangular {
                 temp_mat_req::<T>(n, n)?,
                 temp_mat_req::<T>(n, n)?,
                 temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(n, n, n, n_threads)?,
             ])
         } else {
             let bs = n / 2;
@@ -835,7 +785,7 @@ pub mod triangular {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
                 let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
 
             copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
@@ -851,7 +801,6 @@ pub mod triangular {
                 beta,
                 n_threads,
                 transposed,
-                stack,
             );
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
@@ -1003,22 +952,13 @@ pub mod triangular {
         };
 
         if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(n, n, n, n_threads)?,
-            ])
+            StackReq::try_all_of([temp_mat_req::<T>(n, n)?, temp_mat_req::<T>(n, n)?])
         } else {
             let bs = n / 2;
             let rem = n - bs;
 
             join_req(
-                |n_threads| {
-                    StackReq::try_any_of([
-                        super::matmul_req::<T>(bs, bs, rem, n_threads)?,
-                        upper_x_lower_impl_req::<T>(bs, n_threads)?,
-                    ])
-                },
+                |n_threads| StackReq::try_any_of([upper_x_lower_impl_req::<T>(bs, n_threads)?]),
                 |n_threads| {
                     StackReq::try_any_of([
                         join_req(
@@ -1068,7 +1008,7 @@ pub mod triangular {
         if n <= 16 {
             temp_mat_uninit! {
                 let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
 
             copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
@@ -1076,9 +1016,7 @@ pub mod triangular {
 
             let temp_lhs = temp_lhs.into_const();
             let temp_rhs = temp_rhs.into_const();
-            mul(
-                dst, temp_lhs, temp_rhs, alpha, beta, n_threads, transposed, stack,
-            );
+            mul(dst, temp_lhs, temp_rhs, alpha, beta, n_threads, transposed);
         } else {
             let bs = n / 2;
             let rem = n - bs;
@@ -1105,7 +1043,6 @@ pub mod triangular {
                         beta,
                         n_threads,
                         transposed,
-                        stack.rb_mut(),
                     );
                     upper_x_lower_impl_unchecked(
                         dst_top_left,
@@ -1167,12 +1104,7 @@ pub mod triangular {
                         stack,
                     )
                 },
-                |n_threads| {
-                    StackReq::any_of([
-                        super::matmul_req::<T>(bs, bs, rem, n_threads).unwrap(),
-                        upper_x_lower_impl_req::<T>(bs, n_threads).unwrap(),
-                    ])
-                },
+                |n_threads| StackReq::any_of([upper_x_lower_impl_req::<T>(bs, n_threads).unwrap()]),
                 split_half,
                 n_threads,
                 stack,
@@ -1195,7 +1127,6 @@ pub mod triangular {
                 temp_mat_req::<T>(n, n)?,
                 temp_mat_req::<T>(n, n)?,
                 temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(n, n, n, n_threads)?,
             ])
         } else {
             let bs = n / 2;
@@ -1254,7 +1185,7 @@ pub mod triangular {
             temp_mat_uninit! {
                 let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
                 let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
 
             copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
@@ -1270,7 +1201,6 @@ pub mod triangular {
                 beta,
                 n_threads,
                 transposed,
-                stack,
             );
 
             accum_lower(dst.rb_mut(), temp_dst.into_const(), skip_diag, alpha);
@@ -1360,15 +1290,12 @@ pub mod triangular {
         n_threads: usize,
     ) -> Result<StackReq, SizeOverflow> {
         if n <= 32 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                super::matmul_req::<T>(n, n, k, n_threads)?,
-            ])
+            StackReq::try_all_of([temp_mat_req::<T>(n, n)?])
         } else {
             let bs = n / 2;
             let rem = n - bs;
             join_req(
-                |n_threads| super::matmul_req::<T>(rem, bs, k, n_threads),
+                |_| Ok(StackReq::default()),
                 |n_threads| {
                     join_req(
                         |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, k, n_threads),
@@ -1410,7 +1337,7 @@ pub mod triangular {
 
         if n <= 32 {
             temp_mat_uninit! {
-                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+                let (mut temp_dst, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
             };
             mul(
                 temp_dst.rb_mut(),
@@ -1420,18 +1347,16 @@ pub mod triangular {
                 beta,
                 n_threads,
                 transposed,
-                stack,
             );
             accum_lower(dst, temp_dst.rb(), skip_diag, alpha)
         } else {
             let bs = n / 2;
-            let rem = n - n / 2;
             let (dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
             let (_, lhs_top, _, lhs_bot) = lhs.split_at_unchecked(bs, 0);
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, bs);
 
             join(
-                |n_threads, stack| {
+                |n_threads, _| {
                     mul(
                         dst_bot_left,
                         lhs_bot,
@@ -1440,7 +1365,6 @@ pub mod triangular {
                         beta,
                         n_threads,
                         transposed,
-                        stack,
                     )
                 },
                 |n_threads, stack| {
@@ -1477,7 +1401,7 @@ pub mod triangular {
                         stack,
                     )
                 },
-                |n_threads| super::matmul_req::<T>(rem, bs, k, n_threads).unwrap(),
+                |_| StackReq::default(),
                 split_half,
                 n_threads,
                 stack,
@@ -1590,7 +1514,7 @@ pub mod triangular {
 
         if dst_structure.is_dense() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
-                super::matmul_req::<T>(m, n, k, n_threads)
+                Ok(StackReq::default())
             } else {
                 fancy_debug_assert!(rhs_structure.is_lower());
                 if lhs_structure.is_dense() {
@@ -1809,7 +1733,7 @@ pub mod triangular {
 
         if dst_structure.is_dense() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
-                mul(dst, lhs, rhs, alpha, beta, n_threads, transposed, stack);
+                mul(dst, lhs, rhs, alpha, beta, n_threads, transposed);
             } else {
                 fancy_debug_assert!(rhs_structure.is_lower());
 
@@ -1943,17 +1867,7 @@ mod tests {
         let rhs = mat![[5.0], [7.0]];
         let mut dst = mat![[0.0], [0.0]];
 
-        let mut mem = dyn_stack::GlobalMemBuffer::new(matmul_req::<f64>(2, 1, 2, 4).unwrap());
-        let stack = DynStack::new(&mut mem);
-        super::matmul(
-            dst.as_mut(),
-            lhs.as_ref(),
-            rhs.as_ref(),
-            None,
-            &2.0,
-            1,
-            stack,
-        );
+        super::matmul(dst.as_mut(), lhs.as_ref(), rhs.as_ref(), None, &2.0, 1);
 
         fancy_assert!(dst[(0, 0)] == 38.0);
         fancy_assert!(dst[(1, 0)] == 86.0);
@@ -1965,8 +1879,6 @@ mod tests {
         let rhs = mat![[5.0], [7.0]];
         let mut dst = mat![[4.0], [3.0]];
 
-        let mut mem = dyn_stack::GlobalMemBuffer::new(matmul_req::<f64>(2, 1, 2, 4).unwrap());
-        let stack = DynStack::new(&mut mem);
         super::matmul(
             dst.as_mut(),
             lhs.as_ref(),
@@ -1974,7 +1886,6 @@ mod tests {
             Some(&-2.0),
             &2.0,
             1,
-            stack,
         );
 
         fancy_assert!(dst[(0, 0)] == 30.0);
@@ -2069,9 +1980,6 @@ mod tests {
                 None,
                 &2.5,
                 n_threads,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    matmul_req::<f64>(m, n, k, n_threads).unwrap(),
-                )),
             );
 
             if dst_structure.is_dense() {

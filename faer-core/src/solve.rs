@@ -8,7 +8,7 @@ use num_traits::{Inv, One, Zero};
 use reborrow::*;
 
 pub mod triangular {
-    use crate::{join, join_req};
+    use crate::join;
 
     use super::*;
 
@@ -38,32 +38,11 @@ pub mod triangular {
     }
 
     pub fn solve_triangular_in_place_req<T: 'static>(
-        dim: usize,
-        rhs_ncols: usize,
-        n_threads: usize,
+        _dim: usize,
+        _rhs_ncols: usize,
+        _n_threads: usize,
     ) -> Result<StackReq, SizeOverflow> {
-        let n = dim;
-        let k = rhs_ncols;
-
-        if n_threads > 1 && k > 64 && n <= 128 {
-            return join_req(
-                |n_threads| solve_triangular_in_place_req::<T>(n, k / 2, n_threads),
-                |n_threads| solve_triangular_in_place_req::<T>(n, k - k / 2, n_threads),
-                split_half,
-                n_threads,
-            );
-        }
-
-        if n <= recursion_threshold::<T>() {
-            return Ok(StackReq::default());
-        }
-        let bs = blocksize::<T>(n);
-
-        StackReq::try_any_of([
-            solve_triangular_in_place_req::<T>(dim / 2, rhs_ncols, n_threads)?,
-            solve_triangular_in_place_req::<T>(dim - dim / 2, rhs_ncols, n_threads)?,
-            crate::mul::matmul_req::<T>(n - bs, bs, k, n_threads)?,
-        ])
+        Ok(StackReq::default())
     }
 
     #[track_caller]
@@ -277,7 +256,6 @@ pub mod triangular {
             Some(&T::one()),
             &-&T::one(),
             n_threads,
-            stack.rb_mut(),
         );
 
         solve_unit_lower_triangular_in_place_unchecked(tril_bot_right, rhs_bot, n_threads, stack);
@@ -454,7 +432,6 @@ pub mod triangular {
             Some(&T::one()),
             &-&T::one(),
             n_threads,
-            stack.rb_mut(),
         );
 
         solve_lower_triangular_in_place_unchecked(tril_bot_right, rhs_bot, n_threads, stack);
