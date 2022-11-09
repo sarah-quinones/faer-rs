@@ -8,7 +8,7 @@ use nalgebra::DMatrix;
 pub fn cholesky(c: &mut Criterion) {
     use faer_cholesky::{ldlt, llt};
 
-    for n in [64, 128, 256, 512, 1024] {
+    for n in [6, 12, 64, 128, 256, 512, 1024] {
         c.bench_function(&format!("faer-ldlt-req-{n}"), |b| {
             b.iter(|| {
                 llt::compute::raw_cholesky_in_place_req::<f64>(n, rayon::current_num_threads())

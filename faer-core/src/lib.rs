@@ -59,8 +59,8 @@ pub fn join_req(
     if n_threads <= 1 {
         req_a(n_threads)?.try_or(req_b(n_threads)?)
     } else {
-        let n_threads_a = n_threads_a(n_threads);
-        let n_threads_b = n_threads - n_threads_a;
+        let n_threads_a = n_threads;
+        let n_threads_b = n_threads;
         req_a(n_threads_a)?.try_and(req_b(n_threads_b)?)
     }
 }
@@ -80,8 +80,8 @@ pub fn join<ReturnA: Send, ReturnB: Send>(
         op_a(n_threads, stack.rb_mut());
         op_b(n_threads, stack.rb_mut());
     } else {
-        let n_threads_a = n_threads_a(n_threads);
-        let n_threads_b = n_threads - n_threads_a;
+        let n_threads_a = n_threads;
+        let n_threads_b = n_threads;
         let req_a = req_a(n_threads_a);
         let (mut stack_a_mem, stack_b) =
             stack.make_aligned_uninit::<u8>(req_a.size_bytes(), req_a.align_bytes());

@@ -56,7 +56,7 @@ unsafe fn gemm_wrapper_unchecked<T>(
             rhs.row_stride(),
             alpha.clone(),
             beta.clone(),
-            n_threads,
+            ::gemm::Parallelism::Rayon(n_threads),
         ),
         None => gemm(
             m,
@@ -74,7 +74,7 @@ unsafe fn gemm_wrapper_unchecked<T>(
             rhs.row_stride(),
             T::zero(),
             beta.clone(),
-            n_threads,
+            ::gemm::Parallelism::Rayon(n_threads),
         ),
     }
 }
