@@ -2,54 +2,20 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::float_traits::Sqrt;
 use faer_core::mul::triangular::BlockStructure;
-use faer_core::{mul, solve, MatMut};
+use faer_core::{mul, solve, ComplexField, MatMut, Parallelism};
 use num_traits::{Inv, One, Zero};
 use reborrow::*;
 
 use core::ops::{Add, Mul, Neg};
 
-fn cholesky_in_place_left_looking_req<T: 'static>(
-    dim: usize,
-    block_size: usize,
-    n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
-    let n = dim;
-    let bs = block_size.min(dim);
-
-    match n {
-        0 | 1 => return Ok(StackReq::default()),
-        _ => (),
-    }
-
-    use BlockStructure::*;
-    StackReq::try_any_of([
-        mul::triangular::matmul_req::<T>(
-            TriangularLower,
-            Rectangular,
-            Rectangular,
-            bs,
-            bs,
-            n - bs,
-            n_threads,
-        )?,
-        cholesky_in_place_left_looking_req::<T>(bs, bs / 2, n_threads)?,
-        solve::triangular::solve_triangular_in_place_req::<T>(bs, bs, n_threads)?,
-    ])
-}
-
 #[derive(Debug)]
 pub struct CholeskyError;
 
-unsafe fn cholesky_in_place_left_looking_unchecked<T>(
+unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     matrix: MatMut<'_, T>,
     block_size: usize,
-    n_threads: usize,
-    stack: DynStack<'_>,
-) -> Result<(), CholeskyError>
-where
-    T: Zero + One + Clone + Sqrt + PartialOrd + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+    parallelism: Parallelism,
+) -> Result<(), CholeskyError> {
     let mut matrix = matrix;
 
     fancy_debug_assert!(
@@ -63,7 +29,7 @@ where
         0 => return Ok(()),
         1 => {
             let elem = matrix.get_unchecked(0, 0);
-            return if *elem > T::zero() {
+            return if (*elem).into_real_imag().0 > T::Real::zero() {
                 *elem = elem.sqrt();
                 Ok(())
             } else {
@@ -74,10 +40,8 @@ where
     };
 
     let mut idx = 0;
-    let mut stack = stack;
     loop {
         let block_size = (n - idx).min(block_size);
-        let mut stack = stack.rb_mut();
 
         let (_, _, bottom_left, bottom_right) = matrix.rb_mut().split_at_unchecked(idx, idx);
         let (_, l10, _, l20) = bottom_left.into_const().split_at_unchecked(block_size, 0);
@@ -90,18 +54,15 @@ where
             BlockStructure::Rectangular,
             l10.transpose(),
             BlockStructure::Rectangular,
-            Some(&T::one()),
-            &-&T::one(),
-            n_threads,
-            stack.rb_mut(),
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            false,
+            parallelism,
         );
 
-        cholesky_in_place_left_looking_unchecked(
-            a11.rb_mut(),
-            block_size / 2,
-            n_threads,
-            stack.rb_mut(),
-        )?;
+        cholesky_in_place_left_looking_unchecked(a11.rb_mut(), block_size / 2, parallelism)?;
 
         if idx + block_size == n {
             break;
@@ -114,16 +75,18 @@ where
             a21.rb_mut(),
             l20,
             l10.transpose(),
-            Some(&T::one()),
-            &-&T::one(),
-            n_threads,
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            false,
+            parallelism,
         );
 
         solve::triangular::solve_lower_triangular_in_place_unchecked(
             l11,
             a21.rb_mut().transpose(),
-            n_threads,
-            stack,
+            parallelism,
         );
 
         idx += block_size;
@@ -137,37 +100,14 @@ pub fn raw_cholesky_in_place_req<T: 'static>(
     dim: usize,
     n_threads: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    if dim < 32 {
-        cholesky_in_place_left_looking_req::<T>(dim, 16, n_threads)
-    } else {
-        let bs = (dim / 2).min(128);
-        let rem = dim - bs;
-        StackReq::try_any_of([
-            raw_cholesky_in_place_req::<T>(bs, n_threads)?,
-            raw_cholesky_in_place_req::<T>(rem, n_threads)?,
-            solve::triangular::solve_triangular_in_place_req::<T>(bs, rem, n_threads)?,
-            faer_core::mul::triangular::matmul_req::<T>(
-                BlockStructure::TriangularLower,
-                BlockStructure::Rectangular,
-                BlockStructure::Rectangular,
-                rem,
-                rem,
-                bs,
-                n_threads,
-            )?,
-        ])
-    }
+    Ok(StackReq::default())
 }
 
-unsafe fn cholesky_in_place_unchecked<T>(
+unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
     matrix: MatMut<'_, T>,
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) -> Result<(), CholeskyError>
-where
-    T: Zero + One + Clone + Sqrt + PartialOrd + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> Result<(), CholeskyError> {
     // right looking cholesky
 
     fancy_debug_assert!(matrix.nrows() == matrix.ncols());
@@ -176,21 +116,20 @@ where
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_unchecked(matrix, 16, n_threads, stack)
+        cholesky_in_place_left_looking_unchecked(matrix, 16, parallelism)
     } else {
         let block_size = (n / 2).min(128);
         let (mut l00, _, mut a10, mut a11) =
             matrix.rb_mut().split_at_unchecked(block_size, block_size);
 
-        cholesky_in_place_unchecked(l00.rb_mut(), n_threads, stack.rb_mut())?;
+        cholesky_in_place_unchecked(l00.rb_mut(), parallelism, stack.rb_mut())?;
 
         let l00 = l00.into_const();
 
         solve::triangular::solve_lower_triangular_in_place_unchecked(
             l00,
             a10.rb_mut().transpose(),
-            n_threads,
-            stack.rb_mut(),
+            parallelism,
         );
 
         faer_core::mul::triangular::matmul(
@@ -200,13 +139,15 @@ where
             BlockStructure::Rectangular,
             a10.rb().transpose(),
             BlockStructure::Rectangular,
-            Some(&T::one()),
-            &-&T::one(),
-            n_threads,
-            stack.rb_mut(),
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            false,
+            parallelism,
         );
 
-        cholesky_in_place_unchecked(a11, n_threads, stack)
+        cholesky_in_place_unchecked(a11, parallelism, stack)
     }
 }
 
@@ -223,18 +164,14 @@ where
 /// Panics if the input matrix is not square.
 #[track_caller]
 #[inline]
-pub fn raw_cholesky_in_place<T>(
+pub fn raw_cholesky_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) -> Result<(), CholeskyError>
-where
-    T: Zero + One + Clone + Sqrt + PartialOrd + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> Result<(), CholeskyError> {
     fancy_assert!(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    unsafe { cholesky_in_place_unchecked(matrix, n_threads, stack) }
+    unsafe { cholesky_in_place_unchecked(matrix, parallelism, stack) }
 }

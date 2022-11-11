@@ -7,7 +7,7 @@ use core::any::TypeId;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::mem::{size_of, MaybeUninit};
-use core::ops::{Index, IndexMut};
+use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 use core::ptr::NonNull;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use iter::*;
@@ -20,6 +20,118 @@ pub mod permutation;
 pub mod zip;
 
 pub mod householder;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Parallelism {
+    None,
+    Rayon,
+}
+
+pub trait ComplexField:
+    Copy
+    + Add<Output = Self>
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Neg<Output = Self>
+    + Send
+    + Sync
+    + 'static
+{
+    type Real: RealField;
+
+    fn from_real(real: Self::Real) -> Self;
+    fn into_real_imag(self) -> (Self::Real, Self::Real);
+
+    fn zero() -> Self;
+    fn one() -> Self;
+
+    fn inv(self) -> Self;
+    fn conj(self) -> Self;
+    fn sqrt(self) -> Self;
+}
+
+pub trait RealField: ComplexField<Real = Self> + PartialOrd {}
+
+impl RealField for f32 {}
+impl ComplexField for f32 {
+    type Real = f32;
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+
+    #[inline(always)]
+    fn into_real_imag(self) -> (Self::Real, Self::Real) {
+        (self, 0.0)
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
+
+    #[inline(always)]
+    fn conj(self) -> Self {
+        self
+    }
+
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
+
+impl RealField for f64 {}
+impl ComplexField for f64 {
+    type Real = f64;
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+
+    #[inline(always)]
+    fn into_real_imag(self) -> (Self::Real, Self::Real) {
+        (self, 0.0)
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
+
+    #[inline(always)]
+    fn conj(self) -> Self {
+        self
+    }
+
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
 
 pub mod float_traits {
     use num_traits::Float;
@@ -47,6 +159,18 @@ mod seal {
     impl<'a, T> Seal for ColMut<'a, T> {}
     impl<'a, T> Seal for RowRef<'a, T> {}
     impl<'a, T> Seal for RowMut<'a, T> {}
+}
+
+#[inline]
+pub fn join_raw(
+    op_a: impl Send + for<'a> FnOnce(),
+    op_b: impl Send + for<'a> FnOnce(),
+    parallelism: Parallelism,
+) {
+    match parallelism {
+        Parallelism::None => (op_a(), op_b()),
+        Parallelism::Rayon => rayon::join(op_a, op_b),
+    };
 }
 
 #[inline]

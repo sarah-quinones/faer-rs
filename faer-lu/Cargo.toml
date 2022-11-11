@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
-pulp = { version = "0.5", default-features = false, path = "../../pulp" }
+pulp = { version = "0.7", default-features = false, path = "../../pulp" }
 reborrow = "0.5"
 dyn-stack = "0.8"
 assert2 = "0.3"

@@ -1,11 +1,6 @@
-use core::ops::{Add, Mul};
-
-use crate::{join, MatMut, MatRef};
-
+use crate::{ComplexField, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use gemm::gemm;
-use num_traits::{One, Zero};
 use reborrow::*;
 
 #[inline]
@@ -14,17 +9,17 @@ fn split_half(n_threads: usize) -> usize {
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
-unsafe fn gemm_wrapper_unchecked<T>(
+unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
-    alpha: Option<&T>,
-    beta: &T,
-    n_threads: usize,
-) where
-    T: Zero + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-{
+    alpha: Option<T>,
+    beta: T,
+    conj_dst: bool,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
     fancy_debug_assert!(dst.nrows() == lhs.nrows());
     fancy_debug_assert!(dst.ncols() == rhs.ncols());
     fancy_debug_assert!(lhs.ncols() == rhs.nrows());
@@ -54,9 +49,15 @@ unsafe fn gemm_wrapper_unchecked<T>(
             rhs.as_ptr(),
             rhs.col_stride(),
             rhs.row_stride(),
-            alpha.clone(),
-            beta.clone(),
-            ::gemm::Parallelism::Rayon(n_threads),
+            alpha,
+            beta,
+            conj_dst,
+            conj_lhs,
+            conj_rhs,
+            match parallelism {
+                Parallelism::None => ::gemm::Parallelism::None,
+                Parallelism::Rayon => ::gemm::Parallelism::Rayon(0),
+            },
         ),
         None => gemm(
             m,
@@ -73,55 +74,42 @@ unsafe fn gemm_wrapper_unchecked<T>(
             rhs.col_stride(),
             rhs.row_stride(),
             T::zero(),
-            beta.clone(),
-            ::gemm::Parallelism::Rayon(n_threads),
+            beta,
+            conj_dst,
+            conj_lhs,
+            conj_rhs,
+            match parallelism {
+                Parallelism::None => ::gemm::Parallelism::None,
+                Parallelism::Rayon => ::gemm::Parallelism::Rayon(0),
+            },
         ),
     }
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
 #[inline]
-pub unsafe fn matmul_unchecked<T>(
+pub unsafe fn matmul_unchecked<T: ComplexField>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
-    alpha: Option<&T>,
-    beta: &T,
-    n_threads: usize,
-) where
-    T: Zero + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-{
-    let mut dst = dst;
-
-    let dst_colmajor = dst.row_stride().abs() < dst.col_stride().abs();
-    let lhs_colmajor = lhs.row_stride().abs() < lhs.col_stride().abs();
-    let rhs_colmajor = rhs.row_stride().abs() < rhs.col_stride().abs();
-
-    let k = lhs.ncols();
-
-    let do_transpose_if_dst_col_major = match (lhs_colmajor, rhs_colmajor) {
-        _ if k <= 2 => false,
-        (true, true) => false,
-        (true, false) => false,
-        (false, true) => false,
-        (false, false) => true,
-    };
-
-    let do_transpose = do_transpose_if_dst_col_major == dst_colmajor;
-
-    if !do_transpose {
-        gemm_wrapper_unchecked(dst.rb_mut(), lhs, rhs, alpha, beta, n_threads)
-    } else {
-        gemm_wrapper_unchecked(
-            dst.rb_mut().transpose(),
-            rhs.transpose(),
-            lhs.transpose(),
-            alpha,
-            beta,
-            n_threads,
-        )
-    }
+    alpha: Option<T>,
+    beta: T,
+    conj_dst: bool,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    gemm_wrapper_unchecked(
+        dst,
+        lhs,
+        rhs,
+        alpha,
+        beta,
+        conj_dst,
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    )
 }
 
 /// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in `dst`.
@@ -138,27 +126,41 @@ pub unsafe fn matmul_unchecked<T>(
 ///  - `lhs.ncols() == rhs.nrows()`
 #[track_caller]
 #[inline]
-pub fn matmul<T>(
+pub fn matmul<T: ComplexField>(
     dst: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
-    alpha: Option<&T>,
-    beta: &T,
-    n_threads: usize,
-) where
-    T: Zero + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-{
+    alpha: Option<T>,
+    beta: T,
+    conj_dst: bool,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
     fancy_assert!(dst.nrows() == lhs.nrows());
     fancy_assert!(dst.ncols() == rhs.ncols());
     fancy_assert!(lhs.ncols() == rhs.nrows());
-    unsafe { matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads) }
+    unsafe {
+        matmul_unchecked(
+            dst,
+            lhs,
+            rhs,
+            alpha,
+            beta,
+            conj_dst,
+            conj_lhs,
+            conj_rhs,
+            parallelism,
+        )
+    }
 }
 
 pub mod triangular {
+    use std::mem::MaybeUninit;
+
     use super::*;
+    use crate::join_raw;
     use crate::zip::{ColUninit, MatUninit};
-    use crate::{join_req, temp_mat_req, temp_mat_uninit};
 
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
@@ -168,7 +170,7 @@ pub mod triangular {
         Generic,
     }
 
-    unsafe fn copy_lower<T: Clone + Zero + One>(
+    unsafe fn copy_lower<T: ComplexField>(
         mut dst: MatMut<'_, T>,
         src: MatRef<'_, T>,
         src_diag: DiagonalKind,
@@ -204,18 +206,16 @@ pub mod triangular {
             .cwise()
             .zip_unchecked(src)
             .for_each_triangular_lower(strict, |dst, src| {
-                *dst = src.clone();
+                *dst = *src;
             });
     }
 
-    unsafe fn accum_lower<T: Clone + Zero>(
+    unsafe fn accum_lower<T: ComplexField>(
         dst: MatMut<'_, T>,
         src: MatRef<'_, T>,
         skip_diag: bool,
-        alpha: Option<&T>,
-    ) where
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+    ) {
         let n = dst.nrows();
         fancy_debug_assert!(n == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
@@ -227,7 +227,7 @@ pub mod triangular {
                 dst.cwise()
                     .zip_unchecked(src)
                     .for_each_triangular_lower(skip_diag, |dst, src| {
-                        *dst = &(alpha * &*dst) + &*src;
+                        *dst = alpha * *dst + *src;
                     });
             }
             None => {
@@ -235,14 +235,14 @@ pub mod triangular {
                     .cwise()
                     .zip_unchecked(src)
                     .for_each_triangular_lower(skip_diag, |dst, src| {
-                        *dst = src.clone();
+                        *dst = *src;
                     });
             }
         }
     }
 
     #[inline]
-    unsafe fn copy_upper<T: Clone + Zero + One>(
+    unsafe fn copy_upper<T: ComplexField>(
         dst: MatMut<'_, T>,
         src: MatRef<'_, T>,
         src_diag: DiagonalKind,
@@ -251,84 +251,43 @@ pub mod triangular {
     }
 
     #[inline]
-    unsafe fn mul<T>(
+    unsafe fn mul<T: ComplexField>(
         dst: MatMut<'_, T>,
         lhs: MatRef<'_, T>,
         rhs: MatRef<'_, T>,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-    ) where
-        T: Zero + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
-        let (dst, lhs, rhs) = if !transposed {
-            (dst, lhs, rhs)
-        } else {
-            (dst.transpose(), rhs.transpose(), lhs.transpose())
-        };
-        super::matmul_unchecked(dst, lhs, rhs, alpha, beta, n_threads);
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
+        super::matmul_unchecked(
+            dst,
+            lhs,
+            rhs,
+            alpha,
+            beta,
+            conj_dst,
+            conj_lhs,
+            conj_rhs,
+            parallelism,
+        );
     }
 
-    fn mat_x_lower_into_lower_impl_req<T: 'static>(
-        n: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
-            StackReq::try_all_of([temp_mat_req::<T>(n, n)?, temp_mat_req::<T>(n, n)?])
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-
-            let temp_dst = if n_threads <= 1 {
-                StackReq::default()
-            } else {
-                temp_mat_req::<T>(rem, bs)?
-            };
-
-            temp_dst.try_and(join_req(
-                |n_threads| {
-                    StackReq::try_any_of([mat_x_lower_into_lower_impl_req::<T>(rem, n_threads)?])
-                },
-                |n_threads| {
-                    StackReq::try_any_of([
-                        mat_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
-                        join_req(
-                            |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads),
-                            |n_threads| mat_x_lower_impl_req::<T>(rem, bs, n_threads),
-                            split_half,
-                            n_threads,
-                        )?,
-                    ])
-                },
-                split_half,
-                n_threads,
-            )?)
-        }
-    }
-
-    unsafe fn mat_x_lower_into_lower_impl_unchecked<T>(
+    unsafe fn mat_x_lower_into_lower_impl_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         skip_diag: bool,
         lhs: MatRef<'_, T>,
         rhs: MatRef<'_, T>,
         rhs_diag: DiagonalKind,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        mut stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         let n = dst.nrows();
         fancy_debug_assert!(n == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
@@ -337,17 +296,13 @@ pub mod triangular {
         fancy_debug_assert!(n == rhs.nrows());
         fancy_debug_assert!(n == rhs.ncols());
 
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
         if n <= 16 {
-            temp_mat_uninit! {
-                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            }
+            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_dst =
+                MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_rhs =
+                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
             mul(
                 temp_dst.rb_mut(),
@@ -355,8 +310,10 @@ pub mod triangular {
                 temp_rhs.into_const(),
                 None,
                 beta,
-                n_threads,
-                transposed,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             );
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
@@ -376,208 +333,85 @@ pub mod triangular {
             // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => low | 1/2
             // lhs_bot_left  × rhs_top_left  => dst_bot_left  | mat × low => mat | 1/2
 
-            if n_threads <= 1 {
-                mul(
-                    dst_bot_left.rb_mut(),
-                    lhs_bot_right,
-                    rhs_bot_left,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                );
-                mat_x_lower_into_lower_impl_unchecked(
-                    dst_bot_right,
-                    skip_diag,
-                    lhs_bot_right,
-                    rhs_bot_right,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
+            mul(
+                dst_bot_left.rb_mut(),
+                lhs_bot_right,
+                rhs_bot_left,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_lower_into_lower_impl_unchecked(
+                dst_bot_right,
+                skip_diag,
+                lhs_bot_right,
+                rhs_bot_right,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
 
-                mat_x_lower_into_lower_impl_unchecked(
-                    dst_top_left.rb_mut(),
-                    skip_diag,
-                    lhs_top_left,
-                    rhs_top_left,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-                mat_x_mat_into_lower_impl_unchecked(
-                    dst_top_left,
-                    skip_diag,
-                    lhs_top_right,
-                    rhs_bot_left,
-                    Some(&T::one()),
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-                mat_x_lower_impl_unchecked(
-                    dst_bot_left,
-                    lhs_bot_left,
-                    rhs_top_left,
-                    rhs_diag,
-                    Some(&T::one()),
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-            } else {
-                temp_mat_uninit! {
-                    let (mut temp_dst_bot_left, stack) = unsafe { temp_mat_uninit::<T>(rem, bs, stack) };
-                }
-                join(
-                    |n_threads, mut stack| {
-                        mul(
-                            dst_bot_left.rb_mut(),
-                            lhs_bot_right,
-                            rhs_bot_left,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                        );
-                        mat_x_lower_into_lower_impl_unchecked(
-                            dst_bot_right,
-                            skip_diag,
-                            lhs_bot_right,
-                            rhs_bot_right,
-                            rhs_diag,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                            stack.rb_mut(),
-                        );
-                    },
-                    |n_threads, mut stack| {
-                        mat_x_lower_into_lower_impl_unchecked(
-                            dst_top_left.rb_mut(),
-                            skip_diag,
-                            lhs_top_left,
-                            rhs_top_left,
-                            rhs_diag,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                            stack.rb_mut(),
-                        );
-                        join(
-                            |n_threads, stack| {
-                                mat_x_mat_into_lower_impl_unchecked(
-                                    dst_top_left,
-                                    skip_diag,
-                                    lhs_top_right,
-                                    rhs_bot_left,
-                                    Some(&T::one()),
-                                    beta,
-                                    n_threads,
-                                    transposed,
-                                    stack,
-                                )
-                            },
-                            |n_threads, stack| {
-                                mat_x_lower_impl_unchecked(
-                                    temp_dst_bot_left.rb_mut(),
-                                    lhs_bot_left,
-                                    rhs_top_left,
-                                    rhs_diag,
-                                    None,
-                                    beta,
-                                    n_threads,
-                                    transposed,
-                                    stack,
-                                )
-                            },
-                            |n_threads| {
-                                mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads).unwrap()
-                            },
-                            split_half,
-                            n_threads,
-                            stack,
-                        );
-                    },
-                    |n_threads| mat_x_lower_into_lower_impl_req::<T>(rem, n_threads).unwrap(),
-                    split_half,
-                    n_threads,
-                    stack,
-                );
-                dst_bot_left
-                    .cwise()
-                    .zip(temp_dst_bot_left.into_const())
-                    .for_each(|dst, temp| *dst = &*dst + temp);
-            }
+            mat_x_lower_into_lower_impl_unchecked(
+                dst_top_left.rb_mut(),
+                skip_diag,
+                lhs_top_left,
+                rhs_top_left,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_mat_into_lower_impl_unchecked(
+                dst_top_left,
+                skip_diag,
+                lhs_top_right,
+                rhs_bot_left,
+                Some(T::one()),
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_lower_impl_unchecked(
+                dst_bot_left,
+                lhs_bot_left,
+                rhs_top_left,
+                rhs_diag,
+                Some(T::one()),
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
         }
     }
 
-    fn mat_x_lower_impl_req<T: 'static>(
-        m: usize,
-        n: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * m <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
-            temp_mat_req::<T>(n, n)
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-
-            let temp_dst = if n_threads <= 1 {
-                StackReq::empty()
-            } else {
-                temp_mat_req::<T>(m, bs)?
-            };
-
-            temp_dst.try_and(join_req(
-                |_| Ok(StackReq::default()),
-                |n_threads| {
-                    join_req(
-                        |n_threads| mat_x_lower_impl_req::<T>(m, bs, n_threads),
-                        |n_threads| mat_x_lower_impl_req::<T>(m, rem, n_threads),
-                        split_half,
-                        n_threads,
-                    )
-                },
-                split_half,
-                n_threads,
-            )?)
-        }
-    }
-
-    unsafe fn mat_x_lower_impl_unchecked<T>(
+    unsafe fn mat_x_lower_impl_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         lhs: MatRef<'_, T>,
         rhs: MatRef<'_, T>,
         rhs_diag: DiagonalKind,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        mut stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         let n = rhs.nrows();
         let m = lhs.nrows();
-        fancy_debug_assert!(stack.can_hold(mat_x_lower_impl_req::<T>(m, n, n_threads).unwrap()));
         fancy_debug_assert!(m == lhs.nrows());
         fancy_debug_assert!(n == lhs.ncols());
         fancy_debug_assert!(n == rhs.nrows());
@@ -585,21 +419,25 @@ pub mod triangular {
         fancy_debug_assert!(m == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
 
-        let n_threads = if n * n * m <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
         if n <= 16 {
-            temp_mat_uninit! {
-                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            };
+            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_rhs =
+                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
             let temp_rhs = temp_rhs.into_const();
 
-            mul(dst, lhs, temp_rhs, alpha, beta, n_threads, transposed);
+            mul(
+                dst,
+                lhs,
+                temp_rhs,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
         } else {
             // split rhs into 3 sections
             // split lhs and dst into 2 sections
@@ -610,163 +448,58 @@ pub mod triangular {
             let (_, _, lhs_left, lhs_right) = lhs.split_at_unchecked(0, bs);
             let (_, _, mut dst_left, mut dst_right) = dst.split_at_unchecked(0, bs);
 
-            if n_threads <= 1 {
-                mat_x_lower_impl_unchecked(
-                    dst_left.rb_mut(),
-                    lhs_left,
-                    rhs_top_left,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-                mul(
-                    dst_left,
-                    lhs_right,
-                    rhs_bot_left,
-                    Some(&T::one()),
-                    beta,
-                    n_threads,
-                    transposed,
-                );
-                mat_x_lower_impl_unchecked(
-                    dst_right.rb_mut(),
-                    lhs_right,
-                    rhs_bot_right,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack,
-                );
-            } else {
-                temp_mat_uninit! {
-                    let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(m, bs, stack) };
-                }
-
-                join(
-                    |n_threads, _| {
-                        mul(
-                            temp_dst.rb_mut(),
-                            lhs_right,
-                            rhs_bot_left,
-                            None,
-                            beta,
-                            n_threads,
-                            transposed,
-                        );
-                    },
-                    |n_threads, stack| {
-                        join(
-                            |n_threads, stack| {
-                                mat_x_lower_impl_unchecked(
-                                    dst_left.rb_mut(),
-                                    lhs_left,
-                                    rhs_top_left,
-                                    rhs_diag,
-                                    alpha,
-                                    beta,
-                                    n_threads,
-                                    transposed,
-                                    stack,
-                                )
-                            },
-                            |n_threads, stack| {
-                                mat_x_lower_impl_unchecked(
-                                    dst_right.rb_mut(),
-                                    lhs_right,
-                                    rhs_bot_right,
-                                    rhs_diag,
-                                    alpha,
-                                    beta,
-                                    n_threads,
-                                    transposed,
-                                    stack,
-                                )
-                            },
-                            |n_threads| mat_x_lower_impl_req::<T>(m, bs, n_threads).unwrap(),
-                            split_half,
-                            n_threads,
-                            stack,
-                        )
-                    },
-                    |_| StackReq::default(),
-                    split_half,
-                    n_threads,
-                    stack,
-                );
-
-                dst_left
-                    .cwise()
-                    .zip(temp_dst.into_const())
-                    .for_each(|dst, temp| *dst = &*dst + temp);
-            }
+            mat_x_lower_impl_unchecked(
+                dst_left.rb_mut(),
+                lhs_left,
+                rhs_top_left,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mul(
+                dst_left,
+                lhs_right,
+                rhs_bot_left,
+                Some(T::one()),
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_lower_impl_unchecked(
+                dst_right.rb_mut(),
+                lhs_right,
+                rhs_bot_right,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
         }
     }
 
-    fn lower_x_lower_into_lower_impl_req<T: 'static>(
-        n: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-            ])
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-            let temp_dst = if n_threads <= 1 {
-                StackReq::default()
-            } else {
-                temp_mat_req::<T>(n, n)?
-            };
-
-            temp_dst.try_and(join_req(
-                |n_threads| {
-                    StackReq::try_any_of([
-                        lower_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
-                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
-                    ])
-                },
-                |n_threads| {
-                    StackReq::try_any_of([
-                        lower_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
-                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
-                    ])
-                },
-                split_half,
-                n_threads,
-            )?)
-        }
-    }
-
-    unsafe fn lower_x_lower_into_lower_impl_unchecked<T>(
+    unsafe fn lower_x_lower_into_lower_impl_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         skip_diag: bool,
         lhs: MatRef<'_, T>,
         lhs_diag: DiagonalKind,
         rhs: MatRef<'_, T>,
         rhs_diag: DiagonalKind,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        mut stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         let n = dst.nrows();
         fancy_debug_assert!(n == lhs.nrows());
         fancy_debug_assert!(n == lhs.ncols());
@@ -775,18 +508,16 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
 
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
         if n <= 16 {
-            temp_mat_uninit! {
-                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            };
+            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_dst =
+                MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_lhs =
+                MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_rhs =
+                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
             copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -799,8 +530,10 @@ pub mod triangular {
                 temp_rhs,
                 None,
                 beta,
-                n_threads,
-                transposed,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             );
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
@@ -816,181 +549,74 @@ pub mod triangular {
             // lhs_bot_right × rhs_bot_left  => dst_bot_left  | low × mat => mat | 1/2
             // lhs_bot_right × rhs_bot_right => dst_bot_right | low × low => low |   X
 
-            if n_threads <= 1 {
-                lower_x_lower_into_lower_impl_unchecked(
-                    dst_top_left,
-                    skip_diag,
-                    lhs_top_left,
-                    lhs_diag,
-                    rhs_top_left,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-                mat_x_lower_impl_unchecked(
-                    dst_bot_left.rb_mut(),
-                    lhs_bot_left,
-                    rhs_top_left,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack.rb_mut(),
-                );
-                mat_x_lower_impl_unchecked(
-                    dst_bot_left.invert().transpose(),
-                    rhs_bot_left.invert().transpose(),
-                    lhs_bot_right.invert().transpose(),
-                    lhs_diag,
-                    Some(&T::one()),
-                    beta,
-                    n_threads,
-                    !transposed,
-                    stack.rb_mut(),
-                );
-                lower_x_lower_into_lower_impl_unchecked(
-                    dst_bot_right,
-                    skip_diag,
-                    lhs_bot_right,
-                    lhs_diag,
-                    rhs_bot_right,
-                    rhs_diag,
-                    alpha,
-                    beta,
-                    n_threads,
-                    transposed,
-                    stack,
-                )
-            } else {
-                temp_mat_uninit! {
-                    let (mut temp_dst_bot_left, stack) = unsafe { temp_mat_uninit::<T>(rem, bs, stack) };
-                }
-                join(
-                    |n_threads, mut stack| {
-                        lower_x_lower_into_lower_impl_unchecked(
-                            dst_top_left,
-                            skip_diag,
-                            lhs_top_left,
-                            lhs_diag,
-                            rhs_top_left,
-                            rhs_diag,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                            stack.rb_mut(),
-                        );
-                        mat_x_lower_impl_unchecked(
-                            dst_bot_left.rb_mut(),
-                            lhs_bot_left,
-                            rhs_top_left,
-                            rhs_diag,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                            stack.rb_mut(),
-                        );
-                    },
-                    |n_threads, mut stack| {
-                        mat_x_lower_impl_unchecked(
-                            temp_dst_bot_left.rb_mut().invert().transpose(),
-                            rhs_bot_left.invert().transpose(),
-                            lhs_bot_right.invert().transpose(),
-                            lhs_diag,
-                            None,
-                            beta,
-                            n_threads,
-                            !transposed,
-                            stack.rb_mut(),
-                        );
-                        lower_x_lower_into_lower_impl_unchecked(
-                            dst_bot_right,
-                            skip_diag,
-                            lhs_bot_right,
-                            lhs_diag,
-                            rhs_bot_right,
-                            rhs_diag,
-                            alpha,
-                            beta,
-                            n_threads,
-                            transposed,
-                            stack,
-                        )
-                    },
-                    |n_threads| {
-                        StackReq::any_of([
-                            lower_x_lower_into_lower_impl_req::<T>(bs, n_threads).unwrap(),
-                            mat_x_lower_impl_req::<T>(rem, bs, n_threads).unwrap(),
-                        ])
-                    },
-                    split_half,
-                    n_threads,
-                    stack,
-                );
-
-                dst_bot_left
-                    .cwise()
-                    .zip(temp_dst_bot_left.into_const())
-                    .for_each(|dst, temp| *dst = &*dst + temp);
-            }
-        }
-    }
-
-    fn upper_x_lower_impl_req<T: 'static>(
-        n: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
-            StackReq::try_all_of([temp_mat_req::<T>(n, n)?, temp_mat_req::<T>(n, n)?])
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-
-            join_req(
-                |n_threads| StackReq::try_any_of([upper_x_lower_impl_req::<T>(bs, n_threads)?]),
-                |n_threads| {
-                    StackReq::try_any_of([
-                        join_req(
-                            |n_threads| mat_x_lower_impl_req::<T>(bs, rem, n_threads),
-                            |n_threads| mat_x_lower_impl_req::<T>(rem, bs, n_threads),
-                            split_half,
-                            n_threads,
-                        )?,
-                        upper_x_lower_impl_req::<T>(rem, n_threads)?,
-                    ])
-                },
-                split_half,
-                n_threads,
+            lower_x_lower_into_lower_impl_unchecked(
+                dst_top_left,
+                skip_diag,
+                lhs_top_left,
+                lhs_diag,
+                rhs_top_left,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_lower_impl_unchecked(
+                dst_bot_left.rb_mut(),
+                lhs_bot_left,
+                rhs_top_left,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
+            mat_x_lower_impl_unchecked(
+                dst_bot_left.invert().transpose(),
+                rhs_bot_left.invert().transpose(),
+                lhs_bot_right.invert().transpose(),
+                lhs_diag,
+                Some(T::one()),
+                beta,
+                conj_dst,
+                conj_rhs,
+                conj_lhs,
+                parallelism,
+            );
+            lower_x_lower_into_lower_impl_unchecked(
+                dst_bot_right,
+                skip_diag,
+                lhs_bot_right,
+                lhs_diag,
+                rhs_bot_right,
+                rhs_diag,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             )
         }
     }
 
-    unsafe fn upper_x_lower_impl_unchecked<T>(
+    unsafe fn upper_x_lower_impl_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         lhs: MatRef<'_, T>,
         lhs_diag: DiagonalKind,
         rhs: MatRef<'_, T>,
         rhs_diag: DiagonalKind,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         let n = dst.nrows();
         fancy_debug_assert!(n == lhs.nrows());
         fancy_debug_assert!(n == lhs.ncols());
@@ -999,24 +625,30 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
 
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
         if n <= 16 {
-            temp_mat_uninit! {
-                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            };
+            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_lhs =
+                MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_rhs =
+                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
             copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
             let temp_lhs = temp_lhs.into_const();
             let temp_rhs = temp_rhs.into_const();
-            mul(dst, temp_lhs, temp_rhs, alpha, beta, n_threads, transposed);
+            mul(
+                dst,
+                temp_lhs,
+                temp_rhs,
+                alpha,
+                beta,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
+            );
         } else {
             let bs = n / 2;
             let rem = n - bs;
@@ -1033,16 +665,18 @@ pub mod triangular {
             // lhs_bot_right × rhs_bot_left  => dst_bot_left  | upp × mat => mat | 1/2
             // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => mat |   X
 
-            join(
-                |n_threads, mut stack| {
+            join_raw(
+                || {
                     mul(
                         dst_top_left.rb_mut(),
                         lhs_top_right,
                         rhs_bot_left,
                         alpha,
                         beta,
-                        n_threads,
-                        transposed,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     );
                     upper_x_lower_impl_unchecked(
                         dst_top_left,
@@ -1050,16 +684,17 @@ pub mod triangular {
                         lhs_diag,
                         rhs_top_left,
                         rhs_diag,
-                        Some(&T::one()),
+                        Some(T::one()),
                         beta,
-                        n_threads,
-                        transposed,
-                        stack.rb_mut(),
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 },
-                |n_threads, mut stack| {
-                    join(
-                        |n_threads, stack| {
+                || {
+                    join_raw(
+                        || {
                             mat_x_lower_impl_unchecked(
                                 dst_top_right,
                                 lhs_top_right,
@@ -1067,12 +702,13 @@ pub mod triangular {
                                 rhs_diag,
                                 alpha,
                                 beta,
-                                n_threads,
-                                transposed,
-                                stack,
+                                conj_dst,
+                                conj_lhs,
+                                conj_rhs,
+                                parallelism,
                             )
                         },
-                        |n_threads, stack| {
+                        || {
                             mat_x_lower_impl_unchecked(
                                 dst_bot_left.transpose(),
                                 rhs_bot_left.transpose(),
@@ -1080,15 +716,13 @@ pub mod triangular {
                                 lhs_diag,
                                 alpha,
                                 beta,
-                                n_threads,
-                                !transposed,
-                                stack,
+                                conj_dst,
+                                conj_rhs,
+                                conj_lhs,
+                                parallelism,
                             )
                         },
-                        |n_threads| mat_x_lower_impl_req::<T>(bs, rem, n_threads).unwrap(),
-                        split_half,
-                        n_threads,
-                        stack.rb_mut(),
+                        parallelism,
                     );
 
                     upper_x_lower_impl_unchecked(
@@ -1099,74 +733,31 @@ pub mod triangular {
                         rhs_diag,
                         alpha,
                         beta,
-                        n_threads,
-                        transposed,
-                        stack,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 },
-                |n_threads| StackReq::any_of([upper_x_lower_impl_req::<T>(bs, n_threads).unwrap()]),
-                split_half,
-                n_threads,
-                stack,
+                parallelism,
             );
         }
     }
 
-    fn upper_x_lower_into_lower_impl_req<T: 'static>(
-        n: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
-        if n <= 16 {
-            StackReq::try_all_of([
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-                temp_mat_req::<T>(n, n)?,
-            ])
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-
-            join_req(
-                |n_threads| {
-                    StackReq::try_any_of([
-                        mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads)?,
-                        upper_x_lower_into_lower_impl_req::<T>(bs, n_threads)?,
-                    ])
-                },
-                |n_threads| {
-                    StackReq::try_any_of([
-                        mat_x_lower_impl_req::<T>(rem, bs, n_threads)?,
-                        upper_x_lower_into_lower_impl_req::<T>(rem, n_threads)?,
-                    ])
-                },
-                split_half,
-                n_threads,
-            )
-        }
-    }
-
-    unsafe fn upper_x_lower_into_lower_impl_unchecked<T>(
+    unsafe fn upper_x_lower_into_lower_impl_unchecked<T: ComplexField>(
         mut dst: MatMut<'_, T>,
         skip_diag: bool,
         lhs: MatRef<'_, T>,
         lhs_diag: DiagonalKind,
         rhs: MatRef<'_, T>,
         rhs_diag: DiagonalKind,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         let n = dst.nrows();
         fancy_debug_assert!(n == lhs.nrows());
         fancy_debug_assert!(n == lhs.ncols());
@@ -1175,18 +766,16 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
 
-        let n_threads = if n * n * n <= 128 * 128 * 128 {
-            1
-        } else {
-            n_threads
-        };
-
         if n <= 16 {
-            temp_mat_uninit! {
-                let (mut temp_dst, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_lhs, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-                let (mut temp_rhs, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            };
+            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_dst =
+                MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_lhs =
+                MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_rhs =
+                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
             copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -1199,8 +788,10 @@ pub mod triangular {
                 temp_rhs,
                 None,
                 beta,
-                n_threads,
-                transposed,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             );
 
             accum_lower(dst.rb_mut(), temp_dst.into_const(), skip_diag, alpha);
@@ -1218,8 +809,8 @@ pub mod triangular {
             // lhs_bot_right × rhs_bot_left  => dst_bot_left  | upp × mat => mat | 1/2
             // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => low |   X
 
-            join(
-                |n_threads, mut stack| {
+            join_raw(
+                || {
                     mat_x_mat_into_lower_impl_unchecked(
                         dst_top_left.rb_mut(),
                         skip_diag,
@@ -1227,9 +818,10 @@ pub mod triangular {
                         rhs_bot_left,
                         alpha,
                         beta,
-                        n_threads,
-                        transposed,
-                        stack.rb_mut(),
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     );
                     upper_x_lower_into_lower_impl_unchecked(
                         dst_top_left,
@@ -1238,14 +830,15 @@ pub mod triangular {
                         lhs_diag,
                         rhs_top_left,
                         rhs_diag,
-                        Some(&T::one()),
+                        Some(T::one()),
                         beta,
-                        n_threads,
-                        transposed,
-                        stack.rb_mut(),
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 },
-                |n_threads, mut stack| {
+                || {
                     mat_x_lower_impl_unchecked(
                         dst_bot_left.transpose(),
                         rhs_bot_left.transpose(),
@@ -1253,9 +846,10 @@ pub mod triangular {
                         lhs_diag,
                         alpha,
                         beta,
-                        n_threads,
-                        !transposed,
-                        stack.rb_mut(),
+                        conj_dst,
+                        conj_rhs,
+                        conj_lhs,
+                        parallelism,
                     );
                     upper_x_lower_into_lower_impl_unchecked(
                         dst_bot_right,
@@ -1266,64 +860,29 @@ pub mod triangular {
                         rhs_diag,
                         alpha,
                         beta,
-                        n_threads,
-                        transposed,
-                        stack,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 },
-                |n_threads| {
-                    StackReq::any_of([
-                        mat_x_mat_into_lower_impl_req::<T>(bs, rem, n_threads).unwrap(),
-                        upper_x_lower_into_lower_impl_req::<T>(bs, n_threads).unwrap(),
-                    ])
-                },
-                split_half,
-                n_threads,
-                stack,
+                parallelism,
             );
         }
     }
 
-    fn mat_x_mat_into_lower_impl_req<T: 'static>(
-        n: usize,
-        k: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        if n <= 32 {
-            StackReq::try_all_of([temp_mat_req::<T>(n, n)?])
-        } else {
-            let bs = n / 2;
-            let rem = n - bs;
-            join_req(
-                |_| Ok(StackReq::default()),
-                |n_threads| {
-                    join_req(
-                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, k, n_threads),
-                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(rem, k, n_threads),
-                        split_half,
-                        n_threads,
-                    )
-                },
-                split_half,
-                n_threads,
-            )
-        }
-    }
-
-    unsafe fn mat_x_mat_into_lower_impl_unchecked<T>(
+    unsafe fn mat_x_mat_into_lower_impl_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         skip_diag: bool,
         lhs: MatRef<'_, T>,
         rhs: MatRef<'_, T>,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        transposed: bool,
-        stack: DynStack<'_>,
-    ) where
-        T: Zero + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         fancy_debug_assert!(dst.nrows() == dst.ncols());
         fancy_debug_assert!(dst.nrows() == lhs.nrows());
         fancy_debug_assert!(dst.ncols() == rhs.ncols());
@@ -1331,22 +890,21 @@ pub mod triangular {
 
         let n = dst.nrows();
         let k = lhs.ncols();
-        fancy_debug_assert!(
-            stack.can_hold(mat_x_mat_into_lower_impl_req::<T>(n, k, n_threads).unwrap())
-        );
 
-        if n <= 32 {
-            temp_mat_uninit! {
-                let (mut temp_dst, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-            };
+        if n <= 16 {
+            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut temp_dst =
+                MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
             mul(
                 temp_dst.rb_mut(),
                 lhs,
                 rhs,
                 None,
                 beta,
-                n_threads,
-                transposed,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             );
             accum_lower(dst, temp_dst.rb(), skip_diag, alpha)
         } else {
@@ -1355,21 +913,23 @@ pub mod triangular {
             let (_, lhs_top, _, lhs_bot) = lhs.split_at_unchecked(bs, 0);
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, bs);
 
-            join(
-                |n_threads, _| {
+            join_raw(
+                || {
                     mul(
                         dst_bot_left,
                         lhs_bot,
                         rhs_left,
                         alpha,
                         beta,
-                        n_threads,
-                        transposed,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 },
-                |n_threads, stack| {
-                    join(
-                        |n_threads, stack| {
+                || {
+                    join_raw(
+                        || {
                             mat_x_mat_into_lower_impl_unchecked(
                                 dst_top_left,
                                 skip_diag,
@@ -1377,12 +937,13 @@ pub mod triangular {
                                 rhs_left,
                                 alpha,
                                 beta,
-                                n_threads,
-                                transposed,
-                                stack,
+                                conj_dst,
+                                conj_lhs,
+                                conj_rhs,
+                                parallelism,
                             )
                         },
-                        |n_threads, stack| {
+                        || {
                             mat_x_mat_into_lower_impl_unchecked(
                                 dst_bot_right,
                                 skip_diag,
@@ -1390,21 +951,16 @@ pub mod triangular {
                                 rhs_right,
                                 alpha,
                                 beta,
-                                n_threads,
-                                transposed,
-                                stack,
+                                conj_dst,
+                                conj_lhs,
+                                conj_rhs,
+                                parallelism,
                             )
                         },
-                        |n_threads| mat_x_mat_into_lower_impl_req::<T>(bs, k, n_threads).unwrap(),
-                        split_half,
-                        n_threads,
-                        stack,
+                        parallelism,
                     )
                 },
-                |_| StackReq::default(),
-                split_half,
-                n_threads,
-                stack,
+                parallelism,
             );
         }
     }
@@ -1469,92 +1025,6 @@ pub mod triangular {
         }
     }
 
-    /// Computes the memory requirements of [`matmul`].
-    #[inline]
-    pub fn matmul_req<T: 'static>(
-        dst_structure: BlockStructure,
-        lhs_structure: BlockStructure,
-        rhs_structure: BlockStructure,
-        dst_rows: usize,
-        dst_cols: usize,
-        lhs_cols: usize,
-        n_threads: usize,
-    ) -> Result<StackReq, SizeOverflow> {
-        let mut dst_structure = dst_structure;
-        let mut lhs_structure = lhs_structure;
-        let mut rhs_structure = rhs_structure;
-
-        let mut dst_rows = dst_rows;
-        let mut dst_cols = dst_cols;
-
-        // if either the lhs or the rhs is triangular
-        if rhs_structure.is_lower() {
-            // do nothing
-        } else if rhs_structure.is_upper() {
-            // invert dst, lhs and rhs
-            dst_structure = dst_structure.transpose();
-            lhs_structure = lhs_structure.transpose();
-            rhs_structure = rhs_structure.transpose();
-        } else if lhs_structure.is_lower() {
-            // invert and transpose
-            (lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
-            core::mem::swap(&mut dst_rows, &mut dst_cols);
-        } else if lhs_structure.is_upper() {
-            // transpose
-            dst_structure = dst_structure.transpose();
-            (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
-            core::mem::swap(&mut dst_rows, &mut dst_cols);
-        } else {
-            // do nothing
-        }
-
-        let m = dst_rows;
-        let n = dst_cols;
-        let k = lhs_cols;
-
-        if dst_structure.is_dense() {
-            if lhs_structure.is_dense() && rhs_structure.is_dense() {
-                Ok(StackReq::default())
-            } else {
-                fancy_debug_assert!(rhs_structure.is_lower());
-                if lhs_structure.is_dense() {
-                    mat_x_lower_impl_req::<T>(m, n, n_threads)
-                } else if lhs_structure.is_lower() {
-                    lower_x_lower_into_lower_impl_req::<T>(n, n_threads)
-                } else {
-                    fancy_debug_assert!(lhs_structure.is_upper());
-                    upper_x_lower_impl_req::<T>(n, n_threads)
-                }
-            }
-        } else if dst_structure.is_lower() {
-            if lhs_structure.is_dense() && rhs_structure.is_dense() {
-                mat_x_mat_into_lower_impl_req::<T>(n, k, n_threads)
-            } else {
-                fancy_debug_assert!(rhs_structure.is_lower());
-                if lhs_structure.is_dense() {
-                    mat_x_lower_into_lower_impl_req::<T>(n, n_threads)
-                } else if lhs_structure.is_lower() {
-                    lower_x_lower_into_lower_impl_req::<T>(n, n_threads)
-                } else {
-                    upper_x_lower_into_lower_impl_req::<T>(n, n_threads)
-                }
-            }
-        } else if lhs_structure.is_dense() && rhs_structure.is_dense() {
-            mat_x_mat_into_lower_impl_req::<T>(m, k, n_threads)
-        } else {
-            fancy_debug_assert!(rhs_structure.is_lower());
-            if lhs_structure.is_dense() {
-                // lower part of lhs does not contribute to result
-                upper_x_lower_into_lower_impl_req::<T>(m, n_threads)
-            } else if lhs_structure.is_lower() {
-                Ok(StackReq::default())
-            } else {
-                fancy_debug_assert!(lhs_structure.is_upper());
-                upper_x_lower_into_lower_impl_req::<T>(m, n_threads)
-            }
-        }
-    }
-
     /// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in
     /// `dst`.
     ///
@@ -1583,21 +1053,20 @@ pub mod triangular {
     ///  the same number of rows and columns.
     #[track_caller]
     #[inline]
-    pub fn matmul<T>(
+    pub fn matmul<T: ComplexField>(
         dst: MatMut<'_, T>,
         dst_structure: BlockStructure,
         lhs: MatRef<'_, T>,
         lhs_structure: BlockStructure,
         rhs: MatRef<'_, T>,
         rhs_structure: BlockStructure,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         fancy_assert!(dst.nrows() == lhs.nrows());
         fancy_assert!(dst.ncols() == rhs.ncols());
         fancy_assert!(lhs.ncols() == rhs.nrows());
@@ -1622,29 +1091,30 @@ pub mod triangular {
                 rhs_structure,
                 alpha,
                 beta,
-                n_threads,
-                stack,
+                conj_dst,
+                conj_lhs,
+                conj_rhs,
+                parallelism,
             )
         }
     }
 
     /// Same as [`matmul`], except that panics become undefined behavior.
     #[inline]
-    pub unsafe fn matmul_unchecked<T>(
+    pub unsafe fn matmul_unchecked<T: ComplexField>(
         dst: MatMut<'_, T>,
         dst_structure: BlockStructure,
         lhs: MatRef<'_, T>,
         lhs_structure: BlockStructure,
         rhs: MatRef<'_, T>,
         rhs_structure: BlockStructure,
-        alpha: Option<&T>,
-        beta: &T,
-        n_threads: usize,
-        stack: DynStack<'_>,
-    ) where
-        T: Zero + One + Clone + Send + Sync + 'static,
-        for<'a> &'a T: Add<Output = T> + Mul<Output = T>,
-    {
+        alpha: Option<T>,
+        beta: T,
+        conj_dst: bool,
+        conj_lhs: bool,
+        conj_rhs: bool,
+        parallelism: Parallelism,
+    ) {
         fancy_debug_assert!(dst.nrows() == lhs.nrows());
         fancy_debug_assert!(dst.ncols() == rhs.ncols());
         fancy_debug_assert!(lhs.ncols() == rhs.nrows());
@@ -1659,19 +1129,6 @@ pub mod triangular {
             fancy_debug_assert!(rhs.nrows() == rhs.ncols());
         }
 
-        fancy_debug_assert!(stack.can_hold(
-            matmul_req::<T>(
-                dst_structure,
-                lhs_structure,
-                rhs_structure,
-                dst.nrows(),
-                dst.ncols(),
-                lhs.ncols(),
-                n_threads
-            )
-            .unwrap()
-        ));
-
         let mut dst = dst;
         let mut lhs = lhs;
         let mut rhs = rhs;
@@ -1680,8 +1137,11 @@ pub mod triangular {
         let mut lhs_structure = lhs_structure;
         let mut rhs_structure = rhs_structure;
 
+        let mut conj_lhs = conj_lhs;
+        let mut conj_rhs = conj_rhs;
+
         // if either the lhs or the rhs is triangular
-        let transposed = if rhs_structure.is_lower() {
+        if rhs_structure.is_lower() {
             // do nothing
             false
         } else if rhs_structure.is_upper() {
@@ -1697,6 +1157,7 @@ pub mod triangular {
             // invert and transpose
             dst = dst.invert().transpose();
             (lhs, rhs) = (rhs.invert().transpose(), lhs.invert().transpose());
+            (conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
             (lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
             true
         } else if lhs_structure.is_upper() {
@@ -1704,6 +1165,7 @@ pub mod triangular {
             dst_structure = dst_structure.transpose();
             dst = dst.transpose();
             (lhs, rhs) = (rhs.transpose(), lhs.transpose());
+            (conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
             (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
             true
         } else {
@@ -1714,7 +1176,7 @@ pub mod triangular {
         let clear_upper = |dst: MatMut<'_, T>, skip_diag: bool| match alpha {
             Some(alpha) => dst
                 .cwise()
-                .for_each_triangular_upper(skip_diag, |dst| *dst = alpha * &*dst),
+                .for_each_triangular_upper(skip_diag, |dst| *dst = alpha * *dst),
 
             None => MatUninit(dst)
                 .cwise()
@@ -1733,49 +1195,125 @@ pub mod triangular {
 
         if dst_structure.is_dense() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
-                mul(dst, lhs, rhs, alpha, beta, n_threads, transposed);
+                mul(
+                    dst,
+                    lhs,
+                    rhs,
+                    alpha,
+                    beta,
+                    conj_dst,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
+                );
             } else {
                 fancy_debug_assert!(rhs_structure.is_lower());
 
                 if lhs_structure.is_dense() {
                     mat_x_lower_impl_unchecked(
-                        dst, lhs, rhs, rhs_diag, alpha, beta, n_threads, transposed, stack,
+                        dst,
+                        lhs,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 } else if lhs_structure.is_lower() {
                     clear_upper(dst.rb_mut(), true);
                     lower_x_lower_into_lower_impl_unchecked(
-                        dst, false, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
-                        transposed, stack,
+                        dst,
+                        false,
+                        lhs,
+                        lhs_diag,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     );
                 } else {
                     fancy_debug_assert!(lhs_structure.is_upper());
                     upper_x_lower_impl_unchecked(
-                        dst, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads, transposed,
-                        stack,
+                        dst,
+                        lhs,
+                        lhs_diag,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 }
             }
         } else if dst_structure.is_lower() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
                 mat_x_mat_into_lower_impl_unchecked(
-                    dst, skip_diag, lhs, rhs, alpha, beta, n_threads, transposed, stack,
+                    dst,
+                    skip_diag,
+                    lhs,
+                    rhs,
+                    alpha,
+                    beta,
+                    conj_dst,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
                 )
             } else {
                 fancy_debug_assert!(rhs_structure.is_lower());
                 if lhs_structure.is_dense() {
                     mat_x_lower_into_lower_impl_unchecked(
-                        dst, skip_diag, lhs, rhs, rhs_diag, alpha, beta, n_threads, transposed,
-                        stack,
+                        dst,
+                        skip_diag,
+                        lhs,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     );
                 } else if lhs_structure.is_lower() {
                     lower_x_lower_into_lower_impl_unchecked(
-                        dst, skip_diag, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
-                        transposed, stack,
+                        dst,
+                        skip_diag,
+                        lhs,
+                        lhs_diag,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 } else {
                     upper_x_lower_into_lower_impl_unchecked(
-                        dst, skip_diag, lhs, lhs_diag, rhs, rhs_diag, alpha, beta, n_threads,
-                        transposed, stack,
+                        dst,
+                        skip_diag,
+                        lhs,
+                        lhs_diag,
+                        rhs,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
                     )
                 }
             }
@@ -1787,9 +1325,10 @@ pub mod triangular {
                 lhs.transpose(),
                 alpha,
                 beta,
-                n_threads,
-                !transposed,
-                stack,
+                conj_dst,
+                conj_rhs,
+                conj_lhs,
+                parallelism,
             )
         } else {
             fancy_debug_assert!(rhs_structure.is_lower());
@@ -1804,9 +1343,10 @@ pub mod triangular {
                     lhs_diag,
                     alpha,
                     beta,
-                    n_threads,
-                    transposed,
-                    stack,
+                    conj_dst,
+                    conj_rhs,
+                    conj_lhs,
+                    parallelism,
                 )
             } else if lhs_structure.is_lower() {
                 if !skip_diag {
@@ -1818,7 +1358,7 @@ pub mod triangular {
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
                                 .for_each(|dst, lhs, rhs| {
-                                    *dst = alpha * (&*dst) + beta * &(&*lhs * &*rhs)
+                                    *dst = alpha * *dst + beta * (*lhs * *rhs)
                                 });
                         }
                         None => {
@@ -1826,7 +1366,7 @@ pub mod triangular {
                                 .cwise()
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
-                                .for_each(|dst, lhs, rhs| *dst = beta * &(&*lhs * &*rhs));
+                                .for_each(|dst, lhs, rhs| *dst = beta * (*lhs * *rhs));
                         }
                     }
                 }
@@ -1842,9 +1382,10 @@ pub mod triangular {
                     lhs_diag,
                     alpha,
                     beta,
-                    n_threads,
-                    !transposed,
-                    stack,
+                    conj_dst,
+                    conj_rhs,
+                    conj_lhs,
+                    parallelism,
                 )
             }
         }
@@ -1867,7 +1408,17 @@ mod tests {
         let rhs = mat![[5.0], [7.0]];
         let mut dst = mat![[0.0], [0.0]];
 
-        super::matmul(dst.as_mut(), lhs.as_ref(), rhs.as_ref(), None, &2.0, 1);
+        super::matmul(
+            dst.as_mut(),
+            lhs.as_ref(),
+            rhs.as_ref(),
+            None,
+            2.0,
+            false,
+            false,
+            false,
+            Parallelism::None,
+        );
 
         fancy_assert!(dst[(0, 0)] == 38.0);
         fancy_assert!(dst[(1, 0)] == 86.0);
@@ -1883,9 +1434,12 @@ mod tests {
             dst.as_mut(),
             lhs.as_ref(),
             rhs.as_ref(),
-            Some(&-2.0),
-            &2.0,
-            1,
+            Some(-2.0),
+            2.0,
+            false,
+            false,
+            false,
+            Parallelism::None,
         );
 
         fancy_assert!(dst[(0, 0)] == 30.0);
@@ -1948,7 +1502,7 @@ mod tests {
         let lhs = generate_structured_matrix(false, m, k, lhs_structure);
         let rhs = generate_structured_matrix(false, k, n, rhs_structure);
 
-        for n_threads in [1, 12] {
+        for parallelism in [Parallelism::None, Parallelism::Rayon] {
             triangular::matmul(
                 dst.as_mut(),
                 dst_structure,
@@ -1957,20 +1511,11 @@ mod tests {
                 rhs.as_ref(),
                 rhs_structure,
                 None,
-                &2.5,
-                n_threads,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    triangular::matmul_req::<f64>(
-                        dst_structure,
-                        lhs_structure,
-                        rhs_structure,
-                        m,
-                        n,
-                        k,
-                        n_threads,
-                    )
-                    .unwrap(),
-                )),
+                2.5,
+                false,
+                false,
+                false,
+                parallelism,
             );
 
             matmul(
@@ -1978,8 +1523,11 @@ mod tests {
                 lhs.as_ref(),
                 rhs.as_ref(),
                 None,
-                &2.5,
-                n_threads,
+                2.5,
+                false,
+                false,
+                false,
+                parallelism,
             );
 
             if dst_structure.is_dense() {
