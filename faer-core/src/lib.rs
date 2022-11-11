@@ -10,7 +10,9 @@ use core::mem::{size_of, MaybeUninit};
 use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 use core::ptr::NonNull;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use gemm::{c32, c64};
 use iter::*;
+use num_complex::ComplexFloat;
 use reborrow::*;
 
 pub mod mul;
@@ -130,6 +132,90 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         self.sqrt()
+    }
+}
+
+impl ComplexField for c32 {
+    type Real = f32;
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        c32 { re: real, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn into_real_imag(self) -> (Self::Real, Self::Real) {
+        (self.re, self.im)
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        c32 { re: 0.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        c32 { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
+
+    #[inline(always)]
+    fn conj(self) -> Self {
+        c32 {
+            re: self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        <Self as ComplexFloat>::sqrt(self)
+    }
+}
+
+impl ComplexField for c64 {
+    type Real = f64;
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        c64 { re: real, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn into_real_imag(self) -> (Self::Real, Self::Real) {
+        (self.re, self.im)
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        c64 { re: 0.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        c64 { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
+
+    #[inline(always)]
+    fn conj(self) -> Self {
+        c64 {
+            re: self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        <Self as ComplexFloat>::sqrt(self)
     }
 }
 
@@ -2589,7 +2675,10 @@ pub fn round_up_to(n: usize, k: usize) -> usize {
 #[doc(hidden)]
 #[inline]
 pub fn is_vectorizable<T: 'static>() -> bool {
-    TypeId::of::<T>() == TypeId::of::<f64>() || TypeId::of::<T>() == TypeId::of::<f32>()
+    TypeId::of::<T>() == TypeId::of::<f64>()
+        || TypeId::of::<T>() == TypeId::of::<f32>()
+        || TypeId::of::<T>() == TypeId::of::<c64>()
+        || TypeId::of::<T>() == TypeId::of::<c32>()
 }
 
 #[doc(hidden)]
