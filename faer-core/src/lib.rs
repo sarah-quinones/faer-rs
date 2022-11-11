@@ -12,7 +12,7 @@ use core::ptr::NonNull;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 pub use gemm::{c32, c64};
 use iter::*;
-use num_complex::ComplexFloat;
+use num_complex::{Complex, ComplexFloat};
 use reborrow::*;
 
 pub mod mul;
@@ -45,6 +45,14 @@ pub trait ComplexField:
 
     fn from_real(real: Self::Real) -> Self;
     fn into_real_imag(self) -> (Self::Real, Self::Real);
+    #[inline(always)]
+    fn real(self) -> Self::Real {
+        self.into_real_imag().0
+    }
+    #[inline(always)]
+    fn imag(self) -> Self::Real {
+        self.into_real_imag().1
+    }
 
     fn zero() -> Self;
     fn one() -> Self;
@@ -52,6 +60,10 @@ pub trait ComplexField:
     fn inv(self) -> Self;
     fn conj(self) -> Self;
     fn sqrt(self) -> Self;
+    #[inline(always)]
+    fn scale(self, factor: Self::Real) -> Self {
+        self * Self::from_real(factor)
+    }
 }
 
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {}
@@ -1358,6 +1370,109 @@ impl<'a, T> MatMut<'a, T> {
     #[inline]
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
+    }
+}
+
+impl<'a, T> MatRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (MatRef<'a, T>, MatRef<'a, T>) {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let rs = self.row_stride() * 2;
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                MatRef::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
+                MatRef::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
+            )
+        }
+    }
+}
+impl<'a, T> MatMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (MatMut<'a, T>, MatMut<'a, T>) {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let rs = self.row_stride() * 2;
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                MatMut::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
+                MatMut::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
+            )
+        }
+    }
+}
+
+impl<'a, T> ColRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (ColRef<'a, T>, ColRef<'a, T>) {
+        let nrows = self.nrows();
+        let rs = self.row_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                ColRef::from_raw_parts(ptr_re, nrows, rs),
+                ColRef::from_raw_parts(ptr_im, nrows, rs),
+            )
+        }
+    }
+}
+impl<'a, T> ColMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (ColMut<'a, T>, ColMut<'a, T>) {
+        let nrows = self.nrows();
+        let rs = self.row_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                ColMut::from_raw_parts(ptr_re, nrows, rs),
+                ColMut::from_raw_parts(ptr_im, nrows, rs),
+            )
+        }
+    }
+}
+
+impl<'a, T> RowRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (RowRef<'a, T>, RowRef<'a, T>) {
+        let ncols = self.ncols();
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                RowRef::from_raw_parts(ptr_re, ncols, cs),
+                RowRef::from_raw_parts(ptr_im, ncols, cs),
+            )
+        }
+    }
+}
+impl<'a, T> RowMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (RowMut<'a, T>, RowMut<'a, T>) {
+        let ncols = self.ncols();
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                RowMut::from_raw_parts(ptr_re, ncols, cs),
+                RowMut::from_raw_parts(ptr_im, ncols, cs),
+            )
+        }
     }
 }
 

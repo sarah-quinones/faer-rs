@@ -128,6 +128,8 @@ pub fn raw_cholesky_in_place_req<T: 'static>(
     dim: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
+    let _ = dim;
+    let _ = parallelism;
     Ok(StackReq::default())
 }
 

@@ -1,13 +1,11 @@
 use core::any::TypeId;
 use core::mem::size_of;
-use core::ops::{Add, Mul, Neg};
 use faer_core::{ComplexField, Parallelism};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::mul::triangular::BlockStructure;
 use faer_core::{mul, solve, temp_mat_req, temp_mat_uninit, ColMut, MatMut};
-use num_traits::{Inv, One, Zero};
 use pulp::{Arch, Simd};
 use reborrow::*;
 use seq_macro::seq;
@@ -492,18 +490,19 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     solve::triangular::solve_unit_lower_triangular_in_place(
         ld00.rb(),
         a01.rb_mut(),
-        false,
-        false,
+        true,
+        true,
         parallelism,
     );
 
-    let a10 = a01.rb().transpose();
+    let a01 = a01.rb();
 
     for j in 0..insertion_index {
         let d0_inv = unsafe { d0.get_unchecked(j) }.inv();
         for i in 0..r {
             unsafe {
-                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a10.get_unchecked(i, j) * d0_inv;
+                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    (*a01.get_unchecked(j, i)) * d0_inv;
             }
         }
     }
@@ -511,7 +510,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
+                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    (*a11.rb().get_unchecked(i, j)).conj();
             }
         }
     }
@@ -527,7 +527,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         -T::one(),
         false,
         false,
-        false,
+        true,
         parallelism,
     );
 
@@ -539,8 +539,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in 0..rem {
             unsafe {
-                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a21.rb().get_unchecked(i, j).clone();
+                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a21.rb().get_unchecked(i, j);
             }
         }
     }
@@ -551,16 +550,16 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         a01.rb(),
         Some(T::one()),
         -T::one(),
+        true,
         false,
-        false,
-        false,
+        true,
         parallelism,
     );
 
     solve::triangular::solve_unit_lower_triangular_in_place(
         ld11,
         l21.rb_mut().transpose(),
-        false,
+        true,
         false,
         parallelism,
     );
@@ -585,7 +584,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
             *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -*ld11.rb().get_unchecked(j, j);
 
             for i in 0..rem {
-                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get(i, j).clone();
+                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *l21.rb().get_unchecked(i, j);
             }
         }
     }
