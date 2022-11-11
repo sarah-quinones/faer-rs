@@ -1,6 +1,7 @@
 use core::any::TypeId;
 use core::mem::size_of;
 use core::ops::{Add, Mul, Neg};
+use faer_core::{ComplexField, Parallelism};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
@@ -95,7 +96,7 @@ macro_rules! generate {
 macro_rules! generate_generic {
     ($name: ident, $r: tt) => {
         #[inline(always)]
-        unsafe fn $name<S: Simd, T: 'static>(
+        unsafe fn $name<S: Simd, T: ComplexField>(
             _simd: S,
             n: usize,
             l_col: *mut T,
@@ -105,25 +106,22 @@ macro_rules! generate_generic {
             w_col_stride: isize,
             p_array: *const T,
             beta_array: *const T,
-        ) where
-            T: Clone,
-            for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T>,
-        {
+        ) {
             seq!(I in 0..$r {
-                let p~I = &-&*p_array.add(I);
-                let beta~I = &(*beta_array.add(I)).clone();
+                let p~I = -*p_array.add(I);
+                let beta~I = *beta_array.add(I);
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
             for i in 0..n {
                 let mut l = (*l_col.offset(i as isize * l_row_stride)).clone();
                 seq!(I in 0..$r {
-                    let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
+                    let mut w~I = *w_col~I.offset(i as isize * w_row_stride);
                 });
 
                 seq!(I in 0..$r {
-                    w~I = &(p~I * &l) + &w~I;
-                    l = &(beta~I * &w~I) + &l;
+                    w~I = p~I * l + w~I;
+                    l = beta~I * w~I + l;
                 });
 
                 *l_col.offset(i as isize * l_row_stride) = l;
@@ -157,11 +155,7 @@ struct RankRUpdate<'a, T> {
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T> pulp::WithSimd for RankRUpdate<'a, T>
-where
-    T: Zero + Clone + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
     type Output = ();
 
     #[inline(always)]
@@ -202,11 +196,12 @@ where
                         let p = p_array.get_unchecked_mut(k);
                         let beta = beta_array.get_unchecked_mut(k);
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
-                        *p = w.rb().get_unchecked(j, r_idx + k).clone();
-                        let alpha_p = &*alpha * &*p;
-                        let new_dj = &dj + &(&alpha_p * &*p);
-                        *beta = &alpha_p * &new_dj.inv();
-                        *alpha = &*alpha + &-&(&new_dj * &(&*beta * &*beta));
+
+                        *p = *w.rb().get_unchecked(j, r_idx + k);
+                        let alpha_conj_p = *alpha * (*p).conj();
+                        let new_dj = dj + (alpha_conj_p * *p);
+                        *beta = alpha_conj_p * new_dj.inv();
+                        *alpha = *alpha + -(new_dj * (*beta * (*beta).conj()));
 
                         dj = new_dj;
                     }
@@ -271,14 +266,11 @@ where
 /// The matrix `W` and the vector `α` are clobbered, meaning that the values they contain after the
 /// function returns are unspecified.
 #[track_caller]
-pub fn rank_r_update_clobber<T>(
+pub fn rank_r_update_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
     w: MatMut<'_, T>,
     alpha: ColMut<'_, T>,
-) where
-    T: Zero + Clone + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
     let n = cholesky_factors.nrows();
     let k = w.ncols();
 
@@ -294,7 +286,7 @@ pub fn rank_r_update_clobber<T>(
     });
 }
 
-pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<T: Copy>(mat: MatMut<'_, T>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
@@ -317,7 +309,7 @@ pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx:
                         for i in i_start..i_finish {
                             unsafe {
                                 *mat.rb_mut().get_unchecked(i - chunk_i, j - chunk_j) =
-                                    mat.rb().get_unchecked(i, j).clone();
+                                    *mat.rb().get_unchecked(i, j);
                             }
                         }
                     }
@@ -360,14 +352,11 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
 }
 
 #[track_caller]
-pub fn delete_rows_and_cols_clobber<T: Clone>(
+pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
     indices: &mut [usize],
     stack: DynStack<'_>,
-) where
-    T: Zero + Clone + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
     let n = cholesky_factors.nrows();
     let r = indices.len();
     fancy_assert!(cholesky_factors.ncols() == n);
@@ -432,36 +421,21 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
     old_dim: usize,
     insertion_index: usize,
     inserted_matrix_ncols: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     fancy_assert!(insertion_index <= old_dim);
 
-    StackReq::try_any_of([
-        solve::triangular::solve_triangular_in_place_req::<T>(
-            insertion_index,
-            inserted_matrix_ncols,
-            n_threads,
-        )?,
-        raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, n_threads)?,
-        solve::triangular::solve_triangular_in_place_req::<T>(
-            inserted_matrix_ncols,
-            old_dim - insertion_index,
-            n_threads,
-        )?,
-    ])
+    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism)
 }
 
 #[track_caller]
-pub fn insert_rows_and_cols_clobber<T>(
+pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors_extended: MatMut<'_, T>,
     insertion_index: usize,
     inserted_matrix: MatMut<'_, T>,
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) where
-    T: Zero + One + Clone + Send + Sync + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
     let new_n = cholesky_factors_extended.nrows();
     let r = inserted_matrix.ncols();
 
@@ -518,8 +492,9 @@ pub fn insert_rows_and_cols_clobber<T>(
     solve::triangular::solve_unit_lower_triangular_in_place(
         ld00.rb(),
         a01.rb_mut(),
-        n_threads,
-        stack.rb_mut(),
+        false,
+        false,
+        parallelism,
     );
 
     let a10 = a01.rb().transpose();
@@ -528,7 +503,7 @@ pub fn insert_rows_and_cols_clobber<T>(
         let d0_inv = unsafe { d0.get_unchecked(j) }.inv();
         for i in 0..r {
             unsafe {
-                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = a10.get_unchecked(i, j) * &d0_inv;
+                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a10.get_unchecked(i, j) * d0_inv;
             }
         }
     }
@@ -536,8 +511,7 @@ pub fn insert_rows_and_cols_clobber<T>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a11.rb().get_unchecked(i, j).clone();
+                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
             }
         }
     }
@@ -549,13 +523,15 @@ pub fn insert_rows_and_cols_clobber<T>(
         BlockStructure::Rectangular,
         a01.rb(),
         BlockStructure::Rectangular,
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
-        stack.rb_mut(),
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        parallelism,
     );
 
-    raw_cholesky_in_place(ld11.rb_mut(), n_threads, stack.rb_mut());
+    raw_cholesky_in_place(ld11.rb_mut(), parallelism, stack.rb_mut());
     let ld11 = ld11.into_const();
 
     let rem = l21.nrows();
@@ -573,26 +549,30 @@ pub fn insert_rows_and_cols_clobber<T>(
         l21.rb_mut(),
         l20.rb(),
         a01.rb(),
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        parallelism,
     );
 
     solve::triangular::solve_unit_lower_triangular_in_place(
         ld11,
         l21.rb_mut().transpose(),
-        n_threads,
-        stack.rb_mut(),
+        false,
+        false,
+        parallelism,
     );
 
     let d1 = ld11.into_const().diagonal();
 
     for j in 0..r {
         unsafe {
-            let d1_inv = &d1.get_unchecked(j).inv();
+            let d1_inv = (*d1.get_unchecked(j)).inv();
             for i in 0..rem {
                 let dst = l21.rb_mut().get_unchecked(i, j);
-                *dst = &*dst * d1_inv;
+                *dst = *dst * d1_inv;
             }
         }
     }
@@ -602,7 +582,7 @@ pub fn insert_rows_and_cols_clobber<T>(
 
     for j in 0..r {
         unsafe {
-            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -ld11.rb().get_unchecked(j, j);
+            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -*ld11.rb().get_unchecked(j, j);
 
             for i in 0..rem {
                 *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get(i, j).clone();

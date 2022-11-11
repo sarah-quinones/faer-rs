@@ -4,7 +4,7 @@ use faer_core::permutation::PermutationIndicesMut;
 use faer_core::MatRef;
 use num_traits::Signed;
 
-// pub mod ldlt;
+pub mod ldlt;
 pub mod llt;
 
 #[track_caller]

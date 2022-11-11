@@ -10,7 +10,7 @@ use core::mem::{size_of, MaybeUninit};
 use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 use core::ptr::NonNull;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use gemm::{c32, c64};
+pub use gemm::{c32, c64};
 use iter::*;
 use num_complex::ComplexFloat;
 use reborrow::*;
@@ -38,6 +38,7 @@ pub trait ComplexField:
     + Neg<Output = Self>
     + Send
     + Sync
+    + Debug
     + 'static
 {
     type Real: RealField;
@@ -2792,7 +2793,7 @@ macro_rules! temp_mat_uninit {
                 let (temp_data, stack) = $stack.make_aligned_with(
                     nrows * ncols,
                     $crate::align_for::<$ty>(),
-                    |_| <$ty as $crate::Zero>::zero()
+                    |_| <$ty as $crate::ComplexField>::zero()
                     );
                 ($crate::Either::Right(temp_data), nrows, stack)
             };
@@ -3100,7 +3101,7 @@ impl<T: 'static> Mat<T> {
     #[inline]
     pub fn zeros(nrows: usize, ncols: usize) -> Self
     where
-        T: Zero,
+        T: ComplexField,
     {
         Self::with_dims(|_, _| T::zero(), nrows, ncols)
     }

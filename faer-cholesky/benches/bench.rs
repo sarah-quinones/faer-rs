@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
+use faer_core::{c64, ComplexField};
 use reborrow::*;
 
 use faer_core::{Mat, Parallelism};
@@ -66,6 +67,26 @@ pub fn cholesky(c: &mut Criterion) {
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
                 llt::compute::raw_cholesky_in_place_req::<f64>(n, rayon::current_num_threads())
+                    .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            b.iter(|| {
+                llt::compute::raw_cholesky_in_place(
+                    mat.as_mut(),
+                    Parallelism::Rayon,
+                    stack.rb_mut(),
+                )
+                .unwrap();
+            })
+        });
+
+        c.bench_function(&format!("faer-mt-cplx-llt-{n}"), |b| {
+            let mut mat =
+                Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);
+
+            let mut mem = GlobalMemBuffer::new(
+                llt::compute::raw_cholesky_in_place_req::<c64>(n, rayon::current_num_threads())
                     .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);

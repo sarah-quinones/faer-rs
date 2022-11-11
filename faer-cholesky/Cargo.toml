@@ -11,6 +11,7 @@ dyn-stack = "0.8"
 assert2 = "0.3"
 num-traits = "0.2"
 seq-macro = "0.3"
+num-complex = "0.4"
 
 [features]
 default = ["std"]

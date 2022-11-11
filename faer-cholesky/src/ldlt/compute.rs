@@ -1,53 +1,14 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::mul::triangular::BlockStructure;
-use faer_core::{izip, mul, solve, temp_mat_req, temp_mat_uninit, MatMut};
-use num_traits::{Inv, One, Zero};
+use faer_core::{izip, solve, ComplexField, MatMut, Parallelism};
 use reborrow::*;
 
-use core::ops::{Add, Mul, Neg};
-
-fn cholesky_in_place_left_looking_req<T: 'static>(
-    dim: usize,
-    block_size: usize,
-    n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
-    let n = dim;
-    let bs = block_size.min(dim);
-
-    match n {
-        0 | 1 => return Ok(StackReq::default()),
-        _ => (),
-    }
-
-    use BlockStructure::*;
-    StackReq::try_all_of([
-        temp_mat_req::<T>(bs, n - bs)?,
-        StackReq::try_any_of([
-            mul::triangular::matmul_req::<T>(
-                TriangularLower,
-                Rectangular,
-                Rectangular,
-                bs,
-                bs,
-                n - bs,
-                n_threads,
-            )?,
-            cholesky_in_place_left_looking_req::<T>(bs, bs / 2, n_threads)?,
-            solve::triangular::solve_triangular_in_place_req::<T>(bs, bs, n_threads)?,
-        ])?,
-    ])
-}
-
-unsafe fn cholesky_in_place_left_looking_unchecked<T>(
+unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     matrix: MatMut<'_, T>,
     block_size: usize,
-    n_threads: usize,
-    stack: DynStack<'_>,
-) where
-    T: Zero + One + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+    parallelism: Parallelism,
+) {
     let mut matrix = matrix;
 
     fancy_debug_assert!(
@@ -63,10 +24,8 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T>(
     };
 
     let mut idx = 0;
-    let mut stack = stack;
     loop {
         let block_size = (n - idx).min(block_size);
-        let stack = stack.rb_mut();
 
         // we split L/D rows/cols into 3 sections each
         //     ┌             ┐
@@ -82,24 +41,25 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T>(
         //
         // we already computed L00, L10, L20, and D0. we now compute L11, L21, and D1
 
-        let (top_left, _, bottom_left, bottom_right) = matrix.rb_mut().split_at_unchecked(idx, idx);
+        let (top_left, top_right, bottom_left, bottom_right) =
+            matrix.rb_mut().split_at_unchecked(idx, idx);
         let l00 = top_left.into_const();
         let d0 = l00.diagonal_unchecked();
         let (_, l10, _, l20) = bottom_left.into_const().split_at_unchecked(block_size, 0);
         let (mut a11, _, mut a21, _) = bottom_right.split_at_unchecked(block_size, block_size);
 
         // reserve space for L10×D0
-        faer_core::temp_mat_uninit! {
-            let (mut l10xd0, mut stack) = unsafe { temp_mat_uninit::<T>(block_size, idx, stack) };
-        };
+        let mut l10xd0 = top_right
+            .submatrix_unchecked(0, 0, idx, block_size)
+            .transpose();
 
-        for (l10xd0_col, l10_col, d_factor) in izip!(
+        for (l10xd0_col, l10_col, &d_factor) in izip!(
             l10xd0.rb_mut().into_col_iter(),
             l10.rb().into_col_iter(),
             d0.into_iter(),
         ) {
             for (l10xd0_elem, l) in izip!(l10xd0_col, l10_col) {
-                *l10xd0_elem = l * d_factor;
+                *l10xd0_elem = *l * d_factor;
             }
         }
 
@@ -112,18 +72,15 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T>(
             BlockStructure::Rectangular,
             l10.transpose(),
             BlockStructure::Rectangular,
-            Some(&T::one()),
-            &-&T::one(),
-            n_threads,
-            stack.rb_mut(),
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            true,
+            parallelism,
         );
 
-        cholesky_in_place_left_looking_unchecked(
-            a11.rb_mut(),
-            block_size / 2,
-            n_threads,
-            stack.rb_mut(),
-        );
+        cholesky_in_place_left_looking_unchecked(a11.rb_mut(), block_size / 2, parallelism);
 
         if idx + block_size == n {
             break;
@@ -137,23 +94,27 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T>(
             a21.rb_mut(),
             l20,
             l10xd0.transpose(),
-            Some(&T::one()),
-            &-&T::one(),
-            n_threads,
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            true,
+            parallelism,
         );
 
         solve::triangular::solve_unit_lower_triangular_in_place_unchecked(
             l11,
             a21.rb_mut().transpose(),
-            n_threads,
-            stack,
+            true,
+            false,
+            parallelism,
         );
 
         let l21xd1 = a21;
-        for (l21xd1_col, d1_elem) in izip!(l21xd1.into_col_iter(), d1) {
+        for (l21xd1_col, &d1_elem) in izip!(l21xd1.into_col_iter(), d1) {
             let d1_elem_inv = d1_elem.inv();
             for l21xd1_elem in l21xd1_col {
-                *l21xd1_elem = &*l21xd1_elem * &d1_elem_inv;
+                *l21xd1_elem = *l21xd1_elem * d1_elem_inv;
             }
         }
 
@@ -165,39 +126,16 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T>(
 /// `dim`.
 pub fn raw_cholesky_in_place_req<T: 'static>(
     dim: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    if dim < 32 {
-        cholesky_in_place_left_looking_req::<T>(dim, 16, n_threads)
-    } else {
-        let bs = (dim / 2).min(128);
-        let rem = dim - bs;
-        StackReq::try_any_of([
-            solve::triangular::solve_triangular_in_place_req::<T>(bs, rem, n_threads)?,
-            StackReq::try_all_of([
-                temp_mat_req::<T>(rem, bs)?,
-                faer_core::mul::triangular::matmul_req::<T>(
-                    BlockStructure::TriangularLower,
-                    BlockStructure::Rectangular,
-                    BlockStructure::Rectangular,
-                    rem,
-                    rem,
-                    bs,
-                    n_threads,
-                )?,
-            ])?,
-        ])
-    }
+    Ok(StackReq::default())
 }
 
-unsafe fn cholesky_in_place_unchecked<T>(
+unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
     matrix: MatMut<'_, T>,
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) where
-    T: Zero + One + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
     // right looking cholesky
 
     fancy_debug_assert!(matrix.nrows() == matrix.ncols());
@@ -206,14 +144,14 @@ unsafe fn cholesky_in_place_unchecked<T>(
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_unchecked(matrix, 16, n_threads, stack);
+        cholesky_in_place_left_looking_unchecked(matrix, 16, parallelism);
     } else {
         let block_size = (n / 2).min(128);
         let rem = n - block_size;
-        let (mut l00, _, mut a10, mut a11) =
+        let (mut l00, top_right, mut a10, mut a11) =
             matrix.rb_mut().split_at_unchecked(block_size, block_size);
 
-        cholesky_in_place_unchecked(l00.rb_mut(), n_threads, stack.rb_mut());
+        cholesky_in_place_unchecked(l00.rb_mut(), parallelism, stack.rb_mut());
 
         let l00 = l00.into_const();
         let d0 = l00.diagonal_unchecked();
@@ -221,16 +159,18 @@ unsafe fn cholesky_in_place_unchecked<T>(
         solve::triangular::solve_unit_lower_triangular_in_place_unchecked(
             l00,
             a10.rb_mut().transpose(),
-            n_threads,
-            stack.rb_mut(),
+            true,
+            false,
+            parallelism,
         );
 
         {
-            temp_mat_uninit! {
-                let (mut l10xd0, stack) = unsafe { temp_mat_uninit::<T>(rem, block_size, stack.rb_mut()) };
-            };
+            // reserve space for L10×D0
+            let mut l10xd0 = top_right
+                .submatrix_unchecked(0, 0, block_size, rem)
+                .transpose();
 
-            for (l10xd0_col, a10_col, d0_elem) in izip!(
+            for (l10xd0_col, a10_col, &d0_elem) in izip!(
                 l10xd0.rb_mut().into_col_iter(),
                 a10.rb_mut().into_col_iter(),
                 d0,
@@ -238,7 +178,7 @@ unsafe fn cholesky_in_place_unchecked<T>(
                 let d0_elem_inv = d0_elem.inv();
                 for (l10xd0_elem, a10_elem) in izip!(l10xd0_col, a10_col) {
                     *l10xd0_elem = a10_elem.clone();
-                    *a10_elem = &*a10_elem * &d0_elem_inv;
+                    *a10_elem = *a10_elem * d0_elem_inv;
                 }
             }
 
@@ -249,14 +189,16 @@ unsafe fn cholesky_in_place_unchecked<T>(
                 BlockStructure::Rectangular,
                 l10xd0.transpose().into_const(),
                 BlockStructure::Rectangular,
-                Some(&T::one()),
-                &-&T::one(),
-                n_threads,
-                stack,
+                Some(T::one()),
+                -T::one(),
+                false,
+                false,
+                true,
+                parallelism,
             );
         }
 
-        cholesky_in_place_unchecked(a11, n_threads, stack);
+        cholesky_in_place_unchecked(a11, parallelism, stack);
     }
 }
 
@@ -283,14 +225,14 @@ unsafe fn cholesky_in_place_unchecked<T>(
 /// Panics if the input matrix is not square.
 #[track_caller]
 #[inline]
-pub fn raw_cholesky_in_place<T>(matrix: MatMut<'_, T>, n_threads: usize, stack: DynStack<'_>)
-where
-    T: Zero + One + Clone + Send + Sync + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+pub fn raw_cholesky_in_place<T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
     fancy_assert!(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    unsafe { cholesky_in_place_unchecked(matrix, n_threads, stack) }
+    unsafe { cholesky_in_place_unchecked(matrix, parallelism, stack) }
 }
