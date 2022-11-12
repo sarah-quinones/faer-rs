@@ -14,6 +14,8 @@ pub use gemm::{c32, c64};
 use iter::*;
 use num_complex::{Complex, ComplexFloat};
 use reborrow::*;
+use std::fmt::Write;
+use std::mem::transmute_copy;
 
 pub mod mul;
 pub mod solve;
@@ -63,6 +65,40 @@ pub trait ComplexField:
     #[inline(always)]
     fn scale(self, factor: Self::Real) -> Self {
         self * Self::from_real(factor)
+    }
+}
+
+pub struct I;
+impl Mul<f32> for I {
+    type Output = c32;
+
+    #[inline]
+    fn mul(self, rhs: f32) -> Self::Output {
+        c32 { re: 0.0, im: rhs }
+    }
+}
+impl Mul<I> for f32 {
+    type Output = c32;
+
+    #[inline]
+    fn mul(self, rhs: I) -> Self::Output {
+        rhs * self
+    }
+}
+impl Mul<f64> for I {
+    type Output = c64;
+
+    #[inline]
+    fn mul(self, rhs: f64) -> Self::Output {
+        c64 { re: 0.0, im: rhs }
+    }
+}
+impl Mul<I> for f64 {
+    type Output = c64;
+
+    #[inline]
+    fn mul(self, rhs: I) -> Self::Output {
+        rhs * self
     }
 }
 
@@ -2723,51 +2759,78 @@ pub mod iter {
     impl<'a, T> ExactSizeIterator for ElemIterMut<'a, T> {}
 }
 
-impl<'a, T: Debug> Debug for MatRef<'a, T> {
+impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         struct DebugRowSlice<'a, T>(RowRef<'a, T>);
+        struct ComplexDebug<'a, T>(&'a T);
 
-        impl<'a, T: Debug> Debug for DebugRowSlice<'a, T> {
+        impl<'a, T: Debug + 'static> Debug for ComplexDebug<'a, T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "[")?;
-                let mut iter = self.0.rb().into_iter();
-                if let Some(first) = iter.next() {
-                    write!(f, "{:?}", first)?;
+                let id = TypeId::of::<T>();
+
+                fn as_debug(t: impl Debug) -> impl Debug {
+                    t
                 }
-                for elem in iter {
-                    write!(f, ", {:?}", elem)?;
+                if id == TypeId::of::<c32>() {
+                    let value: c32 = unsafe { transmute_copy(self.0) };
+                    let re = as_debug(value.re);
+                    let im = as_debug(value.im);
+                    re.fmt(f)?;
+                    f.write_str(" + ")?;
+                    im.fmt(f)?;
+                    f.write_str("I")
+                } else if id == TypeId::of::<c64>() {
+                    let value: c64 = unsafe { transmute_copy(self.0) };
+                    let re = as_debug(value.re);
+                    let im = as_debug(value.im);
+                    re.fmt(f)?;
+                    f.write_str(" + ")?;
+                    im.fmt(f)?;
+                    f.write_str(" * I")
+                } else {
+                    self.0.fmt(f)
                 }
-                write!(f, "]")
             }
         }
 
-        f.debug_list()
-            .entries(self.rb().into_row_iter().map(|r| DebugRowSlice(r)))
-            .finish()
+        impl<'a, T: Debug + 'static> Debug for DebugRowSlice<'a, T> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_list()
+                    .entries(self.0.into_iter().map(|x| ComplexDebug(x)))
+                    .finish()
+            }
+        }
+
+        write!(f, "[\n")?;
+        for elem in self.into_row_iter().map(DebugRowSlice) {
+            elem.fmt(f)?;
+            f.write_str(",\n")?;
+        }
+        write!(f, "]")
     }
 }
-impl<'a, T: Debug> Debug for MatMut<'a, T> {
+impl<'a, T: Debug + 'static> Debug for MatMut<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().fmt(f)
     }
 }
-impl<'a, T: Debug> Debug for RowRef<'a, T> {
+impl<'a, T: Debug + 'static> Debug for RowRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
-impl<'a, T: Debug> Debug for RowMut<'a, T> {
+impl<'a, T: Debug + 'static> Debug for RowMut<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
 
-impl<'a, T: Debug> Debug for ColRef<'a, T> {
+impl<'a, T: Debug + 'static> Debug for ColRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
-impl<'a, T: Debug> Debug for ColMut<'a, T> {
+impl<'a, T: Debug + 'static> Debug for ColMut<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
@@ -3603,7 +3666,7 @@ impl<T> Drop for Mat<T> {
     }
 }
 
-impl<T: Debug> Debug for Mat<T> {
+impl<T: Debug + 'static> Debug for Mat<T> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.as_ref().fmt(f)

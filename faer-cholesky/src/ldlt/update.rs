@@ -458,7 +458,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
             for i in (current_col..old_n).rev() {
                 *ld.rb_mut()
                     .ptr_in_bounds_at_unchecked(i + r, current_col + r) =
-                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+                    *ld.rb().ptr_in_bounds_at_unchecked(i, current_col);
             }
         }
     }
@@ -468,7 +468,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         unsafe {
             for i in (insertion_index..old_n).rev() {
                 *ld.rb_mut().ptr_in_bounds_at_unchecked(i + r, current_col) =
-                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+                    *ld.rb().ptr_in_bounds_at_unchecked(i, current_col);
             }
         }
     }
@@ -490,8 +490,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     solve::triangular::solve_unit_lower_triangular_in_place(
         ld00.rb(),
         a01.rb_mut(),
-        true,
-        true,
+        false,
+        false,
         parallelism,
     );
 
@@ -502,7 +502,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         for i in 0..r {
             unsafe {
                 *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    (*a01.get_unchecked(j, i)) * d0_inv;
+                    (*a01.get_unchecked(j, i)).conj() * d0_inv;
             }
         }
     }
@@ -510,8 +510,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    (*a11.rb().get_unchecked(i, j)).conj();
+                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
             }
         }
     }
@@ -527,7 +526,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         -T::one(),
         false,
         false,
-        true,
+        false,
         parallelism,
     );
 
@@ -550,9 +549,9 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         a01.rb(),
         Some(T::one()),
         -T::one(),
-        true,
         false,
-        true,
+        false,
+        false,
         parallelism,
     );
 

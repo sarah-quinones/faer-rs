@@ -254,62 +254,25 @@ mod tests {
 
         {
             let mut a = a_orig.clone();
-
             let mut w = Mat::with_dims(|_, _| T::new(random(), random()), 6, 2);
+
             w[(2, 0)].im = 0.0;
             w[(3, 1)].im = 0.0;
             w[(2, 1)] = ComplexField::conj(w[(3, 0)]);
 
-            let mut a_new = mat![
-                [
-                    a[(0, 0)],
-                    a[(0, 1)],
-                    ComplexField::conj(w[(0, 0)]),
-                    ComplexField::conj(w[(0, 1)]),
-                    a[(0, 2)],
-                    a[(0, 3)]
-                ],
-                [
-                    a[(1, 0)],
-                    a[(1, 1)],
-                    ComplexField::conj(w[(1, 0)]),
-                    ComplexField::conj(w[(1, 1)]),
-                    a[(1, 2)],
-                    a[(1, 3)]
-                ],
-                [
-                    w[(0, 0)],
-                    w[(1, 0)],
-                    w[(2, 0)],
-                    w[(3, 0)],
-                    w[(4, 0)],
-                    w[(5, 0)]
-                ],
-                [
-                    w[(0, 1)],
-                    w[(1, 1)],
-                    w[(2, 1)],
-                    w[(3, 1)],
-                    w[(4, 1)],
-                    w[(5, 1)]
-                ],
-                [
-                    a[(2, 0)],
-                    a[(2, 1)],
-                    ComplexField::conj(w[(4, 0)]),
-                    ComplexField::conj(w[(4, 1)]),
-                    a[(2, 2)],
-                    a[(2, 3)]
-                ],
-                [
-                    a[(3, 0)],
-                    a[(3, 1)],
-                    ComplexField::conj(w[(5, 0)]),
-                    ComplexField::conj(w[(5, 1)]),
-                    a[(3, 2)],
-                    a[(3, 3)]
-                ],
-            ];
+            let a_new = {
+                let w = |i, j| w[(i, j)];
+                let wc = |i, j| ComplexField::conj(w(i, j));
+                let a = |i, j| a[(i, j)];
+                mat![
+                    [a(0, 0), a(0, 1), w(0, 0), w(0, 1), a(0, 2), a(0, 3)],
+                    [a(1, 0), a(1, 1), w(1, 0), w(1, 1), a(1, 2), a(1, 3)],
+                    [wc(0, 0), wc(1, 0), w(2, 0), w(2, 1), wc(4, 0), wc(5, 0)],
+                    [wc(0, 1), wc(1, 1), w(3, 0), w(3, 1), wc(4, 1), wc(5, 1)],
+                    [a(2, 0), a(2, 1), w(4, 0), w(4, 1), a(2, 2), a(2, 3)],
+                    [a(3, 0), a(3, 1), w(5, 0), w(5, 1), a(3, 2), a(3, 3)],
+                ]
+            };
 
             let n = a.nrows();
             let r = w.ncols();
@@ -330,120 +293,110 @@ mod tests {
             );
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
-            // raw_cholesky_in_place(a_new.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
 
             for j in 0..n + r {
                 for i in 0..n + r {
-                    dbg!(i, j);
                     assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
                 }
             }
         }
 
-        // {
-        //     let mut a = a_orig.clone();
+        {
+            let mut a = a_orig.clone();
+            let mut w = Mat::with_dims(|_, _| T::new(random(), random()), 6, 2);
 
-        //     let mut w = mat![
-        //         [11.0, 12.0],
-        //         [12.0, 18.0],
-        //         [13.0, 19.0],
-        //         [14.0, 20.0],
-        //         [15.0, 21.0],
-        //         [16.0, 22.0],
-        //     ];
+            w[(0, 0)].im = 0.0;
+            w[(1, 1)].im = 0.0;
+            w[(0, 1)] = ComplexField::conj(w[(1, 0)]);
 
-        //     let a_new = mat![
-        //         [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
-        //         [12.0, 18.0, 19.0, 20.0, 21.0, 22.0],
-        //         [13.0, 19.0, 1.0, 2.0, 3.0, 4.0],
-        //         [14.0, 20.0, 2.0, 5.0, 6.0, 7.0],
-        //         [15.0, 21.0, 3.0, 6.0, 8.0, 9.0],
-        //         [16.0, 22.0, 4.0, 7.0, 9.0, 10.0],
-        //     ];
+            let a_new = {
+                let w = |i, j| w[(i, j)];
+                let wc = |i, j| ComplexField::conj(w(i, j));
+                let a = |i, j| a[(i, j)];
+                mat![
+                    [w(0, 0), w(0, 1), wc(2, 0), wc(3, 0), wc(4, 0), wc(5, 0)],
+                    [w(1, 0), w(1, 1), wc(2, 1), wc(3, 1), wc(4, 1), wc(5, 1)],
+                    [w(2, 0), w(2, 1), a(0, 0), a(0, 1), a(0, 2), a(0, 3)],
+                    [w(3, 0), w(3, 1), a(1, 0), a(1, 1), a(1, 2), a(1, 3)],
+                    [w(4, 0), w(4, 1), a(2, 0), a(2, 1), a(2, 2), a(2, 3)],
+                    [w(5, 0), w(5, 1), a(3, 0), a(3, 1), a(3, 2), a(3, 3)],
+                ]
+            };
 
-        //     let n = a.nrows();
-        //     let r = w.ncols();
-        //     let position = 0;
+            let n = a.nrows();
+            let r = w.ncols();
+            let position = 0;
 
-        //     raw_cholesky_in_place(
-        //         a.as_mut(),
-        //         12,
-        //         DynStack::new(&mut GlobalMemBuffer::new(
-        //             raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
-        //         )),
-        //     );
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
 
-        //     a.resize_with(|_, _| 0.0, n + r, n + r);
-        //     insert_rows_and_cols_clobber(
-        //         a.as_mut(),
-        //         position,
-        //         w.as_mut(),
-        //         12,
-        //         DynStack::new(&mut GlobalMemBuffer::new(
-        //             insert_rows_and_cols_clobber_req::<f64>(n, position, r, 12).unwrap(),
-        //         )),
-        //     );
+            a.resize_with(|_, _| T::zero(), n + r, n + r);
+            insert_rows_and_cols_clobber(
+                a.as_mut(),
+                position,
+                w.as_mut(),
+                Parallelism::Rayon,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon)
+                        .unwrap(),
+                )),
+            );
 
-        //     let a_reconstructed = reconstruct_matrix(a.as_ref());
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
 
-        //     for j in 0..n + r {
-        //         for i in 0..n + r {
-        //             assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
-        //         }
-        //     }
-        // }
+            for j in 0..n + r {
+                for i in 0..n + r {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
+                }
+            }
+        }
 
-        // {
-        //     let mut a = a_orig.clone();
+        {
+            let mut a = a_orig.clone();
+            let mut w = Mat::with_dims(|_, _| T::new(random(), random()), 6, 2);
 
-        //     let mut w = mat![
-        //         [11.0, 17.0],
-        //         [12.0, 18.0],
-        //         [13.0, 19.0],
-        //         [14.0, 20.0],
-        //         [15.0, 16.0],
-        //         [16.0, 22.0],
-        //     ];
+            w[(4, 0)].im = 0.0;
+            w[(5, 1)].im = 0.0;
+            w[(4, 1)] = ComplexField::conj(w[(5, 0)]);
 
-        //     let a_new = mat![
-        //         [1.0, 2.0, 3.0, 4.0, 11.0, 17.0],
-        //         [2.0, 5.0, 6.0, 7.0, 12.0, 18.0],
-        //         [3.0, 6.0, 8.0, 9.0, 13.0, 19.0],
-        //         [4.0, 7.0, 9.0, 10.0, 14.0, 20.0],
-        //         [11.0, 12.0, 13.0, 14.0, 15.0, 16.0],
-        //         [17.0, 18.0, 19.0, 20.0, 16.0, 22.0],
-        //     ];
+            let a_new = {
+                let w = |i, j| w[(i, j)];
+                let wc = |i, j| ComplexField::conj(w(i, j));
+                let a = |i, j| a[(i, j)];
+                mat![
+                    [a(0, 0), a(0, 1), a(0, 2), a(0, 3), w(0, 0), w(0, 1)],
+                    [a(1, 0), a(1, 1), a(1, 2), a(1, 3), w(1, 0), w(1, 1)],
+                    [a(2, 0), a(2, 1), a(2, 2), a(2, 3), w(2, 0), w(2, 1)],
+                    [a(3, 0), a(3, 1), a(3, 2), a(3, 3), w(3, 0), w(3, 1)],
+                    [wc(0, 0), wc(1, 0), wc(2, 0), wc(3, 0), w(4, 0), w(4, 1)],
+                    [wc(0, 1), wc(1, 1), wc(2, 1), wc(3, 1), w(5, 0), w(5, 1)],
+                ]
+            };
 
-        //     let n = a.nrows();
-        //     let r = w.ncols();
-        //     let position = 4;
+            let n = a.nrows();
+            let r = w.ncols();
+            let position = 4;
 
-        //     raw_cholesky_in_place(
-        //         a.as_mut(),
-        //         12,
-        //         DynStack::new(&mut GlobalMemBuffer::new(
-        //             raw_cholesky_in_place_req::<f64>(n, 12).unwrap(),
-        //         )),
-        //     );
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
 
-        //     a.resize_with(|_, _| 0.0, n + r, n + r);
-        //     insert_rows_and_cols_clobber(
-        //         a.as_mut(),
-        //         position,
-        //         w.as_mut(),
-        //         12,
-        //         DynStack::new(&mut GlobalMemBuffer::new(
-        //             insert_rows_and_cols_clobber_req::<f64>(n, position, r, 12).unwrap(),
-        //         )),
-        //     );
+            a.resize_with(|_, _| T::zero(), n + r, n + r);
+            insert_rows_and_cols_clobber(
+                a.as_mut(),
+                position,
+                w.as_mut(),
+                Parallelism::Rayon,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon)
+                        .unwrap(),
+                )),
+            );
 
-        //     let a_reconstructed = reconstruct_matrix(a.as_ref());
+            let a_reconstructed = reconstruct_matrix(a.as_ref());
 
-        //     for j in 0..n + r {
-        //         for i in 0..n + r {
-        //             assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
-        //         }
-        //     }
-        // }
+            for j in 0..n + r {
+                for i in 0..n + r {
+                    assert_approx_eq!(a_reconstructed[(i, j)], a_new[(i, j)]);
+                }
+            }
+        }
     }
 }

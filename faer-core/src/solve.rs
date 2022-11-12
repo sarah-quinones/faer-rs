@@ -37,7 +37,8 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
             let x1 = x1.row_unchecked(0);
 
             x0.cwise().zip_unchecked(x1).for_each(|x0, x1| {
-                *x1 = *x1 + nl10_div_l11 * *x0;
+                *x0 = maybe_conj_rhs(*x0);
+                *x1 = maybe_conj_rhs(*x1) + nl10_div_l11 * *x0;
             });
         }
         3 => {
@@ -60,6 +61,7 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
                     let mut y2 = maybe_conj_rhs(*x2);
                     y1 = y1 + nl10_div_l11 * y0;
                     y2 = y2 + nl20_div_l22 * y0 + nl21_div_l22 * y1;
+                    *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
                 });
@@ -92,6 +94,7 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
                     y1 = y1 + nl10_div_l11 * y0;
                     y2 = y2 + (nl20_div_l22 * y0 + nl21_div_l22 * y1);
                     y3 = (y3 + nl30_div_l33 * y0) + (nl31_div_l33 * y1 + nl32_div_l33 * y2);
+                    *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
                     *x3 = y3;
