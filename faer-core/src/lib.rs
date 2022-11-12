@@ -9,7 +9,7 @@ use core::marker::PhantomData;
 use core::mem::{size_of, MaybeUninit};
 use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 use core::ptr::NonNull;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{SizeOverflow, StackReq};
 pub use gemm::{c32, c64};
 use iter::*;
 use num_complex::{Complex, ComplexFloat};

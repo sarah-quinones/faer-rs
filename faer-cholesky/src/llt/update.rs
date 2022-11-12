@@ -1,13 +1,12 @@
 use core::any::TypeId;
 use core::mem::size_of;
-use core::ops::{Add, Mul, Neg};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::float_traits::Sqrt;
 use faer_core::mul::triangular::BlockStructure;
-use faer_core::{mul, solve, temp_mat_req, temp_mat_uninit, ColMut, MatMut};
-use num_traits::{Inv, One, Zero};
+use faer_core::{
+    mul, solve, temp_mat_req, temp_mat_uninit, ColMut, ComplexField, MatMut, Parallelism,
+};
 use pulp::{Arch, Simd};
 use reborrow::*;
 use seq_macro::seq;
@@ -95,7 +94,7 @@ macro_rules! generate {
 macro_rules! generate_generic {
     ($name: ident, $r: tt) => {
         #[inline(always)]
-        unsafe fn $name<S: Simd, T: 'static>(
+        unsafe fn $name<S: Simd, T: ComplexField>(
             _simd: S,
             n: usize,
             l_col: *mut T,
@@ -106,14 +105,11 @@ macro_rules! generate_generic {
             neg_wj_over_ljj_array: *const T,
             alpha_wj_over_nljj_array: *const T,
             nljj_over_ljj_array: *const T,
-        ) where
-            T: Clone,
-            for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T>,
-        {
+        ) {
             seq!(I in 0..$r {
-                let neg_wj_over_ljj~I = &*neg_wj_over_ljj_array.add(I);
-                let nljj_over_ljj~I = &*nljj_over_ljj_array.add(I);
-                let alpha_wj_over_nljj~I = &*alpha_wj_over_nljj_array.add(I);
+                let neg_wj_over_ljj~I = *neg_wj_over_ljj_array.add(I);
+                let nljj_over_ljj~I = *nljj_over_ljj_array.add(I);
+                let alpha_wj_over_nljj~I = *alpha_wj_over_nljj_array.add(I);
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
@@ -122,8 +118,8 @@ macro_rules! generate_generic {
 
                 seq!(I in 0..$r {
                     let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
-                    w~I = &(neg_wj_over_ljj~I * &l) + &w~I;
-                    l = &(alpha_wj_over_nljj~I * &w~I) + &(nljj_over_ljj~I * &l);
+                    w~I = (neg_wj_over_ljj~I * l) + w~I;
+                    l = (alpha_wj_over_nljj~I * w~I) + (nljj_over_ljj~I * l);
                     *w_col~I.offset(i as isize * w_row_stride) = w~I;
                 });
 
@@ -163,11 +159,7 @@ struct RankRUpdate<'a, T> {
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T> pulp::WithSimd for RankRUpdate<'a, T>
-where
-    T: Zero + Clone + Sqrt + PartialOrd + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
     type Output = Result<(), CholeskyError>;
 
     #[inline(always)]
@@ -207,25 +199,26 @@ where
                     let mut ljj = l.rb().get_unchecked(j, j).clone();
                     for k in 0..r_chunk {
                         let neg_wj_over_ljj = neg_wj_over_ljj_array.get_unchecked_mut(k);
-                        let alpha_wj_over_nljj = alpha_wj_over_nljj_array.get_unchecked_mut(k);
+                        let alpha_conj_wj_over_nljj = alpha_wj_over_nljj_array.get_unchecked_mut(k);
                         let nljj_over_ljj = nljj_over_ljj_array.get_unchecked_mut(k);
 
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
-                        let wj = w.rb().get_unchecked(j, r_idx + k).clone();
-                        let alpha_wj = &*alpha * &wj;
+                        let wj = *w.rb().get_unchecked(j, r_idx + k);
+                        let alpha_conj_wj = *alpha * wj.conj();
 
-                        let sqr_nljj = &(&ljj * &ljj) + &(&alpha_wj * &wj);
-                        if !(sqr_nljj > T::zero()) {
+                        let sqr_nljj = ljj * ljj + alpha_conj_wj * wj;
+                        if !(sqr_nljj.real() > T::Real::zero()) {
                             return Err(CholeskyError);
                         }
                         let nljj = sqr_nljj.sqrt();
                         let inv_ljj = ljj.inv();
                         let inv_nljj = nljj.inv();
 
-                        *neg_wj_over_ljj = -&(&wj * &inv_ljj);
-                        *nljj_over_ljj = &nljj * &inv_ljj;
-                        *alpha_wj_over_nljj = &alpha_wj * &inv_nljj;
-                        *alpha = &*alpha + &-&(&*alpha_wj_over_nljj * &*alpha_wj_over_nljj);
+                        *neg_wj_over_ljj = -(wj * inv_ljj);
+                        *nljj_over_ljj = nljj * inv_ljj;
+                        *alpha_conj_wj_over_nljj = alpha_conj_wj * inv_nljj;
+                        *alpha =
+                            *alpha - *alpha_conj_wj_over_nljj * (*alpha_conj_wj_over_nljj).conj();
 
                         ljj = nljj;
                     }
@@ -424,15 +417,11 @@ where
 /// The matrix `W` and the vector `α` are clobbered, meaning that the values they contain after the
 /// function returns are unspecified.
 #[track_caller]
-pub fn rank_r_update_clobber<T>(
+pub fn rank_r_update_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
     w: MatMut<'_, T>,
     alpha: ColMut<'_, T>,
-) -> Result<(), CholeskyError>
-where
-    T: Zero + Clone + Sqrt + PartialOrd + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> Result<(), CholeskyError> {
     let n = cholesky_factors.nrows();
     let k = w.ncols();
 
@@ -458,14 +447,11 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
 }
 
 #[track_caller]
-pub fn delete_rows_and_cols_clobber<T: Clone>(
+pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
     indices: &mut [usize],
     stack: DynStack<'_>,
-) where
-    T: Zero + One + Clone + Sqrt + PartialOrd + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
     let n = cholesky_factors.nrows();
     let r = indices.len();
     fancy_assert!(cholesky_factors.ncols() == n);
@@ -531,37 +517,20 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
     old_dim: usize,
     insertion_index: usize,
     inserted_matrix_ncols: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     fancy_assert!(insertion_index <= old_dim);
-
-    StackReq::try_any_of([
-        solve::triangular::solve_triangular_in_place_req::<T>(
-            insertion_index,
-            inserted_matrix_ncols,
-            n_threads,
-        )?,
-        raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, n_threads)?,
-        solve::triangular::solve_triangular_in_place_req::<T>(
-            inserted_matrix_ncols,
-            old_dim - insertion_index,
-            n_threads,
-        )?,
-    ])
+    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism)
 }
 
 #[track_caller]
-pub fn insert_rows_and_cols_clobber<T>(
+pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors_extended: MatMut<'_, T>,
     insertion_index: usize,
     inserted_matrix: MatMut<'_, T>,
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) -> Result<(), CholeskyError>
-where
-    T: Zero + One + Clone + Sqrt + PartialOrd + Send + Sync + 'static,
-    for<'b> &'b T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> Result<(), CholeskyError> {
     let new_n = cholesky_factors_extended.nrows();
     let r = inserted_matrix.ncols();
 
@@ -617,8 +586,9 @@ where
     solve::triangular::solve_lower_triangular_in_place(
         l00.rb(),
         a01.rb_mut(),
-        n_threads,
-        stack.rb_mut(),
+        false,
+        false,
+        parallelism,
     );
 
     let a10 = a01.rb().transpose();
@@ -626,7 +596,7 @@ where
     for j in 0..insertion_index {
         for i in 0..r {
             unsafe {
-                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = a10.get_unchecked(i, j).clone();
+                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) = (*a10.get_unchecked(i, j)).conj();
             }
         }
     }
@@ -647,13 +617,15 @@ where
         BlockStructure::Rectangular,
         a01.rb(),
         BlockStructure::Rectangular,
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
-        stack.rb_mut(),
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        parallelism,
     );
 
-    raw_cholesky_in_place(l11.rb_mut(), n_threads, stack.rb_mut())?;
+    raw_cholesky_in_place(l11.rb_mut(), parallelism, stack.rb_mut())?;
     let l11 = l11.into_const();
 
     let rem = l21.nrows();
@@ -671,16 +643,20 @@ where
         l21.rb_mut(),
         l20.rb(),
         a01.rb(),
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        parallelism,
     );
 
     solve::triangular::solve_lower_triangular_in_place(
         l11,
         l21.rb_mut().transpose(),
-        n_threads,
-        stack.rb_mut(),
+        true,
+        false,
+        parallelism,
     );
 
     let mut alpha = unsafe { a11.col_unchecked(0) };
@@ -688,7 +664,7 @@ where
 
     for j in 0..r {
         unsafe {
-            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -&T::one();
+            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -T::one();
 
             for i in 0..rem {
                 *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get(i, j).clone();

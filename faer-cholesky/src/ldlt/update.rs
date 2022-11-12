@@ -199,7 +199,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
                         let alpha_conj_p = *alpha * (*p).conj();
                         let new_dj = dj + (alpha_conj_p * *p);
                         *beta = alpha_conj_p * new_dj.inv();
-                        *alpha = *alpha + -(new_dj * (*beta * (*beta).conj()));
+                        *alpha = *alpha - new_dj * (*beta * (*beta).conj());
 
                         dj = new_dj;
                     }
