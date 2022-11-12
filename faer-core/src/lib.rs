@@ -14,7 +14,6 @@ pub use gemm::{c32, c64};
 use iter::*;
 use num_complex::{Complex, ComplexFloat};
 use reborrow::*;
-use std::fmt::Write;
 use std::mem::transmute_copy;
 
 pub mod mul;
@@ -309,43 +308,10 @@ pub fn join_raw(
 }
 
 #[inline]
-pub fn join_req(
-    req_a: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
-    req_b: impl Fn(usize) -> Result<StackReq, SizeOverflow>,
-    n_threads_a: impl Fn(usize) -> usize,
-    n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
-    if n_threads <= 1 {
-        req_a(n_threads)?.try_or(req_b(n_threads)?)
-    } else {
-        let n_threads_a = n_threads;
-        let n_threads_b = n_threads;
-        req_a(n_threads_a)?.try_and(req_b(n_threads_b)?)
-    }
-}
-
-#[track_caller]
-#[inline(always)]
-pub fn join<ReturnA: Send, ReturnB: Send>(
-    op_a: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnA,
-    op_b: impl Send + for<'a> FnOnce(usize, DynStack<'a>) -> ReturnB,
-    req_a: impl Fn(usize) -> StackReq,
-    n_threads_a: impl Fn(usize) -> usize,
-    n_threads: usize,
-    stack: DynStack<'_>,
-) {
-    let mut stack = stack;
-    if n_threads <= 1 {
-        op_a(n_threads, stack.rb_mut());
-        op_b(n_threads, stack.rb_mut());
-    } else {
-        let n_threads_a = n_threads;
-        let n_threads_b = n_threads;
-        let req_a = req_a(n_threads_a);
-        let (mut stack_a_mem, stack_b) =
-            stack.make_aligned_uninit::<u8>(req_a.size_bytes(), req_a.align_bytes());
-        let stack_a = DynStack::new(&mut stack_a_mem);
-        rayon::join(|| op_a(n_threads_a, stack_a), || op_b(n_threads_b, stack_b));
+pub fn parallelism_degree(parallelism: Parallelism) -> usize {
+    match parallelism {
+        Parallelism::None => 1,
+        Parallelism::Rayon => rayon::current_num_threads(),
     }
 }
 

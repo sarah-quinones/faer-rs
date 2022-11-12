@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
 use faer_core::{c64, ComplexField};
@@ -9,7 +11,7 @@ use nalgebra::DMatrix;
 pub fn cholesky(c: &mut Criterion) {
     use faer_cholesky::llt;
 
-    for n in [6, 12, 64, 128, 256, 512, 1024] {
+    for n in [6, 12, 64, 128, 256, 512, 1024, 4096] {
         // c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
         //     let mut mat = Mat::new();
 
@@ -113,5 +115,12 @@ pub fn cholesky(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, cholesky);
+criterion_group!(
+    name = benches;
+    config = Criterion::default()
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(1))
+        .sample_size(10);
+    targets = cholesky
+);
 criterion_main!(benches);

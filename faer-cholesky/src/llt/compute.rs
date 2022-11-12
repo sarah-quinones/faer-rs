@@ -1,7 +1,7 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::mul::triangular::BlockStructure;
-use faer_core::{solve, ComplexField, MatMut, Parallelism};
+use faer_core::{parallelism_degree, solve, ComplexField, MatMut, Parallelism};
 use reborrow::*;
 
 #[derive(Debug)]
@@ -144,7 +144,7 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
     if n < 4 {
         cholesky_in_place_left_looking_unchecked(matrix, 1, parallelism)
     } else {
-        let block_size = (n / 2).min(128);
+        let block_size = (n / 2).min(128 * parallelism_degree(parallelism));
         let (mut l00, _, mut a10, mut a11) =
             matrix.rb_mut().split_at_unchecked(block_size, block_size);
 
