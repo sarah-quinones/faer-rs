@@ -3,11 +3,6 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use gemm::gemm;
 use reborrow::*;
 
-#[inline]
-fn split_half(n_threads: usize) -> usize {
-    n_threads / 2
-}
-
 /// Same as [`matmul`], except that panics become undefined behavior.
 unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -318,7 +313,6 @@ pub mod triangular {
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
             let bs = n / 2;
-            let rem = n - bs;
 
             let (mut dst_top_left, _, mut dst_bot_left, dst_bot_right) =
                 dst.split_at_unchecked(bs, bs);
@@ -538,7 +532,6 @@ pub mod triangular {
             accum_lower(dst, temp_dst.into_const(), skip_diag, alpha);
         } else {
             let bs = n / 2;
-            let rem = n - bs;
 
             let (dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
             let (lhs_top_left, _, lhs_bot_left, lhs_bot_right) = lhs.split_at_unchecked(bs, bs);
@@ -651,7 +644,6 @@ pub mod triangular {
             );
         } else {
             let bs = n / 2;
-            let rem = n - bs;
 
             let (mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) =
                 dst.split_at_unchecked(bs, bs);
@@ -797,7 +789,6 @@ pub mod triangular {
             accum_lower(dst.rb_mut(), temp_dst.into_const(), skip_diag, alpha);
         } else {
             let bs = n / 2;
-            let rem = n - bs;
 
             let (mut dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
             let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_at_unchecked(bs, bs);
@@ -891,6 +882,12 @@ pub mod triangular {
         let n = dst.nrows();
         let k = lhs.ncols();
 
+        let join_parallelism = if n * n * k < 128 * 128 * 128 {
+            Parallelism::None
+        } else {
+            parallelism
+        };
+
         if n <= 16 {
             let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
             let mut temp_dst =
@@ -957,10 +954,10 @@ pub mod triangular {
                                 parallelism,
                             )
                         },
-                        parallelism,
+                        join_parallelism,
                     )
                 },
-                parallelism,
+                join_parallelism,
             );
         }
     }
@@ -1395,7 +1392,6 @@ pub mod triangular {
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::GlobalMemBuffer;
     use rand::random;
 
     use super::triangular::{BlockStructure, DiagonalKind};
