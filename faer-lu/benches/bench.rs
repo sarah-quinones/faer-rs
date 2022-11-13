@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
+use faer_core::Parallelism;
 use rand::random;
 use reborrow::*;
 
@@ -15,7 +18,7 @@ pub fn lu(c: &mut Criterion) {
             let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, 1).unwrap(),
+                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -24,7 +27,7 @@ pub fn lu(c: &mut Criterion) {
                     mat.as_mut(),
                     &mut perm,
                     &mut perm_inv,
-                    1,
+                    Parallelism::None,
                     stack.rb_mut(),
                 );
             })
@@ -35,12 +38,8 @@ pub fn lu(c: &mut Criterion) {
             let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64>(
-                    n,
-                    n,
-                    rayon::current_num_threads(),
-                )
-                .unwrap(),
+                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::Rayon)
+                    .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -49,7 +48,7 @@ pub fn lu(c: &mut Criterion) {
                     mat.as_mut(),
                     &mut perm,
                     &mut perm_inv,
-                    rayon::current_num_threads(),
+                    Parallelism::Rayon,
                     stack.rb_mut(),
                 );
             })
@@ -63,7 +62,7 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64>(n, n, 1).unwrap(),
+                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -74,32 +73,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut row_perm_inv,
                     &mut col_perm,
                     &mut col_perm_inv,
-                    1,
-                    stack.rb_mut(),
-                );
-            })
-        });
-        c.bench_function(&format!("faer-mt-flu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
-            let mut row_perm = vec![0; n];
-            let mut row_perm_inv = vec![0; n];
-            let mut col_perm = vec![0; n];
-            let mut col_perm_inv = vec![0; n];
-
-            let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64>(n, n, rayon::current_num_threads())
-                    .unwrap(),
-            );
-            let mut stack = DynStack::new(&mut mem);
-
-            b.iter(|| {
-                full_pivoting::compute::lu_in_place(
-                    mat.as_mut(),
-                    &mut row_perm,
-                    &mut row_perm_inv,
-                    &mut col_perm,
-                    &mut col_perm_inv,
-                    rayon::current_num_threads(),
+                    Parallelism::None,
                     stack.rb_mut(),
                 );
             })
@@ -107,5 +81,12 @@ pub fn lu(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, lu);
+criterion_group!(
+    name = benches;
+    config = Criterion::default()
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(1))
+        .sample_size(10);
+    targets = lu
+);
 criterion_main!(benches);

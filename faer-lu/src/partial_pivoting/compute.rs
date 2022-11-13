@@ -1,15 +1,10 @@
-use core::ops::{Add, Mul, Neg};
-
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::mul::matmul;
 use faer_core::permutation::PermutationIndicesMut;
-use faer_core::solve::triangular::{
-    solve_triangular_in_place_req, solve_unit_lower_triangular_in_place,
-};
+use faer_core::solve::triangular::solve_unit_lower_triangular_in_place;
 use faer_core::zip::ColUninit;
-use faer_core::{temp_mat_req, temp_mat_uninit, ColMut, MatMut};
-use num_traits::{Inv, One, Signed, Zero};
+use faer_core::{temp_mat_req, temp_mat_uninit, ColMut, ComplexField, MatMut, Parallelism};
 use reborrow::*;
 
 unsafe fn swap_two_rows<T>(m: MatMut<'_, T>, i: usize, j: usize) {
@@ -42,28 +37,19 @@ unsafe fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
     core::mem::swap(&mut *ptr_i, &mut *ptr_j);
 }
 
-fn lu_unblocked_req<T: 'static>(
-    _m: usize,
-    _n: usize,
-    _n_threads: usize,
-) -> Result<StackReq, SizeOverflow> {
+fn lu_unblocked_req<T: 'static>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
     Ok(StackReq::default())
 }
 
 #[inline(never)]
-unsafe fn lu_in_place_unblocked<T>(
+unsafe fn lu_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     col_start: usize,
     n: usize,
     perm: &mut [usize],
     transpositions: &mut [usize],
-    n_threads: usize,
     mut stack: DynStack<'_>,
-) -> usize
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> usize {
     let m = matrix.nrows();
     fancy_debug_assert!(m >= n);
     fancy_debug_assert!(perm.len() == m);
@@ -75,11 +61,11 @@ where
     let mut n_transpositions = 0;
 
     for (j, t) in transpositions.iter_mut().enumerate() {
-        let mut max = T::zero();
+        let mut max = T::Real::zero();
         let mut imax = j;
 
         for i in j..m {
-            let abs = matrix.rb().get_unchecked(i, j + col_start).abs();
+            let abs = (*matrix.rb().get_unchecked(i, j + col_start)).score();
             if abs > max {
                 imax = i;
                 max = abs;
@@ -97,22 +83,18 @@ where
 
         let (_, _, _, middle_right) = matrix.rb_mut().split_at_unchecked(0, col_start);
         let (_, _, middle, _) = middle_right.split_at_unchecked(0, n);
-        update(middle, j, n_threads, stack.rb_mut());
+        update(middle, j, stack.rb_mut());
     }
 
     n_transpositions
 }
 
-unsafe fn update<T>(mut matrix: MatMut<T>, j: usize, n_threads: usize, _stack: DynStack<'_>)
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+unsafe fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>) {
     let m = matrix.nrows();
     let inv = matrix.rb().get_unchecked(j, j).inv();
     for i in j + 1..m {
         let elem = matrix.rb_mut().get_unchecked(i, j);
-        *elem = &*elem * &inv;
+        *elem = *elem * inv;
     }
     let (_, top_right, bottom_left, bottom_right) =
         matrix.rb_mut().split_at_unchecked(j + 1, j + 1);
@@ -120,9 +102,12 @@ where
         bottom_right,
         bottom_left.rb().col(j).as_2d(),
         top_right.rb().row(j).as_2d(),
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        Parallelism::None,
     )
 }
 
@@ -148,38 +133,33 @@ fn blocksize<T: 'static>(n: usize) -> usize {
 fn lu_recursive_req<T: 'static>(
     m: usize,
     n: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     if n <= recursion_threshold::<T>(m) {
-        return lu_unblocked_req::<T>(m, n, n_threads);
+        return lu_unblocked_req::<T>(m, n);
     }
 
     let bs = blocksize::<T>(n);
 
     StackReq::try_any_of([
-        lu_recursive_req::<T>(m, bs, n_threads)?,
-        solve_triangular_in_place_req::<T>(bs, n - bs, n_threads)?,
+        lu_recursive_req::<T>(m, bs, parallelism)?,
         StackReq::try_all_of([
             StackReq::try_new::<usize>(m - bs)?,
-            lu_recursive_req::<T>(m - bs, n - bs, n_threads)?,
+            lu_recursive_req::<T>(m - bs, n - bs, parallelism)?,
         ])?,
         temp_mat_req::<T>(m, 1)?,
     ])
 }
 
-unsafe fn lu_in_place_impl<T>(
+unsafe fn lu_in_place_impl<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     col_start: usize,
     n: usize,
     perm: &mut [usize],
     transpositions: &mut [usize],
-    n_threads: usize,
+    parallelism: Parallelism,
     mut stack: DynStack<'_>,
-) -> usize
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> usize {
     let m = matrix.nrows();
     let full_n = matrix.ncols();
 
@@ -187,7 +167,7 @@ where
     fancy_debug_assert!(perm.len() == m);
 
     if n <= recursion_threshold::<T>(m) {
-        return lu_in_place_unblocked(matrix, col_start, n, perm, transpositions, n_threads, stack);
+        return lu_in_place_unblocked(matrix, col_start, n, perm, transpositions, stack);
     }
 
     let bs = blocksize::<T>(n);
@@ -200,7 +180,7 @@ where
         bs,
         perm,
         &mut transpositions[..bs],
-        n_threads,
+        parallelism,
         stack.rb_mut(),
     );
 
@@ -212,16 +192,20 @@ where
     solve_unit_lower_triangular_in_place(
         mat_top_left.rb(),
         mat_top_right.rb_mut(),
-        n_threads,
-        stack.rb_mut(),
+        false,
+        false,
+        parallelism,
     );
     matmul(
         mat_bot_right.rb_mut(),
         mat_bot_left.rb(),
         mat_top_right.rb(),
-        Some(&T::one()),
-        &-&T::one(),
-        n_threads,
+        Some(T::one()),
+        -T::one(),
+        false,
+        false,
+        false,
+        parallelism,
     );
 
     {
@@ -235,7 +219,7 @@ where
             n - bs,
             tmp_perm,
             &mut transpositions[bs..],
-            n_threads,
+            parallelism,
             stack.rb_mut(),
         );
 
@@ -347,26 +331,21 @@ where
 pub fn lu_in_place_req<T: 'static>(
     m: usize,
     n: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
         StackReq::try_new::<usize>(n.min(m))?,
-        lu_recursive_req::<T>(m, n.min(m), n_threads)?,
-        solve_triangular_in_place_req::<T>(n.min(m), n - n.min(m), n_threads)?,
+        lu_recursive_req::<T>(m, n.min(m), parallelism)?,
     ])
 }
 
-pub fn lu_in_place<'out, T>(
+pub fn lu_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     perm: &'out mut [usize],
     perm_inv: &'out mut [usize],
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
-) -> (usize, PermutationIndicesMut<'out>)
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> (usize, PermutationIndicesMut<'out>) {
     fancy_assert!(perm.len() == matrix.nrows());
     fancy_assert!(perm_inv.len() == matrix.nrows());
     let mut matrix = matrix;
@@ -388,7 +367,7 @@ where
                 n.min(m),
                 perm,
                 &mut transpositions,
-                n_threads,
+                parallelism,
                 stack.rb_mut(),
             )
         };
@@ -396,7 +375,7 @@ where
         let (_, _, left, right) = matrix.split_at_unchecked(0, n.min(m));
 
         if m < n {
-            solve_unit_lower_triangular_in_place(left.rb(), right, n_threads, stack);
+            solve_unit_lower_triangular_in_place(left.rb(), right, false, false, parallelism);
         }
 
         for i in 0..m {
@@ -443,20 +422,11 @@ mod tests {
             u_left,
             TriangularUpper,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    UnitTriangularLower,
-                    TriangularUpper,
-                    size,
-                    size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_top_right,
@@ -466,20 +436,11 @@ mod tests {
             u_right,
             Rectangular,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    UnitTriangularLower,
-                    Rectangular,
-                    size,
-                    n - size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_bot_left,
@@ -489,20 +450,11 @@ mod tests {
             u_left,
             TriangularUpper,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    Rectangular,
-                    TriangularUpper,
-                    m - size,
-                    size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_bot_right,
@@ -512,20 +464,11 @@ mod tests {
             u_right,
             Rectangular,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    Rectangular,
-                    Rectangular,
-                    m - size,
-                    n - size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
 
         a_reconstructed
@@ -555,10 +498,17 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem = GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, 1).unwrap());
+            let mut mem =
+                GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::Rayon).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
-            lu_in_place(mat.as_mut(), &mut perm, &mut perm_inv, 1, stack.rb_mut());
+            lu_in_place(
+                mat.as_mut(),
+                &mut perm,
+                &mut perm_inv,
+                Parallelism::Rayon,
+                stack.rb_mut(),
+            );
             let reconstructed = reconstruct_matrix(mat.as_ref());
 
             for i in 0..m {

@@ -1,4 +1,3 @@
-use core::ops::{Add, Mul, Neg};
 use std::mem::{size_of, transmute_copy};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
@@ -6,8 +5,7 @@ use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::mul::matmul;
 use faer_core::permutation::PermutationIndicesMut;
-use faer_core::{ColRef, MatMut, MatRef, RowRef};
-use num_traits::{Inv, One, Signed, Zero};
+use faer_core::{ColRef, ComplexField, MatMut, MatRef, Parallelism, RowRef};
 use pulp::Simd;
 use reborrow::*;
 
@@ -430,10 +428,7 @@ fn update_and_best_in_matrix_f64(
 }
 
 #[inline]
-fn best_in_matrix<T>(matrix: MatRef<'_, T>) -> (usize, usize)
-where
-    T: Zero + Signed + PartialOrd + 'static,
-{
+fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize) {
     // let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
     let is_f64 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>();
 
@@ -448,13 +443,13 @@ where
         let m = matrix.nrows();
         let n = matrix.ncols();
 
-        let mut max = T::zero();
+        let mut max = T::Real::zero();
         let mut max_row = 0;
         let mut max_col = 0;
 
         for j in 0..n {
             for i in 0..m {
-                let abs = unsafe { matrix.get_unchecked(i, j).abs() };
+                let abs = unsafe { (*matrix.get_unchecked(i, j)).score() };
                 if abs > max {
                     max_row = i;
                     max_col = j;
@@ -468,15 +463,11 @@ where
 }
 
 #[inline]
-fn rank_one_update_and_best_in_matrix<T>(
+fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     mut dst: MatMut<'_, T>,
     lhs: ColRef<'_, T>,
     rhs: RowRef<'_, T>,
-) -> (usize, usize)
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> (usize, usize) {
     let is_f64 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>();
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
@@ -513,26 +504,24 @@ where
             dst.rb_mut(),
             lhs.as_2d(),
             rhs.as_2d(),
-            Some(&T::one()),
-            &-&T::one(),
-            1,
+            Some(T::one()),
+            -T::one(),
+            false,
+            false,
+            false,
+            Parallelism::None,
         );
         best_in_matrix(dst.rb())
     }
 }
 
 #[inline]
-unsafe fn lu_in_place_unblocked<T>(
+unsafe fn lu_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     row_transpositions: &mut [usize],
     col_transpositions: &mut [usize],
-    _n_threads: usize,
     _stack: DynStack<'_>,
-) -> usize
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
 
@@ -573,7 +562,7 @@ where
         let inv = matrix.rb().get_unchecked(k, k).inv();
         for i in k + 1..m {
             let elem = matrix.rb_mut().get_unchecked(i, k);
-            *elem = &*elem * &inv;
+            *elem = *elem * inv;
         }
 
         if k + 1 == size {
@@ -629,32 +618,29 @@ unsafe fn swap_cols<T>(mut col_j: faer_core::ColMut<T>, mut col_max: faer_core::
 pub fn lu_in_place_req<T: 'static>(
     m: usize,
     n: usize,
-    n_threads: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, dyn_stack::SizeOverflow> {
-    let _n_threads = n_threads;
+    let _ = parallelism;
     StackReq::try_all_of([
         StackReq::try_new::<usize>(m)?,
         StackReq::try_new::<usize>(n)?,
     ])
 }
 
-pub fn lu_in_place<'out, T>(
+pub fn lu_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     row_perm: &'out mut [usize],
     row_perm_inv: &'out mut [usize],
     col_perm: &'out mut [usize],
     col_perm_inv: &'out mut [usize],
-    n_threads: usize,
+    parallelism: Parallelism,
     stack: DynStack<'_>,
 ) -> (
     usize,
     PermutationIndicesMut<'out>,
     PermutationIndicesMut<'out>,
-)
-where
-    T: Zero + One + Clone + Send + Sync + Signed + PartialOrd + 'static,
-    for<'a> &'a T: Add<Output = T> + Mul<Output = T> + Neg<Output = T> + Inv<Output = T>,
-{
+) {
+    let _ = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
     fancy_assert!(row_perm.len() == m);
@@ -670,7 +656,6 @@ where
             matrix,
             &mut row_transpositions,
             &mut col_transpositions,
-            n_threads,
             stack,
         )
     };
@@ -734,20 +719,11 @@ mod tests {
             u_left,
             TriangularUpper,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    UnitTriangularLower,
-                    TriangularUpper,
-                    size,
-                    size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_top_right,
@@ -757,20 +733,11 @@ mod tests {
             u_right,
             Rectangular,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    UnitTriangularLower,
-                    Rectangular,
-                    size,
-                    n - size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_bot_left,
@@ -780,20 +747,11 @@ mod tests {
             u_left,
             TriangularUpper,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    Rectangular,
-                    TriangularUpper,
-                    m - size,
-                    size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
         mul::triangular::matmul(
             dst_bot_right,
@@ -803,20 +761,11 @@ mod tests {
             u_right,
             Rectangular,
             None,
-            &1.0,
-            12,
-            DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
-                mul::triangular::matmul_req::<f64>(
-                    Rectangular,
-                    Rectangular,
-                    Rectangular,
-                    m - size,
-                    n - size,
-                    size,
-                    12,
-                )
-                .unwrap(),
-            )),
+            1.0,
+            false,
+            false,
+            false,
+            Parallelism::Rayon,
         );
 
         a_reconstructed
@@ -844,7 +793,8 @@ mod tests {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, 1).unwrap());
+            let mut mem =
+                GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
             lu_in_place(
@@ -853,7 +803,7 @@ mod tests {
                 &mut row_perm_inv,
                 &mut col_perm,
                 &mut col_perm_inv,
-                1,
+                Parallelism::None,
                 stack.rb_mut(),
             );
             let reconstructed = reconstruct_matrix(mat.as_ref());

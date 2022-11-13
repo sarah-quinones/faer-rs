@@ -65,6 +65,7 @@ pub trait ComplexField:
     fn scale(self, factor: Self::Real) -> Self {
         self * Self::from_real(factor)
     }
+    fn score(self) -> Self::Real;
 }
 
 pub struct I;
@@ -141,6 +142,11 @@ impl ComplexField for f32 {
     fn sqrt(self) -> Self {
         self.sqrt()
     }
+
+    #[inline(always)]
+    fn score(self) -> Self::Real {
+        self.abs()
+    }
 }
 
 impl RealField for f64 {}
@@ -180,6 +186,11 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         self.sqrt()
+    }
+
+    #[inline(always)]
+    fn score(self) -> Self::Real {
+        self.abs()
     }
 }
 
@@ -223,6 +234,11 @@ impl ComplexField for c32 {
     fn sqrt(self) -> Self {
         <Self as ComplexFloat>::sqrt(self)
     }
+
+    #[inline(always)]
+    fn score(self) -> Self::Real {
+        self.re * self.re + self.im * self.im
+    }
 }
 
 impl ComplexField for c64 {
@@ -264,6 +280,11 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         <Self as ComplexFloat>::sqrt(self)
+    }
+
+    #[inline(always)]
+    fn score(self) -> Self::Real {
+        self.re * self.re + self.im * self.im
     }
 }
 
