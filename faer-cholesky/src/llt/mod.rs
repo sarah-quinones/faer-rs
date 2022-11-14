@@ -9,11 +9,10 @@ mod tests {
     use num_complex::ComplexFloat;
     use rand::random;
 
-    use super::compute::*;
-    use super::solve::*;
-    use super::update::*;
-    use faer_core::mul::triangular::BlockStructure;
-    use faer_core::{c64, mul, ComplexField, Mat, MatRef, Parallelism};
+    use super::{compute::*, solve::*, update::*};
+    use faer_core::{
+        c64, mul, mul::triangular::BlockStructure, ComplexField, Mat, MatRef, Parallelism,
+    };
 
     type T = c64;
 

@@ -1,6 +1,4 @@
-use std::fmt::Write;
-use std::path::Path;
-use std::{env, fs};
+use std::{env, fmt::Write, fs, path::Path};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = env::var_os("OUT_DIR").unwrap();

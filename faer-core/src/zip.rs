@@ -1,5 +1,4 @@
-use crate::seal::Seal;
-use crate::{ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
+use crate::{seal::Seal, ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
 

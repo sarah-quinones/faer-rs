@@ -154,8 +154,10 @@ pub mod triangular {
     use std::mem::MaybeUninit;
 
     use super::*;
-    use crate::join_raw;
-    use crate::zip::{ColUninit, MatUninit};
+    use crate::{
+        join_raw,
+        zip::{ColUninit, MatUninit},
+    };
 
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
@@ -1394,8 +1396,10 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use rand::random;
 
-    use super::triangular::{BlockStructure, DiagonalKind};
-    use super::*;
+    use super::{
+        triangular::{BlockStructure, DiagonalKind},
+        *,
+    };
     use crate::{mat, Mat};
 
     #[test]

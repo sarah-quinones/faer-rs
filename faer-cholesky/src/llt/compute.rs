@@ -1,7 +1,8 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::triangular::BlockStructure;
-use faer_core::{parallelism_degree, solve, ComplexField, MatMut, Parallelism};
+use faer_core::{
+    mul::triangular::BlockStructure, parallelism_degree, solve, ComplexField, MatMut, Parallelism,
+};
 use reborrow::*;
 
 #[derive(Debug)]

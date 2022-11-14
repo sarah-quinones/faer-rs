@@ -1,10 +1,10 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::matmul;
-use faer_core::permutation::PermutationIndicesMut;
-use faer_core::solve::triangular::solve_unit_lower_triangular_in_place;
-use faer_core::zip::ColUninit;
-use faer_core::{temp_mat_req, temp_mat_uninit, ColMut, ComplexField, MatMut, Parallelism};
+use faer_core::{
+    mul::matmul, permutation::PermutationIndicesMut,
+    solve::triangular::solve_unit_lower_triangular_in_place, temp_mat_req, temp_mat_uninit,
+    zip::ColUninit, ColMut, ComplexField, MatMut, Parallelism,
+};
 use reborrow::*;
 
 unsafe fn swap_two_rows<T>(m: MatMut<'_, T>, i: usize, j: usize) {

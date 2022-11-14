@@ -3,9 +3,10 @@ use std::mem::{size_of, transmute_copy};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
-use faer_core::mul::matmul;
-use faer_core::permutation::PermutationIndicesMut;
-use faer_core::{ColRef, ComplexField, MatMut, MatRef, Parallelism, RowRef};
+use faer_core::{
+    mul::matmul, permutation::PermutationIndicesMut, ColRef, ComplexField, MatMut, MatRef,
+    Parallelism, RowRef,
+};
 use pulp::Simd;
 use reborrow::*;
 

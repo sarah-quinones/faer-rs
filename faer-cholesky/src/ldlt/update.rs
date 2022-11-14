@@ -1,17 +1,19 @@
-use core::any::TypeId;
-use core::mem::size_of;
+use core::{any::TypeId, mem::size_of};
 use faer_core::{ComplexField, Parallelism};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::triangular::BlockStructure;
-use faer_core::{mul, solve, temp_mat_req, temp_mat_uninit, ColMut, MatMut};
+use faer_core::{
+    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut, MatMut,
+};
 use pulp::{Arch, Simd};
 use reborrow::*;
 use seq_macro::seq;
 
-use crate::ldlt::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
-use crate::unreachable_unchecked;
+use crate::{
+    ldlt::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req},
+    unreachable_unchecked,
+};
 
 macro_rules! generate {
     ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {

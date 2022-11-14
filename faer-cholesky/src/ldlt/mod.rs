@@ -12,8 +12,7 @@ mod tests {
 
     use super::*;
     use compute::*;
-    use faer_core::mul::triangular::BlockStructure;
-    use faer_core::{mul, ComplexField, Mat, MatRef, Parallelism};
+    use faer_core::{mul, mul::triangular::BlockStructure, ComplexField, Mat, MatRef, Parallelism};
     use solve::*;
     use update::*;
 

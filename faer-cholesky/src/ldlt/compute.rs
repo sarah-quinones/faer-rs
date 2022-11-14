@@ -1,7 +1,6 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::mul::triangular::BlockStructure;
-use faer_core::{izip, solve, ComplexField, MatMut, Parallelism};
+use faer_core::{izip, mul::triangular::BlockStructure, solve, ComplexField, MatMut, Parallelism};
 use reborrow::*;
 
 unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(

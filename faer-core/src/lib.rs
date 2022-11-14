@@ -3,12 +3,14 @@
 
 use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use core::any::TypeId;
-use core::fmt::Debug;
-use core::marker::PhantomData;
-use core::mem::{size_of, MaybeUninit};
-use core::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
-use core::ptr::NonNull;
+use core::{
+    any::TypeId,
+    fmt::Debug,
+    marker::PhantomData,
+    mem::{size_of, MaybeUninit},
+    ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub},
+    ptr::NonNull,
+};
 use dyn_stack::{SizeOverflow, StackReq};
 pub use gemm::{c32, c64};
 use iter::*;

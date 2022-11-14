@@ -1,7 +1,6 @@
 use assert2::assert as fancy_assert;
 use core::cmp::Ordering;
-use faer_core::permutation::PermutationIndicesMut;
-use faer_core::MatRef;
+use faer_core::{permutation::PermutationIndicesMut, MatRef};
 use num_traits::Signed;
 
 pub mod ldlt;
