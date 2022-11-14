@@ -17,7 +17,7 @@ def format_float_duration(seconds):
 
 def cholesky(n: int, dtype: Type = np.float64) -> float:
     a = np.eye(n, dtype=dtype)
-    return timeit.timeit(lambda: la.cho_factor(a.T), number=1)
+    return timeit.timeit(lambda: la.cho_factor(a.T), number=10)
 
 
 def partial_lu(n: int, dtype: Type = np.float64) -> float:
