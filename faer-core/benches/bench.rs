@@ -1,8 +1,6 @@
 use std::time::Duration;
-
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut, StackReq};
-use faer_core::Mat;
+use faer_core::{Mat, Parallelism};
 
 pub fn solve(c: &mut Criterion) {
     let mut group = c.benchmark_group("solve");
@@ -17,14 +15,13 @@ pub fn solve(c: &mut Criterion) {
             tri.as_mut().diagonal().cwise().for_each(|x| *x = 1.0);
             let mut rhs = Mat::<f64>::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
             b.iter(|| {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut(),
-                    1,
-                    stack.rb_mut(),
+                    false,
+                    false,
+                    Parallelism::None,
                 );
             })
         });
@@ -33,14 +30,13 @@ pub fn solve(c: &mut Criterion) {
             tri.as_mut().diagonal().cwise().for_each(|x| *x = 1.0);
             let mut rhs = Mat::<f64>::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
             b.iter(|| {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut().transpose(),
-                    1,
-                    stack.rb_mut(),
+                    false,
+                    false,
+                    Parallelism::None,
                 );
             })
         });
@@ -49,14 +45,13 @@ pub fn solve(c: &mut Criterion) {
             tri.as_mut().diagonal().cwise().for_each(|x| *x = 1.0);
             let mut rhs = Mat::<f64>::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
             b.iter(|| {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut(),
-                    rayon::current_num_threads(),
-                    stack.rb_mut(),
+                    false,
+                    false,
+                    Parallelism::Rayon,
                 );
             })
         });
@@ -65,19 +60,25 @@ pub fn solve(c: &mut Criterion) {
             tri.as_mut().diagonal().cwise().for_each(|x| *x = 1.0);
             let mut rhs = Mat::<f64>::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
             b.iter(|| {
                 faer_core::solve::triangular::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut().transpose(),
-                    rayon::current_num_threads(),
-                    stack.rb_mut(),
+                    false,
+                    false,
+                    Parallelism::Rayon,
                 );
             })
         });
     }
 }
 
-criterion_group!(benches, solve);
+criterion_group!(
+    name = benches;
+    config = Criterion::default()
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(1))
+        .sample_size(10);
+    targets = solve
+);
 criterion_main!(benches);
