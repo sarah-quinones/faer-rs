@@ -10,7 +10,7 @@ use faer_core::{
 };
 use reborrow::*;
 
-unsafe fn qr_in_place_unblocked<T: ComplexField<Real = T>>(
+unsafe fn qr_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: MatMut<'_, T>,
     mut stack: DynStack<'_>,
@@ -28,9 +28,9 @@ unsafe fn qr_in_place_unblocked<T: ComplexField<Real = T>>(
         let (mut first_col_head, mut first_col_tail) =
             first_col.col_unchecked(0).split_at_unchecked(1);
 
-        let mut tail_squared_norm = T::zero();
+        let mut tail_squared_norm = T::Real::zero();
         for &elem in first_col_tail.rb() {
-            tail_squared_norm = tail_squared_norm + elem * elem;
+            tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
         }
 
         let (tau, beta) = make_householder_in_place_unchecked(
@@ -101,7 +101,7 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 None,
                 factor,
                 false,
-                false,
+                true,
                 false,
                 Parallelism::None,
             );
@@ -112,13 +112,13 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 Some(T::one()),
                 factor,
                 false,
-                false,
+                true,
                 false,
                 Parallelism::None,
             );
 
             temp_mat_uninit! {
-                let (mut tmp, stack) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
+                let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
             }
 
             triangular::matmul(
@@ -145,7 +145,7 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 .row_unchecked(0)
                 .cwise()
                 .zip_unchecked(tmp.transpose().row_unchecked(0))
-                .for_each(|a, b| *a = b.clone());
+                .for_each(|a, b| *a = *b);
         }
     }
 }
@@ -165,7 +165,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
 
     temp_mat_uninit! {
         let (mut tmp0, stack) = unsafe { temp_mat_uninit::<T>(m - bs, bs, stack.rb_mut()) };
-        let (mut tmp1, mut stack) = unsafe { temp_mat_uninit::<T>(m - bs, n - bs, stack) };
+        let (mut tmp1, _) = unsafe { temp_mat_uninit::<T>(m - bs, n - bs, stack) };
     }
 
     let v0 = basis0.submatrix_unchecked(bs, 0, m - bs, bs);
@@ -186,7 +186,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
         T::one(),
         false,
         false,
-        false,
+        true,
         parallelism,
     );
     triangular::matmul(
@@ -225,7 +225,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
         None,
         -T::one(),
         false,
-        false,
+        true,
         false,
         parallelism,
     );
@@ -240,7 +240,7 @@ fn block_size<T: 'static>(n: usize) -> usize {
     n / 2
 }
 
-unsafe fn qr_in_place_recursive<T: ComplexField<Real = T>>(
+unsafe fn qr_in_place_recursive<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: MatMut<'_, T>,
     parallelism: Parallelism,
@@ -292,23 +292,40 @@ unsafe fn qr_in_place_recursive<T: ComplexField<Real = T>>(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{GlobalMemBuffer, StackReq};
-    use faer_core::{mul::matmul, Mat, MatRef};
-    use rand::random;
+    use faer_core::{c64, mul::matmul, Mat, MatRef};
+    use num_complex::ComplexFloat;
 
     use super::*;
 
     macro_rules! placeholder_stack {
         () => {
-            DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024)))
+            DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<T>(1024 * 1024)))
         };
     }
 
+    use rand::prelude::*;
+    thread_local! {
+        static RNG: RefCell<StdRng> = RefCell::new(StdRng::seed_from_u64(0));
+    }
+
+    type T = c64;
+
+    fn random_value() -> T {
+        RNG.with(|rng| {
+            let mut rng = rng.borrow_mut();
+            let rng = &mut *rng;
+            T::new(rng.gen(), rng.gen())
+        })
+    }
+
     fn reconstruct_factors(
-        qr_factors: MatRef<'_, f64>,
-        householder: MatRef<'_, f64>,
-    ) -> (Mat<f64>, Mat<f64>) {
+        qr_factors: MatRef<'_, T>,
+        householder: MatRef<'_, T>,
+    ) -> (Mat<T>, Mat<T>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
         let size = m.min(n);
@@ -322,8 +339,8 @@ mod tests {
             .zip(qr_factors)
             .for_each_triangular_upper(false, |a, b| *a = *b);
 
-        q.as_mut().diagonal().cwise().for_each(|a| *a = 1.0);
-        q2.as_mut().diagonal().cwise().for_each(|a| *a = 1.0);
+        q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
+        q2.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
         let (basis_top, _, basis_bot, _) = qr_factors.split_at(size, size);
         let mut tmp = Mat::zeros(m, size);
@@ -336,10 +353,10 @@ mod tests {
             Rectangular,
             basis_top,
             UnitTriangularLower,
-            householder.transpose(),
-            TriangularLower,
+            householder,
+            TriangularUpper,
             None,
-            1.0,
+            T::one(),
             false,
             false,
             false,
@@ -350,10 +367,10 @@ mod tests {
             Rectangular,
             basis_bot,
             Rectangular,
-            householder.transpose(),
-            TriangularLower,
+            householder,
+            TriangularUpper,
             None,
-            1.0,
+            T::one(),
             false,
             false,
             false,
@@ -364,56 +381,56 @@ mod tests {
         triangular::matmul(
             q_top_left,
             Rectangular,
-            basis_top,
-            UnitTriangularLower,
-            tmp_top.rb().transpose(),
+            tmp_top.rb(),
             Rectangular,
-            Some(1.0),
-            -1.0,
+            basis_top.transpose(),
+            UnitTriangularUpper,
+            Some(T::one()),
+            -T::one(),
             false,
             false,
-            false,
+            true,
             Parallelism::Rayon,
         );
         triangular::matmul(
-            q_top_right,
+            q_bot_left,
             Rectangular,
-            basis_top,
-            UnitTriangularLower,
-            tmp_bot.rb().transpose(),
+            tmp_bot.rb(),
             Rectangular,
-            Some(1.0),
-            -1.0,
+            basis_top.transpose(),
+            UnitTriangularUpper,
+            Some(T::one()),
+            -T::one(),
             false,
             false,
-            false,
+            true,
             Parallelism::Rayon,
         );
         matmul(
-            q_bot_left,
-            basis_bot,
-            tmp_top.rb().transpose(),
-            Some(1.0),
-            -1.0,
+            q_top_right,
+            tmp_top.rb(),
+            basis_bot.transpose(),
+            Some(T::one()),
+            -T::one(),
             false,
             false,
-            false,
+            true,
             Parallelism::Rayon,
         );
         matmul(
             q_bot_right,
-            basis_bot,
-            tmp_bot.rb().transpose(),
-            Some(1.0),
-            -1.0,
+            tmp_bot.rb(),
+            basis_bot.transpose(),
+            Some(T::one()),
+            -T::one(),
             false,
             false,
-            false,
+            true,
             Parallelism::Rayon,
         );
 
         for k in (0..size).rev() {
-            let tau = householder[(k, k)];
+            let tau = ComplexField::conj(householder[(k, k)]);
             let essential = qr_factors.col(k).split_at(k + 1).1;
             unsafe {
                 apply_househodler_on_the_left(
@@ -431,16 +448,18 @@ mod tests {
     #[test]
     fn test_unblocked() {
         for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4)] {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
+            let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
             let mut householder = Mat::zeros(size, size);
+
+            dbg!(&mat_orig);
             unsafe {
                 qr_in_place_unblocked(mat.as_mut(), householder.as_mut(), placeholder_stack!())
             }
 
             let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
-            let mut qtq = Mat::zeros(m, m);
+            let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 
             matmul(
@@ -448,27 +467,27 @@ mod tests {
                 q.as_ref(),
                 r.as_ref(),
                 None,
-                1.0,
+                T::one(),
                 false,
                 false,
                 false,
                 Parallelism::Rayon,
             );
             matmul(
-                qtq.as_mut(),
+                qhq.as_mut(),
                 q.as_ref().transpose(),
                 q.as_ref(),
                 None,
-                1.0,
+                T::one(),
                 false,
-                false,
+                true,
                 false,
                 Parallelism::Rayon,
             );
 
             for i in 0..m {
                 for j in 0..m {
-                    assert_approx_eq!(qtq[(i, j)], if i == j { 1.0 } else { 0.0 });
+                    assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
                 }
             }
             for i in 0..m {
@@ -482,7 +501,7 @@ mod tests {
     #[test]
     fn test_recursive() {
         for (m, n) in [(2, 2), (4, 2), (4, 4), (33, 33), (64, 64), (65, 65)] {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
+            let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
             let mut householder = Mat::zeros(size, size);
@@ -496,7 +515,7 @@ mod tests {
             }
 
             let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
-            let mut qtq = Mat::zeros(m, m);
+            let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 
             matmul(
@@ -504,27 +523,27 @@ mod tests {
                 q.as_ref(),
                 r.as_ref(),
                 None,
-                1.0,
+                T::one(),
                 false,
                 false,
                 false,
                 Parallelism::Rayon,
             );
             matmul(
-                qtq.as_mut(),
+                qhq.as_mut(),
                 q.as_ref().transpose(),
                 q.as_ref(),
                 None,
-                1.0,
+                T::one(),
                 false,
-                false,
+                true,
                 false,
                 Parallelism::Rayon,
             );
 
             for i in 0..m {
                 for j in 0..m {
-                    assert_approx_eq!(qtq[(i, j)], if i == j { 1.0 } else { 0.0 });
+                    assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
                 }
             }
             for i in 0..m {
