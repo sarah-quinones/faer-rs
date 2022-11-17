@@ -11,16 +11,18 @@ pub fn make_householder_in_place_unchecked<T: ComplexField>(
     essential: ColMut<'_, T>,
     head: T,
     tail_squared_norm: T::Real,
-) -> (T, T::Real) {
-    let mut beta = ((head * head.conj()).real() + tail_squared_norm).sqrt();
-    if head.real() >= T::Real::zero() {
-        beta = -beta;
-    }
-    let head_minus_beta = head - T::from_real(beta);
-    let inv = head_minus_beta.inv();
+) -> (T, T) {
+    let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
+    let sign = head / (head * head.conj()).sqrt();
+
+    let signed_norm = sign * T::from_real(norm);
+    let head_with_beta = head + signed_norm;
+    let inv = head_with_beta.inv();
     essential.cwise().for_each(|e| *e = *e * inv);
-    let tau = -head_minus_beta.scale(beta.inv());
-    (tau, beta)
+
+    let two = T::Real::one() + T::Real::one();
+    let tau = two / (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
+    (T::from_real(tau), -signed_norm)
 }
 
 pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
@@ -115,7 +117,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
             None,
             T::one(),
             false,
-            false,
+            true,
             false,
             parallelism,
         );
@@ -126,7 +128,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
             Some(T::one()),
             T::one(),
             false,
-            false,
+            true,
             false,
             parallelism,
         );
@@ -149,7 +151,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
             None,
             T::one(),
             false,
-            false,
+            !forward,
             false,
             parallelism,
         );
