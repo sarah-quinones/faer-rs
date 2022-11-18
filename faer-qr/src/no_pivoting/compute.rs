@@ -175,46 +175,61 @@ unsafe fn make_householder_top_right<T: ComplexField>(
     let (_, tmp1_top, _, tmp1_bot) = tmp1.rb_mut().split_at_unchecked(n - bs, 0);
 
     use triangular::BlockStructure::*;
-    triangular::matmul(
-        tmp0.rb_mut(),
-        Rectangular,
-        v0,
-        Rectangular,
-        t00.transpose(),
-        TriangularLower,
-        None,
-        T::one(),
-        false,
-        false,
-        true,
-        parallelism,
-    );
-    triangular::matmul(
-        tmp1_top,
-        Rectangular,
-        v1_top,
-        UnitTriangularLower,
-        t11,
-        TriangularUpper,
-        None,
-        T::one(),
-        false,
-        false,
-        false,
-        parallelism,
-    );
-    triangular::matmul(
-        tmp1_bot,
-        Rectangular,
-        v1_bot,
-        Rectangular,
-        t11,
-        TriangularUpper,
-        None,
-        T::one(),
-        false,
-        false,
-        false,
+
+    faer_core::join_raw(
+        || {
+            triangular::matmul(
+                tmp0.rb_mut(),
+                Rectangular,
+                v0,
+                Rectangular,
+                t00.transpose(),
+                TriangularLower,
+                None,
+                T::one(),
+                false,
+                false,
+                true,
+                parallelism,
+            )
+        },
+        || {
+            faer_core::join_raw(
+                || {
+                    triangular::matmul(
+                        tmp1_top,
+                        Rectangular,
+                        v1_top,
+                        UnitTriangularLower,
+                        t11,
+                        TriangularUpper,
+                        None,
+                        T::one(),
+                        false,
+                        false,
+                        false,
+                        parallelism,
+                    )
+                },
+                || {
+                    triangular::matmul(
+                        tmp1_bot,
+                        Rectangular,
+                        v1_bot,
+                        Rectangular,
+                        t11,
+                        TriangularUpper,
+                        None,
+                        T::one(),
+                        false,
+                        false,
+                        false,
+                        parallelism,
+                    )
+                },
+                parallelism,
+            )
+        },
         parallelism,
     );
 
@@ -240,10 +255,11 @@ fn block_size<T: 'static>(n: usize) -> usize {
     n / 2
 }
 
-unsafe fn qr_in_place_recursive<T: ComplexField>(
+pub unsafe fn qr_in_place_recursive<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: MatMut<'_, T>,
     parallelism: Parallelism,
+    recursion_level: usize,
     mut stack: DynStack<'_>,
 ) {
     let m = matrix.nrows();
@@ -260,7 +276,13 @@ unsafe fn qr_in_place_recursive<T: ComplexField>(
 
     let (mut t00, t01, _, mut t11) = householder_factor.rb_mut().split_at_unchecked(bs, bs);
 
-    qr_in_place_recursive(left.rb_mut(), t00.rb_mut(), parallelism, stack.rb_mut());
+    qr_in_place_recursive(
+        left.rb_mut(),
+        t00.rb_mut(),
+        parallelism,
+        recursion_level + 1,
+        stack.rb_mut(),
+    );
 
     apply_block_househodler_on_the_left(
         right.rb_mut(),
@@ -276,6 +298,7 @@ unsafe fn qr_in_place_recursive<T: ComplexField>(
         bot_right.rb_mut(),
         t11.rb_mut(),
         parallelism,
+        recursion_level,
         stack.rb_mut(),
     );
 
@@ -510,6 +533,7 @@ mod tests {
                     mat.as_mut(),
                     householder.as_mut(),
                     Parallelism::Rayon,
+                    0,
                     placeholder_stack!(),
                 )
             }
