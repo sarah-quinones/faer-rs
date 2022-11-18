@@ -248,7 +248,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
 
 fn recursion_threshold<T: 'static>(m: usize) -> usize {
     let _m = m;
-    32
+    16
 }
 
 fn block_size<T: 'static>(n: usize) -> usize {
@@ -267,7 +267,7 @@ pub unsafe fn qr_in_place_recursive<T: ComplexField>(
 
     fancy_debug_assert!(m >= n);
 
-    if n <= recursion_threshold::<T>(m) {
+    if n < recursion_threshold::<T>(m) {
         return qr_in_place_unblocked(matrix, householder_factor, stack);
     }
 

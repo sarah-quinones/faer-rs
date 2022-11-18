@@ -1,1 +1,1 @@
-mod compute;
+pub mod compute;

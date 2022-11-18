@@ -8,7 +8,7 @@ use rand::random;
 use faer_core::Mat;
 
 pub fn qr(c: &mut Criterion) {
-    use faer_qr::no_pivoting;
+    use faer_qr::*;
     for n in [64, 128, 256, 512, 1024, 4096] {
         c.bench_function(&format!("faer-st-qr-{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
@@ -47,6 +47,20 @@ pub fn qr(c: &mut Criterion) {
                         stack.rb_mut(),
                     )
                 };
+            })
+        });
+
+        c.bench_function(&format!("faer-st-colqr-{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut transpositions = vec![0; n];
+
+            b.iter(|| {
+                col_pivoting::compute::qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut().diagonal(),
+                    &mut transpositions,
+                );
             })
         });
     }
