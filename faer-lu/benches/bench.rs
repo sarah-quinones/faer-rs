@@ -38,8 +38,12 @@ pub fn lu(c: &mut Criterion) {
             let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::Rayon)
-                    .unwrap(),
+                partial_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -48,7 +52,7 @@ pub fn lu(c: &mut Criterion) {
                     mat.as_mut(),
                     &mut perm,
                     &mut perm_inv,
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
                 );
             })

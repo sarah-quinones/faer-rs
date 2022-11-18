@@ -29,7 +29,7 @@ pub mod householder;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Parallelism {
     None,
-    Rayon,
+    Rayon(usize),
 }
 
 pub trait ComplexField:
@@ -320,13 +320,20 @@ mod seal {
 
 #[inline]
 pub fn join_raw(
-    op_a: impl Send + for<'a> FnOnce(),
-    op_b: impl Send + for<'a> FnOnce(),
+    op_a: impl Send + for<'a> FnOnce(Parallelism),
+    op_b: impl Send + for<'a> FnOnce(Parallelism),
     parallelism: Parallelism,
 ) {
     match parallelism {
-        Parallelism::None => (op_a(), op_b()),
-        Parallelism::Rayon => rayon::join(op_a, op_b),
+        Parallelism::None => (op_a(parallelism), op_b(parallelism)),
+        Parallelism::Rayon(n_threads) => {
+            if n_threads == 1 {
+                (op_a(Parallelism::None), op_b(Parallelism::None))
+            } else {
+                let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
+                rayon::join(|| op_a(parallelism), || op_b(parallelism))
+            }
+        }
     };
 }
 
@@ -334,7 +341,7 @@ pub fn join_raw(
 pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     match parallelism {
         Parallelism::None => 1,
-        Parallelism::Rayon => rayon::current_num_threads(),
+        Parallelism::Rayon(n_threads) => n_threads,
     }
 }
 

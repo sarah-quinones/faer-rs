@@ -44,7 +44,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         a_reconstructed
@@ -63,7 +63,7 @@ mod tests {
             false,
             true,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         ata
@@ -74,7 +74,7 @@ mod tests {
         for n in 0..512 {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
             let a_reconstructed = reconstruct_matrix(a.as_ref());
 
             for j in 0..n {
@@ -93,8 +93,14 @@ mod tests {
         let mut rhs = Mat::with_dims(|_, _| T::new(random(), random()), n, k);
         let a_orig = a.clone();
         let rhs_orig = rhs.clone();
-        raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
-        solve_in_place(a.as_ref(), rhs.as_mut(), false, false, Parallelism::Rayon);
+        raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+        solve_in_place(
+            a.as_ref(),
+            rhs.as_mut(),
+            false,
+            false,
+            Parallelism::Rayon(8),
+        );
 
         let mut result = Mat::zeros(n, k);
         use mul::triangular::BlockStructure::*;
@@ -110,7 +116,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         mul::triangular::matmul(
@@ -125,7 +131,7 @@ mod tests {
             false,
             true,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         for j in 0..k {
@@ -165,10 +171,10 @@ mod tests {
                 false,
                 false,
                 true,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
@@ -190,7 +196,7 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -211,7 +217,7 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -232,7 +238,7 @@ mod tests {
             let n = a.nrows();
             let r = 3;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -277,16 +283,16 @@ mod tests {
             let r = w.ncols();
             let position = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
                 w.as_mut(),
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<f64>(n, position, r, Parallelism::Rayon)
+                    insert_rows_and_cols_clobber_req::<f64>(n, position, r, Parallelism::Rayon(8))
                         .unwrap(),
                 )),
             );
@@ -326,16 +332,16 @@ mod tests {
             let r = w.ncols();
             let position = 0;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
                 w.as_mut(),
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon)
+                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon(8))
                         .unwrap(),
                 )),
             );
@@ -375,16 +381,16 @@ mod tests {
             let r = w.ncols();
             let position = 4;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut []));
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
                 w.as_mut(),
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon)
+                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon(8))
                         .unwrap(),
                 )),
             );

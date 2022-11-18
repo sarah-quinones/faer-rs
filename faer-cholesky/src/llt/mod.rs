@@ -33,7 +33,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         a_reconstructed
@@ -52,7 +52,7 @@ mod tests {
             false,
             true,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         ata
@@ -63,7 +63,8 @@ mod tests {
         for n in 0..512 {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
             let a_reconstructed = reconstruct_matrix(a.as_ref());
             for j in 0..n {
                 for i in j..n {
@@ -82,8 +83,15 @@ mod tests {
             let a_orig = a.clone();
             let rhs_orig = rhs.clone();
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
-            solve_in_place(a.as_ref(), rhs.as_mut(), false, false, Parallelism::Rayon);
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
+            solve_in_place(
+                a.as_ref(),
+                rhs.as_mut(),
+                false,
+                false,
+                Parallelism::Rayon(8),
+            );
 
             let mut result = Mat::zeros(n, k);
             use mul::triangular::BlockStructure::*;
@@ -99,7 +107,7 @@ mod tests {
                 false,
                 false,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
             mul::triangular::matmul(
@@ -114,7 +122,7 @@ mod tests {
                 false,
                 true,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
             for j in 0..k {
@@ -155,10 +163,11 @@ mod tests {
                 false,
                 false,
                 true,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
 
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha).unwrap();
 
@@ -181,7 +190,8 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -202,7 +212,8 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -223,7 +234,8 @@ mod tests {
             let n = a.nrows();
             let r = 3;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -255,7 +267,8 @@ mod tests {
                 }
             }
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon, DynStack::new(&mut [])).unwrap();
+            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
+                .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -269,10 +282,15 @@ mod tests {
                 a.as_mut(),
                 position,
                 w.as_mut(),
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<T>(n + r, position, r, Parallelism::Rayon)
-                        .unwrap(),
+                    insert_rows_and_cols_clobber_req::<T>(
+                        n + r,
+                        position,
+                        r,
+                        Parallelism::Rayon(8),
+                    )
+                    .unwrap(),
                 )),
             )
             .unwrap();

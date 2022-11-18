@@ -335,7 +335,7 @@ pub mod triangular {
         if k > 64 && n <= 128 {
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
             join_raw(
-                || {
+                |_| {
                     solve_unit_lower_triangular_in_place_unchecked(
                         tril,
                         rhs_left,
@@ -344,7 +344,7 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     solve_unit_lower_triangular_in_place_unchecked(
                         tril,
                         rhs_right,
@@ -463,7 +463,7 @@ pub mod triangular {
         if k > 64 && n <= 128 {
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
             join_raw(
-                || {
+                |_| {
                     solve_lower_triangular_in_place_unchecked(
                         tril,
                         rhs_left,
@@ -472,7 +472,7 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     solve_lower_triangular_in_place_unchecked(
                         tril,
                         rhs_right,

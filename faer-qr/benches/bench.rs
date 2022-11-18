@@ -42,7 +42,7 @@ pub fn qr(c: &mut Criterion) {
                     no_pivoting::compute::qr_in_place_recursive(
                         mat.as_mut(),
                         householder.as_mut(),
-                        Parallelism::Rayon,
+                        Parallelism::Rayon(rayon::current_num_threads()),
                         0,
                         stack.rb_mut(),
                     )

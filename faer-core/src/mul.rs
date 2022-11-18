@@ -51,7 +51,7 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             conj_rhs,
             match parallelism {
                 Parallelism::None => ::gemm::Parallelism::None,
-                Parallelism::Rayon => ::gemm::Parallelism::Rayon(0),
+                Parallelism::Rayon(n_threads) => ::gemm::Parallelism::Rayon(n_threads),
             },
         ),
         None => gemm(
@@ -75,7 +75,7 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             conj_rhs,
             match parallelism {
                 Parallelism::None => ::gemm::Parallelism::None,
-                Parallelism::Rayon => ::gemm::Parallelism::Rayon(0),
+                Parallelism::Rayon(n_threads) => ::gemm::Parallelism::Rayon(n_threads),
             },
         ),
     }
@@ -444,16 +444,35 @@ pub mod triangular {
             let (_, _, lhs_left, lhs_right) = lhs.split_at_unchecked(0, bs);
             let (_, _, mut dst_left, mut dst_right) = dst.split_at_unchecked(0, bs);
 
-            mat_x_lower_impl_unchecked(
-                dst_left.rb_mut(),
-                lhs_left,
-                rhs_top_left,
-                rhs_diag,
-                alpha,
-                beta,
-                conj_dst,
-                conj_lhs,
-                conj_rhs,
+            join_raw(
+                |parallelism| {
+                    mat_x_lower_impl_unchecked(
+                        dst_left.rb_mut(),
+                        lhs_left,
+                        rhs_top_left,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
+                    )
+                },
+                |parallelism| {
+                    mat_x_lower_impl_unchecked(
+                        dst_right.rb_mut(),
+                        lhs_right,
+                        rhs_bot_right,
+                        rhs_diag,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
+                    )
+                },
                 parallelism,
             );
             mul(
@@ -461,18 +480,6 @@ pub mod triangular {
                 lhs_right,
                 rhs_bot_left,
                 Some(T::one()),
-                beta,
-                conj_dst,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
-            mat_x_lower_impl_unchecked(
-                dst_right.rb_mut(),
-                lhs_right,
-                rhs_bot_right,
-                rhs_diag,
-                alpha,
                 beta,
                 conj_dst,
                 conj_lhs,
@@ -660,7 +667,7 @@ pub mod triangular {
             // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => mat |   X
 
             join_raw(
-                || {
+                |_| {
                     mul(
                         dst_top_left.rb_mut(),
                         lhs_top_right,
@@ -686,9 +693,9 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     join_raw(
-                        || {
+                        |_| {
                             mat_x_lower_impl_unchecked(
                                 dst_top_right,
                                 lhs_top_right,
@@ -702,7 +709,7 @@ pub mod triangular {
                                 parallelism,
                             )
                         },
-                        || {
+                        |_| {
                             mat_x_lower_impl_unchecked(
                                 dst_bot_left.transpose(),
                                 rhs_bot_left.transpose(),
@@ -803,7 +810,7 @@ pub mod triangular {
             // lhs_bot_right × rhs_bot_right => dst_bot_right | upp × low => low |   X
 
             join_raw(
-                || {
+                |_| {
                     mat_x_mat_into_lower_impl_unchecked(
                         dst_top_left.rb_mut(),
                         skip_diag,
@@ -831,7 +838,7 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     mat_x_lower_impl_unchecked(
                         dst_bot_left.transpose(),
                         rhs_bot_left.transpose(),
@@ -913,7 +920,7 @@ pub mod triangular {
             let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, bs);
 
             join_raw(
-                || {
+                |_| {
                     mul(
                         dst_bot_left,
                         lhs_bot,
@@ -926,9 +933,9 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     join_raw(
-                        || {
+                        |_| {
                             mat_x_mat_into_lower_impl_unchecked(
                                 dst_top_left,
                                 skip_diag,
@@ -942,7 +949,7 @@ pub mod triangular {
                                 parallelism,
                             )
                         },
-                        || {
+                        |_| {
                             mat_x_mat_into_lower_impl_unchecked(
                                 dst_bot_right,
                                 skip_diag,
@@ -1502,7 +1509,7 @@ mod tests {
         let lhs = generate_structured_matrix(false, m, k, lhs_structure);
         let rhs = generate_structured_matrix(false, k, n, rhs_structure);
 
-        for parallelism in [Parallelism::None, Parallelism::Rayon] {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             triangular::matmul(
                 dst.as_mut(),
                 dst_structure,

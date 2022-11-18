@@ -1,6 +1,6 @@
-use std::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use faer_core::{Mat, Parallelism};
+use std::time::Duration;
 
 pub fn solve(c: &mut Criterion) {
     let mut group = c.benchmark_group("solve");
@@ -51,7 +51,7 @@ pub fn solve(c: &mut Criterion) {
                     rhs.as_mut(),
                     false,
                     false,
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                 );
             })
         });
@@ -66,7 +66,7 @@ pub fn solve(c: &mut Criterion) {
                     rhs.as_mut().transpose(),
                     false,
                     false,
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                 );
             })
         });

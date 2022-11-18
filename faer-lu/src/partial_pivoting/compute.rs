@@ -426,7 +426,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_top_right,
@@ -440,7 +440,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_left,
@@ -454,7 +454,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_right,
@@ -468,7 +468,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         a_reconstructed
@@ -499,14 +499,14 @@ mod tests {
             let mut perm_inv = vec![0; m];
 
             let mut mem =
-                GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::Rayon).unwrap());
+                GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8)).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
             lu_in_place(
                 mat.as_mut(),
                 &mut perm,
                 &mut perm_inv,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
                 stack.rb_mut(),
             );
             let reconstructed = reconstruct_matrix(mat.as_ref());

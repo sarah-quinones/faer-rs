@@ -177,7 +177,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
     use triangular::BlockStructure::*;
 
     faer_core::join_raw(
-        || {
+        |_| {
             triangular::matmul(
                 tmp0.rb_mut(),
                 Rectangular,
@@ -193,9 +193,9 @@ unsafe fn make_householder_top_right<T: ComplexField>(
                 parallelism,
             )
         },
-        || {
+        |_| {
             faer_core::join_raw(
-                || {
+                |_| {
                     triangular::matmul(
                         tmp1_top,
                         Rectangular,
@@ -211,7 +211,7 @@ unsafe fn make_householder_top_right<T: ComplexField>(
                         parallelism,
                     )
                 },
-                || {
+                |_| {
                     triangular::matmul(
                         tmp1_bot,
                         Rectangular,
@@ -383,7 +383,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         triangular::matmul(
             tmp_bot.rb_mut(),
@@ -397,7 +397,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         let (q_top_left, q_top_right, q_bot_left, q_bot_right) = q.as_mut().split_at(size, size);
@@ -413,7 +413,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         triangular::matmul(
             q_bot_left,
@@ -427,7 +427,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         matmul(
             q_top_right,
@@ -438,7 +438,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         matmul(
             q_bot_right,
@@ -449,7 +449,7 @@ mod tests {
             false,
             false,
             true,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         for k in (0..size).rev() {
@@ -494,7 +494,7 @@ mod tests {
                 false,
                 false,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
             matmul(
                 qhq.as_mut(),
@@ -505,7 +505,7 @@ mod tests {
                 false,
                 true,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
             for i in 0..m {
@@ -532,7 +532,7 @@ mod tests {
                 qr_in_place_recursive(
                     mat.as_mut(),
                     householder.as_mut(),
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(8),
                     0,
                     placeholder_stack!(),
                 )
@@ -551,7 +551,7 @@ mod tests {
                 false,
                 false,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
             matmul(
                 qhq.as_mut(),
@@ -562,7 +562,7 @@ mod tests {
                 false,
                 true,
                 false,
-                Parallelism::Rayon,
+                Parallelism::Rayon(8),
             );
 
             for i in 0..m {

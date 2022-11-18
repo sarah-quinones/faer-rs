@@ -724,7 +724,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_top_right,
@@ -738,7 +738,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_left,
@@ -752,7 +752,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_right,
@@ -766,7 +766,7 @@ mod tests {
             false,
             false,
             false,
-            Parallelism::Rayon,
+            Parallelism::Rayon(8),
         );
 
         a_reconstructed

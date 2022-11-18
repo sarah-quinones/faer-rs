@@ -35,14 +35,18 @@ pub fn cholesky(c: &mut Criterion) {
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
-                ldlt::compute::raw_cholesky_in_place_req::<f64>(n, Parallelism::Rayon).unwrap(),
+                ldlt::compute::raw_cholesky_in_place_req::<f64>(
+                    n,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
                 ldlt::compute::raw_cholesky_in_place(
                     mat.as_mut(),
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
                 );
             })
@@ -72,14 +76,18 @@ pub fn cholesky(c: &mut Criterion) {
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
-                llt::compute::raw_cholesky_in_place_req::<f64>(n, Parallelism::Rayon).unwrap(),
+                llt::compute::raw_cholesky_in_place_req::<f64>(
+                    n,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::raw_cholesky_in_place(
                     mat.as_mut(),
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
                 )
                 .unwrap();
@@ -91,14 +99,18 @@ pub fn cholesky(c: &mut Criterion) {
                 Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);
 
             let mut mem = GlobalMemBuffer::new(
-                llt::compute::raw_cholesky_in_place_req::<c64>(n, Parallelism::Rayon).unwrap(),
+                llt::compute::raw_cholesky_in_place_req::<c64>(
+                    n,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::raw_cholesky_in_place(
                     mat.as_mut(),
-                    Parallelism::Rayon,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
                 )
                 .unwrap();
