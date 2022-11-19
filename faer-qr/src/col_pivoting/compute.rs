@@ -5,7 +5,7 @@ use core::{
 };
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use faer_core::{ColMut, ComplexField, MatMut, Parallelism};
+use faer_core::{ColMut, ColRef, ComplexField, MatMut, Parallelism};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -56,6 +56,15 @@ fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
         acc = f64::mul_add(*a, *b, acc);
     }
 
+    acc
+}
+
+#[inline(always)]
+fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
+    let mut acc = T::zero();
+    for (a, b) in a.iter().zip(b.iter()) {
+        acc = acc + (*a).conj() * *b;
+    }
     acc
 }
 
@@ -131,44 +140,104 @@ fn update_and_norm2_f64<S: Simd>(simd: S, a: &mut [f64], b: &[f64], k: f64) -> f
     acc
 }
 
+#[inline(always)]
+fn update_and_norm2_generic<S: Simd, T: ComplexField>(
+    _simd: S,
+    a: &mut [T],
+    b: &[T],
+    k: T,
+) -> T::Real {
+    let mut acc = T::Real::zero();
+
+    for (a, b) in a.iter_mut().zip(b.iter()) {
+        *a = *a + k * *b;
+        acc = acc + ((*a).conj() * *a).real();
+    }
+
+    acc
+}
+
 // a^* b
 #[inline(always)]
-fn dot<S: Simd, T: ComplexField>(simd: S, a: &[T], b: &[T]) -> T {
-    if TypeId::of::<T>() == TypeId::of::<f64>() {
-        let a_len = a.len();
-        let b_len = b.len();
-        unsafe {
-            transmute_copy(&dot_f64(
-                simd,
-                from_raw_parts(a.as_ptr() as _, a_len),
-                from_raw_parts(b.as_ptr() as _, b_len),
-            ))
+fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
+    let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
+    let id = TypeId::of::<T>();
+    if colmajor {
+        let a_len = a.nrows();
+        let b_len = b.nrows();
+
+        if id == TypeId::of::<f64>() {
+            unsafe {
+                transmute_copy(&dot_f64(
+                    simd,
+                    from_raw_parts(a.as_ptr() as _, a_len),
+                    from_raw_parts(b.as_ptr() as _, b_len),
+                ))
+            }
+        } else {
+            unsafe {
+                dot_generic::<S, T>(
+                    simd,
+                    from_raw_parts(a.as_ptr(), a_len),
+                    from_raw_parts(b.as_ptr(), b_len),
+                )
+            }
         }
     } else {
-        todo!()
+        let mut acc = T::zero();
+        for (a, b) in a.into_iter().zip(b.into_iter()) {
+            acc = acc + (*a).conj() * *b;
+        }
+        acc
     }
 }
 
 #[inline(always)]
-fn norm2<S: Simd, T: ComplexField>(simd: S, a: &[T]) -> T::Real {
+fn norm2<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>) -> T::Real {
     dot(simd, a, a).real()
 }
 
 #[inline(always)]
-fn update_and_norm2<S: Simd, T: ComplexField>(simd: S, a: &mut [T], b: &[T], k: T) -> T::Real {
-    if TypeId::of::<T>() == TypeId::of::<f64>() {
-        let a_len = a.len();
-        let b_len = b.len();
-        unsafe {
-            transmute_copy(&update_and_norm2_f64(
-                simd,
-                from_raw_parts_mut(a.as_mut_ptr() as _, a_len),
-                from_raw_parts(b.as_ptr() as _, b_len),
-                transmute_copy(&k),
-            ))
+fn update_and_norm2<S: Simd, T: ComplexField>(
+    simd: S,
+    a: ColMut<'_, T>,
+    b: ColRef<'_, T>,
+    k: T,
+) -> T::Real {
+    let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
+    let id = TypeId::of::<T>();
+    if colmajor {
+        let a_len = a.nrows();
+        let b_len = b.nrows();
+
+        if id == TypeId::of::<f64>() {
+            unsafe {
+                transmute_copy(&update_and_norm2_f64(
+                    simd,
+                    from_raw_parts_mut(a.as_ptr() as _, a_len),
+                    from_raw_parts(b.as_ptr() as _, b_len),
+                    transmute_copy(&k),
+                ))
+            }
+        } else {
+            unsafe {
+                update_and_norm2_generic(
+                    simd,
+                    from_raw_parts_mut(a.as_ptr(), a_len),
+                    from_raw_parts(b.as_ptr(), b_len),
+                    k,
+                )
+            }
         }
     } else {
-        todo!()
+        let mut acc = T::Real::zero();
+
+        for (a, b) in a.into_iter().zip(b.into_iter()) {
+            *a = *a + k * *b;
+            acc = acc + ((*a).conj() * *a).real();
+        }
+
+        acc
     }
 }
 
@@ -197,7 +266,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     let mut biggest_col_idx = 0;
     let mut biggest_col_value = T::Real::zero();
     for j in 0..n {
-        let col_value = norm2(simd, from_raw_parts(matrix.rb().ptr_at(0, j), m));
+        let col_value = norm2(simd, matrix.rb().col_unchecked(j));
         if col_value > biggest_col_value {
             biggest_col_value = col_value;
             biggest_col_idx = j;
@@ -213,17 +282,28 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         let (_, _, first_col, mut last_cols) = matrix.rb_mut().split_at_unchecked(0, 1);
         let mut first_col = first_col.col_unchecked(0);
 
+        col_transpositions[k] = k + biggest_col_idx;
         if biggest_col_idx > 0 {
             n_transpositions += 1;
-            core::ptr::swap_nonoverlapping(
-                first_col.rb_mut().as_ptr(),
-                last_cols.rb_mut().ptr_at(0, biggest_col_idx - 1),
-                m,
-            );
+
+            if first_col.row_stride() == 1 {
+                core::ptr::swap_nonoverlapping(
+                    first_col.rb_mut().as_ptr(),
+                    last_cols.rb_mut().ptr_at(0, biggest_col_idx - 1),
+                    m,
+                );
+            } else {
+                for i in 0..m {
+                    core::mem::swap(
+                        &mut *first_col.rb_mut().ptr_at(i),
+                        &mut *last_cols.rb_mut().ptr_at(i, biggest_col_idx - 1),
+                    );
+                }
+            }
         }
 
         let (first_head, mut first_tail) = first_col.split_at_unchecked(1);
-        let tail_squared_norm = norm2(simd, from_raw_parts(first_tail.rb().as_ptr(), m - 1));
+        let tail_squared_norm = norm2(simd, first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place_unchecked(
             first_tail.rb_mut(),
             *first_head.rb().as_ptr(),
@@ -232,13 +312,15 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         *first_head.as_ptr() = beta;
         *householder_coeffs.ptr_in_bounds_at_unchecked(0) = tau;
 
-        let first_tail = from_raw_parts(first_tail.rb().as_ptr(), m - 1);
+        let first_tail = first_tail.rb();
 
         if n == 0 {
             return n_transpositions;
         }
 
+        let rs = last_cols.row_stride();
         let cs = last_cols.col_stride();
+
         match parallelism {
             Parallelism::Rayon(n_threads) => {
                 use rayon::prelude::*;
@@ -282,6 +364,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                                 col_start,
                                 col_end,
                                 ptr,
+                                rs,
                                 cs,
                                 m,
                                 first_tail,
@@ -315,6 +398,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                     col_start,
                     col_end,
                     ptr,
+                    rs,
                     cs,
                     m,
                     first_tail,
@@ -334,20 +418,22 @@ unsafe fn process_cols<S: Simd, T: ComplexField>(
     col_start: usize,
     col_end: usize,
     ptr: *mut T,
+    rs: isize,
     cs: isize,
     m: usize,
-    first_tail: &[T],
+    first_tail: ColRef<'_, T>,
     tau: T,
     biggest_col_value: &mut T::Real,
     biggest_col_idx: &mut usize,
 ) {
     simd.vectorize(|| {
         for j in col_start..col_end {
-            let (col_head, col_tail) = from_raw_parts_mut(ptr.wrapping_offset(j as isize * cs), m)
-                .split_first_mut()
-                .unwrap_unchecked();
+            let (col_head, col_tail) =
+                ColMut::from_raw_parts(ptr.wrapping_offset(j as isize * cs), m, rs)
+                    .split_at_unchecked(1);
+            let col_head = col_head.get_unchecked(0);
 
-            let dot = *col_head + dot(simd, col_tail, first_tail);
+            let dot = *col_head + dot(simd, col_tail.rb(), first_tail);
             let k = -tau * dot;
             *col_head = *col_head + k;
 
