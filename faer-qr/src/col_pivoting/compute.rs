@@ -544,42 +544,44 @@ mod tests {
 
     #[test]
     fn test_qr_f64() {
-        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-            let mut mat = Mat::<f64>::with_dims(|_, _| random(), m, n);
-            let mat_orig = mat.clone();
-            let size = m.min(n);
-            let mut householder = Mat::zeros(size, 1);
-            let mut transpositions = vec![0; size];
-            let mut perm = (0..n).collect::<Vec<_>>();
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let mut mat = Mat::<f64>::with_dims(|_, _| random(), m, n);
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let mut householder = Mat::zeros(size, 1);
+                let mut transpositions = vec![0; size];
+                let mut perm = (0..n).collect::<Vec<_>>();
 
-            qr_in_place(
-                mat.as_mut(),
-                householder.as_mut().col(0),
-                &mut transpositions,
-                Parallelism::None,
-            );
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut().col(0),
+                    &mut transpositions,
+                    parallelism,
+                );
 
-            for k in 0..size {
-                perm.swap(k, transpositions[k]);
-            }
+                for k in 0..size {
+                    perm.swap(k, transpositions[k]);
+                }
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
-            let mut qr = Mat::zeros(m, n);
-            matmul(
-                qr.as_mut(),
-                q.as_ref(),
-                r.as_ref(),
-                None,
-                1.0,
-                false,
-                false,
-                false,
-                Parallelism::Rayon(8),
-            );
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+                let mut qr = Mat::zeros(m, n);
+                matmul(
+                    qr.as_mut(),
+                    q.as_ref(),
+                    r.as_ref(),
+                    None,
+                    1.0,
+                    false,
+                    false,
+                    false,
+                    Parallelism::Rayon(8),
+                );
 
-            for j in 0..n {
-                for i in 0..m {
-                    assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                    }
                 }
             }
         }
@@ -587,55 +589,57 @@ mod tests {
 
     #[test]
     fn test_qr_c64() {
-        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-            let mut mat = Mat::<c64>::with_dims(|_, _| c64::new(random(), random()), m, n);
-            let mat_orig = mat.clone();
-            let size = m.min(n);
-            let mut householder = Mat::zeros(size, 1);
-            let mut transpositions = vec![0; size];
-            let mut perm = (0..n).collect::<Vec<_>>();
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let mut mat = Mat::<c64>::with_dims(|_, _| c64::new(random(), random()), m, n);
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let mut householder = Mat::zeros(size, 1);
+                let mut transpositions = vec![0; size];
+                let mut perm = (0..n).collect::<Vec<_>>();
 
-            qr_in_place(
-                mat.as_mut(),
-                householder.as_mut().col(0),
-                &mut transpositions,
-                Parallelism::None,
-            );
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut().col(0),
+                    &mut transpositions,
+                    parallelism,
+                );
 
-            for k in 0..size {
-                perm.swap(k, transpositions[k]);
-            }
+                for k in 0..size {
+                    perm.swap(k, transpositions[k]);
+                }
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
-            let mut qr = Mat::zeros(m, n);
-            let mut qhq = Mat::zeros(m, m);
-            matmul(
-                qr.as_mut(),
-                q.as_ref(),
-                r.as_ref(),
-                None,
-                c64::one(),
-                false,
-                false,
-                false,
-                Parallelism::Rayon(8),
-            );
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+                let mut qr = Mat::zeros(m, n);
+                let mut qhq = Mat::zeros(m, m);
+                matmul(
+                    qr.as_mut(),
+                    q.as_ref(),
+                    r.as_ref(),
+                    None,
+                    c64::one(),
+                    false,
+                    false,
+                    false,
+                    Parallelism::Rayon(8),
+                );
 
-            matmul(
-                qhq.as_mut(),
-                q.as_ref().transpose(),
-                q.as_ref(),
-                None,
-                c64::one(),
-                false,
-                true,
-                false,
-                Parallelism::Rayon(8),
-            );
+                matmul(
+                    qhq.as_mut(),
+                    q.as_ref().transpose(),
+                    q.as_ref(),
+                    None,
+                    c64::one(),
+                    false,
+                    true,
+                    false,
+                    Parallelism::Rayon(8),
+                );
 
-            for j in 0..n {
-                for i in 0..m {
-                    assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                    }
                 }
             }
         }
