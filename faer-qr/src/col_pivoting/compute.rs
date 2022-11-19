@@ -344,7 +344,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
 
                 let mut biggest_col = vec![(T::Real::zero(), 0_usize); n_threads];
 
-                let base_ptr = Ptr(last_cols.as_ptr());
+                let ptr = Ptr(last_cols.as_ptr());
 
                 let cols_per_thread = (n - 1) / n_threads;
                 let rem = (n - 1) % n_threads;
@@ -353,7 +353,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                     .into_par_iter()
                     .zip(biggest_col.par_iter_mut())
                     .for_each(|(tid, (biggest_col_value, biggest_col_idx))| {
-                        let ptr = { base_ptr }.0;
+                        let ptr = { ptr }.0;
                         let tid_to_col_start = |tid| {
                             if tid < rem {
                                 tid * (cols_per_thread + 1)

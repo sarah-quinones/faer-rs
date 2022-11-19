@@ -82,6 +82,31 @@ pub fn lu(c: &mut Criterion) {
                 );
             })
         });
+
+        c.bench_function(&format!("faer-mt-flu-{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut row_perm = vec![0; n];
+            let mut row_perm_inv = vec![0; n];
+            let mut col_perm = vec![0; n];
+            let mut col_perm_inv = vec![0; n];
+
+            let mut mem = GlobalMemBuffer::new(
+                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            b.iter(|| {
+                full_pivoting::compute::lu_in_place(
+                    mat.as_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                    stack.rb_mut(),
+                );
+            })
+        });
     }
 }
 
