@@ -276,12 +276,10 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     }
 
     for k in 0..size {
-        let mut matrix = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);
-        let householder_coeffs = householder_coeffs.rb_mut().split_at_unchecked(k).1;
-        let m = matrix.nrows();
-        let n = matrix.ncols();
-
-        let (_, _, first_col, mut last_cols) = matrix.rb_mut().split_at_unchecked(0, 1);
+        let (_, _, first_col, mut last_cols) = matrix
+            .rb_mut()
+            .submatrix_unchecked(0, k, m, n - k)
+            .split_at_unchecked(0, 1);
         let mut first_col = first_col.col_unchecked(0);
 
         col_transpositions[k] = k + biggest_col_idx;
@@ -304,6 +302,13 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
             }
         }
 
+        let mut matrix = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);
+        let m = matrix.nrows();
+        let n = matrix.ncols();
+
+        let (_, _, first_col, last_cols) = matrix.rb_mut().split_at_unchecked(0, 1);
+        let first_col = first_col.col_unchecked(0);
+
         let (first_head, mut first_tail) = first_col.split_at_unchecked(1);
         let tail_squared_norm = norm2(simd, first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place_unchecked(
@@ -312,7 +317,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
             tail_squared_norm,
         );
         *first_head.as_ptr() = beta;
-        *householder_coeffs.ptr_in_bounds_at_unchecked(0) = tau;
+        *householder_coeffs.rb_mut().ptr_in_bounds_at_unchecked(k) = tau;
 
         let first_tail = first_tail.rb();
 
@@ -435,7 +440,7 @@ unsafe fn process_cols<S: Simd, T: ComplexField>(
                     .split_at_unchecked(1);
             let col_head = col_head.get_unchecked(0);
 
-            let dot = *col_head + dot(simd, col_tail.rb(), first_tail);
+            let dot = *col_head + dot(simd, first_tail, col_tail.rb());
             let k = -tau * dot;
             *col_head = *col_head + k;
 
@@ -485,4 +490,154 @@ pub fn qr_in_place<T: ComplexField>(
         col_transpositions,
         parallelism,
     })
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use assert_approx_eq::assert_approx_eq;
+    use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
+    use faer_core::{c64, householder::apply_househodler_on_the_left, mul::matmul, Mat, MatRef};
+    use num_complex::ComplexFloat;
+    use rand::random;
+
+    macro_rules! placeholder_stack {
+        () => {
+            DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<T>(1024 * 1024)))
+        };
+    }
+
+    fn reconstruct_factors<T: ComplexField>(
+        qr_factors: MatRef<'_, T>,
+        householder: ColRef<'_, T>,
+    ) -> (Mat<T>, Mat<T>) {
+        let m = qr_factors.nrows();
+        let n = qr_factors.ncols();
+        let size = m.min(n);
+
+        let mut q = Mat::zeros(m, m);
+        let mut r = Mat::zeros(m, n);
+
+        r.as_mut()
+            .cwise()
+            .zip(qr_factors)
+            .for_each_triangular_upper(false, |a, b| *a = *b);
+
+        q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
+
+        for k in (0..size).rev() {
+            let tau = householder[k];
+            let essential = qr_factors.col(k).split_at(k + 1).1;
+            unsafe {
+                apply_househodler_on_the_left(
+                    q.as_mut().submatrix(k, k, m - k, m - k),
+                    essential,
+                    tau,
+                    placeholder_stack!(),
+                );
+            }
+        }
+
+        (q, r)
+    }
+
+    #[test]
+    fn test_qr_f64() {
+        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+            let mut mat = Mat::<f64>::with_dims(|_, _| random(), m, n);
+            let mat_orig = mat.clone();
+            let size = m.min(n);
+            let mut householder = Mat::zeros(size, 1);
+            let mut transpositions = vec![0; size];
+            let mut perm = (0..n).collect::<Vec<_>>();
+
+            qr_in_place(
+                mat.as_mut(),
+                householder.as_mut().col(0),
+                &mut transpositions,
+                Parallelism::None,
+            );
+
+            for k in 0..size {
+                perm.swap(k, transpositions[k]);
+            }
+
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+            let mut qr = Mat::zeros(m, n);
+            matmul(
+                qr.as_mut(),
+                q.as_ref(),
+                r.as_ref(),
+                None,
+                1.0,
+                false,
+                false,
+                false,
+                Parallelism::Rayon(8),
+            );
+
+            for j in 0..n {
+                for i in 0..m {
+                    assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c64() {
+        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+            let mut mat = Mat::<c64>::with_dims(|_, _| c64::new(random(), random()), m, n);
+            let mat_orig = mat.clone();
+            let size = m.min(n);
+            let mut householder = Mat::zeros(size, 1);
+            let mut transpositions = vec![0; size];
+            let mut perm = (0..n).collect::<Vec<_>>();
+
+            qr_in_place(
+                mat.as_mut(),
+                householder.as_mut().col(0),
+                &mut transpositions,
+                Parallelism::None,
+            );
+
+            for k in 0..size {
+                perm.swap(k, transpositions[k]);
+            }
+
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+            let mut qr = Mat::zeros(m, n);
+            let mut qhq = Mat::zeros(m, m);
+            matmul(
+                qr.as_mut(),
+                q.as_ref(),
+                r.as_ref(),
+                None,
+                c64::one(),
+                false,
+                false,
+                false,
+                Parallelism::Rayon(8),
+            );
+
+            matmul(
+                qhq.as_mut(),
+                q.as_ref().transpose(),
+                q.as_ref(),
+                None,
+                c64::one(),
+                false,
+                true,
+                false,
+                Parallelism::Rayon(8),
+            );
+
+            for j in 0..n {
+                for i in 0..m {
+                    assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                }
+            }
+        }
+    }
 }
