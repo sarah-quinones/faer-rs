@@ -59,23 +59,6 @@ fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
     acc
 }
 
-#[inline(always)]
-fn dot<S: Simd, T: ComplexField>(simd: S, a: &[T], b: &[T]) -> T {
-    if TypeId::of::<T>() == TypeId::of::<f64>() {
-        let a_len = a.len();
-        let b_len = b.len();
-        unsafe {
-            transmute_copy(&dot_f64(
-                simd,
-                from_raw_parts(a.as_ptr() as _, a_len),
-                from_raw_parts(b.as_ptr() as _, b_len),
-            ))
-        }
-    } else {
-        todo!()
-    }
-}
-
 // a += k * b
 //
 // returns ||a||²
@@ -148,6 +131,24 @@ fn update_and_norm2_f64<S: Simd>(simd: S, a: &mut [f64], b: &[f64], k: f64) -> f
     acc
 }
 
+// a^* b
+#[inline(always)]
+fn dot<S: Simd, T: ComplexField>(simd: S, a: &[T], b: &[T]) -> T {
+    if TypeId::of::<T>() == TypeId::of::<f64>() {
+        let a_len = a.len();
+        let b_len = b.len();
+        unsafe {
+            transmute_copy(&dot_f64(
+                simd,
+                from_raw_parts(a.as_ptr() as _, a_len),
+                from_raw_parts(b.as_ptr() as _, b_len),
+            ))
+        }
+    } else {
+        todo!()
+    }
+}
+
 #[inline(always)]
 fn norm2<S: Simd, T: ComplexField>(simd: S, a: &[T]) -> T::Real {
     dot(simd, a, a).real()
@@ -211,6 +212,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
 
         let (_, _, first_col, mut last_cols) = matrix.rb_mut().split_at_unchecked(0, 1);
         let mut first_col = first_col.col_unchecked(0);
+
         if biggest_col_idx > 0 {
             n_transpositions += 1;
             core::ptr::swap_nonoverlapping(
@@ -219,6 +221,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                 m,
             );
         }
+
         let (first_head, mut first_tail) = first_col.split_at_unchecked(1);
         let tail_squared_norm = norm2(simd, from_raw_parts(first_tail.rb().as_ptr(), m - 1));
         let (tau, beta) = faer_core::householder::make_householder_in_place_unchecked(
@@ -231,12 +234,13 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
 
         let first_tail = from_raw_parts(first_tail.rb().as_ptr(), m - 1);
 
+        if n == 0 {
+            return n_transpositions;
+        }
+
+        let cs = last_cols.col_stride();
         match parallelism {
             Parallelism::Rayon(n_threads) => {
-                if n == 0 {
-                    return n_transpositions;
-                }
-
                 use rayon::prelude::*;
 
                 struct Ptr<T>(*mut T);
@@ -251,7 +255,6 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
 
                 let mut biggest_col = vec![(T::Real::zero(), 0_usize); n_threads];
 
-                let cs = last_cols.col_stride();
                 let base_ptr = Ptr(last_cols.as_ptr());
 
                 let cols_per_thread = (n - 1) / n_threads;
@@ -274,22 +277,18 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                         let col_end = tid_to_col_start(tid + 1);
 
                         simd.vectorize(|| {
-                            for j in col_start..col_end {
-                                let (col_head, col_tail) =
-                                    from_raw_parts_mut(ptr.wrapping_offset(j as isize * cs), m)
-                                        .split_first_mut()
-                                        .unwrap_unchecked();
-
-                                let dot = *col_head + dot(simd, col_tail, first_tail);
-                                let k = -tau * dot;
-                                *col_head = *col_head + k;
-
-                                let col_value = update_and_norm2(simd, col_tail, first_tail, k);
-                                if col_value > *biggest_col_value {
-                                    *biggest_col_value = col_value;
-                                    *biggest_col_idx = j;
-                                }
-                            }
+                            process_cols(
+                                simd,
+                                col_start,
+                                col_end,
+                                ptr,
+                                cs,
+                                m,
+                                first_tail,
+                                tau,
+                                biggest_col_value,
+                                biggest_col_idx,
+                            );
                         })
                     });
 
@@ -306,31 +305,59 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
             _ => {
                 biggest_col_value = T::Real::zero();
                 biggest_col_idx = 0;
-                for j in 1..n {
-                    let j = j - 1;
-                    let (col_head, col_tail) =
-                        from_raw_parts_mut(last_cols.rb_mut().col(j).as_ptr(), m)
-                            .split_first_mut()
-                            .unwrap_unchecked();
 
-                    let dot = *col_head + dot(simd, col_tail, first_tail);
-                    let k = -tau * dot;
-                    *col_head = *col_head + k;
+                let ptr = last_cols.as_ptr();
+                let col_start = 0;
+                let col_end = n - 1;
 
-                    let col_value = update_and_norm2(simd, col_tail, first_tail, k);
-                    if col_value > biggest_col_value {
-                        biggest_col_value = col_value;
-                        biggest_col_idx = j;
-                    }
-                }
+                process_cols(
+                    simd,
+                    col_start,
+                    col_end,
+                    ptr,
+                    cs,
+                    m,
+                    first_tail,
+                    tau,
+                    &mut biggest_col_value,
+                    &mut biggest_col_idx,
+                );
             }
         }
-
-        let biggest_col_value1 = T::Real::zero();
-        let biggest_col_idx1 = 0;
     }
 
     n_transpositions
+}
+
+unsafe fn process_cols<S: Simd, T: ComplexField>(
+    simd: S,
+    col_start: usize,
+    col_end: usize,
+    ptr: *mut T,
+    cs: isize,
+    m: usize,
+    first_tail: &[T],
+    tau: T,
+    biggest_col_value: &mut T::Real,
+    biggest_col_idx: &mut usize,
+) {
+    simd.vectorize(|| {
+        for j in col_start..col_end {
+            let (col_head, col_tail) = from_raw_parts_mut(ptr.wrapping_offset(j as isize * cs), m)
+                .split_first_mut()
+                .unwrap_unchecked();
+
+            let dot = *col_head + dot(simd, col_tail, first_tail);
+            let k = -tau * dot;
+            *col_head = *col_head + k;
+
+            let col_value = update_and_norm2(simd, col_tail, first_tail, k);
+            if col_value > *biggest_col_value {
+                *biggest_col_value = col_value;
+                *biggest_col_idx = j;
+            }
+        }
+    });
 }
 
 pub fn qr_in_place<T: ComplexField>(
