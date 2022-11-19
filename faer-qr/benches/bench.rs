@@ -60,6 +60,22 @@ pub fn qr(c: &mut Criterion) {
                     mat.as_mut(),
                     householder.as_mut().diagonal(),
                     &mut transpositions,
+                    Parallelism::None,
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-mt-colqr-{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut transpositions = vec![0; n];
+
+            b.iter(|| {
+                col_pivoting::compute::qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut().diagonal(),
+                    &mut transpositions,
+                    Parallelism::Rayon(rayon::current_num_threads()),
                 );
             })
         });

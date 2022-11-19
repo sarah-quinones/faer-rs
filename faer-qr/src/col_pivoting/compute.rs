@@ -5,7 +5,7 @@ use core::{
 };
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use faer_core::{ColMut, ComplexField, MatMut};
+use faer_core::{ColMut, ComplexField, MatMut, Parallelism};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -177,6 +177,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_coeffs: ColMut<'_, T>,
     col_transpositions: &mut [usize],
+    parallelism: Parallelism,
 ) -> usize {
     fancy_debug_assert!(matrix.row_stride() == 1);
 
@@ -230,24 +231,103 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
 
         let first_tail = from_raw_parts(first_tail.rb().as_ptr(), m - 1);
 
-        biggest_col_value = T::Real::zero();
-        biggest_col_idx = 0;
-        for j in 1..n {
-            let j = j - 1;
-            let (col_head, col_tail) = from_raw_parts_mut(last_cols.rb_mut().col(j).as_ptr(), m)
-                .split_first_mut()
-                .unwrap_unchecked();
+        match parallelism {
+            Parallelism::Rayon(n_threads) => {
+                if n == 0 {
+                    return n_transpositions;
+                }
 
-            let dot = *col_head + dot(simd, col_tail, first_tail);
-            let k = -tau * dot;
-            *col_head = *col_head + k;
+                use rayon::prelude::*;
 
-            let col_value = update_and_norm2(simd, col_tail, first_tail, k);
-            if col_value > biggest_col_value {
-                biggest_col_value = col_value;
-                biggest_col_idx = j;
+                struct Ptr<T>(*mut T);
+                unsafe impl<T> Send for Ptr<T> {}
+                unsafe impl<T> Sync for Ptr<T> {}
+                impl<T> Copy for Ptr<T> {}
+                impl<T> Clone for Ptr<T> {
+                    fn clone(&self) -> Self {
+                        *self
+                    }
+                }
+
+                let mut biggest_col = vec![(T::Real::zero(), 0_usize); n_threads];
+
+                let cs = last_cols.col_stride();
+                let base_ptr = Ptr(last_cols.as_ptr());
+
+                let cols_per_thread = (n - 1) / n_threads;
+                let rem = (n - 1) % n_threads;
+
+                (0..n_threads)
+                    .into_par_iter()
+                    .zip(biggest_col.par_iter_mut())
+                    .for_each(|(tid, (biggest_col_value, biggest_col_idx))| {
+                        let ptr = { base_ptr }.0;
+                        let tid_to_col_start = |tid| {
+                            if tid < rem {
+                                tid * (cols_per_thread + 1)
+                            } else {
+                                rem * (cols_per_thread + 1) + (tid - rem) * cols_per_thread
+                            }
+                        };
+
+                        let col_start = tid_to_col_start(tid);
+                        let col_end = tid_to_col_start(tid + 1);
+
+                        simd.vectorize(|| {
+                            for j in col_start..col_end {
+                                let (col_head, col_tail) =
+                                    from_raw_parts_mut(ptr.wrapping_offset(j as isize * cs), m)
+                                        .split_first_mut()
+                                        .unwrap_unchecked();
+
+                                let dot = *col_head + dot(simd, col_tail, first_tail);
+                                let k = -tau * dot;
+                                *col_head = *col_head + k;
+
+                                let col_value = update_and_norm2(simd, col_tail, first_tail, k);
+                                if col_value > *biggest_col_value {
+                                    *biggest_col_value = col_value;
+                                    *biggest_col_idx = j;
+                                }
+                            }
+                        })
+                    });
+
+                biggest_col_value = T::Real::zero();
+                biggest_col_idx = 0;
+
+                for (col_value, col_idx) in biggest_col {
+                    if col_value > biggest_col_value {
+                        biggest_col_value = col_value;
+                        biggest_col_idx = col_idx;
+                    }
+                }
+            }
+            _ => {
+                biggest_col_value = T::Real::zero();
+                biggest_col_idx = 0;
+                for j in 1..n {
+                    let j = j - 1;
+                    let (col_head, col_tail) =
+                        from_raw_parts_mut(last_cols.rb_mut().col(j).as_ptr(), m)
+                            .split_first_mut()
+                            .unwrap_unchecked();
+
+                    let dot = *col_head + dot(simd, col_tail, first_tail);
+                    let k = -tau * dot;
+                    *col_head = *col_head + k;
+
+                    let col_value = update_and_norm2(simd, col_tail, first_tail, k);
+                    if col_value > biggest_col_value {
+                        biggest_col_value = col_value;
+                        biggest_col_idx = j;
+                    }
+                }
             }
         }
+
+        let biggest_col_value1 = T::Real::zero();
+        let biggest_col_idx1 = 0;
     }
 
     n_transpositions
@@ -257,12 +337,14 @@ pub fn qr_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_coeffs: ColMut<'_, T>,
     col_transpositions: &mut [usize],
+    parallelism: Parallelism,
 ) -> usize {
     fancy_assert!(matrix.row_stride() == 1);
     struct QrInPlaceColMajor<'a, T> {
         matrix: MatMut<'a, T>,
         householder_coeffs: ColMut<'a, T>,
         col_transpositions: &'a mut [usize],
+        parallelism: Parallelism,
     }
 
     impl<'a, T: ComplexField> pulp::WithSimd for QrInPlaceColMajor<'a, T> {
@@ -276,6 +358,7 @@ pub fn qr_in_place<T: ComplexField>(
                     self.matrix,
                     self.householder_coeffs,
                     self.col_transpositions,
+                    self.parallelism,
                 )
             }
         }
@@ -285,5 +368,6 @@ pub fn qr_in_place<T: ComplexField>(
         matrix,
         householder_coeffs,
         col_transpositions,
+        parallelism,
     })
 }
