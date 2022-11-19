@@ -37,17 +37,18 @@ fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
         acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
     }
 
-    acc2 = simd.f64s_add(acc2, acc3);
-    acc4 = simd.f64s_add(acc4, acc5);
-    acc6 = simd.f64s_add(acc6, acc7);
-    acc4 = simd.f64s_add(acc4, acc6);
-
     for (a, b) in a_remv.iter().zip(b_remv.iter()) {
         acc0 = simd.f64s_mul_adde(*a, *b, acc0);
     }
 
     acc0 = simd.f64s_add(acc0, acc1);
+    acc2 = simd.f64s_add(acc2, acc3);
+    acc4 = simd.f64s_add(acc4, acc5);
+    acc6 = simd.f64s_add(acc6, acc7);
+
     acc0 = simd.f64s_add(acc0, acc2);
+    acc4 = simd.f64s_add(acc4, acc6);
+
     acc0 = simd.f64s_add(acc0, acc4);
 
     let mut acc = simd.f64s_reduce_sum(acc0);
@@ -116,18 +117,19 @@ fn update_and_norm2_f64<S: Simd>(simd: S, a: &mut [f64], b: &[f64], k: f64) -> f
         acc7 = simd.f64s_mul_adde(a[7], a[7], acc7);
     }
 
-    acc2 = simd.f64s_add(acc2, acc3);
-    acc4 = simd.f64s_add(acc4, acc5);
-    acc6 = simd.f64s_add(acc6, acc7);
-    acc4 = simd.f64s_add(acc4, acc6);
-
     for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
         *a = simd.f64s_mul_adde(vk, *b, *a);
         acc0 = simd.f64s_mul_adde(*a, *a, acc0);
     }
 
     acc0 = simd.f64s_add(acc0, acc1);
+    acc2 = simd.f64s_add(acc2, acc3);
+    acc4 = simd.f64s_add(acc4, acc5);
+    acc6 = simd.f64s_add(acc6, acc7);
+
     acc0 = simd.f64s_add(acc0, acc2);
+    acc4 = simd.f64s_add(acc4, acc6);
+
     acc0 = simd.f64s_add(acc0, acc4);
 
     let mut acc = simd.f64s_reduce_sum(acc0);
