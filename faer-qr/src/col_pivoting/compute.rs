@@ -331,6 +331,11 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         match parallelism {
             Parallelism::Rayon(n_threads) => {
                 use rayon::prelude::*;
+                let n_threads = if n_threads > 0 {
+                    n_threads
+                } else {
+                    rayon::current_num_threads()
+                };
 
                 struct Ptr<T>(*mut T);
                 unsafe impl<T> Send for Ptr<T> {}

@@ -1,3 +1,13 @@
+//! `faer` core module.
+//!
+//! This module contains:
+//! - definitions of matrix structures,
+//! - element-wise routines using multiple matrices,
+//! - matrix multiplication routines,
+//! - triangular matrix solve routines,
+//! - permutation operations,
+//! - householder and block householder routines.
+
 #![warn(rust_2018_idioms)]
 #![allow(clippy::too_many_arguments)]
 
@@ -12,7 +22,11 @@ use core::{
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
-pub use gemm::{c32, c64};
+
+/// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
+pub use gemm::c32;
+/// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
+pub use gemm::c64;
 use iter::*;
 use num_complex::{Complex, ComplexFloat};
 use reborrow::*;
@@ -26,12 +40,34 @@ pub mod zip;
 
 pub mod householder;
 
+/// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Parallelism {
+    /// No parallelism.
+    ///
+    /// The code is executed sequentially on the same thread that calls a function
+    /// and passes this argument.
     None,
+    /// Rayon parallelism.
+    ///
+    /// The code is possibly executed in parallel on the current thread, as well as the currently
+    /// active rayon thread pool.
+    ///
+    /// The contained value represents a hint about the number of threads an implementation should
+    /// use, but there is no way to guarantee how many or which threads will be used.
+    ///
+    /// A value of `0` treated as equivalent to `rayon::current_num_threads()`.
     Rayon(usize),
 }
 
+/// Trait that describes a complex number field.
+///
+/// Real numbers can also be seen as complex numbers, where the imaginary part is always zero.
+///
+/// # Note
+///
+/// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
+/// future version of this library.
 pub trait ComplexField:
     Copy
     + Add<Output = Self>
@@ -46,30 +82,54 @@ pub trait ComplexField:
 {
     type Real: RealField;
 
+    /// Returns a complex number whose real part is equal to `real`, and a zero imaginary part.
     fn from_real(real: Self::Real) -> Self;
+    /// Returns the real and imaginary part.
     fn into_real_imag(self) -> (Self::Real, Self::Real);
+    /// Returns the real part.
     #[inline(always)]
     fn real(self) -> Self::Real {
         self.into_real_imag().0
     }
+    /// Returns the imaginary part.
     #[inline(always)]
     fn imag(self) -> Self::Real {
         self.into_real_imag().1
     }
 
+    /// Returns the value representing `0.0`.
     fn zero() -> Self;
+    /// Returns the value representing `1.0`.
     fn one() -> Self;
 
+    /// Returns the inverse of the number.
     fn inv(self) -> Self;
+    /// Returns the conjugate of the number.
     fn conj(self) -> Self;
+    /// Returns the square root of the number.
     fn sqrt(self) -> Self;
+    /// Returns the input, scaled by `factor`.
     #[inline(always)]
     fn scale(self, factor: Self::Real) -> Self {
         self * Self::from_real(factor)
     }
+    /// Returns either the norm or squared norm of the number.
+    ///
+    /// An implementation may choose either, so long as it chooses consistently.
     fn score(self) -> Self::Real;
 }
 
+/// The imaginary unit. This struct is useful for copy-pasting matrix [`Debug`] output as code.
+///
+/// # Example
+///
+/// ```
+/// use faer_core::{c64, I};
+///
+/// let z = 1.0 + 2.0 * I;
+///
+/// assert_eq!(z, c64::new(1.0, 2.0));
+/// ```
 pub struct I;
 impl Mul<f32> for I {
     type Output = c32;
@@ -104,6 +164,7 @@ impl Mul<I> for f64 {
     }
 }
 
+/// Trait that describes a real number field.
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {}
 
 impl RealField for f32 {}
@@ -290,20 +351,6 @@ impl ComplexField for c64 {
     }
 }
 
-pub mod float_traits {
-    use num_traits::Float;
-
-    pub trait Sqrt: Sized {
-        fn sqrt(&self) -> Self;
-    }
-
-    impl<T: Float> Sqrt for T {
-        fn sqrt(&self) -> T {
-            <T as Float>::sqrt(*self)
-        }
-    }
-}
-
 use zip::*;
 
 mod seal {
@@ -319,6 +366,7 @@ mod seal {
 }
 
 #[inline]
+#[doc(hidden)]
 pub fn join_raw(
     op_a: impl Send + for<'a> FnOnce(Parallelism),
     op_b: impl Send + for<'a> FnOnce(Parallelism),
@@ -330,6 +378,11 @@ pub fn join_raw(
             if n_threads == 1 {
                 (op_a(Parallelism::None), op_b(Parallelism::None))
             } else {
+                let n_threads = if n_threads > 0 {
+                    n_threads
+                } else {
+                    rayon::current_num_threads()
+                };
                 let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
                 rayon::join(|| op_a(parallelism), || op_b(parallelism))
             }
@@ -338,9 +391,11 @@ pub fn join_raw(
 }
 
 #[inline]
+#[doc(hidden)]
 pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     match parallelism {
         Parallelism::None => 1,
+        Parallelism::Rayon(0) => rayon::current_num_threads(),
         Parallelism::Rayon(n_threads) => n_threads,
     }
 }
@@ -373,13 +428,13 @@ impl<T> Clone for VecSliceBase<T> {
     }
 }
 
-/// 2D matrix view.
+/// Matrix view.
 pub struct MatRef<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
-/// Mutable 2D matrix view.
+/// Mutable matrix view.
 pub struct MatMut<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
@@ -877,6 +932,7 @@ impl<'a, T> MatRef<'a, T> {
         }
     }
 
+    /// Returns a matrix whose rows are the the rows of the input matrix in inverse order.
     #[inline]
     pub fn invert_rows(self) -> Self {
         let nrows = self.nrows();
@@ -888,6 +944,7 @@ impl<'a, T> MatRef<'a, T> {
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
+    /// Returns a matrix whose columns are the the columns of the input matrix in inverse order.
     #[inline]
     pub fn invert_cols(self) -> Self {
         let nrows = self.nrows();
@@ -898,6 +955,8 @@ impl<'a, T> MatRef<'a, T> {
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
+    /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
+    /// inverse order.
     #[inline]
     pub fn invert(self) -> Self {
         let nrows = self.nrows();
@@ -1002,6 +1061,7 @@ impl<'a, T> MatRef<'a, T> {
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
@@ -1273,6 +1333,7 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
+    /// Returns a matrix whose rows are the the rows of the input matrix in inverse order.
     #[inline]
     pub fn invert_rows(self) -> Self {
         let nrows = self.nrows();
@@ -1284,6 +1345,7 @@ impl<'a, T> MatMut<'a, T> {
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
+    /// Returns a matrix whose columns are the the columns of the input matrix in inverse order.
     #[inline]
     pub fn invert_cols(self) -> Self {
         let nrows = self.nrows();
@@ -1293,6 +1355,9 @@ impl<'a, T> MatMut<'a, T> {
         let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
+
+    /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
+    /// inverse order.
     #[inline]
     pub fn invert(self) -> Self {
         let nrows = self.nrows();
@@ -1399,112 +1464,10 @@ impl<'a, T> MatMut<'a, T> {
         unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
-    }
-}
-
-impl<'a, T> MatRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (MatRef<'a, T>, MatRef<'a, T>) {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let rs = self.row_stride() * 2;
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                MatRef::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
-                MatRef::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
-            )
-        }
-    }
-}
-impl<'a, T> MatMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (MatMut<'a, T>, MatMut<'a, T>) {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let rs = self.row_stride() * 2;
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                MatMut::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
-                MatMut::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
-            )
-        }
-    }
-}
-
-impl<'a, T> ColRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (ColRef<'a, T>, ColRef<'a, T>) {
-        let nrows = self.nrows();
-        let rs = self.row_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                ColRef::from_raw_parts(ptr_re, nrows, rs),
-                ColRef::from_raw_parts(ptr_im, nrows, rs),
-            )
-        }
-    }
-}
-impl<'a, T> ColMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (ColMut<'a, T>, ColMut<'a, T>) {
-        let nrows = self.nrows();
-        let rs = self.row_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                ColMut::from_raw_parts(ptr_re, nrows, rs),
-                ColMut::from_raw_parts(ptr_im, nrows, rs),
-            )
-        }
-    }
-}
-
-impl<'a, T> RowRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (RowRef<'a, T>, RowRef<'a, T>) {
-        let ncols = self.ncols();
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                RowRef::from_raw_parts(ptr_re, ncols, cs),
-                RowRef::from_raw_parts(ptr_im, ncols, cs),
-            )
-        }
-    }
-}
-impl<'a, T> RowMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (RowMut<'a, T>, RowMut<'a, T>) {
-        let ncols = self.ncols();
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                RowMut::from_raw_parts(ptr_re, ncols, cs),
-                RowMut::from_raw_parts(ptr_im, ncols, cs),
-            )
-        }
     }
 }
 
@@ -1649,7 +1612,7 @@ impl<'a, T> RowRef<'a, T> {
         unsafe { self.get_unchecked(j) }
     }
 
-    /// Returns an equivalent 2D matrix view over the same data.
+    /// Returns an equivalent matrix view over the same data.
     #[inline]
     pub fn as_2d(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
@@ -1663,6 +1626,7 @@ impl<'a, T> RowRef<'a, T> {
         unsafe { ColRef::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipRow<(Self,)> {
         ZipRow { tuple: (self,) }
@@ -1812,7 +1776,7 @@ impl<'a, T> RowMut<'a, T> {
         unsafe { self.get_unchecked(j) }
     }
 
-    /// Returns an equivalent 2D matrix view over the same data.
+    /// Returns an equivalent matrix view over the same data.
     #[inline]
     pub fn as_2d(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
@@ -1826,6 +1790,7 @@ impl<'a, T> RowMut<'a, T> {
         unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipRow<(Self,)> {
         ZipRow { tuple: (self,) }
@@ -1974,7 +1939,7 @@ impl<'a, T> ColRef<'a, T> {
         unsafe { self.get_unchecked(i) }
     }
 
-    /// Returns an equivalent 2D matrix view over the same data.
+    /// Returns an equivalent matrix view over the same data.
     #[inline]
     pub fn as_2d(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
@@ -1988,6 +1953,7 @@ impl<'a, T> ColRef<'a, T> {
         unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipCol<(Self,)> {
         ZipCol { tuple: (self,) }
@@ -2137,7 +2103,7 @@ impl<'a, T> ColMut<'a, T> {
         unsafe { self.get_unchecked(i) }
     }
 
-    /// Returns an equivalent 2D matrix view over the same data.
+    /// Returns an equivalent matrix view over the same data.
     #[inline]
     pub fn as_2d(self) -> MatMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
@@ -2151,9 +2117,113 @@ impl<'a, T> ColMut<'a, T> {
         unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
 
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipCol<(Self,)> {
         ZipCol { tuple: (self,) }
+    }
+}
+
+impl<'a, T> MatRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (MatRef<'a, T>, MatRef<'a, T>) {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let rs = self.row_stride() * 2;
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                MatRef::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
+                MatRef::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
+            )
+        }
+    }
+}
+impl<'a, T> MatMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (MatMut<'a, T>, MatMut<'a, T>) {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let rs = self.row_stride() * 2;
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                MatMut::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
+                MatMut::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
+            )
+        }
+    }
+}
+
+impl<'a, T> ColRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (ColRef<'a, T>, ColRef<'a, T>) {
+        let nrows = self.nrows();
+        let rs = self.row_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                ColRef::from_raw_parts(ptr_re, nrows, rs),
+                ColRef::from_raw_parts(ptr_im, nrows, rs),
+            )
+        }
+    }
+}
+impl<'a, T> ColMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (ColMut<'a, T>, ColMut<'a, T>) {
+        let nrows = self.nrows();
+        let rs = self.row_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                ColMut::from_raw_parts(ptr_re, nrows, rs),
+                ColMut::from_raw_parts(ptr_im, nrows, rs),
+            )
+        }
+    }
+}
+
+impl<'a, T> RowRef<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (RowRef<'a, T>, RowRef<'a, T>) {
+        let ncols = self.ncols();
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *const T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                RowRef::from_raw_parts(ptr_re, ncols, cs),
+                RowRef::from_raw_parts(ptr_im, ncols, cs),
+            )
+        }
+    }
+}
+impl<'a, T> RowMut<'a, Complex<T>> {
+    #[inline]
+    pub fn into_real_imag(self) -> (RowMut<'a, T>, RowMut<'a, T>) {
+        let ncols = self.ncols();
+        let cs = self.col_stride() * 2;
+        let ptr_re = self.as_ptr() as *mut T;
+        let ptr_im = ptr_re.wrapping_add(1);
+
+        unsafe {
+            (
+                RowMut::from_raw_parts(ptr_re, ncols, cs),
+                RowMut::from_raw_parts(ptr_im, ncols, cs),
+            )
+        }
     }
 }
 
@@ -2833,9 +2903,6 @@ impl<'a, T: Debug + 'static> Debug for ColMut<'a, T> {
 }
 
 #[doc(hidden)]
-pub use num_traits::Zero;
-
-#[doc(hidden)]
 pub enum Either<A, B> {
     Left(A),
     Right(B),
@@ -2937,6 +3004,16 @@ macro_rules! izip {
     };
 }
 
+/// Creates a temporary matrix of possibly uninitialized values, from the given memory stack.
+///
+/// # Warning
+///
+/// Working with uninitialized values is trickier in Rust than other languages. In particular,
+/// references must always point to initialized data, which means that using
+/// [`MatMut::get`], [`MatMut::get_unchecked`], the indexing operator, etc., on the resulting matrix
+/// can cause undefined behavior.
+///
+/// Use the pointer access API instead: e.g., [`MatMut::ptr_at`].
 #[macro_export]
 macro_rules! temp_mat_uninit {
     {
@@ -2989,6 +3066,7 @@ macro_rules! temp_mat_uninit {
     };
 }
 
+/// Creates a temporary matrix of zeroed values, from the given memory stack.
 #[macro_export]
 macro_rules! temp_mat_zeroed {
     {
@@ -3015,7 +3093,7 @@ macro_rules! temp_mat_zeroed {
             let (mut temp_data, $stack_id) = $stack.make_aligned_with(
                 ncols * col_stride,
                 $crate::align_for::<$ty>(),
-                |_| <$ty as $crate::Zero>::zero(),
+                |_| <$ty as $crate::ComplexField>::zero(),
             );
 
             #[allow(unused_unsafe)]
@@ -3032,6 +3110,7 @@ macro_rules! temp_mat_zeroed {
     };
 }
 
+/// Returns the stack requirements for creating a temporary matrix with the given dimensions.
 #[inline]
 pub fn temp_mat_req<T: 'static>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
     let col_stride = if is_vectorizable::<T>() {
@@ -3158,7 +3237,33 @@ impl<T> Drop for ColGuard<T> {
     }
 }
 
-/// Owning 2D matrix stored in column major format.
+/// Owning matrix structure stored in column major format.
+///
+/// A matrix can be thought of as a 2D array of values.
+/// These values are stored in memory so that the columns are contiguous.
+///
+/// # Note
+///
+/// Note that the matrix as a whole may not necessarily be contiguous.
+/// The implementation may add padding at the end of each column when
+/// overaligning each column can provide a performance gain.
+///
+/// Let us consider a 3×4 matrix
+///
+/// ```notrust
+///  0 │ 3 │ 6 │  9
+/// ───┼───┼───┼───
+///  1 │ 4 │ 7 │ 10
+/// ───┼───┼───┼───
+///  2 │ 5 │ 8 │ 11
+/// ```
+///
+/// The memory representation of such a matrix could look like the following:
+///
+/// ```notrust
+/// 0 1 2 X 3 4 5 X 6 7 8 X 9 10 11 X
+/// ```
+/// where `X` represents padding elements.
 pub struct Mat<T: 'static> {
     raw: RawMat<T>,
     nrows: usize,
@@ -3696,6 +3801,35 @@ macro_rules! __transpose_impl {
     };
 }
 
+/// Returns a [`Mat`] containing the arguments.
+///
+/// # Example
+///
+/// ```
+/// use faer_core::mat;
+///
+/// let m = mat![
+///     [0.0, 3.0, 6.0, 9.0],
+///     [1.0, 4.0, 7.0, 10.0],
+///     [2.0, 5.0, 8.0, 11.0],
+/// ];
+///
+/// assert_eq!(m[(0, 0)], 0.0);
+/// assert_eq!(m[(1, 0)], 1.0);
+/// assert_eq!(m[(2, 0)], 2.0);
+///
+/// assert_eq!(m[(0, 1)], 3.0);
+/// assert_eq!(m[(1, 1)], 4.0);
+/// assert_eq!(m[(2, 1)], 5.0);
+///
+/// assert_eq!(m[(0, 2)], 6.0);
+/// assert_eq!(m[(1, 2)], 7.0);
+/// assert_eq!(m[(2, 2)], 8.0);
+///
+/// assert_eq!(m[(0, 3)], 9.0);
+/// assert_eq!(m[(1, 3)], 10.0);
+/// assert_eq!(m[(2, 3)], 11.0);
+/// ```
 #[macro_export]
 macro_rules! mat {
     () => {

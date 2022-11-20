@@ -1,4 +1,6 @@
-use crate::{ComplexField, MatMut, MatRef};
+//! Triangular solve module.
+
+use crate::{join_raw, ComplexField, MatMut, MatRef, Parallelism};
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
@@ -206,360 +208,412 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: Complex
     }
 }
 
-pub mod triangular {
-    use super::*;
-    use crate::{join_raw, Parallelism};
-
-    #[inline]
+#[inline]
+fn blocksize<T: 'static>(n: usize) -> usize {
     // we want remainder to be a multiple of register size
-    fn blocksize<T: 'static>(n: usize) -> usize {
-        let base_rem = n / 2;
-        n - if n >= 32 {
-            (base_rem + 15) / 16 * 16
-        } else if n >= 16 {
-            (base_rem + 7) / 8 * 8
-        } else if n >= 8 {
-            (base_rem + 3) / 4 * 4
-        } else {
-            base_rem
-        }
+
+    let base_rem = n / 2;
+    n - if n >= 32 {
+        (base_rem + 15) / 16 * 16
+    } else if n >= 16 {
+        (base_rem + 7) / 8 * 8
+    } else if n >= 8 {
+        (base_rem + 3) / 4 * 4
+    } else {
+        base_rem
     }
+}
 
-    #[inline]
-    fn recursion_threshold<T: 'static>() -> usize {
-        4
-    }
+#[inline]
+fn recursion_threshold<T: 'static>() -> usize {
+    4
+}
 
-    #[track_caller]
-    #[inline]
-    pub fn solve_lower_triangular_in_place<T: ComplexField>(
-        triangular_lower: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-        fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+/// Computes the solution of `Op_lhs(triangular_lower)×X = Op(rhs)`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_lower` is interpreted as a lower triangular matrix (diagonal included).
+/// Its strictly upper triangular part is not accessed.
+///
+/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
+/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
+///
+/// # Panics
+///
+///  - Panics if `triangular_lower` is not a square matrix.
+///  - Panics if `rhs.nrows() != triangular_lower.ncols()`
+#[track_caller]
+#[inline]
+pub fn solve_lower_triangular_in_place<T: ComplexField>(
+    triangular_lower: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
 
-        unsafe {
-            solve_lower_triangular_in_place_unchecked(
-                triangular_lower,
-                rhs,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
-        }
-    }
-
-    #[track_caller]
-    #[inline]
-    pub fn solve_upper_triangular_in_place<T: ComplexField>(
-        triangular_upper: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-        fancy_assert!(rhs.nrows() == triangular_upper.ncols());
-
-        unsafe {
-            solve_upper_triangular_in_place_unchecked(
-                triangular_upper,
-                rhs,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
-        }
-    }
-
-    #[track_caller]
-    #[inline]
-    pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
-        triangular_lower: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-        fancy_assert!(rhs.nrows() == triangular_lower.ncols());
-
-        unsafe {
-            solve_unit_lower_triangular_in_place_unchecked(
-                triangular_lower,
-                rhs,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
-        }
-    }
-
-    #[track_caller]
-    #[inline]
-    pub fn solve_unit_upper_triangular_in_place<T: ComplexField>(
-        triangular_upper: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-        fancy_assert!(rhs.nrows() == triangular_upper.ncols());
-
-        unsafe {
-            solve_unit_upper_triangular_in_place_unchecked(
-                triangular_upper,
-                rhs,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
-        }
-    }
-
-    pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
-        tril: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        let n = tril.nrows();
-        let k = rhs.ncols();
-
-        if k > 64 && n <= 128 {
-            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
-            join_raw(
-                |_| {
-                    solve_unit_lower_triangular_in_place_unchecked(
-                        tril,
-                        rhs_left,
-                        conj_lhs,
-                        conj_rhs,
-                        parallelism,
-                    )
-                },
-                |_| {
-                    solve_unit_lower_triangular_in_place_unchecked(
-                        tril,
-                        rhs_right,
-                        conj_lhs,
-                        conj_rhs,
-                        parallelism,
-                    )
-                },
-                parallelism,
-            );
-            return;
-        }
-
-        fancy_debug_assert!(tril.nrows() == tril.ncols());
-        fancy_debug_assert!(rhs.nrows() == tril.ncols());
-
-        if n <= recursion_threshold::<T>() {
-            pulp::Arch::new().dispatch(
-                #[inline(always)]
-                || match (conj_lhs, conj_rhs) {
-                    (true, true) => {
-                        solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                            tril, rhs, conj, conj,
-                        )
-                    }
-                    (true, false) => {
-                        solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                            tril, rhs, conj, identity,
-                        )
-                    }
-                    (false, true) => {
-                        solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                            tril, rhs, identity, conj,
-                        )
-                    }
-                    (false, false) => {
-                        solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                            tril, rhs, identity, identity,
-                        )
-                    }
-                },
-            );
-            return;
-        }
-
-        let bs = blocksize::<T>(n);
-
-        let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
-        let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
-
-        //       (A00    )   X0         (B0)
-        // ConjA?(A10 A11)   X1 = ConjB?(B1)
-        //
-        //
-        // 1. ConjA?(A00) X0 = ConjB?(B0)
-        //
-        // 2. ConjA?(A10) X0 + ConjA?(A11) X1 = ConjB?(B1)
-        // => ConjA?(A11) X1 = ConjB?(B1) - ConjA?(A10) X0
-
-        solve_unit_lower_triangular_in_place_unchecked(
-            tril_top_left,
-            rhs_top.rb_mut(),
-            conj_lhs,
-            conj_rhs,
-            parallelism,
-        );
-
-        crate::mul::matmul(
-            rhs_bot.rb_mut(),
-            tril_bot_left,
-            rhs_top.into_const(),
-            Some(T::one()),
-            -T::one(),
-            conj_rhs,
-            conj_lhs,
-            false,
-            parallelism,
-        );
-
-        solve_unit_lower_triangular_in_place_unchecked(
-            tril_bot_right,
-            rhs_bot,
-            conj_lhs,
-            conj_rhs,
-            parallelism,
-        );
-    }
-
-    #[inline]
-    pub unsafe fn solve_unit_upper_triangular_in_place_unchecked<T: ComplexField>(
-        triu: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        solve_unit_lower_triangular_in_place_unchecked(
-            triu.invert(),
-            rhs.invert_rows(),
-            conj_lhs,
-            conj_rhs,
-            parallelism,
-        );
-    }
-
-    pub unsafe fn solve_lower_triangular_in_place_unchecked<T: ComplexField>(
-        tril: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        let n = tril.nrows();
-        let k = rhs.ncols();
-
-        if k > 64 && n <= 128 {
-            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
-            join_raw(
-                |_| {
-                    solve_lower_triangular_in_place_unchecked(
-                        tril,
-                        rhs_left,
-                        conj_lhs,
-                        conj_rhs,
-                        parallelism,
-                    )
-                },
-                |_| {
-                    solve_lower_triangular_in_place_unchecked(
-                        tril,
-                        rhs_right,
-                        conj_lhs,
-                        conj_rhs,
-                        parallelism,
-                    )
-                },
-                parallelism,
-            );
-            return;
-        }
-
-        fancy_debug_assert!(tril.nrows() == tril.ncols());
-        fancy_debug_assert!(rhs.nrows() == tril.ncols());
-
-        let n = tril.nrows();
-
-        if n <= recursion_threshold::<T>() {
-            pulp::Arch::new().dispatch(
-                #[inline(always)]
-                || match (conj_lhs, conj_rhs) {
-                    (true, true) => solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, conj,
-                    ),
-                    (true, false) => solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, identity,
-                    ),
-                    (false, true) => solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, conj,
-                    ),
-                    (false, false) => solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, identity,
-                    ),
-                },
-            );
-            return;
-        }
-
-        let bs = blocksize::<T>(n);
-
-        let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
-        let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
-
+    unsafe {
         solve_lower_triangular_in_place_unchecked(
-            tril_top_left,
-            rhs_top.rb_mut(),
-            conj_lhs,
-            conj_rhs,
-            parallelism,
-        );
-
-        crate::mul::matmul(
-            rhs_bot.rb_mut(),
-            tril_bot_left,
-            rhs_top.into_const(),
-            Some(T::one()),
-            -T::one(),
-            conj_rhs,
-            conj_lhs,
-            false,
-            parallelism,
-        );
-
-        solve_lower_triangular_in_place_unchecked(
-            tril_bot_right,
-            rhs_bot,
+            triangular_lower,
+            rhs,
             conj_lhs,
             conj_rhs,
             parallelism,
         );
     }
+}
 
-    #[inline]
-    pub unsafe fn solve_upper_triangular_in_place_unchecked<T: ComplexField>(
-        triu: MatRef<'_, T>,
-        rhs: MatMut<'_, T>,
-        conj_lhs: bool,
-        conj_rhs: bool,
-        parallelism: Parallelism,
-    ) {
-        solve_lower_triangular_in_place_unchecked(
-            triu.invert(),
-            rhs.invert_rows(),
+/// Computes the solution of `Op_lhs(triangular_upper)×X = Op(rhs)`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_upper` is interpreted as a upper triangular matrix (diagonal included).
+/// Its strictly lower triangular part is not accessed.
+///
+/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
+/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
+///
+/// # Panics
+///
+///  - Panics if `triangular_upper` is not a square matrix.
+///  - Panics if `rhs.nrows() != triangular_lower.ncols()`
+#[track_caller]
+#[inline]
+pub fn solve_upper_triangular_in_place<T: ComplexField>(
+    triangular_upper: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+
+    unsafe {
+        solve_upper_triangular_in_place_unchecked(
+            triangular_upper,
+            rhs,
             conj_lhs,
             conj_rhs,
             parallelism,
         );
     }
+}
+
+/// Computes the solution of `Op_lhs(triangular_lower)×X = Op(rhs)`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_lower` is interpreted as a lower triangular matrix, and its diagonal elements are
+/// implicitly considered to be `1.0`. Its upper triangular part is not accessed.
+///
+/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
+/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
+///
+/// # Panics
+///
+///  - Panics if `triangular_lower` is not a square matrix.
+///  - Panics if `rhs.nrows() != triangular_lower.ncols()`
+#[track_caller]
+#[inline]
+pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
+    triangular_lower: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+
+    unsafe {
+        solve_unit_lower_triangular_in_place_unchecked(
+            triangular_lower,
+            rhs,
+            conj_lhs,
+            conj_rhs,
+            parallelism,
+        );
+    }
+}
+
+/// Computes the solution of `Op_lhs(triangular_upper)×X = Op(rhs)`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_upper` is interpreted as a upper triangular matrix, and its diagonal elements are
+/// implicitly considered to be `1.0`. Its lower triangular part is not accessed.
+///
+/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
+/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
+///
+/// # Panics
+///
+///  - Panics if `triangular_upper` is not a square matrix.
+///  - Panics if `rhs.nrows() != triangular_lower.ncols()`
+#[track_caller]
+#[inline]
+pub fn solve_unit_upper_triangular_in_place<T: ComplexField>(
+    triangular_upper: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+
+    unsafe {
+        solve_unit_upper_triangular_in_place_unchecked(
+            triangular_upper,
+            rhs,
+            conj_lhs,
+            conj_rhs,
+            parallelism,
+        );
+    }
+}
+
+/// # Safety
+///
+/// Same as [`solve_unit_lower_triangular_in_place`], except that panics become undefined behavior.
+pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
+    tril: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    let n = tril.nrows();
+    let k = rhs.ncols();
+
+    if k > 64 && n <= 128 {
+        let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+        join_raw(
+            |_| {
+                solve_unit_lower_triangular_in_place_unchecked(
+                    tril,
+                    rhs_left,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
+                )
+            },
+            |_| {
+                solve_unit_lower_triangular_in_place_unchecked(
+                    tril,
+                    rhs_right,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
+                )
+            },
+            parallelism,
+        );
+        return;
+    }
+
+    fancy_debug_assert!(tril.nrows() == tril.ncols());
+    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+
+    if n <= recursion_threshold::<T>() {
+        pulp::Arch::new().dispatch(
+            #[inline(always)]
+            || match (conj_lhs, conj_rhs) {
+                (true, true) => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, conj, conj,
+                ),
+                (true, false) => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, conj, identity,
+                ),
+                (false, true) => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, identity, conj,
+                ),
+                (false, false) => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, identity, identity,
+                ),
+            },
+        );
+        return;
+    }
+
+    let bs = blocksize::<T>(n);
+
+    let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
+    let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
+
+    //       (A00    )   X0         (B0)
+    // ConjA?(A10 A11)   X1 = ConjB?(B1)
+    //
+    //
+    // 1. ConjA?(A00) X0 = ConjB?(B0)
+    //
+    // 2. ConjA?(A10) X0 + ConjA?(A11) X1 = ConjB?(B1)
+    // => ConjA?(A11) X1 = ConjB?(B1) - ConjA?(A10) X0
+
+    solve_unit_lower_triangular_in_place_unchecked(
+        tril_top_left,
+        rhs_top.rb_mut(),
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
+
+    crate::mul::matmul(
+        rhs_bot.rb_mut(),
+        tril_bot_left,
+        rhs_top.into_const(),
+        Some(T::one()),
+        -T::one(),
+        conj_rhs,
+        conj_lhs,
+        false,
+        parallelism,
+    );
+
+    solve_unit_lower_triangular_in_place_unchecked(
+        tril_bot_right,
+        rhs_bot,
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
+}
+
+/// # Safety
+///
+/// Same as [`solve_unit_upper_triangular_in_place`], except that panics become undefined behavior.
+#[inline]
+pub unsafe fn solve_unit_upper_triangular_in_place_unchecked<T: ComplexField>(
+    triu: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    solve_unit_lower_triangular_in_place_unchecked(
+        triu.invert(),
+        rhs.invert_rows(),
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
+}
+
+/// # Safety
+///
+/// Same as [`solve_lower_triangular_in_place`], except that panics become undefined behavior.
+pub unsafe fn solve_lower_triangular_in_place_unchecked<T: ComplexField>(
+    tril: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    let n = tril.nrows();
+    let k = rhs.ncols();
+
+    if k > 64 && n <= 128 {
+        let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+        join_raw(
+            |_| {
+                solve_lower_triangular_in_place_unchecked(
+                    tril,
+                    rhs_left,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
+                )
+            },
+            |_| {
+                solve_lower_triangular_in_place_unchecked(
+                    tril,
+                    rhs_right,
+                    conj_lhs,
+                    conj_rhs,
+                    parallelism,
+                )
+            },
+            parallelism,
+        );
+        return;
+    }
+
+    fancy_debug_assert!(tril.nrows() == tril.ncols());
+    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+
+    let n = tril.nrows();
+
+    if n <= recursion_threshold::<T>() {
+        pulp::Arch::new().dispatch(
+            #[inline(always)]
+            || match (conj_lhs, conj_rhs) {
+                (true, true) => solve_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, conj, conj,
+                ),
+                (true, false) => solve_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, conj, identity,
+                ),
+                (false, true) => solve_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, identity, conj,
+                ),
+                (false, false) => solve_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, identity, identity,
+                ),
+            },
+        );
+        return;
+    }
+
+    let bs = blocksize::<T>(n);
+
+    let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
+    let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
+
+    solve_lower_triangular_in_place_unchecked(
+        tril_top_left,
+        rhs_top.rb_mut(),
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
+
+    crate::mul::matmul(
+        rhs_bot.rb_mut(),
+        tril_bot_left,
+        rhs_top.into_const(),
+        Some(T::one()),
+        -T::one(),
+        conj_rhs,
+        conj_lhs,
+        false,
+        parallelism,
+    );
+
+    solve_lower_triangular_in_place_unchecked(
+        tril_bot_right,
+        rhs_bot,
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
+}
+
+/// # Safety
+///
+/// Same as [`solve_upper_triangular_in_place`], except that panics become undefined behavior.
+#[inline]
+pub unsafe fn solve_upper_triangular_in_place_unchecked<T: ComplexField>(
+    triu: MatRef<'_, T>,
+    rhs: MatMut<'_, T>,
+    conj_lhs: bool,
+    conj_rhs: bool,
+    parallelism: Parallelism,
+) {
+    solve_lower_triangular_in_place_unchecked(
+        triu.invert(),
+        rhs.invert_rows(),
+        conj_lhs,
+        conj_rhs,
+        parallelism,
+    );
 }

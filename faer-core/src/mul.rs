@@ -1,3 +1,5 @@
+//! Matrix multiplication module.
+
 use crate::{ComplexField, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use gemm::gemm;
@@ -81,6 +83,8 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
     }
 }
 
+/// # Safety
+///
 /// Same as [`matmul`], except that panics become undefined behavior.
 #[inline]
 pub unsafe fn matmul_unchecked<T: ComplexField>(
@@ -107,10 +111,15 @@ pub unsafe fn matmul_unchecked<T: ComplexField>(
     )
 }
 
-/// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in `dst`.
+/// Computes the matrix product `[alpha * Op_dst(dst)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
+/// stores the result in `dst`.
 ///
 /// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to be
 /// a view over uninitialized values if `T: Copy`.
+///
+/// `Op_dst` is the identity if `conj_dst` is false, and the conjugation operation if it is true.  
+/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
+/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
 ///
 /// # Panics
 ///
@@ -150,6 +159,8 @@ pub fn matmul<T: ComplexField>(
     }
 }
 
+/// Triangular matrix multiplication module, where some of the operands are treated as triangular
+/// matrices.
 pub mod triangular {
     use std::mem::MaybeUninit;
 
@@ -1031,8 +1042,8 @@ pub mod triangular {
         }
     }
 
-    /// Computes the matrix product `[alpha * dst] + beta * lhs * rhs` and stores the result in
-    /// `dst`.
+    /// Computes the matrix product `[alpha * Op_dst(dst)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
+    /// stores the result in `dst`.
     ///
     /// The left hand side and right hand side may be interpreted as triangular depending on the
     /// given corresponding matrix structure.  
@@ -1046,6 +1057,13 @@ pub mod triangular {
     ///
     /// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to
     /// be a view over uninitialized values if `T: Copy`.
+    ///
+    /// `Op_dst` is the identity if `conj_dst` is false, and the conjugation operation if it is
+    /// true.  
+    /// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is
+    /// true.
+    /// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is
+    /// true.
     ///
     /// # Panics
     ///
@@ -1105,6 +1123,8 @@ pub mod triangular {
         }
     }
 
+    /// # Safety
+    ///
     /// Same as [`matmul`], except that panics become undefined behavior.
     #[inline]
     pub unsafe fn matmul_unchecked<T: ComplexField>(

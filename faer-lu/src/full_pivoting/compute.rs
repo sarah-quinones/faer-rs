@@ -587,6 +587,11 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
             }
             Parallelism::Rayon(n_threads) => {
                 use rayon::prelude::*;
+                let n_threads = if n_threads > 0 {
+                    n_threads
+                } else {
+                    rayon::current_num_threads()
+                };
 
                 struct Ptr<T>(*mut T);
                 unsafe impl<T> Send for Ptr<T> {}

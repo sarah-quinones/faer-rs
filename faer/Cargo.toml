@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
+faer-cholesky = { version = "0.1", default-features = false, path = "../faer-cholesky" }
+faer-lu = { version = "0.1", default-features = false, path = "../faer-lu" }
+faer-qr = { version = "0.1", default-features = false, path = "../faer-qr" }
 pulp = { version = "0.10", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.8"

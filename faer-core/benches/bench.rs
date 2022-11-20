@@ -16,7 +16,7 @@ pub fn solve(c: &mut Criterion) {
             let mut rhs = Mat::<f64>::zeros(n, n);
 
             b.iter(|| {
-                faer_core::solve::triangular::solve_lower_triangular_in_place(
+                faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut(),
                     false,
@@ -31,7 +31,7 @@ pub fn solve(c: &mut Criterion) {
             let mut rhs = Mat::<f64>::zeros(n, n);
 
             b.iter(|| {
-                faer_core::solve::triangular::solve_lower_triangular_in_place(
+                faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut().transpose(),
                     false,
@@ -46,7 +46,7 @@ pub fn solve(c: &mut Criterion) {
             let mut rhs = Mat::<f64>::zeros(n, n);
 
             b.iter(|| {
-                faer_core::solve::triangular::solve_lower_triangular_in_place(
+                faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut(),
                     false,
@@ -61,7 +61,7 @@ pub fn solve(c: &mut Criterion) {
             let mut rhs = Mat::<f64>::zeros(n, n);
 
             b.iter(|| {
-                faer_core::solve::triangular::solve_lower_triangular_in_place(
+                faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
                     rhs.as_mut().transpose(),
                     false,
