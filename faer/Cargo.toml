@@ -1,5 +1,5 @@
 [package]
-name = "faer-cholesky"
+name = "faer"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,8 +10,8 @@ reborrow = "0.5"
 dyn-stack = "0.8"
 assert2 = "0.3"
 num-traits = "0.2"
-seq-macro = "0.3"
 num-complex = "0.4"
+rayon = "1.5"
 
 [features]
 default = ["std"]
@@ -21,10 +21,6 @@ nightly = ["faer-core/nightly", "pulp/nightly"]
 [dev-dependencies]
 criterion = "0.4"
 rand = "0.8.5"
-nalgebra = "0.31.4"
+nalgebra = "0.31.0"
 assert_approx_eq = "1.1.0"
-rayon = "1.6"
-
-[[bench]]
-name = "bench"
-harness = false
+rayon = "1.5"

@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gemm = { version = "0.11", default-features = false, path = "../../gemm", features = ["rayon"] }
-pulp = { version = "0.9", default-features = false, path = "../../pulp" }
+gemm = { version = "0.12", default-features = false, features = ["rayon"] }
+pulp = { version = "0.10", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.8"
 assert2 = "0.3"
 num-traits = "0.2"
 num-complex = "0.4"
 aligned-vec = "0.5"
-rayon = "1.5"
+rayon = "1.6"
 seq-macro = "0.3"
 
 [features]
@@ -23,7 +23,7 @@ nightly = ["gemm/nightly", "pulp/nightly"]
 [dev-dependencies]
 criterion = "0.4"
 rand = "0.8.5"
-nalgebra = "0.31.0"
+nalgebra = "0.31.4"
 assert_approx_eq = "1.1.0"
 
 [[bench]]
