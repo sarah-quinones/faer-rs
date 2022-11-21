@@ -7,6 +7,9 @@ See the Wiki and the `docs.rs` documentation for code examples and usage instruc
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
 
+[![Documentation](https://docs.rs/faer-core/badge.svg)](https://docs.rs/faer-core)
+[![Crate](https://img.shields.io/crates/v/faer-core.svg)](https://crates.io/crates/faer-core)
+
 ## faer-core
 
 The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
