@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     println!(
         "{:5} {:>15} {:>20} {:>20} {:>30}",
         "",
-        "faer",
+        "faer (serial)",
         "faer (parallel)",
         "ndarray (openblas)",
         "nalgebra (matrixmultiply)",
