@@ -2,6 +2,8 @@
 
 `faer` is a collection of crates that implement linear algebra routines with a pure Rust backend and a focus on portability, correctness, and performance.
 
+See the Wiki and the `docs.rs` documentation for code examples and usage instructions.
+
 ## faer-core
 
 The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
