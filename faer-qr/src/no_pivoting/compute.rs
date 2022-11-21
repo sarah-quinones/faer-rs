@@ -6,7 +6,7 @@ use faer_core::{
         make_householder_in_place_unchecked,
     },
     mul::{matmul, triangular},
-    temp_mat_uninit, ComplexField, MatMut, MatRef, Parallelism,
+    temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -94,26 +94,26 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
             triangular::matmul(
                 dst.rb_mut(),
                 Rectangular,
+                Conj::No,
                 lhs.split_at_unchecked(0, rt).2,
                 Rectangular,
+                Conj::Yes,
                 rhs.split_at_unchecked(rt, 0).1,
                 UnitTriangularLower,
+                Conj::No,
                 None,
                 factor,
-                false,
-                true,
-                false,
                 Parallelism::None,
             );
             matmul(
                 dst.rb_mut(),
+                Conj::No,
                 lhs.split_at_unchecked(0, rt).3,
+                Conj::Yes,
                 rhs.split_at_unchecked(rt, 0).3,
+                Conj::No,
                 Some(T::one()),
                 factor,
-                false,
-                true,
-                false,
                 Parallelism::None,
             );
 
@@ -124,19 +124,19 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
             triangular::matmul(
                 tmp.rb_mut().transpose(),
                 Rectangular,
+                Conj::No,
                 householder_factor
                     .rb()
                     .submatrix_unchecked(i, size - rt, 1, rt),
                 Rectangular,
+                Conj::No,
                 householder_factor
                     .rb()
                     .submatrix_unchecked(size - rt, size - rt, rt, rt),
                 TriangularUpper,
+                Conj::No,
                 None,
                 T::one(),
-                false,
-                false,
-                false,
                 Parallelism::None,
             );
             householder_factor
@@ -181,15 +181,15 @@ unsafe fn make_householder_top_right<T: ComplexField>(
             triangular::matmul(
                 tmp0.rb_mut(),
                 Rectangular,
+                Conj::No,
                 v0,
                 Rectangular,
+                Conj::No,
                 t00.transpose(),
                 TriangularLower,
+                Conj::Yes,
                 None,
                 T::one(),
-                false,
-                false,
-                true,
                 parallelism,
             )
         },
@@ -199,15 +199,15 @@ unsafe fn make_householder_top_right<T: ComplexField>(
                     triangular::matmul(
                         tmp1_top,
                         Rectangular,
+                        Conj::No,
                         v1_top,
                         UnitTriangularLower,
+                        Conj::No,
                         t11,
                         TriangularUpper,
+                        Conj::No,
                         None,
                         T::one(),
-                        false,
-                        false,
-                        false,
                         parallelism,
                     )
                 },
@@ -215,15 +215,15 @@ unsafe fn make_householder_top_right<T: ComplexField>(
                     triangular::matmul(
                         tmp1_bot,
                         Rectangular,
+                        Conj::No,
                         v1_bot,
                         Rectangular,
+                        Conj::No,
                         t11,
                         TriangularUpper,
+                        Conj::No,
                         None,
                         T::one(),
-                        false,
-                        false,
-                        false,
                         parallelism,
                     )
                 },
@@ -235,13 +235,13 @@ unsafe fn make_householder_top_right<T: ComplexField>(
 
     matmul(
         t01,
+        Conj::No,
         tmp0.rb().transpose(),
+        Conj::Yes,
         tmp1.rb(),
+        Conj::No,
         None,
         -T::one(),
-        false,
-        true,
-        false,
         parallelism,
     );
 }
@@ -319,7 +319,7 @@ mod tests {
 
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{GlobalMemBuffer, StackReq};
-    use faer_core::{c64, mul::matmul, Mat, MatRef};
+    use faer_core::{c64, mul::matmul, zip::Diag, Mat, MatRef};
     use num_complex::ComplexFloat;
 
     use super::*;
@@ -360,7 +360,7 @@ mod tests {
         r.as_mut()
             .cwise()
             .zip(qr_factors)
-            .for_each_triangular_upper(false, |a, b| *a = *b);
+            .for_each_triangular_upper(Diag::Include, |a, b| *a = *b);
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
         q2.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
@@ -374,29 +374,29 @@ mod tests {
         triangular::matmul(
             tmp_top.rb_mut(),
             Rectangular,
+            Conj::No,
             basis_top,
             UnitTriangularLower,
+            Conj::No,
             householder,
             TriangularUpper,
+            Conj::No,
             None,
             T::one(),
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         triangular::matmul(
             tmp_bot.rb_mut(),
             Rectangular,
+            Conj::No,
             basis_bot,
             Rectangular,
+            Conj::No,
             householder,
             TriangularUpper,
+            Conj::No,
             None,
             T::one(),
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
 
@@ -404,51 +404,51 @@ mod tests {
         triangular::matmul(
             q_top_left,
             Rectangular,
+            Conj::No,
             tmp_top.rb(),
             Rectangular,
+            Conj::No,
             basis_top.transpose(),
             UnitTriangularUpper,
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             Parallelism::Rayon(8),
         );
         triangular::matmul(
             q_bot_left,
             Rectangular,
+            Conj::No,
             tmp_bot.rb(),
             Rectangular,
+            Conj::No,
             basis_top.transpose(),
             UnitTriangularUpper,
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             Parallelism::Rayon(8),
         );
         matmul(
             q_top_right,
+            Conj::No,
             tmp_top.rb(),
+            Conj::No,
             basis_bot.transpose(),
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             Parallelism::Rayon(8),
         );
         matmul(
             q_bot_right,
+            Conj::No,
             tmp_bot.rb(),
+            Conj::No,
             basis_bot.transpose(),
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             Parallelism::Rayon(8),
         );
 
@@ -487,24 +487,24 @@ mod tests {
 
             matmul(
                 reconstructed.as_mut(),
+                Conj::No,
                 q.as_ref(),
+                Conj::No,
                 r.as_ref(),
+                Conj::No,
                 None,
                 T::one(),
-                false,
-                false,
-                false,
                 Parallelism::Rayon(8),
             );
             matmul(
                 qhq.as_mut(),
+                Conj::No,
                 q.as_ref().transpose(),
+                Conj::Yes,
                 q.as_ref(),
+                Conj::No,
                 None,
                 T::one(),
-                false,
-                true,
-                false,
                 Parallelism::Rayon(8),
             );
 
@@ -544,24 +544,24 @@ mod tests {
 
             matmul(
                 reconstructed.as_mut(),
+                Conj::No,
                 q.as_ref(),
+                Conj::No,
                 r.as_ref(),
+                Conj::No,
                 None,
                 T::one(),
-                false,
-                false,
-                false,
                 Parallelism::Rayon(8),
             );
             matmul(
                 qhq.as_mut(),
+                Conj::No,
                 q.as_ref().transpose(),
+                Conj::Yes,
                 q.as_ref(),
+                Conj::No,
                 None,
                 T::one(),
-                false,
-                true,
-                false,
                 Parallelism::Rayon(8),
             );
 

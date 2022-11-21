@@ -1,7 +1,8 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular::BlockStructure, parallelism_degree, solve, ComplexField, MatMut, Parallelism,
+    mul::triangular::BlockStructure, parallelism_degree, solve, ComplexField, Conj, MatMut,
+    Parallelism,
 };
 use reborrow::*;
 
@@ -66,15 +67,15 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
             faer_core::mul::triangular::matmul_unchecked(
                 a11.rb_mut(),
                 BlockStructure::TriangularLower,
+                Conj::No,
                 l10,
                 BlockStructure::Rectangular,
+                Conj::No,
                 l10.transpose(),
                 BlockStructure::Rectangular,
+                Conj::Yes,
                 Some(T::one()),
                 -T::one(),
-                false,
-                false,
-                true,
                 parallelism,
             );
         }
@@ -91,13 +92,13 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
         // A21 -= L20 × L10^H
         faer_core::mul::matmul_unchecked(
             a21.rb_mut(),
+            Conj::No,
             l20,
+            Conj::No,
             l10.transpose(),
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             parallelism,
         );
 
@@ -106,11 +107,11 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
         //
         // conj(L11) L21^T = A21^T
 
-        solve::triangular::solve_lower_triangular_in_place_unchecked(
+        solve::solve_lower_triangular_in_place_unchecked(
             l11,
+            Conj::Yes,
             a21.rb_mut().transpose(),
-            true,
-            false,
+            Conj::No,
             parallelism,
         );
 
@@ -153,26 +154,26 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
 
         let l00 = l00.into_const();
 
-        solve::triangular::solve_lower_triangular_in_place_unchecked(
+        solve::solve_lower_triangular_in_place_unchecked(
             l00,
+            Conj::Yes,
             a10.rb_mut().transpose(),
-            true,
-            false,
+            Conj::No,
             parallelism,
         );
 
         faer_core::mul::triangular::matmul(
             a11.rb_mut(),
             BlockStructure::TriangularLower,
+            Conj::No,
             a10.rb(),
             BlockStructure::Rectangular,
+            Conj::No,
             a10.rb().transpose(),
             BlockStructure::Rectangular,
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             parallelism,
         );
 

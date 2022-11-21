@@ -1,0 +1,17 @@
+[package]
+name = "faer-bench"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+eyre = "0.6.8"
+nalgebra = "0.31.4"
+ndarray = { version = "0.15.6", features = ["blas"] }
+blas-src = { version = "0.8", features = ["openblas"] }
+openblas-src = { version = "0.10.5", features = ["cblas", "system"] }
+faer-core = { path = "../faer-core" }
+plotters = "0.3.4"
+timeit = "0.1.2"
+human-repr = "1.0.1"

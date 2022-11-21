@@ -4,7 +4,7 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
-    mul::matmul, permutation::PermutationIndicesMut, ColRef, ComplexField, MatMut, MatRef,
+    mul::matmul, permutation::PermutationIndicesMut, ColRef, ComplexField, Conj, MatMut, MatRef,
     Parallelism, RowRef,
 };
 use pulp::Simd;
@@ -507,13 +507,13 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     } else {
         matmul(
             dst.rb_mut(),
+            Conj::No,
             lhs.as_2d(),
+            Conj::No,
             rhs.as_2d(),
+            Conj::No,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            false,
             Parallelism::None,
         );
         best_in_matrix(dst.rb())
@@ -803,57 +803,57 @@ mod tests {
         mul::triangular::matmul(
             dst_top_left,
             Rectangular,
+            Conj::No,
             l_top,
             UnitTriangularLower,
+            Conj::No,
             u_left,
             TriangularUpper,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_top_right,
             Rectangular,
+            Conj::No,
             l_top,
             UnitTriangularLower,
+            Conj::No,
             u_right,
             Rectangular,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_left,
             Rectangular,
+            Conj::No,
             l_bot,
             Rectangular,
+            Conj::No,
             u_left,
             TriangularUpper,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_right,
             Rectangular,
+            Conj::No,
             l_bot,
             Rectangular,
+            Conj::No,
             u_right,
             Rectangular,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
 

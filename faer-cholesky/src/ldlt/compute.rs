@@ -1,6 +1,8 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::{izip, mul::triangular::BlockStructure, solve, ComplexField, MatMut, Parallelism};
+use faer_core::{
+    izip, mul::triangular::BlockStructure, solve, ComplexField, Conj, MatMut, Parallelism,
+};
 use reborrow::*;
 
 unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
@@ -67,15 +69,15 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
         faer_core::mul::triangular::matmul(
             a11.rb_mut(),
             BlockStructure::TriangularLower,
+            Conj::No,
             l10xd0,
             BlockStructure::Rectangular,
+            Conj::No,
             l10.transpose(),
             BlockStructure::Rectangular,
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             parallelism,
         );
 
@@ -91,21 +93,21 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
 
         faer_core::mul::matmul(
             a21.rb_mut(),
+            Conj::No,
             l20,
+            Conj::No,
             l10xd0.transpose(),
+            Conj::Yes,
             Some(T::one()),
             -T::one(),
-            false,
-            false,
-            true,
             parallelism,
         );
 
-        solve::triangular::solve_unit_lower_triangular_in_place_unchecked(
+        solve::solve_unit_lower_triangular_in_place_unchecked(
             l11,
+            Conj::Yes,
             a21.rb_mut().transpose(),
-            true,
-            false,
+            Conj::No,
             parallelism,
         );
 
@@ -157,11 +159,11 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
         let l00 = l00.into_const();
         let d0 = l00.diagonal_unchecked();
 
-        solve::triangular::solve_unit_lower_triangular_in_place_unchecked(
+        solve::solve_unit_lower_triangular_in_place_unchecked(
             l00,
+            Conj::Yes,
             a10.rb_mut().transpose(),
-            true,
-            false,
+            Conj::No,
             parallelism,
         );
 
@@ -186,15 +188,15 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
             faer_core::mul::triangular::matmul(
                 a11.rb_mut(),
                 BlockStructure::TriangularLower,
+                Conj::No,
                 a10.into_const(),
                 BlockStructure::Rectangular,
+                Conj::No,
                 l10xd0.transpose().into_const(),
                 BlockStructure::Rectangular,
+                Conj::Yes,
                 Some(T::one()),
                 -T::one(),
-                false,
-                false,
-                true,
                 parallelism,
             );
         }
@@ -218,7 +220,7 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
 ///
 /// The cholesky decomposition may have poor numerical stability properties when used with non
 /// positive definite matrices. In the general case, it is recommended to first permute the matrix
-/// using [`compute_cholesky_permutation`] and
+/// using [`crate::compute_cholesky_permutation`] and
 /// [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric).
 ///
 /// # Panics

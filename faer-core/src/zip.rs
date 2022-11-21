@@ -2,6 +2,14 @@ use crate::{seal::Seal, ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Diag {
+    /// Do not include diagonal of matrix
+    Skip,
+    /// Include diagonal of matrix
+    Include,
+}
+
 pub trait CwiseMat<'short, Outlives = &'short Self>: Seal {
     type Item;
 

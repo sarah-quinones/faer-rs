@@ -1,32 +1,32 @@
 //! Matrix multiplication module.
 
-use crate::{ComplexField, MatMut, MatRef, Parallelism};
+use crate::{ComplexField, Conj, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use gemm::gemm;
 use reborrow::*;
 
 /// Same as [`matmul`], except that panics become undefined behavior.
 unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
-    dst: MatMut<'_, T>,
+    acc: MatMut<'_, T>,
     lhs: MatRef<'_, T>,
     rhs: MatRef<'_, T>,
     alpha: Option<T>,
     beta: T,
-    conj_dst: bool,
+    conj_acc: bool,
     conj_lhs: bool,
     conj_rhs: bool,
     parallelism: Parallelism,
 ) {
-    fancy_debug_assert!(dst.nrows() == lhs.nrows());
-    fancy_debug_assert!(dst.ncols() == rhs.ncols());
+    fancy_debug_assert!(acc.nrows() == lhs.nrows());
+    fancy_debug_assert!(acc.ncols() == rhs.ncols());
     fancy_debug_assert!(lhs.ncols() == rhs.nrows());
 
-    let m = dst.nrows();
-    let n = dst.ncols();
+    let m = acc.nrows();
+    let n = acc.ncols();
     let k = lhs.ncols();
 
-    let dst_col_stride = dst.col_stride();
-    let dst_row_stride = dst.row_stride();
+    let acc_col_stride = acc.col_stride();
+    let acc_row_stride = acc.row_stride();
 
     // SAFETY:
     // * matching operand/destination dimensions.
@@ -36,9 +36,9 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             m,
             n,
             k,
-            dst.as_ptr(),
-            dst_col_stride,
-            dst_row_stride,
+            acc.as_ptr(),
+            acc_col_stride,
+            acc_row_stride,
             true,
             lhs.as_ptr(),
             lhs.col_stride(),
@@ -48,7 +48,7 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             rhs.row_stride(),
             alpha,
             beta,
-            conj_dst,
+            conj_acc,
             conj_lhs,
             conj_rhs,
             match parallelism {
@@ -60,9 +60,9 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             m,
             n,
             k,
-            dst.as_ptr(),
-            dst_col_stride,
-            dst_row_stride,
+            acc.as_ptr(),
+            acc_col_stride,
+            acc_row_stride,
             false,
             lhs.as_ptr(),
             lhs.col_stride(),
@@ -72,7 +72,7 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
             rhs.row_stride(),
             T::zero(),
             beta,
-            conj_dst,
+            conj_acc,
             conj_lhs,
             conj_rhs,
             match parallelism {
@@ -88,72 +88,113 @@ unsafe fn gemm_wrapper_unchecked<T: ComplexField>(
 /// Same as [`matmul`], except that panics become undefined behavior.
 #[inline]
 pub unsafe fn matmul_unchecked<T: ComplexField>(
-    dst: MatMut<'_, T>,
+    acc: MatMut<'_, T>,
+    conj_acc: Conj,
     lhs: MatRef<'_, T>,
+    conj_lhs: Conj,
     rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
     alpha: Option<T>,
     beta: T,
-    conj_dst: bool,
-    conj_lhs: bool,
-    conj_rhs: bool,
     parallelism: Parallelism,
 ) {
     gemm_wrapper_unchecked(
-        dst,
+        acc,
         lhs,
         rhs,
         alpha,
         beta,
-        conj_dst,
-        conj_lhs,
-        conj_rhs,
+        conj_acc == Conj::Yes,
+        conj_lhs == Conj::Yes,
+        conj_rhs == Conj::Yes,
         parallelism,
     )
 }
 
-/// Computes the matrix product `[alpha * Op_dst(dst)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
-/// stores the result in `dst`.
+/// Computes the matrix product `[alpha * Op_acc(acc)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
+/// stores the result in `acc`.
 ///
-/// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to be
+/// If `alpha` is not provided, he preexisting values in `acc` are not read so it is allowed to be
 /// a view over uninitialized values if `T: Copy`.
 ///
-/// `Op_dst` is the identity if `conj_dst` is false, and the conjugation operation if it is true.  
-/// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is true.  
-/// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is true.  
+/// `Op_acc` is the identity if `conj_acc` is `Conj::No`, and the conjugation operation if it is
+/// `Conj::Yes`.  
+/// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
+/// `Conj::Yes`.  
+/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it is
+/// `Conj::Yes`.  
 ///
 /// # Panics
 ///
 /// Panics if the matrix dimensions are not compatible for matrix multiplication.  
 /// i.e.  
-///  - `dst.nrows() == lhs.nrows()`
-///  - `dst.ncols() == rhs.ncols()`
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
 ///  - `lhs.ncols() == rhs.nrows()`
+///
+/// # Example
+///
+/// ```
+/// use faer_core::{mat, mul::matmul, Conj, Mat, Parallelism};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+///     [
+///         2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+///         2.5 * (lhs[(0, 0)] * rhs[(0, 1)] + lhs[(0, 1)] * rhs[(1, 1)]),
+///     ],
+///     [
+///         2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+///         2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+///     ],
+/// ];
+///
+/// matmul(
+///     acc.as_mut(),
+///     Conj::No,
+///     lhs.as_ref(),
+///     Conj::No,
+///     rhs.as_ref(),
+///     Conj::No,
+///     None,
+///     2.5,
+///     Parallelism::None,
+/// );
+///
+/// acc.as_ref()
+///     .cwise()
+///     .zip(target.as_ref())
+///     .for_each(|acc, target| assert!((acc - target).abs() < 1e-10));
+/// ```
 #[track_caller]
 #[inline]
 pub fn matmul<T: ComplexField>(
-    dst: MatMut<'_, T>,
+    acc: MatMut<'_, T>,
+    conj_acc: Conj,
     lhs: MatRef<'_, T>,
+    conj_lhs: Conj,
     rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
     alpha: Option<T>,
     beta: T,
-    conj_dst: bool,
-    conj_lhs: bool,
-    conj_rhs: bool,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(dst.nrows() == lhs.nrows());
-    fancy_assert!(dst.ncols() == rhs.ncols());
+    fancy_assert!(acc.nrows() == lhs.nrows());
+    fancy_assert!(acc.ncols() == rhs.ncols());
     fancy_assert!(lhs.ncols() == rhs.nrows());
     unsafe {
         matmul_unchecked(
-            dst,
+            acc,
+            conj_acc,
             lhs,
+            conj_lhs,
             rhs,
+            conj_rhs,
             alpha,
             beta,
-            conj_dst,
-            conj_lhs,
-            conj_rhs,
             parallelism,
         )
     }
@@ -167,7 +208,7 @@ pub mod triangular {
     use super::*;
     use crate::{
         join_raw,
-        zip::{ColUninit, MatUninit},
+        zip::{ColUninit, Diag, MatUninit},
     };
 
     #[repr(u8)]
@@ -207,15 +248,18 @@ pub mod triangular {
 
         MatUninit(dst.rb_mut())
             .cwise()
-            .for_each_triangular_upper(true, |dst| {
+            .for_each_triangular_upper(Diag::Skip, |dst| {
                 *dst = T::zero();
             });
         MatUninit(dst)
             .cwise()
             .zip_unchecked(src)
-            .for_each_triangular_lower(strict, |dst, src| {
-                *dst = *src;
-            });
+            .for_each_triangular_lower(
+                if strict { Diag::Skip } else { Diag::Include },
+                |dst, src| {
+                    *dst = *src;
+                },
+            );
     }
 
     unsafe fn accum_lower<T: ComplexField>(
@@ -232,19 +276,23 @@ pub mod triangular {
 
         match alpha {
             Some(alpha) => {
-                dst.cwise()
-                    .zip_unchecked(src)
-                    .for_each_triangular_lower(skip_diag, |dst, src| {
+                dst.cwise().zip_unchecked(src).for_each_triangular_lower(
+                    if skip_diag { Diag::Skip } else { Diag::Include },
+                    |dst, src| {
                         *dst = alpha * *dst + *src;
-                    });
+                    },
+                );
             }
             None => {
                 MatUninit(dst)
                     .cwise()
                     .zip_unchecked(src)
-                    .for_each_triangular_lower(skip_diag, |dst, src| {
-                        *dst = *src;
-                    });
+                    .for_each_triangular_lower(
+                        if skip_diag { Diag::Skip } else { Diag::Include },
+                        |dst, src| {
+                            *dst = *src;
+                        },
+                    );
             }
         }
     }
@@ -265,20 +313,20 @@ pub mod triangular {
         rhs: MatRef<'_, T>,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         super::matmul_unchecked(
             dst,
+            conj_dst,
             lhs,
+            conj_lhs,
             rhs,
+            conj_rhs,
             alpha,
             beta,
-            conj_dst,
-            conj_lhs,
-            conj_rhs,
             parallelism,
         );
     }
@@ -291,9 +339,9 @@ pub mod triangular {
         rhs_diag: DiagonalKind,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         let n = dst.nrows();
@@ -412,9 +460,9 @@ pub mod triangular {
         rhs_diag: DiagonalKind,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         let n = rhs.nrows();
@@ -509,9 +557,9 @@ pub mod triangular {
         rhs_diag: DiagonalKind,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         let n = dst.nrows();
@@ -625,9 +673,9 @@ pub mod triangular {
         rhs_diag: DiagonalKind,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         let n = dst.nrows();
@@ -765,9 +813,9 @@ pub mod triangular {
         rhs_diag: DiagonalKind,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         let n = dst.nrows();
@@ -889,9 +937,9 @@ pub mod triangular {
         rhs: MatRef<'_, T>,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
+        conj_dst: Conj,
+        conj_lhs: Conj,
+        conj_rhs: Conj,
         parallelism: Parallelism,
     ) {
         fancy_debug_assert!(dst.nrows() == dst.ncols());
@@ -1042,8 +1090,8 @@ pub mod triangular {
         }
     }
 
-    /// Computes the matrix product `[alpha * Op_dst(dst)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
-    /// stores the result in `dst`.
+    /// Computes the matrix product `[alpha * Op_acc(acc)] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
+    /// stores the result in `acc`.
     ///
     /// The left hand side and right hand side may be interpreted as triangular depending on the
     /// given corresponding matrix structure.  
@@ -1055,48 +1103,93 @@ pub mod triangular {
     /// - only the strict triangular half (excluding the diagonal) is computed if the structure is
     /// strictly triangular or unit triangular.
     ///
-    /// If `alpha` is not provided, he preexisting values in `dst` are not read so it is allowed to
+    /// If `alpha` is not provided, he preexisting values in `acc` are not read so it is allowed to
     /// be a view over uninitialized values if `T: Copy`.
     ///
-    /// `Op_dst` is the identity if `conj_dst` is false, and the conjugation operation if it is
-    /// true.  
-    /// `Op_lhs` is the identity if `conj_lhs` is false, and the conjugation operation if it is
-    /// true.
-    /// `Op_rhs` is the identity if `conj_rhs` is false, and the conjugation operation if it is
-    /// true.
+    /// `Op_acc` is the identity if `conj_acc` is `Conj::No`, and the conjugation operation if it is
+    /// `Conj::Yes`.  
+    /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
+    /// `Conj::Yes`.  
+    /// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it is
+    /// `Conj::Yes`.  
     ///
     /// # Panics
     ///
     /// Panics if the matrix dimensions are not compatible for matrix multiplication.  
     /// i.e.  
-    ///  - `dst.nrows() == lhs.nrows()`
-    ///  - `dst.ncols() == rhs.ncols()`
+    ///  - `acc.nrows() == lhs.nrows()`
+    ///  - `acc.ncols() == rhs.ncols()`
     ///  - `lhs.ncols() == rhs.nrows()`
     ///
     ///  Additionally, matrices that are marked as triangular must be square, i.e., they must have
     ///  the same number of rows and columns.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::{
+    ///     mat,
+    ///     mul::triangular::{matmul, BlockStructure},
+    ///     Conj, Mat, Parallelism,
+    /// };
+    ///
+    /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+    /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+    ///
+    /// let mut acc = Mat::<f64>::zeros(2, 2);
+    /// let target = mat![
+    ///     [
+    ///         2.5 * (lhs[(0, 0)] * rhs[(0, 0)] + lhs[(0, 1)] * rhs[(1, 0)]),
+    ///         0.0,
+    ///     ],
+    ///     [
+    ///         2.5 * (lhs[(1, 0)] * rhs[(0, 0)] + lhs[(1, 1)] * rhs[(1, 0)]),
+    ///         2.5 * (lhs[(1, 0)] * rhs[(0, 1)] + lhs[(1, 1)] * rhs[(1, 1)]),
+    ///     ],
+    /// ];
+    ///
+    /// matmul(
+    ///     acc.as_mut(),
+    ///     BlockStructure::TriangularLower,
+    ///     Conj::No,
+    ///     lhs.as_ref(),
+    ///     BlockStructure::Rectangular,
+    ///     Conj::No,
+    ///     rhs.as_ref(),
+    ///     BlockStructure::Rectangular,
+    ///     Conj::No,
+    ///     None,
+    ///     2.5,
+    ///     Parallelism::None,
+    /// );
+    ///
+    /// acc.as_ref()
+    ///     .cwise()
+    ///     .zip(target.as_ref())
+    ///     .for_each(|acc, target| assert!((acc - target).abs() < 1e-10));
+    /// ```
     #[track_caller]
     #[inline]
     pub fn matmul<T: ComplexField>(
-        dst: MatMut<'_, T>,
-        dst_structure: BlockStructure,
+        acc: MatMut<'_, T>,
+        acc_structure: BlockStructure,
+        conj_acc: Conj,
         lhs: MatRef<'_, T>,
         lhs_structure: BlockStructure,
+        conj_lhs: Conj,
         rhs: MatRef<'_, T>,
         rhs_structure: BlockStructure,
+        conj_rhs: Conj,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
         parallelism: Parallelism,
     ) {
-        fancy_assert!(dst.nrows() == lhs.nrows());
-        fancy_assert!(dst.ncols() == rhs.ncols());
+        fancy_assert!(acc.nrows() == lhs.nrows());
+        fancy_assert!(acc.ncols() == rhs.ncols());
         fancy_assert!(lhs.ncols() == rhs.nrows());
 
-        if !dst_structure.is_dense() {
-            fancy_assert!(dst.nrows() == dst.ncols());
+        if !acc_structure.is_dense() {
+            fancy_assert!(acc.nrows() == acc.ncols());
         }
         if !lhs_structure.is_dense() {
             fancy_assert!(lhs.nrows() == lhs.ncols());
@@ -1107,17 +1200,17 @@ pub mod triangular {
 
         unsafe {
             matmul_unchecked(
-                dst,
-                dst_structure,
+                acc,
+                acc_structure,
+                conj_acc,
                 lhs,
                 lhs_structure,
+                conj_lhs,
                 rhs,
                 rhs_structure,
+                conj_rhs,
                 alpha,
                 beta,
-                conj_dst,
-                conj_lhs,
-                conj_rhs,
                 parallelism,
             )
         }
@@ -1128,25 +1221,25 @@ pub mod triangular {
     /// Same as [`matmul`], except that panics become undefined behavior.
     #[inline]
     pub unsafe fn matmul_unchecked<T: ComplexField>(
-        dst: MatMut<'_, T>,
-        dst_structure: BlockStructure,
+        acc: MatMut<'_, T>,
+        acc_structure: BlockStructure,
+        conj_acc: Conj,
         lhs: MatRef<'_, T>,
         lhs_structure: BlockStructure,
+        conj_lhs: Conj,
         rhs: MatRef<'_, T>,
         rhs_structure: BlockStructure,
+        conj_rhs: Conj,
         alpha: Option<T>,
         beta: T,
-        conj_dst: bool,
-        conj_lhs: bool,
-        conj_rhs: bool,
         parallelism: Parallelism,
     ) {
-        fancy_debug_assert!(dst.nrows() == lhs.nrows());
-        fancy_debug_assert!(dst.ncols() == rhs.ncols());
+        fancy_debug_assert!(acc.nrows() == lhs.nrows());
+        fancy_debug_assert!(acc.ncols() == rhs.ncols());
         fancy_debug_assert!(lhs.ncols() == rhs.nrows());
 
-        if !dst_structure.is_dense() {
-            fancy_debug_assert!(dst.nrows() == dst.ncols());
+        if !acc_structure.is_dense() {
+            fancy_debug_assert!(acc.nrows() == acc.ncols());
         }
         if !lhs_structure.is_dense() {
             fancy_debug_assert!(lhs.nrows() == lhs.ncols());
@@ -1155,11 +1248,11 @@ pub mod triangular {
             fancy_debug_assert!(rhs.nrows() == rhs.ncols());
         }
 
-        let mut dst = dst;
+        let mut acc = acc;
         let mut lhs = lhs;
         let mut rhs = rhs;
 
-        let mut dst_structure = dst_structure;
+        let mut acc_structure = acc_structure;
         let mut lhs_structure = lhs_structure;
         let mut rhs_structure = rhs_structure;
 
@@ -1171,17 +1264,17 @@ pub mod triangular {
             // do nothing
             false
         } else if rhs_structure.is_upper() {
-            // invert dst, lhs and rhs
-            dst = dst.reverse_rows_and_cols();
+            // invert acc, lhs and rhs
+            acc = acc.reverse_rows_and_cols();
             lhs = lhs.reverse_rows_and_cols();
             rhs = rhs.reverse_rows_and_cols();
-            dst_structure = dst_structure.transpose();
+            acc_structure = acc_structure.transpose();
             lhs_structure = lhs_structure.transpose();
             rhs_structure = rhs_structure.transpose();
             false
         } else if lhs_structure.is_lower() {
             // invert and transpose
-            dst = dst.reverse_rows_and_cols().transpose();
+            acc = acc.reverse_rows_and_cols().transpose();
             (lhs, rhs) = (
                 rhs.reverse_rows_and_cols().transpose(),
                 lhs.reverse_rows_and_cols().transpose(),
@@ -1191,8 +1284,8 @@ pub mod triangular {
             true
         } else if lhs_structure.is_upper() {
             // transpose
-            dst_structure = dst_structure.transpose();
-            dst = dst.transpose();
+            acc_structure = acc_structure.transpose();
+            acc = acc.transpose();
             (lhs, rhs) = (rhs.transpose(), lhs.transpose());
             (conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
             (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
@@ -1202,18 +1295,20 @@ pub mod triangular {
             false
         };
 
-        let clear_upper = |dst: MatMut<'_, T>, skip_diag: bool| match alpha {
-            Some(alpha) => dst
-                .cwise()
-                .for_each_triangular_upper(skip_diag, |dst| *dst = alpha * *dst),
+        let clear_upper = |acc: MatMut<'_, T>, skip_diag: bool| match alpha {
+            Some(alpha) => acc.cwise().for_each_triangular_upper(
+                if skip_diag { Diag::Skip } else { Diag::Include },
+                |acc| *acc = alpha * *acc,
+            ),
 
-            None => MatUninit(dst)
-                .cwise()
-                .for_each_triangular_upper(skip_diag, |dst| *dst = T::zero()),
+            None => MatUninit(acc).cwise().for_each_triangular_upper(
+                if skip_diag { Diag::Skip } else { Diag::Include },
+                |acc| *acc = T::zero(),
+            ),
         };
 
         let skip_diag = matches!(
-            dst_structure,
+            acc_structure,
             BlockStructure::StrictTriangularLower
                 | BlockStructure::StrictTriangularUpper
                 | BlockStructure::UnitTriangularLower
@@ -1222,15 +1317,15 @@ pub mod triangular {
         let lhs_diag = lhs_structure.diag_kind();
         let rhs_diag = rhs_structure.diag_kind();
 
-        if dst_structure.is_dense() {
+        if acc_structure.is_dense() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
                 mul(
-                    dst,
+                    acc,
                     lhs,
                     rhs,
                     alpha,
                     beta,
-                    conj_dst,
+                    conj_acc,
                     conj_lhs,
                     conj_rhs,
                     parallelism,
@@ -1240,21 +1335,21 @@ pub mod triangular {
 
                 if lhs_structure.is_dense() {
                     mat_x_lower_impl_unchecked(
-                        dst,
+                        acc,
                         lhs,
                         rhs,
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
                     )
                 } else if lhs_structure.is_lower() {
-                    clear_upper(dst.rb_mut(), true);
+                    clear_upper(acc.rb_mut(), true);
                     lower_x_lower_into_lower_impl_unchecked(
-                        dst,
+                        acc,
                         false,
                         lhs,
                         lhs_diag,
@@ -1262,7 +1357,7 @@ pub mod triangular {
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -1270,30 +1365,30 @@ pub mod triangular {
                 } else {
                     fancy_debug_assert!(lhs_structure.is_upper());
                     upper_x_lower_impl_unchecked(
-                        dst,
+                        acc,
                         lhs,
                         lhs_diag,
                         rhs,
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
                     )
                 }
             }
-        } else if dst_structure.is_lower() {
+        } else if acc_structure.is_lower() {
             if lhs_structure.is_dense() && rhs_structure.is_dense() {
                 mat_x_mat_into_lower_impl_unchecked(
-                    dst,
+                    acc,
                     skip_diag,
                     lhs,
                     rhs,
                     alpha,
                     beta,
-                    conj_dst,
+                    conj_acc,
                     conj_lhs,
                     conj_rhs,
                     parallelism,
@@ -1302,21 +1397,21 @@ pub mod triangular {
                 fancy_debug_assert!(rhs_structure.is_lower());
                 if lhs_structure.is_dense() {
                     mat_x_lower_into_lower_impl_unchecked(
-                        dst,
+                        acc,
                         skip_diag,
                         lhs,
                         rhs,
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
                     );
                 } else if lhs_structure.is_lower() {
                     lower_x_lower_into_lower_impl_unchecked(
-                        dst,
+                        acc,
                         skip_diag,
                         lhs,
                         lhs_diag,
@@ -1324,14 +1419,14 @@ pub mod triangular {
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
                     )
                 } else {
                     upper_x_lower_into_lower_impl_unchecked(
-                        dst,
+                        acc,
                         skip_diag,
                         lhs,
                         lhs_diag,
@@ -1339,7 +1434,7 @@ pub mod triangular {
                         rhs_diag,
                         alpha,
                         beta,
-                        conj_dst,
+                        conj_acc,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -1348,13 +1443,13 @@ pub mod triangular {
             }
         } else if lhs_structure.is_dense() && rhs_structure.is_dense() {
             mat_x_mat_into_lower_impl_unchecked(
-                dst.transpose(),
+                acc.transpose(),
                 skip_diag,
                 rhs.transpose(),
                 lhs.transpose(),
                 alpha,
                 beta,
-                conj_dst,
+                conj_acc,
                 conj_rhs,
                 conj_lhs,
                 parallelism,
@@ -1364,7 +1459,7 @@ pub mod triangular {
             if lhs_structure.is_dense() {
                 // lower part of lhs does not contribute to result
                 upper_x_lower_into_lower_impl_unchecked(
-                    dst.transpose(),
+                    acc.transpose(),
                     skip_diag,
                     rhs.transpose(),
                     rhs_diag,
@@ -1372,7 +1467,7 @@ pub mod triangular {
                     lhs_diag,
                     alpha,
                     beta,
-                    conj_dst,
+                    conj_acc,
                     conj_rhs,
                     conj_lhs,
                     parallelism,
@@ -1381,29 +1476,29 @@ pub mod triangular {
                 if !skip_diag {
                     match alpha {
                         Some(alpha) => {
-                            dst.rb_mut()
+                            acc.rb_mut()
                                 .diagonal_unchecked()
                                 .cwise()
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
-                                .for_each(|dst, lhs, rhs| {
-                                    *dst = alpha * *dst + beta * (*lhs * *rhs)
+                                .for_each(|acc, lhs, rhs| {
+                                    *acc = alpha * *acc + beta * (*lhs * *rhs)
                                 });
                         }
                         None => {
-                            ColUninit(dst.rb_mut().diagonal_unchecked())
+                            ColUninit(acc.rb_mut().diagonal_unchecked())
                                 .cwise()
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
-                                .for_each(|dst, lhs, rhs| *dst = beta * (*lhs * *rhs));
+                                .for_each(|acc, lhs, rhs| *acc = beta * (*lhs * *rhs));
                         }
                     }
                 }
-                clear_upper(dst.rb_mut(), true);
+                clear_upper(acc.rb_mut(), true);
             } else {
                 fancy_debug_assert!(lhs_structure.is_upper());
                 upper_x_lower_into_lower_impl_unchecked(
-                    dst.transpose(),
+                    acc.transpose(),
                     skip_diag,
                     rhs.transpose(),
                     rhs_diag,
@@ -1411,7 +1506,7 @@ pub mod triangular {
                     lhs_diag,
                     alpha,
                     beta,
-                    conj_dst,
+                    conj_acc,
                     conj_rhs,
                     conj_lhs,
                     parallelism,
@@ -1440,13 +1535,13 @@ mod tests {
 
         super::matmul(
             dst.as_mut(),
+            Conj::No,
             lhs.as_ref(),
+            Conj::No,
             rhs.as_ref(),
+            Conj::No,
             None,
             2.0,
-            false,
-            false,
-            false,
             Parallelism::None,
         );
 
@@ -1462,13 +1557,13 @@ mod tests {
 
         super::matmul(
             dst.as_mut(),
+            Conj::No,
             lhs.as_ref(),
+            Conj::No,
             rhs.as_ref(),
+            Conj::No,
             Some(-2.0),
             2.0,
-            false,
-            false,
-            false,
             Parallelism::None,
         );
 
@@ -1536,27 +1631,27 @@ mod tests {
             triangular::matmul(
                 dst.as_mut(),
                 dst_structure,
+                Conj::No,
                 lhs.as_ref(),
                 lhs_structure,
+                Conj::No,
                 rhs.as_ref(),
                 rhs_structure,
+                Conj::No,
                 None,
                 2.5,
-                false,
-                false,
-                false,
                 parallelism,
             );
 
             matmul(
                 dst_target.as_mut(),
+                Conj::No,
                 lhs.as_ref(),
+                Conj::No,
                 rhs.as_ref(),
+                Conj::No,
                 None,
                 2.5,
-                false,
-                false,
-                false,
                 parallelism,
             );
 

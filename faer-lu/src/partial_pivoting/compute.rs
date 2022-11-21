@@ -1,9 +1,8 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::matmul, permutation::PermutationIndicesMut,
-    solve::triangular::solve_unit_lower_triangular_in_place, temp_mat_req, temp_mat_uninit,
-    zip::ColUninit, ColMut, ComplexField, MatMut, Parallelism,
+    mul::matmul, permutation::PermutationIndicesMut, solve::solve_unit_lower_triangular_in_place,
+    temp_mat_req, temp_mat_uninit, zip::ColUninit, ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
 use reborrow::*;
 
@@ -100,13 +99,13 @@ unsafe fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynSt
         matrix.rb_mut().split_at_unchecked(j + 1, j + 1);
     matmul(
         bottom_right,
+        Conj::No,
         bottom_left.rb().col(j).as_2d(),
+        Conj::No,
         top_right.rb().row(j).as_2d(),
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         Parallelism::None,
     )
 }
@@ -191,20 +190,20 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
 
     solve_unit_lower_triangular_in_place(
         mat_top_left.rb(),
+        Conj::No,
         mat_top_right.rb_mut(),
-        false,
-        false,
+        Conj::No,
         parallelism,
     );
     matmul(
         mat_bot_right.rb_mut(),
+        Conj::No,
         mat_bot_left.rb(),
+        Conj::No,
         mat_top_right.rb(),
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         parallelism,
     );
 
@@ -375,7 +374,7 @@ pub fn lu_in_place<'out, T: ComplexField>(
         let (_, _, left, right) = matrix.split_at_unchecked(0, n.min(m));
 
         if m < n {
-            solve_unit_lower_triangular_in_place(left.rb(), right, false, false, parallelism);
+            solve_unit_lower_triangular_in_place(left.rb(), Conj::No, right, Conj::No, parallelism);
         }
 
         for i in 0..m {
@@ -417,57 +416,57 @@ mod tests {
         mul::triangular::matmul(
             dst_top_left,
             Rectangular,
+            Conj::No,
             l_top,
             UnitTriangularLower,
+            Conj::No,
             u_left,
             TriangularUpper,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_top_right,
             Rectangular,
+            Conj::No,
             l_top,
             UnitTriangularLower,
+            Conj::No,
             u_right,
             Rectangular,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_left,
             Rectangular,
+            Conj::No,
             l_bot,
             Rectangular,
+            Conj::No,
             u_left,
             TriangularUpper,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
             dst_bot_right,
             Rectangular,
+            Conj::No,
             l_bot,
             Rectangular,
+            Conj::No,
             u_right,
             Rectangular,
+            Conj::No,
             None,
             1.0,
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
 

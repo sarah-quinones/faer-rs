@@ -503,7 +503,9 @@ mod tests {
     use super::*;
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
-    use faer_core::{c64, householder::apply_househodler_on_the_left, mul::matmul, Mat, MatRef};
+    use faer_core::{
+        c64, householder::apply_househodler_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
+    };
     use num_complex::ComplexFloat;
     use rand::random;
 
@@ -527,7 +529,7 @@ mod tests {
         r.as_mut()
             .cwise()
             .zip(qr_factors)
-            .for_each_triangular_upper(false, |a, b| *a = *b);
+            .for_each_triangular_upper(Diag::Include, |a, b| *a = *b);
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
@@ -573,13 +575,13 @@ mod tests {
                 let mut qr = Mat::zeros(m, n);
                 matmul(
                     qr.as_mut(),
+                    Conj::No,
                     q.as_ref(),
+                    Conj::No,
                     r.as_ref(),
+                    Conj::No,
                     None,
                     1.0,
-                    false,
-                    false,
-                    false,
                     Parallelism::Rayon(8),
                 );
 
@@ -619,25 +621,25 @@ mod tests {
                 let mut qhq = Mat::zeros(m, m);
                 matmul(
                     qr.as_mut(),
+                    Conj::No,
                     q.as_ref(),
+                    Conj::No,
                     r.as_ref(),
+                    Conj::No,
                     None,
                     c64::one(),
-                    false,
-                    false,
-                    false,
                     Parallelism::Rayon(8),
                 );
 
                 matmul(
                     qhq.as_mut(),
+                    Conj::No,
                     q.as_ref().transpose(),
+                    Conj::Yes,
                     q.as_ref(),
+                    Conj::No,
                     None,
                     c64::one(),
-                    false,
-                    true,
-                    false,
                     Parallelism::Rayon(8),
                 );
 

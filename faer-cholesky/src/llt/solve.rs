@@ -1,4 +1,4 @@
-use faer_core::{solve, ComplexField, MatMut, MatRef, Parallelism};
+use faer_core::{solve, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use reborrow::*;
 
 use assert2::assert as fancy_assert;
@@ -6,9 +6,9 @@ use assert2::assert as fancy_assert;
 #[track_caller]
 pub fn solve_in_place<T: ComplexField>(
     cholesky_factors: MatRef<'_, T>,
+    conj_lhs: Conj,
     rhs: MatMut<'_, T>,
-    conj_lhs: bool,
-    conj_rhs: bool,
+    conj_rhs: Conj,
     parallelism: Parallelism,
 ) {
     let n = cholesky_factors.nrows();
@@ -18,19 +18,22 @@ pub fn solve_in_place<T: ComplexField>(
 
     let mut rhs = rhs;
 
-    solve::triangular::solve_lower_triangular_in_place(
+    solve::solve_lower_triangular_in_place(
         cholesky_factors,
-        rhs.rb_mut(),
         conj_lhs,
+        rhs.rb_mut(),
         conj_rhs,
         parallelism,
     );
 
-    solve::triangular::solve_upper_triangular_in_place(
+    solve::solve_upper_triangular_in_place(
         cholesky_factors.transpose(),
+        match conj_lhs {
+            Conj::No => Conj::Yes,
+            Conj::Yes => Conj::No,
+        },
         rhs.rb_mut(),
-        !conj_lhs,
-        false,
+        Conj::No,
         parallelism,
     );
 }

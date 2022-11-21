@@ -1,6 +1,6 @@
 use crate::{
     mul::{matmul, triangular},
-    temp_mat_uninit, ColMut, ColRef, ComplexField, MatMut, MatRef, Parallelism,
+    temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 
 use assert2::debug_assert as fancy_debug_assert;
@@ -52,13 +52,13 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
 
         matmul(
             tmp.rb_mut().as_2d(),
+            Conj::No,
             essential.transpose().as_2d(),
+            Conj::Yes,
             last_rows.rb(),
+            Conj::No,
             Some(T::one()),
             T::one(),
-            false,
-            true,
-            false,
             Parallelism::None,
         );
 
@@ -70,13 +70,13 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
 
         matmul(
             last_rows,
+            Conj::No,
             essential.as_2d(),
+            Conj::No,
             tmp.rb().as_2d(),
+            Conj::No,
             Some(T::one()),
             -householder_coeff,
-            false,
-            false,
-            false,
             Parallelism::None,
         )
     }
@@ -110,32 +110,33 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
         triangular::matmul(
             tmp0.rb_mut(),
             Rectangular,
+            Conj::No,
             basis_tri.transpose(),
             UnitTriangularUpper,
+            Conj::Yes,
             matrix.rb().submatrix_unchecked(0, 0, size, n),
             Rectangular,
+            Conj::No,
             None,
             T::one(),
-            false,
-            true,
-            false,
             parallelism,
         );
         matmul(
             tmp0.rb_mut(),
+            Conj::No,
             basis_bot.transpose(),
+            Conj::Yes,
             matrix.rb().submatrix_unchecked(size, 0, m - size, n),
+            Conj::No,
             Some(T::one()),
             T::one(),
-            false,
-            true,
-            false,
             parallelism,
         );
 
         triangular::matmul(
             tmp1.rb_mut(),
             Rectangular,
+            Conj::No,
             if forward {
                 householder_factor
             } else {
@@ -146,13 +147,12 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
             } else {
                 TriangularLower
             },
+            if forward { Conj::No } else { Conj::Yes },
             tmp0.rb(),
             Rectangular,
+            Conj::No,
             None,
             T::one(),
-            false,
-            !forward,
-            false,
             parallelism,
         );
     }
@@ -162,26 +162,26 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
     triangular::matmul(
         matrix_top,
         Rectangular,
+        Conj::No,
         basis_tri,
         UnitTriangularLower,
+        Conj::No,
         tmp1.rb(),
         Rectangular,
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         parallelism,
     );
     matmul(
         matrix_bot,
+        Conj::No,
         basis_bot,
+        Conj::No,
         tmp1.rb(),
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         parallelism,
     )
 }

@@ -120,7 +120,11 @@ impl<{generics_decl}> ZipMat<({generics_use},)> {{
     }}
 
     #[inline]
-    pub fn for_each_triangular_lower(self, strict: bool, op: impl FnMut({generics_items})) {{
+    pub fn for_each_triangular_lower(self, diag: Diag, op: impl FnMut({generics_items})) {{
+        let strict = match diag {{
+            Diag::Skip => true,
+            Diag::Include => false,
+        }};
         let mut this = self;
         let mut op = op;
 
@@ -152,10 +156,10 @@ impl<{generics_decl}> ZipMat<({generics_use},)> {{
     }}
 
     #[inline]
-    pub fn for_each_triangular_upper(self, strict: bool, op: impl FnMut({generics_items})) {{
+    pub fn for_each_triangular_upper(self, diag: Diag, op: impl FnMut({generics_items})) {{
         let this = self;
         let this = Self {{ tuple: ({args_transposed},) }};
-        this.for_each_triangular_lower(strict, op);
+        this.for_each_triangular_lower(diag, op);
     }}
 
     #[inline]

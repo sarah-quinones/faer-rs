@@ -4,7 +4,7 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
-    ComplexField, MatMut, Parallelism,
+    ComplexField, Conj, MatMut, Parallelism,
 };
 use pulp::{Arch, Simd};
 use reborrow::*;
@@ -584,13 +584,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     let mut stack = stack;
 
-    solve::triangular::solve_lower_triangular_in_place(
-        l00.rb(),
-        a01.rb_mut(),
-        false,
-        false,
-        parallelism,
-    );
+    solve::solve_lower_triangular_in_place(l00.rb(), Conj::No, a01.rb_mut(), Conj::No, parallelism);
 
     let a10 = a01.rb().transpose();
 
@@ -614,15 +608,15 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     mul::triangular::matmul(
         l11.rb_mut(),
         BlockStructure::TriangularLower,
+        Conj::No,
         l10.rb(),
         BlockStructure::Rectangular,
+        Conj::No,
         a01.rb(),
         BlockStructure::Rectangular,
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         parallelism,
     );
 
@@ -642,21 +636,21 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     mul::matmul(
         l21.rb_mut(),
+        Conj::No,
         l20.rb(),
+        Conj::No,
         a01.rb(),
+        Conj::No,
         Some(T::one()),
         -T::one(),
-        false,
-        false,
-        false,
         parallelism,
     );
 
-    solve::triangular::solve_lower_triangular_in_place(
+    solve::solve_lower_triangular_in_place(
         l11,
+        Conj::Yes,
         l21.rb_mut().transpose(),
-        true,
-        false,
+        Conj::No,
         parallelism,
     );
 

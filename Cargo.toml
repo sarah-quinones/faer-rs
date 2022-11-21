@@ -1,10 +1,11 @@
 [workspace]
 members = [
-    "faer-core",
-    "faer-cholesky",
-    "faer-lu",
-    "faer-qr",
-    "faer",
+  "faer-core",
+  "faer-cholesky",
+  "faer-lu",
+  "faer-qr",
+  "faer",
+  "faer-bench",
 ]
 
 [profile.release]

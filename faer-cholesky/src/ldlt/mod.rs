@@ -6,7 +6,7 @@ pub mod update;
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
-    use faer_core::{c64, mat};
+    use faer_core::{c64, mat, Conj};
     use num_complex::ComplexFloat;
     use rand::random;
 
@@ -35,15 +35,15 @@ mod tests {
         mul::triangular::matmul(
             a_reconstructed.as_mut(),
             BlockStructure::Rectangular,
+            Conj::No,
             lxd.as_ref(),
             BlockStructure::TriangularLower,
+            Conj::No,
             cholesky_factors.transpose(),
             BlockStructure::UnitTriangularUpper,
+            Conj::Yes,
             None,
             T::one(),
-            false,
-            false,
-            true,
             Parallelism::Rayon(8),
         );
 
@@ -56,13 +56,13 @@ mod tests {
 
         mul::matmul(
             ata.as_mut(),
+            Conj::No,
             a.as_ref().transpose(),
+            Conj::Yes,
             a.as_ref(),
+            Conj::No,
             None,
             T::one(),
-            false,
-            true,
-            false,
             Parallelism::Rayon(8),
         );
 
@@ -96,9 +96,9 @@ mod tests {
         raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
         solve_in_place(
             a.as_ref(),
+            Conj::No,
             rhs.as_mut(),
-            false,
-            false,
+            Conj::No,
             Parallelism::Rayon(8),
         );
 
@@ -107,30 +107,30 @@ mod tests {
         mul::triangular::matmul(
             result.as_mut(),
             Rectangular,
+            Conj::No,
             a_orig.as_ref(),
             TriangularLower,
+            Conj::No,
             rhs.as_ref(),
             Rectangular,
+            Conj::No,
             None,
             T::one(),
-            false,
-            false,
-            false,
             Parallelism::Rayon(8),
         );
 
         mul::triangular::matmul(
             result.as_mut(),
             Rectangular,
+            Conj::No,
             a_orig.as_ref().transpose(),
             StrictTriangularUpper,
+            Conj::Yes,
             rhs.as_ref(),
             Rectangular,
+            Conj::No,
             Some(T::one()),
             T::one(),
-            false,
-            true,
-            false,
             Parallelism::Rayon(8),
         );
 
@@ -162,15 +162,15 @@ mod tests {
             mul::triangular::matmul(
                 a_updated.as_mut(),
                 TriangularLower,
+                Conj::No,
                 w_alpha.as_ref(),
                 Rectangular,
+                Conj::No,
                 w.as_ref().transpose(),
                 Rectangular,
+                Conj::Yes,
                 Some(T::one()),
                 T::one(),
-                false,
-                false,
-                true,
                 Parallelism::Rayon(8),
             );
 

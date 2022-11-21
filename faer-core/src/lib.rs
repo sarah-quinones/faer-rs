@@ -5,8 +5,7 @@
 //! - element-wise routines using multiple matrices,
 //! - matrix multiplication routines,
 //! - triangular matrix solve routines,
-//! - permutation operations,
-//! - householder and block householder routines.
+//! - etc.
 
 #![warn(rust_2018_idioms)]
 #![allow(clippy::too_many_arguments)]
@@ -36,11 +35,20 @@ extern crate alloc;
 
 pub mod mul;
 pub mod solve;
-
-pub mod permutation;
 pub mod zip;
 
+#[doc(hidden)]
 pub mod householder;
+#[doc(hidden)]
+pub mod permutation;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Conj {
+    /// Do not conjugate
+    No,
+    /// Do conjugate
+    Yes,
+}
 
 /// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
