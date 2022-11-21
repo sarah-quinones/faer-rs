@@ -2,6 +2,12 @@
 name = "faer-core"
 version = "0.1.0"
 edition = "2021"
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
 gemm = { version = "0.12", default-features = false, features = ["rayon"] }
