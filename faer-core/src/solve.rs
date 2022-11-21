@@ -491,8 +491,8 @@ pub unsafe fn solve_unit_upper_triangular_in_place_unchecked<T: ComplexField>(
     parallelism: Parallelism,
 ) {
     solve_unit_lower_triangular_in_place_unchecked(
-        triu.invert(),
-        rhs.invert_rows(),
+        triu.reverse_rows_and_cols(),
+        rhs.reverse_rows(),
         conj_lhs,
         conj_rhs,
         parallelism,
@@ -610,8 +610,8 @@ pub unsafe fn solve_upper_triangular_in_place_unchecked<T: ComplexField>(
     parallelism: Parallelism,
 ) {
     solve_lower_triangular_in_place_unchecked(
-        triu.invert(),
-        rhs.invert_rows(),
+        triu.reverse_rows_and_cols(),
+        rhs.reverse_rows(),
         conj_lhs,
         conj_rhs,
         parallelism,

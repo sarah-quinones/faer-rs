@@ -1,7 +1,7 @@
 //! `faer` core module.
 //!
 //! This module contains:
-//! - definitions of matrix structures,
+//! - definitions of matrix structures ([`MatRef`], [`MatMut`], etc.),
 //! - element-wise routines using multiple matrices,
 //! - matrix multiplication routines,
 //! - triangular matrix solve routines,
@@ -23,6 +23,7 @@ use core::{
 };
 use dyn_stack::{SizeOverflow, StackReq};
 
+use core::mem::transmute_copy;
 /// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
 pub use gemm::c32;
 /// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
@@ -30,7 +31,8 @@ pub use gemm::c64;
 use iter::*;
 use num_complex::{Complex, ComplexFloat};
 use reborrow::*;
-use std::mem::transmute_copy;
+
+extern crate alloc;
 
 pub mod mul;
 pub mod solve;
@@ -428,37 +430,47 @@ impl<T> Clone for VecSliceBase<T> {
     }
 }
 
-/// Matrix view.
+/// Matrix view with general row and column strides.
 pub struct MatRef<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
-/// Mutable matrix view.
+/// Mutable matrix view with general row and column strides.
+///
+/// For usage examples, see [`MatRef`].
 pub struct MatMut<'a, T> {
     base: MatrixSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
 }
 
-/// Row vector view.
+/// Row vector view with general column stride.
+///
+/// For usage examples, see [`MatRef`].
 pub struct RowRef<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
-/// Mutable row vector view.
+/// Mutable row vector view with general column stride.
+///
+/// For usage examples, see [`MatRef`].
 pub struct RowMut<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
 }
 
-/// Column vector view.
+/// Column vector view with general row stride.
+///
+/// For usage examples, see [`MatRef`].
 pub struct ColRef<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a T>,
 }
 
-/// Mutable column vector view.
+/// Mutable column vector view with general row stride.
+///
+/// For usage examples, see [`MatRef`].
 pub struct ColMut<'a, T> {
     base: VecSliceBase<T>,
     _marker: PhantomData<&'a mut T>,
@@ -683,8 +695,33 @@ impl<'a, T> MatRef<'a, T> {
     /// `ptr` must be non null and properly aligned for type `T`.  
     /// For each `i < nrows` and `j < ncols`,  
     /// `ptr.offset(i as isize * row_stride + j as isize * col_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.  
+    /// initialized object of type `T`, unless memory pointing to that address is never accessed.  
     /// The referenced memory must not be mutated during the lifetime `'a`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::MatRef;
+    ///
+    /// let nan = f64::NAN;
+    /// let data = vec![0.0, 1.0, nan, 2.0, 3.0, nan, 4.0, 5.0];
+    ///
+    /// let nrows = 2;
+    /// let ncols = 3;
+    /// let row_stride = 1;
+    /// let col_stride = 3;
+    /// let m = unsafe { MatRef::from_raw_parts(data.as_ptr(), nrows, ncols, row_stride, col_stride) };
+    ///
+    /// assert_eq!(m.nrows(), 2);
+    /// assert_eq!(m.ncols(), 3);
+    ///
+    /// assert_eq!(m[(0, 0)], 0.0);
+    /// assert_eq!(m[(1, 0)], 1.0);
+    /// assert_eq!(m[(0, 1)], 2.0);
+    /// assert_eq!(m[(1, 1)], 3.0);
+    /// assert_eq!(m[(0, 2)], 4.0);
+    /// assert_eq!(m[(1, 2)], 5.0);
+    /// ```
     #[inline]
     pub unsafe fn from_raw_parts(
         ptr: *const T,
@@ -705,37 +742,104 @@ impl<'a, T> MatRef<'a, T> {
         }
     }
 
-    /// Returns a pointer to the first element of the matrix.
+    /// Returns a pointer to the first (top left) element of the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(unsafe { *m.as_ptr() }, 0.0);
+    /// ```
     #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
     }
 
     /// Returns the number of rows of the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(m.nrows(), 2);
+    /// ```
     #[inline]
     pub fn nrows(&self) -> usize {
         self.base.nrows
     }
 
     /// Returns the number of columns of the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(m.ncols(), 3);
+    /// ```
     #[inline]
     pub fn ncols(&self) -> usize {
         self.base.ncols
     }
 
     /// Returns the offset between the first elements of two successive rows in the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(m.row_stride(), 1); // mat! returns a column major matrix
+    /// ```
     #[inline]
     pub fn row_stride(&self) -> isize {
         self.base.row_stride
     }
 
     /// Returns the offset between the first elements of two successive columns in the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert!(m.col_stride() >= 2); // the stride has to be at least 2, since the matrix is
+    ///                               // column major and each column has 2 elements.
+    /// ```
     #[inline]
     pub fn col_stride(&self) -> isize {
         self.base.col_stride
     }
 
     /// Returns a pointer to the element at position (i, j) in the matrix.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(unsafe { *m.ptr_at(1, 2) }, 5.0);
+    /// ```
     #[inline]
     pub fn ptr_at(self, i: usize, j: usize) -> *const T {
         self.base
@@ -751,7 +855,13 @@ impl<'a, T> MatRef<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::ptr_at`].
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *const T {
@@ -770,7 +880,13 @@ impl<'a, T> MatRef<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, it panics.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::ptr_at`].
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *const T {
@@ -786,7 +902,13 @@ impl<'a, T> MatRef<'a, T> {
     /// # Safety
     ///
     /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j <= self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::split_at`].
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
@@ -828,7 +950,37 @@ impl<'a, T> MatRef<'a, T> {
     /// # Panics
     ///
     /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`. Otherwise, it panics.
+    /// and `j <= self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
+    /// let m = m.as_ref();
+    /// let (top_left, top_right, bot_left, bot_right) = m.split_at(1, 1);
+    ///
+    /// assert_eq!(top_left.nrows(), 1);
+    /// assert_eq!(top_left.ncols(), 1);
+    /// assert_eq!(top_left[(0, 0)], 0.0);
+    ///
+    /// assert_eq!(top_right.nrows(), 1);
+    /// assert_eq!(top_right.ncols(), 2);
+    /// assert_eq!(top_right[(0, 0)], 2.0);
+    /// assert_eq!(top_right[(0, 1)], 4.0);
+    ///
+    /// assert_eq!(bot_left.nrows(), 1);
+    /// assert_eq!(bot_left.ncols(), 1);
+    /// assert_eq!(bot_left[(0, 0)], 1.0);
+    ///
+    /// assert_eq!(bot_right.nrows(), 1);
+    /// assert_eq!(bot_right.ncols(), 2);
+    /// assert_eq!(bot_right[(0, 0)], 3.0);
+    /// assert_eq!(bot_right[(0, 1)], 5.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
@@ -843,7 +995,13 @@ impl<'a, T> MatRef<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::get`].
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a T {
@@ -854,6 +1012,21 @@ impl<'a, T> MatRef<'a, T> {
 
     /// Returns a reference to the element at position (i, j), or panics if the indices are out of
     /// bounds.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// assert_eq!(m.get(1, 2), &7.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn get(self, i: usize, j: usize) -> &'a T {
@@ -867,7 +1040,13 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::row`].
     #[track_caller]
     #[inline]
     pub unsafe fn row_unchecked(self, i: usize) -> RowRef<'a, T> {
@@ -881,7 +1060,26 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let r = m.row(1);
+    ///
+    /// assert_eq!(r[2], 7.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn row(self, i: usize) -> RowRef<'a, T> {
@@ -894,7 +1092,13 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::col`].
     #[track_caller]
     #[inline]
     pub unsafe fn col_unchecked(self, j: usize) -> ColRef<'a, T> {
@@ -908,7 +1112,26 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let c = m.col(1);
+    ///
+    /// assert_eq!(c[2], 5.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn col(self, j: usize) -> ColRef<'a, T> {
@@ -918,6 +1141,39 @@ impl<'a, T> MatRef<'a, T> {
     }
 
     /// Returns the transpose of `self`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let t = m.transpose();
+    ///
+    /// assert_eq!(t.nrows(), m.ncols());
+    /// assert_eq!(t.ncols(), m.nrows());
+    ///
+    /// assert_eq!(t[(0, 0)], m[(0, 0)]);
+    /// assert_eq!(t[(1, 0)], m[(0, 1)]);
+    /// assert_eq!(t[(2, 0)], m[(0, 2)]);
+    /// assert_eq!(t[(3, 0)], m[(0, 3)]);
+    ///
+    /// assert_eq!(t[(0, 1)], m[(1, 0)]);
+    /// assert_eq!(t[(1, 1)], m[(1, 1)]);
+    /// assert_eq!(t[(2, 1)], m[(1, 2)]);
+    /// assert_eq!(t[(3, 1)], m[(1, 3)]);
+    ///
+    /// assert_eq!(t[(0, 2)], m[(2, 0)]);
+    /// assert_eq!(t[(1, 2)], m[(2, 1)]);
+    /// assert_eq!(t[(2, 2)], m[(2, 2)]);
+    /// assert_eq!(t[(3, 2)], m[(2, 3)]);
+    /// ```
     #[inline]
     pub fn transpose(self) -> MatRef<'a, T> {
         let ptr = self.base.ptr.as_ptr();
@@ -932,9 +1188,43 @@ impl<'a, T> MatRef<'a, T> {
         }
     }
 
-    /// Returns a matrix whose rows are the the rows of the input matrix in inverse order.
+    /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let i = m.reverse_rows();
+    ///
+    /// assert_eq!(i.nrows(), m.nrows());
+    /// assert_eq!(i.ncols(), m.ncols());
+    ///
+    /// assert_eq!(i[(0, 0)], m[(2, 0)]);
+    /// assert_eq!(i[(1, 0)], m[(1, 0)]);
+    /// assert_eq!(i[(2, 0)], m[(0, 0)]);
+    ///
+    /// assert_eq!(i[(0, 1)], m[(2, 1)]);
+    /// assert_eq!(i[(1, 1)], m[(1, 1)]);
+    /// assert_eq!(i[(2, 1)], m[(0, 1)]);
+    ///
+    /// assert_eq!(i[(0, 2)], m[(2, 2)]);
+    /// assert_eq!(i[(1, 2)], m[(1, 2)]);
+    /// assert_eq!(i[(2, 2)], m[(0, 2)]);
+    ///
+    /// assert_eq!(i[(0, 3)], m[(2, 3)]);
+    /// assert_eq!(i[(1, 3)], m[(1, 3)]);
+    /// assert_eq!(i[(2, 3)], m[(0, 3)]);
+    /// ```
     #[inline]
-    pub fn invert_rows(self) -> Self {
+    pub fn reverse_rows(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = -self.row_stride();
@@ -944,9 +1234,43 @@ impl<'a, T> MatRef<'a, T> {
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
-    /// Returns a matrix whose columns are the the columns of the input matrix in inverse order.
+    /// Returns a matrix whose columns are the the columns of the input matrix in reverse order.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let i = m.reverse_cols();
+    ///
+    /// assert_eq!(i.nrows(), m.nrows());
+    /// assert_eq!(i.ncols(), m.ncols());
+    ///
+    /// assert_eq!(i[(0, 0)], m[(0, 3)]);
+    /// assert_eq!(i[(1, 0)], m[(1, 3)]);
+    /// assert_eq!(i[(2, 0)], m[(2, 3)]);
+    ///
+    /// assert_eq!(i[(0, 1)], m[(0, 2)]);
+    /// assert_eq!(i[(1, 1)], m[(1, 2)]);
+    /// assert_eq!(i[(2, 1)], m[(2, 2)]);
+    ///
+    /// assert_eq!(i[(0, 2)], m[(0, 1)]);
+    /// assert_eq!(i[(1, 2)], m[(1, 1)]);
+    /// assert_eq!(i[(2, 2)], m[(2, 1)]);
+    ///
+    /// assert_eq!(i[(0, 3)], m[(0, 0)]);
+    /// assert_eq!(i[(1, 3)], m[(1, 0)]);
+    /// assert_eq!(i[(2, 3)], m[(2, 0)]);
+    /// ```
     #[inline]
-    pub fn invert_cols(self) -> Self {
+    pub fn reverse_cols(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = self.row_stride();
@@ -956,9 +1280,43 @@ impl<'a, T> MatRef<'a, T> {
     }
 
     /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
-    /// inverse order.
+    /// reverse order.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let i = m.reverse_rows_and_cols();
+    ///
+    /// assert_eq!(i.nrows(), m.nrows());
+    /// assert_eq!(i.ncols(), m.ncols());
+    ///
+    /// assert_eq!(i[(0, 0)], m[(2, 3)]);
+    /// assert_eq!(i[(1, 0)], m[(1, 3)]);
+    /// assert_eq!(i[(2, 0)], m[(0, 3)]);
+    ///
+    /// assert_eq!(i[(0, 1)], m[(2, 2)]);
+    /// assert_eq!(i[(1, 1)], m[(1, 2)]);
+    /// assert_eq!(i[(2, 1)], m[(0, 2)]);
+    ///
+    /// assert_eq!(i[(0, 2)], m[(2, 1)]);
+    /// assert_eq!(i[(1, 2)], m[(1, 1)]);
+    /// assert_eq!(i[(2, 2)], m[(0, 1)]);
+    ///
+    /// assert_eq!(i[(0, 3)], m[(2, 0)]);
+    /// assert_eq!(i[(1, 3)], m[(1, 0)]);
+    /// assert_eq!(i[(2, 3)], m[(0, 0)]);
+    /// ```
     #[inline]
-    pub fn invert(self) -> Self {
+    pub fn reverse_rows_and_cols(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = -self.row_stride();
@@ -975,7 +1333,13 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that the matrix be square. Otherwise, the behavior is undefined.
+    /// Requires that the matrix be square.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::diagonal`].
     #[track_caller]
     #[inline]
     pub unsafe fn diagonal_unchecked(self) -> ColRef<'a, T> {
@@ -991,7 +1355,27 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that the matrix be square. Otherwise, it panics.
+    /// Requires that the matrix be square.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![[0.0, 3.0, 6.0], [1.0, 4.0, 7.0], [2.0, 5.0, 8.0]];
+    /// let m = m.as_ref();
+    ///
+    /// let d = m.diagonal();
+    ///
+    /// assert_eq!(d.nrows(), 3);
+    /// assert_eq!(d.ncols(), 1);
+    ///
+    /// assert_eq!(d[0], 0.0);
+    /// assert_eq!(d[1], 4.0);
+    /// assert_eq!(d[2], 8.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn diagonal(self) -> ColRef<'a, T> {
@@ -1019,7 +1403,13 @@ impl<'a, T> MatRef<'a, T> {
     /// Requires that `i <= self.nrows()`,  
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`. Otherwise, the behavior is undefined.
+    /// and `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    ///
+    /// # Example
+    ///
+    /// See [`Self::submatrix`].
     #[track_caller]
     #[inline]
     pub unsafe fn submatrix_unchecked(
@@ -1050,7 +1440,32 @@ impl<'a, T> MatRef<'a, T> {
     /// Requires that `i <= self.nrows()`,  
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`. Otherwise, it panics.
+    /// and `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, it panics.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    ///
+    /// let m = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let m = m.as_ref();
+    ///
+    /// let sub = m.submatrix(1, 2, 2, 2);
+    ///
+    /// assert_eq!(sub.nrows(), 2);
+    /// assert_eq!(sub.ncols(), 2);
+    ///
+    /// assert_eq!(sub[(0, 0)], 7.0);
+    /// assert_eq!(sub[(1, 0)], 8.0);
+    /// assert_eq!(sub[(0, 1)], 10.0);
+    /// assert_eq!(sub[(1, 1)], 11.0);
+    /// ```
     #[track_caller]
     #[inline]
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
@@ -1062,6 +1477,55 @@ impl<'a, T> MatRef<'a, T> {
     }
 
     /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::mat;
+    /// use reborrow::*;
+    ///
+    /// let a = mat![
+    ///     [0.0, 3.0, 6.0, 9.0],
+    ///     [1.0, 4.0, 7.0, 10.0],
+    ///     [2.0, 5.0, 8.0, 11.0],
+    /// ];
+    /// let b = mat![
+    ///     [12.0, 15.0, 18.0, 21.0],
+    ///     [13.0, 16.0, 19.0, 22.0],
+    ///     [14.0, 17.0, 20.0, 23.0],
+    /// ];
+    /// let mut c = mat![
+    ///     [0.0, 0.0, 0.0, 0.0],
+    ///     [0.0, 0.0, 0.0, 0.0],
+    ///     [0.0, 0.0, 0.0, 0.0],
+    /// ];
+    ///
+    /// let a = a.as_ref();
+    /// let b = b.as_ref();
+    /// let mut c = c.as_mut();
+    ///
+    /// c.rb_mut()
+    ///     .cwise()
+    ///     .zip(a)
+    ///     .zip(b)
+    ///     .for_each(|c, a, b| *c = *a + *b);
+    ///
+    /// assert_eq!(c[(0, 0)], a[(0, 0)] + b[(0, 0)]);
+    /// assert_eq!(c[(1, 0)], a[(1, 0)] + b[(1, 0)]);
+    /// assert_eq!(c[(2, 0)], a[(2, 0)] + b[(2, 0)]);
+    ///
+    /// assert_eq!(c[(0, 1)], a[(0, 1)] + b[(0, 1)]);
+    /// assert_eq!(c[(1, 1)], a[(1, 1)] + b[(1, 1)]);
+    /// assert_eq!(c[(2, 1)], a[(2, 1)] + b[(2, 1)]);
+    ///
+    /// assert_eq!(c[(0, 2)], a[(0, 2)] + b[(0, 2)]);
+    /// assert_eq!(c[(1, 2)], a[(1, 2)] + b[(1, 2)]);
+    /// assert_eq!(c[(2, 2)], a[(2, 2)] + b[(2, 2)]);
+    ///
+    /// assert_eq!(c[(0, 3)], a[(0, 3)] + b[(0, 3)]);
+    /// assert_eq!(c[(1, 3)], a[(1, 3)] + b[(1, 3)]);
+    /// assert_eq!(c[(2, 3)], a[(2, 3)] + b[(2, 3)]);
+    /// ```
     #[inline]
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
@@ -1106,7 +1570,7 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
-    /// Returns a mutable pointer to the first element of the matrix.
+    /// Returns a mutable pointer to the first (top left) element of the matrix.
     #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
@@ -1152,7 +1616,9 @@ impl<'a, T> MatMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *mut T {
@@ -1171,7 +1637,9 @@ impl<'a, T> MatMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, it panics.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *mut T {
@@ -1187,7 +1655,9 @@ impl<'a, T> MatMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j <= self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
@@ -1229,7 +1699,9 @@ impl<'a, T> MatMut<'a, T> {
     /// # Panics
     ///
     /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`. Otherwise, it panics.
+    /// and `j <= self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
@@ -1244,7 +1716,9 @@ impl<'a, T> MatMut<'a, T> {
     /// # Safety
     ///
     /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// and `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a mut T {
@@ -1268,7 +1742,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn row_unchecked(self, i: usize) -> RowMut<'a, T> {
@@ -1282,7 +1758,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn row(self, i: usize) -> RowMut<'a, T> {
@@ -1295,7 +1773,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn col_unchecked(self, j: usize) -> ColMut<'a, T> {
@@ -1309,7 +1789,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn col(self, j: usize) -> ColMut<'a, T> {
@@ -1333,9 +1815,9 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
-    /// Returns a matrix whose rows are the the rows of the input matrix in inverse order.
+    /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
     #[inline]
-    pub fn invert_rows(self) -> Self {
+    pub fn reverse_rows(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = -self.row_stride();
@@ -1345,9 +1827,9 @@ impl<'a, T> MatMut<'a, T> {
         unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
-    /// Returns a matrix whose columns are the the columns of the input matrix in inverse order.
+    /// Returns a matrix whose columns are the the columns of the input matrix in reverse order.
     #[inline]
-    pub fn invert_cols(self) -> Self {
+    pub fn reverse_cols(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = self.row_stride();
@@ -1357,9 +1839,9 @@ impl<'a, T> MatMut<'a, T> {
     }
 
     /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
-    /// inverse order.
+    /// reverse order.
     #[inline]
-    pub fn invert(self) -> Self {
+    pub fn reverse_rows_and_cols(self) -> Self {
         let nrows = self.nrows();
         let ncols = self.ncols();
         let row_stride = -self.row_stride();
@@ -1376,7 +1858,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that the matrix be square. Otherwise, the behavior is undefined.
+    /// Requires that the matrix be square.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn diagonal_unchecked(self) -> ColMut<'a, T> {
@@ -1392,7 +1876,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that the matrix be square. Otherwise, it panics.
+    /// Requires that the matrix be square.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn diagonal(self) -> ColMut<'a, T> {
@@ -1420,7 +1906,9 @@ impl<'a, T> MatMut<'a, T> {
     /// Requires that `i <= self.nrows()`,  
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`. Otherwise, the behavior is undefined.
+    /// and `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn submatrix_unchecked(
@@ -1453,7 +1941,9 @@ impl<'a, T> MatMut<'a, T> {
     /// Requires that `i <= self.nrows()`,  
     /// `j <= self.ncols()`,  
     /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`. Otherwise, it panics.
+    /// and `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
@@ -1496,7 +1986,7 @@ impl<'a, T> RowRef<'a, T> {
         }
     }
 
-    /// Returns a pointer to the first element of the row vector.
+    /// Returns a pointer to the first (left) element of the row vector.
     #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
@@ -1534,7 +2024,9 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *const T {
@@ -1550,7 +2042,9 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, j: usize) -> *const T {
@@ -1563,7 +2057,9 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j <= self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
@@ -1580,7 +2076,9 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j <= self.ncols()`. Otherwise, it panics.
+    /// Requires that `j <= self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn split_at(self, j: usize) -> (Self, Self) {
@@ -1593,7 +2091,9 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a T {
@@ -1660,7 +2160,7 @@ impl<'a, T> RowMut<'a, T> {
         }
     }
 
-    /// Returns a mutable pointer to the first element of the row vector.
+    /// Returns a mutable pointer to the first (left) element of the row vector.
     #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
@@ -1698,7 +2198,9 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *mut T {
@@ -1714,7 +2216,9 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`. Otherwise, it panics.
+    /// Requires that `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, j: usize) -> *mut T {
@@ -1727,7 +2231,9 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j <= self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires that `j <= self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
@@ -1744,7 +2250,9 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j <= self.ncols()`. Otherwise, it panics.
+    /// Requires that `j <= self.ncols()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn split_at(self, j: usize) -> (Self, Self) {
@@ -1757,7 +2265,9 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires `j < self.ncols()`. Otherwise, the behavior is undefined.
+    /// Requires `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a mut T {
@@ -1823,7 +2333,7 @@ impl<'a, T> ColRef<'a, T> {
         }
     }
 
-    /// Returns a pointer to the first element of the column vector.
+    /// Returns a pointer to the first (top) element of the column vector.
     #[inline]
     pub fn as_ptr(self) -> *const T {
         self.base.ptr.as_ptr()
@@ -1861,7 +2371,9 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *const T {
@@ -1877,7 +2389,9 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, i: usize) -> *const T {
@@ -1890,7 +2404,9 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i <= self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
@@ -1907,7 +2423,9 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`. Otherwise, it panics.
+    /// Requires that `i <= self.nrows()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn split_at(self, i: usize) -> (Self, Self) {
@@ -1920,7 +2438,9 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a T {
@@ -1987,7 +2507,7 @@ impl<'a, T> ColMut<'a, T> {
         }
     }
 
-    /// Returns a mutable pointer to the first element of the column vector.
+    /// Returns a mutable pointer to the first (top) element of the column vector.
     #[inline]
     pub fn as_ptr(self) -> *mut T {
         self.base.ptr.as_ptr()
@@ -2025,7 +2545,9 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *mut T {
@@ -2041,7 +2563,9 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`. Otherwise, it panics.
+    /// Requires that `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn ptr_in_bounds_at(self, i: usize) -> *mut T {
@@ -2054,7 +2578,9 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires that `i <= self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
@@ -2071,7 +2597,9 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`. Otherwise, it panics.
+    /// Requires that `i <= self.nrows()`.
+    ///
+    /// Otherwise, it panics.
     #[track_caller]
     #[inline]
     pub fn split_at(self, i: usize) -> (Self, Self) {
@@ -2084,7 +2612,9 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires `i < self.nrows()`. Otherwise, the behavior is undefined.
+    /// Requires `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
     #[track_caller]
     #[inline]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a mut T {
@@ -2826,12 +3356,12 @@ pub mod iter {
 }
 
 impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         struct DebugRowSlice<'a, T>(RowRef<'a, T>);
         struct ComplexDebug<'a, T>(&'a T);
 
         impl<'a, T: Debug + 'static> Debug for ComplexDebug<'a, T> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 let id = TypeId::of::<T>();
 
                 fn as_debug(t: impl Debug) -> impl Debug {
@@ -2860,7 +3390,7 @@ impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
         }
 
         impl<'a, T: Debug + 'static> Debug for DebugRowSlice<'a, T> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 f.debug_list()
                     .entries(self.0.into_iter().map(|x| ComplexDebug(x)))
                     .finish()
@@ -2876,28 +3406,28 @@ impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
     }
 }
 impl<'a, T: Debug + 'static> Debug for MatMut<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().fmt(f)
     }
 }
 impl<'a, T: Debug + 'static> Debug for RowRef<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
 impl<'a, T: Debug + 'static> Debug for RowMut<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
 
 impl<'a, T: Debug + 'static> Debug for ColRef<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
 impl<'a, T: Debug + 'static> Debug for ColMut<'a, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().as_2d().fmt(f)
     }
 }
@@ -3013,7 +3543,7 @@ macro_rules! izip {
 /// [`MatMut::get`], [`MatMut::get_unchecked`], the indexing operator, etc., on the resulting matrix
 /// can cause undefined behavior.
 ///
-/// Use the pointer access API instead: e.g., [`MatMut::ptr_at`].
+/// Use the pointer access API instead: e.g., [`MatMut::ptr_at`] or [`zip::MatUninit`].
 #[macro_export]
 macro_rules! temp_mat_uninit {
     {
@@ -3140,7 +3670,7 @@ fn capacity_overflow<T>() -> T {
 
 impl<T: 'static> RawMat<T> {
     pub fn new(row_capacity: usize, col_capacity: usize) -> Self {
-        if std::mem::size_of::<T>() == 0 {
+        if core::mem::size_of::<T>() == 0 {
             Self {
                 ptr: NonNull::<T>::dangling(),
                 row_capacity,
@@ -3151,20 +3681,20 @@ impl<T: 'static> RawMat<T> {
                 .checked_mul(col_capacity)
                 .unwrap_or_else(capacity_overflow);
             let cap_bytes = cap
-                .checked_mul(std::mem::size_of::<T>())
+                .checked_mul(core::mem::size_of::<T>())
                 .unwrap_or_else(capacity_overflow);
             if cap_bytes > isize::MAX as usize {
                 capacity_overflow::<()>();
             }
 
-            use std::alloc::{alloc, handle_alloc_error, Layout};
+            use alloc::alloc::{alloc, handle_alloc_error, Layout};
 
             let layout = Layout::from_size_align(cap_bytes, align_for::<T>())
                 .ok()
                 .unwrap_or_else(capacity_overflow);
 
             let ptr = if layout.size() == 0 {
-                std::ptr::NonNull::<T>::dangling()
+                core::ptr::NonNull::<T>::dangling()
             } else {
                 // SAFETY: we checked that layout has non zero size
                 let ptr = unsafe { alloc(layout) } as *mut T;
@@ -3187,14 +3717,14 @@ impl<T: 'static> RawMat<T> {
 
 impl<T> Drop for RawMat<T> {
     fn drop(&mut self) {
-        use std::alloc::{dealloc, Layout};
+        use alloc::alloc::{dealloc, Layout};
         // this cannot overflow because we already allocated this much memory
         // self.row_capacity.wrapping_mul(self.col_capacity) may overflow if T is a zst
         // but that's fine since we immediately multiply it by 0.
         let alloc_size =
-            self.row_capacity.wrapping_mul(self.col_capacity) * std::mem::size_of::<T>();
+            self.row_capacity.wrapping_mul(self.col_capacity) * core::mem::size_of::<T>();
         if alloc_size != 0 {
-            // SAFETY: pointer was allocated with std::alloc::alloc
+            // SAFETY: pointer was allocated with alloc::alloc::alloc
             unsafe {
                 dealloc(
                     self.ptr.as_ptr() as *mut u8,
@@ -3222,8 +3752,8 @@ impl<T> Drop for BlockGuard<T> {
             let ptr_j = self.ptr.wrapping_offset(j as isize * self.cs);
             // SAFETY: this is safe because we created these elements and need to
             // drop them
-            let slice = unsafe { std::slice::from_raw_parts_mut(ptr_j, self.nrows) };
-            unsafe { std::ptr::drop_in_place(slice) };
+            let slice = unsafe { core::slice::from_raw_parts_mut(ptr_j, self.nrows) };
+            unsafe { core::ptr::drop_in_place(slice) };
         }
     }
 }
@@ -3232,8 +3762,8 @@ impl<T> Drop for ColGuard<T> {
         let ptr = self.ptr;
         // SAFETY: this is safe because we created these elements and need to
         // drop them
-        let slice = unsafe { std::slice::from_raw_parts_mut(ptr, self.nrows) };
-        unsafe { std::ptr::drop_in_place(slice) };
+        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, self.nrows) };
+        unsafe { core::ptr::drop_in_place(slice) };
     }
 }
 
@@ -3334,7 +3864,7 @@ impl<T: 'static> Mat<T> {
     /// number of columns, row capacity and column capacity.
     #[inline]
     pub fn into_raw_parts(self) -> (*mut T, usize, usize, usize, usize) {
-        let mut m = std::mem::ManuallyDrop::<Mat<T>>::new(self);
+        let mut m = core::mem::ManuallyDrop::<Mat<T>>::new(self);
         (
             m.as_mut_ptr(),
             m.nrows(),
@@ -3452,7 +3982,7 @@ impl<T: 'static> Mat<T> {
 
     #[cold]
     fn do_reserve_exact(&mut self, mut new_row_capacity: usize, mut new_col_capacity: usize) {
-        use std::mem::ManuallyDrop;
+        use core::mem::ManuallyDrop;
 
         new_row_capacity = self.row_capacity().max(new_row_capacity);
         new_col_capacity = self.col_capacity().max(new_col_capacity);
@@ -3465,17 +3995,17 @@ impl<T: 'static> Mat<T> {
             // we have enough row capacity, and we've already allocated memory.
             // use realloc to get extra column memory
 
-            use std::alloc::{handle_alloc_error, realloc, Layout};
+            use alloc::alloc::{handle_alloc_error, realloc, Layout};
 
             // this shouldn't overflow since we already hold this many bytes
             let old_cap = self.row_capacity() * self.col_capacity();
-            let old_cap_bytes = old_cap * std::mem::size_of::<T>();
+            let old_cap_bytes = old_cap * core::mem::size_of::<T>();
 
             let new_cap = new_row_capacity
                 .checked_mul(new_col_capacity)
                 .unwrap_or_else(capacity_overflow);
             let new_cap_bytes = new_cap
-                .checked_mul(std::mem::size_of::<T>())
+                .checked_mul(core::mem::size_of::<T>())
                 .unwrap_or_else(capacity_overflow);
 
             if new_cap_bytes > isize::MAX as usize {
@@ -3527,7 +4057,7 @@ impl<T: 'static> Mat<T> {
                 unsafe {
                     let old_ptr = old_ptr.add(j * self.row_capacity());
                     let new_ptr = new_ptr.add(j * new_row_capacity);
-                    std::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.nrows());
+                    core::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.nrows());
                 }
             }
 
@@ -3557,7 +4087,7 @@ impl<T: 'static> Mat<T> {
     pub fn reserve_exact(&mut self, row_capacity: usize, col_capacity: usize) {
         if self.row_capacity() >= row_capacity && self.col_capacity() >= col_capacity {
             // do nothing
-        } else if std::mem::size_of::<T>() == 0 {
+        } else if core::mem::size_of::<T>() == 0 {
             self.raw.row_capacity = self.row_capacity().max(row_capacity);
             self.raw.col_capacity = self.col_capacity().max(col_capacity);
         } else {
@@ -3586,7 +4116,7 @@ impl<T: 'static> Mat<T> {
 
                 // SAFETY: we drop an object that is within its lifetime since the matrix
                 // contains valid elements at each index within bounds
-                std::ptr::drop_in_place(ptr_ij);
+                core::ptr::drop_in_place(ptr_ij);
             }
         }
     }
@@ -3628,13 +4158,13 @@ impl<T: 'static> Mat<T> {
                 // * writing to this memory region is sound since it is properly
                 // aligned and valid for writes
                 let ptr_ij = ptr_j.add(i);
-                std::ptr::write(ptr_ij, f(i, j));
+                core::ptr::write(ptr_ij, f(i, j));
                 col_guard.nrows += 1;
             }
-            std::mem::forget(col_guard);
+            core::mem::forget(col_guard);
             block_guard.ncols += 1;
         }
-        std::mem::forget(block_guard);
+        core::mem::forget(block_guard);
     }
 
     fn erase_last_cols(&mut self, new_ncols: usize) {
@@ -3759,7 +4289,7 @@ impl<T> Drop for Mat<T> {
             for i in 0..nrows {
                 // SAFETY: these elements were previously created in this storage.
                 unsafe {
-                    std::ptr::drop_in_place(ptr.add(i));
+                    core::ptr::drop_in_place(ptr.add(i));
                 }
             }
             ptr = ptr.wrapping_add(cs);
@@ -3769,7 +4299,7 @@ impl<T> Drop for Mat<T> {
 
 impl<T: Debug + 'static> Debug for Mat<T> {
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_ref().fmt(f)
     }
 }

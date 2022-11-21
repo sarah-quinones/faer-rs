@@ -162,7 +162,7 @@ pub fn matmul<T: ComplexField>(
 /// Triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices.
 pub mod triangular {
-    use std::mem::MaybeUninit;
+    use core::mem::MaybeUninit;
 
     use super::*;
     use crate::{
@@ -589,9 +589,9 @@ pub mod triangular {
                 parallelism,
             );
             mat_x_lower_impl_unchecked(
-                dst_bot_left.invert().transpose(),
-                rhs_bot_left.invert().transpose(),
-                lhs_bot_right.invert().transpose(),
+                dst_bot_left.reverse_rows_and_cols().transpose(),
+                rhs_bot_left.reverse_rows_and_cols().transpose(),
+                lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
                 Some(T::one()),
                 beta,
@@ -1172,17 +1172,20 @@ pub mod triangular {
             false
         } else if rhs_structure.is_upper() {
             // invert dst, lhs and rhs
-            dst = dst.invert();
-            lhs = lhs.invert();
-            rhs = rhs.invert();
+            dst = dst.reverse_rows_and_cols();
+            lhs = lhs.reverse_rows_and_cols();
+            rhs = rhs.reverse_rows_and_cols();
             dst_structure = dst_structure.transpose();
             lhs_structure = lhs_structure.transpose();
             rhs_structure = rhs_structure.transpose();
             false
         } else if lhs_structure.is_lower() {
             // invert and transpose
-            dst = dst.invert().transpose();
-            (lhs, rhs) = (rhs.invert().transpose(), lhs.invert().transpose());
+            dst = dst.reverse_rows_and_cols().transpose();
+            (lhs, rhs) = (
+                rhs.reverse_rows_and_cols().transpose(),
+                lhs.reverse_rows_and_cols().transpose(),
+            );
             (conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
             (lhs_structure, rhs_structure) = (rhs_structure, lhs_structure);
             true

@@ -33,16 +33,16 @@ pub trait CwiseRow<'short, Outlives = &'short Self>: Seal {
     unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item;
 }
 
-// Simple wrapper indicating that values contained in this matrix may be uninitialized, and thus
-// references to them shouldn't be created.
+/// Simple wrapper indicating that values contained in this matrix may be uninitialized, and thus
+/// references to them shouldn't be created.
 pub struct MatUninit<'a, T>(pub MatMut<'a, T>);
 
-// Simple wrapper indicating that values contained in this column may be uninitialized, and thus
-// references to them shouldn't be created.
+/// Simple wrapper indicating that values contained in this column may be uninitialized, and thus
+/// references to them shouldn't be created.
 pub struct ColUninit<'a, T>(pub ColMut<'a, T>);
 
-// Simple wrapper indicating that values contained in this row may be uninitialized, and thus
-// references to them shouldn't be created.
+/// Simple wrapper indicating that values contained in this row may be uninitialized, and thus
+/// references to them shouldn't be created.
 pub struct RowUninit<'a, T>(pub RowMut<'a, T>);
 
 impl<'a, T> MatUninit<'a, T> {
