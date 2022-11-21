@@ -1,3 +1,18 @@
+# faer
+
+`faer` is a collection of crates that implement linear algebra routines with a pure Rust backend and a focus on portability, correctness, and performance.
+
+## faer-core
+
+The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
+
+# Benchmarks
+
+The benchmarks were run on an `11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz`.
+
+## Matrix multiplication
+
+Multiplication of two square matrices of size `n`.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           2.5µs                1.5µs                1.5µs                          2.8µs
