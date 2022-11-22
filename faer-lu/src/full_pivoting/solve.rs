@@ -377,8 +377,8 @@ mod tests {
 
     #[test]
     fn test_solve_to_f64() {
-        test_solve_to(|| random::<f64>(), 1e-10_f64);
-        test_solve_transpose_to(|| random::<f64>(), 1e-10_f64);
+        test_solve_to(|| random::<f64>(), 1e-6_f64);
+        test_solve_transpose_to(|| random::<f64>(), 1e-6_f64);
     }
 
     #[test]
@@ -389,8 +389,8 @@ mod tests {
 
     #[test]
     fn test_solve_to_c64() {
-        test_solve_to(|| c64::new(random(), random()), 1e-10_f64);
-        test_solve_transpose_to(|| c64::new(random(), random()), 1e-10_f64);
+        test_solve_to(|| c64::new(random(), random()), 1e-6_f64);
+        test_solve_transpose_to(|| c64::new(random(), random()), 1e-6_f64);
     }
 
     #[test]
