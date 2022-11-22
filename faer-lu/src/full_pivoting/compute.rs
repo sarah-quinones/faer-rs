@@ -440,7 +440,11 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
     if is_col_major && is_f64 {
         unsafe { transmute_copy(&best_in_matrix_f64(transmute_copy(&matrix))) }
     } else if is_row_major && is_f64 {
-        unsafe { transmute_copy(&best_in_matrix_f64(transmute_copy(&matrix.transpose()))) }
+        unsafe {
+            let (max_col, max_row, max_val) =
+                best_in_matrix_f64(transmute_copy(&matrix.transpose()));
+            transmute_copy(&(max_row, max_col, max_val))
+        }
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
@@ -820,6 +824,54 @@ mod tests {
                     make_stack!(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap()),
                 );
                 let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb(), col_perm.rb());
+
+                for i in 0..m {
+                    for j in 0..n {
+                        assert_approx_eq!(mat_orig[(i, j)], reconstructed[(i, j)]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compute_lu_row_major() {
+        for (m, n) in [
+            (2, 4),
+            (2, 2),
+            (3, 3),
+            (4, 2),
+            (2, 1),
+            (4, 4),
+            (20, 20),
+            (20, 2),
+            (2, 20),
+            (40, 20),
+            (20, 40),
+        ] {
+            let random_mat = Mat::with_dims(|_i, _j| random::<f64>(), n, m);
+            for parallelism in [Parallelism::None, Parallelism::Rayon(12)] {
+                let mut mat = random_mat.clone();
+                let mat_orig = mat.clone();
+
+                let mut mat = mat.as_mut().transpose();
+                let mat_orig = mat_orig.as_ref().transpose();
+
+                let mut row_perm = vec![0; m];
+                let mut row_perm_inv = vec![0; m];
+                let mut col_perm = vec![0; n];
+                let mut col_perm_inv = vec![0; n];
+
+                let (_, row_perm, col_perm) = lu_in_place(
+                    mat.rb_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    parallelism,
+                    make_stack!(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap()),
+                );
+                let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
 
                 for i in 0..m {
                     for j in 0..n {
