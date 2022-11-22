@@ -127,6 +127,11 @@ pub trait ComplexField:
     ///
     /// An implementation may choose either, so long as it chooses consistently.
     fn score(self) -> Self::Real;
+
+    #[inline(always)]
+    fn abs(self) -> Self::Real {
+        (self * self.conj()).real().sqrt()
+    }
 }
 
 /// The imaginary unit. This struct is useful for copy-pasting matrix [`Debug`] output as code.
@@ -3949,7 +3954,7 @@ impl<T: 'static> Mat<T> {
     ///
     /// Panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn with_dims(f: impl Fn(usize, usize) -> T, nrows: usize, ncols: usize) -> Self {
+    pub fn with_dims(f: impl FnMut(usize, usize) -> T, nrows: usize, ncols: usize) -> Self {
         let mut this = Self::new();
         this.resize_with(f, nrows, ncols);
         this
@@ -4174,9 +4179,9 @@ impl<T: 'static> Mat<T> {
         }
     }
 
-    unsafe fn insert_block_with<F: Fn(usize, usize) -> T>(
+    unsafe fn insert_block_with<F: FnMut(usize, usize) -> T>(
         &mut self,
-        f: &F,
+        f: &mut F,
         row_start: usize,
         row_end: usize,
         col_start: usize,
@@ -4246,7 +4251,11 @@ impl<T: 'static> Mat<T> {
         }
     }
 
-    unsafe fn insert_last_cols_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_ncols: usize) {
+    unsafe fn insert_last_cols_with<F: FnMut(usize, usize) -> T>(
+        &mut self,
+        f: &mut F,
+        new_ncols: usize,
+    ) {
         let old_ncols = self.ncols();
 
         fancy_debug_assert!(new_ncols > old_ncols);
@@ -4255,7 +4264,11 @@ impl<T: 'static> Mat<T> {
         self.ncols = new_ncols;
     }
 
-    unsafe fn insert_last_rows_with<F: Fn(usize, usize) -> T>(&mut self, f: &F, new_nrows: usize) {
+    unsafe fn insert_last_rows_with<F: FnMut(usize, usize) -> T>(
+        &mut self,
+        f: &mut F,
+        new_nrows: usize,
+    ) {
         let old_nrows = self.nrows();
 
         fancy_debug_assert!(new_nrows > old_nrows);
@@ -4269,10 +4282,11 @@ impl<T: 'static> Mat<T> {
     /// given function `f`, so that elements at position `(i, j)` are created by calling `f(i, j)`.
     pub fn resize_with(
         &mut self,
-        f: impl Fn(usize, usize) -> T,
+        f: impl FnMut(usize, usize) -> T,
         new_nrows: usize,
         new_ncols: usize,
     ) {
+        let mut f = f;
         let old_nrows = self.nrows();
         let old_ncols = self.ncols();
 
@@ -4283,7 +4297,7 @@ impl<T: 'static> Mat<T> {
             } else {
                 self.reserve_exact(new_nrows, new_ncols);
                 unsafe {
-                    self.insert_last_rows_with(&f, new_nrows);
+                    self.insert_last_rows_with(&mut f, new_nrows);
                 }
             }
         } else {
@@ -4292,12 +4306,12 @@ impl<T: 'static> Mat<T> {
             } else {
                 self.reserve_exact(new_nrows, new_ncols);
                 unsafe {
-                    self.insert_last_rows_with(&f, new_nrows);
+                    self.insert_last_rows_with(&mut f, new_nrows);
                 }
             }
             self.reserve_exact(new_nrows, new_ncols);
             unsafe {
-                self.insert_last_cols_with(&f, new_ncols);
+                self.insert_last_cols_with(&mut f, new_ncols);
             }
         }
     }
