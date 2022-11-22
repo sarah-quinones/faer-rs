@@ -6,7 +6,6 @@ pub mod update;
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
-    use num_complex::ComplexFloat;
     use rand::random;
 
     use super::{compute::*, solve::*, update::*};

@@ -490,7 +490,6 @@ mod tests {
     use faer_core::{
         c64, householder::apply_househodler_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
     };
-    use num_complex::ComplexFloat;
     use rand::random;
 
     macro_rules! placeholder_stack {
