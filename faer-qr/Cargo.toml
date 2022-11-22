@@ -1,7 +1,13 @@
 [package]
 name = "faer-qr"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
 faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
