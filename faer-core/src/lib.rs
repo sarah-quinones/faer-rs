@@ -690,6 +690,51 @@ impl<'a, T> IntoConst for RowMut<'a, T> {
     }
 }
 
+impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
+    fn eq(&self, other: &MatRef<'a, U>) -> bool {
+        let same_dims = self.nrows() == other.nrows() && self.ncols() == other.ncols();
+        if !same_dims {
+            return false;
+        } else {
+            let m = self.nrows();
+            let n = self.ncols();
+
+            for j in 0..n {
+                for i in 0..m {
+                    unsafe {
+                        if !(self.get_unchecked(i, j) == other.get_unchecked(i, j)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
+        }
+    }
+}
+
+impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatMut<'a, T> {
+    #[inline]
+    fn eq(&self, other: &MatRef<'a, U>) -> bool {
+        self.rb() == other.rb()
+    }
+}
+
+impl<'a, U, T: PartialEq<U>> PartialEq<MatMut<'a, U>> for MatRef<'a, T> {
+    #[inline]
+    fn eq(&self, other: &MatMut<'a, U>) -> bool {
+        self.rb() == other.rb()
+    }
+}
+
+impl<'a, U, T: PartialEq<U>> PartialEq<MatMut<'a, U>> for MatMut<'a, T> {
+    #[inline]
+    fn eq(&self, other: &MatMut<'a, U>) -> bool {
+        self.rb() == other.rb()
+    }
+}
+
 impl<'a, T> MatRef<'a, T> {
     /// Returns a matrix slice from the given arguments.  
     /// `ptr`: pointer to the first element of the matrix.  

@@ -4,8 +4,9 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
-    mul::matmul, permutation::PermutationIndicesMut, ColRef, ComplexField, Conj, MatMut, MatRef,
-    Parallelism, RowRef,
+    mul::matmul,
+    permutation::{swap_cols_unchecked, swap_rows_unchecked, PermutationIndicesMut},
+    ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowRef,
 };
 use pulp::Simd;
 use reborrow::*;
@@ -547,20 +548,12 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
 
     if max_row != 0 {
         n_transpositions += 1;
-
-        let (_, top, _, bot) = matrix.rb_mut().split_at_unchecked(1, 0);
-        let row_j = top.row_unchecked(0);
-        let row_max = bot.row_unchecked(max_row - 1);
-        swap_cols(row_j.transpose(), row_max.transpose());
+        swap_rows_unchecked(matrix.rb_mut(), 0, max_row);
     }
 
     if max_col != 0 {
         n_transpositions += 1;
-
-        let (_, _, left, right) = matrix.rb_mut().split_at_unchecked(0, 1);
-        let col_j = left.col_unchecked(0);
-        let col_max = right.col_unchecked(max_col - 1);
-        swap_cols(col_j, col_max);
+        swap_cols_unchecked(matrix.rb_mut(), 0, max_col);
     }
 
     for k in 0..size {
@@ -673,35 +666,16 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
 
         if max_row != k + 1 {
             n_transpositions += 1;
-
-            let (_, top, _, bot) = matrix.rb_mut().split_at_unchecked(k + 2, 0);
-            let row_j = top.row_unchecked(k + 1);
-            let row_max = bot.row_unchecked(max_row - k - 2);
-            swap_cols(row_j.transpose(), row_max.transpose());
+            swap_rows_unchecked(matrix.rb_mut(), k + 1, max_row);
         }
 
         if max_col != k + 1 {
             n_transpositions += 1;
-
-            let (_, _, left, right) = matrix.rb_mut().split_at_unchecked(0, k + 2);
-            let col_j = left.col_unchecked(k + 1);
-            let col_max = right.col_unchecked(max_col - k - 2);
-            swap_cols(col_j, col_max);
+            swap_cols_unchecked(matrix.rb_mut(), k + 1, max_col);
         }
     }
 
     n_transpositions
-}
-
-#[inline]
-unsafe fn swap_cols<T>(mut col_j: faer_core::ColMut<T>, mut col_max: faer_core::ColMut<T>) {
-    let m = col_j.nrows();
-    for k in 0..m {
-        core::mem::swap(
-            col_j.rb_mut().get_unchecked(k),
-            col_max.rb_mut().get_unchecked(k),
-        );
-    }
 }
 
 pub fn lu_in_place_req<T: 'static>(
@@ -784,7 +758,7 @@ mod tests {
 
     use super::*;
 
-    fn reconstruct_matrix(lu_factors: MatRef<'_, f64>) -> Mat<f64> {
+    fn reconstruct_matrix<T: ComplexField>(lu_factors: MatRef<'_, T>) -> Mat<T> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
 
@@ -811,7 +785,7 @@ mod tests {
             TriangularUpper,
             Conj::No,
             None,
-            1.0,
+            T::one(),
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
@@ -825,7 +799,7 @@ mod tests {
             Rectangular,
             Conj::No,
             None,
-            1.0,
+            T::one(),
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
@@ -839,7 +813,7 @@ mod tests {
             TriangularUpper,
             Conj::No,
             None,
-            1.0,
+            T::one(),
             Parallelism::Rayon(8),
         );
         mul::triangular::matmul(
@@ -853,7 +827,7 @@ mod tests {
             Rectangular,
             Conj::No,
             None,
-            1.0,
+            T::one(),
             Parallelism::Rayon(8),
         );
 

@@ -5,7 +5,9 @@ use core::{
 };
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use faer_core::{ColMut, ColRef, ComplexField, MatMut, Parallelism};
+use faer_core::{
+    permutation::swap_cols_unchecked, ColMut, ColRef, ComplexField, MatMut, Parallelism,
+};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -276,30 +278,12 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     }
 
     for k in 0..size {
-        let (_, _, first_col, mut last_cols) = matrix
-            .rb_mut()
-            .submatrix_unchecked(0, k, m, n - k)
-            .split_at_unchecked(0, 1);
-        let mut first_col = first_col.col_unchecked(0);
+        let mut matrix_right = matrix.rb_mut().submatrix_unchecked(0, k, m, n - k);
 
         col_transpositions[k] = k + biggest_col_idx;
         if biggest_col_idx > 0 {
             n_transpositions += 1;
-
-            if first_col.row_stride() == 1 {
-                core::ptr::swap_nonoverlapping(
-                    first_col.rb_mut().as_ptr(),
-                    last_cols.rb_mut().ptr_at(0, biggest_col_idx - 1),
-                    m,
-                );
-            } else {
-                for i in 0..m {
-                    core::mem::swap(
-                        &mut *first_col.rb_mut().ptr_at(i),
-                        &mut *last_cols.rb_mut().ptr_at(i, biggest_col_idx - 1),
-                    );
-                }
-            }
+            swap_cols_unchecked(matrix_right.rb_mut(), 0, biggest_col_idx);
         }
 
         let mut matrix = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);

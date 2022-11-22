@@ -3,6 +3,43 @@ use reborrow::*;
 
 use crate::{MatMut, MatRef};
 
+#[inline]
+pub unsafe fn swap_cols_unchecked<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
+    let m = mat.nrows();
+    let n = mat.ncols();
+    fancy_debug_assert!(a < n);
+    fancy_debug_assert!(b < n);
+
+    if a == b {
+        return;
+    }
+
+    let rs = mat.row_stride();
+    let cs = mat.col_stride();
+    let ptr = mat.as_ptr();
+
+    let ptr_a = ptr.wrapping_offset(cs * a as isize);
+    let ptr_b = ptr.wrapping_offset(cs * b as isize);
+
+    if rs == 1 {
+        core::ptr::swap_nonoverlapping(ptr_a, ptr_b, m);
+    } else {
+        for i in 0..m {
+            let offset = rs * i as isize;
+            core::ptr::swap_nonoverlapping(
+                ptr_a.wrapping_offset(offset),
+                ptr_b.wrapping_offset(offset),
+                1,
+            );
+        }
+    }
+}
+
+#[inline]
+pub unsafe fn swap_rows_unchecked<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
+    swap_cols_unchecked(mat.transpose(), a, b)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct PermutationIndicesRef<'a> {
     forward: &'a [usize],
