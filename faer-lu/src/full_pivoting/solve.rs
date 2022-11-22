@@ -383,8 +383,8 @@ mod tests {
 
     #[test]
     fn test_solve_to_f32() {
-        test_solve_to(|| random::<f32>(), 1e-2_f32);
-        test_solve_transpose_to(|| random::<f32>(), 1e-2_f32);
+        test_solve_to(|| random::<f32>(), 1e-1_f32);
+        test_solve_transpose_to(|| random::<f32>(), 1e-1_f32);
     }
 
     #[test]
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn test_solve_to_c32() {
-        test_solve_to(|| c32::new(random(), random()), 1e-2_f32);
-        test_solve_transpose_to(|| c32::new(random(), random()), 1e-2_f32);
+        test_solve_to(|| c32::new(random(), random()), 1e-1_f32);
+        test_solve_transpose_to(|| c32::new(random(), random()), 1e-1_f32);
     }
 }
