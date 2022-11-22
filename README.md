@@ -53,3 +53,22 @@ Multiplication of two square matrices of size `n`.
   896          24.4ms                6.2ms                5.3ms                           26ms
  1024          38.2ms                  9ms                7.4ms                         39.1ms
 ```
+
+## Triangular solve
+
+Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`.
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32           2.9µs                2.7µs               36.4µs                          8.6µs
+   64          10.4µs               10.4µs               25.5µs                         50.4µs
+   96          29.9µs               30.6µs               44.1µs                        158.6µs
+  128            59µs               46.1µs              121.1µs                        375.3µs
+  192         204.8µs              113.9µs              209.6µs                          971µs
+  256         407.8µs              162.5µs              520.4µs                            2ms
+  384           1.2ms              307.8µs                1.2ms                          6.8ms
+  512           2.6ms              655.6µs                  3ms                         15.7ms
+  640           4.9ms                1.4ms                4.9ms                         30.4ms
+  768           8.2ms                2.1ms                8.7ms                         53.6ms
+  896          12.7ms                3.6ms               11.3ms                         84.6ms
+ 1024          19.5ms                5.1ms               21.4ms                        125.9ms
+```
