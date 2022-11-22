@@ -199,7 +199,6 @@ pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
-    _n_threads: usize,
 ) {
     let mut dst = dst;
     let m = src.nrows();
@@ -218,7 +217,7 @@ pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
     for j in 0..n {
         for i in 0..m {
             unsafe {
-                *dst.rb_mut().get_unchecked(i, j) =
+                *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
                     src.get_unchecked(*perm.get_unchecked(i), j).clone();
             }
         }
@@ -231,7 +230,6 @@ pub fn permute_rows<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
-    n_threads: usize,
 ) {
     fancy_assert!(
         (src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()),
@@ -242,5 +240,5 @@ pub fn permute_rows<T: Clone + Send + Sync>(
         "permutation must have the same length as the number of rows of the matrices"
     );
 
-    unsafe { permute_rows_unchecked(dst, src, perm_indices, n_threads) };
+    unsafe { permute_rows_unchecked(dst, src, perm_indices) };
 }
