@@ -2,7 +2,7 @@ use faer_core::{Conj, Mat, Parallelism};
 use std::time::Duration;
 use timeit::*;
 
-pub fn ndarray_matmat(sizes: &[usize]) -> Vec<Duration> {
+pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -11,7 +11,7 @@ pub fn ndarray_matmat(sizes: &[usize]) -> Vec<Duration> {
             let a = ndarray::Array::<f64, _>::zeros((n, n));
             let b = ndarray::Array::<f64, _>::zeros((n, n));
 
-            let time = timeit_loops! {20, {
+            let time = timeit_loops! {100, {
                 c = a.dot(&b);
             }};
 
@@ -23,7 +23,7 @@ pub fn ndarray_matmat(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn nalgebra_matmat(sizes: &[usize]) -> Vec<Duration> {
+pub fn nalgebra(sizes: &[usize]) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -32,7 +32,7 @@ pub fn nalgebra_matmat(sizes: &[usize]) -> Vec<Duration> {
             let a = nalgebra::DMatrix::<f64>::zeros(n, n);
             let b = nalgebra::DMatrix::<f64>::zeros(n, n);
 
-            let time = timeit_loops! {20, {
+            let time = timeit_loops! {100, {
                 a.mul_to(&b, &mut c);
             }};
 
@@ -44,7 +44,7 @@ pub fn nalgebra_matmat(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer_matmat(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -53,7 +53,7 @@ pub fn faer_matmat(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let a = Mat::<f64>::zeros(n, n);
             let b = Mat::<f64>::zeros(n, n);
 
-            let time = timeit_loops! {20, {
+            let time = timeit_loops! {100, {
                 faer_core::mul::matmul(
                     c.as_mut(),
                     Conj::No,
