@@ -1,2 +1,5 @@
-pub mod compute;
-pub mod solve;
+mod compute;
+mod solve;
+
+pub use compute::*;
+pub use solve::*;
