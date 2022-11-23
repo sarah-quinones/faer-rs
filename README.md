@@ -40,8 +40,7 @@ The benchmarks were run on an `11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz`.
 
 ## Matrix multiplication
 
-Multiplication of two square matrices of size `n`.
-
+Multiplication of two square matrices of dimension `n`.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           2.5µs                1.5µs                1.5µs                          2.8µs
@@ -60,8 +59,7 @@ Multiplication of two square matrices of size `n`.
 
 ## Triangular solve
 
-Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`, and `A` is a triangular matrix.
-
+Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and `A` is a triangular matrix.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           2.9µs                2.7µs               36.4µs                          8.6µs
@@ -80,8 +78,7 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`,
 
 ## Triangular inverse
 
-Computing `A^-1` where `A` is a square triangular matrix.
-
+Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           3.2µs               31.3µs                  8µs                          8.4µs
@@ -100,7 +97,7 @@ Computing `A^-1` where `A` is a square triangular matrix.
 
 ## LU decomposition with partial pivoting
 
-Factorizing a matrix as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
+Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           6.2µs                5.1µs                9.5µs                          7.1µs
@@ -119,7 +116,7 @@ Factorizing a matrix as `P×L×U`, where `P` is a permutation matrix, `L` is uni
 
 ## LU decomposition with full pivoting
 
-Factorizing a matrix as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
+Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32          13.3µs              733.4µs          UNAVAILABLE                         15.9µs
@@ -134,4 +131,23 @@ Factorizing a matrix as `P×L×U×Q.T`, where `P` and `Q` are permutation matric
   768          32.2ms               18.3ms          UNAVAILABLE                        177.2ms
   896          49.3ms               26.1ms          UNAVAILABLE                        281.6ms
  1024          78.6ms               35.7ms          UNAVAILABLE                        430.1ms
+```
+
+## Matrix inverse
+
+Computing the inverse of a square matrix with dimension `n`.
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32          29.4µs              147.8µs              264.2µs                         26.3µs
+   64          85.2µs               68.2µs               41.9µs                        148.3µs
+   96         211.4µs              131.6µs              174.7µs                        436.7µs
+  128         339.3µs              217.2µs              368.4µs                        993.1µs
+  192         874.1µs              449.4µs              465.9µs                          3.4ms
+  256           1.6ms              819.4µs              858.2µs                          7.5ms
+  384           5.2ms                1.8ms                1.7ms                         19.1ms
+  512           7.6ms                  4ms                3.3ms                         44.9ms
+  640            13ms                6.8ms                5.4ms                         88.5ms
+  768            22ms               11.3ms                8.5ms                        144.7ms
+  896          33.2ms               17.1ms                 13ms                        231.6ms
+ 1024          49.5ms               23.6ms               19.3ms                        368.2ms
 ```
