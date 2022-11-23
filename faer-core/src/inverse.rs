@@ -153,7 +153,7 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
     solve::solve_unit_lower_triangular_in_place(src_br, conj, dst_bl, Conj::No, parallelism);
 }
 
-/// Computes the [conjugate] inverse of the lower triangular matrix `src` (with implicit unit
+/// Computes the \[conjugate\] inverse of the lower triangular matrix `src` (with implicit unit
 /// diagonal) and stores the strictly lower triangular part of the result to `dst`.
 ///
 /// # Panics
@@ -173,7 +173,7 @@ pub fn invert_unit_lower_triangular_to<T: ComplexField>(
     unsafe { invert_unit_lower_triangular_impl(dst, src, conj, parallelism) }
 }
 
-/// Computes the [conjugate] inverse of the lower triangular matrix `src` and stores the
+/// Computes the \[conjugate\] inverse of the lower triangular matrix `src` and stores the
 /// lower triangular part of the result to `dst`.
 ///
 /// # Panics
@@ -193,7 +193,7 @@ pub fn invert_lower_triangular_to<T: ComplexField>(
     unsafe { invert_lower_triangular_impl(dst, src, conj, parallelism) }
 }
 
-/// Computes the [conjugate] inverse of the upper triangular matrix `src` (with implicit unit
+/// Computes the \[conjugate\] inverse of the upper triangular matrix `src` (with implicit unit
 /// diagonal) and stores the strictly upper triangular part of the result to `dst`.
 ///
 /// # Panics
@@ -214,7 +214,7 @@ pub fn invert_unit_upper_triangular_to<T: ComplexField>(
     )
 }
 
-/// Computes the [conjugate] inverse of the upper triangular matrix `src` and stores the
+/// Computes the \[conjugate\] inverse of the upper triangular matrix `src` and stores the
 /// upper triangular part of the result to `dst`.
 ///
 /// # Panics

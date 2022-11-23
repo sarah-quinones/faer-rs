@@ -9,7 +9,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
+faer-core = { version = "0.2", default-features = false, path = "../faer-core" }
 faer-cholesky = { version = "0.0", default-features = false, path = "../faer-cholesky" }
 faer-lu = { version = "0.0", default-features = false, path = "../faer-lu" }
 faer-qr = { version = "0.0", default-features = false, path = "../faer-qr" }

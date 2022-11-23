@@ -24,7 +24,7 @@ The QR module implements the QR decomposition with no pivoting, as well as the v
 
 ## faer-lu (WIP)
 
-The LU module implements the LU factorization with no pivoting, as well as the versions with row pivoting and full pivoting.
+The LU module implements the LU factorization with row pivoting, as well as the version with full pivoting.
 
 ## Coming soon
 

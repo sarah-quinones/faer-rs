@@ -102,6 +102,17 @@ fn reconstruct_impl<T: ComplexField>(
     }
 }
 
+/// Computes the reconstructed matrix, given its full pivoting LU decomposition,
+/// and stores the result in `dst`.
+///
+/// # Panics
+///
+/// - Panics if the row permutation doesn't have the same dimension as the number of rows of the
+///   matrix.
+/// - Panics if the column permutation doesn't have the same dimension as the number of columns of
+///   the matrix.
+/// - Panics if the destination shape doesn't match the shape of the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn reconstruct_to<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -111,6 +122,8 @@ pub fn reconstruct_to<T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
+    fancy_assert!(dst.nrows() == lu_factors.nrows());
+    fancy_assert!(dst.ncols() == lu_factors.ncols());
     reconstruct_impl(
         dst,
         Some(lu_factors),
@@ -121,6 +134,16 @@ pub fn reconstruct_to<T: ComplexField>(
     )
 }
 
+/// Computes the reconstructed matrix, given its full pivoting LU decomposition,
+/// and stores the result in `lu_factors`.
+///
+/// # Panics
+///
+/// - Panics if the row permutation doesn't have the same dimension as the number of rows of the
+///   matrix.
+/// - Panics if the column permutation doesn't have the same dimension as the number of columns of
+///   the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
@@ -132,6 +155,8 @@ pub fn reconstruct_in_place<T: ComplexField>(
     reconstruct_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)
 }
 
+/// Computes the size and alignment of required workspace for reconstructing a matrix,
+/// given its full pivoting LU decomposition.
 pub fn reconstruct_req<T: 'static>(
     nrows: usize,
     ncols: usize,

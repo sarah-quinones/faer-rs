@@ -79,6 +79,26 @@ fn invert_impl<T: ComplexField>(
     }
 }
 
+/// Computes the size and alignment of required workspace for computing the inverse of a
+/// matrix, given its partial pivoting LU decomposition.
+pub fn invert_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
+    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+}
+
+/// Computes the inverse of a matrix, given its partial pivoting LU decomposition,
+/// and stores the result in `dst`.
+///
+/// # Panics
+///
+/// - Panics if the LU factors are not a square matrix.
+/// - Panics if the row permutation doesn't have the same dimension as the matrix.
+/// - Panics if the destination shape doesn't match the shape of the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert_to<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -95,6 +115,15 @@ pub fn invert_to<T: ComplexField>(
     invert_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
+/// Computes the inverse of a matrix, given its partial pivoting LU decomposition,
+/// and stores the result in `lu_factors`.
+///
+/// # Panics
+///
+/// - Panics if the LU factors are not a square matrix.
+/// - Panics if the row permutation doesn't have the same dimension as the matrix.
+/// - Panics if the destination shape doesn't match the shape of the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
@@ -106,15 +135,6 @@ pub fn invert_in_place<T: ComplexField>(
     fancy_assert!(lu_factors.ncols() == n);
     fancy_assert!(row_perm.len() == n);
     invert_impl(lu_factors, None, row_perm, parallelism, stack)
-}
-
-pub fn invert_req<T: 'static>(
-    nrows: usize,
-    ncols: usize,
-    parallelism: Parallelism,
-) -> Result<StackReq, SizeOverflow> {
-    let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
 }
 
 #[cfg(test)]

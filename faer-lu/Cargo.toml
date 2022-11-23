@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.1", default-features = false, path = "../faer-core" }
+faer-core = { version = "0.2", default-features = false, path = "../faer-core" }
 pulp = { version = "0.10", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.8"
@@ -35,3 +35,6 @@ rayon = "1.6"
 [[bench]]
 name = "bench"
 harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]

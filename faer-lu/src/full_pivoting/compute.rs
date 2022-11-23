@@ -1147,6 +1147,8 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
     n_transpositions
 }
 
+/// Computes the size and alignment of required workspace for performing an LU
+/// decomposition with full pivoting.
 pub fn lu_in_place_req<T: 'static>(
     m: usize,
     n: usize,
@@ -1159,6 +1161,35 @@ pub fn lu_in_place_req<T: 'static>(
     ])
 }
 
+/// Computes the LU decomposition of the given matrix with partial pivoting, replacing the matrix
+/// with its factors in place.
+///
+/// The decomposition is such that:
+/// $$PAQ^\top = LU,$$
+/// where $P$ and $Q$ are permutation matrices, $L$ is a unit lower triangular matrix, and $U$ is
+/// an upper triangular matrix.
+///
+/// - $L$ is stored in the strictly lower triangular half of `matrix`, with an implicit unit
+///   diagonal,
+/// - $U$ is stored in the upper triangular half of `matrix`,
+/// - the permutation representing $P$, as well as its inverse, are stored in `row_perm` and
+///   `row_perm_inv` respectively,
+/// - the permutation representing $Q$, as well as its inverse, are stored in `col_perm` and
+///   `col_perm_inv` respectively.
+///
+/// # Output
+///
+/// - The number of transpositions that constitute the permutation,
+/// - a structure representing the permutation $P$.
+/// - a structure representing the permutation $Q$.
+///
+/// # Panics
+///
+/// - Panics if the length of the row permutation slices is not equal to the number of rows of the
+///   matrix
+/// - Panics if the length of the column permutation slices is not equal to the number of columns of
+///   the matrix
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn lu_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     row_perm: &'out mut [usize],

@@ -100,6 +100,16 @@ fn invert_impl<T: ComplexField>(
     }
 }
 
+/// Computes the inverse of a matrix, given its full pivoting LU decomposition,
+/// and stores the result in `dst`.
+///
+/// # Panics
+///
+/// - Panics if the LU factors are not a square matrix.
+/// - Panics if the row permutation doesn't have the same dimension as the matrix.
+/// - Panics if the column permutation doesn't have the same dimension as the matrix.
+/// - Panics if the destination shape doesn't match the shape of the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert_to<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -119,6 +129,16 @@ pub fn invert_to<T: ComplexField>(
     )
 }
 
+/// Computes the inverse of a matrix, given its full pivoting LU decomposition,
+/// and stores the result in `lu_factors`.
+///
+/// # Panics
+///
+/// - Panics if the LU factors are not a square matrix.
+/// - Panics if the row permutation doesn't have the same dimension as the matrix.
+/// - Panics if the column permutation doesn't have the same dimension as the matrix.
+/// - Panics if the destination shape doesn't match the shape of the matrix.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
@@ -130,6 +150,8 @@ pub fn invert_in_place<T: ComplexField>(
     invert_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)
 }
 
+/// Computes the size and alignment of required workspace for computing the inverse of a
+/// matrix, given its full pivoting LU decomposition.
 pub fn invert_req<T: 'static>(
     nrows: usize,
     ncols: usize,
