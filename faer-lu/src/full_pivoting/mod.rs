@@ -6,12 +6,7 @@
 //! The full pivoting LU decomposition is more numerically stable than the one with partial
 //! pivoting, but is more expensive to compute.
 
-mod compute;
-mod inverse;
-mod reconstruct;
-mod solve;
-
-pub use compute::*;
-pub use inverse::*;
-pub use reconstruct::*;
-pub use solve::*;
+pub mod compute;
+pub mod inverse;
+pub mod reconstruct;
+pub mod solve;

@@ -140,7 +140,7 @@ pub fn invert_in_place<T: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::partial_pivoting::{lu_in_place, lu_in_place_req};
+    use crate::partial_pivoting::compute::{lu_in_place, lu_in_place_req};
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{mul::matmul, Mat, Parallelism};
     use rand::random;

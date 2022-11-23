@@ -1,8 +1,8 @@
+use super::timeit;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use rand::random;
 use std::time::Duration;
-use timeit::*;
 
 pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
     sizes
@@ -25,9 +25,9 @@ pub fn nalgebra(sizes: &[usize]) -> Vec<Duration> {
                 }
             }
 
-            let time = timeit_loops! {10, {
+            let time = timeit(|| {
                 nalgebra::linalg::FullPivLU::new(c.clone());
-            }};
+            });
 
             time
         })
@@ -53,7 +53,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut col_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                faer_lu::full_pivoting::lu_in_place_req::<f64>(n, n, parallelism).unwrap(),
+                faer_lu::full_pivoting::compute::lu_in_place_req::<f64>(n, n, parallelism).unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -62,7 +62,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     .cwise()
                     .zip(c.as_ref())
                     .for_each(|dst, src| *dst = *src);
-                faer_lu::full_pivoting::lu_in_place(
+                faer_lu::full_pivoting::compute::lu_in_place(
                     lu.as_mut(),
                     &mut row_fwd,
                     &mut row_inv,
@@ -73,9 +73,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 );
             };
 
-            let time = timeit_loops! {10, {
-                block()
-            }};
+            let time = timeit(|| block());
 
             let _ = c;
 

@@ -1,6 +1,6 @@
+use super::timeit;
 use faer_core::{Conj, Mat, Parallelism};
 use std::time::Duration;
-use timeit::*;
 
 pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
     super::trsm::ndarray(sizes)
@@ -18,14 +18,14 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut c = Mat::<f64>::zeros(n, n);
             let a = Mat::<f64>::zeros(n, n);
 
-            let time = timeit_loops! {100, {
+            let time = timeit(|| {
                 faer_core::inverse::invert_unit_lower_triangular_to(
                     c.as_mut(),
                     a.as_ref(),
                     Conj::No,
                     parallelism,
                 );
-            }};
+            });
 
             let _ = c;
 

@@ -1,10 +1,10 @@
+use super::timeit;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut, StackReq};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::Inverse;
 use rand::random;
 use reborrow::*;
 use std::time::Duration;
-use timeit::*;
 
 pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
     sizes
@@ -18,9 +18,9 @@ pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
                 }
             }
 
-            let time = timeit_loops! {10, {
+            let time = timeit(|| {
                 c.inv().unwrap();
-            }};
+            });
 
             time
         })
@@ -40,9 +40,9 @@ pub fn nalgebra(sizes: &[usize]) -> Vec<Duration> {
                 }
             }
 
-            let time = timeit_loops! {10, {
+            let time = timeit(|| {
                 c.clone().try_inverse().unwrap();
-            }};
+            });
 
             time
         })
@@ -66,8 +66,9 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut row_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(StackReq::any_of([
-                faer_lu::partial_pivoting::lu_in_place_req::<f64>(n, n, parallelism).unwrap(),
-                faer_lu::partial_pivoting::invert_req::<f64>(n, n, parallelism).unwrap(),
+                faer_lu::partial_pivoting::compute::lu_in_place_req::<f64>(n, n, parallelism)
+                    .unwrap(),
+                faer_lu::partial_pivoting::inverse::invert_req::<f64>(n, n, parallelism).unwrap(),
             ]));
             let mut stack = DynStack::new(&mut mem);
 
@@ -76,14 +77,14 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     .cwise()
                     .zip(c.as_ref())
                     .for_each(|dst, src| *dst = *src);
-                let (_, row_perm) = faer_lu::partial_pivoting::lu_in_place(
+                let (_, row_perm) = faer_lu::partial_pivoting::compute::lu_in_place(
                     lu.as_mut(),
                     &mut row_fwd,
                     &mut row_inv,
                     parallelism,
                     stack.rb_mut(),
                 );
-                faer_lu::partial_pivoting::invert_in_place(
+                faer_lu::partial_pivoting::inverse::invert_in_place(
                     lu.as_mut(),
                     row_perm.rb(),
                     parallelism,
@@ -91,9 +92,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 );
             };
 
-            let time = timeit_loops! {10, {
-                block()
-            }};
+            let time = timeit(|| block());
 
             let _ = c;
 

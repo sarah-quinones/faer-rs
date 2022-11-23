@@ -13,7 +13,6 @@ blas-src = { version = "0.8", features = ["openblas"] }
 faer-core = { path = "../faer-core", features = ["nightly"] }
 faer-lu = { path = "../faer-lu", features = ["nightly"] }
 plotters = "0.3.4"
-timeit = "0.1.2"
 human-repr = "1.0.1"
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"] }
 rand = "0.8.5"

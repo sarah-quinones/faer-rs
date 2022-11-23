@@ -6,6 +6,28 @@ use human_repr::HumanDuration;
 
 extern crate blas_src;
 
+fn time(mut f: impl FnMut()) -> f64 {
+    let instant = std::time::Instant::now();
+    f();
+    instant.elapsed().as_secs_f64()
+}
+
+fn timeit(f: impl FnMut()) -> f64 {
+    let mut f = f;
+    let min = 1e-2;
+    let once = time(&mut f);
+    if once > min {
+        once
+    } else {
+        let n = (min / once).ceil() as u64;
+        time(|| {
+            for _ in 0..n {
+                f()
+            }
+        }) / n as f64
+    }
+}
+
 mod gemm;
 mod tr_inverse;
 mod trsm;
