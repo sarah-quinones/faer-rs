@@ -14,7 +14,7 @@ fn time(mut f: impl FnMut()) -> f64 {
 
 fn timeit(f: impl FnMut()) -> f64 {
     let mut f = f;
-    let min = 1e-2;
+    let min = 1e-1;
     let once = time(&mut f);
     if once > min {
         once
