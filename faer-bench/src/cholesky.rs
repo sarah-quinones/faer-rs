@@ -53,7 +53,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             for i in 0..n {
                 c[(i, i)] = 1.0;
             }
-            let mut lu = Mat::<f64>::zeros(n, n);
+            let mut chol = Mat::<f64>::zeros(n, n);
 
             let mut mem = GlobalMemBuffer::new(
                 faer_cholesky::llt::compute::raw_cholesky_in_place_req::<f64>(n, parallelism)
@@ -62,12 +62,12 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut stack = DynStack::new(&mut mem);
 
             let time = timeit(|| {
-                lu.as_mut()
+                chol.as_mut()
                     .cwise()
                     .zip(c.as_ref())
                     .for_each(|dst, src| *dst = *src);
                 faer_cholesky::llt::compute::raw_cholesky_in_place(
-                    lu.as_mut(),
+                    chol.as_mut(),
                     parallelism,
                     stack.rb_mut(),
                 )
