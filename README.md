@@ -94,3 +94,41 @@ Computing `A^-1` where `A` is a square triangular matrix.
   896           4.8ms                1.2ms               11.3ms                         88.3ms
  1024           7.2ms                1.8ms               21.5ms                        136.1ms
 ```
+
+## LU decomposition with partial pivoting
+
+Factorizing a matrix as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32           6.2µs                5.1µs                9.5µs                          7.1µs
+   64          18.2µs               18.1µs               19.3µs                         37.1µs
+   96          40.6µs               40.4µs               37.9µs                        109.3µs
+  128          78.7µs               83.1µs                1.3ms                        250.4µs
+  192         196.4µs                312µs                210µs                        821.2µs
+  256           399µs              466.5µs              324.3µs                            2ms
+  384           1.1ms              986.6µs              676.7µs                          6.7ms
+  512           2.4ms                1.7ms                1.2ms                         11.4ms
+  640           4.2ms                2.8ms                1.8ms                         21.2ms
+  768             7ms                  4ms                2.7ms                         36.5ms
+  896          10.4ms                5.5ms                4.2ms                         57.9ms
+ 1024          15.6ms                8.2ms                5.4ms                         91.2ms
+```
+
+## LU decomposition with full pivoting
+
+Factorizing a matrix as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32          13.3µs              733.4µs          UNAVAILABLE                         15.9µs
+   64          44.1µs              595.8µs          UNAVAILABLE                        111.3µs
+   96         109.7µs              682.3µs          UNAVAILABLE                        367.5µs
+  128           229µs              974.1µs          UNAVAILABLE                        831.2µs
+  192         578.9µs                1.7ms          UNAVAILABLE                          2.8ms
+  256           1.3ms                2.6ms          UNAVAILABLE                          6.5ms
+  384           4.3ms                4.9ms          UNAVAILABLE                         22.1ms
+  512          10.8ms                8.1ms          UNAVAILABLE                         53.4ms
+  640          18.9ms                 13ms          UNAVAILABLE                        102.7ms
+  768          32.2ms               18.3ms          UNAVAILABLE                        177.2ms
+  896          49.3ms               26.1ms          UNAVAILABLE                        281.6ms
+ 1024          78.6ms               35.7ms          UNAVAILABLE                        430.1ms
+```

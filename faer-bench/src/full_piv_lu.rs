@@ -1,6 +1,5 @@
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
-use ndarray_linalg::solve::Factorize;
 use rand::random;
 use std::time::Duration;
 use timeit::*;
