@@ -18,3 +18,4 @@ human-repr = "1.0.1"
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"] }
 rand = "0.8.5"
 dyn-stack = "0.8.3"
+reborrow = "0.5.1"

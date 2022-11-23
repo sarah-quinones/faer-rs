@@ -11,6 +11,7 @@ mod tr_inverse;
 mod trsm;
 
 mod full_piv_lu;
+mod inverse;
 mod partial_piv_lu;
 
 fn print_results(
@@ -83,6 +84,15 @@ fn main() -> Result<()> {
         &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
         &full_piv_lu::ndarray(&input_sizes),
         &full_piv_lu::nalgebra(&input_sizes),
+    );
+
+    println!("matrix inverse");
+    print_results(
+        &input_sizes,
+        &inverse::faer(&input_sizes, Parallelism::None),
+        &inverse::faer(&input_sizes, Parallelism::Rayon(0)),
+        &inverse::ndarray(&input_sizes),
+        &inverse::nalgebra(&input_sizes),
     );
 
     Ok(())
