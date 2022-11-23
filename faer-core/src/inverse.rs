@@ -144,7 +144,7 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
         BlockStructure::Rectangular,
         conj,
         dst_tl.rb(),
-        BlockStructure::TriangularLower,
+        BlockStructure::UnitTriangularLower,
         Conj::No,
         None,
         -T::one(),
@@ -237,6 +237,7 @@ pub fn invert_upper_triangular_to<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
+    use assert_approx_eq::assert_approx_eq;
     use rand::random;
 
     use crate::Mat;
@@ -245,9 +246,9 @@ mod tests {
 
     #[test]
     fn test_invert_lower() {
-        (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
+        (0..32).for_each(|n| {
             for conj in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(|_, _| random::<f64>(), n, n);
+                let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
                 invert_lower_triangular_to(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
@@ -266,15 +267,23 @@ mod tests {
                     1.0,
                     Parallelism::Rayon(0),
                 );
+
+                for i in 0..n {
+                    for j in 0..n {
+                        let target = if i == j { 1.0 } else { 0.0 };
+                        assert_approx_eq!(prod[(i, j)], target, 1e-4);
+                    }
+                }
             }
         });
     }
 
     #[test]
     fn test_invert_unit_lower() {
-        (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
+        (0..32).for_each(|n| {
             for conj in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(|_, _| random::<f64>(), n, n);
+                dbg!(n, conj);
+                let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
                 invert_unit_lower_triangular_to(
                     inv.as_mut(),
@@ -298,15 +307,21 @@ mod tests {
                     1.0,
                     Parallelism::Rayon(0),
                 );
+                for i in 0..n {
+                    for j in 0..n {
+                        let target = if i == j { 1.0 } else { 0.0 };
+                        assert_approx_eq!(prod[(i, j)], target, 1e-4);
+                    }
+                }
             }
         });
     }
 
     #[test]
     fn test_invert_upper() {
-        (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
+        (0..32).for_each(|n| {
             for conj in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(|_, _| random::<f64>(), n, n);
+                let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
                 invert_upper_triangular_to(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
@@ -325,15 +340,21 @@ mod tests {
                     1.0,
                     Parallelism::Rayon(0),
                 );
+                for i in 0..n {
+                    for j in 0..n {
+                        let target = if i == j { 1.0 } else { 0.0 };
+                        assert_approx_eq!(prod[(i, j)], target, 1e-4);
+                    }
+                }
             }
         });
     }
 
     #[test]
     fn test_invert_unit_upper() {
-        (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
+        (0..32).for_each(|n| {
             for conj in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(|_, _| random::<f64>(), n, n);
+                let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
                 invert_unit_upper_triangular_to(
                     inv.as_mut(),
@@ -357,6 +378,12 @@ mod tests {
                     1.0,
                     Parallelism::Rayon(0),
                 );
+                for i in 0..n {
+                    for j in 0..n {
+                        let target = if i == j { 1.0 } else { 0.0 };
+                        assert_approx_eq!(prod[(i, j)], target, 1e-4);
+                    }
+                }
             }
         });
     }
