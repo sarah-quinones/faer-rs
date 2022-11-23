@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-gemm = { version = "0.12", default-features = false, features = ["rayon"] }
+gemm = { version = "0.13", default-features = false, features = ["rayon"] }
 pulp = { version = "0.10", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.8"
