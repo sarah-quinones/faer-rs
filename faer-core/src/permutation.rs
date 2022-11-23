@@ -53,6 +53,12 @@ impl<'a> PermutationIndicesRef<'a> {
         (self.forward, self.inverse)
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        fancy_debug_assert!(self.inverse.len() == self.forward.len());
+        self.forward.len()
+    }
+
     /// Returns the inverse permutation.
     #[inline]
     pub fn inverse(self) -> Self {
@@ -79,6 +85,12 @@ impl<'a> PermutationIndicesMut<'a> {
     #[inline]
     pub unsafe fn into_arrays(self) -> (&'a mut [usize], &'a mut [usize]) {
         (self.forward, self.inverse)
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        fancy_debug_assert!(self.inverse.len() == self.forward.len());
+        self.forward.len()
     }
 
     /// Returns the inverse permutation.
@@ -222,6 +234,15 @@ pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
             }
         }
     }
+}
+
+#[inline]
+pub unsafe fn permute_cols_unchecked<T: Clone + Send + Sync>(
+    dst: MatMut<'_, T>,
+    src: MatRef<'_, T>,
+    perm_indices: PermutationIndicesRef<'_>,
+) {
+    permute_rows_unchecked(dst.transpose(), src.transpose(), perm_indices);
 }
 
 #[track_caller]

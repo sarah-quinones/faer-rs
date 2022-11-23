@@ -2,7 +2,9 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     permutation::{permute_rows, PermutationIndicesRef},
     solve::*,
-    temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit,
+    zip::MatUninit,
+    ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -10,17 +12,16 @@ fn solve_impl<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     dst: MatMut<'_, T>,
     rhs: Option<MatRef<'_, T>>,
     conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    // LU = P(row_fwd) × A × P(col_inv)
+    // LU = P(row_fwd) × A
 
-    // P(row_inv) ConjA?(LU) P(col_fwd) X = ConjB?(B)
-    // X = P(col_inv) ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) ConjB?(B)
+    // P(row_inv) ConjA?(LU) X = ConjB?(B)
+    // X = ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) ConjB?(B)
 
     let n = lu_factors.ncols();
     let k = dst.ncols();
@@ -48,15 +49,17 @@ fn solve_impl<T: ComplexField>(
     // temp <- ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) B
     solve_upper_triangular_in_place(lu_factors, conj_lhs, temp.rb_mut(), Conj::No, parallelism);
 
-    // dst <- P(col_inv) ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) B
-    permute_rows(dst, temp.rb(), col_perm.inverse());
+    // dst <- ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) B
+    MatUninit(dst)
+        .cwise()
+        .zip(temp.rb())
+        .for_each(|dst, tmp| unsafe { *dst = *tmp });
 }
 
 fn solve_transpose_impl<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     dst: MatMut<'_, T>,
     rhs: Option<MatRef<'_, T>>,
     conj_rhs: Conj,
@@ -65,9 +68,9 @@ fn solve_transpose_impl<T: ComplexField>(
 ) {
     // LU = P(row_fwd) × A × P(col_inv)
 
-    // (P(row_inv) ConjA?(LU) P(col_fwd))^T X = ConjB?(B)
-    // P(col_inv) ConjA?(U)^T ConjA?(L)^T P(row_fwd) X = ConjB?(B)
-    // X = P(row_inv) ConjA?(L).T^-1 ConjA?(U).T^-1 P(col_fwd) ConjB?(B)
+    // (P(row_inv) ConjA?(LU))^T X = ConjB?(B)
+    // ConjA?(U)^T ConjA?(L)^T P(row_fwd) X = ConjB?(B)
+    // X = P(row_inv) ConjA?(L).T^-1 ConjA?(U).T^-1 ConjB?(B)
 
     let n = lu_factors.ncols();
     let k = dst.ncols();
@@ -81,7 +84,10 @@ fn solve_transpose_impl<T: ComplexField>(
         Some(rhs) => rhs,
         None => dst.rb(),
     };
-    permute_rows(temp.rb_mut(), src, col_perm);
+    MatUninit(temp.rb_mut())
+        .cwise()
+        .zip(src.rb())
+        .for_each(|dst, tmp| unsafe { *dst = *tmp });
 
     // temp <- ConjA?(U).T^-1 P(col_fwd) ConjB?(B)
     solve_lower_triangular_in_place(
@@ -121,7 +127,6 @@ pub fn solve_to<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     rhs: MatRef<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
@@ -131,7 +136,6 @@ pub fn solve_to<T: ComplexField>(
         lu_factors,
         conj_lhs,
         row_perm,
-        col_perm,
         dst,
         Some(rhs),
         conj_rhs,
@@ -144,7 +148,6 @@ pub fn solve_in_place<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
@@ -154,7 +157,6 @@ pub fn solve_in_place<T: ComplexField>(
         lu_factors,
         conj_lhs,
         row_perm,
-        col_perm,
         rhs,
         None,
         conj_rhs,
@@ -168,7 +170,6 @@ pub fn solve_transpose_to<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     rhs: MatRef<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
@@ -178,7 +179,6 @@ pub fn solve_transpose_to<T: ComplexField>(
         lu_factors,
         conj_lhs,
         row_perm,
-        col_perm,
         dst,
         Some(rhs),
         conj_rhs,
@@ -191,7 +191,6 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
@@ -201,7 +200,6 @@ pub fn solve_transpose_in_place<T: ComplexField>(
         lu_factors,
         conj_lhs,
         row_perm,
-        col_perm,
         rhs,
         None,
         conj_rhs,
@@ -217,7 +215,7 @@ mod tests {
     use faer_core::{c32, c64, mul::matmul, Mat};
     use rand::random;
 
-    use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
+    use crate::partial_pivoting::compute::{lu_in_place, lu_in_place_req};
 
     use super::*;
 
@@ -244,17 +242,13 @@ mod tests {
 
                     let mut row_perm = vec![0_usize; n];
                     let mut row_perm_inv = vec![0_usize; n];
-                    let mut col_perm = vec![0_usize; n];
-                    let mut col_perm_inv = vec![0_usize; n];
 
                     let parallelism = Parallelism::Rayon(0);
 
-                    let (_, row_perm, col_perm) = lu_in_place(
+                    let (_, row_perm) = lu_in_place(
                         lu.rb_mut(),
                         &mut row_perm,
                         &mut row_perm_inv,
-                        &mut col_perm,
-                        &mut col_perm_inv,
                         parallelism,
                         make_stack!(lu_in_place_req::<T>(n, n, parallelism).unwrap()),
                     );
@@ -264,7 +258,6 @@ mod tests {
                         lu.rb(),
                         conj_lhs,
                         row_perm.rb(),
-                        col_perm.rb(),
                         rhs,
                         conj_rhs,
                         parallelism,
@@ -318,17 +311,13 @@ mod tests {
 
                     let mut row_perm = vec![0_usize; n];
                     let mut row_perm_inv = vec![0_usize; n];
-                    let mut col_perm = vec![0_usize; n];
-                    let mut col_perm_inv = vec![0_usize; n];
 
                     let parallelism = Parallelism::Rayon(0);
 
-                    let (_, row_perm, col_perm) = lu_in_place(
+                    let (_, row_perm) = lu_in_place(
                         lu.rb_mut(),
                         &mut row_perm,
                         &mut row_perm_inv,
-                        &mut col_perm,
-                        &mut col_perm_inv,
                         parallelism,
                         make_stack!(lu_in_place_req::<T>(n, n, parallelism).unwrap()),
                     );
@@ -338,7 +327,6 @@ mod tests {
                         lu.rb(),
                         conj_lhs,
                         row_perm.rb(),
-                        col_perm.rb(),
                         rhs,
                         conj_rhs,
                         parallelism,

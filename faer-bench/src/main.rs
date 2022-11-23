@@ -10,6 +10,9 @@ mod gemm;
 mod tr_inverse;
 mod trsm;
 
+mod full_piv_lu;
+mod partial_piv_lu;
+
 fn print_results(
     input_sizes: &[usize],
     faer: &[Duration],
@@ -62,6 +65,24 @@ fn main() -> Result<()> {
         &tr_inverse::faer(&input_sizes, Parallelism::Rayon(0)),
         &tr_inverse::ndarray(&input_sizes),
         &tr_inverse::nalgebra(&input_sizes),
+    );
+
+    println!("lu decomposition with partial pivoting");
+    print_results(
+        &input_sizes,
+        &partial_piv_lu::faer(&input_sizes, Parallelism::None),
+        &partial_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
+        &partial_piv_lu::ndarray(&input_sizes),
+        &partial_piv_lu::nalgebra(&input_sizes),
+    );
+
+    println!("lu decomposition with full pivoting");
+    print_results(
+        &input_sizes,
+        &full_piv_lu::faer(&input_sizes, Parallelism::None),
+        &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
+        &full_piv_lu::ndarray(&input_sizes),
+        &full_piv_lu::nalgebra(&input_sizes),
     );
 
     Ok(())

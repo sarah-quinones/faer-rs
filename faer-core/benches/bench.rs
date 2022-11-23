@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use faer_core::{Mat, Parallelism};
+use faer_core::{Conj, Mat, Parallelism};
 use std::time::Duration;
 
 pub fn solve(c: &mut Criterion) {
@@ -20,15 +20,15 @@ pub fn solve(c: &mut Criterion) {
                 faer_core::mul::triangular::matmul(
                     dst.as_mut(),
                     TriangularLower,
+                    Conj::No,
                     lhs.as_ref(),
                     Rectangular,
+                    Conj::No,
                     rhs.as_ref(),
                     Rectangular,
+                    Conj::No,
                     Some(1.0),
                     2.5,
-                    false,
-                    false,
-                    false,
                     Parallelism::None,
                 );
             })
@@ -44,15 +44,15 @@ pub fn solve(c: &mut Criterion) {
                 faer_core::mul::triangular::matmul(
                     dst.as_mut(),
                     TriangularLower,
+                    Conj::No,
                     lhs.as_ref(),
                     Rectangular,
+                    Conj::No,
                     rhs.as_ref(),
                     Rectangular,
+                    Conj::No,
                     Some(1.0),
                     2.5,
-                    false,
-                    false,
-                    false,
                     Parallelism::Rayon(0),
                 );
             })
@@ -66,9 +66,9 @@ pub fn solve(c: &mut Criterion) {
             b.iter(|| {
                 faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
+                    Conj::No,
                     rhs.as_mut(),
-                    false,
-                    false,
+                    Conj::No,
                     Parallelism::None,
                 );
             })
@@ -81,9 +81,9 @@ pub fn solve(c: &mut Criterion) {
             b.iter(|| {
                 faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
+                    Conj::No,
                     rhs.as_mut().transpose(),
-                    false,
-                    false,
+                    Conj::No,
                     Parallelism::None,
                 );
             })
@@ -96,10 +96,10 @@ pub fn solve(c: &mut Criterion) {
             b.iter(|| {
                 faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
+                    Conj::No,
                     rhs.as_mut(),
-                    false,
-                    false,
-                    Parallelism::Rayon(rayon::current_num_threads()),
+                    Conj::No,
+                    Parallelism::Rayon(0),
                 );
             })
         });
@@ -111,10 +111,10 @@ pub fn solve(c: &mut Criterion) {
             b.iter(|| {
                 faer_core::solve::solve_lower_triangular_in_place(
                     tri.as_ref(),
+                    Conj::No,
                     rhs.as_mut().transpose(),
-                    false,
-                    false,
-                    Parallelism::Rayon(rayon::current_num_threads()),
+                    Conj::No,
+                    Parallelism::Rayon(0),
                 );
             })
         });

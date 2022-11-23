@@ -9,10 +9,9 @@ use triangular::BlockStructure;
 
 #[track_caller]
 fn reconstruct_impl<T: ComplexField>(
-    mut dst: MatMut<'_, T>,
+    dst: MatMut<'_, T>,
     lu_factors: Option<MatRef<'_, T>>,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -77,28 +76,9 @@ fn reconstruct_impl<T: ComplexField>(
         parallelism,
     );
 
-    let row_inv = row_perm.into_arrays().1;
-    let col_inv = col_perm.into_arrays().1;
-    fancy_assert!(row_inv.len() == m);
-    fancy_assert!(col_inv.len() == n);
+    fancy_assert!(row_perm.into_arrays().1.len() == m);
     unsafe {
-        if dst.row_stride().abs() <= dst.col_stride().abs() {
-            for j in 0..n {
-                let jj = *col_inv.get_unchecked(j);
-                for i in 0..m {
-                    let ii = *row_inv.get_unchecked(i);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *lu.rb().get_unchecked(ii, jj);
-                }
-            }
-        } else {
-            for i in 0..m {
-                let ii = *row_inv.get_unchecked(i);
-                for j in 0..n {
-                    let jj = *col_inv.get_unchecked(j);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *lu.rb().get_unchecked(ii, jj);
-                }
-            }
-        }
+        faer_core::permutation::permute_rows_unchecked(dst, lu.rb(), row_perm.inverse());
     }
 }
 
@@ -107,29 +87,22 @@ pub fn reconstruct_to<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    reconstruct_impl(
-        dst,
-        Some(lu_factors),
-        row_perm,
-        col_perm,
-        parallelism,
-        stack,
-    )
+    fancy_assert!(dst.nrows() == lu_factors.nrows());
+    fancy_assert!(dst.ncols() == lu_factors.ncols());
+    reconstruct_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
     row_perm: PermutationIndicesRef<'_>,
-    col_perm: PermutationIndicesRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    reconstruct_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)
+    reconstruct_impl(lu_factors, None, row_perm, parallelism, stack)
 }
 
 pub fn reconstruct_req<T: 'static>(

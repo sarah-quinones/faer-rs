@@ -1220,7 +1220,6 @@ pub fn lu_in_place<'out, T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-    use dyn_stack::GlobalMemBuffer;
     use faer_core::{permutation::PermutationIndicesRef, Mat};
     use rand::random;
 
@@ -1230,7 +1229,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            DynStack::new(&mut GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
         };
     }
 

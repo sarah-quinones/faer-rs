@@ -371,85 +371,34 @@ pub fn lu_in_place<'out, T: ComplexField>(
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::GlobalMemBuffer;
-    use faer_core::{mul, Mat, MatRef};
+    use faer_core::{permutation::PermutationIndicesRef, Mat, MatRef};
     use rand::random;
+
+    use crate::partial_pivoting::reconstruct;
 
     use super::*;
 
-    fn reconstruct_matrix(lu_factors: MatRef<'_, f64>) -> Mat<f64> {
+    macro_rules! make_stack {
+        ($req: expr) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+        };
+    }
+
+    fn reconstruct_matrix<T: ComplexField>(
+        lu_factors: MatRef<'_, T>,
+        row_perm: PermutationIndicesRef<'_>,
+    ) -> Mat<T> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
-
-        let size = n.min(m);
-
-        let mut a_reconstructed = Mat::zeros(m, n);
-
-        let (_, l_top, _, l_bot) = lu_factors.submatrix(0, 0, m, size).split_at(size, 0);
-        let (_, _, u_left, u_right) = lu_factors.submatrix(0, 0, size, n).split_at(0, size);
-
-        use mul::triangular::BlockStructure::*;
-
-        let (dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) =
-            a_reconstructed.as_mut().split_at(size, size);
-
-        mul::triangular::matmul(
-            dst_top_left,
-            Rectangular,
-            Conj::No,
-            l_top,
-            UnitTriangularLower,
-            Conj::No,
-            u_left,
-            TriangularUpper,
-            Conj::No,
-            None,
-            1.0,
-            Parallelism::Rayon(8),
+        let mut dst = Mat::zeros(m, n);
+        reconstruct::reconstruct_to(
+            dst.as_mut(),
+            lu_factors,
+            row_perm,
+            Parallelism::Rayon(0),
+            make_stack!(reconstruct::reconstruct_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
         );
-        mul::triangular::matmul(
-            dst_top_right,
-            Rectangular,
-            Conj::No,
-            l_top,
-            UnitTriangularLower,
-            Conj::No,
-            u_right,
-            Rectangular,
-            Conj::No,
-            None,
-            1.0,
-            Parallelism::Rayon(8),
-        );
-        mul::triangular::matmul(
-            dst_bot_left,
-            Rectangular,
-            Conj::No,
-            l_bot,
-            Rectangular,
-            Conj::No,
-            u_left,
-            TriangularUpper,
-            Conj::No,
-            None,
-            1.0,
-            Parallelism::Rayon(8),
-        );
-        mul::triangular::matmul(
-            dst_bot_right,
-            Rectangular,
-            Conj::No,
-            l_bot,
-            Rectangular,
-            Conj::No,
-            u_right,
-            Rectangular,
-            Conj::No,
-            None,
-            1.0,
-            Parallelism::Rayon(8),
-        );
-
-        a_reconstructed
+        dst
     }
 
     #[test]
@@ -480,18 +429,18 @@ mod tests {
                 GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8)).unwrap());
             let mut stack = DynStack::new(&mut mem);
 
-            lu_in_place(
+            let (_, row_perm) = lu_in_place(
                 mat.as_mut(),
                 &mut perm,
                 &mut perm_inv,
                 Parallelism::Rayon(8),
                 stack.rb_mut(),
             );
-            let reconstructed = reconstruct_matrix(mat.as_ref());
+            let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb());
 
             for i in 0..m {
                 for j in 0..n {
-                    assert_approx_eq!(mat_orig[(perm[i], j)], reconstructed[(i, j)]);
+                    assert_approx_eq!(mat_orig[(i, j)], reconstructed[(i, j)]);
                 }
             }
         }
