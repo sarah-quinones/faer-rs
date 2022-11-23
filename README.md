@@ -22,7 +22,10 @@ The Cholesky module implements the LLT and LDLT matrix decompositions. These all
 
 The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
 
-## faer-lu (WIP)
+## faer-lu
+
+[![Documentation](https://docs.rs/faer-lu/badge.svg)](https://docs.rs/faer-lu)
+[![Crate](https://img.shields.io/crates/v/faer-lu.svg)](https://crates.io/crates/faer-lu)
 
 The LU module implements the LU factorization with row pivoting, as well as the version with full pivoting.
 
