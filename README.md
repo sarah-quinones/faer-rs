@@ -7,10 +7,10 @@ See the Wiki and the `docs.rs` documentation for code examples and usage instruc
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
 
+## faer-core
+
 [![Documentation](https://docs.rs/faer-core/badge.svg)](https://docs.rs/faer-core)
 [![Crate](https://img.shields.io/crates/v/faer-core.svg)](https://crates.io/crates/faer-core)
-
-## faer-core
 
 The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
 
@@ -38,6 +38,7 @@ The benchmarks were run on an `11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz`.
 ## Matrix multiplication
 
 Multiplication of two square matrices of size `n`.
+
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           2.5µs                1.5µs                1.5µs                          2.8µs
@@ -56,7 +57,8 @@ Multiplication of two square matrices of size `n`.
 
 ## Triangular solve
 
-Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`.
+Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`, and `A` is a triangular matrix.
+
 ```
         faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
    32           2.9µs                2.7µs               36.4µs                          8.6µs
@@ -71,4 +73,24 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of size `n`.
   768           8.2ms                2.1ms                8.7ms                         53.6ms
   896          12.7ms                3.6ms               11.3ms                         84.6ms
  1024          19.5ms                5.1ms               21.4ms                        125.9ms
+```
+
+## Triangular inverse
+
+Computing `A^-1` where `A` is a square triangular matrix.
+
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32           3.2µs               31.3µs                  8µs                          8.4µs
+   64           9.8µs                 37µs               23.1µs                         50.4µs
+   96          24.2µs               59.2µs               46.6µs                        159.2µs
+  128            37µs               62.4µs              134.5µs                        386.6µs
+  192          96.5µs                 92µs              217.4µs                        954.2µs
+  256           186µs              140.9µs              506.8µs                          1.9ms
+  384           534µs              249.6µs                1.2ms                          7.2ms
+  512           1.1ms              414.8µs                3.1ms                         17.4ms
+  640           1.9ms              567.3µs                5.1ms                         32.6ms
+  768           3.2ms              837.2µs                8.5ms                         56.8ms
+  896           4.8ms                1.2ms               11.3ms                         88.3ms
+ 1024           7.2ms                1.8ms               21.5ms                        136.1ms
 ```
