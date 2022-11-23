@@ -33,6 +33,7 @@ use reborrow::*;
 
 extern crate alloc;
 
+pub mod inverse;
 pub mod mul;
 pub mod solve;
 pub mod zip;
@@ -2927,6 +2928,7 @@ impl<'a, T> IntoIterator for ColMut<'a, T> {
     }
 }
 
+/// Matrix iterators.
 pub mod iter {
     use crate::{ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
     use reborrow::*;
