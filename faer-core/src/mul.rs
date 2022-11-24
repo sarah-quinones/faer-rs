@@ -475,24 +475,31 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.ncols());
 
         if n <= 16 {
-            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
-            let mut temp_rhs =
-                MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
+            let op = {
+                #[inline(never)]
+                || {
+                    let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+                    let mut temp_rhs =
+                        MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, 16);
 
-            copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
-            let temp_rhs = temp_rhs.into_const();
+                    copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
+                    let temp_rhs = temp_rhs.into_const();
 
-            mul(
-                dst,
-                lhs,
-                temp_rhs,
-                alpha,
-                beta,
-                conj_dst,
-                conj_lhs,
-                conj_rhs,
-                parallelism,
-            );
+                    mul(
+                        dst,
+                        lhs,
+                        temp_rhs,
+                        alpha,
+                        beta,
+                        conj_dst,
+                        conj_lhs,
+                        conj_rhs,
+                        parallelism,
+                    );
+                }
+            };
+
+            op();
         } else {
             // split rhs into 3 sections
             // split lhs and dst into 2 sections

@@ -1588,6 +1588,15 @@ impl<'a, T> MatRef<'a, T> {
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
     }
+
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn const_cast(self) -> MatMut<'a, T> {
+        MatMut {
+            base: self.base,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'a, T> MatMut<'a, T> {

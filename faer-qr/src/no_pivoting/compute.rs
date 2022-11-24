@@ -1,4 +1,4 @@
-use assert2::debug_assert as fancy_debug_assert;
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::DynStack;
 use faer_core::{
     householder::{
@@ -6,13 +6,13 @@ use faer_core::{
         make_householder_in_place_unchecked,
     },
     mul::{matmul, triangular},
-    temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_uninit, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
 unsafe fn qr_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
-    mut householder_factor: MatMut<'_, T>,
+    mut householder_factor: ColMut<'_, T>,
     mut stack: DynStack<'_>,
 ) {
     let m = matrix.nrows();
@@ -20,7 +20,6 @@ unsafe fn qr_in_place_unblocked<T: ComplexField>(
     let size = n.min(m);
 
     fancy_debug_assert!(householder_factor.nrows() == size);
-    fancy_debug_assert!(householder_factor.ncols() == size);
 
     for k in 0..size {
         let mat_rem = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);
@@ -39,20 +38,75 @@ unsafe fn qr_in_place_unblocked<T: ComplexField>(
             tail_squared_norm,
         );
 
-        *householder_factor.rb_mut().ptr_in_bounds_at_unchecked(k, k) = tau;
+        *householder_factor.rb_mut().ptr_in_bounds_at_unchecked(k) = tau;
         *first_col_head.rb_mut().get_unchecked(0) = beta;
 
         if last_cols.ncols() > 0 {
             apply_househodler_on_the_left(
                 last_cols,
                 first_col_tail.rb(),
-                *householder_factor.rb().get_unchecked(k, k),
+                *householder_factor.rb().get_unchecked(k),
                 stack.rb_mut(),
             );
         }
     }
+}
 
-    make_householder_factor_unblocked(householder_factor, matrix.rb(), stack);
+pub fn qr_in_place_blocked_parallel<T: ComplexField>(
+    mut matrix: MatMut<'_, T>,
+    mut householder_factor: ColMut<'_, T>,
+    blocksize: usize,
+    parallelism: Parallelism,
+    mut stack: DynStack<'_>,
+) {
+    if blocksize < 8 {
+        return unsafe { qr_in_place_unblocked(matrix, householder_factor, stack) };
+    }
+
+    let m = matrix.nrows();
+    let n = matrix.ncols();
+    let size = n.min(m);
+
+    fancy_assert!(householder_factor.nrows() == size);
+
+    let mut k = 0;
+    loop {
+        if k == size {
+            break;
+        }
+        let bs = blocksize.min(size - k);
+        let mut matrix = matrix.rb_mut().submatrix(k, k, m - k, n - k);
+        let (_, _, mut block, remaining_cols) = matrix.rb_mut().split_at(0, bs);
+        let mut householder = householder_factor.rb_mut().split_at(k).1.split_at(bs).0;
+        qr_in_place_blocked_parallel(
+            block.rb_mut(),
+            householder.rb_mut(),
+            blocksize / 2,
+            parallelism,
+            stack.rb_mut(),
+        );
+
+        if k + bs < n {
+            temp_mat_uninit! {
+                let (mut t, mut stack) = unsafe { temp_mat_uninit::<T>(bs, bs, stack.rb_mut()) };
+            }
+            unsafe {
+                for i in 0..bs {
+                    *t.rb_mut().ptr_in_bounds_at_unchecked(i, i) = householder[i];
+                }
+                make_householder_factor_unblocked(t.rb_mut(), block.rb(), stack.rb_mut());
+                apply_block_househodler_on_the_left(
+                    remaining_cols,
+                    block.rb(),
+                    t.rb(),
+                    false,
+                    parallelism,
+                    stack.rb_mut(),
+                );
+            }
+        }
+        k += bs;
+    }
 }
 
 unsafe fn make_householder_factor_unblocked<T: ComplexField>(
@@ -150,176 +204,13 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
     }
 }
 
-unsafe fn make_householder_top_right<T: ComplexField>(
-    t01: MatMut<'_, T>,
-    t00: MatRef<'_, T>,
-    t11: MatRef<'_, T>,
-    basis0: MatRef<'_, T>,
-    basis1: MatRef<'_, T>,
-    parallelism: Parallelism,
-    mut stack: DynStack<'_>,
-) {
-    let m = basis0.nrows();
-    let n = basis0.ncols() + basis1.ncols();
-    let bs = basis0.ncols();
-
-    temp_mat_uninit! {
-        let (mut tmp0, stack) = unsafe { temp_mat_uninit::<T>(m - bs, bs, stack.rb_mut()) };
-        let (mut tmp1, _) = unsafe { temp_mat_uninit::<T>(m - bs, n - bs, stack) };
-    }
-
-    let v0 = basis0.submatrix_unchecked(bs, 0, m - bs, bs);
-    let v1 = basis1;
-
-    let (_, v1_top, _, v1_bot) = v1.split_at_unchecked(n - bs, 0);
-    let (_, tmp1_top, _, tmp1_bot) = tmp1.rb_mut().split_at_unchecked(n - bs, 0);
-
-    use triangular::BlockStructure::*;
-
-    faer_core::join_raw(
-        |_| {
-            triangular::matmul(
-                tmp0.rb_mut(),
-                Rectangular,
-                Conj::No,
-                v0,
-                Rectangular,
-                Conj::No,
-                t00.transpose(),
-                TriangularLower,
-                Conj::Yes,
-                None,
-                T::one(),
-                parallelism,
-            )
-        },
-        |_| {
-            faer_core::join_raw(
-                |_| {
-                    triangular::matmul(
-                        tmp1_top,
-                        Rectangular,
-                        Conj::No,
-                        v1_top,
-                        UnitTriangularLower,
-                        Conj::No,
-                        t11,
-                        TriangularUpper,
-                        Conj::No,
-                        None,
-                        T::one(),
-                        parallelism,
-                    )
-                },
-                |_| {
-                    triangular::matmul(
-                        tmp1_bot,
-                        Rectangular,
-                        Conj::No,
-                        v1_bot,
-                        Rectangular,
-                        Conj::No,
-                        t11,
-                        TriangularUpper,
-                        Conj::No,
-                        None,
-                        T::one(),
-                        parallelism,
-                    )
-                },
-                parallelism,
-            )
-        },
-        parallelism,
-    );
-
-    matmul(
-        t01,
-        Conj::No,
-        tmp0.rb().transpose(),
-        Conj::Yes,
-        tmp1.rb(),
-        Conj::No,
-        None,
-        -T::one(),
-        parallelism,
-    );
-}
-
-fn recursion_threshold<T: 'static>(m: usize) -> usize {
-    let _m = m;
-    16
-}
-
-fn block_size<T: 'static>(n: usize) -> usize {
-    n / 2
-}
-
-pub unsafe fn qr_in_place_recursive<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
-    mut householder_factor: MatMut<'_, T>,
-    parallelism: Parallelism,
-    recursion_level: usize,
-    mut stack: DynStack<'_>,
-) {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
-
-    fancy_debug_assert!(m >= n);
-
-    if n < recursion_threshold::<T>(m) {
-        return qr_in_place_unblocked(matrix, householder_factor, stack);
-    }
-
-    let bs = block_size::<T>(n);
-    let (_, _, mut left, mut right) = matrix.rb_mut().split_at_unchecked(0, bs);
-
-    let (mut t00, t01, _, mut t11) = householder_factor.rb_mut().split_at_unchecked(bs, bs);
-
-    qr_in_place_recursive(
-        left.rb_mut(),
-        t00.rb_mut(),
-        parallelism,
-        recursion_level + 1,
-        stack.rb_mut(),
-    );
-
-    apply_block_househodler_on_the_left(
-        right.rb_mut(),
-        left.rb().submatrix_unchecked(0, 0, m, bs.min(m)),
-        t00.rb(),
-        false,
-        parallelism,
-        stack.rb_mut(),
-    );
-
-    let (_, _, _, mut bot_right) = right.rb_mut().split_at_unchecked(bs, 0);
-    qr_in_place_recursive(
-        bot_right.rb_mut(),
-        t11.rb_mut(),
-        parallelism,
-        recursion_level,
-        stack.rb_mut(),
-    );
-
-    make_householder_top_right(
-        t01,
-        t00.rb(),
-        t11.rb(),
-        left.rb(),
-        bot_right.rb(),
-        parallelism,
-        stack,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{GlobalMemBuffer, StackReq};
-    use faer_core::{c64, mul::matmul, zip::Diag, Mat, MatRef};
+    use faer_core::{c64, mul::matmul, zip::Diag, ColRef, Mat, MatRef};
 
     use super::*;
 
@@ -346,14 +237,13 @@ mod tests {
 
     fn reconstruct_factors(
         qr_factors: MatRef<'_, T>,
-        householder: MatRef<'_, T>,
+        householder: ColRef<'_, T>,
     ) -> (Mat<T>, Mat<T>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
         let size = m.min(n);
 
         let mut q = Mat::zeros(m, m);
-        let mut q2 = Mat::zeros(m, m);
         let mut r = Mat::zeros(m, n);
 
         r.as_mut()
@@ -362,101 +252,13 @@ mod tests {
             .for_each_triangular_upper(Diag::Include, |a, b| *a = *b);
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
-        q2.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
-
-        let (basis_top, _, basis_bot, _) = qr_factors.split_at(size, size);
-        let mut tmp = Mat::zeros(m, size);
-
-        let (_, mut tmp_top, _, mut tmp_bot) = tmp.as_mut().split_at(size, 0);
-
-        use triangular::BlockStructure::*;
-        triangular::matmul(
-            tmp_top.rb_mut(),
-            Rectangular,
-            Conj::No,
-            basis_top,
-            UnitTriangularLower,
-            Conj::No,
-            householder,
-            TriangularUpper,
-            Conj::No,
-            None,
-            T::one(),
-            Parallelism::Rayon(8),
-        );
-        triangular::matmul(
-            tmp_bot.rb_mut(),
-            Rectangular,
-            Conj::No,
-            basis_bot,
-            Rectangular,
-            Conj::No,
-            householder,
-            TriangularUpper,
-            Conj::No,
-            None,
-            T::one(),
-            Parallelism::Rayon(8),
-        );
-
-        let (q_top_left, q_top_right, q_bot_left, q_bot_right) = q.as_mut().split_at(size, size);
-        triangular::matmul(
-            q_top_left,
-            Rectangular,
-            Conj::No,
-            tmp_top.rb(),
-            Rectangular,
-            Conj::No,
-            basis_top.transpose(),
-            UnitTriangularUpper,
-            Conj::Yes,
-            Some(T::one()),
-            -T::one(),
-            Parallelism::Rayon(8),
-        );
-        triangular::matmul(
-            q_bot_left,
-            Rectangular,
-            Conj::No,
-            tmp_bot.rb(),
-            Rectangular,
-            Conj::No,
-            basis_top.transpose(),
-            UnitTriangularUpper,
-            Conj::Yes,
-            Some(T::one()),
-            -T::one(),
-            Parallelism::Rayon(8),
-        );
-        matmul(
-            q_top_right,
-            Conj::No,
-            tmp_top.rb(),
-            Conj::No,
-            basis_bot.transpose(),
-            Conj::Yes,
-            Some(T::one()),
-            -T::one(),
-            Parallelism::Rayon(8),
-        );
-        matmul(
-            q_bot_right,
-            Conj::No,
-            tmp_bot.rb(),
-            Conj::No,
-            basis_bot.transpose(),
-            Conj::Yes,
-            Some(T::one()),
-            -T::one(),
-            Parallelism::Rayon(8),
-        );
 
         for k in (0..size).rev() {
-            let tau = ComplexField::conj(householder[(k, k)]);
+            let tau = ComplexField::conj(householder[k]);
             let essential = qr_factors.col(k).split_at(k + 1).1;
             unsafe {
                 apply_househodler_on_the_left(
-                    q2.as_mut().submatrix(k, k, m - k, m - k),
+                    q.as_mut().submatrix(k, k, m - k, m - k),
                     essential,
                     tau,
                     placeholder_stack!(),
@@ -473,14 +275,17 @@ mod tests {
             let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
-            let mut householder = Mat::zeros(size, size);
+            let mut householder = Mat::zeros(size, 1);
 
-            dbg!(&mat_orig);
             unsafe {
-                qr_in_place_unblocked(mat.as_mut(), householder.as_mut(), placeholder_stack!())
+                qr_in_place_unblocked(
+                    mat.as_mut(),
+                    householder.as_mut().col(0),
+                    placeholder_stack!(),
+                )
             }
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
             let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 
@@ -521,23 +326,22 @@ mod tests {
     }
 
     #[test]
-    fn test_recursive() {
-        for (m, n) in [(2, 2), (4, 2), (4, 4), (33, 33), (64, 64), (65, 65)] {
+    fn test_blocked() {
+        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (64, 64), (63, 63)] {
             let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
-            let mut householder = Mat::zeros(size, size);
-            unsafe {
-                qr_in_place_recursive(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    Parallelism::Rayon(8),
-                    0,
-                    placeholder_stack!(),
-                )
-            }
+            let mut householder = Mat::zeros(size, 1);
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+            qr_in_place_blocked_parallel(
+                mat.as_mut(),
+                householder.as_mut().col(0),
+                4,
+                Parallelism::Rayon(0),
+                placeholder_stack!(),
+            );
+
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
             let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 
