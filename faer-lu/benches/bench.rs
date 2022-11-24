@@ -58,6 +58,32 @@ pub fn lu(c: &mut Criterion) {
             })
         });
 
+        c.bench_function(&format!("faer-r-mt-plu-{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
+
+            let mut mem = GlobalMemBuffer::new(
+                partial_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            b.iter(|| {
+                partial_pivoting::compute::lu_in_place(
+                    mat.as_mut().transpose(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                    stack.rb_mut(),
+                );
+            })
+        });
+
         c.bench_function(&format!("faer-st-flu-{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
             let mut row_perm = vec![0; n];
@@ -98,6 +124,31 @@ pub fn lu(c: &mut Criterion) {
             b.iter(|| {
                 full_pivoting::compute::lu_in_place(
                     mat.as_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    Parallelism::Rayon(rayon::current_num_threads()),
+                    stack.rb_mut(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-r-mt-flu-{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut row_perm = vec![0; n];
+            let mut row_perm_inv = vec![0; n];
+            let mut col_perm = vec![0; n];
+            let mut col_perm_inv = vec![0; n];
+
+            let mut mem = GlobalMemBuffer::new(
+                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            b.iter(|| {
+                full_pivoting::compute::lu_in_place(
+                    mat.as_mut().transpose(),
                     &mut row_perm,
                     &mut row_perm_inv,
                     &mut col_perm,

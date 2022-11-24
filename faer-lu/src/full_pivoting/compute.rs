@@ -864,24 +864,11 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
     let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
 
     let is_col_major = matrix.row_stride() == 1;
-    let is_row_major = matrix.col_stride() == 1;
 
     if is_col_major && is_f64 {
         unsafe { transmute_copy(&best_in_matrix_f64(transmute_copy(&matrix))) }
-    } else if is_row_major && is_f64 {
-        unsafe {
-            let (max_col, max_row, max_val) =
-                best_in_matrix_f64(transmute_copy(&matrix.transpose()));
-            transmute_copy(&(max_row, max_col, max_val))
-        }
     } else if is_col_major && is_f32 {
         unsafe { transmute_copy(&best_in_matrix_f32(transmute_copy(&matrix))) }
-    } else if is_row_major && is_f32 {
-        unsafe {
-            let (max_col, max_row, max_val) =
-                best_in_matrix_f32(transmute_copy(&matrix.transpose()));
-            transmute_copy(&(max_row, max_col, max_val))
-        }
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
@@ -915,14 +902,13 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
-    let is_row_major = dst.col_stride() == 1 && rhs.col_stride() == 1;
 
     let dst_row_stride = dst.row_stride();
     let dst_col_stride = dst.col_stride();
     let dst_nrows = dst.nrows();
     let dst_ncols = dst.ncols();
 
-    if is_f64 && (is_col_major || is_row_major) {
+    if is_f64 && is_col_major {
         unsafe {
             let dst = MatMut::from_raw_parts(
                 dst.as_ptr() as *mut f64,
@@ -937,18 +923,11 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
                     transmute_copy(&lhs),
                     transmute_copy(&rhs),
                 ))
-            } else if is_row_major {
-                let (max_col, max_row, max_value) = update_and_best_in_matrix_f64(
-                    dst.transpose(),
-                    transmute_copy(&rhs.transpose()),
-                    transmute_copy(&lhs.transpose()),
-                );
-                transmute_copy(&(max_row, max_col, max_value))
             } else {
                 unreachable!()
             }
         }
-    } else if is_f32 && (is_col_major || is_row_major) {
+    } else if is_f32 && is_col_major {
         unsafe {
             let dst = MatMut::from_raw_parts(
                 dst.as_ptr() as *mut f32,
@@ -963,13 +942,6 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
                     transmute_copy(&lhs),
                     transmute_copy(&rhs),
                 ))
-            } else if is_row_major {
-                let (max_col, max_row, max_value) = update_and_best_in_matrix_f32(
-                    dst.transpose(),
-                    transmute_copy(&rhs.transpose()),
-                    transmute_copy(&lhs.transpose()),
-                );
-                transmute_copy(&(max_row, max_col, max_value))
             } else {
                 unreachable!()
             }
@@ -996,6 +968,7 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
     row_transpositions: &mut [usize],
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
+    transposed: bool,
 ) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -1012,24 +985,32 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
     let mut n_transpositions = 0;
 
     let (mut max_row, mut max_col, _) = best_in_matrix(matrix.rb());
-    row_transpositions[0] = max_row;
-    col_transpositions[0] = max_col;
-
-    if max_row != 0 {
-        n_transpositions += 1;
-        swap_rows_unchecked(matrix.rb_mut(), 0, max_row);
-    }
-
-    if max_col != 0 {
-        n_transpositions += 1;
-        swap_cols_unchecked(matrix.rb_mut(), 0, max_col);
-    }
 
     for k in 0..size {
+        row_transpositions[k] = max_row;
+        col_transpositions[k] = max_col;
+
+        if max_row != k {
+            n_transpositions += 1;
+            swap_rows_unchecked(matrix.rb_mut(), k, max_row);
+        }
+
+        if max_col != k {
+            n_transpositions += 1;
+            swap_cols_unchecked(matrix.rb_mut(), k, max_col);
+        }
+
         let inv = matrix.rb().get_unchecked(k, k).inv();
-        for i in k + 1..m {
-            let elem = matrix.rb_mut().get_unchecked(i, k);
-            *elem = *elem * inv;
+        if !transposed {
+            for i in k + 1..m {
+                let elem = matrix.rb_mut().get_unchecked(i, k);
+                *elem = *elem * inv;
+            }
+        } else {
+            for i in k + 1..n {
+                let elem = matrix.rb_mut().get_unchecked(k, i);
+                *elem = *elem * inv;
+            }
         }
 
         if k + 1 == size {
@@ -1130,18 +1111,6 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
         };
         max_row += k + 1;
         max_col += k + 1;
-        row_transpositions[k + 1] = max_row;
-        col_transpositions[k + 1] = max_col;
-
-        if max_row != k + 1 {
-            n_transpositions += 1;
-            swap_rows_unchecked(matrix.rb_mut(), k + 1, max_row);
-        }
-
-        if max_col != k + 1 {
-            n_transpositions += 1;
-            swap_cols_unchecked(matrix.rb_mut(), k + 1, max_col);
-        }
     }
 
     n_transpositions
@@ -1215,12 +1184,23 @@ pub fn lu_in_place<'out, T: ComplexField>(
     let (mut col_transpositions, _) = stack.make_with(n, |i| i);
 
     let n_transpositions = unsafe {
-        lu_in_place_unblocked(
-            matrix,
-            &mut row_transpositions,
-            &mut col_transpositions,
-            parallelism,
-        )
+        if matrix.row_stride().abs() < matrix.col_stride().abs() {
+            lu_in_place_unblocked(
+                matrix,
+                &mut row_transpositions,
+                &mut col_transpositions,
+                parallelism,
+                false,
+            )
+        } else {
+            lu_in_place_unblocked(
+                matrix.transpose(),
+                &mut col_transpositions,
+                &mut row_transpositions,
+                parallelism,
+                true,
+            )
+        }
     };
 
     row_perm.iter_mut().enumerate().for_each(|(i, e)| *e = i);
@@ -1363,6 +1343,8 @@ mod tests {
                     make_stack!(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap()),
                 );
                 let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
+                println!("target:{mat_orig:5.3?}");
+                println!("actual:{reconstructed:5.3?}");
 
                 for i in 0..m {
                     for j in 0..n {
