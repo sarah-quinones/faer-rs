@@ -95,6 +95,25 @@ Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
  1024           7.2ms                1.8ms               21.5ms                        136.1ms
 ```
 
+## Cholesky decomposition
+
+Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
+```
+        faer (serial)      faer (parallel)   ndarray (openblas)      nalgebra (matrixmultiply)
+   32           3.9µs                3.9µs                3.3µs                          3.4µs
+   64            11µs               11.1µs                 38µs                         14.5µs
+   96          28.6µs               28.6µs               72.2µs                         32.9µs
+  128            38µs               38.2µs                121µs                         79.3µs
+  192         113.3µs              122.1µs              222.4µs                        256.3µs
+  256         180.4µs                174µs              544.5µs                        605.7µs
+  384         496.4µs              476.4µs              942.1µs                            2ms
+  512           1.2ms              689.3µs                  3ms                          5.4ms
+  640             2ms                1.4ms                2.6ms                         10.3ms
+  768           3.5ms                  2ms                4.6ms                         17.9ms
+  896           5.4ms                3.1ms                5.5ms                         28.1ms
+ 1024           8.4ms                3.5ms                 12ms                         42.6ms
+```
+
 ## LU decomposition with partial pivoting
 
 Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
