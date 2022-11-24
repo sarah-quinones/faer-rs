@@ -32,8 +32,10 @@ mod gemm;
 mod tr_inverse;
 mod trsm;
 
+mod col_piv_qr;
 mod full_piv_lu;
 mod inverse;
+mod no_piv_qr;
 mod partial_piv_lu;
 
 mod cholesky;
@@ -117,6 +119,24 @@ fn main() -> Result<()> {
         &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
         &full_piv_lu::ndarray(&input_sizes),
         &full_piv_lu::nalgebra(&input_sizes),
+    );
+
+    println!("qr decomposition with no pivoting");
+    print_results(
+        &input_sizes,
+        &no_piv_qr::faer(&input_sizes, Parallelism::None),
+        &no_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
+        &no_piv_qr::ndarray(&input_sizes),
+        &no_piv_qr::nalgebra(&input_sizes),
+    );
+
+    println!("qr decomposition with column pivoting");
+    print_results(
+        &input_sizes,
+        &col_piv_qr::faer(&input_sizes, Parallelism::None),
+        &col_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
+        &col_piv_qr::ndarray(&input_sizes),
+        &col_piv_qr::nalgebra(&input_sizes),
     );
 
     println!("matrix inverse");
