@@ -40,7 +40,6 @@ pub mod zip;
 
 #[doc(hidden)]
 pub mod householder;
-#[doc(hidden)]
 pub mod permutation;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

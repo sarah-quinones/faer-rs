@@ -3,18 +3,12 @@ use core::cmp::Ordering;
 use faer_core::{permutation::PermutationIndicesMut, MatRef};
 use num_traits::Signed;
 
-pub mod ldlt;
+pub mod ldlt_diagonal;
 pub mod llt;
 
-#[track_caller]
-#[inline]
-unsafe fn unreachable_unchecked() -> ! {
-    debug_assert!(false);
-    core::hint::unreachable_unchecked()
-}
-
-/// Computes a permutation that reduces the chance of numerical errors during the cholesky
-/// factorization, then stores the result in `perm_indices` and `perm_inv_indices`.
+/// Computes a permutation that reduces the chance of numerical errors during the $LDL^\top$
+/// factorization with diagonal $D$, then stores the result in `perm_indices` and
+/// `perm_inv_indices`.
 #[track_caller]
 pub fn compute_cholesky_permutation<'a, T>(
     perm_indices: &'a mut [usize],

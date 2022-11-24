@@ -11,10 +11,7 @@ use pulp::{Arch, Simd};
 use reborrow::*;
 use seq_macro::seq;
 
-use crate::{
-    ldlt::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req},
-    unreachable_unchecked,
-};
+use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
 
 macro_rules! generate {
     ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {
@@ -221,7 +218,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
                             2 => s.vectorize(|| rank_2_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             3 => s.vectorize(|| rank_3_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             4 => s.vectorize(|| rank_4_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            _ => unreachable_unchecked(),
+                            _ => unreachable!(),
                         };
                     } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
@@ -229,7 +226,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
                             2 => s.vectorize(|| rank_2_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             3 => s.vectorize(|| rank_3_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
                             4 => s.vectorize(|| rank_4_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            _ => unreachable_unchecked(),
+                            _ => unreachable!(),
                         };
                     } else {
                         match r_chunk {
@@ -245,7 +242,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
                             4 => {
                                 s.vectorize(|| r4(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
                             }
-                            _ => unreachable_unchecked(),
+                            _ => unreachable!(),
                         };
                     }
 
@@ -258,14 +255,14 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 
 /// Performs a rank-k update in place, while clobbering the inputs.
 ///
-/// Takes the cholesky factors `L` and `D` of a matrix `A`, meaning that `L×D×L.transpose() == A`,
-/// a matrix `W` and a column vector `α`, which is interpreted as a diagonal matrix.
+/// Takes the Cholesky factors $L$ and $D$ of a matrix $A$, meaning that $LDL^* = A$,
+/// a matrix $W$ and a column vector $\alpha$, which is interpreted as a diagonal matrix.
 ///
-/// This function computes the cholesky factors of `A + W×diag(α)×W.transpose()`, and stores the
+/// This function computes the cholesky factors of $A + W\text{Diag}(\alpha)W^*$, and stores the
 /// result in the storage of the original cholesky factors.
 ///
-/// The matrix `W` and the vector `α` are clobbered, meaning that the values they contain after the
-/// function returns are unspecified.
+/// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
+/// the function returns are unspecified.
 #[track_caller]
 pub fn rank_r_update_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
@@ -343,6 +340,8 @@ pub(crate) fn rank_update_indices(
     }
 }
 
+/// Computes the size and alignment of required workspace for deleting the rows and columns from a
+/// matrix, given its Cholesky decomposition.
 #[track_caller]
 pub fn delete_rows_and_cols_clobber_req<T: 'static>(
     dim: usize,
@@ -352,6 +351,12 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
     StackReq::try_all_of([temp_mat_req::<T>(dim, r)?, temp_mat_req::<T>(r, 1)?])
 }
 
+/// Deletes `r` rows and columns at the provided indices from the Cholesky factor.
+///
+/// Takes the Cholesky factors $L$ and $D$ of a matrix $A$ of dimension `n`, and `r` indices, then
+/// computes the Cholesky factor of $A$ with the provided rows and columns deleted from it.
+///
+/// The result is stored in the top left corner (with dimension `n - r`) of `cholesky_factor`.
 #[track_caller]
 pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
@@ -418,17 +423,21 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     });
 }
 
+/// Computes the size and alignment of the required workspace for inserting the rows and columns at
+/// the index in the Cholesky factor..
 pub fn insert_rows_and_cols_clobber_req<T: 'static>(
-    old_dim: usize,
-    insertion_index: usize,
     inserted_matrix_ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    fancy_assert!(insertion_index <= old_dim);
-
     raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism)
 }
 
+/// Inserts `r` rows and columns at the provided index in the Cholesky factor.
+///
+/// Takes a matrix, `cholesky_factor_extended`, of dimension `n + r`, containing the Cholesky
+/// factors $L$ and $D$ of a matrix $A$ in its top left corner, of dimension `n`, and computes the
+/// Cholesky factor of $A$ with the provided `inserted_matrix` inserted at the position starting at
+/// `insertion_index`.
 #[track_caller]
 pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors_extended: MatMut<'_, T>,

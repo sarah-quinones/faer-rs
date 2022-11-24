@@ -1,3 +1,12 @@
+//! The Cholesky decomposition with diagonal $D$ of a hermitian matrix $A$ is such that:
+//! $$A = LDL^*,$$
+//! where $D$ is a diagonal matrix, and $L$ is a unit lower triangular matrix.
+//!
+//! The Cholesky decomposition with diagonal may have poor numerical stability properties when used
+//! with non positive definite matrices. In the general case, it is recommended to first permute the
+//! matrix using [`crate::compute_cholesky_permutation`] and
+//! [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric_lower).
+
 pub mod compute;
 pub mod solve;
 pub mod update;
@@ -70,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        for n in 0..512 {
+        for n in (0..32).chain((2..32).map(|i| i * 16)) {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
             raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
@@ -291,8 +300,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<f64>(n, position, r, Parallelism::Rayon(8))
-                        .unwrap(),
+                    insert_rows_and_cols_clobber_req::<f64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -340,8 +348,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon(8))
-                        .unwrap(),
+                    insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -389,8 +396,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(n, position, r, Parallelism::Rayon(8))
-                        .unwrap(),
+                    insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 

@@ -3,7 +3,7 @@ use reborrow::*;
 
 use assert2::assert as fancy_assert;
 
-/// Given the Cholesky factor of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
+/// Given the Cholesky factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
 /// computes the solution of the linear system:
 /// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
 ///
@@ -20,13 +20,14 @@ pub fn solve_in_place<T: ComplexField>(
     parallelism: Parallelism,
 ) {
     let n = cholesky_factors.nrows();
+    let k = rhs.ncols();
 
     fancy_assert!(cholesky_factors.nrows() == cholesky_factors.ncols());
     fancy_assert!(rhs.nrows() == n);
 
     let mut rhs = rhs;
 
-    solve::solve_lower_triangular_in_place(
+    solve::solve_unit_lower_triangular_in_place(
         cholesky_factors,
         conj_lhs,
         rhs.rb_mut(),
@@ -34,7 +35,15 @@ pub fn solve_in_place<T: ComplexField>(
         parallelism,
     );
 
-    solve::solve_upper_triangular_in_place(
+    for j in 0..k {
+        for i in 0..n {
+            let d = *unsafe { cholesky_factors.get_unchecked(i, i) };
+            let rhs = unsafe { rhs.rb_mut().get_unchecked(i, j) };
+            *rhs = *rhs / d;
+        }
+    }
+
+    solve::solve_unit_upper_triangular_in_place(
         cholesky_factors.transpose(),
         match conj_lhs {
             Conj::No => Conj::Yes,
@@ -46,7 +55,7 @@ pub fn solve_in_place<T: ComplexField>(
     );
 }
 
-/// Given the Cholesky factor of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
+/// Given the Cholesky factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
 /// computes the solution of the linear system:
 /// $$\text{Op}_A(A)^\top X = \text{Op}_B(B).$$
 ///
@@ -62,7 +71,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     conj_rhs: Conj,
     parallelism: Parallelism,
 ) {
-    // (L L.*).T = conj(L L.*)
+    // (L D L.*).T = conj(L D L.*)
     solve_in_place(
         cholesky_factors,
         match conj_lhs {

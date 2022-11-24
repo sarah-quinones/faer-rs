@@ -123,8 +123,8 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     }
 }
 
-/// Computes the memory requirements for a cholesky decomposition of a square matrix of dimension
-/// `dim`.
+/// Computes the size and alignment of required workspace for performing a Cholesky
+/// decomposition with partial pivoting.
 pub fn raw_cholesky_in_place_req<T: 'static>(
     dim: usize,
     parallelism: Parallelism,
@@ -205,23 +205,26 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
     }
 }
 
-/// Computes the cholesky factors `L` and `D` of the input matrix such that `L` is strictly lower
-/// triangular, `D` is diagonal, and `L×D×L.transpose() == matrix`, then stores them back in the
-/// same matrix.
+/// Computes the Cholesky factors $L$ and $D$ of the input matrix such that $L$ is strictly lower
+/// triangular, $D$ is real-valued diagonal, and
+/// $$LDL^* = A.$$
 ///
-/// The input matrix is interpreted as symmetric and only the lower triangular part is read.
+/// The result is stored back in the same matrix.
 ///
-/// The matrix `L` is stored in the strictly lower triangular part of the input matrix, and the
-/// diagonal elements of `D` are stored on the diagonal.
+/// The input matrix is interpreted as symmetric and only the lower triangular part is accessed.
 ///
-/// The strictly upper triangular part of the matrix is not accessed.
+/// The matrix $L$ is stored in the strictly lower triangular part of the input matrix, and the
+/// diagonal elements of $D$ are stored on the diagonal.
+///
+/// The strictly upper triangular part of the matrix is clobbered and may be filled with garbage
+/// values.
 ///
 /// # Warning
 ///
-/// The cholesky decomposition may have poor numerical stability properties when used with non
+/// The Cholesky decomposition may have poor numerical stability properties when used with non
 /// positive definite matrices. In the general case, it is recommended to first permute the matrix
 /// using [`crate::compute_cholesky_permutation`] and
-/// [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric).
+/// [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric_lower).
 ///
 /// # Panics
 ///

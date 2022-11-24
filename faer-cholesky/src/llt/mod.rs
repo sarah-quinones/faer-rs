@@ -1,6 +1,15 @@
+//! The Cholesky decomposition of a hermitian positive definite matrix $A$ is such that:
+//! $$A = LL^*,$$
+//! where $L$ is a lower triangular matrix.
+
 pub mod compute;
+pub mod inverse;
+pub mod reconstruct;
 pub mod solve;
 pub mod update;
+
+#[derive(Debug, Clone, Copy)]
+pub struct CholeskyError;
 
 #[cfg(test)]
 mod tests {
@@ -8,10 +17,8 @@ mod tests {
     use dyn_stack::{DynStack, GlobalMemBuffer};
     use rand::random;
 
-    use super::{compute::*, solve::*, update::*};
-    use faer_core::{
-        c64, mul, mul::triangular::BlockStructure, ComplexField, Conj, Mat, MatRef, Parallelism,
-    };
+    use super::{compute::*, inverse::*, reconstruct::*, solve::*, update::*};
+    use faer_core::{c64, mul, ComplexField, Conj, Mat, MatRef, Parallelism};
 
     type T = c64;
 
@@ -19,20 +26,10 @@ mod tests {
         let n = cholesky_factor.nrows();
 
         let mut a_reconstructed = Mat::zeros(n, n);
-
-        mul::triangular::matmul(
+        reconstruct_lower_to(
             a_reconstructed.as_mut(),
-            BlockStructure::Rectangular,
-            Conj::No,
             cholesky_factor,
-            BlockStructure::TriangularLower,
-            Conj::No,
-            cholesky_factor.transpose(),
-            BlockStructure::TriangularUpper,
-            Conj::Yes,
-            None,
-            T::one(),
-            Parallelism::Rayon(8),
+            Parallelism::Rayon(0),
         );
 
         a_reconstructed
@@ -59,15 +56,51 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        for n in 0..512 {
+        for n in (0..32).chain((2..32).map(|i| i * 16)) {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
-            let a_reconstructed = reconstruct_matrix(a.as_ref());
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            let mut a_reconstructed = reconstruct_matrix(a.as_ref());
+            let mut inv = Mat::zeros(n, n);
+            invert_lower_to(
+                inv.as_mut(),
+                a.as_ref(),
+                Parallelism::Rayon(0),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    invert_lower_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
+                )),
+            );
+
+            for j in 0..n {
+                for i in 0..j {
+                    a_reconstructed[(i, j)] = a_reconstructed[(j, i)].conj();
+                    inv[(i, j)] = inv[(j, i)].conj();
+                }
+            }
+
+            let mut prod = Mat::zeros(n, n);
+            mul::matmul(
+                prod.as_mut(),
+                Conj::No,
+                a_reconstructed.as_ref(),
+                Conj::No,
+                inv.as_ref(),
+                Conj::No,
+                None,
+                T::one(),
+                Parallelism::Rayon(0),
+            );
+
             for j in 0..n {
                 for i in j..n {
                     assert_approx_eq!(a_reconstructed[(i, j)], a_orig[(i, j)]);
+                }
+            }
+
+            for j in 0..n {
+                for i in 0..n {
+                    let target = if i == j { T::one() } else { T::zero() };
+                    assert_approx_eq!(prod[(i, j)], target);
                 }
             }
         }
@@ -82,8 +115,7 @@ mod tests {
             let a_orig = a.clone();
             let rhs_orig = rhs.clone();
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
             solve_in_place(
                 a.as_ref(),
                 Conj::No,
@@ -165,8 +197,7 @@ mod tests {
                 Parallelism::Rayon(8),
             );
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
 
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha).unwrap();
 
@@ -189,8 +220,7 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -211,8 +241,7 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -233,8 +262,7 @@ mod tests {
             let n = a.nrows();
             let r = 3;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -266,8 +294,7 @@ mod tests {
                 }
             }
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []))
-                .unwrap();
+            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -283,13 +310,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<T>(
-                        n + r,
-                        position,
-                        r,
-                        Parallelism::Rayon(8),
-                    )
-                    .unwrap(),
+                    insert_rows_and_cols_clobber_req::<T>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             )
             .unwrap();

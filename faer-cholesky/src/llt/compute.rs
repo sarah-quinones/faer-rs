@@ -6,8 +6,7 @@ use faer_core::{
 };
 use reborrow::*;
 
-#[derive(Debug)]
-pub struct CholeskyError;
+use super::CholeskyError;
 
 unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     matrix: MatMut<'_, T>,
@@ -120,9 +119,9 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     Ok(())
 }
 
-/// Computes the memory requirements for a cholesky decomposition of a square matrix of dimension
-/// `dim`.
-pub fn raw_cholesky_in_place_req<T: 'static>(
+/// Computes the size and alignment of required workspace for performing a Cholesky
+/// decomposition with partial pivoting.
+pub fn cholesky_in_place_req<T: 'static>(
     dim: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
@@ -181,20 +180,25 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
     }
 }
 
-/// Computes the cholesky factor `L` of the input matrix such that `L` is lower triangular, and
-/// `L×L.transpose() == matrix`, then stores it back in the same matrix, or returns an error if the
-/// matrix is not positive definite.
+/// Computes the Cholesky factor $L$ of a hermitian positive definite input matrix $A$ such that
+/// $L$ is lower triangular, and
+/// $$LL^* == A.$$
+///
+/// The result is stored back in the same matrix, or an error is returned if the matrix is not
+/// positive definite.
 ///
 /// The input matrix is interpreted as symmetric and only the lower triangular part is read.
 ///
-/// The strictly upper triangular part of the matrix is not accessed.
+/// The strictly upper triangular part of the matrix is clobbered and may be filled with garbage
+/// values.
 ///
 /// # Panics
 ///
-/// Panics if the input matrix is not square.
+/// - Panics if the input matrix is not square.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 #[inline]
-pub fn raw_cholesky_in_place<T: ComplexField>(
+pub fn cholesky_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
     parallelism: Parallelism,
     stack: DynStack<'_>,

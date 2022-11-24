@@ -167,7 +167,7 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationIndicesMut<'a> {
 ///
 /// Both the source and the destination are interpreted as symmetric matrices, and only their lower
 /// triangular part is accessed.
-pub fn permute_rows_and_cols_symmetric<T: Clone>(
+pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
