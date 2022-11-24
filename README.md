@@ -14,13 +14,12 @@ Questions about using the library, contributing, and future directions can be di
 
 The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
 
-## faer-cholesky (WIP)
+## faer-cholesky
+
+[![Documentation](https://docs.rs/faer-cholesky/badge.svg)](https://docs.rs/faer-cholesky)
+[![Crate](https://img.shields.io/crates/v/faer-cholesky.svg)](https://crates.io/crates/faer-cholesky)
 
 The Cholesky module implements the LLT and LDLT matrix decompositions. These allow for solving symmetric/hermitian (+positive definite for LLT) linear systems.
-
-## faer-qr (WIP)
-
-The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
 
 ## faer-lu
 
@@ -28,6 +27,10 @@ The QR module implements the QR decomposition with no pivoting, as well as the v
 [![Crate](https://img.shields.io/crates/v/faer-lu.svg)](https://crates.io/crates/faer-lu)
 
 The LU module implements the LU factorization with row pivoting, as well as the version with full pivoting.
+
+## faer-qr (WIP)
+
+The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
 
 ## Coming soon
 
