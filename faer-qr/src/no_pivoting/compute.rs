@@ -95,38 +95,71 @@ pub fn qr_in_place_blocked<T: ComplexField>(
                     *t.rb_mut().ptr_in_bounds_at_unchecked(i, i) = householder[i];
                 }
                 make_householder_factor_unblocked(t.rb_mut(), block.rb(), stack.rb_mut());
-                use rayon::prelude::*;
-                let remaining_col_count = n - k - bs;
-                let remaining_blocks =
-                    (remaining_col_count / bs) + (remaining_col_count % bs > 0) as usize;
-                let remaining_cols = remaining_cols.rb();
-                (0..remaining_blocks).into_par_iter().for_each_init(
-                    || {
-                        dyn_stack::GlobalMemBuffer::new(
-                            faer_core::temp_mat_req::<T>(bs, bs)
-                                .unwrap()
-                                .and(faer_core::temp_mat_req::<T>(bs, bs).unwrap()),
-                        )
-                    },
-                    |mem, block_id| {
-                        let stack = DynStack::new(mem);
-                        let rem_blk = remaining_cols.submatrix(
-                            0,
-                            block_id * bs,
-                            m - k,
-                            bs.min(remaining_cols.ncols() - block_id * bs),
-                        );
-                        let rem_blk = rem_blk.const_cast();
+
+                match parallelism {
+                    Parallelism::None => {
                         apply_block_househodler_on_the_left(
-                            rem_blk,
+                            remaining_cols,
                             block.rb(),
                             t.rb(),
                             false,
                             parallelism,
-                            stack,
+                            stack.rb_mut(),
                         );
-                    },
-                );
+                    }
+                    Parallelism::Rayon(mut n_threads) => {
+                        if n_threads == 0 {
+                            n_threads = rayon::current_num_threads();
+                        }
+                        use rayon::prelude::*;
+                        let remaining_col_count = n - k - bs;
+
+                        let cols_per_thread = remaining_col_count / n_threads;
+                        let rem = remaining_col_count % n_threads;
+
+                        let remaining_cols = remaining_cols.rb();
+                        (0..n_threads).into_par_iter().for_each_init(
+                            || {
+                                dyn_stack::GlobalMemBuffer::new(
+                                    faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
+                                        .unwrap()
+                                        .and(
+                                            faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
+                                                .unwrap(),
+                                        ),
+                                )
+                            },
+                            |mem, tid| {
+                                let tid_to_col_start = |tid| {
+                                    if tid < rem {
+                                        tid * (cols_per_thread + 1)
+                                    } else {
+                                        rem * (cols_per_thread + 1) + (tid - rem) * cols_per_thread
+                                    }
+                                };
+                                let col_start = tid_to_col_start(tid);
+                                let col_end = tid_to_col_start(tid + 1);
+
+                                let stack = DynStack::new(mem);
+                                let rem_blk = remaining_cols.submatrix(
+                                    0,
+                                    col_start,
+                                    m - k,
+                                    col_end - col_start,
+                                );
+                                let rem_blk = rem_blk.const_cast();
+                                apply_block_househodler_on_the_left(
+                                    rem_blk,
+                                    block.rb(),
+                                    t.rb(),
+                                    false,
+                                    Parallelism::None,
+                                    stack,
+                                );
+                            },
+                        );
+                    }
+                }
             }
         }
         k += bs;
@@ -351,7 +384,15 @@ mod tests {
 
     #[test]
     fn test_blocked() {
-        for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (64, 64), (63, 63)] {
+        for (m, n) in [
+            (2, 2),
+            (2, 4),
+            (4, 2),
+            (4, 4),
+            (64, 64),
+            (63, 63),
+            (1024, 1024),
+        ] {
             let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
@@ -360,7 +401,7 @@ mod tests {
             qr_in_place_blocked(
                 mat.as_mut(),
                 householder.as_mut().col(0),
-                4,
+                16,
                 Parallelism::Rayon(0),
                 placeholder_stack!(),
             );
