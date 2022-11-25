@@ -1,7 +1,5 @@
 use super::timeit;
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut, StackReq};
 use faer_core::{Mat, Parallelism};
-use ndarray_linalg::QR;
 use rand::random;
 use std::time::Duration;
 
