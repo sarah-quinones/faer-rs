@@ -71,7 +71,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     .cwise()
                     .zip(c.as_ref())
                     .for_each(|dst, src| *dst = *src);
-                faer_qr::no_pivoting::compute::qr_in_place_blocked_parallel(
+                faer_qr::no_pivoting::compute::qr_in_place_blocked(
                     qr.as_mut(),
                     householder.as_mut().col(0),
                     16,

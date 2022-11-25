@@ -98,64 +98,60 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
     let (_, basis_tri, _, basis_bot) = basis.split_at_unchecked(size, 0);
 
     temp_mat_uninit! {
-        let (mut tmp1, stack) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
+        let (mut tmp0, stack) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
+        let (mut tmp1, _) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
     }
 
     use triangular::BlockStructure::*;
-    {
-        temp_mat_uninit! {
-            let (mut tmp0, _) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
-        }
 
-        triangular::matmul(
-            tmp0.rb_mut(),
-            Rectangular,
-            Conj::No,
-            basis_tri.transpose(),
-            UnitTriangularUpper,
-            Conj::Yes,
-            matrix.rb().submatrix_unchecked(0, 0, size, n),
-            Rectangular,
-            Conj::No,
-            None,
-            T::one(),
-            parallelism,
-        );
-        matmul(
-            tmp0.rb_mut(),
-            Conj::No,
-            basis_bot.transpose(),
-            Conj::Yes,
-            matrix.rb().submatrix_unchecked(size, 0, m - size, n),
-            Conj::No,
-            Some(T::one()),
-            T::one(),
-            parallelism,
-        );
+    triangular::matmul(
+        tmp0.rb_mut(),
+        Rectangular,
+        Conj::No,
+        basis_tri.transpose(),
+        UnitTriangularUpper,
+        Conj::Yes,
+        matrix.rb().submatrix_unchecked(0, 0, size, n),
+        Rectangular,
+        Conj::No,
+        None,
+        T::one(),
+        parallelism,
+    );
+    matmul(
+        tmp0.rb_mut(),
+        Conj::No,
+        basis_bot.transpose(),
+        Conj::Yes,
+        matrix.rb().submatrix_unchecked(size, 0, m - size, n),
+        Conj::No,
+        Some(T::one()),
+        T::one(),
+        parallelism,
+    );
 
-        triangular::matmul(
-            tmp1.rb_mut(),
-            Rectangular,
-            Conj::No,
-            if forward {
-                householder_factor
-            } else {
-                householder_factor.transpose()
-            },
-            if forward {
-                TriangularUpper
-            } else {
-                TriangularLower
-            },
-            if forward { Conj::No } else { Conj::Yes },
-            tmp0.rb(),
-            Rectangular,
-            Conj::No,
-            None,
-            T::one(),
-            parallelism,
-        );
-    }
+    triangular::matmul(
+        tmp1.rb_mut(),
+        Rectangular,
+        Conj::No,
+        if forward {
+            householder_factor
+        } else {
+            householder_factor.transpose()
+        },
+        if forward {
+            TriangularUpper
+        } else {
+            TriangularLower
+        },
+        if forward { Conj::No } else { Conj::Yes },
+        tmp0.rb(),
+        Rectangular,
+        Conj::No,
+        None,
+        T::one(),
+        parallelism,
+    );
 
     let (_, matrix_top, _, matrix_bot) = matrix.split_at_unchecked(size, 0);
 

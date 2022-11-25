@@ -52,7 +52,7 @@ unsafe fn qr_in_place_unblocked<T: ComplexField>(
     }
 }
 
-pub fn qr_in_place_blocked_parallel<T: ComplexField>(
+pub fn qr_in_place_blocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: ColMut<'_, T>,
     blocksize: usize,
@@ -78,7 +78,7 @@ pub fn qr_in_place_blocked_parallel<T: ComplexField>(
         let mut matrix = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let (_, _, mut block, remaining_cols) = matrix.rb_mut().split_at(0, bs);
         let mut householder = householder_factor.rb_mut().split_at(k).1.split_at(bs).0;
-        qr_in_place_blocked_parallel(
+        qr_in_place_blocked(
             block.rb_mut(),
             householder.rb_mut(),
             blocksize / 2,
@@ -95,13 +95,37 @@ pub fn qr_in_place_blocked_parallel<T: ComplexField>(
                     *t.rb_mut().ptr_in_bounds_at_unchecked(i, i) = householder[i];
                 }
                 make_householder_factor_unblocked(t.rb_mut(), block.rb(), stack.rb_mut());
-                apply_block_househodler_on_the_left(
-                    remaining_cols,
-                    block.rb(),
-                    t.rb(),
-                    false,
-                    parallelism,
-                    stack.rb_mut(),
+                use rayon::prelude::*;
+                let remaining_col_count = n - k - bs;
+                let remaining_blocks =
+                    (remaining_col_count / bs) + (remaining_col_count % bs > 0) as usize;
+                let remaining_cols = remaining_cols.rb();
+                (0..remaining_blocks).into_par_iter().for_each_init(
+                    || {
+                        dyn_stack::GlobalMemBuffer::new(
+                            faer_core::temp_mat_req::<T>(bs, bs)
+                                .unwrap()
+                                .and(faer_core::temp_mat_req::<T>(bs, bs).unwrap()),
+                        )
+                    },
+                    |mem, block_id| {
+                        let stack = DynStack::new(mem);
+                        let rem_blk = remaining_cols.submatrix(
+                            0,
+                            block_id * bs,
+                            m - k,
+                            bs.min(remaining_cols.ncols() - block_id * bs),
+                        );
+                        let rem_blk = rem_blk.const_cast();
+                        apply_block_househodler_on_the_left(
+                            rem_blk,
+                            block.rb(),
+                            t.rb(),
+                            false,
+                            parallelism,
+                            stack,
+                        );
+                    },
                 );
             }
         }
@@ -333,7 +357,7 @@ mod tests {
             let size = m.min(n);
             let mut householder = Mat::zeros(size, 1);
 
-            qr_in_place_blocked_parallel(
+            qr_in_place_blocked(
                 mat.as_mut(),
                 householder.as_mut().col(0),
                 4,

@@ -18,7 +18,7 @@ pub fn qr(c: &mut Criterion) {
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                no_pivoting::compute::qr_in_place_blocked_parallel(
+                no_pivoting::compute::qr_in_place_blocked(
                     mat.as_mut(),
                     householder.as_mut().col(0),
                     16,
@@ -36,7 +36,7 @@ pub fn qr(c: &mut Criterion) {
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                no_pivoting::compute::qr_in_place_blocked_parallel(
+                no_pivoting::compute::qr_in_place_blocked(
                     mat.as_mut(),
                     householder.as_mut().col(0),
                     16,
