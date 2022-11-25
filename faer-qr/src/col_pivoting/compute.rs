@@ -163,7 +163,7 @@ fn update_and_norm2_generic<S: Simd, T: ComplexField>(
 
 // a^* b
 #[inline(always)]
-fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
+pub(crate) fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
     let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
     let id = TypeId::of::<T>();
     if colmajor {

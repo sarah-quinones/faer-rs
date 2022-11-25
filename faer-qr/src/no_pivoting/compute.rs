@@ -1,55 +1,81 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::DynStack;
 use faer_core::{
-    householder::{
-        apply_block_househodler_on_the_left, apply_househodler_on_the_left,
-        make_householder_in_place_unchecked,
-    },
-    mul::{matmul, triangular},
+    householder::{apply_block_househodler_on_the_left, make_householder_in_place_unchecked},
+    mul::triangular,
     temp_mat_uninit, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
-unsafe fn qr_in_place_unblocked<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
-    mut householder_factor: ColMut<'_, T>,
-    mut stack: DynStack<'_>,
+use crate::col_pivoting::compute::dot;
+
+fn qr_in_place_unblocked<T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    householder_factor: ColMut<'_, T>,
+    _stack: DynStack<'_>,
 ) {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
-    let size = n.min(m);
+    struct QrInPlaceUnblocked<'a, T> {
+        matrix: MatMut<'a, T>,
+        householder_factor: ColMut<'a, T>,
+    }
 
-    fancy_debug_assert!(householder_factor.nrows() == size);
+    impl<'a, T: ComplexField> pulp::WithSimd for QrInPlaceUnblocked<'a, T> {
+        type Output = ();
 
-    for k in 0..size {
-        let mat_rem = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);
-        let (_, _, first_col, last_cols) = mat_rem.split_at_unchecked(0, 1);
-        let (mut first_col_head, mut first_col_tail) =
-            first_col.col_unchecked(0).split_at_unchecked(1);
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+            let Self {
+                mut matrix,
+                mut householder_factor,
+            } = self;
+            let m = matrix.nrows();
+            let n = matrix.ncols();
+            let size = n.min(m);
 
-        let mut tail_squared_norm = T::Real::zero();
-        for &elem in first_col_tail.rb() {
-            tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
-        }
+            fancy_assert!(householder_factor.nrows() == size);
 
-        let (tau, beta) = make_householder_in_place_unchecked(
-            first_col_tail.rb_mut(),
-            *first_col_head.rb().get_unchecked(0),
-            tail_squared_norm,
-        );
+            for k in 0..size {
+                let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
+                let (_, _, first_col, last_cols) = mat_rem.split_at(0, 1);
+                let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
 
-        *householder_factor.rb_mut().ptr_in_bounds_at_unchecked(k) = tau;
-        *first_col_head.rb_mut().get_unchecked(0) = beta;
+                let mut tail_squared_norm = T::Real::zero();
+                for &elem in first_col_tail.rb() {
+                    tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
+                }
 
-        if last_cols.ncols() > 0 {
-            apply_househodler_on_the_left(
-                last_cols,
-                first_col_tail.rb(),
-                *householder_factor.rb().get_unchecked(k),
-                stack.rb_mut(),
-            );
+                let (tau, beta) = unsafe {
+                    let (tau, beta) = make_householder_in_place_unchecked(
+                        first_col_tail.rb_mut(),
+                        *first_col_head.rb().get_unchecked(0),
+                        tail_squared_norm,
+                    );
+
+                    *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau;
+                    (tau, beta)
+                };
+
+                *first_col_head.rb_mut().get(0) = beta;
+
+                for col in last_cols.into_col_iter() {
+                    let (col_head, col_tail) = col.split_at(1);
+                    let col_head = col_head.get(0);
+
+                    let dot = *col_head + dot(simd, first_col_tail.rb(), col_tail.rb());
+                    let k = -tau * dot;
+                    *col_head = *col_head + k;
+                    col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
+                        *a = *a + k * *b;
+                    });
+                }
+            }
         }
     }
+
+    pulp::Arch::new().dispatch(QrInPlaceUnblocked {
+        matrix,
+        householder_factor,
+    });
 }
 
 pub fn qr_in_place_blocked<T: ComplexField>(
@@ -59,13 +85,13 @@ pub fn qr_in_place_blocked<T: ComplexField>(
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
 ) {
-    if blocksize < 8 {
-        return unsafe { qr_in_place_unblocked(matrix, householder_factor, stack) };
-    }
-
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = n.min(m);
+
+    if m < blocksize * 2 {
+        return qr_in_place_unblocked(matrix, householder_factor, stack);
+    }
 
     fancy_assert!(householder_factor.nrows() == size);
 
@@ -74,23 +100,19 @@ pub fn qr_in_place_blocked<T: ComplexField>(
         if k == size {
             break;
         }
+
         let bs = blocksize.min(size - k);
         let mut matrix = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let (_, _, mut block, remaining_cols) = matrix.rb_mut().split_at(0, bs);
         let mut householder = householder_factor.rb_mut().split_at(k).1.split_at(bs).0;
-        qr_in_place_blocked(
-            block.rb_mut(),
-            householder.rb_mut(),
-            blocksize / 2,
-            parallelism,
-            stack.rb_mut(),
-        );
+        qr_in_place_unblocked(block.rb_mut(), householder.rb_mut(), stack.rb_mut());
 
         if k + bs < n {
-            temp_mat_uninit! {
-                let (mut t, mut stack) = unsafe { temp_mat_uninit::<T>(bs, bs, stack.rb_mut()) };
-            }
             unsafe {
+                temp_mat_uninit! {
+                    let (t, mut stack) = unsafe { temp_mat_uninit::<T>(bs, bs, stack.rb_mut()) };
+                }
+                let mut t = t.transpose();
                 for i in 0..bs {
                     *t.rb_mut().ptr_in_bounds_at_unchecked(i, i) = householder[i];
                 }
@@ -177,6 +199,7 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
 
     fancy_debug_assert!(householder_factor.nrows() == size);
     fancy_debug_assert!(householder_factor.ncols() == size);
+    fancy_assert!(householder_factor.col_stride() == 1);
 
     for i in (0..size).rev() {
         let rs = m - i - 1;
@@ -216,17 +239,44 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 factor,
                 Parallelism::None,
             );
-            matmul(
-                dst.rb_mut(),
-                Conj::No,
-                lhs.split_at_unchecked(0, rt).3,
-                Conj::Yes,
-                rhs.split_at_unchecked(rt, 0).3,
-                Conj::No,
-                Some(T::one()),
-                factor,
-                Parallelism::None,
-            );
+
+            let lhs = lhs.split_at_unchecked(0, rt).3;
+            let rhs = rhs.split_at_unchecked(rt, 0).3;
+
+            struct Gevm<'a, T> {
+                dst: MatMut<'a, T>,
+                lhs: MatRef<'a, T>,
+                rhs: MatRef<'a, T>,
+                beta: T,
+            }
+            impl<'a, T: ComplexField> pulp::WithSimd for Gevm<'a, T> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    let Self {
+                        dst,
+                        lhs,
+                        rhs,
+                        beta,
+                    } = self;
+                    let mut dst = dst.row(0);
+                    let lhs = lhs.row(0).transpose();
+                    fancy_assert!(rhs.row_stride() == 1);
+
+                    for (i, rhs) in rhs.into_col_iter().enumerate() {
+                        let dst = &mut dst[i];
+                        *dst = *dst + beta * dot(simd, lhs, rhs);
+                    }
+                }
+            }
+
+            pulp::Arch::new().dispatch(Gevm {
+                dst: dst.rb_mut(),
+                lhs,
+                rhs,
+                beta: factor,
+            });
 
             temp_mat_uninit! {
                 let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
@@ -263,6 +313,7 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
+    use faer_core::householder::apply_househodler_on_the_left;
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
@@ -334,13 +385,11 @@ mod tests {
             let size = m.min(n);
             let mut householder = Mat::zeros(size, 1);
 
-            unsafe {
-                qr_in_place_unblocked(
-                    mat.as_mut(),
-                    householder.as_mut().col(0),
-                    placeholder_stack!(),
-                )
-            }
+            qr_in_place_unblocked(
+                mat.as_mut(),
+                householder.as_mut().col(0),
+                placeholder_stack!(),
+            );
 
             let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
             let mut qhq = Mat::zeros(m, m);
