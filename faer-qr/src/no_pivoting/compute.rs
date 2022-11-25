@@ -78,20 +78,32 @@ fn qr_in_place_unblocked<T: ComplexField>(
     });
 }
 
+pub fn default_blocksize(m: usize, n: usize) -> usize {
+    let prod = m * n;
+
+    if prod > 1 << 28 {
+        128
+    } else if prod > 1 << 24 {
+        64
+    } else if prod > 1 << 20 {
+        32
+    } else if prod > 1 << 16 {
+        16
+    } else {
+        8
+    }
+}
+
 pub fn qr_in_place_blocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: ColMut<'_, T>,
-    blocksize: usize,
+    max_blocksize: usize,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
 ) {
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = n.min(m);
-
-    if m < blocksize * 2 {
-        return qr_in_place_unblocked(matrix, householder_factor, stack);
-    }
 
     fancy_assert!(householder_factor.nrows() == size);
 
@@ -101,11 +113,22 @@ pub fn qr_in_place_blocked<T: ComplexField>(
             break;
         }
 
+        let blocksize = default_blocksize(m - k, n - k).min(max_blocksize);
         let bs = blocksize.min(size - k);
         let mut matrix = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let (_, _, mut block, remaining_cols) = matrix.rb_mut().split_at(0, bs);
         let mut householder = householder_factor.rb_mut().split_at(k).1.split_at(bs).0;
-        qr_in_place_unblocked(block.rb_mut(), householder.rb_mut(), stack.rb_mut());
+        if blocksize <= 8 {
+            qr_in_place_unblocked(block.rb_mut(), householder.rb_mut(), stack.rb_mut());
+        } else {
+            qr_in_place_blocked(
+                block.rb_mut(),
+                householder.rb_mut(),
+                8,
+                parallelism,
+                stack.rb_mut(),
+            );
+        }
 
         if k + bs < n {
             unsafe {

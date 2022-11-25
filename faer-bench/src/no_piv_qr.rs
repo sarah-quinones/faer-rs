@@ -74,7 +74,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 faer_qr::no_pivoting::compute::qr_in_place_blocked(
                     qr.as_mut(),
                     householder.as_mut().col(0),
-                    16,
+                    128,
                     parallelism,
                     stack.rb_mut(),
                 );

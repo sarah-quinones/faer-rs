@@ -9,12 +9,37 @@ use faer_core::Mat;
 
 pub fn qr(c: &mut Criterion) {
     use faer_qr::*;
+    // for m in (1..=8).map(|i| i * 256) {
+    //     for n in (1..=8).map(|i| i * 256) {
+    //         for bs in [8, 16, 32, 64] {
+    //             c.bench_function(&format!("faer-st-qr-{bs}-{m}x{n}"), |b| {
+    //                 let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
+    //                 let mut householder = Mat::with_dims(|_, _| random::<f64>(), m.min(n), 1);
+
+    //                 let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+    //                 let mut stack = DynStack::new(&mut mem);
+
+    //                 b.iter(|| {
+    //                     no_pivoting::compute::qr_in_place_blocked(
+    //                         mat.as_mut(),
+    //                         householder.as_mut().col(0),
+    //                         bs,
+    //                         Parallelism::None,
+    //                         stack.rb_mut(),
+    //                     );
+    //                 })
+    //             });
+    //         }
+    //     }
+    // }
+
     for (m, n) in [
         (64, 64),
         (128, 128),
         (256, 256),
         (512, 512),
         (1024, 1024),
+        (10000, 128),
         (10000, 1024),
         (2048, 2048),
         (4096, 4096),
@@ -31,7 +56,7 @@ pub fn qr(c: &mut Criterion) {
                 no_pivoting::compute::qr_in_place_blocked(
                     mat.as_mut(),
                     householder.as_mut().col(0),
-                    32,
+                    128,
                     Parallelism::None,
                     stack.rb_mut(),
                 );
@@ -49,7 +74,7 @@ pub fn qr(c: &mut Criterion) {
                 no_pivoting::compute::qr_in_place_blocked(
                     mat.as_mut(),
                     householder.as_mut().col(0),
-                    32,
+                    128,
                     Parallelism::Rayon(0),
                     stack.rb_mut(),
                 );
