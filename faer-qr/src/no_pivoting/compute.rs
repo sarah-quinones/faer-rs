@@ -153,7 +153,7 @@ pub fn qr_in_place_blocked<T: ComplexField>(
                                     block.rb(),
                                     t.rb(),
                                     false,
-                                    Parallelism::None,
+                                    parallelism,
                                     stack,
                                 );
                             },
