@@ -37,6 +37,14 @@ The QR module implements the QR decomposition with no pivoting, as well as the v
 - `faer-svd`
 - `faer-eigen`
 
+# Contributing
+
+If you'd like to contribute to `faer`, check out the list of "good first issue"
+issues. These are all (or should be) issues that are suitable for getting
+started, and they generally include a detailed set of instructions for what to
+do. Please ask questions on the Discord server or the issue itself if anything
+is unclear!
+
 # Benchmarks
 
 The benchmarks were run on an `11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz` with 12 threads.  
