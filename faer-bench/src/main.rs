@@ -47,15 +47,21 @@ fn print_results(
     ndarray: &[Duration],
     nalgebra: &[Duration],
 ) {
-    let fmt = |d: Duration| format!("{}", d.human_duration());
+    let fmt = |d: Duration| {
+        if d == Duration::ZERO {
+            "-".to_string()
+        } else {
+            format!("{}", d.human_duration())
+        }
+    };
     println!(
-        "{:5} {:>15} {:>20} {:>20} {:>30}",
-        "", "faer (serial)", "faer (parallel)", "ndarray (openblas)", "nalgebra (matrixmultiply)",
+        "{:>5} {:>10} {:>10} {:>10} {:>10}",
+        "n", "faer", "faer(par)", "ndarray", "nalgebra",
     );
 
     for (i, n) in input_sizes.iter().copied().enumerate() {
         println!(
-            "{:5} {:>15} {:>20} {:>20} {:>30}",
+            "{:5} {:>10} {:>10} {:>10} {:>10}",
             n,
             fmt(faer[i]),
             fmt(faer_parallel[i]),

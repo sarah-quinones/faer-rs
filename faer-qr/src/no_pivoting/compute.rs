@@ -1,3 +1,5 @@
+use core::num::NonZeroUsize;
+
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::DynStack;
 use faer_core::{
@@ -78,29 +80,112 @@ fn qr_in_place_unblocked<T: ComplexField>(
     });
 }
 
-pub fn default_blocksize(m: usize, n: usize) -> usize {
+#[inline]
+fn default_blocksize(m: usize, n: usize) -> usize {
     let prod = m * n;
 
-    if prod > 1 << 28 {
+    if prod > 8192 * 8192 {
         128
-    } else if prod > 1 << 24 {
+    } else if prod > 2048 * 2048 {
         64
-    } else if prod > 1 << 20 {
+    } else if prod > 1024 * 1024 {
         32
-    } else if prod > 1 << 16 {
+    } else if prod > 512 * 512 {
         16
     } else {
         8
     }
 }
 
-pub fn qr_in_place_blocked<T: ComplexField>(
+fn default_force_single_thread(m: usize, n: usize) -> bool {
+    let prod = m * n;
+    prod < 128 * 128
+}
+
+#[derive(Default, Copy, Clone)]
+pub struct QrParams {
+    max_blocksize: Option<NonZeroUsize>,
+    blocksize_fn: Option<fn(m: usize, n: usize) -> usize>,
+    force_single_thread_fn: Option<fn(m: usize, n: usize) -> bool>,
+}
+
+impl QrParams {
+    #[inline]
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    #[inline]
+    pub fn with_default_max_blocksize(self) -> Self {
+        QrParams {
+            max_blocksize: None,
+            ..self
+        }
+    }
+
+    #[inline]
+    pub fn with_max_blocksize(self, max_blocksize: usize) -> Self {
+        QrParams {
+            max_blocksize: NonZeroUsize::new(max_blocksize),
+            ..self
+        }
+    }
+
+    #[inline]
+    pub fn with_default_force_single_thread_fn(self) -> Self {
+        QrParams {
+            force_single_thread_fn: None,
+            ..self
+        }
+    }
+
+    #[inline]
+    pub fn with_force_single_thread_fn(self, f: fn(nrows: usize, ncols: usize) -> bool) -> Self {
+        QrParams {
+            force_single_thread_fn: Some(f),
+            ..self
+        }
+    }
+
+    #[inline]
+    pub fn with_default_blocksize_fn(self) -> Self {
+        QrParams {
+            blocksize_fn: None,
+            ..self
+        }
+    }
+
+    #[inline]
+    pub fn with_blocksize_fn(self, f: fn(nrows: usize, ncols: usize) -> usize) -> Self {
+        QrParams {
+            blocksize_fn: Some(f),
+            ..self
+        }
+    }
+
+    fn normalize(self) -> (usize, fn(usize, usize) -> usize, fn(usize, usize) -> bool) {
+        (
+            self.max_blocksize.map(NonZeroUsize::get).unwrap_or(128),
+            self.blocksize_fn.unwrap_or(default_blocksize),
+            self.force_single_thread_fn
+                .unwrap_or(default_force_single_thread),
+        )
+    }
+}
+
+pub fn qr_in_place<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     mut householder_factor: ColMut<'_, T>,
-    max_blocksize: usize,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
+    params: QrParams,
 ) {
+    let (max_blocksize, blocksize_fn, force_single_thread_fn) = params.normalize();
+
+    if max_blocksize == 1 {
+        return qr_in_place_unblocked(matrix, householder_factor, stack);
+    }
+
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = n.min(m);
@@ -113,7 +198,12 @@ pub fn qr_in_place_blocked<T: ComplexField>(
             break;
         }
 
-        let blocksize = default_blocksize(m - k, n - k).min(max_blocksize);
+        let parallelism = if force_single_thread_fn(m - k, n - k) {
+            Parallelism::None
+        } else {
+            parallelism
+        };
+        let blocksize = blocksize_fn(m - k, n - k).min(max_blocksize);
         let bs = blocksize.min(size - k);
         let mut matrix = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let (_, _, mut block, remaining_cols) = matrix.rb_mut().split_at(0, bs);
@@ -121,12 +211,12 @@ pub fn qr_in_place_blocked<T: ComplexField>(
         if blocksize <= 8 {
             qr_in_place_unblocked(block.rb_mut(), householder.rb_mut(), stack.rb_mut());
         } else {
-            qr_in_place_blocked(
+            qr_in_place(
                 block.rb_mut(),
                 householder.rb_mut(),
-                8,
                 parallelism,
                 stack.rb_mut(),
+                params.with_max_blocksize(8),
             );
         }
 
@@ -470,12 +560,12 @@ mod tests {
             let size = m.min(n);
             let mut householder = Mat::zeros(size, 1);
 
-            qr_in_place_blocked(
+            qr_in_place(
                 mat.as_mut(),
                 householder.as_mut().col(0),
-                16,
                 Parallelism::Rayon(0),
                 placeholder_stack!(),
+                Default::default(),
             );
 
             let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
