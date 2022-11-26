@@ -16,19 +16,27 @@ template <typename F> auto time1(F f) -> double {
 }
 
 template <typename F> auto timeit(F f) -> double {
-  auto min = 1e-1;
+  auto min = 1e-0;
   auto once = (time1)(f);
   if (once > min) {
     return once;
-  } else {
-    unsigned long long n = std::ceil(min / once);
-    return (time1)([&] {
-             for (std::size_t i = 0; i < n; ++i) {
-               f();
-             }
-           }) /
-           double(n);
   }
+  auto ten = (time1)([&] {
+    for (std::size_t i = 0; i < 10; ++i) {
+      f();
+    }
+  });
+  if (ten > min) {
+    return ten / 10.0;
+  }
+
+  unsigned long long n = std::ceil(min * 10 / ten);
+  return (time1)([&] {
+           for (std::size_t i = 0; i < n; ++i) {
+             f();
+           }
+         }) /
+         double(n);
 }
 
 void fmt(double time) {

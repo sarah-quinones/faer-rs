@@ -14,18 +14,28 @@ fn time(mut f: impl FnMut()) -> f64 {
 
 fn timeit(f: impl FnMut()) -> f64 {
     let mut f = f;
-    let min = 1e-1;
+    let min = 1e-0;
     let once = time(&mut f);
     if once > min {
-        once
-    } else {
-        let n = (min / once).ceil() as u64;
-        time(|| {
-            for _ in 0..n {
-                f()
-            }
-        }) / n as f64
+        return once;
     }
+
+    let ten = time(|| {
+        for _ in 0..10 {
+            f()
+        }
+    });
+
+    if ten > min {
+        return ten / 10.0;
+    }
+
+    let n = (min * 10.0 / ten).ceil() as u64;
+    time(|| {
+        for _ in 0..n {
+            f()
+        }
+    }) / n as f64
 }
 
 mod gemm;
