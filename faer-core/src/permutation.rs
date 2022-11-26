@@ -4,7 +4,7 @@ use reborrow::*;
 use crate::{MatMut, MatRef};
 
 #[inline]
-pub unsafe fn swap_cols_unchecked<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
+pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     let m = mat.nrows();
     let n = mat.ncols();
     fancy_debug_assert!(a < n);
@@ -22,22 +22,26 @@ pub unsafe fn swap_cols_unchecked<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     let ptr_b = ptr.wrapping_offset(cs * b as isize);
 
     if rs == 1 {
-        core::ptr::swap_nonoverlapping(ptr_a, ptr_b, m);
+        unsafe {
+            core::ptr::swap_nonoverlapping(ptr_a, ptr_b, m);
+        }
     } else {
         for i in 0..m {
             let offset = rs * i as isize;
-            core::ptr::swap_nonoverlapping(
-                ptr_a.wrapping_offset(offset),
-                ptr_b.wrapping_offset(offset),
-                1,
-            );
+            unsafe {
+                core::ptr::swap_nonoverlapping(
+                    ptr_a.wrapping_offset(offset),
+                    ptr_b.wrapping_offset(offset),
+                    1,
+                );
+            }
         }
     }
 }
 
 #[inline]
-pub unsafe fn swap_rows_unchecked<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
-    swap_cols_unchecked(mat.transpose(), a, b)
+pub fn swap_rows<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
+    swap_cols(mat.transpose(), a, b)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -199,7 +203,7 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
     for j in 0..n {
         for i in j..n {
             unsafe {
-                *dst.rb_mut().get_unchecked(i, j) =
+                *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
                     src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j)).clone();
             }
         }
@@ -207,7 +211,7 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
 }
 
 #[inline]
-pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
+unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
@@ -236,13 +240,14 @@ pub unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
     }
 }
 
+#[track_caller]
 #[inline]
-pub unsafe fn permute_cols_unchecked<T: Clone + Send + Sync>(
+pub fn permute_cols<T: Clone + Send + Sync>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
 ) {
-    permute_rows_unchecked(dst.transpose(), src.transpose(), perm_indices);
+    permute_rows(dst.transpose(), src.transpose(), perm_indices);
 }
 
 #[track_caller]

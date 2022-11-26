@@ -76,10 +76,7 @@ fn reconstruct_impl<T: ComplexField>(
         parallelism,
     );
 
-    fancy_assert!(row_perm.into_arrays().1.len() == m);
-    unsafe {
-        faer_core::permutation::permute_rows_unchecked(dst, lu.rb(), row_perm.inverse());
-    }
+    faer_core::permutation::permute_rows(dst, lu.rb(), row_perm.inverse());
 }
 
 /// Computes the reconstructed matrix, given its partial pivoting LU decomposition,

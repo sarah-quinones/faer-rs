@@ -38,7 +38,7 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
         let factor = T::one() - householder_coeff;
         matrix.cwise().for_each(|e| *e = *e * factor);
     } else {
-        let (_, first_row, _, last_rows) = matrix.split_at_unchecked(1, 0);
+        let (first_row, last_rows) = matrix.split_at_row(1);
         let mut first_row = first_row.row_unchecked(0);
         temp_mat_uninit! {
             let (tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
@@ -95,7 +95,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
     let n = matrix.ncols();
     let size = basis.ncols();
 
-    let (_, basis_tri, _, basis_bot) = basis.split_at_unchecked(size, 0);
+    let (basis_tri, basis_bot) = basis.split_at_row(size);
 
     temp_mat_uninit! {
         let (mut tmp0, stack) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
@@ -153,7 +153,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
         parallelism,
     );
 
-    let (_, matrix_top, _, matrix_bot) = matrix.split_at_unchecked(size, 0);
+    let (matrix_top, matrix_bot) = matrix.split_at_row(size);
 
     triangular::matmul(
         matrix_top,

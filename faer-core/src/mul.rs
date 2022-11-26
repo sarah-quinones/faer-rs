@@ -507,8 +507,8 @@ pub mod triangular {
             let bs = n / 2;
 
             let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at_unchecked(bs, bs);
-            let (_, _, lhs_left, lhs_right) = lhs.split_at_unchecked(0, bs);
-            let (_, _, mut dst_left, mut dst_right) = dst.split_at_unchecked(0, bs);
+            let (lhs_left, lhs_right) = lhs.split_at_col(bs);
+            let (mut dst_left, mut dst_right) = dst.split_at_col(bs);
 
             join_raw(
                 |parallelism| {
@@ -982,8 +982,8 @@ pub mod triangular {
         } else {
             let bs = n / 2;
             let (dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_unchecked(bs, bs);
-            let (_, lhs_top, _, lhs_bot) = lhs.split_at_unchecked(bs, 0);
-            let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, bs);
+            let (lhs_top, lhs_bot) = lhs.split_at_row(bs);
+            let (rhs_left, rhs_right) = rhs.split_at_col(bs);
 
             join_raw(
                 |_| {

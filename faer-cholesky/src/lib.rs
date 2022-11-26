@@ -38,8 +38,8 @@ where
     }
 
     perm_indices.sort_unstable_by(move |&i, &j| {
-        let lhs = unsafe { diag.get_unchecked(i) }.abs();
-        let rhs = unsafe { diag.get_unchecked(j) }.abs();
+        let lhs = diag[i].abs();
+        let rhs = diag[j].abs();
         let cmp = rhs.partial_cmp(&lhs);
         if let Some(cmp) = cmp {
             cmp
@@ -49,7 +49,7 @@ where
     });
 
     for (i, p) in perm_indices.iter().copied().enumerate() {
-        *unsafe { perm_inv_indices.get_unchecked_mut(p) } = i;
+        perm_inv_indices[p] = i;
     }
 
     unsafe { PermutationIndicesMut::new_unchecked(perm_indices, perm_inv_indices) }

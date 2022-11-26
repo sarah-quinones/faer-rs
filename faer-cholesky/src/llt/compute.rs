@@ -8,7 +8,7 @@ use reborrow::*;
 
 use super::CholeskyError;
 
-unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
+fn cholesky_in_place_left_looking_impl<T: ComplexField>(
     matrix: MatMut<'_, T>,
     block_size: usize,
     parallelism: Parallelism,
@@ -24,7 +24,7 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     match n {
         0 => return Ok(()),
         1 => {
-            let elem = matrix.get_unchecked(0, 0);
+            let elem = &mut matrix[(0, 0)];
             let real = (*elem).into_real_imag().0;
             return if real > T::Real::zero() {
                 *elem = T::from_real(real.sqrt());
@@ -40,9 +40,9 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
     loop {
         let block_size = (n - idx).min(block_size);
 
-        let (_, _, bottom_left, bottom_right) = matrix.rb_mut().split_at_unchecked(idx, idx);
-        let (_, l10, _, l20) = bottom_left.into_const().split_at_unchecked(block_size, 0);
-        let (mut a11, _, mut a21, _) = bottom_right.split_at_unchecked(block_size, block_size);
+        let (_, _, bottom_left, bottom_right) = matrix.rb_mut().split_at(idx, idx);
+        let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
+        let (mut a11, _, mut a21, _) = bottom_right.split_at(block_size, block_size);
 
         //
         //      L00
@@ -63,7 +63,7 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
 
         // A11 -= L10 × L10^H
         if l10.ncols() > 0 {
-            faer_core::mul::triangular::matmul_unchecked(
+            faer_core::mul::triangular::matmul(
                 a11.rb_mut(),
                 BlockStructure::TriangularLower,
                 Conj::No,
@@ -79,7 +79,7 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
             );
         }
 
-        cholesky_in_place_left_looking_unchecked(a11.rb_mut(), block_size / 2, parallelism)?;
+        cholesky_in_place_left_looking_impl(a11.rb_mut(), block_size / 2, parallelism)?;
 
         if idx + block_size == n {
             break;
@@ -89,7 +89,7 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
         let l11 = ld11;
 
         // A21 -= L20 × L10^H
-        faer_core::mul::matmul_unchecked(
+        faer_core::mul::matmul(
             a21.rb_mut(),
             Conj::No,
             l20,
@@ -106,7 +106,7 @@ unsafe fn cholesky_in_place_left_looking_unchecked<T: ComplexField>(
         //
         // conj(L11) L21^T = A21^T
 
-        solve::solve_lower_triangular_in_place_unchecked(
+        solve::solve_lower_triangular_in_place(
             l11,
             Conj::Yes,
             a21.rb_mut().transpose(),
@@ -130,7 +130,7 @@ pub fn cholesky_in_place_req<T: 'static>(
     Ok(StackReq::default())
 }
 
-unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
+fn cholesky_in_place_impl<T: ComplexField>(
     matrix: MatMut<'_, T>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -143,17 +143,16 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
 
     let n = matrix.nrows();
     if n < 4 {
-        cholesky_in_place_left_looking_unchecked(matrix, 1, parallelism)
+        cholesky_in_place_left_looking_impl(matrix, 1, parallelism)
     } else {
         let block_size = (n / 2).min(128 * parallelism_degree(parallelism));
-        let (mut l00, _, mut a10, mut a11) =
-            matrix.rb_mut().split_at_unchecked(block_size, block_size);
+        let (mut l00, _, mut a10, mut a11) = matrix.rb_mut().split_at(block_size, block_size);
 
-        cholesky_in_place_unchecked(l00.rb_mut(), parallelism, stack.rb_mut())?;
+        cholesky_in_place_impl(l00.rb_mut(), parallelism, stack.rb_mut())?;
 
         let l00 = l00.into_const();
 
-        solve::solve_lower_triangular_in_place_unchecked(
+        solve::solve_lower_triangular_in_place(
             l00,
             Conj::Yes,
             a10.rb_mut().transpose(),
@@ -176,7 +175,7 @@ unsafe fn cholesky_in_place_unchecked<T: ComplexField>(
             parallelism,
         );
 
-        cholesky_in_place_unchecked(a11, parallelism, stack)
+        cholesky_in_place_impl(a11, parallelism, stack)
     }
 }
 
@@ -207,5 +206,5 @@ pub fn cholesky_in_place<T: ComplexField>(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    unsafe { cholesky_in_place_unchecked(matrix, parallelism, stack) }
+    cholesky_in_place_impl(matrix, parallelism, stack)
 }

@@ -5,9 +5,7 @@ use core::{
 };
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use faer_core::{
-    permutation::swap_cols_unchecked, ColMut, ColRef, ComplexField, MatMut, Parallelism,
-};
+use faer_core::{permutation::swap_cols, ColMut, ColRef, ComplexField, MatMut, Parallelism};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -283,7 +281,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         col_transpositions[k] = k + biggest_col_idx;
         if biggest_col_idx > 0 {
             n_transpositions += 1;
-            swap_cols_unchecked(matrix_right.rb_mut(), 0, biggest_col_idx);
+            swap_cols(matrix_right.rb_mut(), 0, biggest_col_idx);
         }
 
         let mut matrix = matrix.rb_mut().submatrix_unchecked(k, k, m - k, n - k);

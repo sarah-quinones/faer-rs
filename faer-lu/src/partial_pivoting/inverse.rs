@@ -3,7 +3,7 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw,
     mul::triangular,
-    permutation::{permute_cols_unchecked, PermutationIndicesRef},
+    permutation::{permute_cols, PermutationIndicesRef},
     temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
@@ -74,9 +74,7 @@ fn invert_impl<T: ComplexField>(
         parallelism,
     );
 
-    unsafe {
-        permute_cols_unchecked(dst, inv.rb(), row_perm.inverse());
-    }
+    permute_cols(dst, inv.rb(), row_perm.inverse());
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a

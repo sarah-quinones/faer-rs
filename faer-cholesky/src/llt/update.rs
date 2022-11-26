@@ -487,7 +487,7 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                *alpha.rb_mut().ptr_in_bounds_at_unchecked(k) = T::one();
+                *alpha.rb_mut().ptr_in_bounds_at(k) = T::one();
             }
 
             for chunk_i in k..r {

@@ -2,7 +2,7 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::matmul,
-    permutation::{swap_rows_unchecked, PermutationIndicesMut},
+    permutation::{swap_rows, PermutationIndicesMut},
     solve::solve_unit_lower_triangular_in_place,
     temp_mat_req, temp_mat_uninit,
     zip::ColUninit,
@@ -12,7 +12,7 @@ use reborrow::*;
 
 #[inline]
 unsafe fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
-    swap_rows_unchecked(m.as_2d(), i, j);
+    swap_rows(m.as_2d(), i, j);
 }
 
 fn lu_unblocked_req<T: 'static>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
@@ -57,7 +57,7 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
             perm.swap(j, imax);
         }
 
-        swap_rows_unchecked(matrix.rb_mut(), j, imax);
+        swap_rows(matrix.rb_mut(), j, imax);
 
         let (_, _, _, middle_right) = matrix.rb_mut().split_at_unchecked(0, col_start);
         let (_, _, middle, _) = middle_right.split_at_unchecked(0, n);
@@ -239,14 +239,14 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
         // use transpositions
         if matrix.col_stride().abs() < matrix.row_stride().abs() {
             for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_rows_unchecked(
+                swap_rows(
                     matrix.rb_mut().submatrix_unchecked(0, 0, m, col_start),
                     i,
                     t + i,
                 );
             }
             for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_rows_unchecked(
+                swap_rows(
                     matrix
                         .rb_mut()
                         .submatrix_unchecked(bs, 0, m - bs, col_start),
@@ -255,7 +255,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
                 );
             }
             for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_rows_unchecked(
+                swap_rows(
                     matrix.rb_mut().submatrix_unchecked(
                         0,
                         col_start + n,
@@ -267,7 +267,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
                 );
             }
             for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_rows_unchecked(
+                swap_rows(
                     matrix.rb_mut().submatrix_unchecked(
                         bs,
                         col_start + n,

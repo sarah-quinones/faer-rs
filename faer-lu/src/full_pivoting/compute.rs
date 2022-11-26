@@ -5,7 +5,7 @@ use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
     mul::matmul,
-    permutation::{swap_cols_unchecked, swap_rows_unchecked, PermutationIndicesMut},
+    permutation::{swap_cols, swap_rows, PermutationIndicesMut},
     ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowRef,
 };
 use pulp::Simd;
@@ -992,12 +992,12 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
 
         if max_row != k {
             n_transpositions += 1;
-            swap_rows_unchecked(matrix.rb_mut(), k, max_row);
+            swap_rows(matrix.rb_mut(), k, max_row);
         }
 
         if max_col != k {
             n_transpositions += 1;
-            swap_cols_unchecked(matrix.rb_mut(), k, max_col);
+            swap_cols(matrix.rb_mut(), k, max_col);
         }
 
         let inv = matrix.rb().get_unchecked(k, k).inv();

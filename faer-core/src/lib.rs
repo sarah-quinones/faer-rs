@@ -21,6 +21,7 @@ use core::{
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
+use rayon::prelude::IndexedParallelIterator;
 
 use core::mem::transmute_copy;
 /// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
@@ -225,6 +226,11 @@ impl ComplexField for f32 {
     fn score(self) -> Self::Real {
         self.abs()
     }
+
+    #[inline(always)]
+    fn abs(self) -> Self::Real {
+        self.abs()
+    }
 }
 
 impl RealField for f64 {}
@@ -268,6 +274,11 @@ impl ComplexField for f64 {
 
     #[inline(always)]
     fn score(self) -> Self::Real {
+        self.abs()
+    }
+
+    #[inline(always)]
+    fn abs(self) -> Self::Real {
         self.abs()
     }
 }
@@ -912,8 +923,9 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -937,8 +949,9 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     ///
@@ -959,8 +972,9 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -1007,8 +1021,9 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, it panics.
     ///
@@ -1048,12 +1063,73 @@ impl<'a, T> MatRef<'a, T> {
         unsafe { self.split_at_unchecked(i, j) }
     }
 
+    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
+        let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
+        (top, bottom)
+    }
+
+    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn split_at_row(self, i: usize) -> (Self, Self) {
+        let (_, top, _, bottom) = self.split_at(i, 0);
+        (top, bottom)
+    }
+
+    /// Splits the matrix vertically into two parts in the following order: left, right.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.nrows()`,
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
+        let (_, _, left, right) = self.split_at_unchecked(0, j);
+        (left, right)
+    }
+
+    /// Splits the matrix vertically into two parts in the following order: left, right.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.nrows()`,
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn split_at_col(self, j: usize) -> (Self, Self) {
+        let (_, _, left, right) = self.split_at(0, j);
+        (left, right)
+    }
+
     /// Returns a reference to the element at position (i, j), with no bound checks.
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -1098,7 +1174,8 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -1118,7 +1195,8 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, it panics.
     ///
@@ -1150,7 +1228,8 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -1170,7 +1249,8 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     ///
@@ -1453,15 +1533,66 @@ impl<'a, T> MatRef<'a, T> {
         ColIter(self)
     }
 
+    /// Returns a parallel iterator over row chunks of the matrix.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_row_chunks(
+        self,
+        chunk_count: usize,
+    ) -> impl IndexedParallelIterator<Item = MatRef<'a, T>>
+    where
+        T: Sync,
+    {
+        use rayon::prelude::*;
+        fancy_assert!(chunk_count != 0);
+        let chunk_size = self.nrows() / chunk_count;
+        let rem = self.nrows() % chunk_count;
+        let ncols = self.ncols();
+
+        let idx_to_col_start = move |idx| {
+            if idx < rem {
+                idx * (chunk_size + 1)
+            } else {
+                rem + idx * chunk_size
+            }
+        };
+
+        (0..chunk_count).into_par_iter().map(move |idx| unsafe {
+            self.submatrix_unchecked(
+                idx_to_col_start(idx),
+                0,
+                idx_to_col_start(idx + 1) - idx_to_col_start(idx),
+                ncols,
+            )
+        })
+    }
+
+    /// Returns a parallel iterator over column chunks of the matrix.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_col_chunks(
+        self,
+        chunk_count: usize,
+    ) -> impl IndexedParallelIterator<Item = MatRef<'a, T>>
+    where
+        T: Sync,
+    {
+        use rayon::prelude::*;
+        self.transpose()
+            .into_par_row_chunks(chunk_count)
+            .map(|mat| mat.transpose())
+    }
+
     /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
     /// with dimensions `(nrows, ncols)`.
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`,  
-    /// `j <= self.ncols()`,  
-    /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`,
+    /// - `nrows <= self.nrows() - i`,
+    /// - `ncols <= self.ncols() - j`.
     ///
     /// Otherwise, the behavior is undefined.
     ///
@@ -1495,10 +1626,11 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`,  
-    /// `j <= self.ncols()`,  
-    /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`,
+    /// - `nrows <= self.nrows() - i`,
+    /// - `ncols <= self.ncols() - j`.
     ///
     /// Otherwise, it panics.
     ///
@@ -1682,8 +1814,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -1703,8 +1836,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -1721,8 +1855,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -1765,8 +1900,9 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`
-    /// and `j <= self.ncols()`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -1778,12 +1914,73 @@ impl<'a, T> MatMut<'a, T> {
         unsafe { self.split_at_unchecked(i, j) }
     }
 
+    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
+        let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
+        (top, bottom)
+    }
+
+    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn split_at_row(self, i: usize) -> (Self, Self) {
+        let (_, top, _, bottom) = self.split_at(i, 0);
+        (top, bottom)
+    }
+
+    /// Splits the matrix vertically into two parts in the following order: left, right.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.nrows()`,
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
+        let (_, _, left, right) = self.split_at_unchecked(0, j);
+        (left, right)
+    }
+
+    /// Splits the matrix vertically into two parts in the following order: left, right.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.nrows()`,
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn split_at_col(self, j: usize) -> (Self, Self) {
+        let (_, _, left, right) = self.split_at(0, j);
+        (left, right)
+    }
+
     /// Returns a mutable reference to the element at position (i, j), with no bound checks.
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`
-    /// and `j < self.ncols()`.
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -1809,7 +2006,8 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -1825,7 +2023,8 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -1840,7 +2039,8 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -1856,7 +2056,8 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -1965,15 +2166,46 @@ impl<'a, T> MatMut<'a, T> {
         ColIterMut(self)
     }
 
+    /// Returns a parallel iterator over the rows of the matrix.
+    #[inline]
+    pub fn into_par_row_chunks(
+        self,
+        chunk_count: usize,
+    ) -> impl IndexedParallelIterator<Item = MatMut<'a, T>>
+    where
+        T: Sync + Send,
+    {
+        use rayon::prelude::*;
+        self.into_const()
+            .into_par_row_chunks(chunk_count)
+            .map(|chunk| unsafe { chunk.const_cast() })
+    }
+
+    /// Returns a parallel iterator over the rows of the matrix.
+    #[inline]
+    pub fn into_par_col_chunks(
+        self,
+        chunk_count: usize,
+    ) -> impl IndexedParallelIterator<Item = MatMut<'a, T>>
+    where
+        T: Sync + Send,
+    {
+        use rayon::prelude::*;
+        self.into_const()
+            .into_par_col_chunks(chunk_count)
+            .map(|chunk| unsafe { chunk.const_cast() })
+    }
+
     /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
     /// with dimensions `(nrows, ncols)`.
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`,  
-    /// `j <= self.ncols()`,  
-    /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`,
+    /// - `nrows <= self.nrows() - i`,
+    /// - `ncols <= self.ncols() - j`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2005,10 +2237,11 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`,  
-    /// `j <= self.ncols()`,  
-    /// `nrows <= self.nrows() - i`  
-    /// and `ncols <= self.ncols() - j`.
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `j <= self.ncols()`,
+    /// - `nrows <= self.nrows() - i`,
+    /// - `ncols <= self.ncols() - j`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2091,7 +2324,8 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2109,7 +2343,8 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2124,7 +2359,8 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j <= self.ncols()`.
+    /// Requires that
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2143,7 +2379,8 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j <= self.ncols()`.
+    /// Requires that
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2197,6 +2434,54 @@ impl<'a, T> RowRef<'a, T> {
     #[inline]
     pub fn cwise(self) -> ZipRow<(Self,)> {
         ZipRow { tuple: (self,) }
+    }
+
+    /// Returns a view over subcolumns of `self`, starting at position `j`
+    /// with a column count of `ncols`.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `j <= self.ncols()`,
+    /// - `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn subcols_unchecked(self, j: usize, ncols: usize) -> Self {
+        fancy_debug_assert!(j <= self.ncols());
+        fancy_debug_assert!(ncols <= self.ncols() - j);
+
+        let mut s = self;
+        Self::from_raw_parts(s.rb_mut().ptr_at(j), ncols, s.col_stride())
+    }
+
+    /// Returns a view over subcolumnss of `self`, starting at position `j`
+    /// with a col count of `ncols`.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.ncols()`,
+    /// - `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn subcols(self, j: usize, ncols: usize) -> Self {
+        fancy_assert!(j <= self.ncols());
+        fancy_assert!(ncols <= self.ncols() - j);
+
+        unsafe { self.subcols_unchecked(j, ncols) }
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn const_cast(self) -> RowMut<'a, T> {
+        RowMut {
+            base: self.base,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -2265,7 +2550,8 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2283,7 +2569,8 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j < self.ncols()`.
+    /// Requires that
+    /// - `j < self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2298,7 +2585,8 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `j <= self.ncols()`.
+    /// Requires that
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2317,7 +2605,8 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `j <= self.ncols()`.
+    /// Requires that
+    /// - `j <= self.ncols()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2365,6 +2654,45 @@ impl<'a, T> RowMut<'a, T> {
     pub fn transpose(self) -> ColMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
+    }
+
+    /// Returns a view over subcolumns of `self`, starting at position `j`
+    /// with a column count of `ncols`.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `j <= self.ncols()`,
+    /// - `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn subcols_unchecked(self, j: usize, ncols: usize) -> Self {
+        fancy_debug_assert!(j <= self.ncols());
+        fancy_debug_assert!(ncols <= self.ncols() - j);
+
+        let mut s = self;
+        Self::from_raw_parts(s.rb_mut().ptr_at(j), ncols, s.col_stride())
+    }
+
+    /// Returns a view over subcolumnss of `self`, starting at position `j`
+    /// with a col count of `ncols`.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j <= self.ncols()`,
+    /// - `ncols <= self.ncols() - j`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn subcols(self, j: usize, ncols: usize) -> Self {
+        fancy_assert!(j <= self.ncols());
+        fancy_assert!(ncols <= self.ncols() - j);
+
+        unsafe { self.subcols_unchecked(j, ncols) }
     }
 
     /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
@@ -2438,7 +2766,8 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2456,7 +2785,8 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2471,7 +2801,8 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`.
+    /// Requires that
+    /// - `i <= self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2490,7 +2821,8 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`.
+    /// Requires that
+    /// - `i <= self.nrows()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2540,10 +2872,58 @@ impl<'a, T> ColRef<'a, T> {
         unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
     }
 
+    /// Returns a view over subrows of `self`, starting at position `i`
+    /// with a row count of `nrows`.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `nrows <= self.nrows() - i`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn subrows_unchecked(self, i: usize, nrows: usize) -> Self {
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(nrows <= self.nrows() - i);
+
+        let mut s = self;
+        Self::from_raw_parts(s.rb_mut().ptr_at(i), nrows, s.row_stride())
+    }
+
+    /// Returns a view over subrows of `self`, starting at position `i`
+    /// with a row count of `nrows`.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `nrows <= self.nrows() - i`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn subrows(self, i: usize, nrows: usize) -> Self {
+        fancy_assert!(i <= self.nrows());
+        fancy_assert!(nrows <= self.nrows() - i);
+
+        unsafe { self.subrows_unchecked(i, nrows) }
+    }
+
     /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
     #[inline]
     pub fn cwise(self) -> ZipCol<(Self,)> {
         ZipCol { tuple: (self,) }
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn const_cast(self) -> ColMut<'a, T> {
+        ColMut {
+            base: self.base,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -2612,7 +2992,8 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2630,7 +3011,8 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i < self.nrows()`.
+    /// Requires that
+    /// - `i < self.nrows()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2645,7 +3027,8 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Safety
     ///
-    /// Requires that `i <= self.nrows()`.
+    /// Requires that
+    /// - `i <= self.nrows()`.
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
@@ -2664,7 +3047,8 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// # Panics
     ///
-    /// Requires that `i <= self.nrows()`.
+    /// Requires that
+    /// - `i <= self.nrows()`.
     ///
     /// Otherwise, it panics.
     #[track_caller]
@@ -2712,6 +3096,45 @@ impl<'a, T> ColMut<'a, T> {
     pub fn transpose(self) -> RowMut<'a, T> {
         let ptr = self.base.ptr.as_ptr();
         unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
+    }
+
+    /// Returns a view over subrows of `self`, starting at position `i`
+    /// with a row count of `nrows`.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `nrows <= self.nrows() - i`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn subrows_unchecked(self, i: usize, nrows: usize) -> Self {
+        fancy_debug_assert!(i <= self.nrows());
+        fancy_debug_assert!(nrows <= self.nrows() - i);
+
+        let mut s = self;
+        Self::from_raw_parts(s.rb_mut().ptr_at(i), nrows, s.row_stride())
+    }
+
+    /// Returns a view over subrows of `self`, starting at position `i`
+    /// with a row count of `nrows`.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i <= self.nrows()`,
+    /// - `nrows <= self.nrows() - i`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn subrows(self, i: usize, nrows: usize) -> Self {
+        fancy_assert!(i <= self.nrows());
+        fancy_assert!(nrows <= self.nrows() - i);
+
+        unsafe { self.subrows_unchecked(i, nrows) }
     }
 
     /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
