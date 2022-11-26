@@ -51,7 +51,7 @@ int main() {
   std::vector<Eigen::Index> inputs{32,  64,  96,  128, 192, 256,
                                    384, 512, 640, 768, 896, 1024};
   for (int i = 0; i < 10; ++i) {
-    time1([] {});
+    timeit([] {});
   }
 
   std::cout << "gemm" << '\n';
@@ -62,7 +62,7 @@ int main() {
     a.setZero();
     b.setZero();
     c.setZero();
-    fmt(time1([&] { c.noalias() += a * b; }));
+    fmt(timeit([&] { c.noalias() += a * b; }));
   }
 
   std::cout << "trsm" << '\n';
@@ -71,7 +71,7 @@ int main() {
     auto b = Eigen::MatrixXd(n, n);
     a.setZero();
     b.setZero();
-    fmt(time1([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
+    fmt(timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
   }
 
   std::cout << "triangular inverse" << '\n';
@@ -80,7 +80,7 @@ int main() {
     auto b = Eigen::MatrixXd(n, n);
     a.setZero();
     b.setZero();
-    fmt(time1([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
+    fmt(timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
   }
 
   std::cout << "cholesky decomposition" << '\n';
@@ -88,7 +88,7 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setIdentity();
     auto b = a.llt();
-    fmt(time1([&] { b.compute(a); }));
+    fmt(timeit([&] { b.compute(a); }));
   }
 
   std::cout << "lu partial piv" << '\n';
@@ -96,7 +96,7 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.partialPivLu();
-    fmt(time1([&] { b.compute(a); }));
+    fmt(timeit([&] { b.compute(a); }));
   }
 
   std::cout << "lu full piv" << '\n';
@@ -104,7 +104,7 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.fullPivLu();
-    fmt(time1([&] { b.compute(a); }));
+    fmt(timeit([&] { b.compute(a); }));
   }
 
   std::cout << "qr" << '\n';
@@ -112,7 +112,7 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.householderQr();
-    fmt(time1([&] { b.compute(a); }));
+    fmt(timeit([&] { b.compute(a); }));
   }
 
   std::cout << "col piv qr" << '\n';
@@ -120,7 +120,7 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.colPivHouseholderQr();
-    fmt(time1([&] { b.compute(a); }));
+    fmt(timeit([&] { b.compute(a); }));
   }
 
   std::cout << "inverse" << '\n';
@@ -128,6 +128,6 @@ int main() {
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a;
-    fmt(time1([&] { b = a.inverse(); }));
+    fmt(timeit([&] { b = a.inverse(); }));
   }
 }
