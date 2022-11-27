@@ -4051,32 +4051,24 @@ macro_rules! temp_mat_uninit {
         $(
             let nrows: usize = $nrows;
             let ncols: usize = $ncols;
-            let (mut temp_data, col_stride, $stack_id) = if $crate::is_vectorizable::<$ty>() {
-                let col_stride = $crate::round_up_to(
+            let col_stride = if $crate::is_vectorizable::<$ty>() {
+                $crate::round_up_to(
                     nrows,
                     $crate::align_for::<$ty>() / ::core::mem::size_of::<$ty>()
-                    );
-                let (temp_data, stack) = $stack.make_aligned_uninit::<$ty>(
-                    ncols * col_stride,
-                    $crate::align_for::<$ty>()
-                    );
-                ($crate::Either::Left(temp_data), col_stride, stack)
+                )
             } else {
-                let (temp_data, stack) = $stack.make_aligned_with(
-                    nrows * ncols,
-                    $crate::align_for::<$ty>(),
-                    |_| <$ty as $crate::ComplexField>::zero()
-                    );
-                ($crate::Either::Right(temp_data), nrows, stack)
+                nrows
             };
+
+            let (mut temp_data, $stack_id) = $stack.make_aligned_uninit::<$ty>(
+                ncols * col_stride,
+                $crate::align_for::<$ty>(),
+            );
 
             #[allow(unused_unsafe)]
             let $id = unsafe {
                 $crate::from_uninit_mut_slice(
-                    match &mut temp_data {
-                        $crate::Either::Left(temp_data) => temp_data,
-                        $crate::Either::Right(temp_data) => $crate::as_uninit(temp_data),
-                    },
+                    &mut (temp_data),
                     nrows,
                     ncols,
                     1,
