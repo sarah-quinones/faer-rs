@@ -1,0 +1,28 @@
+on: [push, pull_request]
+
+name: Run Tests
+
+jobs:
+  testing:
+    name: testing-${{ matrix.toolchain }}-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - stable
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@master
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+
+      - name: Run cargo test
+        run: cargo test --release --workspace
