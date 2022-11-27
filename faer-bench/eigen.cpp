@@ -4,9 +4,6 @@
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/LU>
 #include <eigen3/Eigen/QR>
-#include <iomanip>
-#include <iostream>
-#include <vector>
 
 template <typename F> auto time1(F f) -> double {
   auto start = std::chrono::steady_clock::now();

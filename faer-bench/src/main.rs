@@ -113,7 +113,14 @@ fn eigen(
 fn main() -> Result<()> {
     let input_sizes = vec![32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
 
-    println!("gemm");
+    println!(
+        "
+## Matrix multiplication
+
+Multiplication of two square matrices of dimension `n`.
+
+```"
+    );
     print_results(
         &input_sizes,
         &gemm::faer(&input_sizes, Parallelism::None),
@@ -122,7 +129,14 @@ fn main() -> Result<()> {
         &gemm::nalgebra(&input_sizes),
         &eigen(eigen::gemm, &input_sizes),
     );
-    println!("trsm");
+    println!("```");
+
+    println!("
+## Triangular solve
+
+Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and `A` is a triangular matrix.
+
+```");
     print_results(
         &input_sizes,
         &trsm::faer(&input_sizes, Parallelism::None),
@@ -131,8 +145,16 @@ fn main() -> Result<()> {
         &trsm::nalgebra(&input_sizes),
         &eigen(eigen::trsm, &input_sizes),
     );
+    println!("```");
 
-    println!("triangular inverse");
+    println!(
+        "
+## Triangular inverse
+
+Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
+
+```"
+    );
     print_results(
         &input_sizes,
         &tr_inverse::faer(&input_sizes, Parallelism::None),
@@ -141,8 +163,16 @@ fn main() -> Result<()> {
         &tr_inverse::nalgebra(&input_sizes),
         &eigen(eigen::trinv, &input_sizes),
     );
+    println!("```");
 
-    println!("cholesky decomposition");
+    println!(
+        "
+## Cholesky decomposition
+
+Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
+
+```"
+    );
     print_results(
         &input_sizes,
         &cholesky::faer(&input_sizes, Parallelism::None),
@@ -151,8 +181,14 @@ fn main() -> Result<()> {
         &cholesky::nalgebra(&input_sizes),
         &eigen(eigen::chol, &input_sizes),
     );
+    println!("```");
 
-    println!("lu decomposition with partial pivoting");
+    println!("
+## LU decomposition with partial pivoting
+
+Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
+
+```");
     print_results(
         &input_sizes,
         &partial_piv_lu::faer(&input_sizes, Parallelism::None),
@@ -161,8 +197,14 @@ fn main() -> Result<()> {
         &partial_piv_lu::nalgebra(&input_sizes),
         &eigen(eigen::plu, &input_sizes),
     );
+    println!("```");
 
-    println!("lu decomposition with full pivoting");
+    println!("
+## LU decomposition with full pivoting
+
+Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
+
+```");
     print_results(
         &input_sizes,
         &full_piv_lu::faer(&input_sizes, Parallelism::None),
@@ -171,8 +213,14 @@ fn main() -> Result<()> {
         &full_piv_lu::nalgebra(&input_sizes),
         &eigen(eigen::flu, &input_sizes),
     );
+    println!("```");
 
-    println!("qr decomposition with no pivoting");
+    println!("
+## QR decomposition with no pivoting
+
+Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and `R` is upper triangular.
+
+```");
     print_results(
         &input_sizes,
         &no_piv_qr::faer(&input_sizes, Parallelism::None),
@@ -181,8 +229,14 @@ fn main() -> Result<()> {
         &no_piv_qr::nalgebra(&input_sizes),
         &eigen(eigen::qr, &input_sizes),
     );
+    println!("```");
 
-    println!("qr decomposition with column pivoting");
+    println!("
+## QR decomposition with column pivoting
+
+Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutation matrix, `Q` is unitary and `R` is upper triangular.
+
+```");
     print_results(
         &input_sizes,
         &col_piv_qr::faer(&input_sizes, Parallelism::None),
@@ -191,8 +245,16 @@ fn main() -> Result<()> {
         &col_piv_qr::nalgebra(&input_sizes),
         &eigen(eigen::colqr, &input_sizes),
     );
+    println!("```");
 
-    println!("matrix inverse");
+    println!(
+        "
+## Matrix inverse
+
+Computing the inverse of a square matrix with dimension `n`.
+
+```"
+    );
     print_results(
         &input_sizes,
         &inverse::faer(&input_sizes, Parallelism::None),
@@ -201,6 +263,7 @@ fn main() -> Result<()> {
         &inverse::nalgebra(&input_sizes),
         &eigen(eigen::inverse, &input_sizes),
     );
+    println!("```");
 
     Ok(())
 }
