@@ -7,8 +7,8 @@ use crate::{MatMut, MatRef};
 pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     let m = mat.nrows();
     let n = mat.ncols();
-    fancy_debug_assert!(a < n);
-    fancy_debug_assert!(b < n);
+    fancy_assert!(a < n);
+    fancy_assert!(b < n);
 
     if a == b {
         return;
