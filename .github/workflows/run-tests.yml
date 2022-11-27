@@ -26,7 +26,7 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
 
       - name: Run cargo test
-        run: cargo test --release --workspace
+        run: cargo test --release --workspace --exclude faer-bench
 
   coverage:
     name: Coverage
@@ -53,6 +53,7 @@ jobs:
           mkdir -p "${HOME}/.local/bin"
           curl -sL https://github.com/mozilla/grcov/releases/download/v0.8.10/grcov-x86_64-unknown-linux-gnu.tar.bz2 | tar jxf - -C "${HOME}/.local/bin"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
+          
       - name: Run xtask coverage
         uses: actions-rs/cargo@v1
         with:
