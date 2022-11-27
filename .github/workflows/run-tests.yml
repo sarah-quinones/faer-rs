@@ -10,7 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - stable
+        # change to stable once #![feature(...)] is brought into stable rust
+          - nightly
         os:
           - ubuntu-latest
           - windows-latest
