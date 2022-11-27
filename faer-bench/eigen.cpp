@@ -39,103 +39,115 @@ template <typename F> auto timeit(F f) -> double {
          double(n);
 }
 
-void fmt(double time) {
-  auto unit = " s";
-  if (time < 1e-6) {
-    time *= 1e9;
-    unit = "ns";
-  } else if (time < 1e-3) {
-    time *= 1e6;
-    unit = "µs";
-  } else if (time < 1e-0) {
-    time *= 1e3;
-    unit = "ms";
-  }
+extern "C" void gemm(double *out, std::size_t const *inputs,
+                     std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
 
-  std::cout << std::setprecision(3) << std::setw(10) << time << unit << '\n';
-}
-
-int main() {
-  std::vector<Eigen::Index> inputs{32,  64,  96,  128, 192, 256,
-                                   384, 512, 640, 768, 896, 1024};
-  for (int i = 0; i < 10; ++i) {
-    timeit([] {});
-  }
-
-  std::cout << "gemm" << '\n';
-  for (auto n : inputs) {
     auto a = Eigen::MatrixXd(n, n);
     auto b = Eigen::MatrixXd(n, n);
     auto c = Eigen::MatrixXd(n, n);
     a.setZero();
     b.setZero();
     c.setZero();
-    fmt(timeit([&] { c.noalias() += a * b; }));
-  }
 
-  std::cout << "trsm" << '\n';
-  for (auto n : inputs) {
+    out[i] = timeit([&] { c.noalias() += a * b; });
+  }
+}
+
+extern "C" void trsm(double *out, std::size_t const *inputs,
+                     std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     auto b = Eigen::MatrixXd(n, n);
     a.setZero();
     b.setZero();
-    fmt(timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
+    out[i] =
+        timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });
   }
+}
 
-  std::cout << "triangular inverse" << '\n';
-  for (auto n : inputs) {
+extern "C" void trinv(double *out, std::size_t const *inputs,
+                      std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     auto b = Eigen::MatrixXd(n, n);
     a.setZero();
     b.setZero();
-    fmt(timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); }));
+    out[i] =
+        timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });
   }
+}
 
-  std::cout << "cholesky decomposition" << '\n';
-  for (auto n : inputs) {
+extern "C" void chol(double *out, std::size_t const *inputs,
+                     std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setIdentity();
     auto b = a.llt();
-    fmt(timeit([&] { b.compute(a); }));
+    out[i] = timeit([&] { b.compute(a); });
   }
+}
 
-  std::cout << "lu partial piv" << '\n';
-  for (auto n : inputs) {
+extern "C" void plu(double *out, std::size_t const *inputs, std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.partialPivLu();
-    fmt(timeit([&] { b.compute(a); }));
+    out[i] = timeit([&] { b.compute(a); });
   }
+}
 
-  std::cout << "lu full piv" << '\n';
-  for (auto n : inputs) {
+extern "C" void flu(double *out, std::size_t const *inputs, std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.fullPivLu();
-    fmt(timeit([&] { b.compute(a); }));
+    out[i] = timeit([&] { b.compute(a); });
   }
+}
 
-  std::cout << "qr" << '\n';
-  for (auto n : inputs) {
+extern "C" void qr(double *out, std::size_t const *inputs, std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.householderQr();
-    fmt(timeit([&] { b.compute(a); }));
+    out[i] = timeit([&] { b.compute(a); });
   }
+}
 
-  std::cout << "col piv qr" << '\n';
-  for (auto n : inputs) {
+extern "C" void colqr(double *out, std::size_t const *inputs,
+                      std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a.colPivHouseholderQr();
-    fmt(timeit([&] { b.compute(a); }));
+    out[i] = timeit([&] { b.compute(a); });
   }
+}
 
-  std::cout << "inverse" << '\n';
-  for (auto n : inputs) {
+extern "C" void inverse(double *out, std::size_t const *inputs,
+                        std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
     auto a = Eigen::MatrixXd(n, n);
     a.setRandom();
     auto b = a;
-    fmt(timeit([&] { b = a.inverse(); }));
+    out[i] = timeit([&] { b = a.inverse(); });
   }
 }

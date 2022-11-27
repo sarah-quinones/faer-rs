@@ -5,6 +5,7 @@ use faer_core::Parallelism;
 use human_repr::HumanDuration;
 
 extern crate blas_src;
+extern crate openmp_sys;
 
 fn time(mut f: impl FnMut()) -> f64 {
     let instant = std::time::Instant::now();
@@ -56,6 +57,7 @@ fn print_results(
     faer_parallel: &[Duration],
     ndarray: &[Duration],
     nalgebra: &[Duration],
+    eigen: &[Duration],
 ) {
     let fmt = |d: Duration| {
         if d == Duration::ZERO {
@@ -65,20 +67,47 @@ fn print_results(
         }
     };
     println!(
-        "{:>5} {:>10} {:>10} {:>10} {:>10}",
-        "n", "faer", "faer(par)", "ndarray", "nalgebra",
+        "{:>5} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "n", "faer", "faer(par)", "ndarray", "nalgebra", "eigen",
     );
 
     for (i, n) in input_sizes.iter().copied().enumerate() {
         println!(
-            "{:5} {:>10} {:>10} {:>10} {:>10}",
+            "{:5} {:>10} {:>10} {:>10} {:>10} {:>10}",
             n,
             fmt(faer[i]),
             fmt(faer_parallel[i]),
             fmt(ndarray[i]),
             fmt(nalgebra[i]),
+            fmt(eigen[i]),
         );
     }
+}
+
+mod eigen {
+    extern "C" {
+        pub fn gemm(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn trsm(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn trinv(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn chol(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn plu(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn flu(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn qr(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn colqr(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn inverse(out: *mut f64, inputs: *const usize, count: usize);
+    }
+}
+
+fn eigen(
+    f: unsafe extern "C" fn(*mut f64, *const usize, usize),
+    input_sizes: &[usize],
+) -> Vec<Duration> {
+    let count = input_sizes.len();
+    let mut v = vec![0.0; count];
+    unsafe {
+        f(v.as_mut_ptr(), input_sizes.as_ptr(), count);
+    }
+    v.into_iter().map(Duration::from_secs_f64).collect()
 }
 
 fn main() -> Result<()> {
@@ -91,6 +120,7 @@ fn main() -> Result<()> {
         &gemm::faer(&input_sizes, Parallelism::Rayon(0)),
         &gemm::ndarray(&input_sizes),
         &gemm::nalgebra(&input_sizes),
+        &eigen(eigen::gemm, &input_sizes),
     );
     println!("trsm");
     print_results(
@@ -99,6 +129,7 @@ fn main() -> Result<()> {
         &trsm::faer(&input_sizes, Parallelism::Rayon(0)),
         &trsm::ndarray(&input_sizes),
         &trsm::nalgebra(&input_sizes),
+        &eigen(eigen::trsm, &input_sizes),
     );
 
     println!("triangular inverse");
@@ -108,6 +139,7 @@ fn main() -> Result<()> {
         &tr_inverse::faer(&input_sizes, Parallelism::Rayon(0)),
         &tr_inverse::ndarray(&input_sizes),
         &tr_inverse::nalgebra(&input_sizes),
+        &eigen(eigen::trinv, &input_sizes),
     );
 
     println!("cholesky decomposition");
@@ -117,6 +149,7 @@ fn main() -> Result<()> {
         &cholesky::faer(&input_sizes, Parallelism::Rayon(0)),
         &cholesky::ndarray(&input_sizes),
         &cholesky::nalgebra(&input_sizes),
+        &eigen(eigen::chol, &input_sizes),
     );
 
     println!("lu decomposition with partial pivoting");
@@ -126,6 +159,7 @@ fn main() -> Result<()> {
         &partial_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
         &partial_piv_lu::ndarray(&input_sizes),
         &partial_piv_lu::nalgebra(&input_sizes),
+        &eigen(eigen::plu, &input_sizes),
     );
 
     println!("lu decomposition with full pivoting");
@@ -135,6 +169,7 @@ fn main() -> Result<()> {
         &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
         &full_piv_lu::ndarray(&input_sizes),
         &full_piv_lu::nalgebra(&input_sizes),
+        &eigen(eigen::flu, &input_sizes),
     );
 
     println!("qr decomposition with no pivoting");
@@ -144,6 +179,7 @@ fn main() -> Result<()> {
         &no_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
         &no_piv_qr::ndarray(&input_sizes),
         &no_piv_qr::nalgebra(&input_sizes),
+        &eigen(eigen::qr, &input_sizes),
     );
 
     println!("qr decomposition with column pivoting");
@@ -153,6 +189,7 @@ fn main() -> Result<()> {
         &col_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
         &col_piv_qr::ndarray(&input_sizes),
         &col_piv_qr::nalgebra(&input_sizes),
+        &eigen(eigen::colqr, &input_sizes),
     );
 
     println!("matrix inverse");
@@ -162,6 +199,7 @@ fn main() -> Result<()> {
         &inverse::faer(&input_sizes, Parallelism::Rayon(0)),
         &inverse::ndarray(&input_sizes),
         &inverse::nalgebra(&input_sizes),
+        &eigen(eigen::inverse, &input_sizes),
     );
 
     Ok(())
