@@ -3,6 +3,7 @@ use reborrow::*;
 
 use crate::{MatMut, MatRef};
 
+#[track_caller]
 #[inline]
 pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     let m = mat.nrows();
@@ -39,6 +40,7 @@ pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     }
 }
 
+#[track_caller]
 #[inline]
 pub fn swap_rows<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
     swap_cols(mat.transpose(), a, b)
@@ -171,7 +173,8 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationIndicesMut<'a> {
 ///
 /// Both the source and the destination are interpreted as symmetric matrices, and only their lower
 /// triangular part is accessed.
-pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
+#[track_caller]
+pub fn permute_rows_and_cols_symmetric_lower<T: Copy>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
@@ -204,14 +207,14 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
         for i in j..n {
             unsafe {
                 *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j)).clone();
+                    *src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j));
             }
         }
     }
 }
 
 #[inline]
-unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
+unsafe fn permute_rows_unchecked<T: Copy>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
@@ -230,19 +233,32 @@ unsafe fn permute_rows_unchecked<T: Clone + Send + Sync>(
 
     let perm = perm_indices.into_arrays().0;
 
-    for j in 0..n {
+    if dst.row_stride().abs() < dst.col_stride().abs() {
+        for j in 0..n {
+            for i in 0..m {
+                unsafe {
+                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                        *src.get_unchecked(*perm.get_unchecked(i), j);
+                }
+            }
+        }
+    } else {
         for i in 0..m {
             unsafe {
-                *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    src.get_unchecked(*perm.get_unchecked(i), j).clone();
+                let src_i = src.row_unchecked(*perm.get_unchecked(i));
+                let dst_i = dst.rb_mut().row_unchecked(i);
+
+                dst_i.cwise().zip_unchecked(src_i).for_each(|dst, src| {
+                    *dst = *src;
+                });
             }
         }
     }
 }
 
-#[track_caller]
 #[inline]
-pub fn permute_cols<T: Clone + Send + Sync>(
+#[track_caller]
+pub fn permute_cols<T: Copy>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
@@ -250,9 +266,9 @@ pub fn permute_cols<T: Clone + Send + Sync>(
     permute_rows(dst.transpose(), src.transpose(), perm_indices);
 }
 
-#[track_caller]
 #[inline]
-pub fn permute_rows<T: Clone + Send + Sync>(
+#[track_caller]
+pub fn permute_rows<T: Copy>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationIndicesRef<'_>,
