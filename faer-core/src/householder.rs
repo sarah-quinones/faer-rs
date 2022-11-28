@@ -3,11 +3,11 @@ use crate::{
     temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 
-use assert2::debug_assert as fancy_debug_assert;
+use assert2::assert as fancy_assert;
 use dyn_stack::DynStack;
 use reborrow::*;
 
-pub fn make_householder_in_place_unchecked<T: ComplexField>(
+pub fn make_householder_in_place<T: ComplexField>(
     essential: ColMut<'_, T>,
     head: T,
     tail_squared_norm: T::Real,
@@ -25,13 +25,13 @@ pub fn make_householder_in_place_unchecked<T: ComplexField>(
     (T::from_real(tau), -signed_norm)
 }
 
-pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
+pub fn apply_househodler_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
     essential: ColRef<'_, T>,
     householder_coeff: T,
     stack: DynStack<'_>,
 ) {
-    fancy_debug_assert!(matrix.nrows() == 1 + essential.nrows());
+    fancy_assert!(matrix.nrows() == 1 + essential.nrows());
     let m = matrix.nrows();
     let n = matrix.ncols();
     if m == 1 {
@@ -39,15 +39,15 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
         matrix.cwise().for_each(|e| *e = *e * factor);
     } else {
         let (first_row, last_rows) = matrix.split_at_row(1);
-        let mut first_row = first_row.row_unchecked(0);
+        let mut first_row = first_row.row(0);
         temp_mat_uninit! {
             let (tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
         }
-        let mut tmp = tmp.transpose().row_unchecked(0);
+        let mut tmp = tmp.transpose().row(0);
 
         tmp.rb_mut()
             .cwise()
-            .zip_unchecked(first_row.rb())
+            .zip(first_row.rb())
             .for_each(|a, b| *a = *b);
 
         matmul(
@@ -65,7 +65,7 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
         first_row
             .rb_mut()
             .cwise()
-            .zip_unchecked(tmp.rb())
+            .zip(tmp.rb())
             .for_each(|a, b| *a = *a - householder_coeff * *b);
 
         matmul(
@@ -82,7 +82,7 @@ pub unsafe fn apply_househodler_on_the_left<T: ComplexField>(
     }
 }
 
-pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
+pub fn apply_block_househodler_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
     basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
@@ -90,7 +90,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_debug_assert!(matrix.nrows() == basis.nrows());
+    fancy_assert!(matrix.nrows() == basis.nrows());
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = basis.ncols();
@@ -111,7 +111,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
         basis_tri.transpose(),
         UnitTriangularUpper,
         Conj::Yes,
-        matrix.rb().submatrix_unchecked(0, 0, size, n),
+        matrix.rb().submatrix(0, 0, size, n),
         Rectangular,
         Conj::No,
         None,
@@ -123,7 +123,7 @@ pub unsafe fn apply_block_househodler_on_the_left<T: ComplexField>(
         Conj::No,
         basis_bot.transpose(),
         Conj::Yes,
-        matrix.rb().submatrix_unchecked(size, 0, m - size, n),
+        matrix.rb().submatrix(size, 0, m - size, n),
         Conj::No,
         Some(T::one()),
         T::one(),

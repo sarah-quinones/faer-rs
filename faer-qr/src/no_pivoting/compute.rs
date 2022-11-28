@@ -1,7 +1,7 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::assert as fancy_assert;
 use dyn_stack::DynStack;
 use faer_core::{
-    householder::{apply_block_househodler_on_the_left, make_householder_in_place_unchecked},
+    householder::{apply_block_househodler_on_the_left, make_householder_in_place},
     mul::triangular,
     temp_mat_uninit, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
@@ -44,16 +44,12 @@ fn qr_in_place_unblocked<T: ComplexField>(
                     tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
                 }
 
-                let (tau, beta) = unsafe {
-                    let (tau, beta) = make_householder_in_place_unchecked(
-                        first_col_tail.rb_mut(),
-                        *first_col_head.rb().get_unchecked(0),
-                        tail_squared_norm,
-                    );
-
-                    *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau;
-                    (tau, beta)
-                };
+                let (tau, beta) = make_householder_in_place(
+                    first_col_tail.rb_mut(),
+                    *first_col_head.rb().get(0),
+                    tail_squared_norm,
+                );
+                unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau };
 
                 *first_col_head.rb_mut().get(0) = beta;
 
@@ -195,79 +191,58 @@ pub fn qr_in_place<T: ComplexField>(
         }
 
         if k + bs < n {
-            unsafe {
-                temp_mat_uninit! {
-                    let (t, mut stack) = unsafe { temp_mat_uninit::<T>(bs, bs, stack.rb_mut()) };
+            temp_mat_uninit! {
+                let (t, mut stack) = unsafe { temp_mat_uninit::<T>(bs, bs, stack.rb_mut()) };
+            }
+            let mut t = t.transpose();
+            for i in 0..bs {
+                unsafe { *t.rb_mut().ptr_in_bounds_at(i, i) = householder[i] };
+            }
+            make_householder_factor_unblocked(t.rb_mut(), block.rb(), stack.rb_mut());
+
+            match extra_parallelism {
+                Parallelism::None => {
+                    apply_block_househodler_on_the_left(
+                        remaining_cols,
+                        block.rb(),
+                        t.rb(),
+                        false,
+                        parallelism,
+                        stack.rb_mut(),
+                    );
                 }
-                let mut t = t.transpose();
-                for i in 0..bs {
-                    *t.rb_mut().ptr_in_bounds_at_unchecked(i, i) = householder[i];
-                }
-                make_householder_factor_unblocked(t.rb_mut(), block.rb(), stack.rb_mut());
-
-                match extra_parallelism {
-                    Parallelism::None => {
-                        apply_block_househodler_on_the_left(
-                            remaining_cols,
-                            block.rb(),
-                            t.rb(),
-                            false,
-                            parallelism,
-                            stack.rb_mut(),
-                        );
+                Parallelism::Rayon(mut n_threads) => {
+                    if n_threads == 0 {
+                        n_threads = rayon::current_num_threads();
                     }
-                    Parallelism::Rayon(mut n_threads) => {
-                        if n_threads == 0 {
-                            n_threads = rayon::current_num_threads();
-                        }
-                        use rayon::prelude::*;
-                        let remaining_col_count = n - k - bs;
+                    use rayon::prelude::*;
+                    let remaining_col_count = n - k - bs;
 
-                        let cols_per_thread = remaining_col_count / n_threads;
-                        let rem = remaining_col_count % n_threads;
+                    let cols_per_thread = remaining_col_count / n_threads;
 
-                        let remaining_cols = remaining_cols.rb();
-                        (0..n_threads).into_par_iter().for_each_init(
-                            || {
-                                dyn_stack::GlobalMemBuffer::new(
-                                    faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
-                                        .unwrap()
-                                        .and(
-                                            faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
-                                                .unwrap(),
-                                        ),
-                                )
-                            },
-                            |mem, tid| {
-                                let tid_to_col_start = |tid| {
-                                    if tid < rem {
-                                        tid * (cols_per_thread + 1)
-                                    } else {
-                                        rem * (cols_per_thread + 1) + (tid - rem) * cols_per_thread
-                                    }
-                                };
-                                let col_start = tid_to_col_start(tid);
-                                let col_end = tid_to_col_start(tid + 1);
-
-                                let stack = DynStack::new(mem);
-                                let rem_blk = remaining_cols.submatrix(
-                                    0,
-                                    col_start,
-                                    m - k,
-                                    col_end - col_start,
-                                );
-                                let rem_blk = rem_blk.const_cast();
-                                apply_block_househodler_on_the_left(
-                                    rem_blk,
-                                    block.rb(),
-                                    t.rb(),
-                                    false,
-                                    parallelism,
-                                    stack,
-                                );
-                            },
-                        );
-                    }
+                    remaining_cols.into_par_col_chunks(n_threads).for_each_init(
+                        || {
+                            dyn_stack::GlobalMemBuffer::new(
+                                faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
+                                    .unwrap()
+                                    .and(
+                                        faer_core::temp_mat_req::<T>(bs, cols_per_thread + 1)
+                                            .unwrap(),
+                                    ),
+                            )
+                        },
+                        |mem, (_col_start, rem_blk)| {
+                            let stack = DynStack::new(mem);
+                            apply_block_househodler_on_the_left(
+                                rem_blk,
+                                block.rb(),
+                                t.rb(),
+                                false,
+                                parallelism,
+                                stack,
+                            );
+                        },
+                    );
                 }
             }
         }
@@ -275,7 +250,7 @@ pub fn qr_in_place<T: ComplexField>(
     }
 }
 
-unsafe fn make_householder_factor_unblocked<T: ComplexField>(
+fn make_householder_factor_unblocked<T: ComplexField>(
     mut householder_factor: MatMut<'_, T>,
     matrix: MatRef<'_, T>,
     mut stack: DynStack<'_>,
@@ -284,8 +259,8 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
     let n = matrix.ncols();
     let size = m.min(n);
 
-    fancy_debug_assert!(householder_factor.nrows() == size);
-    fancy_debug_assert!(householder_factor.ncols() == size);
+    fancy_assert!(householder_factor.nrows() == size);
+    fancy_assert!(householder_factor.ncols() == size);
     fancy_assert!(householder_factor.col_stride() == 1);
 
     for i in (0..size).rev() {
@@ -293,33 +268,24 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
         let rt = size - i - 1;
 
         if rt > 0 {
-            let factor = -*householder_factor.rb().get_unchecked(i, i);
+            let factor = -*householder_factor.rb().get(i, i);
 
-            let mut tail_row = householder_factor
-                .rb_mut()
-                .row_unchecked(i)
-                .split_at_unchecked(size - rt)
-                .1;
+            let mut tail_row = householder_factor.rb_mut().row(i).split_at(size - rt).1;
 
             use faer_core::mul::triangular::BlockStructure::*;
 
             let mut dst = tail_row.rb_mut().as_2d();
-            let lhs = matrix
-                .col(i)
-                .split_at_unchecked(m - rs)
-                .1
-                .transpose()
-                .as_2d();
+            let lhs = matrix.col(i).split_at(m - rs).1.transpose().as_2d();
 
-            let rhs = matrix.submatrix_unchecked(m - rs, n - rt, rs, rt);
+            let rhs = matrix.submatrix(m - rs, n - rt, rs, rt);
             triangular::matmul(
                 dst.rb_mut(),
                 Rectangular,
                 Conj::No,
-                lhs.split_at_unchecked(0, rt).2,
+                lhs.split_at(0, rt).2,
                 Rectangular,
                 Conj::Yes,
-                rhs.split_at_unchecked(rt, 0).1,
+                rhs.split_at(rt, 0).1,
                 UnitTriangularLower,
                 Conj::No,
                 None,
@@ -327,8 +293,8 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 Parallelism::None,
             );
 
-            let lhs = lhs.split_at_unchecked(0, rt).3;
-            let rhs = rhs.split_at_unchecked(rt, 0).3;
+            let lhs = lhs.split_at(0, rt).3;
+            let rhs = rhs.split_at(rt, 0).3;
 
             struct Gevm<'a, T> {
                 dst: MatMut<'a, T>,
@@ -373,14 +339,12 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
                 tmp.rb_mut().transpose(),
                 Rectangular,
                 Conj::No,
-                householder_factor
-                    .rb()
-                    .submatrix_unchecked(i, size - rt, 1, rt),
+                householder_factor.rb().submatrix(i, size - rt, 1, rt),
                 Rectangular,
                 Conj::No,
                 householder_factor
                     .rb()
-                    .submatrix_unchecked(size - rt, size - rt, rt, rt),
+                    .submatrix(size - rt, size - rt, rt, rt),
                 TriangularUpper,
                 Conj::No,
                 None,
@@ -389,10 +353,10 @@ unsafe fn make_householder_factor_unblocked<T: ComplexField>(
             );
             householder_factor
                 .rb_mut()
-                .submatrix_unchecked(i, size - rt, 1, rt)
-                .row_unchecked(0)
+                .submatrix(i, size - rt, 1, rt)
+                .row(0)
                 .cwise()
-                .zip_unchecked(tmp.transpose().row_unchecked(0))
+                .zip(tmp.transpose().row(0))
                 .for_each(|a, b| *a = *b);
         }
     }
@@ -451,14 +415,12 @@ mod tests {
         for k in (0..size).rev() {
             let tau = ComplexField::conj(householder[k]);
             let essential = qr_factors.col(k).split_at(k + 1).1;
-            unsafe {
-                apply_househodler_on_the_left(
-                    q.as_mut().submatrix(k, k, m - k, m - k),
-                    essential,
-                    tau,
-                    placeholder_stack!(),
-                );
-            }
+            apply_househodler_on_the_left(
+                q.as_mut().submatrix(k, k, m - k, m - k),
+                essential,
+                tau,
+                placeholder_stack!(),
+            );
         }
 
         (q, r)

@@ -1,4 +1,8 @@
-use std::mem::{size_of, transmute_copy};
+use core::{
+    any::TypeId,
+    mem::{size_of, transmute_copy},
+};
+use std::mem::transmute;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
@@ -10,6 +14,37 @@ use faer_core::{
 };
 use pulp::Simd;
 use reborrow::*;
+
+#[inline]
+fn coerce<T: 'static, U: 'static>(t: T) -> U {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    let no_drop = core::mem::MaybeUninit::new(t);
+    unsafe { transmute_copy(&no_drop) }
+}
+
+#[inline]
+fn coerce_col_ref<T: 'static, U: 'static>(t: ColRef<'_, T>) -> ColRef<'_, U> {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    unsafe { transmute(t) }
+}
+
+#[inline]
+fn coerce_row_ref<T: 'static, U: 'static>(t: RowRef<'_, T>) -> RowRef<'_, U> {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    unsafe { transmute(t) }
+}
+
+#[inline]
+fn coerce_mat_ref<T: 'static, U: 'static>(t: MatRef<'_, T>) -> MatRef<'_, U> {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    unsafe { transmute(t) }
+}
+
+#[inline]
+fn coerce_mat_mut<T: 'static, U: 'static>(t: MatMut<'_, T>) -> MatMut<'_, U> {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    unsafe { transmute(t) }
+}
 
 #[inline(always)]
 fn best_f64<S: pulp::Simd>(
@@ -705,15 +740,13 @@ fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
             let mut best_value = 0.0;
 
             for j in 0..n {
-                unsafe {
-                    let ptr = matrix.col_unchecked(j).as_ptr();
-                    let col = core::slice::from_raw_parts(ptr, m);
-                    let (best_value_in_col, best_index_in_col) = best_in_col_f64(simd, col);
-                    if best_value_in_col > best_value {
-                        best_value = best_value_in_col;
-                        best_row = best_index_in_col as usize;
-                        best_col = j;
-                    }
+                let ptr = matrix.col(j).as_ptr();
+                let col = unsafe { core::slice::from_raw_parts(ptr, m) };
+                let (best_value_in_col, best_index_in_col) = best_in_col_f64(simd, col);
+                if best_value_in_col > best_value {
+                    best_value = best_value_in_col;
+                    best_row = best_index_in_col as usize;
+                    best_col = j;
                 }
             }
 
@@ -737,8 +770,8 @@ fn update_and_best_in_matrix_f64(
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_debug_assert!(matrix.row_stride() == 1);
-            fancy_debug_assert!(lhs.row_stride() == 1);
+            fancy_assert!(matrix.row_stride() == 1);
+            fancy_assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -746,22 +779,20 @@ fn update_and_best_in_matrix_f64(
             let mut best_col = 0;
             let mut best_value = 0.0;
 
-            unsafe {
-                let lhs = core::slice::from_raw_parts(lhs.as_ptr(), m);
+            let lhs = unsafe { core::slice::from_raw_parts(lhs.as_ptr(), m) };
 
-                for j in 0..n {
-                    let rhs = -*rhs.get_unchecked(j);
+            for j in 0..n {
+                let rhs = -*rhs.get(j);
 
-                    let ptr = matrix.rb_mut().col_unchecked(j).as_ptr();
-                    let dst = core::slice::from_raw_parts_mut(ptr, m);
+                let ptr = matrix.rb_mut().col(j).as_ptr();
+                let dst = unsafe { core::slice::from_raw_parts_mut(ptr, m) };
 
-                    let (best_value_in_col, best_index_in_col) =
-                        update_and_best_in_col_f64(simd, dst, lhs, rhs);
-                    if best_value_in_col > best_value {
-                        best_value = best_value_in_col;
-                        best_row = best_index_in_col as usize;
-                        best_col = j;
-                    }
+                let (best_value_in_col, best_index_in_col) =
+                    update_and_best_in_col_f64(simd, dst, lhs, rhs);
+                if best_value_in_col > best_value {
+                    best_value = best_value_in_col;
+                    best_row = best_index_in_col as usize;
+                    best_col = j;
                 }
             }
 
@@ -790,15 +821,13 @@ fn best_in_matrix_f32(matrix: MatRef<'_, f32>) -> (usize, usize, f32) {
             let mut best_value = 0.0;
 
             for j in 0..n {
-                unsafe {
-                    let ptr = matrix.col_unchecked(j).as_ptr();
-                    let col = core::slice::from_raw_parts(ptr, m);
-                    let (best_value_in_col, best_index_in_col) = best_in_col_f32(simd, col);
-                    if best_value_in_col > best_value {
-                        best_value = best_value_in_col;
-                        best_row = best_index_in_col as usize;
-                        best_col = j;
-                    }
+                let ptr = matrix.col(j).as_ptr();
+                let col = unsafe { core::slice::from_raw_parts(ptr, m) };
+                let (best_value_in_col, best_index_in_col) = best_in_col_f32(simd, col);
+                if best_value_in_col > best_value {
+                    best_value = best_value_in_col;
+                    best_row = best_index_in_col as usize;
+                    best_col = j;
                 }
             }
 
@@ -831,22 +860,20 @@ fn update_and_best_in_matrix_f32(
             let mut best_col = 0;
             let mut best_value = 0.0;
 
-            unsafe {
-                let lhs = core::slice::from_raw_parts(lhs.as_ptr(), m);
+            let lhs = unsafe { core::slice::from_raw_parts(lhs.as_ptr(), m) };
 
-                for j in 0..n {
-                    let rhs = -*rhs.get_unchecked(j);
+            for j in 0..n {
+                let rhs = -*rhs.get(j);
 
-                    let ptr = matrix.rb_mut().col_unchecked(j).as_ptr();
-                    let dst = core::slice::from_raw_parts_mut(ptr, m);
+                let ptr = matrix.rb_mut().col(j).as_ptr();
+                let dst = unsafe { core::slice::from_raw_parts_mut(ptr, m) };
 
-                    let (best_value_in_col, best_index_in_col) =
-                        update_and_best_in_col_f32(simd, dst, lhs, rhs);
-                    if best_value_in_col > best_value {
-                        best_value = best_value_in_col;
-                        best_row = best_index_in_col as usize;
-                        best_col = j;
-                    }
+                let (best_value_in_col, best_index_in_col) =
+                    update_and_best_in_col_f32(simd, dst, lhs, rhs);
+                if best_value_in_col > best_value {
+                    best_value = best_value_in_col;
+                    best_row = best_index_in_col as usize;
+                    best_col = j;
                 }
             }
 
@@ -866,9 +893,9 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
     let is_col_major = matrix.row_stride() == 1;
 
     if is_col_major && is_f64 {
-        unsafe { transmute_copy(&best_in_matrix_f64(transmute_copy(&matrix))) }
+        coerce(best_in_matrix_f64(coerce_mat_ref(matrix)))
     } else if is_col_major && is_f32 {
-        unsafe { transmute_copy(&best_in_matrix_f32(transmute_copy(&matrix))) }
+        coerce(best_in_matrix_f32(coerce_mat_ref(matrix)))
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
@@ -879,7 +906,7 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
 
         for j in 0..n {
             for i in 0..m {
-                let abs = unsafe { (*matrix.get_unchecked(i, j)).score() };
+                let abs = (*matrix.get(i, j)).score();
                 if abs > max {
                     max_row = i;
                     max_col = j;
@@ -903,49 +930,18 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
 
-    let dst_row_stride = dst.row_stride();
-    let dst_col_stride = dst.col_stride();
-    let dst_nrows = dst.nrows();
-    let dst_ncols = dst.ncols();
-
     if is_f64 && is_col_major {
-        unsafe {
-            let dst = MatMut::from_raw_parts(
-                dst.as_ptr() as *mut f64,
-                dst_nrows,
-                dst_ncols,
-                dst_row_stride,
-                dst_col_stride,
-            );
-            if is_col_major {
-                transmute_copy(&update_and_best_in_matrix_f64(
-                    dst,
-                    transmute_copy(&lhs),
-                    transmute_copy(&rhs),
-                ))
-            } else {
-                unreachable!()
-            }
-        }
+        coerce(update_and_best_in_matrix_f64(
+            coerce_mat_mut(dst),
+            coerce_col_ref(lhs),
+            coerce_row_ref(rhs),
+        ))
     } else if is_f32 && is_col_major {
-        unsafe {
-            let dst = MatMut::from_raw_parts(
-                dst.as_ptr() as *mut f32,
-                dst_nrows,
-                dst_ncols,
-                dst_row_stride,
-                dst_col_stride,
-            );
-            if is_col_major {
-                transmute_copy(&update_and_best_in_matrix_f32(
-                    dst,
-                    transmute_copy(&lhs),
-                    transmute_copy(&rhs),
-                ))
-            } else {
-                unreachable!()
-            }
-        }
+        coerce(update_and_best_in_matrix_f32(
+            coerce_mat_mut(dst),
+            coerce_col_ref(lhs),
+            coerce_row_ref(rhs),
+        ))
     } else {
         matmul(
             dst.rb_mut(),
@@ -963,7 +959,7 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
 }
 
 #[inline]
-unsafe fn lu_in_place_unblocked<T: ComplexField>(
+fn lu_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     row_transpositions: &mut [usize],
     col_transpositions: &mut [usize],
@@ -1001,15 +997,15 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
             swap_cols(matrix.rb_mut(), k, max_col);
         }
 
-        let inv = matrix.rb().get_unchecked(k, k).inv();
+        let inv = matrix.rb().get(k, k).inv();
         if !transposed {
             for i in k + 1..m {
-                let elem = matrix.rb_mut().get_unchecked(i, k);
+                let elem = matrix.rb_mut().get(i, k);
                 *elem = *elem * inv;
             }
         } else {
             for i in k + 1..n {
-                let elem = matrix.rb_mut().get_unchecked(k, i);
+                let elem = matrix.rb_mut().get(k, i);
                 *elem = *elem * inv;
             }
         }
@@ -1018,8 +1014,7 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
             break;
         }
 
-        let (_, top_right, bottom_left, bottom_right) =
-            matrix.rb_mut().split_at_unchecked(k + 1, k + 1);
+        let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(k + 1, k + 1);
 
         let parallelism = if disable_parallelism(m - k, n - k) {
             Parallelism::None
@@ -1043,63 +1038,16 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
                     rayon::current_num_threads()
                 };
 
-                struct Ptr<T>(*mut T);
-                unsafe impl<T> Send for Ptr<T> {}
-                unsafe impl<T> Sync for Ptr<T> {}
-                impl<T> Copy for Ptr<T> {}
-                impl<T> Clone for Ptr<T> {
-                    fn clone(&self) -> Self {
-                        *self
-                    }
-                }
-
                 let mut biggest = vec![(0_usize, 0_usize, T::Real::zero()); n_threads];
-
-                let br_n = bottom_right.ncols();
-                let br_m = bottom_right.nrows();
-
-                let cs = bottom_right.col_stride();
-                let rs = bottom_right.row_stride();
-
-                let ptr = Ptr(bottom_right.as_ptr());
-
-                let cols_per_thread = br_n / n_threads;
-                let rem = br_n % n_threads;
 
                 let lhs = bottom_left.col(k).into_const();
                 let rhs = top_right.row(k).into_const();
 
-                (0..n_threads)
-                    .into_par_iter()
+                bottom_right
+                    .into_par_col_chunks(n_threads)
                     .zip(biggest.par_iter_mut())
-                    .for_each(|(tid, biggest)| {
-                        let ptr = { ptr }.0;
-                        let tid_to_col_start = |tid| {
-                            if tid < rem {
-                                tid * (cols_per_thread + 1)
-                            } else {
-                                rem * (cols_per_thread + 1) + (tid - rem) * cols_per_thread
-                            }
-                        };
-
-                        let col_start = tid_to_col_start(tid);
-                        let col_end = tid_to_col_start(tid + 1);
-
-                        let lhs = lhs;
-                        let rhs = rhs
-                            .split_at_unchecked(col_end)
-                            .0
-                            .split_at_unchecked(col_start)
-                            .1;
-
-                        let matrix = MatMut::from_raw_parts(
-                            ptr.wrapping_offset(col_start as isize * cs),
-                            br_m,
-                            col_end - col_start,
-                            rs,
-                            cs,
-                        );
-
+                    .for_each(|((col_start, matrix), biggest)| {
+                        let rhs = rhs.subcols(col_start, matrix.ncols());
                         *biggest = rank_one_update_and_best_in_matrix(matrix, lhs, rhs);
                         biggest.1 += col_start;
                     });
@@ -1208,26 +1156,24 @@ pub fn lu_in_place<'out, T: ComplexField>(
     let (mut row_transpositions, stack) = stack.make_with(m, |i| i);
     let (mut col_transpositions, _) = stack.make_with(n, |i| i);
 
-    let n_transpositions = unsafe {
-        if matrix.row_stride().abs() < matrix.col_stride().abs() {
-            lu_in_place_unblocked(
-                matrix,
-                &mut row_transpositions,
-                &mut col_transpositions,
-                parallelism,
-                false,
-                disable_parallelism,
-            )
-        } else {
-            lu_in_place_unblocked(
-                matrix.transpose(),
-                &mut col_transpositions,
-                &mut row_transpositions,
-                parallelism,
-                true,
-                disable_parallelism,
-            )
-        }
+    let n_transpositions = if matrix.row_stride().abs() < matrix.col_stride().abs() {
+        lu_in_place_unblocked(
+            matrix,
+            &mut row_transpositions,
+            &mut col_transpositions,
+            parallelism,
+            false,
+            disable_parallelism,
+        )
+    } else {
+        lu_in_place_unblocked(
+            matrix.transpose(),
+            &mut col_transpositions,
+            &mut row_transpositions,
+            parallelism,
+            true,
+            disable_parallelism,
+        )
     };
 
     row_perm.iter_mut().enumerate().for_each(|(i, e)| *e = i);
@@ -1303,6 +1249,7 @@ mod tests {
             (2, 20),
             (40, 20),
             (20, 40),
+            (1024, 1023),
         ] {
             let random_mat = Mat::with_dims(|_i, _j| random(), m, n);
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
@@ -1353,6 +1300,7 @@ mod tests {
             (2, 20),
             (40, 20),
             (20, 40),
+            (1024, 1023),
         ] {
             let random_mat = Mat::with_dims(|_i, _j| random(), n, m);
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {

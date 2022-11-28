@@ -1539,7 +1539,7 @@ impl<'a, T> MatRef<'a, T> {
     pub fn into_par_row_chunks(
         self,
         chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = MatRef<'a, T>>
+    ) -> impl IndexedParallelIterator<Item = (usize, MatRef<'a, T>)>
     where
         T: Sync,
     {
@@ -1558,11 +1558,15 @@ impl<'a, T> MatRef<'a, T> {
         };
 
         (0..chunk_count).into_par_iter().map(move |idx| unsafe {
-            self.submatrix_unchecked(
-                idx_to_col_start(idx),
-                0,
-                idx_to_col_start(idx + 1) - idx_to_col_start(idx),
-                ncols,
+            let col_start = idx_to_col_start(idx);
+            (
+                col_start,
+                self.submatrix_unchecked(
+                    col_start,
+                    0,
+                    idx_to_col_start(idx + 1) - col_start,
+                    ncols,
+                ),
             )
         })
     }
@@ -1573,14 +1577,14 @@ impl<'a, T> MatRef<'a, T> {
     pub fn into_par_col_chunks(
         self,
         chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = MatRef<'a, T>>
+    ) -> impl IndexedParallelIterator<Item = (usize, MatRef<'a, T>)>
     where
         T: Sync,
     {
         use rayon::prelude::*;
         self.transpose()
             .into_par_row_chunks(chunk_count)
-            .map(|mat| mat.transpose())
+            .map(|(idx, mat)| (idx, mat.transpose()))
     }
 
     /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
@@ -2171,14 +2175,14 @@ impl<'a, T> MatMut<'a, T> {
     pub fn into_par_row_chunks(
         self,
         chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = MatMut<'a, T>>
+    ) -> impl IndexedParallelIterator<Item = (usize, MatMut<'a, T>)>
     where
         T: Sync + Send,
     {
         use rayon::prelude::*;
         self.into_const()
             .into_par_row_chunks(chunk_count)
-            .map(|chunk| unsafe { chunk.const_cast() })
+            .map(|(idx, chunk)| (idx, unsafe { chunk.const_cast() }))
     }
 
     /// Returns a parallel iterator over the rows of the matrix.
@@ -2186,14 +2190,14 @@ impl<'a, T> MatMut<'a, T> {
     pub fn into_par_col_chunks(
         self,
         chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = MatMut<'a, T>>
+    ) -> impl IndexedParallelIterator<Item = (usize, MatMut<'a, T>)>
     where
         T: Sync + Send,
     {
         use rayon::prelude::*;
         self.into_const()
             .into_par_col_chunks(chunk_count)
-            .map(|chunk| unsafe { chunk.const_cast() })
+            .map(|(idx, chunk)| (idx, unsafe { chunk.const_cast() }))
     }
 
     /// Returns a view over a submatrix of `self`, starting at position `(i, j)`

@@ -11,7 +11,7 @@ use faer_core::{
 use reborrow::*;
 
 #[inline]
-unsafe fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
+fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
     swap_rows(m.as_2d(), i, j);
 }
 
@@ -20,7 +20,7 @@ fn lu_unblocked_req<T: 'static>(_m: usize, _n: usize) -> Result<StackReq, SizeOv
 }
 
 #[inline(never)]
-unsafe fn lu_in_place_unblocked<T: ComplexField>(
+fn lu_in_place_unblocked<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     col_start: usize,
     n: usize,
@@ -43,7 +43,7 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
         let mut imax = j;
 
         for i in j..m {
-            let abs = (*matrix.rb().get_unchecked(i, j + col_start)).score();
+            let abs = (*matrix.rb().get(i, j + col_start)).score();
             if abs > max {
                 imax = i;
                 max = abs;
@@ -59,23 +59,22 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
 
         swap_rows(matrix.rb_mut(), j, imax);
 
-        let (_, _, _, middle_right) = matrix.rb_mut().split_at_unchecked(0, col_start);
-        let (_, _, middle, _) = middle_right.split_at_unchecked(0, n);
+        let (_, _, _, middle_right) = matrix.rb_mut().split_at(0, col_start);
+        let (_, _, middle, _) = middle_right.split_at(0, n);
         update(middle, j, stack.rb_mut());
     }
 
     n_transpositions
 }
 
-unsafe fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>) {
+fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>) {
     let m = matrix.nrows();
-    let inv = matrix.rb().get_unchecked(j, j).inv();
+    let inv = matrix.rb().get(j, j).inv();
     for i in j + 1..m {
-        let elem = matrix.rb_mut().get_unchecked(i, j);
+        let elem = matrix.rb_mut().get(i, j);
         *elem = *elem * inv;
     }
-    let (_, top_right, bottom_left, bottom_right) =
-        matrix.rb_mut().split_at_unchecked(j + 1, j + 1);
+    let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(j + 1, j + 1);
     matmul(
         bottom_right,
         Conj::No,
@@ -129,7 +128,7 @@ fn lu_recursive_req<T: 'static>(
     ])
 }
 
-unsafe fn lu_in_place_impl<T: ComplexField>(
+fn lu_in_place_impl<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     col_start: usize,
     n: usize,
@@ -153,7 +152,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
     let mut n_transpositions = 0;
 
     n_transpositions += lu_in_place_impl(
-        matrix.rb_mut().submatrix_unchecked(0, col_start, m, n),
+        matrix.rb_mut().submatrix(0, col_start, m, n),
         0,
         bs,
         perm,
@@ -164,8 +163,8 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
 
     let (mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right) = matrix
         .rb_mut()
-        .submatrix_unchecked(0, col_start, m, n)
-        .split_at_unchecked(bs, bs);
+        .submatrix(0, col_start, m, n)
+        .split_at(bs, bs);
 
     solve_unit_lower_triangular_in_place(
         mat_top_left.rb(),
@@ -190,9 +189,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
         let (mut tmp_perm, mut stack) = stack.rb_mut().make_with(m - bs, |i| i);
         let tmp_perm = &mut *tmp_perm;
         n_transpositions += lu_in_place_impl(
-            matrix
-                .rb_mut()
-                .submatrix_unchecked(bs, col_start, m - bs, n),
+            matrix.rb_mut().submatrix(bs, col_start, m - bs, n),
             bs,
             n - bs,
             tmp_perm,
@@ -215,17 +212,16 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
             };
         }
 
-        let mut tmp_col = tmp_col.col_unchecked(0);
+        let mut tmp_col = tmp_col.col(0);
         let mut func = |j| {
-            let mut col = matrix.rb_mut().col_unchecked(j);
+            let mut col = matrix.rb_mut().col(j);
             ColUninit(tmp_col.rb_mut())
                 .cwise()
-                .zip_unchecked(col.rb())
-                .for_each(|a, b| *a = b.clone());
+                .zip(col.rb())
+                .for_each(|a, b| unsafe { *a = b.clone() });
 
             for i in 0..m {
-                *col.rb_mut().get_unchecked(i) =
-                    tmp_col.rb().get_unchecked(*perm.get_unchecked(i)).clone();
+                *col.rb_mut().get(i) = tmp_col.rb().get(perm[i]).clone();
             }
         };
 
@@ -239,8 +235,20 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
         // use transpositions
         if matrix.col_stride().abs() < matrix.row_stride().abs() {
             for (i, &t) in transpositions[..bs].iter().enumerate() {
+                swap_rows(matrix.rb_mut().submatrix(0, 0, m, col_start), i, t + i);
+            }
+            for (i, &t) in transpositions[bs..].iter().enumerate() {
                 swap_rows(
-                    matrix.rb_mut().submatrix_unchecked(0, 0, m, col_start),
+                    matrix.rb_mut().submatrix(bs, 0, m - bs, col_start),
+                    i,
+                    t + i,
+                );
+            }
+            for (i, &t) in transpositions[..bs].iter().enumerate() {
+                swap_rows(
+                    matrix
+                        .rb_mut()
+                        .submatrix(0, col_start + n, m, full_n - col_start - n),
                     i,
                     t + i,
                 );
@@ -249,31 +257,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
                 swap_rows(
                     matrix
                         .rb_mut()
-                        .submatrix_unchecked(bs, 0, m - bs, col_start),
-                    i,
-                    t + i,
-                );
-            }
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_rows(
-                    matrix.rb_mut().submatrix_unchecked(
-                        0,
-                        col_start + n,
-                        m,
-                        full_n - col_start - n,
-                    ),
-                    i,
-                    t + i,
-                );
-            }
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_rows(
-                    matrix.rb_mut().submatrix_unchecked(
-                        bs,
-                        col_start + n,
-                        m - bs,
-                        full_n - col_start - n,
-                    ),
+                        .submatrix(bs, col_start + n, m - bs, full_n - col_start - n),
                     i,
                     t + i,
                 );
@@ -284,7 +268,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
-                let mut col = col.split_at_unchecked(bs).1;
+                let mut col = col.split_at(bs).1;
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
@@ -295,7 +279,7 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
-                let mut col = col.split_at_unchecked(bs).1;
+                let mut col = col.split_at(bs).1;
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
@@ -363,40 +347,37 @@ pub fn lu_in_place<'out, T: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
 
-    unsafe {
-        for i in 0..m {
-            *perm.get_unchecked_mut(i) = i;
-        }
-
-        let n_transpositions = {
-            let (mut transpositions, mut stack) = stack.rb_mut().make_with(n.min(m), |_| 0);
-
-            lu_in_place_impl(
-                matrix.rb_mut(),
-                0,
-                n.min(m),
-                perm,
-                &mut transpositions,
-                parallelism,
-                stack.rb_mut(),
-            )
-        };
-
-        let (_, _, left, right) = matrix.split_at_unchecked(0, n.min(m));
-
-        if m < n {
-            solve_unit_lower_triangular_in_place(left.rb(), Conj::No, right, Conj::No, parallelism);
-        }
-
-        for i in 0..m {
-            *perm_inv.get_unchecked_mut(*perm.get_unchecked(i)) = i;
-        }
-
-        (
-            n_transpositions,
-            PermutationIndicesMut::new_unchecked(perm, perm_inv),
-        )
+    for i in 0..m {
+        perm[i] = i;
     }
+
+    let n_transpositions = {
+        let (mut transpositions, mut stack) = stack.rb_mut().make_with(n.min(m), |_| 0);
+
+        lu_in_place_impl(
+            matrix.rb_mut(),
+            0,
+            n.min(m),
+            perm,
+            &mut transpositions,
+            parallelism,
+            stack.rb_mut(),
+        )
+    };
+
+    let (_, _, left, right) = matrix.split_at(0, n.min(m));
+
+    if m < n {
+        solve_unit_lower_triangular_in_place(left.rb(), Conj::No, right, Conj::No, parallelism);
+    }
+
+    for i in 0..m {
+        perm_inv[perm[i]] = i;
+    }
+
+    (n_transpositions, unsafe {
+        PermutationIndicesMut::new_unchecked(perm, perm_inv)
+    })
 }
 
 #[cfg(test)]
