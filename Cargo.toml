@@ -6,7 +6,6 @@ members = [
   "faer-qr",
   "faer",
   "faer-bench",
-  "xtask",
 ]
 
 [profile.release]
