@@ -309,7 +309,10 @@ mod tests {
                         &mut row_perm,
                         &mut row_perm_inv,
                         parallelism,
-                        make_stack!(lu_in_place_req::<T>(n, n, parallelism).unwrap()),
+                        make_stack!(
+                            lu_in_place_req::<T>(n, n, parallelism, Default::default()).unwrap()
+                        ),
+                        Default::default(),
                     );
 
                     solve_to(
@@ -378,7 +381,10 @@ mod tests {
                         &mut row_perm,
                         &mut row_perm_inv,
                         parallelism,
-                        make_stack!(lu_in_place_req::<T>(n, n, parallelism).unwrap()),
+                        make_stack!(
+                            lu_in_place_req::<T>(n, n, parallelism, Default::default()).unwrap()
+                        ),
+                        Default::default(),
                     );
 
                     solve_transpose_to(

@@ -69,6 +69,8 @@ pub fn qr(c: &mut Criterion) {
                     householder.as_mut().diagonal(),
                     &mut transpositions,
                     Parallelism::None,
+                    DynStack::new(&mut []),
+                    Default::default(),
                 );
             })
         });
@@ -84,6 +86,8 @@ pub fn qr(c: &mut Criterion) {
                     householder.as_mut().diagonal(),
                     &mut transpositions,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    DynStack::new(&mut []),
+                    Default::default(),
                 );
             })
         });

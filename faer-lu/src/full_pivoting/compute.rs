@@ -969,6 +969,7 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
     transposed: bool,
+    disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -1019,6 +1020,12 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
 
         let (_, top_right, bottom_left, bottom_right) =
             matrix.rb_mut().split_at_unchecked(k + 1, k + 1);
+
+        let parallelism = if disable_parallelism(m - k, n - k) {
+            Parallelism::None
+        } else {
+            parallelism
+        };
 
         match parallelism {
             Parallelism::None => {
@@ -1116,18 +1123,31 @@ unsafe fn lu_in_place_unblocked<T: ComplexField>(
     n_transpositions
 }
 
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct FullPivLuComputeParams {
+    pub disable_parallelism: Option<fn(nrows: usize, ncols: usize) -> bool>,
+}
+
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with full pivoting.
 pub fn lu_in_place_req<T: 'static>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
+    params: FullPivLuComputeParams,
 ) -> Result<StackReq, dyn_stack::SizeOverflow> {
     let _ = parallelism;
+    let _ = params;
     StackReq::try_all_of([
         StackReq::try_new::<usize>(m)?,
         StackReq::try_new::<usize>(n)?,
     ])
+}
+
+fn default_disable_parallelism(m: usize, n: usize) -> bool {
+    let prod = m * n;
+    prod < 512 * 256
 }
 
 /// Computes the LU decomposition of the given matrix with partial pivoting, replacing the matrix
@@ -1167,11 +1187,16 @@ pub fn lu_in_place<'out, T: ComplexField>(
     col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
     stack: DynStack<'_>,
+    params: FullPivLuComputeParams,
 ) -> (
     usize,
     PermutationIndicesMut<'out>,
     PermutationIndicesMut<'out>,
 ) {
+    let disable_parallelism = params
+        .disable_parallelism
+        .unwrap_or(default_disable_parallelism);
+
     let _ = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -1191,6 +1216,7 @@ pub fn lu_in_place<'out, T: ComplexField>(
                 &mut col_transpositions,
                 parallelism,
                 false,
+                disable_parallelism,
             )
         } else {
             lu_in_place_unblocked(
@@ -1199,6 +1225,7 @@ pub fn lu_in_place<'out, T: ComplexField>(
                 &mut row_transpositions,
                 parallelism,
                 true,
+                disable_parallelism,
             )
         }
     };
@@ -1293,7 +1320,14 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap()),
+                    make_stack!(lu_in_place_req::<f64>(
+                        m,
+                        n,
+                        Parallelism::None,
+                        Default::default()
+                    )
+                    .unwrap()),
+                    Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb(), col_perm.rb());
 
@@ -1340,7 +1374,14 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(m, n, Parallelism::None).unwrap()),
+                    make_stack!(lu_in_place_req::<f64>(
+                        m,
+                        n,
+                        Parallelism::None,
+                        Default::default()
+                    )
+                    .unwrap()),
+                    Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
                 println!("target:{mat_orig:5.3?}");

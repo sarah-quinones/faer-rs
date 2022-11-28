@@ -306,13 +306,19 @@ unsafe fn lu_in_place_impl<T: ComplexField>(
     n_transpositions
 }
 
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct PartialPivLuComputeParams {}
+
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with partial pivoting.
 pub fn lu_in_place_req<T: 'static>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
+    params: PartialPivLuComputeParams,
 ) -> Result<StackReq, SizeOverflow> {
+    let _ = &params;
     StackReq::try_any_of([
         StackReq::try_new::<usize>(n.min(m))?,
         lu_recursive_req::<T>(m, n.min(m), parallelism)?,
@@ -346,7 +352,10 @@ pub fn lu_in_place<'out, T: ComplexField>(
     perm_inv: &'out mut [usize],
     parallelism: Parallelism,
     stack: DynStack<'_>,
+    params: PartialPivLuComputeParams,
 ) -> (usize, PermutationIndicesMut<'out>) {
+    let _ = &params;
+
     fancy_assert!(perm.len() == matrix.nrows());
     fancy_assert!(perm_inv.len() == matrix.nrows());
     let mut matrix = matrix;
@@ -448,8 +457,9 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem =
-                GlobalMemBuffer::new(lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8)).unwrap());
+            let mut mem = GlobalMemBuffer::new(
+                lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             let (_, row_perm) = lu_in_place(
@@ -458,6 +468,7 @@ mod tests {
                 &mut perm_inv,
                 Parallelism::Rayon(8),
                 stack.rb_mut(),
+                Default::default(),
             );
             let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb());
 

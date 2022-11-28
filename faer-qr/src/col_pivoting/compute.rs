@@ -5,6 +5,7 @@ use core::{
 };
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{permutation::swap_cols, ColMut, ColRef, ComplexField, MatMut, Parallelism};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
@@ -250,6 +251,7 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     mut householder_coeffs: ColMut<'_, T>,
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
+    disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
     fancy_debug_assert!(matrix.row_stride() == 1);
 
@@ -307,10 +309,16 @@ unsafe fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
             return n_transpositions;
         }
 
+        let extra_parallelism = if disable_parallelism(m, n) {
+            Parallelism::None
+        } else {
+            parallelism
+        };
+
         let rs = last_cols.row_stride();
         let cs = last_cols.col_stride();
 
-        match parallelism {
+        match extra_parallelism {
             Parallelism::Rayon(n_threads) => {
                 use rayon::prelude::*;
                 let n_threads = if n_threads > 0 {
@@ -440,18 +448,53 @@ unsafe fn process_cols<S: Simd, T: ComplexField>(
     });
 }
 
+fn default_disable_parallelism(m: usize, n: usize) -> bool {
+    let prod = m * n;
+    prod < 192 * 256
+}
+
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct ColPivQrComputeParams {
+    pub disable_parallelism: Option<fn(nrows: usize, ncols: usize) -> bool>,
+}
+
+impl ColPivQrComputeParams {
+    fn normalize(self) -> fn(usize, usize) -> bool {
+        self.disable_parallelism
+            .unwrap_or(default_disable_parallelism)
+    }
+}
+
+pub fn qr_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = nrows;
+    let _ = ncols;
+    let _ = parallelism;
+    Ok(StackReq::default())
+}
+
 pub fn qr_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_coeffs: ColMut<'_, T>,
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: ColPivQrComputeParams,
 ) -> usize {
+    let _ = &stack;
+    let disable_parallelism = params.normalize();
+
     fancy_assert!(matrix.row_stride() == 1);
     struct QrInPlaceColMajor<'a, T> {
         matrix: MatMut<'a, T>,
         householder_coeffs: ColMut<'a, T>,
         col_transpositions: &'a mut [usize],
         parallelism: Parallelism,
+        disable_parallelism: fn(usize, usize) -> bool,
     }
 
     impl<'a, T: ComplexField> pulp::WithSimd for QrInPlaceColMajor<'a, T> {
@@ -466,6 +509,7 @@ pub fn qr_in_place<T: ComplexField>(
                     self.householder_coeffs,
                     self.col_transpositions,
                     self.parallelism,
+                    self.disable_parallelism,
                 )
             }
         }
@@ -476,6 +520,7 @@ pub fn qr_in_place<T: ComplexField>(
         householder_coeffs,
         col_transpositions,
         parallelism,
+        disable_parallelism,
     })
 }
 
@@ -495,6 +540,8 @@ mod tests {
             DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<T>(1024 * 1024)))
         };
     }
+
+    type T = c64;
 
     fn reconstruct_factors<T: ComplexField>(
         qr_factors: MatRef<'_, T>,
@@ -546,6 +593,8 @@ mod tests {
                     householder.as_mut().col(0),
                     &mut transpositions,
                     parallelism,
+                    placeholder_stack!(),
+                    Default::default(),
                 );
 
                 for k in 0..size {
@@ -591,6 +640,8 @@ mod tests {
                     householder.as_mut().col(0),
                     &mut transpositions,
                     parallelism,
+                    placeholder_stack!(),
+                    Default::default(),
                 );
 
                 for k in 0..size {

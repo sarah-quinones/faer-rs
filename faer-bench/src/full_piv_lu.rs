@@ -53,7 +53,13 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut col_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                faer_lu::full_pivoting::compute::lu_in_place_req::<f64>(n, n, parallelism).unwrap(),
+                faer_lu::full_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    parallelism,
+                    Default::default(),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -70,6 +76,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     &mut col_inv,
                     parallelism,
                     stack.rb_mut(),
+                    Default::default(),
                 );
             };
 

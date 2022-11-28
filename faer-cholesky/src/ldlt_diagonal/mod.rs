@@ -82,7 +82,12 @@ mod tests {
         for n in (0..32).chain((2..32).map(|i| i * 16)) {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
             let a_reconstructed = reconstruct_matrix(a.as_ref());
 
             for j in 0..n {
@@ -101,7 +106,12 @@ mod tests {
         let mut rhs = Mat::with_dims(|_, _| T::new(random(), random()), n, k);
         let a_orig = a.clone();
         let rhs_orig = rhs.clone();
-        raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+        raw_cholesky_in_place(
+            a.as_mut(),
+            Parallelism::Rayon(8),
+            DynStack::new(&mut []),
+            Default::default(),
+        );
         solve_in_place(
             a.as_ref(),
             Conj::No,
@@ -182,7 +192,12 @@ mod tests {
                 Parallelism::Rayon(8),
             );
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
@@ -204,7 +219,12 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -225,7 +245,12 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -246,7 +271,12 @@ mod tests {
             let n = a.nrows();
             let r = 3;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -291,7 +321,12 @@ mod tests {
             let r = w.ncols();
             let position = 2;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(
@@ -339,7 +374,12 @@ mod tests {
             let r = w.ncols();
             let position = 0;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(
@@ -387,7 +427,12 @@ mod tests {
             let r = w.ncols();
             let position = 4;
 
-            raw_cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut []));
+            raw_cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            );
 
             a.resize_with(|_, _| T::zero(), n + r, n + r);
             insert_rows_and_cols_clobber(

@@ -120,14 +120,20 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
     }
 }
 
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct LdltDiagParams {}
+
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with partial pivoting.
 pub fn raw_cholesky_in_place_req<T: 'static>(
     dim: usize,
     parallelism: Parallelism,
+    params: LdltDiagParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = dim;
     let _ = parallelism;
+    let _ = params;
     Ok(StackReq::default())
 }
 
@@ -230,7 +236,9 @@ pub fn raw_cholesky_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
+    params: LdltDiagParams,
 ) {
+    let _ = params;
     fancy_assert!(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",

@@ -3,6 +3,10 @@ use std::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
 use faer_core::Parallelism;
+use faer_lu::{
+    full_pivoting::compute::FullPivLuComputeParams,
+    partial_pivoting::compute::PartialPivLuComputeParams,
+};
 use rand::random;
 use reborrow::*;
 
@@ -12,13 +16,21 @@ pub fn lu(c: &mut Criterion) {
     use faer_lu::{full_pivoting, partial_pivoting};
 
     for n in [64, 128, 256, 512, 1023, 1024, 4096] {
+        let partial_params = PartialPivLuComputeParams::default();
+        let full_params = FullPivLuComputeParams::default();
         c.bench_function(&format!("faer-st-plu-{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+                partial_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::None,
+                    partial_params,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -29,6 +41,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut perm_inv,
                     Parallelism::None,
                     stack.rb_mut(),
+                    partial_params,
                 );
             })
         });
@@ -42,6 +55,7 @@ pub fn lu(c: &mut Criterion) {
                     n,
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    partial_params,
                 )
                 .unwrap(),
             );
@@ -54,6 +68,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut perm_inv,
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    partial_params,
                 );
             })
         });
@@ -68,6 +83,7 @@ pub fn lu(c: &mut Criterion) {
                     n,
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    partial_params,
                 )
                 .unwrap(),
             );
@@ -80,6 +96,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut perm_inv,
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    partial_params,
                 );
             })
         });
@@ -92,7 +109,13 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+                full_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::None,
+                    full_params,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -105,6 +128,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut col_perm_inv,
                     Parallelism::None,
                     stack.rb_mut(),
+                    full_params,
                 );
             })
         });
@@ -117,7 +141,13 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+                full_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::None,
+                    full_params,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -130,6 +160,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut col_perm_inv,
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    full_params,
                 );
             })
         });
@@ -142,7 +173,13 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64>(n, n, Parallelism::None).unwrap(),
+                full_pivoting::compute::lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::None,
+                    full_params,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -155,6 +192,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut col_perm_inv,
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    full_params,
                 );
             })
         });
@@ -167,7 +205,13 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f32>(n, n, Parallelism::None).unwrap(),
+                full_pivoting::compute::lu_in_place_req::<f32>(
+                    n,
+                    n,
+                    Parallelism::None,
+                    full_params,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -180,6 +224,7 @@ pub fn lu(c: &mut Criterion) {
                     &mut col_perm_inv,
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    full_params,
                 );
             })
         });

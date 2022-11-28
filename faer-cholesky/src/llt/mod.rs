@@ -59,7 +59,13 @@ mod tests {
         for n in (0..32).chain((2..32).map(|i| i * 16)) {
             let mut a = random_positive_definite(n);
             let a_orig = a.clone();
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
             let mut a_reconstructed = reconstruct_matrix(a.as_ref());
             let mut inv = Mat::zeros(n, n);
             invert_lower_to(
@@ -115,7 +121,13 @@ mod tests {
             let a_orig = a.clone();
             let rhs_orig = rhs.clone();
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
             solve_in_place(
                 a.as_ref(),
                 Conj::No,
@@ -197,7 +209,13 @@ mod tests {
                 Parallelism::Rayon(8),
             );
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
 
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha).unwrap();
 
@@ -220,7 +238,13 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -241,7 +265,13 @@ mod tests {
             let n = a.nrows();
             let r = 2;
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -262,7 +292,13 @@ mod tests {
             let n = a.nrows();
             let r = 3;
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),
@@ -294,7 +330,13 @@ mod tests {
                 }
             }
 
-            cholesky_in_place(a.as_mut(), Parallelism::Rayon(8), DynStack::new(&mut [])).unwrap();
+            cholesky_in_place(
+                a.as_mut(),
+                Parallelism::Rayon(8),
+                DynStack::new(&mut []),
+                Default::default(),
+            )
+            .unwrap();
 
             delete_rows_and_cols_clobber(
                 a.as_mut(),

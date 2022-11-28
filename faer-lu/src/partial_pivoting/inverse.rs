@@ -161,7 +161,14 @@ mod tests {
                 &mut row_perm,
                 &mut row_perm_inv,
                 Parallelism::Rayon(0),
-                make_stack!(lu_in_place_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
+                make_stack!(lu_in_place_req::<f64>(
+                    n,
+                    n,
+                    Parallelism::Rayon(0),
+                    Default::default()
+                )
+                .unwrap()),
+                Default::default(),
             );
             let mut inv = Mat::zeros(n, n);
             invert_to(

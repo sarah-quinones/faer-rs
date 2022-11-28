@@ -17,8 +17,12 @@ pub fn cholesky(c: &mut Criterion) {
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
-                ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(n, Parallelism::None)
-                    .unwrap(),
+                ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
+                    n,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -27,6 +31,7 @@ pub fn cholesky(c: &mut Criterion) {
                     mat.as_mut(),
                     Parallelism::None,
                     stack.rb_mut(),
+                    Default::default(),
                 );
             })
         });
@@ -39,6 +44,7 @@ pub fn cholesky(c: &mut Criterion) {
                 ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    Default::default(),
                 )
                 .unwrap(),
             );
@@ -49,6 +55,7 @@ pub fn cholesky(c: &mut Criterion) {
                     mat.as_mut(),
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    Default::default(),
                 );
             })
         });
@@ -58,13 +65,23 @@ pub fn cholesky(c: &mut Criterion) {
 
             mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
             let mut mem = GlobalMemBuffer::new(
-                llt::compute::cholesky_in_place_req::<f64>(n, Parallelism::None).unwrap(),
+                llt::compute::cholesky_in_place_req::<f64>(
+                    n,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
-                llt::compute::cholesky_in_place(mat.as_mut(), Parallelism::None, stack.rb_mut())
-                    .unwrap();
+                llt::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    Parallelism::None,
+                    stack.rb_mut(),
+                    Default::default(),
+                )
+                .unwrap();
             })
         });
 
@@ -76,6 +93,7 @@ pub fn cholesky(c: &mut Criterion) {
                 llt::compute::cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    Default::default(),
                 )
                 .unwrap(),
             );
@@ -86,6 +104,7 @@ pub fn cholesky(c: &mut Criterion) {
                     mat.as_mut(),
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    Default::default(),
                 )
                 .unwrap();
             })
@@ -99,6 +118,7 @@ pub fn cholesky(c: &mut Criterion) {
                 llt::compute::cholesky_in_place_req::<c64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
+                    Default::default(),
                 )
                 .unwrap(),
             );
@@ -109,6 +129,7 @@ pub fn cholesky(c: &mut Criterion) {
                     mat.as_mut(),
                     Parallelism::Rayon(rayon::current_num_threads()),
                     stack.rb_mut(),
+                    Default::default(),
                 )
                 .unwrap();
             })

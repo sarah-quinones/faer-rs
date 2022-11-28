@@ -429,7 +429,7 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
     inserted_matrix_ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism)
+    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism, Default::default())
 }
 
 /// Inserts `r` rows and columns at the provided index in the Cholesky factor.
@@ -542,7 +542,12 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         parallelism,
     );
 
-    raw_cholesky_in_place(ld11.rb_mut(), parallelism, stack.rb_mut());
+    raw_cholesky_in_place(
+        ld11.rb_mut(),
+        parallelism,
+        stack.rb_mut(),
+        Default::default(),
+    );
     let ld11 = ld11.into_const();
 
     let rem = l21.nrows();
