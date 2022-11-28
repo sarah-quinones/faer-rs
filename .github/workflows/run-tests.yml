@@ -6,6 +6,8 @@ jobs:
   testing:
     name: testing-${{ matrix.toolchain }}-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
     strategy:
       fail-fast: false
       matrix:
@@ -24,28 +26,15 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-
-      - name: Run cargo test
-        run: cargo test --release --workspace --exclude faer-bench
-
-  coverage:
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@master
-
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
           
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run cargo test
+        run: cargo test --release --workspace --exclude faer-bench
         
       - name: Generate code coverage
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --all-features --workspace --exclude faer-bench --lcov --output-path lcov.info
         
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
