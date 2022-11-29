@@ -4824,10 +4824,8 @@ impl<T> Add<Mat<T>> for Mat<T>
 
     #[inline]
     fn add(self, rhs: Mat<T>) -> Self::Output {
-        if (self.ncols, self.nrows) != (rhs.ncols, rhs.nrows) {
-            panic!("Not match matrix size")
-        }
-        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows, self.ncols)
+        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
+        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows(), self.ncols())
     }
 }
 
@@ -4839,10 +4837,8 @@ impl<T> Add<&Mat<T>> for &Mat<T>
 
     #[inline]
     fn add(self, rhs: &Mat<T>) -> Self::Output {
-        if (self.ncols, self.nrows) != (rhs.ncols, rhs.nrows) {
-            panic!("Not match matrix shape")
-        }
-        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows, self.ncols)
+        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
+        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows(), self.ncols())
     }
 }
 
