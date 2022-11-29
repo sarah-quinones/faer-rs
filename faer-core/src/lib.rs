@@ -5131,7 +5131,7 @@ mod tests {
         fancy_assert!(x[(1, 0)] == -2.0);
         fancy_assert!(x[(1, 1)] == -15.0);
         
-        let y: Mat<c64> = &mat![
+        let y = &mat![
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ] + &mat![
