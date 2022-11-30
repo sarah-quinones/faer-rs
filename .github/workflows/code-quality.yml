@@ -6,8 +6,6 @@ jobs:
   code-quality:
     name: code-quality
     runs-on: ubuntu-latest
-    # want to get all quality issues
-    continue-on-error: true
 
     steps:
       - name: Checkout source
@@ -21,9 +19,15 @@ jobs:
         
       - name: Formatting check
         run: cargo fmt --all -- --check
+        # want to get all quality issues
+        continue-on-error: true
 
       - name: Linting check
         run: cargo clippy --all-targets
-      
+        # want to get all quality issues
+        continue-on-error: true
+        
       - name: Undefined behavior check
         run: cargo miri test
+        # want to get all quality issues
+        continue-on-error: true
