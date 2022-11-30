@@ -1,0 +1,29 @@
+on: [pull_request]
+
+name: Assess Code Quality
+
+jobs:
+  code-quality:
+    name: code-quality
+    runs-on: ubuntu-latest
+    # want to get all quality issues
+    continue-on-error: true
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@master
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: clippy, rustfmt, miri
+        
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy --all-targets
+      
+      - name: Undefined behavior check
+        runs: cargo miri test
