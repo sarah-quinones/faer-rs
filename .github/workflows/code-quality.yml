@@ -19,11 +19,11 @@ jobs:
           toolchain: nightly
           components: clippy, rustfmt, miri
         
-      - name: Check formatting
+      - name: Formatting check
         run: cargo fmt --all -- --check
 
-      - name: Lint
+      - name: Linting check
         run: cargo clippy --all-targets
       
       - name: Undefined behavior check
-        runs: cargo miri test
+        run: cargo miri test
