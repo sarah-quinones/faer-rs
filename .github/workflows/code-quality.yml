@@ -15,7 +15,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
-          components: clippy, rustfmt, miri
+          components: clippy, rustfmt, rust-src, miri
         
       - name: Formatting check
         run: cargo fmt --all -- --check
@@ -28,6 +28,6 @@ jobs:
         continue-on-error: true
         
       - name: Undefined behavior check
-        run: cargo miri test
+        run: cargo miri test --release --workspace --exclude faer-bench
         # want to get all quality issues
         continue-on-error: true
