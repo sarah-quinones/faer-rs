@@ -1,4 +1,4 @@
-//! This module provides functions for triangular matrix inversion.
+//! Triangular matrix inversion.
 
 use crate::{
     join_raw,

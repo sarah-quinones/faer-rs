@@ -406,7 +406,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
     }
 }
 
-/// Performs a rank-k update in place, while clobbering the inputs.
+/// Performs a rank-r update in place, while clobbering the inputs.
 ///
 /// Takes the Cholesky factor $L$ of a matrix $A$, i.e., $LL^* = A$, a matrix $W$ and a column
 /// vector $\alpha$, which is interpreted as a diagonal matrix.
@@ -415,7 +415,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 /// result in the storage of the original cholesky factors.
 ///
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
-/// the function returns are unspecified.
+/// the function is called are unspecified.
 #[track_caller]
 pub fn rank_r_update_clobber<T: ComplexField>(
     cholesky_factor: MatMut<'_, T>,
@@ -454,6 +454,9 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
 /// the Cholesky factor of $A$ with the provided rows and columns deleted from it.
 ///
 /// The result is stored in the top left corner (with dimension `n - r`) of `cholesky_factor`.
+///
+/// The indices are clobbered, meaning that the values that the slice contains after the function
+/// is called are unspecified.
 #[track_caller]
 pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factor: MatMut<'_, T>,
@@ -536,6 +539,9 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
 /// $L$ of a matrix $A$ in its top left corner, of dimension `n`, and computes the Cholesky factor
 /// of $A$ with the provided `inserted_matrix` inserted at the position starting at
 /// `insertion_index`.
+///
+/// The inserted matrix is clobbered, meaning that the values it contains after the function
+/// is called are unspecified.
 #[track_caller]
 pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factor_extended: MatMut<'_, T>,
@@ -547,6 +553,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     let new_n = cholesky_factor_extended.nrows();
     let r = inserted_matrix.ncols();
 
+    fancy_assert!(cholesky_factor_extended.nrows() == cholesky_factor_extended.ncols());
     fancy_assert!(cholesky_factor_extended.ncols() == new_n);
     fancy_assert!(r < new_n);
     let old_n = new_n - r;
@@ -583,16 +590,14 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         }
     }
 
-    let (l00, _, l_bot_left, ld_bot_right) =
-        unsafe { ld.split_at_unchecked(insertion_index, insertion_index) };
+    let (l00, _, l_bot_left, ld_bot_right) = ld.split_at(insertion_index, insertion_index);
     let l00 = l00.into_const();
 
-    let (_, mut l10, _, l20) = unsafe { l_bot_left.split_at_unchecked(r, 0) };
-    let (mut l11, _, mut l21, ld22) = unsafe { ld_bot_right.split_at_unchecked(r, r) };
+    let (_, mut l10, _, l20) = l_bot_left.split_at(r, 0);
+    let (mut l11, _, mut l21, ld22) = ld_bot_right.split_at(r, r);
 
-    let (_, mut a01, _, a_bottom) =
-        unsafe { inserted_matrix.split_at_unchecked(insertion_index, 0) };
-    let (_, a11, _, a21) = unsafe { a_bottom.split_at_unchecked(r, 0) };
+    let (_, mut a01, _, a_bottom) = inserted_matrix.split_at(insertion_index, 0);
+    let (_, a11, _, a21) = a_bottom.split_at(r, 0);
 
     let mut stack = stack;
 
@@ -611,8 +616,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *l11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a11.rb().get_unchecked(i, j).clone();
+                *l11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
             }
         }
     }
@@ -671,7 +675,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         parallelism,
     );
 
-    let mut alpha = unsafe { a11.col_unchecked(0) };
+    let mut alpha = a11.col(0);
     let mut w = a21;
 
     for j in 0..r {

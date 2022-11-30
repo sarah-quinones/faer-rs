@@ -1,8 +1,8 @@
 use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular, permutation::PermutationIndicesRef, temp_mat_req, temp_mat_uninit,
-    ComplexField, Conj, MatMut, MatRef, Parallelism,
+    mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
+    Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
@@ -11,7 +11,7 @@ use triangular::BlockStructure;
 fn reconstruct_impl<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: Option<MatRef<'_, T>>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -92,12 +92,12 @@ fn reconstruct_impl<T: ComplexField>(
 pub fn reconstruct_to<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!(dst.nrows() == lu_factors.nrows());
-    fancy_assert!(dst.ncols() == lu_factors.ncols());
+    fancy_assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
+    fancy_assert!(row_perm.len() == lu_factors.nrows());
     reconstruct_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
@@ -112,20 +112,31 @@ pub fn reconstruct_to<T: ComplexField>(
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
+    fancy_assert!(row_perm.len() == lu_factors.nrows());
     reconstruct_impl(lu_factors, None, row_perm, parallelism, stack)
 }
 
-/// Computes the size and alignment of required workspace for reconstructing a matrix,
+/// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its partial pivoting LU decomposition.
-pub fn reconstruct_req<T: 'static>(
+pub fn reconstruct_to_req<T: 'static>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     temp_mat_req::<T>(nrows, ncols)
+}
+
+/// Computes the size and alignment of required workspace for reconstructing a matrix in place,
+/// given its partial pivoting LU decomposition.
+pub fn reconstruct_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    reconstruct_to_req::<T>(nrows, ncols, parallelism)
 }

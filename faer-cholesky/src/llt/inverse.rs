@@ -44,13 +44,23 @@ fn invert_lower_impl<T: ComplexField>(
 }
 
 /// Computes the size and alignment of required workspace for computing the lower triangular part
-/// of the inverse of a matrix, given its Cholesky decomposition.
-pub fn invert_lower_req<T: 'static>(
+/// of the inverse of a matrix out of place, given the Cholesky
+/// decomposition.
+pub fn invert_lower_to_req<T: 'static>(
     dimension: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     temp_mat_req::<T>(dimension, dimension)
+}
+
+/// Computes the size and alignment of required workspace for computing the lower triangular part
+/// of the inverse of a matrix, given its Cholesky decomposition.
+pub fn invert_lower_in_place_req<T: 'static>(
+    dimension: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    invert_lower_to_req::<T>(dimension, parallelism)
 }
 
 /// Computes the lower triangular part of the inverse of a matrix, given its Cholesky
@@ -86,7 +96,6 @@ pub fn invert_lower_to<T: ComplexField>(
     stack: DynStack,
 ) {
     fancy_assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
-    fancy_assert!(dst.nrows() == cholesky_factor.nrows());
-    fancy_assert!(dst.ncols() == cholesky_factor.ncols());
+    fancy_assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
     invert_lower_impl(dst, Some(cholesky_factor), parallelism, stack);
 }

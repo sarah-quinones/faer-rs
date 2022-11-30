@@ -9,7 +9,7 @@ use bytemuck::cast;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
     mul::matmul,
-    permutation::{swap_cols, swap_rows, PermutationIndicesMut},
+    permutation::{swap_cols, swap_rows, PermutationMut},
     ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowRef,
 };
 use pulp::Simd;
@@ -1136,11 +1136,7 @@ pub fn lu_in_place<'out, T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: FullPivLuComputeParams,
-) -> (
-    usize,
-    PermutationIndicesMut<'out>,
-    PermutationIndicesMut<'out>,
-) {
+) -> (usize, PermutationMut<'out>, PermutationMut<'out>) {
     let disable_parallelism = params
         .disable_parallelism
         .unwrap_or(default_disable_parallelism);
@@ -1196,15 +1192,15 @@ pub fn lu_in_place<'out, T: ComplexField>(
     unsafe {
         (
             n_transpositions,
-            PermutationIndicesMut::new_unchecked(row_perm, row_perm_inv),
-            PermutationIndicesMut::new_unchecked(col_perm, col_perm_inv),
+            PermutationMut::new_unchecked(row_perm, row_perm_inv),
+            PermutationMut::new_unchecked(col_perm, col_perm_inv),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use faer_core::{permutation::PermutationIndicesRef, Mat};
+    use faer_core::{permutation::PermutationRef, Mat};
     use rand::random;
 
     use crate::full_pivoting::reconstruct;
@@ -1219,8 +1215,8 @@ mod tests {
 
     fn reconstruct_matrix<T: ComplexField>(
         lu_factors: MatRef<'_, T>,
-        row_perm: PermutationIndicesRef<'_>,
-        col_perm: PermutationIndicesRef<'_>,
+        row_perm: PermutationRef<'_>,
+        col_perm: PermutationRef<'_>,
     ) -> Mat<T> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
@@ -1231,7 +1227,7 @@ mod tests {
             row_perm,
             col_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
+            make_stack!(reconstruct::reconstruct_to_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
         );
         dst
     }

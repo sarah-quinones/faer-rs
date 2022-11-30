@@ -1,3 +1,4 @@
+use dyn_stack::DynStack;
 use faer_core::{solve, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use reborrow::*;
 
@@ -18,9 +19,11 @@ pub fn solve_in_place<T: ComplexField>(
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
+    stack: DynStack<'_>,
 ) {
     let n = cholesky_factors.nrows();
     let k = rhs.ncols();
+    let _ = &stack;
 
     fancy_assert!(cholesky_factors.nrows() == cholesky_factors.ncols());
     fancy_assert!(rhs.nrows() == n);
@@ -70,6 +73,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
+    stack: DynStack<'_>,
 ) {
     // (L D L.*).T = conj(L D L.*)
     solve_in_place(
@@ -81,5 +85,72 @@ pub fn solve_transpose_in_place<T: ComplexField>(
         rhs,
         conj_rhs,
         parallelism,
+        stack,
+    )
+}
+
+/// Given the Cholesky factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
+/// computes the solution of the linear system:
+/// $$\text{Op}_A(A)^\top X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `dst`.
+#[track_caller]
+pub fn solve_transpose_to<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    cholesky_factors: MatRef<'_, T>,
+    conj_lhs: Conj,
+    rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let mut dst = dst;
+    dst.rb_mut()
+        .cwise()
+        .zip(rhs)
+        .for_each(|dst, src| *dst = *src);
+    solve_transpose_in_place(
+        cholesky_factors,
+        conj_lhs,
+        dst,
+        conj_rhs,
+        parallelism,
+        stack,
+    )
+}
+
+/// Given the Cholesky factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
+/// computes the solution of the linear system:
+/// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `dst`.
+#[track_caller]
+pub fn solve_to<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    cholesky_factors: MatRef<'_, T>,
+    conj_lhs: Conj,
+    rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let mut dst = dst;
+    dst.rb_mut()
+        .cwise()
+        .zip(rhs)
+        .for_each(|dst, src| *dst = *src);
+    solve_in_place(
+        cholesky_factors,
+        conj_lhs,
+        dst,
+        conj_rhs,
+        parallelism,
+        stack,
     )
 }

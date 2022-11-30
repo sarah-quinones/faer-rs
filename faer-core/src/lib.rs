@@ -43,6 +43,7 @@ pub mod zip;
 pub mod householder;
 pub mod permutation;
 
+/// Indicates whether the corresponding operand should be conjugated or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
     /// Do not conjugate
@@ -748,6 +749,13 @@ impl<'a, U, T: PartialEq<U>> PartialEq<MatMut<'a, U>> for MatMut<'a, T> {
     #[inline]
     fn eq(&self, other: &MatMut<'a, U>) -> bool {
         self.rb() == other.rb()
+    }
+}
+
+impl<U, T: PartialEq<U>> PartialEq<Mat<U>> for Mat<T> {
+    #[inline]
+    fn eq(&self, other: &Mat<U>) -> bool {
+        self.as_ref() == other.as_ref()
     }
 }
 
@@ -4029,7 +4037,8 @@ macro_rules! izip {
     };
 }
 
-/// Creates a temporary matrix of possibly uninitialized values, from the given memory stack.
+/// Unsafe: Creates a temporary matrix of possibly uninitialized values, from the given memory
+/// stack.
 ///
 /// # Warning
 ///

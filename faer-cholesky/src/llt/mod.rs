@@ -30,6 +30,9 @@ mod tests {
             a_reconstructed.as_mut(),
             cholesky_factor,
             Parallelism::Rayon(0),
+            DynStack::new(&mut GlobalMemBuffer::new(
+                reconstruct_lower_to_req::<T>(n).unwrap(),
+            )),
         );
 
         a_reconstructed
@@ -73,7 +76,7 @@ mod tests {
                 a.as_ref(),
                 Parallelism::Rayon(0),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    invert_lower_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
+                    invert_lower_to_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
                 )),
             );
 
@@ -134,6 +137,7 @@ mod tests {
                 rhs.as_mut(),
                 Conj::No,
                 Parallelism::Rayon(8),
+                DynStack::new(&mut []),
             );
 
             let mut result = Mat::zeros(n, k);

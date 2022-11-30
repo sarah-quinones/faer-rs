@@ -253,7 +253,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
     }
 }
 
-/// Performs a rank-k update in place, while clobbering the inputs.
+/// Performs a rank-r update in place, while clobbering the inputs.
 ///
 /// Takes the Cholesky factors $L$ and $D$ of a matrix $A$, meaning that $LDL^* = A$,
 /// a matrix $W$ and a column vector $\alpha$, which is interpreted as a diagonal matrix.
@@ -262,7 +262,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 /// result in the storage of the original cholesky factors.
 ///
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
-/// the function returns are unspecified.
+/// the function is called are unspecified.
 #[track_caller]
 pub fn rank_r_update_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
@@ -357,6 +357,9 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
 /// computes the Cholesky factor of $A$ with the provided rows and columns deleted from it.
 ///
 /// The result is stored in the top left corner (with dimension `n - r`) of `cholesky_factor`.
+///
+/// The indices are clobbered, meaning that the values that the slice contains after the function
+/// is called are unspecified.
 #[track_caller]
 pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors: MatMut<'_, T>,
@@ -438,6 +441,9 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
 /// factors $L$ and $D$ of a matrix $A$ in its top left corner, of dimension `n`, and computes the
 /// Cholesky factor of $A$ with the provided `inserted_matrix` inserted at the position starting at
 /// `insertion_index`.
+///
+/// The inserted matrix is clobbered, meaning that the values it contains after the function
+/// is called are unspecified.
 #[track_caller]
 pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     cholesky_factors_extended: MatMut<'_, T>,

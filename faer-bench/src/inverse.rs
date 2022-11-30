@@ -73,7 +73,8 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     Default::default(),
                 )
                 .unwrap(),
-                faer_lu::partial_pivoting::inverse::invert_req::<f64>(n, n, parallelism).unwrap(),
+                faer_lu::partial_pivoting::inverse::invert_to_req::<f64>(n, n, parallelism)
+                    .unwrap(),
             ]));
             let mut stack = DynStack::new(&mut mem);
 

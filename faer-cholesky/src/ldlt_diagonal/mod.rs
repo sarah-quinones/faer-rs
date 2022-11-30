@@ -118,6 +118,7 @@ mod tests {
             rhs.as_mut(),
             Conj::No,
             Parallelism::Rayon(8),
+            DynStack::new(&mut []),
         );
 
         let mut result = Mat::zeros(n, k);

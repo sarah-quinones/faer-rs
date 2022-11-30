@@ -1,6 +1,6 @@
 use assert2::assert as fancy_assert;
 use core::cmp::Ordering;
-use faer_core::{permutation::PermutationIndicesMut, MatRef};
+use faer_core::{permutation::PermutationMut, MatRef};
 use num_traits::Signed;
 
 pub mod ldlt_diagonal;
@@ -14,7 +14,7 @@ pub fn compute_cholesky_permutation<'a, T>(
     perm_indices: &'a mut [usize],
     perm_inv_indices: &'a mut [usize],
     matrix: MatRef<'_, T>,
-) -> PermutationIndicesMut<'a>
+) -> PermutationMut<'a>
 where
     T: Signed + PartialOrd,
 {
@@ -52,5 +52,5 @@ where
         perm_inv_indices[p] = i;
     }
 
-    unsafe { PermutationIndicesMut::new_unchecked(perm_indices, perm_inv_indices) }
+    unsafe { PermutationMut::new_unchecked(perm_indices, perm_inv_indices) }
 }

@@ -3,7 +3,7 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw,
     mul::triangular,
-    permutation::{permute_cols, PermutationIndicesRef},
+    permutation::{permute_cols, PermutationRef},
     temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
@@ -12,7 +12,7 @@ use triangular::BlockStructure;
 fn invert_impl<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: Option<MatRef<'_, T>>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -78,8 +78,19 @@ fn invert_impl<T: ComplexField>(
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
-/// matrix, given its partial pivoting LU decomposition.
-pub fn invert_req<T: 'static>(
+/// matrix in place, given its partial pivoting LU decomposition.
+pub fn invert_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
+    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+}
+
+/// Computes the size and alignment of required workspace for computing the inverse of a
+/// matrix out of place, given its partial pivoting LU decomposition.
+pub fn invert_to_req<T: 'static>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -101,15 +112,14 @@ pub fn invert_req<T: 'static>(
 pub fn invert_to<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    fancy_assert!(lu_factors.ncols() == n);
+    fancy_assert!(lu_factors.ncols() == lu_factors.nrows());
     fancy_assert!(row_perm.len() == n);
-    fancy_assert!(dst.nrows() == n);
-    fancy_assert!(dst.ncols() == n);
+    fancy_assert!((dst.nrows(), dst.ncols()) == (n, n));
     invert_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
@@ -125,7 +135,7 @@ pub fn invert_to<T: ComplexField>(
 #[track_caller]
 pub fn invert_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,
-    row_perm: PermutationIndicesRef<'_>,
+    row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -176,7 +186,7 @@ mod tests {
                 lu.as_ref(),
                 row_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
+                make_stack!(invert_to_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
             );
 
             let mut prod = Mat::zeros(n, n);
