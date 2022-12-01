@@ -253,10 +253,7 @@ pub fn qr_in_place<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-    use faer_core::{
-        householder::{apply_householder_on_the_left, apply_householder_sequence_on_the_left},
-        Conj,
-    };
+    use faer_core::{householder::apply_householder_sequence_on_the_left, Conj};
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
