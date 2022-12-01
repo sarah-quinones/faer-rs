@@ -27,7 +27,8 @@ jobs:
         # want to get all quality issues
         continue-on-error: true
         
-      - name: Undefined behavior check
-        run: cargo miri test --release --workspace --exclude faer-bench
-        # want to get all quality issues
-        continue-on-error: true
+  # This step can be uncommented and readded once Miri tests are faster
+  #    - name: Undefined behavior check
+  #     run: cargo miri test --release --workspace --exclude faer-bench
+  #     # want to get all quality issues
+  #     continue-on-error: true
