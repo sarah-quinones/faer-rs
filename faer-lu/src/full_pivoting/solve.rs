@@ -315,10 +315,11 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use assert2::assert as fancy_assert;
     use dyn_stack::GlobalMemBuffer;
     use faer_core::{c32, c64, mul::matmul, Mat};
-    use rand::random;
 
     use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
 
@@ -484,27 +485,46 @@ mod tests {
         });
     }
 
+    use rand::prelude::*;
+    thread_local! {
+        static RNG: RefCell<StdRng> = RefCell::new(StdRng::seed_from_u64(0));
+    }
+    fn random_f64() -> f64 {
+        RNG.with(|rng| {
+            let mut rng = rng.borrow_mut();
+            let rng = &mut *rng;
+            rng.gen()
+        })
+    }
+    fn random_f32() -> f32 {
+        RNG.with(|rng| {
+            let mut rng = rng.borrow_mut();
+            let rng = &mut *rng;
+            rng.gen()
+        })
+    }
+
     #[test]
     fn test_solve_to_f64() {
-        test_solve_to(|| random::<f64>(), 1e-6_f64);
-        test_solve_transpose_to(|| random::<f64>(), 1e-6_f64);
+        test_solve_to(random_f64, 1e-6_f64);
+        test_solve_transpose_to(random_f64, 1e-6_f64);
     }
 
     #[test]
     fn test_solve_to_f32() {
-        test_solve_to(|| random::<f32>(), 1e-1_f32);
-        test_solve_transpose_to(|| random::<f32>(), 1e-1_f32);
+        test_solve_to(random_f32, 1e-1_f32);
+        test_solve_transpose_to(random_f32, 1e-1_f32);
     }
 
     #[test]
     fn test_solve_to_c64() {
-        test_solve_to(|| c64::new(random(), random()), 1e-6_f64);
-        test_solve_transpose_to(|| c64::new(random(), random()), 1e-6_f64);
+        test_solve_to(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
+        test_solve_transpose_to(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
     }
 
     #[test]
     fn test_solve_to_c32() {
-        test_solve_to(|| c32::new(random(), random()), 1e-1_f32);
-        test_solve_transpose_to(|| c32::new(random(), random()), 1e-1_f32);
+        test_solve_to(|| c32::new(random_f32(), random_f32()), 1e-1_f32);
+        test_solve_transpose_to(|| c32::new(random_f32(), random_f32()), 1e-1_f32);
     }
 }
