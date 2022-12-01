@@ -6,7 +6,9 @@ use core::{
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::{permutation::swap_cols, ColMut, ColRef, ComplexField, MatMut, Parallelism};
+use faer_core::{
+    mul::dot, permutation::swap_cols, ColMut, ColRef, ComplexField, MatMut, Parallelism,
+};
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -15,66 +17,6 @@ fn coerce<T: 'static, U: 'static>(t: T) -> U {
     assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
     let no_drop = core::mem::MaybeUninit::new(t);
     unsafe { transmute_copy(&no_drop) }
-}
-
-#[inline(always)]
-fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
-    let mut acc0 = simd.f64s_splat(0.0);
-    let mut acc1 = simd.f64s_splat(0.0);
-    let mut acc2 = simd.f64s_splat(0.0);
-    let mut acc3 = simd.f64s_splat(0.0);
-    let mut acc4 = simd.f64s_splat(0.0);
-    let mut acc5 = simd.f64s_splat(0.0);
-    let mut acc6 = simd.f64s_splat(0.0);
-    let mut acc7 = simd.f64s_splat(0.0);
-
-    let (a, a_rem) = S::f64s_as_simd(a);
-    let (b, b_rem) = S::f64s_as_simd(b);
-
-    let (a, a_remv) = as_arrays::<8, _>(a);
-    let (b, b_remv) = as_arrays::<8, _>(b);
-
-    for (a, b) in a.iter().zip(b.iter()) {
-        acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
-        acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
-        acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
-        acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
-        acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
-        acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
-        acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
-        acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
-    }
-
-    for (a, b) in a_remv.iter().zip(b_remv.iter()) {
-        acc0 = simd.f64s_mul_adde(*a, *b, acc0);
-    }
-
-    acc0 = simd.f64s_add(acc0, acc1);
-    acc2 = simd.f64s_add(acc2, acc3);
-    acc4 = simd.f64s_add(acc4, acc5);
-    acc6 = simd.f64s_add(acc6, acc7);
-
-    acc0 = simd.f64s_add(acc0, acc2);
-    acc4 = simd.f64s_add(acc4, acc6);
-
-    acc0 = simd.f64s_add(acc0, acc4);
-
-    let mut acc = simd.f64s_reduce_sum(acc0);
-
-    for (a, b) in a_rem.iter().zip(b_rem.iter()) {
-        acc = f64::mul_add(*a, *b, acc);
-    }
-
-    acc
-}
-
-#[inline(always)]
-fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
-    let mut acc = T::zero();
-    for (a, b) in a.iter().zip(b.iter()) {
-        acc = acc + (*a).conj() * *b;
-    }
-    acc
 }
 
 // a += k * b
@@ -165,35 +107,6 @@ fn update_and_norm2_generic<S: Simd, T: ComplexField>(
     }
 
     acc
-}
-
-// a^* b
-#[inline(always)]
-pub(crate) fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
-    let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
-    let id = TypeId::of::<T>();
-    if colmajor {
-        let a_len = a.nrows();
-        let b_len = b.nrows();
-
-        if id == TypeId::of::<f64>() {
-            coerce(dot_f64(
-                simd,
-                unsafe { from_raw_parts(a.as_ptr() as _, a_len) },
-                unsafe { from_raw_parts(b.as_ptr() as _, b_len) },
-            ))
-        } else {
-            dot_generic::<S, T>(simd, unsafe { from_raw_parts(a.as_ptr(), a_len) }, unsafe {
-                from_raw_parts(b.as_ptr(), b_len)
-            })
-        }
-    } else {
-        let mut acc = T::zero();
-        for (a, b) in a.into_iter().zip(b.into_iter()) {
-            acc = acc + (*a).conj() * *b;
-        }
-        acc
-    }
 }
 
 #[inline(always)]
@@ -478,7 +391,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
     use faer_core::{
-        c64, householder::apply_househodler_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
+        c64, householder::apply_householder_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
     };
     use rand::random;
 
@@ -511,7 +424,7 @@ mod tests {
         for k in (0..size).rev() {
             let tau = householder[k];
             let essential = qr_factors.col(k).split_at(k + 1).1;
-            apply_househodler_on_the_left(
+            apply_householder_on_the_left(
                 q.as_mut().submatrix(k, k, m - k, m - k),
                 essential,
                 tau,

@@ -1,13 +1,14 @@
 use assert2::assert as fancy_assert;
 use dyn_stack::DynStack;
 use faer_core::{
-    householder::{apply_block_househodler_on_the_left, make_householder_in_place},
-    mul::triangular,
-    temp_mat_uninit, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    householder::{
+        apply_block_householder_on_the_left, make_householder_factor_unblocked,
+        make_householder_in_place,
+    },
+    mul::dot,
+    temp_mat_uninit, ColMut, ComplexField, MatMut, Parallelism,
 };
 use reborrow::*;
-
-use crate::col_pivoting::compute::dot;
 
 fn qr_in_place_unblocked<T: ComplexField>(
     matrix: MatMut<'_, T>,
@@ -202,7 +203,7 @@ pub fn qr_in_place<T: ComplexField>(
 
             match extra_parallelism {
                 Parallelism::None => {
-                    apply_block_househodler_on_the_left(
+                    apply_block_householder_on_the_left(
                         remaining_cols,
                         block.rb(),
                         t.rb(),
@@ -233,7 +234,7 @@ pub fn qr_in_place<T: ComplexField>(
                         },
                         |mem, (_col_start, rem_blk)| {
                             let stack = DynStack::new(mem);
-                            apply_block_househodler_on_the_left(
+                            apply_block_householder_on_the_left(
                                 rem_blk,
                                 block.rb(),
                                 t.rb(),
@@ -250,121 +251,12 @@ pub fn qr_in_place<T: ComplexField>(
     }
 }
 
-fn make_householder_factor_unblocked<T: ComplexField>(
-    mut householder_factor: MatMut<'_, T>,
-    matrix: MatRef<'_, T>,
-    mut stack: DynStack<'_>,
-) {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
-    let size = m.min(n);
-
-    fancy_assert!(householder_factor.nrows() == size);
-    fancy_assert!(householder_factor.ncols() == size);
-    fancy_assert!(householder_factor.col_stride() == 1);
-
-    for i in (0..size).rev() {
-        let rs = m - i - 1;
-        let rt = size - i - 1;
-
-        if rt > 0 {
-            let factor = -*householder_factor.rb().get(i, i);
-
-            let mut tail_row = householder_factor.rb_mut().row(i).split_at(size - rt).1;
-
-            use faer_core::mul::triangular::BlockStructure::*;
-
-            let mut dst = tail_row.rb_mut().as_2d();
-            let lhs = matrix.col(i).split_at(m - rs).1.transpose().as_2d();
-
-            let rhs = matrix.submatrix(m - rs, n - rt, rs, rt);
-            triangular::matmul(
-                dst.rb_mut(),
-                Rectangular,
-                Conj::No,
-                lhs.split_at(0, rt).2,
-                Rectangular,
-                Conj::Yes,
-                rhs.split_at(rt, 0).1,
-                UnitTriangularLower,
-                Conj::No,
-                None,
-                factor,
-                Parallelism::None,
-            );
-
-            let lhs = lhs.split_at(0, rt).3;
-            let rhs = rhs.split_at(rt, 0).3;
-
-            struct Gevm<'a, T> {
-                dst: MatMut<'a, T>,
-                lhs: MatRef<'a, T>,
-                rhs: MatRef<'a, T>,
-                beta: T,
-            }
-            impl<'a, T: ComplexField> pulp::WithSimd for Gevm<'a, T> {
-                type Output = ();
-
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                    let Self {
-                        dst,
-                        lhs,
-                        rhs,
-                        beta,
-                    } = self;
-                    let mut dst = dst.row(0);
-                    let lhs = lhs.row(0).transpose();
-                    fancy_assert!(rhs.row_stride() == 1);
-
-                    for (i, rhs) in rhs.into_col_iter().enumerate() {
-                        let dst = &mut dst[i];
-                        *dst = *dst + beta * dot(simd, lhs, rhs);
-                    }
-                }
-            }
-
-            pulp::Arch::new().dispatch(Gevm {
-                dst: dst.rb_mut(),
-                lhs,
-                rhs,
-                beta: factor,
-            });
-
-            temp_mat_uninit! {
-                let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
-            }
-
-            triangular::matmul(
-                tmp.rb_mut().transpose(),
-                Rectangular,
-                Conj::No,
-                householder_factor.rb().submatrix(i, size - rt, 1, rt),
-                Rectangular,
-                Conj::No,
-                householder_factor
-                    .rb()
-                    .submatrix(size - rt, size - rt, rt, rt),
-                TriangularUpper,
-                Conj::No,
-                None,
-                T::one(),
-                Parallelism::None,
-            );
-            householder_factor
-                .rb_mut()
-                .submatrix(i, size - rt, 1, rt)
-                .row(0)
-                .cwise()
-                .zip(tmp.transpose().row(0))
-                .for_each(|a, b| *a = *b);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use faer_core::householder::apply_househodler_on_the_left;
+    use faer_core::{
+        householder::{apply_householder_on_the_left, apply_householder_sequence_on_the_left},
+        Conj,
+    };
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
@@ -400,7 +292,6 @@ mod tests {
     ) -> (Mat<T>, Mat<T>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
-        let size = m.min(n);
 
         let mut q = Mat::zeros(m, m);
         let mut r = Mat::zeros(m, n);
@@ -412,16 +303,13 @@ mod tests {
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
-        for k in (0..size).rev() {
-            let tau = ComplexField::conj(householder[k]);
-            let essential = qr_factors.col(k).split_at(k + 1).1;
-            apply_househodler_on_the_left(
-                q.as_mut().submatrix(k, k, m - k, m - k),
-                essential,
-                tau,
-                placeholder_stack!(),
-            );
-        }
+        apply_householder_sequence_on_the_left(
+            q.as_mut(),
+            qr_factors,
+            householder,
+            false,
+            placeholder_stack!(),
+        );
 
         (q, r)
     }

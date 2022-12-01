@@ -1,9 +1,111 @@
 //! Matrix multiplication module.
 
-use crate::{ComplexField, Conj, MatMut, MatRef, Parallelism};
+use core::any::TypeId;
+
+use crate::{ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use gemm::gemm;
+use pulp::{as_arrays, Simd};
 use reborrow::*;
+
+#[inline(always)]
+fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
+    let mut acc0 = simd.f64s_splat(0.0);
+    let mut acc1 = simd.f64s_splat(0.0);
+    let mut acc2 = simd.f64s_splat(0.0);
+    let mut acc3 = simd.f64s_splat(0.0);
+    let mut acc4 = simd.f64s_splat(0.0);
+    let mut acc5 = simd.f64s_splat(0.0);
+    let mut acc6 = simd.f64s_splat(0.0);
+    let mut acc7 = simd.f64s_splat(0.0);
+
+    let (a, a_rem) = S::f64s_as_simd(a);
+    let (b, b_rem) = S::f64s_as_simd(b);
+
+    let (a, a_remv) = as_arrays::<8, _>(a);
+    let (b, b_remv) = as_arrays::<8, _>(b);
+
+    for (a, b) in a.iter().zip(b.iter()) {
+        acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
+        acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
+        acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
+        acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
+        acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
+        acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
+        acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
+        acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
+    }
+
+    for (a, b) in a_remv.iter().zip(b_remv.iter()) {
+        acc0 = simd.f64s_mul_adde(*a, *b, acc0);
+    }
+
+    acc0 = simd.f64s_add(acc0, acc1);
+    acc2 = simd.f64s_add(acc2, acc3);
+    acc4 = simd.f64s_add(acc4, acc5);
+    acc6 = simd.f64s_add(acc6, acc7);
+
+    acc0 = simd.f64s_add(acc0, acc2);
+    acc4 = simd.f64s_add(acc4, acc6);
+
+    acc0 = simd.f64s_add(acc0, acc4);
+
+    let mut acc = simd.f64s_reduce_sum(acc0);
+
+    for (a, b) in a_rem.iter().zip(b_rem.iter()) {
+        acc = f64::mul_add(*a, *b, acc);
+    }
+
+    acc
+}
+
+#[inline(always)]
+fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
+    let mut acc = T::zero();
+    for (a, b) in a.iter().zip(b.iter()) {
+        acc = acc + (*a).conj() * *b;
+    }
+    acc
+}
+
+#[inline]
+fn coerce<T: 'static, U: 'static>(t: T) -> U {
+    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
+    let no_drop = core::mem::MaybeUninit::new(t);
+    unsafe { core::mem::transmute_copy(&no_drop) }
+}
+
+// a^* b
+#[doc(hidden)]
+#[inline(always)]
+pub fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
+    let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
+    let id = TypeId::of::<T>();
+    if colmajor {
+        let a_len = a.nrows();
+        let b_len = b.nrows();
+
+        if id == TypeId::of::<f64>() {
+            coerce(dot_f64(
+                simd,
+                unsafe { core::slice::from_raw_parts(a.as_ptr() as _, a_len) },
+                unsafe { core::slice::from_raw_parts(b.as_ptr() as _, b_len) },
+            ))
+        } else {
+            dot_generic::<S, T>(
+                simd,
+                unsafe { core::slice::from_raw_parts(a.as_ptr(), a_len) },
+                unsafe { core::slice::from_raw_parts(b.as_ptr(), b_len) },
+            )
+        }
+    } else {
+        let mut acc = T::zero();
+        for (a, b) in a.into_iter().zip(b.into_iter()) {
+            acc = acc + (*a).conj() * *b;
+        }
+        acc
+    }
+}
 
 /// Same as [`matmul`], except that panics become undefined behavior.
 unsafe fn gemm_wrapper_unchecked<T: ComplexField>(

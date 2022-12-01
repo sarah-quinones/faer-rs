@@ -4825,55 +4825,71 @@ impl<T> IndexMut<(usize, usize)> for Mat<T> {
     }
 }
 
-impl<T> Add<Mat<T>> for Mat<T> 
-    where T: Copy
-             + Add<T, Output = T>
-    {
+impl<T> Add<Mat<T>> for Mat<T>
+where
+    T: Copy + Add<T, Output = T>,
+{
     type Output = Mat<T>;
 
     #[inline]
     fn add(self, rhs: Mat<T>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows(), self.ncols())
+        Self::Output::with_dims(
+            |i, j| self[(i, j)] + rhs[(i, j)],
+            self.nrows(),
+            self.ncols(),
+        )
     }
 }
 
-impl<T> Add<&Mat<T>> for &Mat<T> 
-    where T: Copy
-             + Add<T, Output = T>
-    {
+impl<T> Add<&Mat<T>> for &Mat<T>
+where
+    T: Copy + Add<T, Output = T>,
+{
     type Output = Mat<T>;
 
     #[inline]
     fn add(self, rhs: &Mat<T>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(|i, j| self[(i, j)] + rhs[(i, j)], self.nrows(), self.ncols())
+        Self::Output::with_dims(
+            |i, j| self[(i, j)] + rhs[(i, j)],
+            self.nrows(),
+            self.ncols(),
+        )
     }
 }
 
 impl<T> Sub<Mat<T>> for Mat<T>
-    where T: Copy
-             + Sub<T, Output = T>
-    {
+where
+    T: Copy + Sub<T, Output = T>,
+{
     type Output = Mat<T>;
 
     #[inline]
     fn sub(self, rhs: Mat<T>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(|i, j| self[(i, j)] - rhs[(i, j)], self.nrows(), self.ncols())
+        Self::Output::with_dims(
+            |i, j| self[(i, j)] - rhs[(i, j)],
+            self.nrows(),
+            self.ncols(),
+        )
     }
 }
 
 impl<T> Sub<&Mat<T>> for &Mat<T>
-    where T: Copy
-             + Sub<T, Output = T>
-    {
+where
+    T: Copy + Sub<T, Output = T>,
+{
     type Output = Mat<T>;
 
     #[inline]
     fn sub(self, rhs: &Mat<T>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(|i, j| self[(i, j)] - rhs[(i, j)], self.nrows(), self.ncols())
+        Self::Output::with_dims(
+            |i, j| self[(i, j)] - rhs[(i, j)],
+            self.nrows(),
+            self.ncols(),
+        )
     }
 }
 
@@ -5148,20 +5164,14 @@ mod tests {
 
     #[test]
     fn add_mat() {
-        let x = mat![
-            [1.0, -2.0],
-            [4.0, -8.0],
-        ] + mat![
-            [4.0, 5.0],
-            [-6.0, -7.0],
-        ];
+        let x = mat![[1.0, -2.0], [4.0, -8.0],] + mat![[4.0, 5.0], [-6.0, -7.0],];
 
         fancy_assert!(x[(0, 0)] == 5.0);
         fancy_assert!(x[(0, 1)] == 3.0);
 
         fancy_assert!(x[(1, 0)] == -2.0);
         fancy_assert!(x[(1, 1)] == -15.0);
-        
+
         let y = &mat![
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
@@ -5169,34 +5179,24 @@ mod tests {
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
         ];
-        
+
         fancy_assert!(y[(0, 0)] == c64::new(5.0, 7.0));
         fancy_assert!(y[(0, 1)] == c64::new(9.0, 3.0));
 
         fancy_assert!(y[(1, 0)] == c64::new(3.0, 7.0));
         fancy_assert!(y[(1, 1)] == c64::new(3.0, 3.0));
     }
-    
+
     #[test]
     #[should_panic]
     fn add_different_size() {
-        let _ = &mat![
-            [1.0, -2.0],
-            [4.0, -8.0],
-        ] + &mat![
-            [4.0, 5.0],
-        ];
+        let _ = &mat![[1.0, -2.0], [4.0, -8.0],] + &mat![[4.0, 5.0],];
     }
-    
+
     #[test]
     fn sub_mat() {
-        let x = mat![
-            [1.0, -2.0, 3.0],
-            [4.0, -8.0, 2.0],
-        ] - mat![
-            [4.0, 5.0, 3.0],
-            [-6.0, -7.0, 4.0],
-        ];
+        let x =
+            mat![[1.0, -2.0, 3.0], [4.0, -8.0, 2.0],] - mat![[4.0, 5.0, 3.0], [-6.0, -7.0, 4.0],];
 
         fancy_assert!(x[(0, 0)] == -3.0);
         fancy_assert!(x[(0, 1)] == -7.0);
@@ -5205,7 +5205,7 @@ mod tests {
         fancy_assert!(x[(1, 0)] == 10.0);
         fancy_assert!(x[(1, 1)] == -1.0);
         fancy_assert!(x[(1, 2)] == -2.0);
-        
+
         let y = &mat![
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
             [c64::new(1.0, 2.0), c64::new(2.0, 3.0)],
@@ -5213,22 +5213,17 @@ mod tests {
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
-        
+
         fancy_assert!(y[(0, 0)] == c64::new(3.0, 3.0));
         fancy_assert!(y[(0, 1)] == c64::new(3.0, 11.0));
 
         fancy_assert!(y[(1, 0)] == c64::new(2.0, 0.0));
         fancy_assert!(y[(1, 1)] == c64::new(5.0, 7.0));
     }
-    
+
     #[test]
     #[should_panic]
     fn sub_different_size() {
-        let _ = &mat![
-            [1.0, -2.0],
-            [4.0, -8.0],
-        ] - &mat![
-            [4.0, 5.0],
-        ];
+        let _ = &mat![[1.0, -2.0], [4.0, -8.0],] - &mat![[4.0, 5.0],];
     }
 }

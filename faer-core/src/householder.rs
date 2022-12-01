@@ -1,5 +1,8 @@
 use crate::{
-    mul::{matmul, triangular},
+    mul::{
+        dot, matmul,
+        triangular::{self, BlockStructure},
+    },
     temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 
@@ -25,7 +28,116 @@ pub fn make_householder_in_place<T: ComplexField>(
     (T::from_real(tau), -signed_norm)
 }
 
-pub fn apply_househodler_on_the_left<T: ComplexField>(
+pub fn make_householder_factor_unblocked<T: ComplexField>(
+    mut householder_factor: MatMut<'_, T>,
+    matrix: MatRef<'_, T>,
+    mut stack: DynStack<'_>,
+) {
+    let m = matrix.nrows();
+    let n = matrix.ncols();
+    let size = m.min(n);
+
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
+    fancy_assert!(householder_factor.col_stride() == 1);
+
+    for i in (0..size).rev() {
+        let rs = m - i - 1;
+        let rt = size - i - 1;
+
+        if rt > 0 {
+            let factor = -*householder_factor.rb().get(i, i);
+
+            let mut tail_row = householder_factor.rb_mut().row(i).split_at(size - rt).1;
+
+            let mut dst = tail_row.rb_mut().as_2d();
+            let lhs = matrix.col(i).split_at(m - rs).1.transpose().as_2d();
+
+            let rhs = matrix.submatrix(m - rs, n - rt, rs, rt);
+            triangular::matmul(
+                dst.rb_mut(),
+                BlockStructure::Rectangular,
+                Conj::No,
+                lhs.split_at(0, rt).2,
+                BlockStructure::Rectangular,
+                Conj::Yes,
+                rhs.split_at(rt, 0).1,
+                BlockStructure::UnitTriangularLower,
+                Conj::No,
+                None,
+                factor,
+                Parallelism::None,
+            );
+
+            let lhs = lhs.split_at(0, rt).3;
+            let rhs = rhs.split_at(rt, 0).3;
+
+            struct Gevm<'a, T> {
+                dst: MatMut<'a, T>,
+                lhs: MatRef<'a, T>,
+                rhs: MatRef<'a, T>,
+                beta: T,
+            }
+            impl<'a, T: ComplexField> pulp::WithSimd for Gevm<'a, T> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    let Self {
+                        dst,
+                        lhs,
+                        rhs,
+                        beta,
+                    } = self;
+                    let mut dst = dst.row(0);
+                    let lhs = lhs.row(0).transpose();
+                    fancy_assert!(rhs.row_stride() == 1);
+
+                    for (i, rhs) in rhs.into_col_iter().enumerate() {
+                        let dst = &mut dst[i];
+                        *dst = *dst + beta * dot(simd, lhs, rhs);
+                    }
+                }
+            }
+
+            pulp::Arch::new().dispatch(Gevm {
+                dst: dst.rb_mut(),
+                lhs,
+                rhs,
+                beta: factor,
+            });
+
+            temp_mat_uninit! {
+                let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
+            }
+
+            triangular::matmul(
+                tmp.rb_mut().transpose(),
+                BlockStructure::Rectangular,
+                Conj::No,
+                householder_factor.rb().submatrix(i, size - rt, 1, rt),
+                BlockStructure::Rectangular,
+                Conj::No,
+                householder_factor
+                    .rb()
+                    .submatrix(size - rt, size - rt, rt, rt),
+                BlockStructure::TriangularUpper,
+                Conj::No,
+                None,
+                T::one(),
+                Parallelism::None,
+            );
+            householder_factor
+                .rb_mut()
+                .submatrix(i, size - rt, 1, rt)
+                .row(0)
+                .cwise()
+                .zip(tmp.transpose().row(0))
+                .for_each(|a, b| *a = *b);
+        }
+    }
+}
+
+pub fn apply_householder_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
     essential: ColRef<'_, T>,
     householder_coeff: T,
@@ -82,7 +194,7 @@ pub fn apply_househodler_on_the_left<T: ComplexField>(
     }
 }
 
-pub fn apply_block_househodler_on_the_left<T: ComplexField>(
+pub fn apply_block_householder_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
     basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
@@ -180,4 +292,46 @@ pub fn apply_block_househodler_on_the_left<T: ComplexField>(
         -T::one(),
         parallelism,
     )
+}
+
+pub fn apply_householder_sequence_on_the_left<T: ComplexField>(
+    mut matrix: MatMut<'_, T>,
+    essentials: MatRef<'_, T>,
+    householder_coeffs: ColRef<'_, T>,
+    forward: bool,
+    mut stack: DynStack<'_>,
+) {
+    let m = essentials.nrows();
+    let n = matrix.ncols();
+
+    if forward {
+        for (k, (col, householder_coeff)) in essentials
+            .into_col_iter()
+            .zip(householder_coeffs)
+            .enumerate()
+        {
+            let essential = col.subrows(k + 1, m - k - 1);
+            apply_householder_on_the_left(
+                matrix.rb_mut().submatrix(k, 0, m - k, n),
+                essential,
+                *householder_coeff,
+                stack.rb_mut(),
+            );
+        }
+    } else {
+        for (k, (col, householder_coeff)) in essentials
+            .into_col_iter()
+            .zip(householder_coeffs)
+            .enumerate()
+            .rev()
+        {
+            let essential = col.subrows(k + 1, m - k - 1);
+            apply_householder_on_the_left(
+                matrix.rb_mut().submatrix(k, 0, m - k, n),
+                essential,
+                *householder_coeff,
+                stack.rb_mut(),
+            );
+        }
+    }
 }
