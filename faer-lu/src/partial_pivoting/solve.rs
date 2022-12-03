@@ -126,7 +126,7 @@ pub fn solve_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn solve_to_req<T: 'static>(
+pub fn solve_req<T: 'static>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -152,7 +152,7 @@ pub fn solve_transpose_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix out of place, given its full pivoting LU decomposition.
-pub fn solve_transpose_to_req<T: 'static>(
+pub fn solve_transpose_req<T: 'static>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -178,7 +178,7 @@ pub fn solve_transpose_to_req<T: 'static>(
 /// - Panics if `row_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-pub fn solve_to<T: ComplexField>(
+pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
@@ -250,7 +250,7 @@ pub fn solve_in_place<T: ComplexField>(
 /// - Panics if `row_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-pub fn solve_transpose_to<T: ComplexField>(
+pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
@@ -324,7 +324,7 @@ mod tests {
         };
     }
 
-    fn test_solve_to<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
+    fn test_solve<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
         (0..32).chain((1..8).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
                 for conj_rhs in [Conj::No, Conj::Yes] {
@@ -355,7 +355,7 @@ mod tests {
                         Default::default(),
                     );
 
-                    solve_to(
+                    solve(
                         sol.rb_mut(),
                         lu.rb(),
                         conj_lhs,
@@ -363,7 +363,7 @@ mod tests {
                         rhs,
                         conj_rhs,
                         parallelism,
-                        make_stack!(solve_to_req::<T>(n, n, k, parallelism).unwrap()),
+                        make_stack!(solve_req::<T>(n, n, k, parallelism).unwrap()),
                     );
 
                     let mut rhs_reconstructed = Mat::zeros(n, k);
@@ -396,7 +396,7 @@ mod tests {
         });
     }
 
-    fn test_solve_transpose_to<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
+    fn test_solve_transpose<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
         (0..32).chain((1..8).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
                 for conj_rhs in [Conj::No, Conj::Yes] {
@@ -427,7 +427,7 @@ mod tests {
                         Default::default(),
                     );
 
-                    solve_transpose_to(
+                    solve_transpose(
                         sol.rb_mut(),
                         lu.rb(),
                         conj_lhs,
@@ -435,7 +435,7 @@ mod tests {
                         rhs,
                         conj_rhs,
                         parallelism,
-                        make_stack!(solve_transpose_to_req::<T>(n, n, k, parallelism).unwrap()),
+                        make_stack!(solve_transpose_req::<T>(n, n, k, parallelism).unwrap()),
                     );
 
                     let mut rhs_reconstructed = Mat::zeros(n, k);
@@ -488,26 +488,26 @@ mod tests {
     }
 
     #[test]
-    fn test_solve_to_f64() {
-        test_solve_to(random_f64, 1e-6_f64);
-        test_solve_transpose_to(random_f64, 1e-6_f64);
+    fn test_solve_f64() {
+        test_solve(random_f64, 1e-6_f64);
+        test_solve_transpose(random_f64, 1e-6_f64);
     }
 
     #[test]
-    fn test_solve_to_f32() {
-        test_solve_to(random_f32, 1e-1_f32);
-        test_solve_transpose_to(random_f32, 1e-1_f32);
+    fn test_solve_f32() {
+        test_solve(random_f32, 1e-1_f32);
+        test_solve_transpose(random_f32, 1e-1_f32);
     }
 
     #[test]
-    fn test_solve_to_c64() {
-        test_solve_to(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
-        test_solve_transpose_to(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
+    fn test_solve_c64() {
+        test_solve(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
+        test_solve_transpose(|| c64::new(random_f64(), random_f64()), 1e-6_f64);
     }
 
     #[test]
-    fn test_solve_to_c32() {
-        test_solve_to(|| c32::new(random_f32(), random_f32()), 2e-1_f32);
-        test_solve_transpose_to(|| c32::new(random_f32(), random_f32()), 2e-1_f32);
+    fn test_solve_c32() {
+        test_solve(|| c32::new(random_f32(), random_f32()), 2e-1_f32);
+        test_solve_transpose(|| c32::new(random_f32(), random_f32()), 2e-1_f32);
     }
 }

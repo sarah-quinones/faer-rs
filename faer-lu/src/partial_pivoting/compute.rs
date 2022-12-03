@@ -404,12 +404,12 @@ mod tests {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
         let mut dst = Mat::zeros(m, n);
-        reconstruct::reconstruct_to(
+        reconstruct::reconstruct(
             dst.as_mut(),
             lu_factors,
             row_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_to_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
+            make_stack!(reconstruct::reconstruct_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
         );
         dst
     }

@@ -52,6 +52,17 @@ pub enum Conj {
     Yes,
 }
 
+impl Conj {
+    #[inline]
+    pub fn compose(self, other: Conj) -> Conj {
+        if self == other {
+            Conj::No
+        } else {
+            Conj::Yes
+        }
+    }
+}
+
 /// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Parallelism {

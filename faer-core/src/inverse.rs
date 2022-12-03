@@ -160,7 +160,7 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_lower_triangular_to<T: ComplexField>(
+pub fn invert_unit_lower_triangular<T: ComplexField>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     conj: Conj,
@@ -180,7 +180,7 @@ pub fn invert_unit_lower_triangular_to<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_lower_triangular_to<T: ComplexField>(
+pub fn invert_lower_triangular<T: ComplexField>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     conj: Conj,
@@ -200,13 +200,13 @@ pub fn invert_lower_triangular_to<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_upper_triangular_to<T: ComplexField>(
+pub fn invert_unit_upper_triangular<T: ComplexField>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     conj: Conj,
     parallelism: Parallelism,
 ) {
-    invert_unit_lower_triangular_to(
+    invert_unit_lower_triangular(
         dst.reverse_rows_and_cols(),
         src.reverse_rows_and_cols(),
         conj,
@@ -221,13 +221,13 @@ pub fn invert_unit_upper_triangular_to<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_upper_triangular_to<T: ComplexField>(
+pub fn invert_upper_triangular<T: ComplexField>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     conj: Conj,
     parallelism: Parallelism,
 ) {
-    invert_lower_triangular_to(
+    invert_lower_triangular(
         dst.reverse_rows_and_cols(),
         src.reverse_rows_and_cols(),
         conj,
@@ -250,7 +250,7 @@ mod tests {
             for conj in [Conj::No, Conj::Yes] {
                 let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
-                invert_lower_triangular_to(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
+                invert_lower_triangular(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
                 let mut prod = Mat::zeros(n, n);
                 triangular::matmul(
@@ -285,12 +285,7 @@ mod tests {
                 dbg!(n, conj);
                 let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
-                invert_unit_lower_triangular_to(
-                    inv.as_mut(),
-                    a.as_ref(),
-                    conj,
-                    Parallelism::Rayon(0),
-                );
+                invert_unit_lower_triangular(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
                 let mut prod = Mat::zeros(n, n);
                 triangular::matmul(
@@ -323,7 +318,7 @@ mod tests {
             for conj in [Conj::No, Conj::Yes] {
                 let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
-                invert_upper_triangular_to(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
+                invert_upper_triangular(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
                 let mut prod = Mat::zeros(n, n);
                 triangular::matmul(
@@ -356,12 +351,7 @@ mod tests {
             for conj in [Conj::No, Conj::Yes] {
                 let a = Mat::with_dims(|_, _| 2.0 + random::<f64>(), n, n);
                 let mut inv = Mat::zeros(n, n);
-                invert_unit_upper_triangular_to(
-                    inv.as_mut(),
-                    a.as_ref(),
-                    conj,
-                    Parallelism::Rayon(0),
-                );
+                invert_unit_upper_triangular(inv.as_mut(), a.as_ref(), conj, Parallelism::Rayon(0));
 
                 let mut prod = Mat::zeros(n, n);
                 triangular::matmul(

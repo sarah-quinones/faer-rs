@@ -139,8 +139,10 @@ pub fn make_householder_factor_unblocked<T: ComplexField>(
 
 pub fn apply_householder_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     essential: ColRef<'_, T>,
     householder_coeff: T,
+    conj_householder: Conj,
     stack: DynStack<'_>,
 ) {
     fancy_assert!(matrix.nrows() == 1 + essential.nrows());
@@ -148,7 +150,10 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
     let n = matrix.ncols();
     if m == 1 {
         let factor = T::one() - householder_coeff;
-        matrix.cwise().for_each(|e| *e = *e * factor);
+        match conj_mat {
+            Conj::No => matrix.cwise().for_each(|e| *e = *e * factor),
+            Conj::Yes => matrix.cwise().for_each(|e| *e = (*e).conj() * factor),
+        };
     } else {
         let (first_row, last_rows) = matrix.split_at_row(1);
         let mut first_row = first_row.row(0);
@@ -157,34 +162,49 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
         }
         let mut tmp = tmp.transpose().row(0);
 
-        tmp.rb_mut()
-            .cwise()
-            .zip(first_row.rb())
-            .for_each(|a, b| *a = *b);
+        match conj_mat {
+            Conj::No => tmp
+                .rb_mut()
+                .cwise()
+                .zip(first_row.rb())
+                .for_each(|a, b| *a = *b),
+            Conj::Yes => tmp
+                .rb_mut()
+                .cwise()
+                .zip(first_row.rb())
+                .for_each(|a, b| *a = (*b).conj()),
+        }
 
         matmul(
             tmp.rb_mut().as_2d(),
             Conj::No,
             essential.transpose().as_2d(),
-            Conj::Yes,
+            Conj::Yes.compose(conj_householder),
             last_rows.rb(),
-            Conj::No,
+            conj_mat,
             Some(T::one()),
             T::one(),
             Parallelism::None,
         );
 
-        first_row
-            .rb_mut()
-            .cwise()
-            .zip(tmp.rb())
-            .for_each(|a, b| *a = *a - householder_coeff * *b);
+        match conj_mat {
+            Conj::No => first_row
+                .rb_mut()
+                .cwise()
+                .zip(tmp.rb())
+                .for_each(|a, b| *a = *a - householder_coeff * *b),
+            Conj::Yes => first_row
+                .rb_mut()
+                .cwise()
+                .zip(tmp.rb())
+                .for_each(|a, b| *a = (*a).conj() - householder_coeff * *b),
+        };
 
         matmul(
             last_rows,
-            Conj::No,
+            conj_mat,
             essential.as_2d(),
-            Conj::No,
+            Conj::No.compose(conj_householder),
             tmp.rb().as_2d(),
             Conj::No,
             Some(T::one()),
@@ -196,8 +216,10 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
 
 pub fn apply_block_householder_on_the_left<T: ComplexField>(
     matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    conj_householder: Conj,
     forward: bool,
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -222,10 +244,10 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         Conj::No,
         basis_tri.transpose(),
         UnitTriangularUpper,
-        Conj::Yes,
+        Conj::Yes.compose(conj_householder),
         matrix.rb().submatrix(0, 0, size, n),
         Rectangular,
-        Conj::No,
+        conj_mat,
         None,
         T::one(),
         parallelism,
@@ -234,9 +256,9 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         tmp0.rb_mut(),
         Conj::No,
         basis_bot.transpose(),
-        Conj::Yes,
+        Conj::Yes.compose(conj_householder),
         matrix.rb().submatrix(size, 0, m - size, n),
-        Conj::No,
+        conj_mat,
         Some(T::one()),
         T::one(),
         parallelism,
@@ -256,7 +278,7 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         } else {
             TriangularLower
         },
-        if forward { Conj::No } else { Conj::Yes },
+        conj_householder.compose(if forward { Conj::No } else { Conj::Yes }),
         tmp0.rb(),
         Rectangular,
         Conj::No,
@@ -270,10 +292,10 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     triangular::matmul(
         matrix_top,
         Rectangular,
-        Conj::No,
+        conj_mat,
         basis_tri,
         UnitTriangularLower,
-        Conj::No,
+        Conj::No.compose(conj_householder),
         tmp1.rb(),
         Rectangular,
         Conj::No,
@@ -283,9 +305,9 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     );
     matmul(
         matrix_bot,
-        Conj::No,
+        conj_mat,
         basis_bot,
-        Conj::No,
+        Conj::No.compose(conj_householder),
         tmp1.rb(),
         Conj::No,
         Some(T::one()),
@@ -296,13 +318,21 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
 
 pub fn apply_householder_sequence_on_the_left<T: ComplexField>(
     mut matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     essentials: MatRef<'_, T>,
     householder_coeffs: ColRef<'_, T>,
+    conj_householder: Conj,
     forward: bool,
     mut stack: DynStack<'_>,
 ) {
     let m = essentials.nrows();
     let n = matrix.ncols();
+
+    let mut conj_mat = conj_mat;
+    if householder_coeffs.nrows() == 0 && conj_mat == Conj::Yes {
+        matrix.cwise().for_each(|e| *e = (*e).conj());
+        return;
+    }
 
     if forward {
         for (k, (col, householder_coeff)) in essentials
@@ -313,10 +343,13 @@ pub fn apply_householder_sequence_on_the_left<T: ComplexField>(
             let essential = col.subrows(k + 1, m - k - 1);
             apply_householder_on_the_left(
                 matrix.rb_mut().submatrix(k, 0, m - k, n),
+                conj_mat,
                 essential,
                 *householder_coeff,
+                conj_householder,
                 stack.rb_mut(),
             );
+            conj_mat = Conj::No;
         }
     } else {
         for (k, (col, householder_coeff)) in essentials
@@ -328,10 +361,13 @@ pub fn apply_householder_sequence_on_the_left<T: ComplexField>(
             let essential = col.subrows(k + 1, m - k - 1);
             apply_householder_on_the_left(
                 matrix.rb_mut().submatrix(k, 0, m - k, n),
+                conj_mat,
                 essential,
                 *householder_coeff,
+                conj_householder,
                 stack.rb_mut(),
             );
+            conj_mat = Conj::No;
         }
     }
 }

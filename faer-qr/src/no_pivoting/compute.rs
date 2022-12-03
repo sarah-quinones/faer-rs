@@ -6,7 +6,7 @@ use faer_core::{
         make_householder_in_place,
     },
     mul::dot,
-    temp_mat_uninit, ColMut, ComplexField, MatMut, Parallelism,
+    temp_mat_uninit, ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
 use reborrow::*;
 
@@ -205,8 +205,10 @@ pub fn qr_in_place<T: ComplexField>(
                 Parallelism::None => {
                     apply_block_householder_on_the_left(
                         remaining_cols,
+                        Conj::No,
                         block.rb(),
                         t.rb(),
+                        Conj::No,
                         false,
                         parallelism,
                         stack.rb_mut(),
@@ -236,8 +238,10 @@ pub fn qr_in_place<T: ComplexField>(
                             let stack = DynStack::new(mem);
                             apply_block_householder_on_the_left(
                                 rem_blk,
+                                Conj::No,
                                 block.rb(),
                                 t.rb(),
+                                Conj::No,
                                 false,
                                 parallelism,
                                 stack,
@@ -253,18 +257,19 @@ pub fn qr_in_place<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-    use faer_core::{householder::apply_householder_sequence_on_the_left, Conj};
+    use faer_core::householder::apply_householder_sequence_on_the_left;
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{GlobalMemBuffer, StackReq};
     use faer_core::{c64, mul::matmul, zip::Diag, ColRef, Mat, MatRef};
 
     use super::*;
 
     macro_rules! placeholder_stack {
         () => {
-            DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<T>(1024 * 1024)))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
+                ::dyn_stack::StackReq::new::<T>(1024 * 1024),
+            ))
         };
     }
 
@@ -302,8 +307,10 @@ mod tests {
 
         apply_householder_sequence_on_the_left(
             q.as_mut(),
+            Conj::No,
             qr_factors,
             householder,
+            Conj::No,
             false,
             placeholder_stack!(),
         );

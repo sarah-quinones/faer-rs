@@ -19,7 +19,7 @@ pub fn solve_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its Cholesky decomposition.
-pub fn solve_to_req<T: 'static>(
+pub fn solve_req<T: 'static>(
     cholesky_dimension: usize,
     rhs_ncols: usize,
     parallelism: Parallelism,
@@ -45,7 +45,7 @@ pub fn solve_transpose_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix out of place, given its Cholesky decomposition.
-pub fn solve_transpose_to_req<T: 'static>(
+pub fn solve_transpose_req<T: 'static>(
     cholesky_dimension: usize,
     rhs_ncols: usize,
     parallelism: Parallelism,
@@ -110,7 +110,7 @@ pub fn solve_in_place<T: ComplexField>(
 ///
 /// The solution of the linear system is stored in `dst`.
 #[track_caller]
-pub fn solve_to<T: ComplexField>(
+pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
     cholesky_factors: MatRef<'_, T>,
     conj_lhs: Conj,
@@ -174,7 +174,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 ///
 /// The solution of the linear system is stored in `dst`.
 #[track_caller]
-pub fn solve_transpose_to<T: ComplexField>(
+pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,
     cholesky_factors: MatRef<'_, T>,
     conj_lhs: Conj,

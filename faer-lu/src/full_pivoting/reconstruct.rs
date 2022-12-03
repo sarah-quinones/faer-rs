@@ -114,7 +114,7 @@ fn reconstruct_impl<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn reconstruct_to<T: ComplexField>(
+pub fn reconstruct<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
     row_perm: PermutationRef<'_>,
@@ -169,7 +169,7 @@ pub fn reconstruct_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_to_req<T: 'static>(
+pub fn reconstruct_req<T: 'static>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,

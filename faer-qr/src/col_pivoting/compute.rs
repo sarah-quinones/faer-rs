@@ -426,8 +426,10 @@ mod tests {
             let essential = qr_factors.col(k).split_at(k + 1).1;
             apply_householder_on_the_left(
                 q.as_mut().submatrix(k, k, m - k, m - k),
+                Conj::No,
                 essential,
                 tau,
+                Conj::No,
                 placeholder_stack!(),
             );
         }

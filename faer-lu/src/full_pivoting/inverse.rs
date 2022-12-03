@@ -42,7 +42,7 @@ fn invert_impl<T: ComplexField>(
 
     join_raw(
         |parallelism| {
-            faer_core::inverse::invert_unit_lower_triangular_to(
+            faer_core::inverse::invert_unit_lower_triangular(
                 l_inv,
                 lu_factors,
                 Conj::No,
@@ -50,7 +50,7 @@ fn invert_impl<T: ComplexField>(
             )
         },
         |parallelism| {
-            faer_core::inverse::invert_upper_triangular_to(u_inv, lu_factors, Conj::No, parallelism)
+            faer_core::inverse::invert_upper_triangular(u_inv, lu_factors, Conj::No, parallelism)
         },
         parallelism,
     );
@@ -111,7 +111,7 @@ fn invert_impl<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn invert_to<T: ComplexField>(
+pub fn invert<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
     row_perm: PermutationRef<'_>,
@@ -158,7 +158,7 @@ pub fn invert_in_place<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn invert_to_req<T: 'static>(
+pub fn invert_req<T: 'static>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -218,13 +218,13 @@ mod tests {
                 Default::default(),
             );
             let mut inv = Mat::zeros(n, n);
-            invert_to(
+            invert(
                 inv.as_mut(),
                 lu.as_ref(),
                 row_perm.rb(),
                 col_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_to_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
+                make_stack!(invert_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
             );
 
             let mut prod = Mat::zeros(n, n);

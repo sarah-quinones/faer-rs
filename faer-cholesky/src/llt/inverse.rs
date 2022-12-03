@@ -1,7 +1,7 @@
 use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    inverse::invert_lower_triangular_to,
+    inverse::invert_lower_triangular,
     mul::triangular::{self, BlockStructure},
     temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
@@ -25,7 +25,7 @@ fn invert_lower_impl<T: ComplexField>(
         let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
     }
 
-    invert_lower_triangular_to(tmp.rb_mut(), cholesky_factor, Conj::No, parallelism);
+    invert_lower_triangular(tmp.rb_mut(), cholesky_factor, Conj::No, parallelism);
 
     triangular::matmul(
         dst,
@@ -46,7 +46,7 @@ fn invert_lower_impl<T: ComplexField>(
 /// Computes the size and alignment of required workspace for computing the lower triangular part
 /// of the inverse of a matrix out of place, given the Cholesky
 /// decomposition.
-pub fn invert_lower_to_req<T: 'static>(
+pub fn invert_lower_req<T: 'static>(
     dimension: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
@@ -60,7 +60,7 @@ pub fn invert_lower_in_place_req<T: 'static>(
     dimension: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    invert_lower_to_req::<T>(dimension, parallelism)
+    invert_lower_req::<T>(dimension, parallelism)
 }
 
 /// Computes the lower triangular part of the inverse of a matrix, given its Cholesky
@@ -89,7 +89,7 @@ pub fn invert_lower_in_place<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn invert_lower_to<T: ComplexField>(
+pub fn invert_lower<T: ComplexField>(
     dst: MatMut<'_, T>,
     cholesky_factor: MatRef<'_, T>,
     parallelism: Parallelism,

@@ -19,7 +19,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let a = Mat::<f64>::zeros(n, n);
 
             let time = timeit(|| {
-                faer_core::inverse::invert_unit_lower_triangular_to(
+                faer_core::inverse::invert_unit_lower_triangular(
                     c.as_mut(),
                     a.as_ref(),
                     Conj::No,

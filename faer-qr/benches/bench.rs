@@ -2,7 +2,10 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use std::time::Duration;
 
 use dyn_stack::*;
-use faer_core::Parallelism;
+use faer_core::{
+    mul::triangular::{self, BlockStructure},
+    Conj, Parallelism,
+};
 use rand::random;
 
 use faer_core::Mat;
@@ -54,6 +57,43 @@ pub fn qr(c: &mut Criterion) {
                     Parallelism::Rayon(0),
                     stack.rb_mut(),
                     Default::default(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-mt-make-householder-{m}x{n}"), |b| {
+            let u = Mat::zeros(m, n);
+            let u = u.as_ref();
+            let mut t = Mat::zeros(n, n);
+
+            b.iter(|| {
+                triangular::matmul(
+                    t.as_mut(),
+                    BlockStructure::TriangularUpper,
+                    Conj::No,
+                    u.submatrix(0, 0, n, n).transpose(),
+                    BlockStructure::UnitTriangularUpper,
+                    Conj::No,
+                    u.submatrix(0, 0, n, n),
+                    BlockStructure::UnitTriangularLower,
+                    Conj::No,
+                    None,
+                    1.0,
+                    Parallelism::Rayon(0),
+                );
+                triangular::matmul(
+                    t.as_mut(),
+                    BlockStructure::TriangularUpper,
+                    Conj::No,
+                    u.submatrix(n, 0, m - n, n).transpose(),
+                    BlockStructure::Rectangular,
+                    Conj::No,
+                    u.submatrix(n, 0, m - n, n),
+                    BlockStructure::Rectangular,
+                    Conj::No,
+                    Some(1.0),
+                    1.0,
+                    Parallelism::Rayon(0),
                 );
             })
         });

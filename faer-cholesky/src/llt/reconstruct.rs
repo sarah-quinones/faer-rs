@@ -8,7 +8,7 @@ use reborrow::*;
 
 /// Computes the size and alignment of required workspace for reconstructing the lower triangular
 /// part of the a matrix out of place, given its Cholesky decomposition.
-pub fn reconstruct_lower_to_req<T: 'static>(dimension: usize) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_lower_req<T: 'static>(dimension: usize) -> Result<StackReq, SizeOverflow> {
     let _ = dimension;
     Ok(StackReq::default())
 }
@@ -29,7 +29,7 @@ pub fn reconstruct_lower_in_place_req<T: 'static>(
 /// - Panics if `cholesky_factor` is not a square matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 #[track_caller]
-pub fn reconstruct_lower_to<T: ComplexField>(
+pub fn reconstruct_lower<T: ComplexField>(
     dst: MatMut<'_, T>,
     cholesky_factor: MatRef<'_, T>,
     parallelism: Parallelism,
@@ -71,7 +71,7 @@ pub fn reconstruct_lower_in_place<T: ComplexField>(
     temp_mat_uninit! {
         let (mut tmp, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
     }
-    reconstruct_lower_to(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
+    reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
     cholesky_factor
         .cwise()
         .zip(tmp.rb())

@@ -26,12 +26,12 @@ mod tests {
         let n = cholesky_factor.nrows();
 
         let mut a_reconstructed = Mat::zeros(n, n);
-        reconstruct_lower_to(
+        reconstruct_lower(
             a_reconstructed.as_mut(),
             cholesky_factor,
             Parallelism::Rayon(0),
             DynStack::new(&mut GlobalMemBuffer::new(
-                reconstruct_lower_to_req::<T>(n).unwrap(),
+                reconstruct_lower_req::<T>(n).unwrap(),
             )),
         );
 
@@ -71,12 +71,12 @@ mod tests {
             .unwrap();
             let mut a_reconstructed = reconstruct_matrix(a.as_ref());
             let mut inv = Mat::zeros(n, n);
-            invert_lower_to(
+            invert_lower(
                 inv.as_mut(),
                 a.as_ref(),
                 Parallelism::Rayon(0),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    invert_lower_to_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
+                    invert_lower_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
                 )),
             );
 
