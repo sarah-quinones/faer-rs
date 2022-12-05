@@ -1,14 +1,15 @@
 use assert2::assert as fancy_assert;
 use dyn_stack::DynStack;
 use faer_core::{
-    householder::apply_householder_sequence_on_the_left, solve, ColRef, ComplexField, Conj, MatMut,
+    householder::apply_block_householder_sequence_on_the_left, solve, ComplexField, Conj, MatMut,
     MatRef, Parallelism,
 };
 use reborrow::*;
 
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
-    householder_coeffs: ColRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    blocksize: usize,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
@@ -18,18 +19,21 @@ pub fn solve_in_place<T: ComplexField>(
     // conjᵃ(H₀ × ... × Hₖ₋₁ × R) X = conjᵇ(B)
     // X = conjᵃ(R)⁻¹ × conjᵃ(Hₖ₋₁) × ... × conjᵃ(H₀) × conjᵇ(B)
     fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
-    fancy_assert!(householder_coeffs.nrows() == qr_factors.nrows());
+    let size = qr_factors.nrows();
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
     fancy_assert!(rhs.nrows() == qr_factors.nrows());
 
     let mut rhs = rhs;
     let mut stack = stack;
-    apply_householder_sequence_on_the_left(
+    apply_block_householder_sequence_on_the_left(
+        qr_factors,
+        householder_factor,
+        blocksize,
+        conj_lhs,
         rhs.rb_mut(),
         conj_rhs,
-        qr_factors,
-        householder_coeffs,
-        conj_lhs,
         true,
+        parallelism,
         stack.rb_mut(),
     );
 
@@ -38,7 +42,8 @@ pub fn solve_in_place<T: ComplexField>(
 
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
-    householder_coeffs: ColRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    blocksize: usize,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
@@ -49,7 +54,8 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     // conjᵃ(Rᵀ × Hₖ₋₁ᵀ × ... × H₀ᵀ) X = conjᵇ(B)
     // X = conj(conjᵃ(H₀)) × ... × conj(conjᵃ(Hₖ₋₁)) × (conjᵃ(R)ᵀ)⁻¹ × conjᵇ(B)
     fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
-    fancy_assert!(householder_coeffs.nrows() == qr_factors.nrows());
+    let size = qr_factors.nrows();
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
     fancy_assert!(rhs.nrows() == qr_factors.nrows());
 
     let mut rhs = rhs;
@@ -62,13 +68,15 @@ pub fn solve_transpose_in_place<T: ComplexField>(
         conj_rhs,
         parallelism,
     );
-    apply_householder_sequence_on_the_left(
+    apply_block_householder_sequence_on_the_left(
+        qr_factors,
+        householder_factor,
+        blocksize,
+        conj_lhs.compose(Conj::Yes),
         rhs.rb_mut(),
         Conj::No,
-        qr_factors,
-        householder_coeffs,
-        conj_lhs.compose(Conj::Yes),
         false,
+        parallelism,
         stack.rb_mut(),
     );
 }
@@ -79,7 +87,7 @@ mod tests {
     use faer_core::{c32, c64, mul::matmul, Mat};
     use rand::random;
 
-    use crate::no_pivoting::compute::qr_in_place;
+    use crate::no_pivoting::compute::{qr_in_place, recommended_blocksize};
 
     macro_rules! placeholder_stack {
         () => {
@@ -97,24 +105,26 @@ mod tests {
         let rhs = Mat::with_dims(|_, _| random(), n, k);
 
         let mut qr = a.clone();
-        let mut householder_coeffs = Mat::with_dims(|_, _| T::zero(), n, 1);
+        let mut householder = Mat::with_dims(|_, _| T::zero(), n, n);
+        let blocksize = recommended_blocksize::<f64>(n, n);
         qr_in_place(
             qr.as_mut(),
-            householder_coeffs.as_mut().col(0),
+            householder.as_mut(),
+            blocksize,
             Parallelism::None,
             placeholder_stack!(),
             Default::default(),
         );
 
         let qr = qr.as_ref();
-        let householder_coeffs = householder_coeffs.as_ref().col(0);
 
         for conj_lhs in [Conj::No, Conj::Yes] {
             for conj_rhs in [Conj::No, Conj::Yes] {
                 let mut sol = rhs.clone();
                 solve_in_place(
                     qr,
-                    householder_coeffs,
+                    householder.as_ref(),
+                    blocksize,
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,
@@ -160,24 +170,26 @@ mod tests {
         let rhs = Mat::with_dims(|_, _| random(), n, k);
 
         let mut qr = a.clone();
-        let mut householder_coeffs = Mat::with_dims(|_, _| T::zero(), n, 1);
+        let mut householder = Mat::with_dims(|_, _| T::zero(), n, n);
+        let blocksize = recommended_blocksize::<f64>(n, n);
         qr_in_place(
             qr.as_mut(),
-            householder_coeffs.as_mut().col(0),
+            householder.as_mut(),
+            blocksize,
             Parallelism::None,
             placeholder_stack!(),
             Default::default(),
         );
 
         let qr = qr.as_ref();
-        let householder_coeffs = householder_coeffs.as_ref().col(0);
 
         for conj_lhs in [Conj::No, Conj::Yes] {
             for conj_rhs in [Conj::No, Conj::Yes] {
                 let mut sol = rhs.clone();
                 solve_transpose_in_place(
                     qr,
-                    householder_coeffs,
+                    householder.as_ref(),
+                    blocksize,
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,

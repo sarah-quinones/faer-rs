@@ -1,9 +1,10 @@
 use crate::{
+    join_raw,
     mul::{
-        dot, matmul,
+        matmul,
         triangular::{self, BlockStructure},
     },
-    temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    solve, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 
 use assert2::assert as fancy_assert;
@@ -23,133 +24,25 @@ pub fn make_householder_in_place<T: ComplexField>(
     let inv = head_with_beta.inv();
     essential.cwise().for_each(|e| *e = *e * inv);
 
-    let two = T::Real::one() + T::Real::one();
-    let tau = two / (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
+    let one_half = (T::Real::one() + T::Real::one()).inv();
+    let tau = one_half * (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
     (T::from_real(tau), -signed_norm)
 }
 
-pub fn make_householder_factor_unblocked<T: ComplexField>(
-    mut householder_factor: MatMut<'_, T>,
-    matrix: MatRef<'_, T>,
-    mut stack: DynStack<'_>,
-) {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
-    let size = m.min(n);
-
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
-    fancy_assert!(householder_factor.col_stride() == 1);
-
-    for i in (0..size).rev() {
-        let rs = m - i - 1;
-        let rt = size - i - 1;
-
-        if rt > 0 {
-            let factor = -*householder_factor.rb().get(i, i);
-
-            let mut tail_row = householder_factor.rb_mut().row(i).split_at(size - rt).1;
-
-            let mut dst = tail_row.rb_mut().as_2d();
-            let lhs = matrix.col(i).split_at(m - rs).1.transpose().as_2d();
-
-            let rhs = matrix.submatrix(m - rs, n - rt, rs, rt);
-            triangular::matmul(
-                dst.rb_mut(),
-                BlockStructure::Rectangular,
-                Conj::No,
-                lhs.split_at(0, rt).2,
-                BlockStructure::Rectangular,
-                Conj::Yes,
-                rhs.split_at(rt, 0).1,
-                BlockStructure::UnitTriangularLower,
-                Conj::No,
-                None,
-                factor,
-                Parallelism::None,
-            );
-
-            let lhs = lhs.split_at(0, rt).3;
-            let rhs = rhs.split_at(rt, 0).3;
-
-            struct Gevm<'a, T> {
-                dst: MatMut<'a, T>,
-                lhs: MatRef<'a, T>,
-                rhs: MatRef<'a, T>,
-                beta: T,
-            }
-            impl<'a, T: ComplexField> pulp::WithSimd for Gevm<'a, T> {
-                type Output = ();
-
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                    let Self {
-                        dst,
-                        lhs,
-                        rhs,
-                        beta,
-                    } = self;
-                    let mut dst = dst.row(0);
-                    let lhs = lhs.row(0).transpose();
-                    fancy_assert!(rhs.row_stride() == 1);
-
-                    for (i, rhs) in rhs.into_col_iter().enumerate() {
-                        let dst = &mut dst[i];
-                        *dst = *dst + beta * dot(simd, lhs, rhs);
-                    }
-                }
-            }
-
-            pulp::Arch::new().dispatch(Gevm {
-                dst: dst.rb_mut(),
-                lhs,
-                rhs,
-                beta: factor,
-            });
-
-            temp_mat_uninit! {
-                let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(rt, 1, stack.rb_mut()) };
-            }
-
-            triangular::matmul(
-                tmp.rb_mut().transpose(),
-                BlockStructure::Rectangular,
-                Conj::No,
-                householder_factor.rb().submatrix(i, size - rt, 1, rt),
-                BlockStructure::Rectangular,
-                Conj::No,
-                householder_factor
-                    .rb()
-                    .submatrix(size - rt, size - rt, rt, rt),
-                BlockStructure::TriangularUpper,
-                Conj::No,
-                None,
-                T::one(),
-                Parallelism::None,
-            );
-            householder_factor
-                .rb_mut()
-                .submatrix(i, size - rt, 1, rt)
-                .row(0)
-                .cwise()
-                .zip(tmp.transpose().row(0))
-                .for_each(|a, b| *a = *b);
-        }
-    }
-}
-
 pub fn apply_householder_on_the_left<T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    conj_mat: Conj,
     essential: ColRef<'_, T>,
     householder_coeff: T,
     conj_householder: Conj,
+    matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     stack: DynStack<'_>,
 ) {
     fancy_assert!(matrix.nrows() == 1 + essential.nrows());
+    let tau_inv = householder_coeff.inv();
     let m = matrix.nrows();
     let n = matrix.ncols();
     if m == 1 {
-        let factor = T::one() - householder_coeff;
+        let factor = T::one() - tau_inv;
         match conj_mat {
             Conj::No => matrix.cwise().for_each(|e| *e = *e * factor),
             Conj::Yes => matrix.cwise().for_each(|e| *e = (*e).conj() * factor),
@@ -192,12 +85,12 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
                 .rb_mut()
                 .cwise()
                 .zip(tmp.rb())
-                .for_each(|a, b| *a = *a - householder_coeff * *b),
+                .for_each(|a, b| *a = *a - tau_inv * *b),
             Conj::Yes => first_row
                 .rb_mut()
                 .cwise()
                 .zip(tmp.rb())
-                .for_each(|a, b| *a = (*a).conj() - householder_coeff * *b),
+                .for_each(|a, b| *a = (*a).conj() - tau_inv * *b),
         };
 
         matmul(
@@ -208,166 +101,341 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
             tmp.rb().as_2d(),
             Conj::No,
             Some(T::one()),
-            -householder_coeff,
+            -tau_inv,
             Parallelism::None,
         )
     }
 }
 
+pub fn div_ceil(a: usize, b: usize) -> usize {
+    let (div, rem) = (a / b, a % b);
+    if rem == 0 {
+        div
+    } else {
+        div + 1
+    }
+}
+
+pub fn upgrade_householder_factor<T: ComplexField>(
+    mut householder_factor: MatMut<'_, T>,
+    essentials: MatRef<'_, T>,
+    blocksize: usize,
+    prev_blocksize: usize,
+    parallelism: Parallelism,
+) {
+    if blocksize == prev_blocksize || householder_factor.nrows() <= prev_blocksize {
+        return;
+    }
+
+    fancy_assert!(householder_factor.nrows() == householder_factor.ncols());
+
+    let block_count = div_ceil(householder_factor.nrows(), blocksize);
+
+    if block_count > 1 {
+        fancy_assert!(blocksize > prev_blocksize);
+        fancy_assert!(blocksize % prev_blocksize == 0);
+        let idx = (block_count / 2) * blocksize;
+        let (tau_tl, _, _, tau_br) = householder_factor.split_at(idx, idx);
+        let (basis_left, basis_right) = essentials.split_at_col(idx);
+        let basis_right =
+            basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
+        join_raw(
+            |parallelism| {
+                upgrade_householder_factor(
+                    tau_tl,
+                    basis_left,
+                    blocksize,
+                    prev_blocksize,
+                    parallelism,
+                )
+            },
+            |parallelism| {
+                upgrade_householder_factor(
+                    tau_br,
+                    basis_right,
+                    blocksize,
+                    prev_blocksize,
+                    parallelism,
+                )
+            },
+            parallelism,
+        );
+        return;
+    }
+
+    if prev_blocksize < 8 {
+        // pretend that prev_blocksize == 1, recompute whole top half of matrix
+
+        let (basis_top, basis_bot) = essentials.split_at_row(essentials.ncols());
+        triangular::matmul(
+            householder_factor.rb_mut(),
+            BlockStructure::UnitTriangularUpper,
+            Conj::No,
+            basis_top.transpose(),
+            BlockStructure::UnitTriangularUpper,
+            Conj::Yes,
+            basis_top,
+            BlockStructure::UnitTriangularLower,
+            Conj::No,
+            None,
+            T::one(),
+            parallelism,
+        );
+        triangular::matmul(
+            householder_factor.rb_mut(),
+            BlockStructure::UnitTriangularUpper,
+            Conj::No,
+            basis_bot.transpose(),
+            BlockStructure::Rectangular,
+            Conj::Yes,
+            basis_bot,
+            BlockStructure::Rectangular,
+            Conj::No,
+            Some(T::one()),
+            T::one(),
+            parallelism,
+        );
+    } else {
+        let prev_block_count = div_ceil(householder_factor.nrows(), prev_blocksize);
+
+        let idx = (prev_block_count / 2) * prev_blocksize;
+        let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_at(idx, idx);
+        let (basis_left, basis_right) = essentials.split_at_col(idx);
+        let basis_right =
+            basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
+
+        join_raw(
+            |parallelism| {
+                join_raw(
+                    |parallelism| {
+                        upgrade_householder_factor(
+                            tau_tl,
+                            basis_left,
+                            blocksize,
+                            prev_blocksize,
+                            parallelism,
+                        )
+                    },
+                    |parallelism| {
+                        upgrade_householder_factor(
+                            tau_br,
+                            basis_right,
+                            blocksize,
+                            prev_blocksize,
+                            parallelism,
+                        )
+                    },
+                    parallelism,
+                );
+            },
+            |parallelism| {
+                let basis_left = basis_left.submatrix(idx, 0, basis_left.nrows() - idx, idx);
+                let (basis_left_top, basis_left_bot) = basis_left.split_at_row(basis_right.ncols());
+                let (basis_right_top, basis_right_bot) =
+                    basis_right.split_at_row(basis_right.ncols());
+
+                triangular::matmul(
+                    tau_tr.rb_mut(),
+                    BlockStructure::Rectangular,
+                    Conj::No,
+                    basis_left_top.transpose(),
+                    BlockStructure::Rectangular,
+                    Conj::Yes,
+                    basis_right_top,
+                    BlockStructure::UnitTriangularLower,
+                    Conj::No,
+                    None,
+                    T::one(),
+                    parallelism,
+                );
+                matmul(
+                    tau_tr.rb_mut(),
+                    Conj::No,
+                    basis_left_bot.transpose(),
+                    Conj::Yes,
+                    basis_right_bot,
+                    Conj::No,
+                    Some(T::one()),
+                    T::one(),
+                    parallelism,
+                );
+            },
+            parallelism,
+        );
+    }
+}
+
 pub fn apply_block_householder_on_the_left<T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    conj_mat: Conj,
-    basis: MatRef<'_, T>,
+    essentials: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
     conj_householder: Conj,
+    matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     forward: bool,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!(matrix.nrows() == basis.nrows());
-    let m = matrix.nrows();
+    let (essentials_top, essentials_bot) = essentials.split_at_row(essentials.ncols());
+    let bs = householder_factor.nrows();
     let n = matrix.ncols();
-    let size = basis.ncols();
 
-    let (basis_tri, basis_bot) = basis.split_at_row(size);
+    let (mut matrix_top, mut matrix_bot) = matrix.split_at_row(bs);
 
+    // essentials* × mat
     temp_mat_uninit! {
-        let (mut tmp0, stack) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
-        let (mut tmp1, _) = unsafe { temp_mat_uninit::<T>(size, n, stack) };
+        let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(bs, n, stack) };
     }
 
-    use triangular::BlockStructure::*;
-
     triangular::matmul(
-        tmp0.rb_mut(),
-        Rectangular,
+        tmp.rb_mut(),
+        BlockStructure::Rectangular,
         Conj::No,
-        basis_tri.transpose(),
-        UnitTriangularUpper,
+        essentials_top.transpose(),
+        BlockStructure::UnitTriangularUpper,
         Conj::Yes.compose(conj_householder),
-        matrix.rb().submatrix(0, 0, size, n),
-        Rectangular,
-        conj_mat,
+        matrix_top.rb(),
+        BlockStructure::Rectangular,
+        Conj::No.compose(conj_mat),
         None,
         T::one(),
         parallelism,
     );
     matmul(
-        tmp0.rb_mut(),
+        tmp.rb_mut(),
         Conj::No,
-        basis_bot.transpose(),
+        essentials_bot.transpose(),
         Conj::Yes.compose(conj_householder),
-        matrix.rb().submatrix(size, 0, m - size, n),
-        conj_mat,
+        matrix_bot.rb(),
+        Conj::No.compose(conj_mat),
         Some(T::one()),
         T::one(),
         parallelism,
     );
 
-    triangular::matmul(
-        tmp1.rb_mut(),
-        Rectangular,
-        Conj::No,
-        if forward {
-            householder_factor
-        } else {
-            householder_factor.transpose()
+    // [T^-1|T^-*] × essentials* × tmp
+    if forward {
+        solve::solve_lower_triangular_in_place(
+            householder_factor.transpose(),
+            Conj::Yes.compose(conj_householder),
+            tmp.rb_mut(),
+            Conj::No,
+            parallelism,
+        );
+    } else {
+        solve::solve_upper_triangular_in_place(
+            householder_factor,
+            Conj::No.compose(conj_householder),
+            tmp.rb_mut(),
+            Conj::No,
+            parallelism,
+        );
+    }
+
+    // essentials × [T^-1|T^-*] × essentials* × tmp
+    join_raw(
+        |_| {
+            triangular::matmul(
+                matrix_top.rb_mut(),
+                BlockStructure::Rectangular,
+                Conj::No.compose(conj_mat),
+                essentials_top,
+                BlockStructure::UnitTriangularLower,
+                Conj::No.compose(conj_householder),
+                tmp.rb(),
+                BlockStructure::Rectangular,
+                Conj::No,
+                Some(T::one()),
+                -T::one(),
+                parallelism,
+            );
         },
-        if forward {
-            TriangularUpper
-        } else {
-            TriangularLower
+        |_| {
+            matmul(
+                matrix_bot.rb_mut(),
+                Conj::No.compose(conj_mat),
+                essentials_bot,
+                Conj::No.compose(conj_householder),
+                tmp.rb(),
+                Conj::No,
+                Some(T::one()),
+                -T::one(),
+                parallelism,
+            );
         },
-        conj_householder.compose(if forward { Conj::No } else { Conj::Yes }),
-        tmp0.rb(),
-        Rectangular,
-        Conj::No,
-        None,
-        T::one(),
         parallelism,
     );
-
-    let (matrix_top, matrix_bot) = matrix.split_at_row(size);
-
-    triangular::matmul(
-        matrix_top,
-        Rectangular,
-        conj_mat,
-        basis_tri,
-        UnitTriangularLower,
-        Conj::No.compose(conj_householder),
-        tmp1.rb(),
-        Rectangular,
-        Conj::No,
-        Some(T::one()),
-        -T::one(),
-        parallelism,
-    );
-    matmul(
-        matrix_bot,
-        conj_mat,
-        basis_bot,
-        Conj::No.compose(conj_householder),
-        tmp1.rb(),
-        Conj::No,
-        Some(T::one()),
-        -T::one(),
-        parallelism,
-    )
 }
 
-pub fn apply_householder_sequence_on_the_left<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
-    conj_mat: Conj,
+pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     essentials: MatRef<'_, T>,
-    householder_coeffs: ColRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    blocksize: usize,
     conj_householder: Conj,
+    matrix: MatMut<'_, T>,
+    conj_mat: Conj,
     forward: bool,
+    parallelism: Parallelism,
     mut stack: DynStack<'_>,
 ) {
+    let mut matrix = matrix;
     let m = essentials.nrows();
-    let n = matrix.ncols();
+    let k = matrix.ncols();
+
+    let size = householder_factor.nrows();
 
     let mut conj_mat = conj_mat;
-    if householder_coeffs.nrows() == 0 && conj_mat == Conj::Yes {
+    if size == 0 && conj_mat == Conj::Yes {
         matrix.cwise().for_each(|e| *e = (*e).conj());
         return;
     }
 
     if forward {
-        for (k, (col, householder_coeff)) in essentials
-            .into_col_iter()
-            .zip(householder_coeffs)
-            .enumerate()
-        {
-            let essential = col.subrows(k + 1, m - k - 1);
-            apply_householder_on_the_left(
-                matrix.rb_mut().submatrix(k, 0, m - k, n),
-                conj_mat,
-                essential,
-                *householder_coeff,
+        let mut j = 0;
+        while j < size {
+            let bs = blocksize.min(size - j);
+            let essentials = essentials.submatrix(j, j, m - j, bs);
+            let householder = householder_factor.submatrix(j, j, bs, bs);
+
+            apply_block_householder_on_the_left(
+                essentials,
+                householder,
                 conj_householder,
+                matrix.rb_mut().submatrix(j, 0, m - j, k),
+                conj_mat,
+                forward,
+                parallelism,
                 stack.rb_mut(),
             );
+
             conj_mat = Conj::No;
+            j += bs;
         }
     } else {
-        for (k, (col, householder_coeff)) in essentials
-            .into_col_iter()
-            .zip(householder_coeffs)
-            .enumerate()
-            .rev()
-        {
-            let essential = col.subrows(k + 1, m - k - 1);
-            apply_householder_on_the_left(
-                matrix.rb_mut().submatrix(k, 0, m - k, n),
-                conj_mat,
-                essential,
-                *householder_coeff,
+        let mut j = size;
+        let mut bs = size % blocksize;
+        if bs == 0 {
+            bs = blocksize
+        }
+
+        while j > 0 {
+            j -= bs;
+
+            let essentials = essentials.submatrix(j, j, m - j, bs);
+            let householder = householder_factor.submatrix(j, j, bs, bs);
+
+            apply_block_householder_on_the_left(
+                essentials,
+                householder,
                 conj_householder,
+                matrix.rb_mut().submatrix(j, 0, m - j, k),
+                conj_mat,
+                forward,
+                parallelism,
                 stack.rb_mut(),
             );
+
             conj_mat = Conj::No;
+            bs = blocksize;
         }
     }
 }

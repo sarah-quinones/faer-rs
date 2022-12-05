@@ -576,6 +576,12 @@ pub mod triangular {
         fancy_debug_assert!(m == dst.nrows());
         fancy_debug_assert!(n == dst.ncols());
 
+        let join_parallelism = if n * n * m < 128 * 128 * 64 {
+            Parallelism::None
+        } else {
+            parallelism
+        };
+
         if n <= 16 {
             let op = {
                 #[inline(never)]
@@ -641,7 +647,7 @@ pub mod triangular {
                         parallelism,
                     )
                 },
-                parallelism,
+                join_parallelism,
             );
             mul(
                 dst_left,

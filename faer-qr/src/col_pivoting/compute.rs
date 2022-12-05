@@ -212,6 +212,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         );
         first_head[0] = beta;
         unsafe { *householder_coeffs.rb_mut().ptr_in_bounds_at(k) = tau };
+        let tau_inv = tau.inv();
 
         let first_tail = first_tail.rb();
 
@@ -246,7 +247,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                                 matrix,
                                 col_start,
                                 first_tail,
-                                tau,
+                                tau_inv,
                                 biggest_col_value,
                                 biggest_col_idx,
                             );
@@ -272,7 +273,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                     last_cols,
                     0,
                     first_tail,
-                    tau,
+                    tau_inv,
                     &mut biggest_col_value,
                     &mut biggest_col_idx,
                 );
@@ -288,7 +289,7 @@ fn process_cols<S: Simd, T: ComplexField>(
     mut matrix: MatMut<'_, T>,
     offset: usize,
     first_tail: ColRef<'_, T>,
-    tau: T,
+    tau_inv: T,
     biggest_col_value: &mut T::Real,
     biggest_col_idx: &mut usize,
 ) {
@@ -298,7 +299,7 @@ fn process_cols<S: Simd, T: ComplexField>(
             let col_head = col_head.get(0);
 
             let dot = *col_head + dot(simd, first_tail, col_tail.rb());
-            let k = -tau * dot;
+            let k = -tau_inv * dot;
             *col_head = *col_head + k;
 
             let col_value = update_and_norm2(simd, col_tail, first_tail, k);
@@ -425,10 +426,10 @@ mod tests {
             let tau = householder[k];
             let essential = qr_factors.col(k).split_at(k + 1).1;
             apply_householder_on_the_left(
-                q.as_mut().submatrix(k, k, m - k, m - k),
-                Conj::No,
                 essential,
                 tau,
+                Conj::No,
+                q.as_mut().submatrix(k, k, m - k, m - k),
                 Conj::No,
                 placeholder_stack!(),
             );

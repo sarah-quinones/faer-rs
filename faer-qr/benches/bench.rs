@@ -27,7 +27,7 @@ pub fn qr(c: &mut Criterion) {
     ] {
         c.bench_function(&format!("faer-st-qr-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
-            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, 1);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
@@ -35,7 +35,8 @@ pub fn qr(c: &mut Criterion) {
             b.iter(|| {
                 no_pivoting::compute::qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().col(0),
+                    householder.as_mut(),
+                    no_pivoting::compute::recommended_blocksize::<f64>(m, n),
                     Parallelism::None,
                     stack.rb_mut(),
                     Default::default(),
@@ -45,7 +46,7 @@ pub fn qr(c: &mut Criterion) {
 
         c.bench_function(&format!("faer-mt-qr-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
-            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, 1);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
@@ -53,7 +54,8 @@ pub fn qr(c: &mut Criterion) {
             b.iter(|| {
                 no_pivoting::compute::qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().col(0),
+                    householder.as_mut(),
+                    no_pivoting::compute::recommended_blocksize::<f64>(m, n),
                     Parallelism::Rayon(0),
                     stack.rb_mut(),
                     Default::default(),
