@@ -4991,27 +4991,11 @@ where
     #[track_caller]
     #[inline]
     fn add(self, rhs: MatRef<'a, U>) -> Self::Output {
-        let (lhs, _) = self.raw_with_conj();
-        let (rhs, _) = rhs.raw_with_conj();
-        fancy_assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
         Self::Output::with_dims(
-            |i, j| {
-                let lhs = if T::IS_CONJ {
-                    lhs[(i, j)].conj()
-                } else {
-                    lhs[(i, j)]
-                };
-
-                let rhs = if U::IS_CONJ {
-                    rhs[(i, j)].conj()
-                } else {
-                    rhs[(i, j)]
-                };
-
-                lhs.add(rhs)
-            },
-            lhs.nrows(),
-            lhs.ncols(),
+            |i, j| self[(i, j)].as_num().add(rhs[(i, j)].as_num()),
+            self.nrows(),
+            self.ncols(),
         )
     }
 }
@@ -5024,27 +5008,11 @@ where
     #[track_caller]
     #[inline]
     fn sub(self, rhs: MatRef<'a, U>) -> Self::Output {
-        let (lhs, _) = self.raw_with_conj();
-        let (rhs, _) = rhs.raw_with_conj();
-        fancy_assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
         Self::Output::with_dims(
-            |i, j| {
-                let lhs = if T::IS_CONJ {
-                    lhs[(i, j)].conj()
-                } else {
-                    lhs[(i, j)]
-                };
-
-                let rhs = if U::IS_CONJ {
-                    rhs[(i, j)].conj()
-                } else {
-                    rhs[(i, j)]
-                };
-
-                lhs.sub(rhs)
-            },
-            lhs.nrows(),
-            lhs.ncols(),
+            |i, j| self[(i, j)].as_num().sub(rhs[(i, j)].as_num()),
+            self.nrows(),
+            self.ncols(),
         )
     }
 }
@@ -5509,9 +5477,6 @@ mod tests {
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
         let y = 2.0.scale(&lhs - rhs.conjugate());
-
-        let lhs = lhs.as_ref();
-        let tmp = lhs.conjugate();
 
         for i in 0..2 {
             for j in 0..2 {
