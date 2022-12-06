@@ -21,7 +21,7 @@ use core::{
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
-use num_traits::{Inv, Num};
+use num_traits::{Inv, Num, One};
 use rayon::prelude::IndexedParallelIterator;
 
 use core::mem::transmute_copy;
@@ -94,6 +94,14 @@ pub trait Conjugate: Copy + 'static {
 
     const IS_CONJ: bool;
     type Num: SameLayoutAs<Self> + ComplexField;
+
+    fn as_num(self) -> Self::Num;
+}
+
+pub trait Scale<Rhs> {
+    type Output;
+
+    fn scale(self, rhs: Rhs) -> Self::Output;
 }
 
 /// Trait that describes a complex number field.
@@ -105,7 +113,7 @@ pub trait Conjugate: Copy + 'static {
 /// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
 /// future version of this library.
 pub trait ComplexField:
-    Copy + Num + Neg<Output = Self> + Inv<Output = Self> + Send + Sync + Debug + Conjugate + 'static
+    Copy + Num + Neg<Output = Self> + Inv<Output = Self> + Conjugate + Send + Sync + Debug + 'static
 {
     type Real: RealField;
 
@@ -128,7 +136,7 @@ pub trait ComplexField:
     fn conj(self) -> Self;
     /// Returns the input, scaled by `factor`.
     #[inline(always)]
-    fn scale(self, factor: Self::Real) -> Self {
+    fn scale_real(self, factor: Self::Real) -> Self {
         self * Self::from_real(factor)
     }
     /// Returns either the norm or squared norm of the number.
@@ -147,6 +155,12 @@ pub trait ComplexField:
 #[derive(Copy, Clone)]
 pub struct ComplexConj<T: RealField> {
     inner: Complex<T>,
+}
+
+impl<T: RealField> ComplexConj<T> {
+    pub fn eval(self) -> Complex<T> {
+        self.inner.conj()
+    }
 }
 
 impl<T: RealField> From<Complex<T>> for ComplexConj<T> {
@@ -220,6 +234,11 @@ impl Conjugate for f32 {
 
     const IS_CONJ: bool = false;
     type Num = f32;
+
+    #[inline]
+    fn as_num(self) -> Self::Num {
+        self
+    }
 }
 impl RealField for f32 {
     #[inline(always)]
@@ -266,6 +285,11 @@ impl Conjugate for f64 {
 
     const IS_CONJ: bool = false;
     type Num = f64;
+
+    #[inline]
+    fn as_num(self) -> Self::Num {
+        self
+    }
 }
 impl RealField for f64 {
     #[inline(always)]
@@ -311,11 +335,21 @@ impl<T: RealField> Conjugate for ComplexConj<T> {
     type Conj = Complex<T>;
     const IS_CONJ: bool = true;
     type Num = Complex<T>;
+
+    #[inline]
+    fn as_num(self) -> Self::Num {
+        self.inner.conj()
+    }
 }
 impl<T: RealField> Conjugate for Complex<T> {
     type Conj = ComplexConj<T>;
     const IS_CONJ: bool = false;
     type Num = Complex<T>;
+
+    #[inline]
+    fn as_num(self) -> Self::Num {
+        self
+    }
 }
 
 impl<T: RealField> ComplexField for Complex<T> {
@@ -1300,16 +1334,61 @@ impl<'a, T> MatRef<'a, T> {
     /// ```
     #[inline]
     pub fn transpose(self) -> MatRef<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
         unsafe {
             MatRef::from_raw_parts(
-                ptr,
+                self.base.ptr.as_ptr(),
                 self.ncols(),
                 self.nrows(),
                 self.col_stride(),
                 self.row_stride(),
             )
         }
+    }
+
+    /// Returns the conjugate of `self`.
+    #[inline]
+    pub fn conjugate(self) -> MatRef<'a, T::Conj>
+    where
+        T: Conjugate,
+    {
+        unsafe {
+            MatRef::from_raw_parts(
+                self.base.ptr.as_ptr() as _,
+                self.nrows(),
+                self.ncols(),
+                self.row_stride(),
+                self.col_stride(),
+            )
+        }
+    }
+
+    /// Returns the conjugate transpose of `self`.
+    #[inline]
+    pub fn adjoint(self) -> MatRef<'a, T::Conj>
+    where
+        T: Conjugate,
+    {
+        self.conjugate().transpose()
+    }
+
+    /// Returns the raw representation of `self`, along with whether it should be conjugated or not.
+    #[inline]
+    pub fn raw_with_conj(self) -> (MatRef<'a, T::Num>, Conj)
+    where
+        T: Conjugate,
+    {
+        (
+            unsafe {
+                MatRef::from_raw_parts(
+                    self.base.ptr.as_ptr() as _,
+                    self.nrows(),
+                    self.ncols(),
+                    self.row_stride(),
+                    self.col_stride(),
+                )
+            },
+            if T::IS_CONJ { Conj::Yes } else { Conj::No },
+        )
     }
 
     /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
@@ -1719,6 +1798,12 @@ impl<'a, T> MatRef<'a, T> {
             _marker: PhantomData,
         }
     }
+
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn as_ref(&self) -> MatRef<'_, T> {
+        *self
+    }
 }
 
 impl<'a, T> MatMut<'a, T> {
@@ -2073,6 +2158,52 @@ impl<'a, T> MatMut<'a, T> {
         }
     }
 
+    /// Returns the conjugate of `self`.
+    #[inline]
+    pub fn conjugate(self) -> MatMut<'a, T::Conj>
+    where
+        T: Conjugate,
+    {
+        unsafe {
+            MatMut::from_raw_parts(
+                self.base.ptr.as_ptr() as _,
+                self.nrows(),
+                self.ncols(),
+                self.row_stride(),
+                self.col_stride(),
+            )
+        }
+    }
+
+    /// Returns the conjugate transpose of `self`.
+    #[inline]
+    pub fn adjoint(self) -> MatMut<'a, T::Conj>
+    where
+        T: Conjugate,
+    {
+        self.conjugate().transpose()
+    }
+
+    /// Returns the raw representation of `self`, along with whether it should be conjugated or not.
+    #[inline]
+    pub fn raw_with_conj(self) -> (MatMut<'a, T::Num>, Conj)
+    where
+        T: Conjugate,
+    {
+        (
+            unsafe {
+                MatMut::from_raw_parts(
+                    self.base.ptr.as_ptr() as _,
+                    self.nrows(),
+                    self.ncols(),
+                    self.row_stride(),
+                    self.col_stride(),
+                )
+            },
+            if T::IS_CONJ { Conj::Yes } else { Conj::No },
+        )
+    }
+
     /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
     #[inline]
     pub fn reverse_rows(self) -> Self {
@@ -2248,6 +2379,18 @@ impl<'a, T> MatMut<'a, T> {
     #[inline]
     pub fn cwise(self) -> ZipMat<(Self,)> {
         ZipMat { tuple: (self,) }
+    }
+
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn as_ref(&self) -> MatRef<'_, T> {
+        self.rb()
+    }
+
+    /// Returns a mutable view over the matrix.
+    #[inline]
+    pub fn as_mut(&mut self) -> MatMut<'_, T> {
+        self.rb_mut()
     }
 }
 
@@ -4743,6 +4886,30 @@ impl<T: 'static> Mat<T> {
         }
     }
 
+    /// Returns the transpose of `self`.
+    #[inline]
+    pub fn transpose(&self) -> MatRef<'_, T> {
+        self.as_ref().transpose()
+    }
+
+    /// Returns the conjugate of `self`.
+    #[inline]
+    pub fn conjugate(&self) -> MatRef<'_, T::Conj>
+    where
+        T: Conjugate,
+    {
+        self.as_ref().conjugate()
+    }
+
+    /// Returns the conjugate transpose of `self`.
+    #[inline]
+    pub fn adjoint(&self) -> MatRef<'_, T::Conj>
+    where
+        T: Conjugate,
+    {
+        self.as_ref().adjoint()
+    }
+
     /// Returns a view over the matrix.
     #[inline]
     pub fn as_ref(&self) -> MatRef<'_, T> {
@@ -4814,72 +4981,204 @@ impl<T> IndexMut<(usize, usize)> for Mat<T> {
     }
 }
 
-impl<T> Add<Mat<T>> for Mat<T>
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Add<MatRef<'a, U>> for MatRef<'a, T>
 where
-    T: Copy + Add<T, Output = T>,
+    T::Num: ComplexField,
 {
-    type Output = Mat<T>;
+    type Output = Mat<T::Num>;
 
+    #[track_caller]
     #[inline]
-    fn add(self, rhs: Mat<T>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
+    fn add(self, rhs: MatRef<'a, U>) -> Self::Output {
+        let (lhs, _) = self.raw_with_conj();
+        let (rhs, _) = rhs.raw_with_conj();
+        fancy_assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
         Self::Output::with_dims(
-            |i, j| self[(i, j)] + rhs[(i, j)],
-            self.nrows(),
-            self.ncols(),
+            |i, j| {
+                let lhs = if T::IS_CONJ {
+                    lhs[(i, j)].conj()
+                } else {
+                    lhs[(i, j)]
+                };
+
+                let rhs = if U::IS_CONJ {
+                    rhs[(i, j)].conj()
+                } else {
+                    rhs[(i, j)]
+                };
+
+                lhs.add(rhs)
+            },
+            lhs.nrows(),
+            lhs.ncols(),
+        )
+    }
+}
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Sub<MatRef<'a, U>> for MatRef<'a, T>
+where
+    T::Num: ComplexField,
+{
+    type Output = Mat<T::Num>;
+
+    #[track_caller]
+    #[inline]
+    fn sub(self, rhs: MatRef<'a, U>) -> Self::Output {
+        let (lhs, _) = self.raw_with_conj();
+        let (rhs, _) = rhs.raw_with_conj();
+        fancy_assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        Self::Output::with_dims(
+            |i, j| {
+                let lhs = if T::IS_CONJ {
+                    lhs[(i, j)].conj()
+                } else {
+                    lhs[(i, j)]
+                };
+
+                let rhs = if U::IS_CONJ {
+                    rhs[(i, j)].conj()
+                } else {
+                    rhs[(i, j)]
+                };
+
+                lhs.sub(rhs)
+            },
+            lhs.nrows(),
+            lhs.ncols(),
         )
     }
 }
 
-impl<T> Add<&Mat<T>> for &Mat<T>
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Mul<MatRef<'a, U>> for MatRef<'a, T>
 where
-    T: Copy + Add<T, Output = T>,
+    T::Num: ComplexField,
 {
-    type Output = Mat<T>;
+    type Output = Mat<T::Num>;
 
+    #[track_caller]
     #[inline]
-    fn add(self, rhs: &Mat<T>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(
-            |i, j| self[(i, j)] + rhs[(i, j)],
-            self.nrows(),
-            self.ncols(),
-        )
+    fn mul(self, rhs: MatRef<'a, U>) -> Self::Output {
+        fancy_assert!(self.ncols() == rhs.nrows());
+        let mut output = Mat::zeros(self.nrows(), rhs.ncols());
+
+        let (lhs, lhs_conj) = self.raw_with_conj();
+        let (rhs, rhs_conj) = rhs.raw_with_conj();
+
+        mul::matmul(
+            output.as_mut(),
+            Conj::No,
+            lhs,
+            lhs_conj,
+            rhs,
+            rhs_conj,
+            None,
+            T::Num::one(),
+            Parallelism::Rayon(0),
+        );
+
+        output
     }
 }
 
-impl<T> Sub<Mat<T>> for Mat<T>
-where
-    T: Copy + Sub<T, Output = T>,
-{
-    type Output = Mat<T>;
+impl<'a, T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatRef<'a, U>> for T {
+    type Output = Mat<U::Num>;
 
     #[inline]
-    fn sub(self, rhs: Mat<T>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(
-            |i, j| self[(i, j)] - rhs[(i, j)],
-            self.nrows(),
-            self.ncols(),
-        )
+    fn scale(self, rhs: MatRef<'a, U>) -> Self::Output {
+        Mat::with_dims(|i, j| self * rhs[(i, j)].as_num(), rhs.nrows(), rhs.ncols())
+    }
+}
+impl<'a, T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatMut<'a, U>> for T {
+    type Output = Mat<U::Num>;
+
+    #[inline]
+    fn scale(self, rhs: MatMut<'a, U>) -> Self::Output {
+        self.scale(rhs.rb())
+    }
+}
+impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<Mat<U>> for T {
+    type Output = Mat<U::Num>;
+
+    #[inline]
+    fn scale(self, rhs: Mat<U>) -> Self::Output {
+        self.scale(rhs.as_ref())
+    }
+}
+impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T {
+    type Output = Mat<U::Num>;
+
+    #[inline]
+    fn scale(self, rhs: &Mat<U>) -> Self::Output {
+        self.scale(rhs.as_ref())
     }
 }
 
-impl<T> Sub<&Mat<T>> for &Mat<T>
-where
-    T: Copy + Sub<T, Output = T>,
-{
-    type Output = Mat<T>;
+macro_rules! impl_binop {
+    ($(impl<
+       $($lt: lifetime,)*
+       $ty_lhs: ident,
+       $ty_rhs: ident$(,)?
+    > Ops<$rhs: ty> for $lhs: ty {})*) => {
+        $(
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Add<$rhs> for $lhs
+            where
+                T::Num: ComplexField,
+            {
+                type Output = Mat<<$ty_lhs>::Num>;
 
-    #[inline]
-    fn sub(self, rhs: &Mat<T>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(
-            |i, j| self[(i, j)] - rhs[(i, j)],
-            self.nrows(),
-            self.ncols(),
-        )
-    }
+                #[track_caller]
+                #[inline]
+                fn add(self, rhs: $rhs) -> Self::Output {
+                    self.as_ref() + rhs.as_ref()
+                }
+            }
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Sub<$rhs> for $lhs
+            where
+                T::Num: ComplexField,
+            {
+                type Output = Mat<<$ty_lhs>::Num>;
+
+                #[track_caller]
+                #[inline]
+                fn sub(self, rhs: $rhs) -> Self::Output {
+                    self.as_ref() - rhs.as_ref()
+                }
+            }
+
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Mul<$rhs> for $lhs
+            where
+                T::Num: ComplexField,
+            {
+                type Output = Mat<<$ty_lhs>::Num>;
+
+                #[track_caller]
+                #[inline]
+                fn mul(self, rhs: $rhs) -> Self::Output {
+                    self.as_ref() * rhs.as_ref()
+                }
+            }
+        )*
+    };
+}
+
+impl_binop! {
+    impl<'a, T, U> Ops<&'a Mat<U>> for &'a Mat<T> {}
+    impl<'a, T, U> Ops<    Mat<U>> for &'a Mat<T> {}
+    impl<'a, T, U> Ops<MatRef<'a, U>> for &'a Mat<T> {}
+    impl<'a, T, U> Ops<MatMut<'a, U>> for &'a Mat<T> {}
+
+    impl<'a, T, U> Ops<&'a Mat<U>> for Mat<T> {}
+    impl<    T, U> Ops<    Mat<U>> for Mat<T> {}
+    impl<'a, T, U> Ops<MatRef<'a, U>> for Mat<T> {}
+    impl<'a, T, U> Ops<MatMut<'a, U>> for Mat<T> {}
+
+    impl<'a, T, U> Ops<&'a Mat<U>> for MatRef<'a, T> {}
+    impl<'a, T, U> Ops<    Mat<U>> for MatRef<'a, T> {}
+    impl<'a, T, U> Ops<MatMut<'a, U>> for MatRef<'a, T> {}
+
+    impl<'a, T, U> Ops<&'a Mat<U>> for &'a MatMut<'a, T> {}
+    impl<'a, T, U> Ops<    Mat<U>> for &'a MatMut<'a, T> {}
+    impl<'a, T, U> Ops<MatRef<'a, U>> for &'a MatMut<'a, T> {}
+    impl<'a, T, U> Ops<MatMut<'a, U>> for &'a MatMut<'a, T> {}
 }
 
 #[macro_export]
@@ -5161,19 +5460,24 @@ mod tests {
         fancy_assert!(x[(1, 0)] == -2.0);
         fancy_assert!(x[(1, 1)] == -15.0);
 
-        let y = &mat![
+        let lhs = mat![
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
-        ] + &mat![
+        ];
+        let rhs = mat![
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
         ];
 
-        fancy_assert!(y[(0, 0)] == c64::new(5.0, 7.0));
-        fancy_assert!(y[(0, 1)] == c64::new(9.0, 3.0));
+        let lhs = lhs.conjugate();
 
-        fancy_assert!(y[(1, 0)] == c64::new(3.0, 7.0));
-        fancy_assert!(y[(1, 1)] == c64::new(3.0, 3.0));
+        let y = lhs + &rhs;
+
+        for i in 0..2 {
+            for j in 0..2 {
+                fancy_assert!(y[(i, j)] == lhs[(i, j)].as_num() + rhs[(i, j)])
+            }
+        }
     }
 
     #[test]
@@ -5195,19 +5499,21 @@ mod tests {
         fancy_assert!(x[(1, 1)] == -1.0);
         fancy_assert!(x[(1, 2)] == -2.0);
 
-        let y = &mat![
+        let lhs = mat![
             [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
             [c64::new(1.0, 2.0), c64::new(2.0, 3.0)],
-        ] - &mat![
+        ];
+        let rhs = mat![
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
+        let y = 2.0.scale(&lhs - rhs.conjugate());
 
-        fancy_assert!(y[(0, 0)] == c64::new(3.0, 3.0));
-        fancy_assert!(y[(0, 1)] == c64::new(3.0, 11.0));
-
-        fancy_assert!(y[(1, 0)] == c64::new(2.0, 0.0));
-        fancy_assert!(y[(1, 1)] == c64::new(5.0, 7.0));
+        for i in 0..2 {
+            for j in 0..2 {
+                fancy_assert!(y[(i, j)] == 2.0 * (lhs[(i, j)] - rhs[(i, j)].conj()));
+            }
+        }
     }
 
     #[test]

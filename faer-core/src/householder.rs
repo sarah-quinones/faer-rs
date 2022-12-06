@@ -19,7 +19,7 @@ pub fn make_householder_in_place<T: ComplexField>(
     tail_squared_norm: T::Real,
 ) -> (T, T) {
     let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
-    let sign = head.scale((head * head.conj()).real().sqrt().inv());
+    let sign = head.scale_real((head * head.conj()).real().sqrt().inv());
 
     let signed_norm = sign * T::from_real(norm);
     let head_with_beta = head + signed_norm;
