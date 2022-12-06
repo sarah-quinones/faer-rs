@@ -153,6 +153,7 @@ pub trait ComplexField:
 }
 
 #[derive(Copy, Clone)]
+#[repr(transparent)]
 pub struct ComplexConj<T: RealField> {
     inner: Complex<T>,
 }
@@ -5508,6 +5509,9 @@ mod tests {
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
         let y = 2.0.scale(&lhs - rhs.conjugate());
+
+        let lhs = lhs.as_ref();
+        let tmp = lhs.conjugate();
 
         for i in 0..2 {
             for j in 0..2 {
