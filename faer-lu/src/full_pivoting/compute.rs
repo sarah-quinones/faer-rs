@@ -2,6 +2,7 @@ use core::{
     any::TypeId,
     mem::{size_of, transmute_copy},
 };
+use num_traits::Zero;
 use std::mem::transmute;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};

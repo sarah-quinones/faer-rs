@@ -3,6 +3,7 @@ use core::{
     mem::transmute_copy,
     slice::{from_raw_parts, from_raw_parts_mut},
 };
+use num_traits::Zero;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
@@ -394,6 +395,7 @@ mod tests {
     use faer_core::{
         c64, householder::apply_householder_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
     };
+    use num_traits::One;
     use rand::random;
 
     macro_rules! placeholder_stack {

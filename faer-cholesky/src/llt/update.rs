@@ -1,4 +1,6 @@
 use core::{any::TypeId, mem::size_of};
+use faer_core::RealField;
+use num_traits::Zero;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
@@ -210,7 +212,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
                         if !(sqr_nljj.real() > T::Real::zero()) {
                             return Err(CholeskyError);
                         }
-                        let nljj = sqr_nljj.sqrt();
+                        let nljj = T::from_real(sqr_nljj.real().sqrt());
                         let inv_ljj = ljj.inv();
                         let inv_nljj = nljj.inv();
 

@@ -5,7 +5,9 @@ use crate::{
         triangular::{self, BlockStructure},
     },
     solve, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    RealField,
 };
+use num_traits::{Inv, One};
 
 use assert2::assert as fancy_assert;
 use dyn_stack::DynStack;
@@ -17,7 +19,7 @@ pub fn make_householder_in_place<T: ComplexField>(
     tail_squared_norm: T::Real,
 ) -> (T, T) {
     let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
-    let sign = head / (head * head.conj()).sqrt();
+    let sign = head.scale((head * head.conj()).real().sqrt().inv());
 
     let signed_norm = sign * T::from_real(norm);
     let head_with_beta = head + signed_norm;
@@ -369,7 +371,6 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
 pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     essentials: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
-    blocksize: usize,
     conj_householder: Conj,
     matrix: MatMut<'_, T>,
     conj_mat: Conj,
@@ -378,10 +379,11 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     mut stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
+    let blocksize = householder_factor.nrows();
     let m = essentials.nrows();
     let k = matrix.ncols();
 
-    let size = householder_factor.nrows();
+    let size = householder_factor.ncols();
 
     let mut conj_mat = conj_mat;
     if size == 0 && conj_mat == Conj::Yes {
@@ -394,7 +396,7 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
         while j < size {
             let bs = blocksize.min(size - j);
             let essentials = essentials.submatrix(j, j, m - j, bs);
-            let householder = householder_factor.submatrix(j, j, bs, bs);
+            let householder = householder_factor.submatrix(0, j, bs, bs);
 
             apply_block_householder_on_the_left(
                 essentials,
@@ -421,7 +423,7 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
             j -= bs;
 
             let essentials = essentials.submatrix(j, j, m - j, bs);
-            let householder = householder_factor.submatrix(j, j, bs, bs);
+            let householder = householder_factor.submatrix(0, j, bs, bs);
 
             apply_block_householder_on_the_left(
                 essentials,

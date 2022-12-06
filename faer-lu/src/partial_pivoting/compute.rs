@@ -8,6 +8,7 @@ use faer_core::{
     zip::ColUninit,
     ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
+use num_traits::Zero;
 use reborrow::*;
 
 #[inline]

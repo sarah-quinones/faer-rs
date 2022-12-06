@@ -2,8 +2,9 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, parallelism_degree, solve, ComplexField, Conj, MatMut,
-    Parallelism,
+    Parallelism, RealField,
 };
+use num_traits::Zero;
 use reborrow::*;
 
 use super::CholeskyError;

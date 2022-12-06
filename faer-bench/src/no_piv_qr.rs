@@ -61,7 +61,8 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 }
             }
             let mut qr = Mat::<f64>::zeros(n, n);
-            let mut householder = Mat::<f64>::zeros(n, n);
+            let blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<f64>(n, n);
+            let mut householder = Mat::<f64>::zeros(blocksize, n);
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
@@ -74,7 +75,6 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 faer_qr::no_pivoting::compute::qr_in_place(
                     qr.as_mut(),
                     householder.as_mut(),
-                    faer_qr::no_pivoting::compute::recommended_blocksize::<f64>(n, n),
                     parallelism,
                     stack.rb_mut(),
                     Default::default(),

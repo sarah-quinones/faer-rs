@@ -17,10 +17,11 @@ use core::{
     fmt::Debug,
     marker::PhantomData,
     mem::{size_of, MaybeUninit},
-    ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub},
+    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
+use num_traits::{Inv, Num};
 use rayon::prelude::IndexedParallelIterator;
 
 use core::mem::transmute_copy;
@@ -29,7 +30,7 @@ pub use gemm::c32;
 /// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
 pub use gemm::c64;
 use iter::*;
-use num_complex::{Complex, ComplexFloat};
+use num_complex::Complex;
 use reborrow::*;
 
 extern crate alloc;
@@ -83,6 +84,18 @@ pub enum Parallelism {
     Rayon(usize),
 }
 
+pub unsafe trait SameLayoutAs<Other> {}
+unsafe impl<T> SameLayoutAs<T> for T {}
+unsafe impl<T: RealField> SameLayoutAs<Complex<T>> for ComplexConj<T> {}
+unsafe impl<T: RealField> SameLayoutAs<ComplexConj<T>> for Complex<T> {}
+
+pub trait Conjugate: Copy + 'static {
+    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self>;
+
+    const IS_CONJ: bool;
+    type Num: SameLayoutAs<Self> + ComplexField;
+}
+
 /// Trait that describes a complex number field.
 ///
 /// Real numbers can also be seen as complex numbers, where the imaginary part is always zero.
@@ -92,16 +105,7 @@ pub enum Parallelism {
 /// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
 /// future version of this library.
 pub trait ComplexField:
-    Copy
-    + Add<Output = Self>
-    + Sub<Output = Self>
-    + Mul<Output = Self>
-    + Div<Output = Self>
-    + Neg<Output = Self>
-    + Send
-    + Sync
-    + Debug
-    + 'static
+    Copy + Num + Neg<Output = Self> + Inv<Output = Self> + Send + Sync + Debug + Conjugate + 'static
 {
     type Real: RealField;
 
@@ -120,17 +124,8 @@ pub trait ComplexField:
         self.into_real_imag().1
     }
 
-    /// Returns the value representing `0.0`.
-    fn zero() -> Self;
-    /// Returns the value representing `1.0`.
-    fn one() -> Self;
-
-    /// Returns the inverse of the number.
-    fn inv(self) -> Self;
     /// Returns the conjugate of the number.
     fn conj(self) -> Self;
-    /// Returns the square root of the number.
-    fn sqrt(self) -> Self;
     /// Returns the input, scaled by `factor`.
     #[inline(always)]
     fn scale(self, factor: Self::Real) -> Self {
@@ -144,6 +139,28 @@ pub trait ComplexField:
     #[inline(always)]
     fn abs(self) -> Self::Real {
         (self * self.conj()).real().sqrt()
+    }
+
+    fn nan() -> Self;
+}
+
+#[derive(Copy, Clone)]
+pub struct ComplexConj<T: RealField> {
+    inner: Complex<T>,
+}
+
+impl<T: RealField> From<Complex<T>> for ComplexConj<T> {
+    #[inline]
+    fn from(value: Complex<T>) -> Self {
+        Self {
+            inner: value.conj(),
+        }
+    }
+}
+impl<T: RealField> From<ComplexConj<T>> for Complex<T> {
+    #[inline]
+    fn from(value: ComplexConj<T>) -> Self {
+        value.inner.conj()
     }
 }
 
@@ -193,9 +210,23 @@ impl Mul<I> for f64 {
 }
 
 /// Trait that describes a real number field.
-pub trait RealField: ComplexField<Real = Self> + PartialOrd {}
+pub trait RealField: ComplexField<Real = Self, Conj = Self> + PartialOrd {
+    /// Returns the square root of the number.
+    fn sqrt(self) -> Self;
+}
 
-impl RealField for f32 {}
+impl Conjugate for f32 {
+    type Conj = f32;
+
+    const IS_CONJ: bool = false;
+    type Num = f32;
+}
+impl RealField for f32 {
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
 impl ComplexField for f32 {
     type Real = f32;
 
@@ -210,28 +241,8 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
-    fn zero() -> Self {
-        0.0
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        1.0
-    }
-
-    #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
-    }
-
-    #[inline(always)]
     fn conj(self) -> Self {
         self
-    }
-
-    #[inline(always)]
-    fn sqrt(self) -> Self {
-        self.sqrt()
     }
 
     #[inline(always)]
@@ -243,9 +254,25 @@ impl ComplexField for f32 {
     fn abs(self) -> Self::Real {
         self.abs()
     }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self::NAN
+    }
 }
 
-impl RealField for f64 {}
+impl Conjugate for f64 {
+    type Conj = f64;
+
+    const IS_CONJ: bool = false;
+    type Num = f64;
+}
+impl RealField for f64 {
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        self.sqrt()
+    }
+}
 impl ComplexField for f64 {
     type Real = f64;
 
@@ -260,28 +287,8 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
-    fn zero() -> Self {
-        0.0
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        1.0
-    }
-
-    #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
-    }
-
-    #[inline(always)]
     fn conj(self) -> Self {
         self
-    }
-
-    #[inline(always)]
-    fn sqrt(self) -> Self {
-        self.sqrt()
     }
 
     #[inline(always)]
@@ -293,14 +300,33 @@ impl ComplexField for f64 {
     fn abs(self) -> Self::Real {
         self.abs()
     }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self::NAN
+    }
 }
 
-impl ComplexField for c32 {
-    type Real = f32;
+impl<T: RealField> Conjugate for ComplexConj<T> {
+    type Conj = Complex<T>;
+    const IS_CONJ: bool = true;
+    type Num = Complex<T>;
+}
+impl<T: RealField> Conjugate for Complex<T> {
+    type Conj = ComplexConj<T>;
+    const IS_CONJ: bool = false;
+    type Num = Complex<T>;
+}
+
+impl<T: RealField> ComplexField for Complex<T> {
+    type Real = T;
 
     #[inline(always)]
     fn from_real(real: Self::Real) -> Self {
-        c32 { re: real, im: 0.0 }
+        Complex {
+            re: real,
+            im: T::zero(),
+        }
     }
 
     #[inline(always)]
@@ -309,83 +335,24 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
-    fn zero() -> Self {
-        c32 { re: 0.0, im: 0.0 }
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        c32 { re: 1.0, im: 0.0 }
-    }
-
-    #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
-    }
-
-    #[inline(always)]
     fn conj(self) -> Self {
-        c32 {
+        Complex {
             re: self.re,
             im: -self.im,
         }
     }
 
     #[inline(always)]
-    fn sqrt(self) -> Self {
-        <Self as ComplexFloat>::sqrt(self)
-    }
-
-    #[inline(always)]
     fn score(self) -> Self::Real {
         self.re * self.re + self.im * self.im
     }
-}
-
-impl ComplexField for c64 {
-    type Real = f64;
 
     #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        c64 { re: real, im: 0.0 }
-    }
-
-    #[inline(always)]
-    fn into_real_imag(self) -> (Self::Real, Self::Real) {
-        (self.re, self.im)
-    }
-
-    #[inline(always)]
-    fn zero() -> Self {
-        c64 { re: 0.0, im: 0.0 }
-    }
-
-    #[inline(always)]
-    fn one() -> Self {
-        c64 { re: 1.0, im: 0.0 }
-    }
-
-    #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
-    }
-
-    #[inline(always)]
-    fn conj(self) -> Self {
-        c64 {
-            re: self.re,
-            im: -self.im,
+    fn nan() -> Self {
+        Self {
+            re: Self::Real::nan(),
+            im: Self::Real::nan(),
         }
-    }
-
-    #[inline(always)]
-    fn sqrt(self) -> Self {
-        <Self as ComplexFloat>::sqrt(self)
-    }
-
-    #[inline(always)]
-    fn score(self) -> Self::Real {
-        self.re * self.re + self.im * self.im
     }
 }
 
@@ -4089,6 +4056,12 @@ macro_rules! temp_mat_uninit {
                 $crate::align_for::<$ty>(),
             );
 
+            if cfg!(debug_assertions) {
+                for elem in &mut *temp_data {
+                    *elem = ::core::mem::MaybeUninit::new(<$ty as $crate::ComplexField>::nan());
+                }
+            }
+
             #[allow(unused_unsafe)]
             let $id = unsafe {
                 $crate::from_uninit_mut_slice(
@@ -4159,6 +4132,7 @@ pub fn temp_mat_req<T: 'static>(nrows: usize, ncols: usize) -> Result<StackReq, 
     StackReq::try_new_aligned::<T>(col_stride * ncols, align_for::<T>())
 }
 
+#[repr(C)]
 struct RawMat<T: 'static> {
     ptr: NonNull<T>,
     row_capacity: usize,
@@ -4301,11 +4275,15 @@ impl<T> Drop for ColGuard<T> {
 /// 0 1 2 X 3 4 5 X 6 7 8 X 9 10 11 X
 /// ```
 /// where `X` represents padding elements.
+#[repr(C)]
 pub struct Mat<T: 'static> {
     raw: RawMat<T>,
     nrows: usize,
     ncols: usize,
 }
+
+unsafe impl<T: Send> Send for Mat<T> {}
+unsafe impl<T: Sync> Sync for Mat<T> {}
 
 impl<T: 'static> Default for Mat<T> {
     #[inline]

@@ -9,7 +9,6 @@ use reborrow::*;
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
-    blocksize: usize,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
@@ -20,7 +19,8 @@ pub fn solve_in_place<T: ComplexField>(
     // X = conjᵃ(R)⁻¹ × conjᵃ(Hₖ₋₁) × ... × conjᵃ(H₀) × conjᵇ(B)
     fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
     let size = qr_factors.nrows();
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
+    let blocksize = householder_factor.nrows();
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     fancy_assert!(rhs.nrows() == qr_factors.nrows());
 
     let mut rhs = rhs;
@@ -28,7 +28,6 @@ pub fn solve_in_place<T: ComplexField>(
     apply_block_householder_sequence_on_the_left(
         qr_factors,
         householder_factor,
-        blocksize,
         conj_lhs,
         rhs.rb_mut(),
         conj_rhs,
@@ -43,7 +42,6 @@ pub fn solve_in_place<T: ComplexField>(
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
-    blocksize: usize,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
@@ -55,7 +53,8 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     // X = conj(conjᵃ(H₀)) × ... × conj(conjᵃ(Hₖ₋₁)) × (conjᵃ(R)ᵀ)⁻¹ × conjᵇ(B)
     fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
     let size = qr_factors.nrows();
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
+    let blocksize = householder_factor.nrows();
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     fancy_assert!(rhs.nrows() == qr_factors.nrows());
 
     let mut rhs = rhs;
@@ -71,7 +70,6 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     apply_block_householder_sequence_on_the_left(
         qr_factors,
         householder_factor,
-        blocksize,
         conj_lhs.compose(Conj::Yes),
         rhs.rb_mut(),
         Conj::No,
@@ -105,12 +103,11 @@ mod tests {
         let rhs = Mat::with_dims(|_, _| random(), n, k);
 
         let mut qr = a.clone();
-        let mut householder = Mat::with_dims(|_, _| T::zero(), n, n);
         let blocksize = recommended_blocksize::<f64>(n, n);
+        let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
         qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
-            blocksize,
             Parallelism::None,
             placeholder_stack!(),
             Default::default(),
@@ -124,7 +121,6 @@ mod tests {
                 solve_in_place(
                     qr,
                     householder.as_ref(),
-                    blocksize,
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,
@@ -170,12 +166,11 @@ mod tests {
         let rhs = Mat::with_dims(|_, _| random(), n, k);
 
         let mut qr = a.clone();
-        let mut householder = Mat::with_dims(|_, _| T::zero(), n, n);
         let blocksize = recommended_blocksize::<f64>(n, n);
+        let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
         qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
-            blocksize,
             Parallelism::None,
             placeholder_stack!(),
             Default::default(),
@@ -189,7 +184,6 @@ mod tests {
                 solve_transpose_in_place(
                     qr,
                     householder.as_ref(),
-                    blocksize,
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,

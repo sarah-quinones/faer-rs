@@ -7,6 +7,7 @@ use faer_core::{
     mul::dot,
     ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
+use num_traits::Zero;
 use reborrow::*;
 
 fn qr_in_place_unblocked<T: ComplexField>(
@@ -78,8 +79,9 @@ fn qr_in_place_unblocked<T: ComplexField>(
 #[inline]
 pub fn recommended_blocksize<T: ComplexField>(m: usize, n: usize) -> usize {
     let prod = m * n;
+    let size = m.min(n);
 
-    if prod > 8192 * 8192 {
+    (if prod > 8192 * 8192 {
         256
     } else if prod > 2048 * 2048 {
         128
@@ -89,7 +91,8 @@ pub fn recommended_blocksize<T: ComplexField>(m: usize, n: usize) -> usize {
         32
     } else {
         16
-    }
+    })
+    .min(size)
 }
 
 fn default_disable_parallelism(m: usize, n: usize) -> bool {
@@ -119,7 +122,7 @@ impl QrComputeParams {
     }
 }
 
-pub fn qr_in_place<T: ComplexField>(
+pub fn qr_in_place_blocked<T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_factor: MatMut<'_, T>,
     blocksize: usize,
@@ -141,12 +144,16 @@ pub fn qr_in_place<T: ComplexField>(
 
     let (disable_blocking, disable_parallelism) = params.normalize();
 
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (size, size));
+    let householder_is_full_matrix = householder_factor.nrows() == householder_factor.ncols();
 
     let mut j = 0;
     while j < size {
         let bs = blocksize.min(size - j);
-        let mut householder_factor = householder_factor.rb_mut().submatrix(j, j, bs, bs);
+        let mut householder_factor = if householder_is_full_matrix {
+            householder_factor.rb_mut().submatrix(j, j, bs, bs)
+        } else {
+            householder_factor.rb_mut().submatrix(0, j, bs, bs)
+        };
         let mut matrix = matrix.rb_mut().submatrix(j, j, m - j, n - j);
         let m = m - j;
         let n = n - j;
@@ -163,7 +170,7 @@ pub fn qr_in_place<T: ComplexField>(
             parallelism = Parallelism::None
         }
 
-        qr_in_place(
+        qr_in_place_blocked(
             current_block.rb_mut(),
             householder_factor.rb_mut(),
             prev_blocksize,
@@ -195,9 +202,29 @@ pub fn qr_in_place<T: ComplexField>(
     }
 }
 
+pub fn qr_in_place<T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    householder_factor: MatMut<'_, T>,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: QrComputeParams,
+) {
+    let blocksize = householder_factor.nrows();
+    fancy_assert!(blocksize >= 1);
+    qr_in_place_blocked(
+        matrix,
+        householder_factor,
+        blocksize,
+        parallelism,
+        stack,
+        params,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use faer_core::{householder::apply_block_householder_sequence_on_the_left, Conj, Parallelism};
+    use num_traits::One;
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;
@@ -231,7 +258,6 @@ mod tests {
     fn reconstruct_factors(
         qr_factors: MatRef<'_, T>,
         householder: MatRef<'_, T>,
-        blocksize: usize,
     ) -> (Mat<T>, Mat<T>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
@@ -249,7 +275,6 @@ mod tests {
         apply_block_householder_sequence_on_the_left(
             qr_factors,
             householder,
-            blocksize,
             Conj::No,
             q.as_mut(),
             Conj::No,
@@ -267,15 +292,15 @@ mod tests {
             let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
             let mat_orig = mat.clone();
             let size = m.min(n);
-            let mut householder = Mat::zeros(size, size);
+            let mut householder = Mat::zeros(1, size);
 
             qr_in_place_unblocked(
                 mat.as_mut(),
-                householder.as_mut().diagonal(),
+                householder.as_mut().row(0).transpose(),
                 placeholder_stack!(),
             );
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref(), 1);
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
             let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 
@@ -321,20 +346,18 @@ mod tests {
             let mat_orig = Mat::with_dims(|_, _| random_value(), m, n);
             let mut mat = mat_orig.clone();
             let size = m.min(n);
-            let mut householder = Mat::zeros(size, size);
-
             let blocksize = 8;
+            let mut householder = Mat::zeros(blocksize, size);
 
             qr_in_place(
                 mat.as_mut(),
                 householder.as_mut(),
-                blocksize,
                 Parallelism::Rayon(0),
                 placeholder_stack!(),
                 Default::default(),
             );
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref(), blocksize);
+            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
             let mut qhq = Mat::zeros(m, m);
             let mut reconstructed = Mat::zeros(m, n);
 

@@ -16,6 +16,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
     use faer_core::{c64, mat, Conj};
+    use num_traits::{One, Zero};
     use rand::random;
 
     use super::*;
