@@ -255,10 +255,10 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 
 /// Performs a rank-r update in place, while clobbering the inputs.
 ///
-/// Takes the Cholesky factors $L$ and $D$ of a matrix $A$, meaning that $LDL^* = A$,
+/// Takes the Cholesky factors $L$ and $D$ of a matrix $A$, meaning that $LDL^H = A$,
 /// a matrix $W$ and a column vector $\alpha$, which is interpreted as a diagonal matrix.
 ///
-/// This function computes the cholesky factors of $A + W\text{Diag}(\alpha)W^*$, and stores the
+/// This function computes the cholesky factors of $A + W\text{Diag}(\alpha)W^H$, and stores the
 /// result in the storage of the original cholesky factors.
 ///
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after

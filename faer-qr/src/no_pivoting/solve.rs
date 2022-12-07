@@ -1,11 +1,52 @@
 use assert2::assert as fancy_assert;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::apply_block_householder_sequence_on_the_left, solve, ComplexField, Conj, MatMut,
-    MatRef, Parallelism,
+    householder::apply_block_householder_sequence_on_the_left, solve, temp_mat_req, ComplexField,
+    Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
+#[inline]
+pub fn solve_in_place_req<T: 'static>(
+    qr_size: usize,
+    qr_blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = qr_size;
+    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+}
+
+#[inline]
+pub fn solve_transpose_in_place_req<T: 'static>(
+    qr_size: usize,
+    qr_blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = qr_size;
+    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+}
+
+#[inline]
+pub fn solve_req<T: 'static>(
+    qr_size: usize,
+    qr_blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = qr_size;
+    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+}
+
+#[inline]
+pub fn solve_transpose_req<T: 'static>(
+    qr_size: usize,
+    qr_blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = qr_size;
+    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+}
+
+#[track_caller]
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
@@ -39,6 +80,7 @@ pub fn solve_in_place<T: ComplexField>(
     solve::solve_upper_triangular_in_place(qr_factors, conj_lhs, rhs, Conj::No, parallelism);
 }
 
+#[track_caller]
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
@@ -79,19 +121,71 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     );
 }
 
+#[track_caller]
+pub fn solve<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    qr_factors: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_lhs: Conj,
+    rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let mut dst = dst;
+    dst.rb_mut()
+        .cwise()
+        .zip(rhs)
+        .for_each(|dst, src| *dst = *src);
+    solve_in_place(
+        qr_factors,
+        householder_factor,
+        conj_lhs,
+        dst,
+        conj_rhs,
+        parallelism,
+        stack,
+    );
+}
+
+#[track_caller]
+pub fn solve_transpose<T: ComplexField>(
+    dst: MatMut<'_, T>,
+    qr_factors: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_lhs: Conj,
+    rhs: MatRef<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let mut dst = dst;
+    dst.rb_mut()
+        .cwise()
+        .zip(rhs)
+        .for_each(|dst, src| *dst = *src);
+    solve_transpose_in_place(
+        qr_factors,
+        householder_factor,
+        conj_lhs,
+        dst,
+        conj_rhs,
+        parallelism,
+        stack,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use faer_core::{c32, c64, mul::matmul, Mat};
     use rand::random;
 
-    use crate::no_pivoting::compute::{qr_in_place, recommended_blocksize};
+    use crate::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
 
-    macro_rules! placeholder_stack {
-        () => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
-                ::dyn_stack::StackReq::new::<T>(1024 * 1024),
-            ))
+    macro_rules! make_stack {
+        ($req: expr) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
         };
     }
 
@@ -109,7 +203,7 @@ mod tests {
             qr.as_mut(),
             householder.as_mut(),
             Parallelism::None,
-            placeholder_stack!(),
+            make_stack!(qr_in_place_req::<T>(n, n, blocksize).unwrap()),
             Default::default(),
         );
 
@@ -125,7 +219,7 @@ mod tests {
                     sol.as_mut(),
                     conj_rhs,
                     Parallelism::None,
-                    placeholder_stack!(),
+                    make_stack!(solve_in_place_req::<T>(n, blocksize, k).unwrap()),
                 );
 
                 let mut rhs_reconstructed = rhs.clone();
@@ -172,7 +266,7 @@ mod tests {
             qr.as_mut(),
             householder.as_mut(),
             Parallelism::None,
-            placeholder_stack!(),
+            make_stack!(qr_in_place_req::<T>(n, n, blocksize).unwrap()),
             Default::default(),
         );
 
@@ -188,7 +282,7 @@ mod tests {
                     sol.as_mut(),
                     conj_rhs,
                     Parallelism::None,
-                    placeholder_stack!(),
+                    make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k).unwrap()),
                 );
 
                 let mut rhs_reconstructed = rhs.clone();

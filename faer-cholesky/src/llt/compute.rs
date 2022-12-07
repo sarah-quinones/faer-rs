@@ -188,7 +188,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
 
 /// Computes the Cholesky factor $L$ of a hermitian positive definite input matrix $A$ such that
 /// $L$ is lower triangular, and
-/// $$LL^* == A.$$
+/// $$LL^H == A.$$
 ///
 /// The result is stored back in the same matrix, or an error is returned if the matrix is not
 /// positive definite.

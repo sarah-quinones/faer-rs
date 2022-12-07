@@ -1,5 +1,5 @@
 //! The Cholesky decomposition with diagonal $D$ of a hermitian matrix $A$ is such that:
-//! $$A = LDL^*,$$
+//! $$A = LDL^H,$$
 //! where $D$ is a diagonal matrix, and $L$ is a unit lower triangular matrix.
 //!
 //! The Cholesky decomposition with diagonal may have poor numerical stability properties when used

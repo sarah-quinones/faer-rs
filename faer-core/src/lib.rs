@@ -40,7 +40,6 @@ pub mod mul;
 pub mod solve;
 pub mod zip;
 
-#[doc(hidden)]
 pub mod householder;
 pub mod permutation;
 
@@ -4132,30 +4131,10 @@ pub unsafe fn from_uninit_mut_slice<T>(
     )
 }
 
-// https://docs.rs/itertools/0.7.8/src/itertools/lib.rs.html#247-269
 #[macro_export]
-#[doc(hidden)]
-macro_rules! izip {
-    // eg. izip!(((a, b), c) => (a, b, c) , dd , ee )
-    (@ __closure @ $p:pat => $tup:expr) => {
-        |$p| $tup
-    };
-
-    // The "b" identifier is a different identifier on each recursion level thanks to hygiene.
-    (@ __closure @ $p:pat => ( $($tup:tt)* ) , $_iter:expr $( , $tail:expr )*) => {
-        $crate::izip!(@ __closure @ ($p, b) => ( $($tup)*, b ) $( , $tail )*)
-    };
-
-    ( $first:expr $(,)?) => {
-        ::core::iter::IntoIterator::into_iter($first)
-    };
-    ( $first:expr, $($rest:expr),+ $(,)?) => {
-        {
-            #[allow(unused_imports)]
-            ::core::iter::IntoIterator::into_iter($first)
-                $(.zip($rest))*
-                .map($crate::izip!(@ __closure @ a => (a) $( , $rest )*))
-        }
+macro_rules! zip {
+    ($first: expr $(, $rest: expr)* $(,)?) => {
+        $first.cwise()$(.zip($rest))*
     };
 }
 

@@ -75,7 +75,7 @@ fn coerce<T: 'static, U: 'static>(t: T) -> U {
     unsafe { core::mem::transmute_copy(&no_drop) }
 }
 
-// a^* b
+// a^H b
 #[doc(hidden)]
 #[inline(always)]
 pub fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {

@@ -1,8 +1,6 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::{
-    izip, mul::triangular::BlockStructure, solve, ComplexField, Conj, MatMut, Parallelism,
-};
+use faer_core::{mul::triangular::BlockStructure, solve, ComplexField, Conj, MatMut, Parallelism};
 use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<T: ComplexField>(
@@ -51,12 +49,13 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         // reserve space for L10×D0
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
 
-        for (l10xd0_col, l10_col, &d_factor) in izip!(
-            l10xd0.rb_mut().into_col_iter(),
-            l10.rb().into_col_iter(),
-            d0.into_iter(),
-        ) {
-            for (l10xd0_elem, l) in izip!(l10xd0_col, l10_col) {
+        for ((l10xd0_col, l10_col), &d_factor) in l10xd0
+            .rb_mut()
+            .into_col_iter()
+            .zip(l10.rb().into_col_iter())
+            .zip(d0.into_iter())
+        {
+            for (l10xd0_elem, l) in l10xd0_col.into_iter().zip(l10_col) {
                 *l10xd0_elem = *l * d_factor;
             }
         }
@@ -109,7 +108,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         );
 
         let l21xd1 = a21;
-        for (l21xd1_col, &d1_elem) in izip!(l21xd1.into_col_iter(), d1) {
+        for (l21xd1_col, &d1_elem) in l21xd1.into_col_iter().zip(d1) {
             let d1_elem_inv = d1_elem.inv();
             for l21xd1_elem in l21xd1_col {
                 *l21xd1_elem = *l21xd1_elem * d1_elem_inv;
@@ -174,13 +173,14 @@ fn cholesky_in_place_impl<T: ComplexField>(
             // reserve space for L10×D0
             let mut l10xd0 = top_right.submatrix(0, 0, block_size, rem).transpose();
 
-            for (l10xd0_col, a10_col, &d0_elem) in izip!(
-                l10xd0.rb_mut().into_col_iter(),
-                a10.rb_mut().into_col_iter(),
-                d0,
-            ) {
+            for ((l10xd0_col, a10_col), &d0_elem) in l10xd0
+                .rb_mut()
+                .into_col_iter()
+                .zip(a10.rb_mut().into_col_iter())
+                .zip(d0)
+            {
                 let d0_elem_inv = d0_elem.inv();
-                for (l10xd0_elem, a10_elem) in izip!(l10xd0_col, a10_col) {
+                for (l10xd0_elem, a10_elem) in l10xd0_col.into_iter().zip(a10_col) {
                     *l10xd0_elem = a10_elem.clone();
                     *a10_elem = *a10_elem * d0_elem_inv;
                 }
@@ -208,7 +208,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
 
 /// Computes the Cholesky factors $L$ and $D$ of the input matrix such that $L$ is strictly lower
 /// triangular, $D$ is real-valued diagonal, and
-/// $$LDL^* = A.$$
+/// $$LDL^H = A.$$
 ///
 /// The result is stored back in the same matrix.
 ///

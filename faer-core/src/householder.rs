@@ -1,18 +1,41 @@
+//! Block Householder transformations.
+//!
+//! A Householder reflection is linear transformation that describes a relfection about a
+//! hyperplane that crosses the origin of the space.
+//!
+//! Let $v$ be a unit vector that is orthogonal to the hyperplane. Then the corresponding
+//! Householder transformation in matrix form is $I - 2vv^H$, where $I$ is the identity matrix.
+//!
+//! In practice, a non unit vector $v$ is used, so the transformation is written as
+//! $$H = I - \frac{vv^H}{\tau}.$$
+//!
+//! A block Householder transformation is a sequence of such transformations
+//! $H_0, H_1, \dots, H_{b -1 }$ applied one after the other, with the restriction that the first
+//! $i$ components of the vector $v_i$ of the $i$-th transformation are zero, and the component at
+//! index $i$ is one.
+//!
+//! The matrix $V = [v_0\ v_1\ \dots\ v_{b-1}]$ is thus a lower trapezoidal matrix with unit
+//! diagonal. We call it the Householder basis.
+//!
+//! There exists a unique matrix $T$, that we call the Householder factor, such that
+//! $$H_0 \times \dots \times H_{b-1} = I - VT^{-1}V^H.$$
+
 use crate::{
     join_raw,
     mul::{
         matmul,
         triangular::{self, BlockStructure},
     },
-    solve, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism,
-    RealField,
+    solve, temp_mat_req, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef,
+    Parallelism, RealField,
 };
 use num_traits::{Inv, One};
 
 use assert2::assert as fancy_assert;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use reborrow::*;
 
+#[doc(hidden)]
 pub fn make_householder_in_place<T: ComplexField>(
     essential: ColMut<'_, T>,
     head: T,
@@ -31,6 +54,7 @@ pub fn make_householder_in_place<T: ComplexField>(
     (T::from_real(tau), -signed_norm)
 }
 
+#[doc(hidden)]
 pub fn apply_householder_on_the_left<T: ComplexField>(
     essential: ColRef<'_, T>,
     householder_coeff: T,
@@ -109,7 +133,8 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
     }
 }
 
-pub fn div_ceil(a: usize, b: usize) -> usize {
+#[doc(hidden)]
+fn div_ceil(a: usize, b: usize) -> usize {
     let (div, rem) = (a / b, a % b);
     if rem == 0 {
         div
@@ -118,6 +143,7 @@ pub fn div_ceil(a: usize, b: usize) -> usize {
     }
 }
 
+#[doc(hidden)]
 pub fn upgrade_householder_factor<T: ComplexField>(
     mut householder_factor: MatMut<'_, T>,
     essentials: MatRef<'_, T>,
@@ -267,17 +293,51 @@ pub fn upgrade_householder_factor<T: ComplexField>(
     }
 }
 
+/// Computes the size and alignment of required workspace for applying a block Householder
+/// transformation to a right-hand-side matrix in place.
+pub fn apply_block_householder_on_the_left_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, rhs_ncols)
+}
+
+/// Computes the size and alignment of required workspace for applying a sequence of block
+/// Householder transformations to a right-hand-side matrix in place.
+pub fn apply_block_householder_sequence_on_the_left_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, rhs_ncols)
+}
+
+/// If forward is `false`, this function computes the matrix product of the block Householder
+/// transformation $H_0\times\dots\times H_{b-1} = I - VT^{-1}V^H$, with $V$ being
+/// `householder_basis` and $T$ being `householder_factor`, multiplied by `matrix`.  
+/// If forward is `true`, this function instead computes the matrix product of the block Householder
+/// transformation $H_{b-1} \times \dots \times H_0 = I - VT^{-H}V^H$, multiplied by `matrix`.  
+/// Either operand may be conjugated depending on its corresponding `conj_*` parameter.
+#[track_caller]
 pub fn apply_block_householder_on_the_left<T: ComplexField>(
-    essentials: MatRef<'_, T>,
+    householder_basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
-    conj_householder: Conj,
+    conj_lhs: Conj,
     matrix: MatMut<'_, T>,
-    conj_mat: Conj,
+    conj_rhs: Conj,
     forward: bool,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    let (essentials_top, essentials_bot) = essentials.split_at_row(essentials.ncols());
+    fancy_assert!(householder_factor.nrows() == householder_factor.ncols());
+    fancy_assert!(householder_basis.ncols() == householder_factor.nrows());
+    fancy_assert!(matrix.nrows() == householder_basis.nrows());
+
+    let (essentials_top, essentials_bot) =
+        householder_basis.split_at_row(householder_basis.ncols());
     let bs = householder_factor.nrows();
     let n = matrix.ncols();
 
@@ -294,10 +354,10 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         Conj::No,
         essentials_top.transpose(),
         BlockStructure::UnitTriangularUpper,
-        Conj::Yes.compose(conj_householder),
+        Conj::Yes.compose(conj_lhs),
         matrix_top.rb(),
         BlockStructure::Rectangular,
-        Conj::No.compose(conj_mat),
+        Conj::No.compose(conj_rhs),
         None,
         T::one(),
         parallelism,
@@ -306,9 +366,9 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         tmp.rb_mut(),
         Conj::No,
         essentials_bot.transpose(),
-        Conj::Yes.compose(conj_householder),
+        Conj::Yes.compose(conj_lhs),
         matrix_bot.rb(),
-        Conj::No.compose(conj_mat),
+        Conj::No.compose(conj_rhs),
         Some(T::one()),
         T::one(),
         parallelism,
@@ -318,7 +378,7 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     if forward {
         solve::solve_lower_triangular_in_place(
             householder_factor.transpose(),
-            Conj::Yes.compose(conj_householder),
+            Conj::Yes.compose(conj_lhs),
             tmp.rb_mut(),
             Conj::No,
             parallelism,
@@ -326,7 +386,7 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     } else {
         solve::solve_upper_triangular_in_place(
             householder_factor,
-            Conj::No.compose(conj_householder),
+            Conj::No.compose(conj_lhs),
             tmp.rb_mut(),
             Conj::No,
             parallelism,
@@ -339,10 +399,10 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
             triangular::matmul(
                 matrix_top.rb_mut(),
                 BlockStructure::Rectangular,
-                Conj::No.compose(conj_mat),
+                Conj::No.compose(conj_rhs),
                 essentials_top,
                 BlockStructure::UnitTriangularLower,
-                Conj::No.compose(conj_householder),
+                Conj::No.compose(conj_lhs),
                 tmp.rb(),
                 BlockStructure::Rectangular,
                 Conj::No,
@@ -354,9 +414,9 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
         |_| {
             matmul(
                 matrix_bot.rb_mut(),
-                Conj::No.compose(conj_mat),
+                Conj::No.compose(conj_rhs),
                 essentials_bot,
-                Conj::No.compose(conj_householder),
+                Conj::No.compose(conj_lhs),
                 tmp.rb(),
                 Conj::No,
                 Some(T::one()),
@@ -368,24 +428,41 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     );
 }
 
+/// Applies a sequence of block Householder transformations given by `householder_basis` and
+/// `householder_factor`.  
+/// Let `blocksize` and `size` be respectively the number of rows and columns of
+/// `householder_factor`. The i-th block Householder transformation is defined by the the submatrix
+/// of `householder_basis` starting at index `(i * blocksize, i * blocksize)` and spanning
+/// all the remaining rows, and `min(blocksize, size - i * blocksize)` columns, as well as the
+/// submatrix of `householder_factor` starting at index `(0, i * blocksize)`, and spanning
+/// `min(blocksize, size - i * blocksize)` rows and columns.
+///
+/// This i-th block Householder transformation is applied to the bottom rows of `matrix`, starting
+/// at row `i * blocksize`.
+///
+/// If `forward` is `false`, then the transformations are applied last to first, each
+/// in backward order, i.e., $H_0\times\dots\times H_{n-1}$.  
+/// If `forward` is `true`, then the transformations are applied first to last, each
+/// in forward order, i.e., $H_{n-1}^H\times\dots\times H_{0}^H$.
+#[track_caller]
 pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
-    essentials: MatRef<'_, T>,
+    householder_basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
-    conj_householder: Conj,
+    conj_lhs: Conj,
     matrix: MatMut<'_, T>,
-    conj_mat: Conj,
+    conj_rhs: Conj,
     forward: bool,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
     let blocksize = householder_factor.nrows();
-    let m = essentials.nrows();
+    let m = householder_basis.nrows();
     let k = matrix.ncols();
 
     let size = householder_factor.ncols();
 
-    let mut conj_mat = conj_mat;
+    let mut conj_mat = conj_rhs;
     if size == 0 && conj_mat == Conj::Yes {
         matrix.cwise().for_each(|e| *e = (*e).conj());
         return;
@@ -395,13 +472,13 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
         let mut j = 0;
         while j < size {
             let bs = blocksize.min(size - j);
-            let essentials = essentials.submatrix(j, j, m - j, bs);
+            let essentials = householder_basis.submatrix(j, j, m - j, bs);
             let householder = householder_factor.submatrix(0, j, bs, bs);
 
             apply_block_householder_on_the_left(
                 essentials,
                 householder,
-                conj_householder,
+                conj_lhs,
                 matrix.rb_mut().submatrix(j, 0, m - j, k),
                 conj_mat,
                 forward,
@@ -422,13 +499,13 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
         while j > 0 {
             j -= bs;
 
-            let essentials = essentials.submatrix(j, j, m - j, bs);
+            let essentials = householder_basis.submatrix(j, j, m - j, bs);
             let householder = householder_factor.submatrix(0, j, bs, bs);
 
             apply_block_householder_on_the_left(
                 essentials,
                 householder,
-                conj_householder,
+                conj_lhs,
                 matrix.rb_mut().submatrix(j, 0, m - j, k),
                 conj_mat,
                 forward,

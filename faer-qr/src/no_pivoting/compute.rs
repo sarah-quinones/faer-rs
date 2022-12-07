@@ -1,11 +1,11 @@
 use assert2::assert as fancy_assert;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_on_the_left, make_householder_in_place, upgrade_householder_factor,
     },
     mul::dot,
-    ColMut, ComplexField, Conj, MatMut, Parallelism,
+    temp_mat_req, ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
 use num_traits::Zero;
 use reborrow::*;
@@ -202,6 +202,7 @@ pub fn qr_in_place_blocked<T: ComplexField>(
     }
 }
 
+#[track_caller]
 pub fn qr_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_factor: MatMut<'_, T>,
@@ -210,7 +211,9 @@ pub fn qr_in_place<T: ComplexField>(
     params: QrComputeParams,
 ) {
     let blocksize = householder_factor.nrows();
-    fancy_assert!(blocksize >= 1);
+    let size = matrix.nrows().min(matrix.ncols());
+    fancy_assert!(blocksize > 0);
+    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     qr_in_place_blocked(
         matrix,
         householder_factor,
@@ -219,6 +222,16 @@ pub fn qr_in_place<T: ComplexField>(
         stack,
         params,
     );
+}
+
+#[inline]
+pub fn qr_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+    blocksize: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = nrows;
+    temp_mat_req::<T>(blocksize, ncols)
 }
 
 #[cfg(test)]
@@ -237,6 +250,12 @@ mod tests {
             ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
                 ::dyn_stack::StackReq::new::<T>(1024 * 1024),
             ))
+        };
+    }
+
+    macro_rules! make_stack {
+        ($req: expr) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
         };
     }
 
@@ -353,7 +372,7 @@ mod tests {
                 mat.as_mut(),
                 householder.as_mut(),
                 Parallelism::Rayon(0),
-                placeholder_stack!(),
+                make_stack!(qr_in_place_req::<T>(m, n, blocksize).unwrap()),
                 Default::default(),
             );
 
