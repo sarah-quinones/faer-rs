@@ -100,6 +100,7 @@ pub trait Conjugate: Copy + 'static {
 pub trait Scale<Rhs> {
     type Output;
 
+    /// Scale a matrix `rhs` by `self`.
     fn scale(self, rhs: Rhs) -> Self::Output;
 }
 
@@ -5070,6 +5071,14 @@ macro_rules! impl_scalar_mul {
                     self.scale(rhs)
                 }
             }
+
+            impl$(<$generic_ty>)? Mul<$scalar> for $mat {
+                type Output = Mat<$out>;
+                #[inline]
+                fn mul(self, rhs: $scalar) -> Self::Output {
+                    rhs.scale(self)
+                }
+            }
         )*
     };
 }
@@ -5515,7 +5524,7 @@ mod tests {
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
-        let y = 2.0 * (&lhs - rhs.conjugate());
+        let y = (&lhs - rhs.conjugate()) * 2.0;
 
         for i in 0..2 {
             for j in 0..2 {
