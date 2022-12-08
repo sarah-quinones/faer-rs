@@ -5060,6 +5060,66 @@ impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T 
     }
 }
 
+macro_rules! impl_scalar_mul {
+    ($(impl$(<$generic_ty: ident: $bounds: tt>)? Mul<$scalar: ty> for $mat: ty { type Out = $out: ty; })*) => {
+        $(
+            impl$(<$generic_ty>)? Mul<$mat> for $scalar {
+                type Output = Mat<$out>;
+                #[inline]
+                fn mul(self, rhs: $mat) -> Self::Output {
+                    self.scale(rhs)
+                }
+            }
+        )*
+    };
+}
+
+impl_scalar_mul! {
+    impl Mul<f32> for MatRef<'_, f32> { type Out = f32; }
+    impl Mul<f64> for MatRef<'_, f64> { type Out = f64; }
+    impl Mul<f32> for MatRef<'_, c32> { type Out = c32; }
+    impl Mul<f64> for MatRef<'_, c64> { type Out = c64; }
+    impl Mul<c32> for MatRef<'_, c32> { type Out = c32; }
+    impl Mul<c64> for MatRef<'_, c64> { type Out = c64; }
+    impl Mul<f32> for MatRef<'_, ComplexConj<f32>> { type Out = c32; }
+    impl Mul<f64> for MatRef<'_, ComplexConj<f64>> { type Out = c64; }
+    impl Mul<c32> for MatRef<'_, ComplexConj<f32>> { type Out = c32; }
+    impl Mul<c64> for MatRef<'_, ComplexConj<f64>> { type Out = c64; }
+
+    impl Mul<f32> for MatMut<'_, f32> { type Out = f32; }
+    impl Mul<f64> for MatMut<'_, f64> { type Out = f64; }
+    impl Mul<f32> for MatMut<'_, c32> { type Out = c32; }
+    impl Mul<f64> for MatMut<'_, c64> { type Out = c64; }
+    impl Mul<c32> for MatMut<'_, c32> { type Out = c32; }
+    impl Mul<c64> for MatMut<'_, c64> { type Out = c64; }
+    impl Mul<f32> for MatMut<'_, ComplexConj<f32>> { type Out = c32; }
+    impl Mul<f64> for MatMut<'_, ComplexConj<f64>> { type Out = c64; }
+    impl Mul<c32> for MatMut<'_, ComplexConj<f32>> { type Out = c32; }
+    impl Mul<c64> for MatMut<'_, ComplexConj<f64>> { type Out = c64; }
+
+    impl Mul<f32> for Mat<f32> { type Out = f32; }
+    impl Mul<f64> for Mat<f64> { type Out = f64; }
+    impl Mul<f32> for Mat<c32> { type Out = c32; }
+    impl Mul<f64> for Mat<c64> { type Out = c64; }
+    impl Mul<c32> for Mat<c32> { type Out = c32; }
+    impl Mul<c64> for Mat<c64> { type Out = c64; }
+    impl Mul<f32> for Mat<ComplexConj<f32>> { type Out = c32; }
+    impl Mul<f64> for Mat<ComplexConj<f64>> { type Out = c64; }
+    impl Mul<c32> for Mat<ComplexConj<f32>> { type Out = c32; }
+    impl Mul<c64> for Mat<ComplexConj<f64>> { type Out = c64; }
+
+    impl Mul<f32> for &Mat<f32> { type Out = f32; }
+    impl Mul<f64> for &Mat<f64> { type Out = f64; }
+    impl Mul<f32> for &Mat<c32> { type Out = c32; }
+    impl Mul<f64> for &Mat<c64> { type Out = c64; }
+    impl Mul<c32> for &Mat<c32> { type Out = c32; }
+    impl Mul<c64> for &Mat<c64> { type Out = c64; }
+    impl Mul<f32> for &Mat<ComplexConj<f32>> { type Out = c32; }
+    impl Mul<f64> for &Mat<ComplexConj<f64>> { type Out = c64; }
+    impl Mul<c32> for &Mat<ComplexConj<f32>> { type Out = c32; }
+    impl Mul<c64> for &Mat<ComplexConj<f64>> { type Out = c64; }
+}
+
 macro_rules! impl_binop {
     ($(impl<
        $($lt: lifetime,)*
@@ -5455,7 +5515,7 @@ mod tests {
             [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
             [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
         ];
-        let y = 2.0.scale(&lhs - rhs.conjugate());
+        let y = 2.0 * (&lhs - rhs.conjugate());
 
         for i in 0..2 {
             for j in 0..2 {
