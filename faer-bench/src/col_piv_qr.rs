@@ -1,6 +1,7 @@
 use super::timeit;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
+use faer_qr::no_pivoting::compute::recommended_blocksize;
 use rand::random;
 use std::time::Duration;
 
@@ -47,7 +48,8 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 }
             }
             let mut qr = Mat::<f64>::zeros(n, n);
-            let mut householder = Mat::<f64>::zeros(n, 1);
+            let blocksize = recommended_blocksize::<f64>(n, n);
+            let mut householder = Mat::<f64>::zeros(blocksize, n);
             let mut col_transpositions = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
@@ -62,7 +64,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     .for_each(|dst, src| *dst = *src);
                 faer_qr::col_pivoting::compute::qr_in_place(
                     qr.as_mut(),
-                    householder.as_mut().col(0),
+                    householder.as_mut(),
                     &mut col_transpositions,
                     parallelism,
                     stack.rb_mut(),

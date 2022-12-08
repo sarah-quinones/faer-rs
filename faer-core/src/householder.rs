@@ -133,7 +133,6 @@ pub fn apply_householder_on_the_left<T: ComplexField>(
     }
 }
 
-#[doc(hidden)]
 fn div_ceil(a: usize, b: usize) -> usize {
     let (div, rem) = (a / b, a % b);
     if rem == 0 {

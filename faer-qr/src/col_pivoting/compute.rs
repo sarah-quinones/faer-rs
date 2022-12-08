@@ -8,10 +8,13 @@ use num_traits::Zero;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::dot, permutation::swap_cols, ColMut, ColRef, ComplexField, MatMut, Parallelism,
+    householder::upgrade_householder_factor, mul::dot, permutation::swap_cols, ColMut, ColRef,
+    ComplexField, MatMut, Parallelism,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
+
+pub use crate::no_pivoting::compute::recommended_blocksize;
 
 #[inline]
 fn coerce<T: 'static, U: 'static>(t: T) -> U {
@@ -343,7 +346,7 @@ pub fn qr_in_place_req<T: 'static>(
 
 pub fn qr_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
-    householder_coeffs: ColMut<'_, T>,
+    householder_factor: MatMut<'_, T>,
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -377,13 +380,60 @@ pub fn qr_in_place<T: ComplexField>(
         }
     }
 
-    pulp::Arch::new().dispatch(QrInPlaceColMajor {
-        matrix,
+    let mut householder_factor = householder_factor;
+    let householder_coeffs = householder_factor.rb_mut().row(0).transpose();
+
+    let mut matrix = matrix;
+
+    let n_transpositions = pulp::Arch::new().dispatch(QrInPlaceColMajor {
+        matrix: matrix.rb_mut(),
         householder_coeffs,
         col_transpositions,
         parallelism,
         disable_parallelism,
-    })
+    });
+
+    fn div_ceil(a: usize, b: usize) -> usize {
+        let (div, rem) = (a / b, a % b);
+        if rem == 0 {
+            div
+        } else {
+            div + 1
+        }
+    }
+
+    let blocksize = householder_factor.nrows();
+    let size = householder_factor.ncols();
+    let n_blocks = div_ceil(size, blocksize);
+
+    let qr_factors = matrix.rb();
+    let m = qr_factors.nrows();
+
+    let func = |idx: usize| {
+        let j = idx * blocksize;
+        let blocksize = blocksize.min(size - j);
+        let mut householder =
+            unsafe { householder_factor.rb().const_cast() }.submatrix(0, j, blocksize, blocksize);
+
+        for i in 0..blocksize {
+            let coeff = householder[(0, i)];
+            householder[(i, i)] = coeff;
+        }
+
+        let qr = qr_factors.submatrix(j, j, m - j, blocksize);
+
+        upgrade_householder_factor(householder, qr, blocksize, 1, parallelism);
+    };
+
+    match parallelism {
+        Parallelism::None => (0..n_blocks).for_each(func),
+        Parallelism::Rayon(_) => {
+            use rayon::prelude::*;
+            (0..n_blocks).into_par_iter().for_each(func)
+        }
+    }
+
+    n_transpositions
 }
 
 #[cfg(test)]
@@ -393,7 +443,8 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
     use faer_core::{
-        c64, householder::apply_householder_on_the_left, mul::matmul, zip::Diag, Conj, Mat, MatRef,
+        c64, householder::apply_block_householder_sequence_on_the_left, mul::matmul, zip::Diag,
+        Conj, Mat, MatRef,
     };
     use num_traits::One;
     use rand::random;
@@ -408,11 +459,10 @@ mod tests {
 
     fn reconstruct_factors<T: ComplexField>(
         qr_factors: MatRef<'_, T>,
-        householder: ColRef<'_, T>,
+        householder: MatRef<'_, T>,
     ) -> (Mat<T>, Mat<T>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
-        let size = m.min(n);
 
         let mut q = Mat::zeros(m, m);
         let mut r = Mat::zeros(m, n);
@@ -424,18 +474,16 @@ mod tests {
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
-        for k in (0..size).rev() {
-            let tau = householder[k];
-            let essential = qr_factors.col(k).split_at(k + 1).1;
-            apply_householder_on_the_left(
-                essential,
-                tau,
-                Conj::No,
-                q.as_mut().submatrix(k, k, m - k, m - k),
-                Conj::No,
-                placeholder_stack!(),
-            );
-        }
+        apply_block_householder_sequence_on_the_left(
+            qr_factors,
+            householder,
+            Conj::No,
+            q.as_mut(),
+            Conj::No,
+            false,
+            Parallelism::Rayon(0),
+            placeholder_stack!(),
+        );
 
         (q, r)
     }
@@ -447,13 +495,14 @@ mod tests {
                 let mut mat = Mat::<f64>::with_dims(|_, _| random(), m, n);
                 let mat_orig = mat.clone();
                 let size = m.min(n);
-                let mut householder = Mat::zeros(size, 1);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
                 let mut transpositions = vec![0; size];
                 let mut perm = (0..n).collect::<Vec<_>>();
 
                 qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().col(0),
+                    householder.as_mut(),
                     &mut transpositions,
                     parallelism,
                     placeholder_stack!(),
@@ -464,7 +513,7 @@ mod tests {
                     perm.swap(k, transpositions[k]);
                 }
 
-                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
                 let mut qr = Mat::zeros(m, n);
                 matmul(
                     qr.as_mut(),
@@ -494,13 +543,14 @@ mod tests {
                 let mut mat = Mat::<c64>::with_dims(|_, _| c64::new(random(), random()), m, n);
                 let mat_orig = mat.clone();
                 let size = m.min(n);
-                let mut householder = Mat::zeros(size, 1);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
                 let mut transpositions = vec![0; size];
                 let mut perm = (0..n).collect::<Vec<_>>();
 
                 qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().col(0),
+                    householder.as_mut(),
                     &mut transpositions,
                     parallelism,
                     placeholder_stack!(),
@@ -511,7 +561,7 @@ mod tests {
                     perm.swap(k, transpositions[k]);
                 }
 
-                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref().col(0));
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
                 let mut qr = Mat::zeros(m, n);
                 let mut qhq = Mat::zeros(m, m);
                 matmul(
