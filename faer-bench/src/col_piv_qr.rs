@@ -50,10 +50,17 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let mut qr = Mat::<f64>::zeros(n, n);
             let blocksize = recommended_blocksize::<f64>(n, n);
             let mut householder = Mat::<f64>::zeros(blocksize, n);
-            let mut col_transpositions = vec![0; n];
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalMemBuffer::new(
-                faer_qr::col_pivoting::compute::qr_in_place_req::<f64>(n, n, parallelism).unwrap(),
+                faer_qr::col_pivoting::compute::qr_in_place_req::<f64>(
+                    n,
+                    n,
+                    blocksize,
+                    parallelism,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -65,7 +72,8 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                 faer_qr::col_pivoting::compute::qr_in_place(
                     qr.as_mut(),
                     householder.as_mut(),
-                    &mut col_transpositions,
+                    &mut perm,
+                    &mut perm_inv,
                     parallelism,
                     stack.rb_mut(),
                     Default::default(),

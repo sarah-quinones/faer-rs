@@ -70,8 +70,10 @@ pub fn invert_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,
     blocksize: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = qr_nrows;
+    let _ = parallelism;
     temp_mat_req::<T>(blocksize, qr_ncols)
 }
 
@@ -79,10 +81,11 @@ pub fn invert_in_place_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,
     blocksize: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
         temp_mat_req::<T>(qr_nrows, qr_ncols)?,
-        invert_req::<T>(qr_nrows, qr_ncols, blocksize)?,
+        invert_req::<T>(qr_nrows, qr_ncols, blocksize, parallelism)?,
     ])
 }
 
@@ -130,7 +133,7 @@ mod tests {
                 qr.as_mut(),
                 householder_factor.as_mut(),
                 parallelism,
-                make_stack!(qr_in_place_req::<T>(n, n, blocksize).unwrap()),
+                make_stack!(qr_in_place_req::<T>(n, n, blocksize, parallelism).unwrap()),
                 Default::default(),
             );
 
@@ -140,7 +143,7 @@ mod tests {
                 qr.as_ref(),
                 householder_factor.as_ref(),
                 parallelism,
-                make_stack!(invert_req::<T>(n, n, blocksize).unwrap()),
+                make_stack!(invert_req::<T>(n, n, blocksize, parallelism).unwrap()),
             );
 
             let eye = &inv * &mat;

@@ -1,9 +1,10 @@
 //! Permutation matrices.
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use reborrow::*;
 
-use crate::{MatMut, MatRef};
+use crate::{temp_mat_req, temp_mat_uninit, zip, ComplexField, MatMut, MatRef};
 
 /// Swaps the two columns at indices `a` and `b` in the given matrix.
 ///
@@ -334,4 +335,68 @@ pub fn permute_rows<T: Copy>(
             }
         }
     }
+}
+
+/// Computes the size and alignment of required workspace for applying a row permutation to a
+/// matrix in place.
+pub fn permute_rows_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    temp_mat_req::<T>(nrows, ncols)
+}
+
+/// Computes the size and alignment of required workspace for applying a column permutation to a
+/// matrix in place.
+pub fn permute_cols_in_place_req<T: 'static>(
+    nrows: usize,
+    ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    temp_mat_req::<T>(nrows, ncols)
+}
+
+/// Computes a permutation of the rows of the matrix using the given permutation, and
+/// stores the result in the same matrix.
+///
+/// # Panics
+///
+/// - Panics if the size of the permutation doesn't match the number of rows of the matrix.
+#[inline]
+#[track_caller]
+pub fn permute_rows_in_place<T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    perm_indices: PermutationRef<'_>,
+    stack: DynStack<'_>,
+) {
+    let mut matrix = matrix;
+    temp_mat_uninit! {
+        let (mut tmp, _) = unsafe {
+            temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
+        };
+    }
+    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = *src);
+    permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
+}
+
+/// Computes a permutation of the columns of the matrix using the given permutation, and
+/// stores the result in the same matrix.
+///
+/// # Panics
+///
+/// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
+#[inline]
+#[track_caller]
+pub fn permute_cols_in_place<T: ComplexField>(
+    matrix: MatMut<'_, T>,
+    perm_indices: PermutationRef<'_>,
+    stack: DynStack<'_>,
+) {
+    let mut matrix = matrix;
+    temp_mat_uninit! {
+        let (mut tmp, _) = unsafe {
+            temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
+        };
+    }
+    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = *src);
+    permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);
 }

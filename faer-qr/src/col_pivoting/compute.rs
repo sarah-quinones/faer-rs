@@ -8,8 +8,10 @@ use num_traits::Zero;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::upgrade_householder_factor, mul::dot, permutation::swap_cols, ColMut, ColRef,
-    ComplexField, MatMut, Parallelism,
+    householder::upgrade_householder_factor,
+    mul::dot,
+    permutation::{swap_cols, PermutationMut},
+    ColMut, ColRef, ComplexField, MatMut, Parallelism,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
@@ -163,7 +165,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     simd: S,
     mut matrix: MatMut<'_, T>,
     mut householder_coeffs: ColMut<'_, T>,
-    col_transpositions: &mut [usize],
+    col_perm: &mut [usize],
     parallelism: Parallelism,
     disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
@@ -194,7 +196,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     for k in 0..size {
         let mut matrix_right = matrix.rb_mut().submatrix(0, k, m, n - k);
 
-        col_transpositions[k] = k + biggest_col_idx;
+        col_perm.swap(k, k + biggest_col_idx);
         if biggest_col_idx > 0 {
             n_transpositions += 1;
             swap_cols(matrix_right.rb_mut(), 0, biggest_col_idx);
@@ -336,30 +338,43 @@ impl ColPivQrComputeParams {
 pub fn qr_in_place_req<T: 'static>(
     nrows: usize,
     ncols: usize,
+    blocksize: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = nrows;
     let _ = ncols;
     let _ = parallelism;
+    let _ = blocksize;
     Ok(StackReq::default())
 }
 
-pub fn qr_in_place<T: ComplexField>(
+pub fn qr_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_factor: MatMut<'_, T>,
-    col_transpositions: &mut [usize],
+    col_perm: &'out mut [usize],
+    col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: ColPivQrComputeParams,
-) -> usize {
+) -> (usize, PermutationMut<'out>) {
     let _ = &stack;
     let disable_parallelism = params.normalize();
+    let m = matrix.nrows();
+    let n = matrix.ncols();
 
     fancy_assert!(matrix.row_stride() == 1);
+    fancy_assert!(col_perm.len() == n);
+    fancy_assert!(col_perm_inv.len() == n);
+    fancy_assert!(matrix.row_stride() == 1);
+
+    for (j, p) in col_perm.iter_mut().enumerate() {
+        *p = j;
+    }
+
     struct QrInPlaceColMajor<'a, T> {
         matrix: MatMut<'a, T>,
         householder_coeffs: ColMut<'a, T>,
-        col_transpositions: &'a mut [usize],
+        col_perm: &'a mut [usize],
         parallelism: Parallelism,
         disable_parallelism: fn(usize, usize) -> bool,
     }
@@ -373,7 +388,7 @@ pub fn qr_in_place<T: ComplexField>(
                 simd,
                 self.matrix,
                 self.householder_coeffs,
-                self.col_transpositions,
+                self.col_perm,
                 self.parallelism,
                 self.disable_parallelism,
             )
@@ -388,7 +403,7 @@ pub fn qr_in_place<T: ComplexField>(
     let n_transpositions = pulp::Arch::new().dispatch(QrInPlaceColMajor {
         matrix: matrix.rb_mut(),
         householder_coeffs,
-        col_transpositions,
+        col_perm,
         parallelism,
         disable_parallelism,
     });
@@ -407,7 +422,6 @@ pub fn qr_in_place<T: ComplexField>(
     let n_blocks = div_ceil(size, blocksize);
 
     let qr_factors = matrix.rb();
-    let m = qr_factors.nrows();
 
     let func = |idx: usize| {
         let j = idx * blocksize;
@@ -433,7 +447,13 @@ pub fn qr_in_place<T: ComplexField>(
         }
     }
 
-    n_transpositions
+    for (j, &p) in col_perm.iter().enumerate() {
+        col_perm_inv[p] = j;
+    }
+
+    (n_transpositions, unsafe {
+        PermutationMut::new_unchecked(col_perm, col_perm_inv)
+    })
 }
 
 #[cfg(test)]
@@ -497,21 +517,18 @@ mod tests {
                 let size = m.min(n);
                 let blocksize = 8;
                 let mut householder = Mat::zeros(blocksize, size);
-                let mut transpositions = vec![0; size];
-                let mut perm = (0..n).collect::<Vec<_>>();
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
 
                 qr_in_place(
                     mat.as_mut(),
                     householder.as_mut(),
-                    &mut transpositions,
+                    &mut perm,
+                    &mut perm_inv,
                     parallelism,
                     placeholder_stack!(),
                     Default::default(),
                 );
-
-                for k in 0..size {
-                    perm.swap(k, transpositions[k]);
-                }
 
                 let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
                 let mut qr = Mat::zeros(m, n);
@@ -545,21 +562,18 @@ mod tests {
                 let size = m.min(n);
                 let blocksize = 8;
                 let mut householder = Mat::zeros(blocksize, size);
-                let mut transpositions = vec![0; size];
-                let mut perm = (0..n).collect::<Vec<_>>();
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
 
                 qr_in_place(
                     mat.as_mut(),
                     householder.as_mut(),
-                    &mut transpositions,
+                    &mut perm,
+                    &mut perm_inv,
                     parallelism,
                     placeholder_stack!(),
                     Default::default(),
                 );
-
-                for k in 0..size {
-                    perm.swap(k, transpositions[k]);
-                }
 
                 let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
                 let mut qr = Mat::zeros(m, n);

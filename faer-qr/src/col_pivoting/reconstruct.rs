@@ -2,8 +2,9 @@ use assert2::assert as fancy_assert;
 
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::apply_block_householder_sequence_on_the_left, temp_mat_req, temp_mat_uninit, zip,
-    ComplexField, Conj, MatMut, MatRef, Parallelism,
+    householder::apply_block_householder_sequence_on_the_left,
+    permutation::{permute_cols_in_place, permute_cols_in_place_req, PermutationRef},
+    temp_mat_req, temp_mat_uninit, zip, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -12,6 +13,7 @@ pub fn reconstruct<T: ComplexField>(
     dst: MatMut<'_, T>,
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -20,6 +22,7 @@ pub fn reconstruct<T: ComplexField>(
     fancy_assert!(householder_factor.nrows() > 0);
 
     let mut dst = dst;
+    let mut stack = stack;
 
     // copy R
     dst.rb_mut()
@@ -40,14 +43,17 @@ pub fn reconstruct<T: ComplexField>(
         Conj::No,
         false,
         parallelism,
-        stack,
+        stack.rb_mut(),
     );
+
+    permute_cols_in_place(dst, col_perm.inverse(), stack);
 }
 
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     qr_factors: MatMut<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -61,6 +67,7 @@ pub fn reconstruct_in_place<T: ComplexField>(
         dst.rb_mut(),
         qr_factors.rb(),
         householder_factor,
+        col_perm,
         parallelism,
         stack,
     );
@@ -76,7 +83,10 @@ pub fn reconstruct_req<T: 'static>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = qr_nrows;
     let _ = parallelism;
-    temp_mat_req::<T>(blocksize, qr_ncols)
+    StackReq::try_any_of([
+        temp_mat_req::<T>(blocksize, qr_ncols)?,
+        permute_cols_in_place_req::<T>(qr_nrows, qr_ncols)?,
+    ])
 }
 
 pub fn reconstruct_in_place_req<T: 'static>(
@@ -94,7 +104,7 @@ pub fn reconstruct_in_place_req<T: 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
+    use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c64, Mat};
     use rand::prelude::*;
@@ -129,10 +139,14 @@ mod tests {
             let mut householder_factor = Mat::zeros(blocksize, n);
 
             let parallelism = faer_core::Parallelism::Rayon(0);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
 
-            qr_in_place(
+            let (_, perm) = qr_in_place(
                 qr.as_mut(),
                 householder_factor.as_mut(),
+                &mut perm,
+                &mut perm_inv,
                 parallelism,
                 make_stack!(qr_in_place_req::<T>(n, n, blocksize, parallelism).unwrap()),
                 Default::default(),
@@ -143,6 +157,7 @@ mod tests {
                 reconstructed.as_mut(),
                 qr.as_ref(),
                 householder_factor.as_ref(),
+                perm.rb(),
                 parallelism,
                 make_stack!(reconstruct_req::<T>(n, n, blocksize, parallelism).unwrap()),
             );

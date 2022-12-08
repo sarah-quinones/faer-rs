@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use faer_qr::no_pivoting::compute::recommended_blocksize;
 use std::time::Duration;
 
 use dyn_stack::*;
@@ -102,14 +103,17 @@ pub fn qr(c: &mut Criterion) {
 
         c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
-            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
-            let mut transpositions = vec![0; n];
+            let blocksize = recommended_blocksize::<f64>(m, n);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), blocksize, n);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
 
             b.iter(|| {
                 col_pivoting::compute::qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().diagonal(),
-                    &mut transpositions,
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
                     Parallelism::None,
                     DynStack::new(&mut []),
                     Default::default(),
@@ -119,15 +123,18 @@ pub fn qr(c: &mut Criterion) {
 
         c.bench_function(&format!("faer-mt-colqr-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
-            let mut householder = Mat::with_dims(|_, _| random::<f64>(), n, n);
-            let mut transpositions = vec![0; n];
+            let blocksize = recommended_blocksize::<f64>(m, n);
+            let mut householder = Mat::with_dims(|_, _| random::<f64>(), blocksize, n);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
 
             b.iter(|| {
                 col_pivoting::compute::qr_in_place(
                     mat.as_mut(),
-                    householder.as_mut().diagonal(),
-                    &mut transpositions,
-                    Parallelism::Rayon(rayon::current_num_threads()),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::Rayon(0),
                     DynStack::new(&mut []),
                     Default::default(),
                 );

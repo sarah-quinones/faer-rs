@@ -64,7 +64,10 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
             let blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<f64>(n, n);
             let mut householder = Mat::<f64>::zeros(blocksize, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                faer_qr::no_pivoting::compute::qr_in_place_req::<f64>(n, n, blocksize, parallelism)
+                    .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             let mut block = || {

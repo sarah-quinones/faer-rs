@@ -229,7 +229,9 @@ pub fn qr_in_place_req<T: 'static>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
     let _ = nrows;
     temp_mat_req::<T>(blocksize, ncols)
 }
@@ -361,56 +363,58 @@ mod tests {
 
     #[test]
     fn test_blocked() {
-        for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
-            let mat_orig = Mat::with_dims(|_, _| random_value(), m, n);
-            let mut mat = mat_orig.clone();
-            let size = m.min(n);
-            let blocksize = 8;
-            let mut householder = Mat::zeros(blocksize, size);
+        for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+            for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
+                let mat_orig = Mat::with_dims(|_, _| random_value(), m, n);
+                let mut mat = mat_orig.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
 
-            qr_in_place(
-                mat.as_mut(),
-                householder.as_mut(),
-                Parallelism::Rayon(0),
-                make_stack!(qr_in_place_req::<T>(m, n, blocksize).unwrap()),
-                Default::default(),
-            );
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    parallelism,
+                    make_stack!(qr_in_place_req::<T>(m, n, blocksize, parallelism).unwrap()),
+                    Default::default(),
+                );
 
-            let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
-            let mut qhq = Mat::zeros(m, m);
-            let mut reconstructed = Mat::zeros(m, n);
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qhq = Mat::zeros(m, m);
+                let mut reconstructed = Mat::zeros(m, n);
 
-            matmul(
-                reconstructed.as_mut(),
-                Conj::No,
-                q.as_ref(),
-                Conj::No,
-                r.as_ref(),
-                Conj::No,
-                None,
-                T::one(),
-                Parallelism::Rayon(8),
-            );
-            matmul(
-                qhq.as_mut(),
-                Conj::No,
-                q.as_ref().transpose(),
-                Conj::Yes,
-                q.as_ref(),
-                Conj::No,
-                None,
-                T::one(),
-                Parallelism::Rayon(8),
-            );
+                matmul(
+                    reconstructed.as_mut(),
+                    Conj::No,
+                    q.as_ref(),
+                    Conj::No,
+                    r.as_ref(),
+                    Conj::No,
+                    None,
+                    T::one(),
+                    Parallelism::Rayon(8),
+                );
+                matmul(
+                    qhq.as_mut(),
+                    Conj::No,
+                    q.as_ref().transpose(),
+                    Conj::Yes,
+                    q.as_ref(),
+                    Conj::No,
+                    None,
+                    T::one(),
+                    Parallelism::Rayon(8),
+                );
 
-            for i in 0..m {
-                for j in 0..m {
-                    assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                for i in 0..m {
+                    for j in 0..m {
+                        assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                    }
                 }
-            }
-            for i in 0..m {
-                for j in 0..n {
-                    assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                for i in 0..m {
+                    for j in 0..n {
+                        assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                    }
                 }
             }
         }

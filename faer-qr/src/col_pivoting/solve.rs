@@ -1,10 +1,11 @@
-use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::apply_block_householder_sequence_on_the_left, solve, temp_mat_req, ComplexField,
-    Conj, MatMut, MatRef, Parallelism,
+    permutation::{permute_rows, permute_rows_in_place, permute_rows_in_place_req, PermutationRef},
+    ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
+
+use crate::no_pivoting;
 
 #[inline]
 pub fn solve_in_place_req<T: 'static>(
@@ -12,8 +13,10 @@ pub fn solve_in_place_req<T: 'static>(
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = qr_size;
-    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+    StackReq::try_any_of([
+        no_pivoting::solve::solve_in_place_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+    ])
 }
 
 #[inline]
@@ -22,8 +25,10 @@ pub fn solve_transpose_in_place_req<T: 'static>(
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = qr_size;
-    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+    StackReq::try_any_of([
+        no_pivoting::solve::solve_transpose_in_place_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+    ])
 }
 
 #[inline]
@@ -32,8 +37,10 @@ pub fn solve_req<T: 'static>(
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = qr_size;
-    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+    StackReq::try_any_of([
+        no_pivoting::solve::solve_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+    ])
 }
 
 #[inline]
@@ -42,80 +49,57 @@ pub fn solve_transpose_req<T: 'static>(
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = qr_size;
-    temp_mat_req::<T>(qr_blocksize, rhs_ncols)
+    StackReq::try_any_of([
+        no_pivoting::solve::solve_transpose_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+    ])
 }
 
 #[track_caller]
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    // conjᵃ(H₀ × ... × Hₖ₋₁ × R) X = conjᵇ(B)
-    // X = conjᵃ(R)⁻¹ × conjᵃ(Hₖ₋₁) × ... × conjᵃ(H₀) × conjᵇ(B)
-    fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
-    let size = qr_factors.nrows();
-    let blocksize = householder_factor.nrows();
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
-    fancy_assert!(rhs.nrows() == qr_factors.nrows());
-
     let mut rhs = rhs;
     let mut stack = stack;
-    apply_block_householder_sequence_on_the_left(
+    no_pivoting::solve::solve_in_place(
         qr_factors,
         householder_factor,
         conj_lhs,
         rhs.rb_mut(),
         conj_rhs,
-        true,
         parallelism,
         stack.rb_mut(),
     );
-
-    solve::solve_upper_triangular_in_place(qr_factors, conj_lhs, rhs, Conj::No, parallelism);
+    permute_rows_in_place(rhs, col_perm.inverse(), stack);
 }
 
 #[track_caller]
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    // conjᵃ(H₀ × ... × Hₖ₋₁ × R)ᵀ X = conjᵇ(B)
-    // conjᵃ(Rᵀ × Hₖ₋₁ᵀ × ... × H₀ᵀ) X = conjᵇ(B)
-    // X = conj(conjᵃ(H₀)) × ... × conj(conjᵃ(Hₖ₋₁)) × (conjᵃ(R)ᵀ)⁻¹ × conjᵇ(B)
-    fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
-    let size = qr_factors.nrows();
-    let blocksize = householder_factor.nrows();
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
-    fancy_assert!(rhs.nrows() == qr_factors.nrows());
-
     let mut rhs = rhs;
     let mut stack = stack;
-
-    solve::solve_lower_triangular_in_place(
-        qr_factors.transpose(),
+    permute_rows_in_place(rhs.rb_mut(), col_perm, stack.rb_mut());
+    no_pivoting::solve::solve_transpose_in_place(
+        qr_factors,
+        householder_factor,
         conj_lhs,
         rhs.rb_mut(),
         conj_rhs,
-        parallelism,
-    );
-    apply_block_householder_sequence_on_the_left(
-        qr_factors,
-        householder_factor,
-        conj_lhs.compose(Conj::Yes),
-        rhs.rb_mut(),
-        Conj::No,
-        false,
         parallelism,
         stack.rb_mut(),
     );
@@ -126,6 +110,7 @@ pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
     conj_rhs: Conj,
@@ -133,19 +118,18 @@ pub fn solve<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut dst = dst;
-    dst.rb_mut()
-        .cwise()
-        .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
-    solve_in_place(
+    let mut stack = stack;
+    no_pivoting::solve::solve(
+        dst.rb_mut(),
         qr_factors,
         householder_factor,
         conj_lhs,
-        dst,
+        rhs,
         conj_rhs,
         parallelism,
-        stack,
+        stack.rb_mut(),
     );
+    permute_rows_in_place(dst, col_perm.inverse(), stack);
 }
 
 #[track_caller]
@@ -153,6 +137,7 @@ pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,
     qr_factors: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
+    col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
     conj_rhs: Conj,
@@ -160,28 +145,26 @@ pub fn solve_transpose<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut dst = dst;
-    dst.rb_mut()
-        .cwise()
-        .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
-    solve_transpose_in_place(
+    let mut stack = stack;
+    permute_rows(dst.rb_mut(), rhs, col_perm);
+    no_pivoting::solve::solve_transpose_in_place(
         qr_factors,
         householder_factor,
         conj_lhs,
-        dst,
+        dst.rb_mut(),
         conj_rhs,
         parallelism,
-        stack,
+        stack.rb_mut(),
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
+    use assert2::assert as fancy_assert;
     use faer_core::{c32, c64, mul::matmul, Mat};
     use rand::random;
-
-    use crate::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -199,9 +182,14 @@ mod tests {
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
         let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
-        qr_in_place(
+        let mut perm = vec![0; n];
+        let mut perm_inv = vec![0; n];
+
+        let (_, perm) = qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
+            &mut perm,
+            &mut perm_inv,
             Parallelism::None,
             make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
             Default::default(),
@@ -215,6 +203,7 @@ mod tests {
                 solve_in_place(
                     qr,
                     householder.as_ref(),
+                    perm.rb(),
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,
@@ -262,9 +251,14 @@ mod tests {
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
         let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
-        qr_in_place(
+        let mut perm = vec![0; n];
+        let mut perm_inv = vec![0; n];
+
+        let (_, perm) = qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
+            &mut perm,
+            &mut perm_inv,
             Parallelism::None,
             make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
             Default::default(),
@@ -278,6 +272,7 @@ mod tests {
                 solve_transpose_in_place(
                     qr,
                     householder.as_ref(),
+                    perm.rb(),
                     conj_lhs,
                     sol.as_mut(),
                     conj_rhs,
