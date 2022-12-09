@@ -12,8 +12,8 @@
 //! This is equivalent to computing a matrix $X$ that minimizes the value $||AX - B||^2$,
 //! which is given by the solution $$X = (A^H A)^{-1} A^H B.$$
 //!
-//! If we compute the QR decomposition of $A$, such that $A = QR = Q_{\thin} R_{\text{rect}}$, then
-//! we get $$X = R_{\text{rect}}^{-1} Q_{\text{thin}}^H B.$$
+//! If we compute the QR decomposition of $A$, such that $A = QR = Q_{\text{thin}} R_{\text{rect}}$,
+//! then we get $$X = R_{\text{rect}}^{-1} Q_{\text{thin}}^H B.$$
 //!
 //! To translate this to code, we can proceed as follows:
 //!
