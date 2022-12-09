@@ -212,7 +212,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
 ///
 /// The result is stored back in the same matrix.
 ///
-/// The input matrix is interpreted as symmetric and only the lower triangular part is accessed.
+/// The input matrix is interpreted as symmetric and only the lower triangular part is read.
 ///
 /// The matrix $L$ is stored in the strictly lower triangular part of the input matrix, and the
 /// diagonal elements of $D$ are stored on the diagonal.

@@ -7,6 +7,16 @@ use faer_core::{
 };
 use reborrow::*;
 
+/// Computes the reconstructed matrix, given its QR decomposition, and stores the
+/// result in `dst`.
+///
+/// # Panics
+///
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `dst` doesn't have the same shape as `qr_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn reconstruct<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -43,6 +53,15 @@ pub fn reconstruct<T: ComplexField>(
     );
 }
 
+/// Computes the reconstructed matrix, given its QR decomposition, and stores the
+/// result in `qr_factors`.
+///
+/// # Panics
+///
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     qr_factors: MatMut<'_, T>,
@@ -67,6 +86,8 @@ pub fn reconstruct_in_place<T: ComplexField>(
     zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = *src);
 }
 
+/// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
+/// given its QR decomposition.
 pub fn reconstruct_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,
@@ -78,6 +99,8 @@ pub fn reconstruct_req<T: 'static>(
     temp_mat_req::<T>(blocksize, qr_ncols)
 }
 
+/// Computes the size and alignment of required workspace for reconstructing a matrix in place,
+/// given its QR decomposition.
 pub fn reconstruct_in_place_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,

@@ -9,6 +9,18 @@ use faer_core::{
 };
 use reborrow::*;
 
+/// Computes the inverse of a matrix, given its QR decomposition with column pivoting,
+/// and stores the result in `dst`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
+/// - Panics if `dst` doesn't have the same shape as `qr_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -47,6 +59,17 @@ pub fn invert<T: ComplexField>(
     permute_rows_in_place(dst.rb_mut(), col_perm.inverse(), stack)
 }
 
+/// Computes the inverse of a matrix, given its QR decomposition with column pivoting,
+/// and stores the result in `qr_factors`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn invert_in_place<T: ComplexField>(
     qr_factors: MatMut<'_, T>,
@@ -73,6 +96,8 @@ pub fn invert_in_place<T: ComplexField>(
     zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = *src);
 }
 
+/// Computes the size and alignment of required workspace for computing the inverse of a
+/// matrix out of place, given its QR decomposition with column pivoting.
 pub fn invert_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,
@@ -87,6 +112,8 @@ pub fn invert_req<T: 'static>(
     ])
 }
 
+/// Computes the size and alignment of required workspace for computing the inverse of a
+/// matrix in place, given its QR decomposition with column pivoting.
 pub fn invert_in_place_req<T: 'static>(
     qr_nrows: usize,
     qr_ncols: usize,

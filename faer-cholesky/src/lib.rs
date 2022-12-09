@@ -6,7 +6,7 @@ use num_traits::Signed;
 pub mod ldlt_diagonal;
 pub mod llt;
 
-/// Computes a permutation that reduces the chance of numerical errors during the $LDL^\top$
+/// Computes a permutation that reduces the chance of numerical errors during the $LDL^H$
 /// factorization with diagonal $D$, then stores the result in `perm_indices` and
 /// `perm_inv_indices`.
 #[track_caller]

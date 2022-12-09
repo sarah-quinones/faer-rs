@@ -311,6 +311,50 @@ pub fn apply_block_householder_on_the_left_req<T: 'static>(
     temp_mat_req::<T>(blocksize, rhs_ncols)
 }
 
+/// Computes the size and alignment of required workspace for applying the transpose of a block
+/// Householder transformation to a right-hand-side matrix in place.
+pub fn apply_block_householder_transpose_on_the_left_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, rhs_ncols)
+}
+
+/// Computes the size and alignment of required workspace for applying a block Householder
+/// transformation to a left-hand-side matrix in place.
+pub fn apply_block_householder_on_the_right_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    lhs_nrows: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, lhs_nrows)
+}
+
+/// Computes the size and alignment of required workspace for applying the transpose of a block
+/// Householder transformation to a left-hand-side matrix in place.
+pub fn apply_block_householder_transpose_on_the_right_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    lhs_nrows: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, lhs_nrows)
+}
+
+/// Computes the size and alignment of required workspace for applying the transpose of a sequence
+/// of block Householder transformations to a right-hand-side matrix in place.
+pub fn apply_block_householder_sequence_transpose_on_the_left_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    rhs_ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, rhs_ncols)
+}
+
 /// Computes the size and alignment of required workspace for applying a sequence of block
 /// Householder transformations to a right-hand-side matrix in place.
 pub fn apply_block_householder_sequence_on_the_left_req<T: 'static>(
@@ -320,6 +364,28 @@ pub fn apply_block_householder_sequence_on_the_left_req<T: 'static>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
     temp_mat_req::<T>(blocksize, rhs_ncols)
+}
+
+/// Computes the size and alignment of required workspace for applying the transpose of a sequence
+/// of block Householder transformations to a left-hand-side matrix in place.
+pub fn apply_block_householder_sequence_transpose_on_the_right_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    lhs_nrows: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, lhs_nrows)
+}
+
+/// Computes the size and alignment of required workspace for applying a sequence of block
+/// Householder transformations to a left-hand-side matrix in place.
+pub fn apply_block_householder_sequence_on_the_right_req<T: 'static>(
+    householder_basis_nrows: usize,
+    blocksize: usize,
+    lhs_nrows: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = householder_basis_nrows;
+    temp_mat_req::<T>(blocksize, lhs_nrows)
 }
 
 #[track_caller]
@@ -540,6 +606,8 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     let mut stack = stack;
 
     let blocksize = householder_factor.nrows();
+
+    fancy_assert!(blocksize > 0);
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 
@@ -594,6 +662,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left<T: ComplexField>(
     let mut matrix = matrix;
     let mut stack = stack;
     let blocksize = householder_factor.nrows();
+    fancy_assert!(blocksize > 0);
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 

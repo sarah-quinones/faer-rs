@@ -77,10 +77,11 @@ fn qr_in_place_unblocked<T: ComplexField>(
     });
 }
 
+/// The recommended block size to use for a QR decomposition of a matrix with the given shape.
 #[inline]
-pub fn recommended_blocksize<T: ComplexField>(m: usize, n: usize) -> usize {
-    let prod = m * n;
-    let size = m.min(n);
+pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
+    let prod = nrows * ncols;
+    let size = nrows.min(ncols);
 
     (if prod > 8192 * 8192 {
         256
@@ -109,7 +110,11 @@ fn default_disable_blocking(m: usize, n: usize) -> bool {
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct QrComputeParams {
+    /// At which size blocking algorithms should be disabled. `None` to automatically determine
+    /// this threshold.
     pub disable_blocking: Option<fn(nrows: usize, ncols: usize) -> bool>,
+    /// At which size the parallelism should be disabled. `None` to automatically determine this
+    /// threshold.
     pub disable_parallelism: Option<fn(nrows: usize, ncols: usize) -> bool>,
 }
 
@@ -123,7 +128,7 @@ impl QrComputeParams {
     }
 }
 
-pub fn qr_in_place_blocked<T: ComplexField>(
+fn qr_in_place_blocked<T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_factor: MatMut<'_, T>,
     blocksize: usize,
@@ -202,6 +207,22 @@ pub fn qr_in_place_blocked<T: ComplexField>(
     }
 }
 
+/// Computes the QR decomposition of a rectangular matrix $A$, into a unitary matrix $Q$,
+/// represented as a block Householder sequence, and an upper trapezoidal matrix $R$, such that
+/// $$A = QR.$$
+///
+/// The Householder bases of $Q$ are stored in the strictly lower trapezoidal part of `matrix` with
+/// an implicit unit diagonal, and its upper triangular Householder factors are stored in
+/// `householder_factor`, blockwise in chunks of `blocksize×blocksize`.
+///
+/// The block size is chosed as the number of rows of `householder_factor`.
+///
+/// # Panics
+///
+/// - Panics if the number of columns of the householder factor is not equal to the minimum of the
+/// number of rows and the number of columns of the input matrix.
+/// - Panics if the block size is zero.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn qr_in_place<T: ComplexField>(
     matrix: MatMut<'_, T>,
@@ -224,6 +245,8 @@ pub fn qr_in_place<T: ComplexField>(
     );
 }
 
+/// Computes the size and alignment of required workspace for performing a QR
+/// decomposition with no pivoting.
 #[inline]
 pub fn qr_in_place_req<T: 'static>(
     nrows: usize,

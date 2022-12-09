@@ -173,6 +173,7 @@ pub fn solve_transpose_req<T: 'static>(
 /// - Panics if `col_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
@@ -212,6 +213,7 @@ pub fn solve<T: ComplexField>(
 /// - Panics if `row_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `col_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn solve_in_place<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,
@@ -251,6 +253,7 @@ pub fn solve_in_place<T: ComplexField>(
 /// - Panics if `col_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
@@ -290,6 +293,7 @@ pub fn solve_transpose<T: ComplexField>(
 /// - Panics if `row_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `col_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn solve_transpose_in_place<T: ComplexField>(
     lu_factors: MatRef<'_, T>,
     conj_lhs: Conj,

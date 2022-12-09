@@ -190,8 +190,8 @@ fn cholesky_in_place_impl<T: ComplexField>(
 /// $L$ is lower triangular, and
 /// $$LL^H == A.$$
 ///
-/// The result is stored back in the same matrix, or an error is returned if the matrix is not
-/// positive definite.
+/// The result is stored back in the lower half of the same matrix, or an error is returned if the
+/// matrix is not positive definite.
 ///
 /// The input matrix is interpreted as symmetric and only the lower triangular part is read.
 ///

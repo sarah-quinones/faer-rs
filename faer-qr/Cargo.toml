@@ -34,3 +34,6 @@ rayon = "1.6"
 [[bench]]
 name = "bench"
 harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]

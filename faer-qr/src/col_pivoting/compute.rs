@@ -169,8 +169,6 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     parallelism: Parallelism,
     disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
-    fancy_debug_assert!(matrix.row_stride() == 1);
-
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = m.min(n);
@@ -325,6 +323,8 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct ColPivQrComputeParams {
+    /// At which size the parallelism should be disabled. `None` to automatically determine this
+    /// threshold.
     pub disable_parallelism: Option<fn(nrows: usize, ncols: usize) -> bool>,
 }
 
@@ -335,6 +335,8 @@ impl ColPivQrComputeParams {
     }
 }
 
+/// Computes the size and alignment of required workspace for performing a QR decomposition
+/// with column pivoting.
 pub fn qr_in_place_req<T: 'static>(
     nrows: usize,
     ncols: usize,
@@ -348,6 +350,29 @@ pub fn qr_in_place_req<T: 'static>(
     Ok(StackReq::default())
 }
 
+/// Computes the QR decomposition with pivoting of a rectangular matrix $A$, into a unitary matrix
+/// $Q$, represented as a block Householder sequence, and an upper trapezoidal matrix $R$, such
+/// that $$AP^\top = QR.$$
+///
+/// The Householder bases of $Q$ are stored in the strictly lower trapezoidal part of `matrix` with
+/// an implicit unit diagonal, and its upper triangular Householder factors are stored in
+/// `householder_factor`, blockwise in chunks of `blocksize×blocksize`.
+///
+/// The block size is chosed as the number of rows of `householder_factor`.
+///
+/// # Output
+///
+/// - The number of transpositions that constitute the permutation.
+/// - a structure representing the permutation $P$.
+///
+/// # Panics
+///
+/// - Panics if the number of columns of the householder factor is not equal to the minimum of the
+/// number of rows and the number of columns of the input matrix.
+/// - Panics if the block size is zero.
+/// - Panics if the length of `col_perm` and `col_perm_inv` is not equal to the number of columns
+/// of `matrix`.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn qr_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     householder_factor: MatMut<'_, T>,
@@ -362,10 +387,8 @@ pub fn qr_in_place<'out, T: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
 
-    fancy_assert!(matrix.row_stride() == 1);
     fancy_assert!(col_perm.len() == n);
     fancy_assert!(col_perm_inv.len() == n);
-    fancy_assert!(matrix.row_stride() == 1);
 
     for (j, p) in col_perm.iter_mut().enumerate() {
         *p = j;

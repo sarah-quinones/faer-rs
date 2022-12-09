@@ -9,6 +9,8 @@ use faer_core::{
 };
 use reborrow::*;
 
+/// Computes the size and alignment of required workspace for solving a linear system defined by a
+/// matrix in place, given its QR decomposition.
 #[inline]
 pub fn solve_in_place_req<T: 'static>(
     qr_size: usize,
@@ -19,6 +21,8 @@ pub fn solve_in_place_req<T: 'static>(
     temp_mat_req::<T>(qr_blocksize, rhs_ncols)
 }
 
+/// Computes the size and alignment of required workspace for solving a linear system defined by
+/// the transpose of a matrix in place, given its QR decomposition.
 #[inline]
 pub fn solve_transpose_in_place_req<T: 'static>(
     qr_size: usize,
@@ -29,6 +33,8 @@ pub fn solve_transpose_in_place_req<T: 'static>(
     temp_mat_req::<T>(qr_blocksize, rhs_ncols)
 }
 
+/// Computes the size and alignment of required workspace for solving a linear system defined by a
+/// matrix out of place, given its QR decomposition.
 #[inline]
 pub fn solve_req<T: 'static>(
     qr_size: usize,
@@ -39,6 +45,8 @@ pub fn solve_req<T: 'static>(
     temp_mat_req::<T>(qr_blocksize, rhs_ncols)
 }
 
+/// Computes the size and alignment of required workspace for solving a linear system defined by
+/// the transpose of a matrix out of place, given its QR decomposition.
 #[inline]
 pub fn solve_transpose_req<T: 'static>(
     qr_size: usize,
@@ -49,6 +57,23 @@ pub fn solve_transpose_req<T: 'static>(
     temp_mat_req::<T>(qr_blocksize, rhs_ncols)
 }
 
+/// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
+/// the solution of the linear system:
+/// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `rhs`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
@@ -82,6 +107,23 @@ pub fn solve_in_place<T: ComplexField>(
     solve::solve_upper_triangular_in_place(qr_factors, conj_lhs, rhs, Conj::No, parallelism);
 }
 
+/// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
+/// the solution of the linear system:
+/// $$\text{Op}_A(A)^\top X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `rhs`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
@@ -122,6 +164,24 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     );
 }
 
+/// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
+/// the solution of the linear system:
+/// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `dst`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` and `dst` don't have the same shape.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -149,6 +209,24 @@ pub fn solve<T: ComplexField>(
     );
 }
 
+/// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
+/// the solution of the linear system:
+/// $$\text{Op}_A(A)^\top X = \text{Op}_B(B).$$
+///
+/// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
+/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
+///
+/// The solution of the linear system is stored in `dst`.
+///
+/// # Panics
+///
+/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
+/// number of rows and the number of columns of `qr_factors`.
+/// - Panics if the block size is zero.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` and `dst` don't have the same shape.
+/// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
 pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,

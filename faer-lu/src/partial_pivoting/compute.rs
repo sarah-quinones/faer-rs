@@ -329,8 +329,9 @@ pub fn lu_in_place_req<T: 'static>(
 ///
 /// # Panics
 ///
-/// Panics if the length of the permutation slices is not equal to the number of rows of the
+/// - Panics if the length of the permutation slices is not equal to the number of rows of the
 /// matrix, or if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient.
 pub fn lu_in_place<'out, T: ComplexField>(
     matrix: MatMut<'_, T>,
     perm: &'out mut [usize],
