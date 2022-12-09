@@ -2,7 +2,8 @@ use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
-        apply_block_householder_on_the_left, make_householder_in_place, upgrade_householder_factor,
+        apply_block_householder_transpose_on_the_left, make_householder_in_place,
+        upgrade_householder_factor,
     },
     mul::dot,
     temp_mat_req, ColMut, ComplexField, Conj, MatMut, Parallelism,
@@ -187,13 +188,12 @@ pub fn qr_in_place_blocked<T: ComplexField>(
             parallelism,
         );
 
-        apply_block_householder_on_the_left(
+        apply_block_householder_transpose_on_the_left(
             current_block.rb(),
             householder_factor.rb(),
-            Conj::No,
+            Conj::Yes,
             trailing_cols.rb_mut(),
             Conj::No,
-            true,
             parallelism,
             stack.rb_mut(),
         );
@@ -299,7 +299,6 @@ mod tests {
             Conj::No,
             q.as_mut(),
             Conj::No,
-            false,
             Parallelism::Rayon(0),
             placeholder_stack!(),
         );

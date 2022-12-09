@@ -500,7 +500,6 @@ mod tests {
             Conj::No,
             q.as_mut(),
             Conj::No,
-            false,
             Parallelism::Rayon(0),
             placeholder_stack!(),
         );

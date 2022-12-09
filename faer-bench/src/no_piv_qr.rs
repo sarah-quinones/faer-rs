@@ -1,5 +1,5 @@
 use super::timeit;
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut, StackReq};
+use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::QR;
 use rand::random;

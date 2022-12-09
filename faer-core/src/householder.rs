@@ -17,8 +17,16 @@
 //! The matrix $V = [v_0\ v_1\ \dots\ v_{b-1}]$ is thus a lower trapezoidal matrix with unit
 //! diagonal. We call it the Householder basis.
 //!
-//! There exists a unique matrix $T$, that we call the Householder factor, such that
-//! $$H_0 \times \dots \times H_{b-1} = I - VT^{-1}V^H.$$
+//! There exists a unique upper triangular matrix $T$, that we call the Householder factor, such
+//! that $$H_0 \times \dots \times H_{b-1} = I - VT^{-1}V^H.$$
+//!
+//! A block Householder sequence is a sequence of such transformations, composed of two matrices:
+//! - a lower trapezoidal matrix with unit diagonal, which is the horizontal concatenation of the
+//! bases of each block Householder transformation,
+//! - a horizontal concatenation of the Householder factors.
+//!
+//! Examples on how to create and manipulate block Householder sequences are provided in the
+//! documentation of the QR module.
 
 use crate::{
     join_raw,
@@ -314,14 +322,8 @@ pub fn apply_block_householder_sequence_on_the_left_req<T: 'static>(
     temp_mat_req::<T>(blocksize, rhs_ncols)
 }
 
-/// If forward is `false`, this function computes the matrix product of the block Householder
-/// transformation $H_0\times\dots\times H_{b-1} = I - VT^{-1}V^H$, with $V$ being
-/// `householder_basis` and $T$ being `householder_factor`, multiplied by `matrix`.  
-/// If forward is `true`, this function instead computes the matrix product of the block Householder
-/// transformation $H_{b-1} \times \dots \times H_0 = I - VT^{-H}V^H$, multiplied by `matrix`.  
-/// Either operand may be conjugated depending on its corresponding `conj_*` parameter.
 #[track_caller]
-pub fn apply_block_householder_on_the_left<T: ComplexField>(
+fn apply_block_householder_on_the_left_generic<T: ComplexField>(
     householder_basis: MatRef<'_, T>,
     householder_factor: MatRef<'_, T>,
     conj_lhs: Conj,
@@ -427,22 +429,103 @@ pub fn apply_block_householder_on_the_left<T: ComplexField>(
     );
 }
 
-/// Applies a sequence of block Householder transformations given by `householder_basis` and
-/// `householder_factor`.  
-/// Let `blocksize` and `size` be respectively the number of rows and columns of
-/// `householder_factor`. The i-th block Householder transformation is defined by the the submatrix
-/// of `householder_basis` starting at index `(i * blocksize, i * blocksize)` and spanning
-/// all the remaining rows, and `min(blocksize, size - i * blocksize)` columns, as well as the
-/// submatrix of `householder_factor` starting at index `(0, i * blocksize)`, and spanning
-/// `min(blocksize, size - i * blocksize)` rows and columns.
-///
-/// This i-th block Householder transformation is applied to the bottom rows of `matrix`, starting
-/// at row `i * blocksize`.
-///
-/// If `forward` is `false`, then the transformations are applied last to first, each
-/// in backward order, i.e., $H_0\times\dots\times H_{n-1}$.  
-/// If `forward` is `true`, then the transformations are applied first to last, each
-/// in forward order, i.e., $H_{n-1}^H\times\dots\times H_{0}^H$.
+/// Computes the product of the matrix, multiplied by the given block Householder transformation,
+/// and stores the result in `matrix`.
+#[track_caller]
+pub fn apply_block_householder_on_the_right<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_rhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_lhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_transpose_on_the_left(
+        householder_basis,
+        householder_factor,
+        conj_rhs,
+        matrix.transpose(),
+        conj_lhs,
+        parallelism,
+        stack,
+    )
+}
+
+/// Computes the product of the matrix, multiplied by the transpose of the given block Householder
+/// transformation, and stores the result in `matrix`.
+#[track_caller]
+pub fn apply_block_householder_transpose_on_the_right<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_rhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_lhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_on_the_right(
+        householder_basis,
+        householder_factor,
+        conj_rhs,
+        matrix.transpose(),
+        conj_lhs,
+        parallelism,
+        stack,
+    )
+}
+
+/// Computes the product of the given block Householder transformation, multiplied by `matrix`, and
+/// stores the result in `matrix`.
+#[track_caller]
+pub fn apply_block_householder_on_the_left<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_lhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_on_the_left_generic(
+        householder_basis,
+        householder_factor,
+        conj_lhs,
+        matrix,
+        conj_rhs,
+        false,
+        parallelism,
+        stack,
+    )
+}
+
+/// Computes the product of the transpose of the given block Householder transformation, multiplied
+/// by `matrix`, and stores the result in `matrix`.
+#[track_caller]
+pub fn apply_block_householder_transpose_on_the_left<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_lhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_on_the_left_generic(
+        householder_basis,
+        householder_factor,
+        conj_lhs.compose(Conj::Yes),
+        matrix,
+        conj_rhs,
+        true,
+        parallelism,
+        stack,
+    )
+}
+
+/// Computes the product of a sequence of block Householder transformations given by
+/// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
+/// `matrix`.
 #[track_caller]
 pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     householder_basis: MatRef<'_, T>,
@@ -450,11 +533,12 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
     conj_lhs: Conj,
     matrix: MatMut<'_, T>,
     conj_rhs: Conj,
-    forward: bool,
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
+    let mut stack = stack;
+
     let blocksize = householder_factor.nrows();
     let m = householder_basis.nrows();
     let k = matrix.ncols();
@@ -467,53 +551,124 @@ pub fn apply_block_householder_sequence_on_the_left<T: ComplexField>(
         return;
     }
 
-    if forward {
-        let mut j = 0;
-        while j < size {
-            let bs = blocksize.min(size - j);
-            let essentials = householder_basis.submatrix(j, j, m - j, bs);
-            let householder = householder_factor.submatrix(0, j, bs, bs);
-
-            apply_block_householder_on_the_left(
-                essentials,
-                householder,
-                conj_lhs,
-                matrix.rb_mut().submatrix(j, 0, m - j, k),
-                conj_mat,
-                forward,
-                parallelism,
-                stack.rb_mut(),
-            );
-
-            conj_mat = Conj::No;
-            j += bs;
-        }
-    } else {
-        let mut j = size;
-        let mut bs = size % blocksize;
-        if bs == 0 {
-            bs = blocksize
-        }
-
-        while j > 0 {
-            j -= bs;
-
-            let essentials = householder_basis.submatrix(j, j, m - j, bs);
-            let householder = householder_factor.submatrix(0, j, bs, bs);
-
-            apply_block_householder_on_the_left(
-                essentials,
-                householder,
-                conj_lhs,
-                matrix.rb_mut().submatrix(j, 0, m - j, k),
-                conj_mat,
-                forward,
-                parallelism,
-                stack.rb_mut(),
-            );
-
-            conj_mat = Conj::No;
-            bs = blocksize;
-        }
+    let mut j = size;
+    let mut bs = size % blocksize;
+    if bs == 0 {
+        bs = blocksize
     }
+
+    while j > 0 {
+        j -= bs;
+
+        let essentials = householder_basis.submatrix(j, j, m - j, bs);
+        let householder = householder_factor.submatrix(0, j, bs, bs);
+
+        apply_block_householder_on_the_left(
+            essentials,
+            householder,
+            conj_lhs,
+            matrix.rb_mut().submatrix(j, 0, m - j, k),
+            conj_mat,
+            parallelism,
+            stack.rb_mut(),
+        );
+
+        conj_mat = Conj::No;
+        bs = blocksize;
+    }
+}
+
+/// Computes the product of the transpose of a sequence block Householder transformations given by
+/// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
+/// `matrix`.
+#[track_caller]
+pub fn apply_block_householder_sequence_transpose_on_the_left<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_lhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_rhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let mut matrix = matrix;
+    let mut stack = stack;
+    let blocksize = householder_factor.nrows();
+    let m = householder_basis.nrows();
+    let k = matrix.ncols();
+
+    let size = householder_factor.ncols();
+
+    let mut conj_mat = conj_rhs;
+    if size == 0 && conj_mat == Conj::Yes {
+        matrix.cwise().for_each(|e| *e = (*e).conj());
+        return;
+    }
+
+    let mut j = 0;
+    while j < size {
+        let bs = blocksize.min(size - j);
+        let essentials = householder_basis.submatrix(j, j, m - j, bs);
+        let householder = householder_factor.submatrix(0, j, bs, bs);
+
+        apply_block_householder_transpose_on_the_left(
+            essentials,
+            householder,
+            conj_lhs,
+            matrix.rb_mut().submatrix(j, 0, m - j, k),
+            conj_mat,
+            parallelism,
+            stack.rb_mut(),
+        );
+
+        conj_mat = Conj::No;
+        j += bs;
+    }
+}
+
+/// Computes the product of `matrix`, multiplied by a sequence of block Householder transformations
+/// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
+#[track_caller]
+pub fn apply_block_householder_sequence_on_the_right<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_rhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_lhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_sequence_transpose_on_the_left(
+        householder_basis,
+        householder_factor,
+        conj_rhs,
+        matrix.transpose(),
+        conj_lhs,
+        parallelism,
+        stack,
+    )
+}
+
+/// Computes the product of `matrix`, multiplied by the transpose of a sequence of block Householder
+/// transformations given by `householder_basis` and `householder_factor`, and stores the result in
+/// `matrix`.
+#[track_caller]
+pub fn apply_block_householder_sequence_transpose_on_the_right<T: ComplexField>(
+    householder_basis: MatRef<'_, T>,
+    householder_factor: MatRef<'_, T>,
+    conj_rhs: Conj,
+    matrix: MatMut<'_, T>,
+    conj_lhs: Conj,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    apply_block_householder_sequence_on_the_left(
+        householder_basis,
+        householder_factor,
+        conj_rhs,
+        matrix.transpose(),
+        conj_lhs,
+        parallelism,
+        stack,
+    )
 }

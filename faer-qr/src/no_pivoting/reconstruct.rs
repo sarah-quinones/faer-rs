@@ -38,7 +38,6 @@ pub fn reconstruct<T: ComplexField>(
         Conj::No,
         dst.rb_mut(),
         Conj::No,
-        false,
         parallelism,
         stack,
     );
