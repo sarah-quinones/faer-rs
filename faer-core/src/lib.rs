@@ -89,7 +89,7 @@ unsafe impl<T: RealField> SameLayoutAs<Complex<T>> for ComplexConj<T> {}
 unsafe impl<T: RealField> SameLayoutAs<ComplexConj<T>> for Complex<T> {}
 
 pub trait Conjugate: Copy + 'static {
-    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self>;
+    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self, Num = Self::Num>;
 
     const IS_CONJ: bool;
     type Num: SameLayoutAs<Self> + ComplexField;
@@ -113,7 +113,15 @@ pub trait Scale<Rhs> {
 /// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
 /// future version of this library.
 pub trait ComplexField:
-    Copy + Num + Neg<Output = Self> + Inv<Output = Self> + Conjugate + Send + Sync + Debug + 'static
+    Copy
+    + Num
+    + Neg<Output = Self>
+    + Inv<Output = Self>
+    + Conjugate<Num = Self>
+    + Send
+    + Sync
+    + Debug
+    + 'static
 {
     type Real: RealField;
 
