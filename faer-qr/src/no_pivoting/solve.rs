@@ -2,8 +2,8 @@ use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
-        apply_block_householder_sequence_on_the_left,
-        apply_block_householder_sequence_transpose_on_the_left,
+        apply_block_householder_sequence_on_the_left_in_place,
+        apply_block_householder_sequence_transpose_on_the_left_in_place,
     },
     solve, temp_mat_req, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
@@ -94,7 +94,7 @@ pub fn solve_in_place<T: ComplexField>(
 
     let mut rhs = rhs;
     let mut stack = stack;
-    apply_block_householder_sequence_transpose_on_the_left(
+    apply_block_householder_sequence_transpose_on_the_left_in_place(
         qr_factors,
         householder_factor,
         conj_lhs.compose(Conj::Yes),
@@ -153,7 +153,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
         conj_rhs,
         parallelism,
     );
-    apply_block_householder_sequence_on_the_left(
+    apply_block_householder_sequence_on_the_left_in_place(
         qr_factors,
         householder_factor,
         conj_lhs.compose(Conj::Yes),

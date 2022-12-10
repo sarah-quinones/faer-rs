@@ -2,7 +2,7 @@ use assert2::assert as fancy_assert;
 
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::apply_block_householder_sequence_transpose_on_the_right,
+    householder::apply_block_householder_sequence_transpose_on_the_right_in_place,
     inverse::invert_upper_triangular,
     permutation::{permute_cols_in_place_req, permute_rows_in_place, PermutationRef},
     temp_mat_req, temp_mat_uninit, zip, ComplexField, Conj, MatMut, MatRef, Parallelism,
@@ -46,7 +46,7 @@ pub fn invert<T: ComplexField>(
         .cwise()
         .for_each_triangular_lower(faer_core::zip::Diag::Skip, |dst| *dst = T::zero());
 
-    apply_block_householder_sequence_transpose_on_the_right(
+    apply_block_householder_sequence_transpose_on_the_right_in_place(
         qr_factors,
         householder_factor,
         Conj::Yes,

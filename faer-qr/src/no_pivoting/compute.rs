@@ -2,7 +2,7 @@ use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
-        apply_block_householder_transpose_on_the_left, make_householder_in_place,
+        apply_block_householder_transpose_on_the_left_in_place, make_householder_in_place,
         upgrade_householder_factor,
     },
     mul::dot,
@@ -193,7 +193,7 @@ fn qr_in_place_blocked<T: ComplexField>(
             parallelism,
         );
 
-        apply_block_householder_transpose_on_the_left(
+        apply_block_householder_transpose_on_the_left_in_place(
             current_block.rb(),
             householder_factor.rb(),
             Conj::Yes,
@@ -261,7 +261,9 @@ pub fn qr_in_place_req<T: 'static>(
 
 #[cfg(test)]
 mod tests {
-    use faer_core::{householder::apply_block_householder_sequence_on_the_left, Conj, Parallelism};
+    use faer_core::{
+        householder::apply_block_householder_sequence_on_the_left_in_place, Conj, Parallelism,
+    };
     use num_traits::One;
     use std::cell::RefCell;
 
@@ -316,7 +318,7 @@ mod tests {
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
-        apply_block_householder_sequence_on_the_left(
+        apply_block_householder_sequence_on_the_left_in_place(
             qr_factors,
             householder,
             Conj::No,

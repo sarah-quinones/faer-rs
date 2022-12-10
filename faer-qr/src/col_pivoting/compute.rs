@@ -486,8 +486,8 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
     use faer_core::{
-        c64, householder::apply_block_householder_sequence_on_the_left, mul::matmul, zip::Diag,
-        Conj, Mat, MatRef,
+        c64, householder::apply_block_householder_sequence_on_the_left_in_place, mul::matmul,
+        zip::Diag, Conj, Mat, MatRef,
     };
     use num_traits::One;
     use rand::random;
@@ -517,7 +517,7 @@ mod tests {
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 
-        apply_block_householder_sequence_on_the_left(
+        apply_block_householder_sequence_on_the_left_in_place(
             qr_factors,
             householder,
             Conj::No,

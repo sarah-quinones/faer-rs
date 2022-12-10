@@ -20,8 +20,7 @@
 //! ```
 //! use assert_approx_eq::assert_approx_eq;
 //! use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
-//! use faer_core::{householder, mat, solve, Conj, Mat, Parallelism};
-//! use faer_qr::no_pivoting::compute;
+//! use faer_core::{mat, solve, Conj, Mat, Parallelism};
 //! use reborrow::*;
 //!
 //! // we start by defining matrices A and B that define our least-squares problem.
@@ -60,26 +59,32 @@
 //! let rank = a.nrows().min(a.ncols());
 //!
 //! // we choose the recommended block size for the householder factors of our problem.
-//! let blocksize = compute::recommended_blocksize::<f64>(a.nrows(), a.ncols());
+//! let blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<f64>(a.nrows(), a.ncols());
 //!
 //! // we allocate the memory for the operations that we perform
-//! let mut mem = GlobalMemBuffer::new(StackReq::any_of([
-//!     compute::qr_in_place_req::<f64>(a.nrows(), a.ncols(), blocksize, Parallelism::None)
-//!         .unwrap(),
-//!     householder::apply_block_householder_sequence_transpose_on_the_left_req::<f64>(
-//!         a.nrows(),
-//!         blocksize,
-//!         b.ncols(),
-//!     )
-//!     .unwrap(),
-//! ]));
+//! let mut mem =
+//!     GlobalMemBuffer::new(StackReq::any_of(
+//!         [
+//!             faer_qr::no_pivoting::compute::qr_in_place_req::<f64>(
+//!                 a.nrows(),
+//!                 a.ncols(),
+//!                 blocksize,
+//!                 Parallelism::None,
+//!             )
+//!             .unwrap(),
+//!             faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
+//!                 f64,
+//!             >(a.nrows(), blocksize, b.ncols())
+//!             .unwrap(),
+//!         ],
+//!     ));
 //! let mut stack = DynStack::new(&mut mem);
 //!
 //! let mut qr = a.clone();
-//! let mut householder = Mat::zeros(blocksize, rank);
-//! compute::qr_in_place(
+//! let mut h_factor = Mat::zeros(blocksize, rank);
+//! faer_qr::no_pivoting::compute::qr_in_place(
 //!     qr.as_mut(),
-//!     householder.as_mut(),
+//!     h_factor.as_mut(),
 //!     Parallelism::None,
 //!     stack.rb_mut(),
 //!     Default::default(),
@@ -91,9 +96,9 @@
 //! let mut solution = b.clone();
 //!
 //! // compute Q^H×B
-//! householder::apply_block_householder_sequence_transpose_on_the_left(
+//! faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place(
 //!     qr.as_ref(),
-//!     householder.as_ref(),
+//!     h_factor.as_ref(),
 //!     Conj::Yes,
 //!     solution.as_mut(),
 //!     Conj::No,
@@ -172,23 +177,22 @@ mod tests {
         let blocksize = compute::recommended_blocksize::<f64>(a.nrows(), a.ncols());
 
         // we allocate the memory for the operations that we perform
-        let mut mem = GlobalMemBuffer::new(StackReq::any_of([
-            compute::qr_in_place_req::<f64>(a.nrows(), a.ncols(), blocksize, Parallelism::None)
+        let mut mem =
+            GlobalMemBuffer::new(StackReq::any_of([
+                compute::qr_in_place_req::<f64>(a.nrows(), a.ncols(), blocksize, Parallelism::None)
+                    .unwrap(),
+                householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
+                    f64,
+                >(a.nrows(), blocksize, b.ncols())
                 .unwrap(),
-            householder::apply_block_householder_sequence_transpose_on_the_left_req::<f64>(
-                a.nrows(),
-                blocksize,
-                b.ncols(),
-            )
-            .unwrap(),
-        ]));
+            ]));
         let mut stack = DynStack::new(&mut mem);
 
         let mut qr = a.clone();
-        let mut householder = Mat::zeros(blocksize, rank);
+        let mut h_factor = Mat::zeros(blocksize, rank);
         compute::qr_in_place(
             qr.as_mut(),
-            householder.as_mut(),
+            h_factor.as_mut(),
             Parallelism::None,
             stack.rb_mut(),
             Default::default(),
@@ -200,9 +204,9 @@ mod tests {
         let mut solution = b.clone();
 
         // compute Q^H×B
-        householder::apply_block_householder_sequence_transpose_on_the_left(
+        householder::apply_block_householder_sequence_transpose_on_the_left_in_place(
             qr.as_ref(),
-            householder.as_ref(),
+            h_factor.as_ref(),
             Conj::Yes,
             solution.as_mut(),
             Conj::No,
