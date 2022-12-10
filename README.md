@@ -3,7 +3,7 @@
 `faer` is a collection of crates that implement low level linear algebra routines in pure Rust.
 The aim is to eventually provide a fully featured library for linear algebra with focus on portability, correctness, and performance.
 
-See the Wiki and the `docs.rs` documentation for code examples and usage instructions.
+See the [official website](https://faer-rs.github.io) and the `docs.rs` documentation for code examples and usage instructions.
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
 
@@ -28,7 +28,10 @@ The Cholesky module implements the LLT and LDLT matrix decompositions. These all
 
 The LU module implements the LU factorization with row pivoting, as well as the version with full pivoting.
 
-## faer-qr (WIP)
+## faer-qr
+
+[![Documentation](https://docs.rs/faer-qr/badge.svg)](https://docs.rs/faer-qr)
+[![Crate](https://img.shields.io/crates/v/faer-qr.svg)](https://crates.io/crates/faer-qr)
 
 The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
 
