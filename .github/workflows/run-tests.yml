@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-        # change to stable once #![feature(...)] is brought into stable rust
+          # change to stable once #![feature(...)] is brought into stable rust
           - nightly
         os:
           - ubuntu-latest
@@ -25,20 +25,19 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           components: llvm-tools-preview
-        
+
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Install latest nextest release
+
+      - name: Install latest nextest
         uses: taiki-e/install-action@nextest
-        
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Collect coverage data
-        run: cargo llvm-cov nextest --lcov --output-path lcov.info --release --workspace --exclude faer-bench
-        
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info --workspace --exclude faer-bench
+
       - name: Upload coverage data to codecov
         uses: codecov/codecov-action@v3
         with:
           files: lcov.info
-      
