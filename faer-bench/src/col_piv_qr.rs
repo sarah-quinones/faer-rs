@@ -59,6 +59,7 @@ pub fn faer(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
                     n,
                     blocksize,
                     parallelism,
+                    Default::default(),
                 )
                 .unwrap(),
             );

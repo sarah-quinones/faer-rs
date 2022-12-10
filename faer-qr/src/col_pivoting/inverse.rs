@@ -174,7 +174,9 @@ mod tests {
                 &mut perm,
                 &mut perm_inv,
                 parallelism,
-                make_stack!(qr_in_place_req::<T>(n, n, blocksize, parallelism).unwrap()),
+                make_stack!(
+                    qr_in_place_req::<T>(n, n, blocksize, parallelism, Default::default()).unwrap()
+                ),
                 Default::default(),
             );
 

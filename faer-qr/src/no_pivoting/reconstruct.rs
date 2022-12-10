@@ -156,7 +156,9 @@ mod tests {
                 qr.as_mut(),
                 householder_factor.as_mut(),
                 parallelism,
-                make_stack!(qr_in_place_req::<T>(n, n, blocksize, parallelism).unwrap()),
+                make_stack!(
+                    qr_in_place_req::<T>(n, n, blocksize, parallelism, Default::default()).unwrap()
+                ),
                 Default::default(),
             );
 

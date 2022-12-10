@@ -70,6 +70,7 @@
 //!                 a.ncols(),
 //!                 blocksize,
 //!                 Parallelism::None,
+//!                 Default::default(),
 //!             )
 //!             .unwrap(),
 //!             faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
@@ -179,9 +180,15 @@ mod tests {
         // we allocate the memory for the operations that we perform
         let mut mem =
             GlobalMemBuffer::new(StackReq::any_of([
-                compute::qr_in_place_req::<f64>(a.nrows(), a.ncols(), blocksize, Parallelism::None)
-                    .unwrap(),
-                householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
+                compute::qr_in_place_req::<f64>(
+                    a.nrows(),
+                    a.ncols(),
+                    blocksize,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+                faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
                     f64,
                 >(a.nrows(), blocksize, b.ncols())
                 .unwrap(),

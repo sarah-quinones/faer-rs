@@ -253,9 +253,11 @@ pub fn qr_in_place_req<T: 'static>(
     ncols: usize,
     blocksize: usize,
     parallelism: Parallelism,
+    params: QrComputeParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     let _ = nrows;
+    let _ = &params;
     temp_mat_req::<T>(blocksize, ncols)
 }
 
@@ -399,7 +401,14 @@ mod tests {
                     mat.as_mut(),
                     householder.as_mut(),
                     parallelism,
-                    make_stack!(qr_in_place_req::<T>(m, n, blocksize, parallelism).unwrap()),
+                    make_stack!(qr_in_place_req::<T>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default(),
+                    )
+                    .unwrap()),
                     Default::default(),
                 );
 

@@ -282,7 +282,14 @@ mod tests {
             qr.as_mut(),
             householder.as_mut(),
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
+            make_stack!(qr_in_place_req::<T>(
+                n,
+                n,
+                blocksize,
+                Parallelism::None,
+                Default::default(),
+            )
+            .unwrap()),
             Default::default(),
         );
 
@@ -345,7 +352,14 @@ mod tests {
             qr.as_mut(),
             householder.as_mut(),
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
+            make_stack!(qr_in_place_req::<T>(
+                n,
+                n,
+                blocksize,
+                Parallelism::None,
+                Default::default(),
+            )
+            .unwrap()),
             Default::default(),
         );
 

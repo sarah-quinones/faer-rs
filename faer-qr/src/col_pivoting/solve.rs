@@ -273,7 +273,14 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
+            make_stack!(qr_in_place_req::<T>(
+                n,
+                n,
+                blocksize,
+                Parallelism::None,
+                Default::default(),
+            )
+            .unwrap()),
             Default::default(),
         );
 
@@ -342,7 +349,14 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(n, n, blocksize, Parallelism::None).unwrap()),
+            make_stack!(qr_in_place_req::<T>(
+                n,
+                n,
+                blocksize,
+                Parallelism::None,
+                Default::default(),
+            )
+            .unwrap()),
             Default::default(),
         );
 

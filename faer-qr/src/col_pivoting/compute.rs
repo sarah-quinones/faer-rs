@@ -342,11 +342,13 @@ pub fn qr_in_place_req<T: 'static>(
     ncols: usize,
     blocksize: usize,
     parallelism: Parallelism,
+    params: ColPivQrComputeParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = nrows;
     let _ = ncols;
     let _ = parallelism;
     let _ = blocksize;
+    let _ = &params;
     Ok(StackReq::default())
 }
 
