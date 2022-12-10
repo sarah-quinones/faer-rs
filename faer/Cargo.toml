@@ -9,10 +9,10 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.3", default-features = false, path = "../faer-core" }
-faer-lu = { version = "0.3", default-features = false, path = "../faer-lu" }
-faer-cholesky = { version = "0.3", default-features = false, path = "../faer-cholesky" }
-faer-qr = { version = "0.0", default-features = false, path = "../faer-qr" }
+faer-core = { version = "0.4", default-features = false, path = "../faer-core" }
+faer-lu = { version = "0.4", default-features = false, path = "../faer-lu" }
+faer-cholesky = { version = "0.4", default-features = false, path = "../faer-cholesky" }
+faer-qr = { version = "0.4", default-features = false, path = "../faer-qr" }
 pulp = { version = "0.10", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.8"
