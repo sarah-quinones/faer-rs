@@ -4,6 +4,7 @@ members = [
   "faer-cholesky",
   "faer-lu",
   "faer-qr",
+  "faer-svd",
   "faer",
   "faer-bench",
 ]
