@@ -210,7 +210,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         let (mut first_head, mut first_tail) = first_col.split_at(1);
         let tail_squared_norm = norm2(simd, first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place(
-            first_tail.rb_mut(),
+            Some(first_tail.rb_mut()),
             first_head[0],
             tail_squared_norm,
         );
