@@ -47,7 +47,7 @@ fn qr_in_place_unblocked<T: ComplexField>(
                 }
 
                 let (tau, beta) = make_householder_in_place(
-                    first_col_tail.rb_mut(),
+                    Some(first_col_tail.rb_mut()),
                     *first_col_head.rb().get(0),
                     tail_squared_norm,
                 );

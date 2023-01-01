@@ -170,6 +170,7 @@ impl<{generics_decl}> ZipMat<({generics_use},)> {{
     }}
 
     #[inline]
+    #[track_caller]
     pub fn zip<M{count}: for<'short> CwiseMat<'short>>(self, last: M{count}) -> ZipMat<({generics_use}, M{count})> {{
         let this = self;
         fancy_assert!((last.nrows(), last.ncols()) == (this.tuple.0.nrows(), this.tuple.0.ncols()));
@@ -207,6 +208,7 @@ impl<{generics_col_decl}> ZipCol<({generics_use},)> {{
     }}
 
     #[inline]
+    #[track_caller]
     pub fn zip<M{count}: for<'short> CwiseCol<'short>>(self, last: M{count}) -> ZipCol<({generics_use}, M{count})> {{
         let this = self;
         fancy_assert!(last.nrows() == this.tuple.0.nrows());
@@ -244,6 +246,7 @@ impl<{generics_row_decl}> ZipRow<({generics_use},)> {{
     }}
 
     #[inline]
+    #[track_caller]
     pub fn zip<M{count}: for<'short> CwiseRow<'short>>(self, last: M{count}) -> ZipRow<({generics_use}, M{count})> {{
         let this = self;
         fancy_assert!(last.ncols() == this.tuple.0.ncols());

@@ -1,8 +1,40 @@
 [package]
 name = "faer-svd"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
+faer-core = { version = "0.4", default-features = false, path = "../faer-core" }
+faer-qr = { version = "0.4", default-features = false, path = "../faer-qr" }
+pulp = { version = "0.10", default-features = false }
+reborrow = "0.5"
+dyn-stack = "0.8"
+assert2 = "0.3"
+num-traits = "0.2"
+num-complex = "0.4"
+rayon = "1.6"
+dbgf = "0.1.0"
+
+[dev-dependencies]
+criterion = "0.4"
+rand = "0.8.5"
+nalgebra = "0.31.4"
+assert_approx_eq = "1.1.0"
+
+[features]
+default = ["std"]
+std = ["faer-core/std", "faer-qr/std", "pulp/std"]
+nightly = ["faer-core/nightly", "faer-qr/nightly", "pulp/nightly"]
+
+[[bench]]
+name = "bench"
+harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]

@@ -45,17 +45,25 @@ use reborrow::*;
 
 #[doc(hidden)]
 pub fn make_householder_in_place<T: ComplexField>(
-    essential: ColMut<'_, T>,
+    essential: Option<ColMut<'_, T>>,
     head: T,
     tail_squared_norm: T::Real,
 ) -> (T, T) {
     let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
-    let sign = head.scale_real((head * head.conj()).real().sqrt().inv());
+
+    let sign = if head != T::zero() {
+        head.scale_real((head * head.conj()).real().sqrt().inv())
+    } else {
+        T::one()
+    };
 
     let signed_norm = sign * T::from_real(norm);
     let head_with_beta = head + signed_norm;
     let inv = head_with_beta.inv();
-    essential.cwise().for_each(|e| *e = *e * inv);
+
+    if let Some(essential) = essential {
+        essential.cwise().for_each(|e| *e = *e * inv);
+    }
 
     let one_half = (T::Real::one() + T::Real::one()).inv();
     let tau = one_half * (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());

@@ -43,6 +43,9 @@ pub mod zip;
 pub mod householder;
 pub mod permutation;
 
+#[doc(hidden)]
+pub use num_traits::Zero;
+
 /// Indicates whether the corresponding operand should be conjugated or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
@@ -4235,7 +4238,7 @@ macro_rules! temp_mat_zeroed {
             let (mut temp_data, $stack_id) = $stack.make_aligned_with(
                 ncols * col_stride,
                 $crate::align_for::<$ty>(),
-                |_| <$ty as $crate::ComplexField>::zero(),
+                |_| <$ty as $crate::Zero>::zero(),
             );
 
             #[allow(unused_unsafe)]
