@@ -6,8 +6,8 @@ members = [
   "faer-qr",
   "faer-svd",
   "faer",
-  "faer-bench",
 ]
+exclude = ["faer-bench"]
 
 [profile.dev]
 opt-level = 3

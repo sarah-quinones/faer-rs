@@ -1918,6 +1918,38 @@ impl<'a, T> MatMut<'a, T> {
             .offset(j as isize * self.col_stride())
     }
 
+    /// Writes the given value to the matrix at position (i, j) in the matrix, assuming it falls
+    /// within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, i: usize, j: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(i, j) = value;
+    }
+
+    /// Writes the given value to the matrix at position (i, j) in the matrix, or panics if the
+    /// indices are out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, i: usize, j: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(i, j) = value };
+    }
+
     /// Returns a mutable pointer to the element at position (i, j) in the matrix, while asserting
     /// that it falls within its bounds.
     ///
@@ -2726,6 +2758,36 @@ impl<'a, T> RowMut<'a, T> {
         unsafe { self.ptr_in_bounds_at_unchecked(j) }
     }
 
+    /// Writes the given value to the matrix at position (0, j) in the row vector, assuming it
+    /// falls within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, j: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(j) = value;
+    }
+
+    /// Writes the given value to the matrix at position (0, j) in the row vector, or panics if the
+    /// index is out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, j: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(j) = value };
+    }
+
     /// Splits the row vector into two parts in the following order: left, right.
     ///
     /// # Safety
@@ -3166,6 +3228,36 @@ impl<'a, T> ColMut<'a, T> {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked
         unsafe { self.ptr_in_bounds_at_unchecked(i) }
+    }
+
+    /// Writes the given value to the matrix at position (i, 0) in the column vector, assuming it
+    /// falls within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, i: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(i) = value;
+    }
+
+    /// Writes the given value to the matrix at position (i, 0) in the column vector, or panics if
+    /// the index is out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, i: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(i) = value };
     }
 
     /// Splits the column vector into two parts in the following order: top, bottom.
