@@ -1,8 +1,5 @@
-use core::{
-    any::TypeId,
-    mem::transmute_copy,
-    slice::{from_raw_parts, from_raw_parts_mut},
-};
+use coe::Coerce;
+use core::slice::{from_raw_parts, from_raw_parts_mut};
 use num_traits::Zero;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
@@ -17,13 +14,6 @@ use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
 pub use crate::no_pivoting::compute::recommended_blocksize;
-
-#[inline]
-fn coerce<T: 'static, U: 'static>(t: T) -> U {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    let no_drop = core::mem::MaybeUninit::new(t);
-    unsafe { transmute_copy(&no_drop) }
-}
 
 // a += k * b
 //
@@ -128,17 +118,16 @@ fn update_and_norm2<S: Simd, T: ComplexField>(
     k: T,
 ) -> T::Real {
     let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
-    let id = TypeId::of::<T>();
     if colmajor {
         let a_len = a.nrows();
         let b_len = b.nrows();
 
-        if id == TypeId::of::<f64>() {
-            coerce(update_and_norm2_f64(
+        if coe::is_same::<f64, T>() {
+            coe::coerce_static(update_and_norm2_f64(
                 simd,
-                unsafe { from_raw_parts_mut(a.as_ptr() as _, a_len) },
-                unsafe { from_raw_parts(b.as_ptr() as _, b_len) },
-                coerce(k),
+                unsafe { from_raw_parts_mut(a.as_ptr(), a_len).coerce() },
+                unsafe { from_raw_parts(b.as_ptr(), b_len).coerce() },
+                coe::coerce_static(k),
             ))
         } else {
             update_and_norm2_generic(

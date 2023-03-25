@@ -12,14 +12,12 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use core::{
-    any::TypeId,
-    iter::zip,
-    mem::{swap, transmute, transmute_copy},
-};
+use core::{any::TypeId, iter::zip, mem::swap};
+use faer_core::zip;
 
 use crate::jacobi::{jacobi_svd, JacobiRotation, Skip};
 use assert2::assert as fancy_assert;
+use coe::Coerce;
 use dyn_stack::DynStack;
 use faer_core::{
     join_raw, temp_mat_uninit, temp_mat_zeroed, zip::ColUninit, ColMut, ColRef, Conj, MatMut,
@@ -46,9 +44,7 @@ fn norm_f64(v: ColRef<'_, f64>) -> f64 {
 
 fn norm<T: RealField>(v: ColRef<'_, T>) -> T {
     if TypeId::of::<T>() == TypeId::of::<f64>() {
-        unsafe {
-            return transmute_copy(&norm_f64(transmute(v)));
-        }
+        return coe::coerce_static(norm_f64(v.coerce()));
     }
     let mut norm2 = T::zero();
     for &x in v.rb() {
@@ -242,9 +238,7 @@ fn perturb_col0<T: RealField>(
     let n = diag.len();
     let m = perm.len();
     if m == 0 {
-        ColUninit(zhat)
-            .cwise()
-            .for_each(|x| unsafe { *x = T::zero() });
+        zip!(ColUninit(zhat)).for_each(|x| unsafe { *x = T::zero() });
         return;
     }
 
@@ -330,18 +324,17 @@ fn compute_singular_values<T: RealField>(
                 )
             }
         }
-        unsafe {
-            pulp::Arch::new().dispatch(ImplF64 {
-                shifts: transmute(shifts),
-                mus: transmute(mus),
-                s: transmute(s),
-                diag: transmute(diag),
-                diag_perm: transmute(diag_perm),
-                col0: transmute(col0),
-                col0_perm: transmute(col0_perm),
-                epsilon: transmute_copy(&epsilon),
-            });
-        }
+
+        pulp::Arch::new().dispatch(ImplF64 {
+            shifts: shifts.coerce(),
+            mus: mus.coerce(),
+            s: s.coerce(),
+            diag: diag.coerce(),
+            diag_perm: diag_perm.coerce(),
+            col0: col0.coerce(),
+            col0_perm: col0_perm.coerce(),
+            epsilon: coe::coerce_static(epsilon),
+        });
     } else {
         compute_singular_values_generic(
             pulp::Scalar::new(),
@@ -1138,10 +1131,10 @@ pub fn bidiag_svd<T: RealField>(
 
         if cfg!(debug_assertions) {
             if let Some(v1) = v1 {
-                v1.col(k).cwise().for_each(|x| *x = T::nan());
+                zip!(v1.col(k)).for_each(|x| *x = T::nan());
             }
             if let Some(v2) = v2 {
-                v2.col(0).cwise().for_each(|x| *x = T::nan());
+                zip!(v2.col(0)).for_each(|x| *x = T::nan());
             }
         }
 
@@ -1154,53 +1147,54 @@ pub fn bidiag_svd<T: RealField>(
 
         if compact_u == 1 {
             // need to copy the first and last rows
+            //
+            // NOTE: we handle the rotation of (Q1, q1) here, so no need to handle it later when
+            // compact_u == 1
             for (row, row1, row2) in [(0, 0, 0), (1, k, rem)] {
-                u.rb_mut()
-                    .row(row)
-                    .subcols(0, k + 1)
-                    .cwise()
-                    .zip(u1_alloc.rb().row(row1))
-                    .for_each(|dst, src| *dst = *src);
-                u.rb_mut()
-                    .row(row)
-                    .subcols(k + 1, rem + 1)
-                    .cwise()
-                    .zip(u2_alloc.rb().row(row2))
-                    .for_each(|dst, src| *dst = *src);
-            }
-        }
-        let (_, u2) = if compact_u == 0 {
-            let (u1, u2) = u.rb_mut().split_at_row(k + 1);
-            (u1, u2)
-        } else {
-            let (u1, u2) = u.rb_mut().split_at_row(1);
-            (u1, u2)
-        };
+                zip!(
+                    u.rb_mut().row(row).subcols(1, k),
+                    u1_alloc.rb().row(row1).subcols(0, k),
+                )
+                .for_each(|dst, src| *dst = *src);
+                u[(row, 0)] = u1_alloc[(row1, k)];
 
-        let (left, right) = u2.split_at_col(k + 1);
-        let left = left.col(k);
-        let right = right.col(rem);
-        ColUninit(right)
-            .cwise()
-            .zip(left)
-            .for_each(|right, left| unsafe {
+                zip!(
+                    u.rb_mut().row(row).subcols(k + 1, rem),
+                    u2_alloc.rb().row(row2).subcols(1, rem),
+                )
+                .for_each(|dst, src| *dst = *src);
+                u[(row, n)] = u2_alloc[(row2, 0)];
+            }
+        } else {
+            let (_, u2) = if compact_u == 0 {
+                let (u1, u2) = u.rb_mut().split_at_row(k + 1);
+                (u1, u2)
+            } else {
+                let (u1, u2) = u.rb_mut().split_at_row(1);
+                (u1, u2)
+            };
+
+            let (left, right) = u2.split_at_col(k + 1);
+            let left = left.col(k);
+            let right = right.col(rem);
+            zip!(ColUninit(right), left).for_each(|right, left| unsafe {
                 *right = *left;
 
                 if cfg!(debug_assertions) {
                     *left = T::nan();
                 }
             });
+        }
     } else {
         let (mut u1, mut u2) = if compact_u == 0 {
             let (u1, u2) = u.rb_mut().split_at_row(k + 1);
-            let (_, u1) = u1.split_at_col(1);
             (
-                u1.submatrix(0, 0, k + 1, k + 1),
+                u1.submatrix(0, 1, k + 1, k + 1),
                 u2.submatrix(0, k + 1, rem + 1, rem + 1),
             )
         } else {
-            let (u1, u2) = u.rb_mut().split_at_row(1);
-            (u1.submatrix(0, 0, 1, k + 1), u2.submatrix(0, k, 1, rem + 1))
+            // NOTE: need to handle rotation of Q1, q1
+            u.rb_mut().split_at_col(k + 1)
         };
 
         let (mut v1, mut v2) = match v.rb_mut() {
@@ -1248,6 +1242,13 @@ pub fn bidiag_svd<T: RealField>(
             parallelism,
         );
 
+        if compact_u == 1 {
+            // handle rotation of Q1, q1
+            for i in (0..k).rev() {
+                faer_core::permutation::swap_cols(u1.rb_mut(), i, i + 1);
+            }
+        }
+
         diag.copy_within(0..k, 1);
     }
 
@@ -1255,20 +1256,17 @@ pub fn bidiag_svd<T: RealField>(
         v[(k, 0)] = T::one();
     };
 
-    let (u1, u2) = if compact_u == 0 {
-        let (u1, u2) = u.rb_mut().split_at_row(k + 1);
-        (u1, u2)
+    let lambda = if compact_u == 0 {
+        u[(k, k + 1)]
     } else {
-        let (u1, u2) = u.rb_mut().split_at_row(1);
-        (u1, u2)
+        // we already rotated u
+        u[(1, 0)]
     };
-    let (mut u0_top, u1) = u1.split_at_col(1);
-    let (mut u0_bot, u2) = u2.split_at_col(1);
-    let (u1, mut un_top) = u1.split_at_col(n - 1);
-    let (u2, mut un_bot) = u2.split_at_col(n - 1);
-
-    let lambda = u1[(k, k)];
-    let phi = un_bot[(0, 0)];
+    let phi = if compact_u == 0 {
+        u[(k + 1, n)]
+    } else {
+        u[(0, n)]
+    };
 
     let al = alpha * lambda;
     let bp = beta * phi;
@@ -1284,17 +1282,32 @@ pub fn bidiag_svd<T: RealField>(
     diag[0] = r0;
     col0[0] = r0;
 
-    for j in 0..k {
-        col0[j + 1] = alpha * (u1[(k, j)]);
-    }
-    for j in 0..rem {
-        col0[j + 1 + k] = beta * u2[(0, j + k)];
-    }
+    if compact_u == 0 {
+        let (u1, u2) = if compact_u == 0 {
+            let (u1, u2) = u.rb_mut().split_at_row(k + 1);
+            (u1, u2)
+        } else {
+            let (u1, u2) = u.rb_mut().split_at_row(1);
+            (u1, u2)
+        };
 
-    ColUninit(u0_top.rb_mut().col(0))
-        .cwise()
-        .zip(ColUninit(un_top.rb_mut().col(0)))
-        .zip(u1.col(k))
+        let (mut u0_top, u1) = u1.split_at_col(1);
+        let (u1, mut un_top) = u1.split_at_col(n - 1);
+        let (mut u0_bot, u2) = u2.split_at_col(1);
+        let (u2, mut un_bot) = u2.split_at_col(n - 1);
+
+        for j in 0..k {
+            col0[j + 1] = alpha * (u1[(k, j)]);
+        }
+        for j in 0..rem {
+            col0[j + 1 + k] = beta * u2[(0, j + k)];
+        }
+
+        zip!(
+            ColUninit(u0_top.rb_mut().col(0)),
+            ColUninit(un_top.rb_mut().col(0)),
+            u1.col(k),
+        )
         .for_each(|dst0, dstn, src| unsafe {
             let src_ = *src;
             *dst0 = c0 * src_;
@@ -1304,14 +1317,35 @@ pub fn bidiag_svd<T: RealField>(
             }
         });
 
-    ColUninit(u0_bot.rb_mut().col(0))
-        .cwise()
-        .zip(ColUninit(un_bot.rb_mut().col(0)))
+        zip!(
+            ColUninit(u0_bot.rb_mut().col(0)),
+            ColUninit(un_bot.rb_mut().col(0)),
+        )
         .for_each(|dst0, dstn| unsafe {
             let src_ = *dstn;
             *dst0 = s0 * src_;
             *dstn = c0 * src_;
         });
+    } else {
+        for j in 0..k {
+            col0[j + 1] = alpha * (u[(1, j + 1)]);
+            u[(1, j + 1)] = T::zero();
+        }
+        for j in 0..rem {
+            col0[j + 1 + k] = beta * u[(0, j + k + 1)];
+            u[(0, j + k + 1)] = T::zero();
+        }
+
+        let q10 = u[(0, 0)];
+        // let q11 = u[(1, 0)];
+        // let q20 = u[(0, n)];
+        let q21 = u[(1, n)];
+
+        u[(0, 0)] = c0 * q10;
+        u[(0, n)] = -s0 * q10;
+        u[(1, 0)] = s0 * q21;
+        u[(1, n)] = c0 * q21;
+    }
 
     let (mut perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
     let perm = &mut *perm;
@@ -1465,10 +1499,7 @@ pub fn bidiag_svd<T: RealField>(
                 parallelism,
             );
 
-            v.rb_mut()
-                .cwise()
-                .zip(combined_v.rb())
-                .for_each(|dst, src| *dst = *src);
+            zip!(v.rb_mut(), combined_v.rb()).for_each(|dst, src| *dst = *src);
         }
     };
 
@@ -1542,15 +1573,26 @@ pub fn bidiag_svd<T: RealField>(
             parallelism,
         );
 
-        u.rb_mut()
-            .cwise()
-            .zip(combined_u.rb())
-            .for_each(|dst, src| *dst = *src);
+        zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
     };
 
     if compact_u == 1 {
-        update_v(parallelism, stack);
-        todo!();
+        update_v(parallelism, stack.rb_mut());
+        temp_mat_uninit! {
+            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+        }
+        faer_core::mul::matmul(
+            combined_u.rb_mut(),
+            Conj::No,
+            u.rb(),
+            Conj::No,
+            um.rb(),
+            Conj::No,
+            None,
+            T::one(),
+            parallelism,
+        );
+        zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
     } else {
         match parallelism {
             Parallelism::Rayon(_) if !v_is_none => {

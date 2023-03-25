@@ -1,12 +1,9 @@
-use core::{
-    any::TypeId,
-    mem::{size_of, transmute_copy},
-};
+use core::mem::size_of;
 use num_traits::Zero;
-use std::mem::transmute;
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
+use coe::Coerce;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
     mul::matmul,
@@ -15,37 +12,6 @@ use faer_core::{
 };
 use pulp::Simd;
 use reborrow::*;
-
-#[inline]
-fn coerce<T: 'static, U: 'static>(t: T) -> U {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    let no_drop = core::mem::MaybeUninit::new(t);
-    unsafe { transmute_copy(&no_drop) }
-}
-
-#[inline]
-fn coerce_col_ref<T: 'static, U: 'static>(t: ColRef<'_, T>) -> ColRef<'_, U> {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    unsafe { transmute(t) }
-}
-
-#[inline]
-fn coerce_row_ref<T: 'static, U: 'static>(t: RowRef<'_, T>) -> RowRef<'_, U> {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    unsafe { transmute(t) }
-}
-
-#[inline]
-fn coerce_mat_ref<T: 'static, U: 'static>(t: MatRef<'_, T>) -> MatRef<'_, U> {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    unsafe { transmute(t) }
-}
-
-#[inline]
-fn coerce_mat_mut<T: 'static, U: 'static>(t: MatMut<'_, T>) -> MatMut<'_, U> {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    unsafe { transmute(t) }
-}
 
 #[inline(always)]
 fn best_f64<S: pulp::Simd>(
@@ -887,16 +853,15 @@ fn update_and_best_in_matrix_f32(
 
 #[inline]
 fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::Real) {
-    // let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
-    let is_f64 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>();
-    let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
+    let is_f64 = coe::is_same::<f64, T>();
+    let is_f32 = coe::is_same::<f32, T>();
 
     let is_col_major = matrix.row_stride() == 1;
 
     if is_col_major && is_f64 {
-        coerce(best_in_matrix_f64(coerce_mat_ref(matrix)))
+        coe::coerce_static(best_in_matrix_f64(matrix.coerce()))
     } else if is_col_major && is_f32 {
-        coerce(best_in_matrix_f32(coerce_mat_ref(matrix)))
+        coe::coerce_static(best_in_matrix_f32(matrix.coerce()))
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
@@ -926,22 +891,22 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     lhs: ColRef<'_, T>,
     rhs: RowRef<'_, T>,
 ) -> (usize, usize, T::Real) {
-    let is_f64 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>();
-    let is_f32 = core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>();
+    let is_f64 = coe::is_same::<f64, T>();
+    let is_f32 = coe::is_same::<f32, T>();
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
 
     if is_f64 && is_col_major {
-        coerce(update_and_best_in_matrix_f64(
-            coerce_mat_mut(dst),
-            coerce_col_ref(lhs),
-            coerce_row_ref(rhs),
+        coe::coerce_static(update_and_best_in_matrix_f64(
+            dst.coerce(),
+            lhs.coerce(),
+            rhs.coerce(),
         ))
     } else if is_f32 && is_col_major {
-        coerce(update_and_best_in_matrix_f32(
-            coerce_mat_mut(dst),
-            coerce_col_ref(lhs),
-            coerce_row_ref(rhs),
+        coe::coerce_static(update_and_best_in_matrix_f32(
+            dst.coerce(),
+            lhs.coerce(),
+            rhs.coerce(),
         ))
     } else {
         matmul(

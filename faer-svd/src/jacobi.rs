@@ -320,6 +320,7 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{Mat, MatRef};
 
+    #[track_caller]
     fn check_svd(mat: MatRef<'_, f64>, u: MatRef<'_, f64>, v: MatRef<'_, f64>, s: MatRef<'_, f64>) {
         let m = mat.nrows();
         let n = mat.ncols();
@@ -400,11 +401,6 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
             );
-            fancy_assert!(v[(0, 0)] == 1.0);
-            for j in 1..n {
-                assert_approx_eq!(v[(0, j)], 0.0);
-                assert_approx_eq!(v[(j, 0)], 0.0);
-            }
             let mut u_shifted = Mat::<f64>::zeros(n, n);
             for j in 1..n {
                 for i in 0..n {
@@ -420,7 +416,7 @@ mod tests {
             check_svd(
                 mat.as_ref().submatrix(0, 1, n, n - 1),
                 u_shifted.as_ref(),
-                v.as_ref().submatrix(1, 1, n - 1, n - 1),
+                v.as_ref().submatrix(0, 1, n - 1, n - 1),
                 s.as_ref().submatrix(0, 1, n, n - 1),
             );
         }

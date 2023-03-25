@@ -12,6 +12,7 @@
 
 use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use coe::Coerce;
 use core::{
     any::TypeId,
     fmt::Debug,
@@ -24,7 +25,6 @@ use dyn_stack::{SizeOverflow, StackReq};
 use num_traits::{Inv, Num, One};
 use rayon::prelude::IndexedParallelIterator;
 
-use core::mem::transmute_copy;
 /// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
 pub use gemm::c32;
 /// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
@@ -728,6 +728,50 @@ impl<'a, T> IntoConst for RowMut<'a, T> {
             base: self.base,
             _marker: PhantomData,
         }
+    }
+}
+
+impl<'a, T: 'static, U: 'static> Coerce<MatRef<'a, U>> for MatRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> MatRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<MatMut<'a, U>> for MatMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> MatMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
+impl<'a, T: 'static, U: 'static> Coerce<RowRef<'a, U>> for RowRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> RowRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<RowMut<'a, U>> for RowMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> RowMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<ColRef<'a, U>> for ColRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> ColRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<ColMut<'a, U>> for ColMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> ColMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
     }
 }
 
@@ -4090,21 +4134,19 @@ impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
 
         impl<'a, T: Debug + 'static> Debug for ComplexDebug<'a, T> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                let id = TypeId::of::<T>();
-
                 fn as_debug(t: impl Debug) -> impl Debug {
                     t
                 }
-                if id == TypeId::of::<c32>() {
-                    let value: c32 = unsafe { transmute_copy(self.0) };
+                if coe::is_same::<c32, T>() {
+                    let value: c32 = *self.0.coerce();
                     let re = as_debug(value.re);
                     let im = as_debug(value.im);
                     re.fmt(f)?;
                     f.write_str(" + ")?;
                     im.fmt(f)?;
                     f.write_str("I")
-                } else if id == TypeId::of::<c64>() {
-                    let value: c64 = unsafe { transmute_copy(self.0) };
+                } else if coe::is_same::<c64, T>() {
+                    let value: c64 = *self.0.coerce();
                     let re = as_debug(value.re);
                     let im = as_debug(value.im);
                     re.fmt(f)?;

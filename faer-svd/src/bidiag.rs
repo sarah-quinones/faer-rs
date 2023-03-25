@@ -1,4 +1,5 @@
 use assert2::assert as fancy_assert;
+use coe::Coerce;
 use core::slice;
 use dyn_stack::DynStack;
 use faer_core::{
@@ -8,7 +9,6 @@ use faer_core::{
 use num_traits::Zero;
 use pulp::Simd;
 use reborrow::*;
-use std::{any::TypeId, mem::transmute_copy};
 
 pub fn bidiagonalize_in_place<T: ComplexField>(
     mut a: MatMut<'_, T>,
@@ -405,16 +405,16 @@ fn bidiag_fused_op_process_batch<S: Simd, T: ComplexField>(
                 let u_rhs = y[j].conj() * tl_prev_inv;
                 let z_rhs = v_prev[j].conj() * tr_prev_inv;
 
-                let yj = if TypeId::of::<T>() == TypeId::of::<f64>() {
+                let yj = if coe::is_same::<f64, T>() {
                     unsafe {
-                        transmute_copy(&bidiag_fused_op_step0_f64(
+                        coe::coerce_static(bidiag_fused_op_step0_f64(
                             simd,
-                            slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j) as _, nrows),
-                            slice::from_raw_parts(z.as_ptr() as _, nrows),
-                            slice::from_raw_parts(u_prev.as_ptr() as _, nrows),
-                            transmute_copy(&u_rhs),
-                            transmute_copy(&z_rhs),
-                            slice::from_raw_parts(u.as_ptr() as _, nrows),
+                            slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
+                            slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
+                            slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                            coe::coerce_static(u_rhs),
+                            coe::coerce_static(z_rhs),
+                            slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
                         ))
                     }
                 } else {
@@ -437,13 +437,13 @@ fn bidiag_fused_op_process_batch<S: Simd, T: ComplexField>(
 
                 let rhs = a_row[j].conj();
 
-                if TypeId::of::<T>() == TypeId::of::<f64>() {
+                if coe::is_same::<f64, T>() {
                     unsafe {
                         bidiag_fused_op_step1_f64(
                             simd,
-                            slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr() as _, nrows),
-                            slice::from_raw_parts(a_next.rb().ptr_at(0, j) as _, nrows),
-                            transmute_copy(&rhs),
+                            slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
+                            slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                            coe::coerce_static(rhs),
                         );
                     }
                 } else {
