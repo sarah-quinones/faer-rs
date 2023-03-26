@@ -4,6 +4,7 @@
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/LU>
 #include <eigen3/Eigen/QR>
+#include <eigen3/Eigen/SVD>
 
 template <typename F> auto time1(F f) -> double {
   auto start = std::chrono::steady_clock::now();
@@ -146,5 +147,17 @@ extern "C" void inverse(double *out, std::size_t const *inputs,
     a.setRandom();
     auto b = a;
     out[i] = timeit([&] { b = a.inverse(); });
+  }
+}
+
+extern "C" void svd(double *out, std::size_t const *inputs, std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
+    auto a = Eigen::MatrixXd(n, n);
+    a.setRandom();
+    Eigen::BDCSVD<Eigen::MatrixXd> svd(
+        n, n, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    out[i] = timeit([&] { svd.compute(a); });
   }
 }

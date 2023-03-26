@@ -37,10 +37,9 @@ use crate::{
     solve, temp_mat_req, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef,
     Parallelism, RealField,
 };
-use num_traits::{Inv, One};
-
 use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use num_traits::{One, Zero};
 use reborrow::*;
 
 #[doc(hidden)]
@@ -49,6 +48,7 @@ pub fn make_householder_in_place<T: ComplexField>(
     head: T,
     tail_squared_norm: T::Real,
 ) -> (T, T) {
+    let one_half = (T::Real::one() + T::Real::one()).inv();
     let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
 
     let sign = if head != T::zero() {
@@ -61,13 +61,15 @@ pub fn make_householder_in_place<T: ComplexField>(
     let head_with_beta = head + signed_norm;
     let inv = head_with_beta.inv();
 
-    if let Some(essential) = essential {
-        essential.cwise().for_each(|e| *e = *e * inv);
+    if head_with_beta != T::zero() {
+        if let Some(essential) = essential {
+            essential.cwise().for_each(|e| *e = *e * inv);
+        }
+        let tau = one_half * (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
+        (T::from_real(tau), -signed_norm)
+    } else {
+        (T::from_real(T::Real::one() / T::Real::zero()), T::zero())
     }
-
-    let one_half = (T::Real::one() + T::Real::one()).inv();
-    let tau = one_half * (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
-    (T::from_real(tau), -signed_norm)
 }
 
 #[doc(hidden)]
@@ -469,36 +471,29 @@ fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
     }
 
     // essentials × [T^-1|T^-*] × essentials* × tmp
-    join_raw(
-        |_| {
-            triangular::matmul(
-                matrix_top.rb_mut(),
-                BlockStructure::Rectangular,
-                Conj::No.compose(conj_rhs),
-                essentials_top,
-                BlockStructure::UnitTriangularLower,
-                Conj::No.compose(conj_lhs),
-                tmp.rb(),
-                BlockStructure::Rectangular,
-                Conj::No,
-                Some(T::one()),
-                -T::one(),
-                parallelism,
-            );
-        },
-        |_| {
-            matmul(
-                matrix_bot.rb_mut(),
-                Conj::No.compose(conj_rhs),
-                essentials_bot,
-                Conj::No.compose(conj_lhs),
-                tmp.rb(),
-                Conj::No,
-                Some(T::one()),
-                -T::one(),
-                parallelism,
-            );
-        },
+    triangular::matmul(
+        matrix_top.rb_mut(),
+        BlockStructure::Rectangular,
+        Conj::No.compose(conj_rhs),
+        essentials_top,
+        BlockStructure::UnitTriangularLower,
+        Conj::No.compose(conj_lhs),
+        tmp.rb(),
+        BlockStructure::Rectangular,
+        Conj::No,
+        Some(T::one()),
+        -T::one(),
+        parallelism,
+    );
+    matmul(
+        matrix_bot.rb_mut(),
+        Conj::No.compose(conj_rhs),
+        essentials_bot,
+        Conj::No.compose(conj_lhs),
+        tmp.rb(),
+        Conj::No,
+        Some(T::one()),
+        -T::one(),
         parallelism,
     );
 }

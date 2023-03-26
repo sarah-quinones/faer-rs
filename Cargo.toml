@@ -6,8 +6,19 @@ members = [
   "faer-qr",
   "faer-svd",
   "faer",
-  "faer-bench",
 ]
+exclude = ["faer-bench"]
+
+[workspace.dependencies]
+coe-rs = "0.1"
+reborrow = "0.5"
+dyn-stack = "0.9"
+assert2 = "0.3"
+num-traits = "0.2"
+num-complex = "0.4"
+rayon = "1.7"
+pulp = { version = "0.11", default-features = false }
+bytemuck = "1"
 
 [profile.dev]
 opt-level = 3

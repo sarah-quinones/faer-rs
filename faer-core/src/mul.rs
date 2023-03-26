@@ -68,13 +68,6 @@ fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
     acc
 }
 
-#[inline]
-fn coerce<T: 'static, U: 'static>(t: T) -> U {
-    assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-    let no_drop = core::mem::MaybeUninit::new(t);
-    unsafe { core::mem::transmute_copy(&no_drop) }
-}
-
 // a^H b
 #[doc(hidden)]
 #[inline(always)]
@@ -86,7 +79,7 @@ pub fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>
         let b_len = b.nrows();
 
         if id == TypeId::of::<f64>() {
-            coerce(dot_f64(
+            coe::coerce_static(dot_f64(
                 simd,
                 unsafe { core::slice::from_raw_parts(a.as_ptr() as _, a_len) },
                 unsafe { core::slice::from_raw_parts(b.as_ptr() as _, b_len) },

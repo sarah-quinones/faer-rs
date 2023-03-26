@@ -7,20 +7,21 @@ edition = "2021"
 
 [dependencies]
 eyre = "0.6.8"
-nalgebra = "0.31.4"
+nalgebra = "0.32.1"
 ndarray = { version = "0.15.6", features = ["blas"] }
 blas-src = { version = "0.8", features = ["openblas"] }
 faer-core = { path = "../faer-core", features = ["nightly"] }
 faer-lu = { path = "../faer-lu", features = ["nightly"] }
 faer-qr = { path = "../faer-qr", features = ["nightly"] }
+faer-svd = { path = "../faer-svd", features = ["nightly"] }
 faer-cholesky = { path = "../faer-cholesky", features = ["nightly"] }
 plotters = "0.3.4"
 human-repr = "1.0.1"
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"] }
 rand = "0.8.5"
-dyn-stack = "0.8.3"
-reborrow = "0.5.1"
+dyn-stack = "0.9"
+reborrow = "0.5"
 openmp-sys = "1.2.3"
 
 [build-dependencies]
-cc = "1.0.77"
+cc = "1.0.79"

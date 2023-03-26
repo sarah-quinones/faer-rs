@@ -12,6 +12,7 @@
 
 use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use coe::Coerce;
 use core::{
     any::TypeId,
     fmt::Debug,
@@ -21,10 +22,9 @@ use core::{
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
-use num_traits::{Inv, Num, One};
+use num_traits::{Num, One};
 use rayon::prelude::IndexedParallelIterator;
 
-use core::mem::transmute_copy;
 /// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
 pub use gemm::c32;
 /// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
@@ -116,15 +116,7 @@ pub trait Scale<Rhs> {
 /// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
 /// future version of this library.
 pub trait ComplexField:
-    Copy
-    + Num
-    + Neg<Output = Self>
-    + Inv<Output = Self>
-    + Conjugate<Num = Self>
-    + Send
-    + Sync
-    + Debug
-    + 'static
+    Copy + Num + Neg<Output = Self> + Conjugate<Num = Self> + Send + Sync + Debug + 'static
 {
     type Real: RealField;
 
@@ -142,6 +134,8 @@ pub trait ComplexField:
     fn imag(self) -> Self::Real {
         self.into_real_imag().1
     }
+
+    fn inv(self) -> Self;
 
     /// Returns the conjugate of the number.
     fn conj(self) -> Self;
@@ -290,6 +284,11 @@ impl ComplexField for f32 {
     fn nan() -> Self {
         Self::NAN
     }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
 }
 
 impl Conjugate for f64 {
@@ -340,6 +339,11 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn nan() -> Self {
         Self::NAN
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
     }
 }
 
@@ -398,6 +402,15 @@ impl<T: RealField> ComplexField for Complex<T> {
         Self {
             re: Self::Real::nan(),
             im: Self::Real::nan(),
+        }
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        if self == Self::zero() {
+            Self::from_real(T::zero().inv())
+        } else {
+            Self::one() / self
         }
     }
 }
@@ -728,6 +741,50 @@ impl<'a, T> IntoConst for RowMut<'a, T> {
             base: self.base,
             _marker: PhantomData,
         }
+    }
+}
+
+impl<'a, T: 'static, U: 'static> Coerce<MatRef<'a, U>> for MatRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> MatRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<MatMut<'a, U>> for MatMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> MatMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+
+impl<'a, T: 'static, U: 'static> Coerce<RowRef<'a, U>> for RowRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> RowRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<RowMut<'a, U>> for RowMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> RowMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<ColRef<'a, U>> for ColRef<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> ColRef<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
+    }
+}
+impl<'a, T: 'static, U: 'static> Coerce<ColMut<'a, U>> for ColMut<'a, T> {
+    #[inline(always)]
+    fn coerce(self) -> ColMut<'a, U> {
+        coe::assert_same::<T, U>();
+        unsafe { core::mem::transmute(self) }
     }
 }
 
@@ -1918,6 +1975,38 @@ impl<'a, T> MatMut<'a, T> {
             .offset(j as isize * self.col_stride())
     }
 
+    /// Writes the given value to the matrix at position (i, j) in the matrix, assuming it falls
+    /// within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, i: usize, j: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(i, j) = value;
+    }
+
+    /// Writes the given value to the matrix at position (i, j) in the matrix, or panics if the
+    /// indices are out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`,
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, i: usize, j: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(i, j) = value };
+    }
+
     /// Returns a mutable pointer to the element at position (i, j) in the matrix, while asserting
     /// that it falls within its bounds.
     ///
@@ -2726,6 +2815,36 @@ impl<'a, T> RowMut<'a, T> {
         unsafe { self.ptr_in_bounds_at_unchecked(j) }
     }
 
+    /// Writes the given value to the matrix at position (0, j) in the row vector, assuming it
+    /// falls within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, j: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(j) = value;
+    }
+
+    /// Writes the given value to the matrix at position (0, j) in the row vector, or panics if the
+    /// index is out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `j < self.ncols()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, j: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(j) = value };
+    }
+
     /// Splits the row vector into two parts in the following order: left, right.
     ///
     /// # Safety
@@ -3166,6 +3285,36 @@ impl<'a, T> ColMut<'a, T> {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked
         unsafe { self.ptr_in_bounds_at_unchecked(i) }
+    }
+
+    /// Writes the given value to the matrix at position (i, 0) in the column vector, assuming it
+    /// falls within its bounds with no bound checks.
+    ///
+    /// # Safety
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`.
+    ///
+    /// Otherwise, the behavior is undefined.
+    #[track_caller]
+    #[inline]
+    pub unsafe fn write_at_unchecked(&mut self, i: usize, value: T) {
+        *self.rb_mut().ptr_in_bounds_at_unchecked(i) = value;
+    }
+
+    /// Writes the given value to the matrix at position (i, 0) in the column vector, or panics if
+    /// the index is out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Requires that
+    /// - `i < self.nrows()`.
+    ///
+    /// Otherwise, it panics.
+    #[track_caller]
+    #[inline]
+    pub fn write_at(&mut self, i: usize, value: T) {
+        unsafe { *self.rb_mut().ptr_in_bounds_at(i) = value };
     }
 
     /// Splits the column vector into two parts in the following order: top, bottom.
@@ -3998,21 +4147,19 @@ impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
 
         impl<'a, T: Debug + 'static> Debug for ComplexDebug<'a, T> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                let id = TypeId::of::<T>();
-
                 fn as_debug(t: impl Debug) -> impl Debug {
                     t
                 }
-                if id == TypeId::of::<c32>() {
-                    let value: c32 = unsafe { transmute_copy(self.0) };
+                if coe::is_same::<c32, T>() {
+                    let value: c32 = *self.0.coerce();
                     let re = as_debug(value.re);
                     let im = as_debug(value.im);
                     re.fmt(f)?;
                     f.write_str(" + ")?;
                     im.fmt(f)?;
                     f.write_str("I")
-                } else if id == TypeId::of::<c64>() {
-                    let value: c64 = unsafe { transmute_copy(self.0) };
+                } else if coe::is_same::<c64, T>() {
+                    let value: c64 = *self.0.coerce();
                     let re = as_debug(value.re);
                     let im = as_debug(value.im);
                     re.fmt(f)?;

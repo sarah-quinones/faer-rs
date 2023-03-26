@@ -43,13 +43,13 @@ mod gemm;
 mod tr_inverse;
 mod trsm;
 
+mod cholesky;
 mod col_piv_qr;
 mod full_piv_lu;
 mod inverse;
 mod no_piv_qr;
 mod partial_piv_lu;
-
-mod cholesky;
+mod svd;
 
 fn print_results(
     input_sizes: &[usize],
@@ -95,6 +95,7 @@ mod eigen {
         pub fn qr(out: *mut f64, inputs: *const usize, count: usize);
         pub fn colqr(out: *mut f64, inputs: *const usize, count: usize);
         pub fn inverse(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn svd(out: *mut f64, inputs: *const usize, count: usize);
     }
 }
 
@@ -262,6 +263,24 @@ Computing the inverse of a square matrix with dimension `n`.
         &inverse::ndarray(&input_sizes),
         &inverse::nalgebra(&input_sizes),
         &eigen(eigen::inverse, &input_sizes),
+    );
+    println!("```");
+
+    println!(
+        "
+## Matrix singular value decomposition
+
+Computing the SVD of a square matrix with dimension `n`.
+
+```"
+    );
+    print_results(
+        &input_sizes,
+        &svd::faer(&input_sizes, Parallelism::None),
+        &svd::faer(&input_sizes, Parallelism::Rayon(0)),
+        &svd::ndarray(&input_sizes),
+        &svd::nalgebra(&input_sizes),
+        &eigen(eigen::svd, &input_sizes),
     );
     println!("```");
 

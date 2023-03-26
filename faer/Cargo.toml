@@ -13,13 +13,13 @@ faer-core = { version = "0.4", default-features = false, path = "../faer-core" }
 faer-lu = { version = "0.4", default-features = false, path = "../faer-lu" }
 faer-cholesky = { version = "0.4", default-features = false, path = "../faer-cholesky" }
 faer-qr = { version = "0.4", default-features = false, path = "../faer-qr" }
-pulp = { version = "0.10", default-features = false }
+pulp = { version = "0.11", default-features = false }
 reborrow = "0.5"
-dyn-stack = "0.8"
+dyn-stack = "0.9"
 assert2 = "0.3"
 num-traits = "0.2"
 num-complex = "0.4"
-rayon = "1.6"
+rayon = "1.7"
 
 [features]
 default = ["std"]
@@ -29,6 +29,6 @@ nightly = ["faer-core/nightly", "pulp/nightly"]
 [dev-dependencies]
 criterion = "0.4"
 rand = "0.8.5"
-nalgebra = "0.31.4"
+nalgebra = "0.32.1"
 assert_approx_eq = "1.1.0"
-rayon = "1.6"
+rayon = "1.7"
