@@ -1,6 +1,16 @@
-use core::mem::swap;
+//! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
+//! and $V$, such that:
+//!
+//! - $U$ has shape $(m, m)$ and is an orthogonal matrix,
+//! - $V$ has shape $(n, n)$ and is an orthogonal matrix,
+//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal,
+//! - and finally:
+//!
+//! $$M = U S V^H.$$
 
+use assert2::assert as fancy_assert;
 use coe::Coerce;
+use core::mem::swap;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
@@ -21,6 +31,7 @@ pub mod jacobi;
 
 const JACOBI_FALLBACK_THRESHOLD: usize = 4;
 
+/// Indicates whether the singular vectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeVectors {
     No,
@@ -416,9 +427,11 @@ fn compute_real_svd_big<T: RealField>(
 #[non_exhaustive]
 pub struct SvdParams {}
 
+/// Computes the size and alignment of required workspace for performing a singular value
+/// decomposition. $U$ and $V$ may be computed fully, partially, or not computed at all.
 pub fn compute_svd_req<T: ComplexField>(
-    m: usize,
-    n: usize,
+    nrows: usize,
+    ncols: usize,
     compute_u: ComputeVectors,
     compute_v: ComputeVectors,
     parallelism: Parallelism,
@@ -426,11 +439,11 @@ pub fn compute_svd_req<T: ComplexField>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = params;
     if coe::is_same::<T, T::Real>() {
-        let size = usize::min(m, n);
+        let size = usize::min(nrows, ncols);
         if size <= JACOBI_FALLBACK_THRESHOLD {
-            compute_real_svd_small_req::<T>(m, n, compute_u, compute_v, parallelism)
+            compute_real_svd_small_req::<T>(nrows, ncols, compute_u, compute_v, parallelism)
         } else {
-            compute_real_svd_big_req::<T>(m, n, compute_u, compute_v, parallelism)
+            compute_real_svd_big_req::<T>(nrows, ncols, compute_u, compute_v, parallelism)
         }
     } else if coe::is_same::<T, Complex<T::Real>>() {
         todo!("complex values are not yet supported in the svd")
@@ -439,6 +452,18 @@ pub fn compute_svd_req<T: ComplexField>(
     }
 }
 
+/// Computes the singular value decomposition of `matrix`.
+///
+/// `s` represents the main diagonal of the matrix $S$, and must have size equal to the minimum of
+/// `matrix.nrows()` and `matrix.ncols()`.
+///
+/// For each of `u` and `v`:
+/// - If the argument is `None`, then the corresponding singular vector matrix is not computed.
+/// - If it is `Some(..)`, then it must have a number of rows equal to `matrix.nrows()` for `u`,
+/// and `matrix.ncols()` for `v`.
+/// - The number of columns may be either equal to the number of rows, or it may be equal to the
+/// minimum of `matrix.nrows()` and `matrix.ncols()`, in which case only the singular vectors
+/// corresponding to the provided column storage are computed.
 pub fn compute_svd<T: ComplexField>(
     matrix: MatRef<'_, T>,
     s: ColMut<'_, T>,
@@ -450,13 +475,22 @@ pub fn compute_svd<T: ComplexField>(
     stack: DynStack<'_>,
     params: SvdParams,
 ) {
+    let size = usize::min(matrix.nrows(), matrix.ncols());
+    fancy_assert!(s.nrows() == size);
+    if let Some(u) = u.rb() {
+        fancy_assert!(u.nrows() == matrix.nrows());
+        fancy_assert!(u.ncols() == matrix.nrows() || u.ncols() == size);
+    }
+    if let Some(v) = v.rb() {
+        fancy_assert!(v.nrows() == matrix.ncols());
+        fancy_assert!(v.ncols() == matrix.ncols() || v.ncols() == size);
+    }
+
     let _ = params;
     if coe::is_same::<T, T::Real>() {
-        let matrix: MatRef<'_, T::Real> = matrix.coerce();
-        let size = usize::min(matrix.nrows(), matrix.ncols());
         if size <= JACOBI_FALLBACK_THRESHOLD {
-            compute_real_svd_small(
-                matrix,
+            compute_real_svd_small::<T::Real>(
+                matrix.coerce(),
                 s.coerce(),
                 u.map(coe::Coerce::coerce),
                 v.map(coe::Coerce::coerce),
@@ -466,8 +500,8 @@ pub fn compute_svd<T: ComplexField>(
                 stack,
             );
         } else {
-            compute_real_svd_big(
-                matrix,
+            compute_real_svd_big::<T::Real>(
+                matrix.coerce(),
                 s.coerce(),
                 u.map(coe::Coerce::coerce),
                 v.map(coe::Coerce::coerce),
