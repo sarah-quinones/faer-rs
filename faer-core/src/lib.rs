@@ -22,7 +22,7 @@ use core::{
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
-use num_traits::{Inv, Num, One};
+use num_traits::{Num, One};
 use rayon::prelude::IndexedParallelIterator;
 
 /// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
@@ -116,15 +116,7 @@ pub trait Scale<Rhs> {
 /// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
 /// future version of this library.
 pub trait ComplexField:
-    Copy
-    + Num
-    + Neg<Output = Self>
-    + Inv<Output = Self>
-    + Conjugate<Num = Self>
-    + Send
-    + Sync
-    + Debug
-    + 'static
+    Copy + Num + Neg<Output = Self> + Conjugate<Num = Self> + Send + Sync + Debug + 'static
 {
     type Real: RealField;
 
@@ -142,6 +134,8 @@ pub trait ComplexField:
     fn imag(self) -> Self::Real {
         self.into_real_imag().1
     }
+
+    fn inv(self) -> Self;
 
     /// Returns the conjugate of the number.
     fn conj(self) -> Self;
@@ -290,6 +284,11 @@ impl ComplexField for f32 {
     fn nan() -> Self {
         Self::NAN
     }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
+    }
 }
 
 impl Conjugate for f64 {
@@ -340,6 +339,11 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn nan() -> Self {
         Self::NAN
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        1.0 / self
     }
 }
 
@@ -398,6 +402,15 @@ impl<T: RealField> ComplexField for Complex<T> {
         Self {
             re: Self::Real::nan(),
             im: Self::Real::nan(),
+        }
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        if self == Self::zero() {
+            Self::from_real(T::zero().inv())
+        } else {
+            Self::one() / self
         }
     }
 }

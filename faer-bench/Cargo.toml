@@ -13,6 +13,7 @@ blas-src = { version = "0.8", features = ["openblas"] }
 faer-core = { path = "../faer-core", features = ["nightly"] }
 faer-lu = { path = "../faer-lu", features = ["nightly"] }
 faer-qr = { path = "../faer-qr", features = ["nightly"] }
+faer-svd = { path = "../faer-svd", features = ["nightly"] }
 faer-cholesky = { path = "../faer-cholesky", features = ["nightly"] }
 plotters = "0.3.4"
 human-repr = "1.0.1"

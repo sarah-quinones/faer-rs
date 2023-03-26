@@ -1,14 +1,39 @@
 use assert2::assert as fancy_assert;
 use coe::Coerce;
 use core::slice;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::make_householder_in_place, mul::matmul, temp_mat_uninit, temp_mat_zeroed, zip,
-    ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowMut, RowRef,
+    householder::make_householder_in_place, mul::matmul, temp_mat_req, temp_mat_uninit,
+    temp_mat_zeroed, zip, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowMut,
+    RowRef,
 };
 use num_traits::Zero;
 use pulp::Simd;
 use reborrow::*;
+
+pub fn bidiagonalize_in_place_req<T: 'static>(
+    m: usize,
+    n: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_all_of([
+        temp_mat_req::<T>(n, 1)?,
+        temp_mat_req::<T>(m, 1)?,
+        temp_mat_req::<T>(
+            m,
+            match parallelism {
+                Parallelism::None => 1,
+                Parallelism::Rayon(n_threads) => {
+                    if n_threads == 0 {
+                        rayon::current_num_threads()
+                    } else {
+                        n_threads
+                    }
+                }
+            },
+        )?,
+    ])
+}
 
 pub fn bidiagonalize_in_place<T: ComplexField>(
     mut a: MatMut<'_, T>,
@@ -93,9 +118,8 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
             }
             make_householder_in_place(Some(essential), head, tail_squared_norm)
         };
-
         a_col[(0, 0)] = a00;
-        householder_left[k] = tl;
+        householder_left.rb_mut().write_at(k, tl);
 
         if n == 1 {
             break;
@@ -130,22 +154,25 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
             }
             make_householder_in_place(None, head, tail_squared_norm)
         };
+        householder_right.rb_mut().write_at(k, tr);
 
-        let f = (a_row[(0, 0)] - a01).inv().conj();
-        a_row
-            .rb_mut()
-            .row(0)
-            .subcols(1, n - 2)
-            .transpose()
-            .cwise()
-            .for_each(|x| *x = (*x).conj() * f);
+        let diff = a_row[(0, 0)] - a01;
+
+        if diff != T::zero() {
+            let f = diff.inv().conj();
+            a_row
+                .rb_mut()
+                .row(0)
+                .subcols(1, n - 2)
+                .transpose()
+                .cwise()
+                .for_each(|x| *x = (*x).conj() * f);
+
+            zip!(z.rb_mut().col(0), a_next.rb().col(0))
+                .for_each(|z, a| *z = f * (*z - a01.conj() * *a));
+        }
 
         a_row[(0, 0)] = T::one();
-        householder_right[k] = tr;
-
-        zip!(z.rb_mut().col(0), a_next.rb().col(0))
-            .for_each(|z, a| *z = f * (*z - a01.conj() * *a));
-
         let b = faer_core::mul::dot(
             pulp::Scalar::new(),
             y.rb().col(0),
@@ -477,6 +504,11 @@ fn bidiag_fused_op<T: ComplexField>(
     u: MatRef<'_, T>,
     mut a_row: MatMut<'_, T>,
 ) {
+    let parallelism = if m * n < 128 * 128 {
+        Parallelism::None
+    } else {
+        parallelism
+    };
     if k > 0 {
         if a_next.row_stride() == 1 {
             struct BidiagFusedOp<'a, T: ComplexField> {

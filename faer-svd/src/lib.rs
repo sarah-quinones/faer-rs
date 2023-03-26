@@ -1,10 +1,13 @@
+use core::mem::swap;
+
 use coe::Coerce;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_left_in_place, upgrade_householder_factor,
     },
-    temp_mat_uninit, zip, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    temp_mat_req, temp_mat_uninit, zip, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    RealField,
 };
 use num_complex::Complex;
 use reborrow::*;
@@ -26,12 +29,129 @@ pub enum ComputeVectors {
 }
 
 fn compute_real_svd_small_req<T: 'static>(
-    m: usize,
-    n: usize,
-    compute_u: ComputeVectors,
-    compute_v: ComputeVectors,
+    mut m: usize,
+    mut n: usize,
+    mut compute_u: ComputeVectors,
+    mut compute_v: ComputeVectors,
     parallelism: Parallelism,
-) {
+) -> Result<StackReq, SizeOverflow> {
+    if n > m {
+        swap(&mut m, &mut n);
+        swap(&mut compute_u, &mut compute_v);
+    }
+
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+
+    let qr = temp_mat_req::<T>(m, n)?;
+    let householder = temp_mat_req::<T>(householder_blocksize, n)?;
+    let r = temp_mat_req::<T>(n, n)?;
+
+    let col_perm = StackReq::try_new::<usize>(n)?;
+    let col_perm_inv = col_perm;
+
+    let compute_qr = faer_qr::col_pivoting::compute::qr_in_place_req::<T>(
+        m,
+        n,
+        householder_blocksize,
+        parallelism,
+        faer_qr::col_pivoting::compute::ColPivQrComputeParams::default(),
+    )?;
+    let permute_cols = faer_core::permutation::permute_rows_in_place_req::<T>(n, n)?;
+
+    let apply_householder =
+        faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+            m,
+            householder_blocksize,
+            match compute_u {
+                ComputeVectors::No => 0,
+                ComputeVectors::Thin => n,
+                ComputeVectors::Full => m,
+            },
+        )?;
+
+    StackReq::try_all_of([
+        qr,
+        householder,
+        StackReq::try_any_of([
+            StackReq::try_all_of([
+                r,
+                StackReq::try_any_of([
+                    StackReq::try_all_of([col_perm, col_perm_inv, compute_qr])?,
+                    permute_cols,
+                ])?,
+            ])?,
+            apply_householder,
+        ])?,
+    ])
+}
+
+fn compute_real_svd_big_req<T: 'static>(
+    mut m: usize,
+    mut n: usize,
+    mut compute_u: ComputeVectors,
+    mut compute_v: ComputeVectors,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    if n > m {
+        swap(&mut m, &mut n);
+        swap(&mut compute_u, &mut compute_v);
+    }
+
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+
+    let bid = temp_mat_req::<T>(m, n)?;
+    let householder_left = temp_mat_req::<T>(householder_blocksize, n)?;
+    let householder_right = temp_mat_req::<T>(householder_blocksize, n - 1)?;
+
+    let compute_bidiag = bidiag::bidiagonalize_in_place_req::<T>(m, n, parallelism)?;
+
+    let diag = StackReq::try_new::<T>(n)?;
+    let subdiag = diag;
+    let compute_ub = compute_v != ComputeVectors::No;
+    let compute_vb = compute_u != ComputeVectors::No;
+    let u_b = temp_mat_req::<T>(if compute_ub { n + 1 } else { 2 }, n + 1)?;
+    let v_b = temp_mat_req::<T>(n, if compute_vb { n } else { 0 })?;
+
+    let compute_bidiag_svd =
+        bidiag_real_svd::bidiag_svd_req::<T>(n, compute_ub, compute_vb, parallelism)?;
+    let apply_householder_u =
+        faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+            m,
+            householder_blocksize,
+            match compute_u {
+                ComputeVectors::No => 0,
+                ComputeVectors::Thin => n,
+                ComputeVectors::Full => m,
+            },
+        )?;
+    let apply_householder_v =
+        faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+            n - 1,
+            householder_blocksize,
+            match compute_u {
+                ComputeVectors::No => 0,
+                _ => n,
+            },
+        )?;
+
+    StackReq::try_all_of([
+        bid,
+        householder_left,
+        householder_right,
+        StackReq::try_any_of([
+            compute_bidiag,
+            StackReq::try_all_of([
+                diag,
+                subdiag,
+                u_b,
+                v_b,
+                StackReq::try_any_of([
+                    compute_bidiag_svd,
+                    StackReq::try_all_of([apply_householder_u, apply_householder_v])?,
+                ])?,
+            ])?,
+        ])?,
+    ])
 }
 
 /// does qr -> jacobi svd
@@ -47,7 +167,6 @@ fn compute_real_svd_small<T: RealField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    let mut stack = stack;
     let mut u = u;
     let mut v = v;
 
@@ -60,54 +179,61 @@ fn compute_real_svd_small<T: RealField>(
     };
 
     if do_transpose {
-        core::mem::swap(&mut u, &mut v);
+        swap(&mut u, &mut v);
     }
 
     let m = matrix.nrows();
     let n = matrix.ncols();
-    if n == 0 {
-        return;
-    }
 
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
 
     temp_mat_uninit! {
-        let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack.rb_mut()) };
-        let (mut r, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+        let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
         let (mut householder, mut stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
     }
 
-    zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
-
     {
-        let (mut col_perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
-        let (mut col_perm_inv, mut stack) = stack.make_with(n, |_| 0usize);
+        temp_mat_uninit! {
+            let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
+        }
 
-        // matrix = q * r * P
-        let (_, col_perm) = faer_qr::col_pivoting::compute::qr_in_place(
-            qr.rb_mut(),
-            householder.rb_mut(),
-            &mut col_perm,
-            &mut col_perm_inv,
-            parallelism,
-            stack.rb_mut(),
-            faer_qr::col_pivoting::compute::ColPivQrComputeParams::default(),
+        zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
+
+        {
+            let (mut col_perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
+            let (mut col_perm_inv, mut stack) = stack.make_with(n, |_| 0usize);
+
+            // matrix = q * r * P
+            let (_, col_perm) = faer_qr::col_pivoting::compute::qr_in_place(
+                qr.rb_mut(),
+                householder.rb_mut(),
+                &mut col_perm,
+                &mut col_perm_inv,
+                parallelism,
+                stack.rb_mut(),
+                faer_qr::col_pivoting::compute::ColPivQrComputeParams::default(),
+            );
+            zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
+            zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+                .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = *src);
+            faer_core::permutation::permute_cols_in_place(
+                r.rb_mut(),
+                col_perm.rb().inverse(),
+                stack,
+            );
+        }
+
+        // r * P = u s v
+        jacobi::jacobi_svd(
+            r.rb_mut(),
+            u.rb_mut().map(|u| u.submatrix(0, 0, n, n)),
+            v.rb_mut(),
+            jacobi::Skip::None,
+            epsilon,
+            zero_threshold,
         );
-        zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
-        zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-            .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = *src);
-        faer_core::permutation::permute_cols_in_place(r.rb_mut(), col_perm.rb().inverse(), stack);
+        zip!(s, r.rb().diagonal()).for_each(|dst, src| *dst = *src);
     }
-
-    // r * P = u s v
-    jacobi::jacobi_svd(
-        r.rb_mut(),
-        u.rb_mut().map(|u| u.submatrix(0, 0, n, n)),
-        v.rb_mut(),
-        jacobi::Skip::None,
-        epsilon,
-        zero_threshold,
-    );
 
     // matrix = q u s v
     if let Some(mut u) = u.rb_mut() {
@@ -129,8 +255,6 @@ fn compute_real_svd_small<T: RealField>(
             stack.rb_mut(),
         );
     }
-
-    zip!(s, r.rb().diagonal()).for_each(|dst, src| *dst = *src);
 }
 
 /// does bidiagonilization -> divide conquer svd
@@ -157,12 +281,17 @@ fn compute_real_svd_big<T: RealField>(
     };
 
     if do_transpose {
-        core::mem::swap(&mut u, &mut v);
+        swap(&mut u, &mut v);
     }
 
     let m = matrix.nrows();
     let n = matrix.ncols();
     if n == 0 {
+        if let Some(mut u) = u {
+            zip!(u.rb_mut()).for_each(|dst| *dst = T::zero());
+            zip!(u.submatrix(0, 0, n, n).diagonal()).for_each(|dst| *dst = T::one());
+        }
+
         return;
     }
 
@@ -229,6 +358,7 @@ fn compute_real_svd_big<T: RealField>(
         &mut subdiag,
         u_b.rb_mut(),
         u.is_some().then_some(v_b.rb_mut()),
+        v.is_some(),
         JACOBI_FALLBACK_THRESHOLD,
         epsilon,
         zero_threshold,
@@ -282,6 +412,33 @@ fn compute_real_svd_big<T: RealField>(
     }
 }
 
+#[derive(Default, Copy, Clone)]
+#[non_exhaustive]
+pub struct SvdParams {}
+
+pub fn compute_svd_req<T: ComplexField>(
+    m: usize,
+    n: usize,
+    compute_u: ComputeVectors,
+    compute_v: ComputeVectors,
+    parallelism: Parallelism,
+    params: SvdParams,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = params;
+    if coe::is_same::<T, T::Real>() {
+        let size = usize::min(m, n);
+        if size <= JACOBI_FALLBACK_THRESHOLD {
+            compute_real_svd_small_req::<T>(m, n, compute_u, compute_v, parallelism)
+        } else {
+            compute_real_svd_big_req::<T>(m, n, compute_u, compute_v, parallelism)
+        }
+    } else if coe::is_same::<T, Complex<T::Real>>() {
+        todo!("complex values are not yet supported in the svd")
+    } else {
+        unimplemented!("only real and complex values are supported in the svd")
+    }
+}
+
 pub fn compute_svd<T: ComplexField>(
     matrix: MatRef<'_, T>,
     s: ColMut<'_, T>,
@@ -291,7 +448,9 @@ pub fn compute_svd<T: ComplexField>(
     zero_threshold: T,
     parallelism: Parallelism,
     stack: DynStack<'_>,
+    params: SvdParams,
 ) {
+    let _ = params;
     if coe::is_same::<T, T::Real>() {
         let matrix: MatRef<'_, T::Real> = matrix.coerce();
         let size = usize::min(matrix.nrows(), matrix.ncols());
@@ -331,11 +490,9 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use faer_core::Mat;
 
-    macro_rules! placeholder_stack {
-        () => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
-                ::dyn_stack::StackReq::new::<f64>(1024 * 1024 * 1024),
-            ))
+    macro_rules! make_stack {
+        ($req: expr) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
         };
     }
 
@@ -357,7 +514,93 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(compute_real_svd_big_req::<f64>(
+                    m,
+                    n,
+                    ComputeVectors::Full,
+                    ComputeVectors::Full,
+                    Parallelism::None,
+                )
+                .unwrap()),
+            );
+
+            let reconstructed = &u * &s * v.transpose();
+
+            for j in 0..n {
+                for i in 0..m {
+                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_identity() {
+        for (m, n) in [(15, 10), (10, 15), (10, 10), (15, 15)] {
+            let mut mat = Mat::zeros(m, n);
+            let size = m.min(n);
+            for i in 0..size {
+                mat[(i, i)] = 1.0;
+            }
+
+            let mut s = Mat::zeros(m, n);
+            let mut u = Mat::zeros(m, m);
+            let mut v = Mat::zeros(n, n);
+
+            compute_real_svd_big(
+                mat.as_ref(),
+                s.as_mut().submatrix(0, 0, size, size).diagonal(),
+                Some(u.as_mut()),
+                Some(v.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_real_svd_big_req::<f64>(
+                    m,
+                    n,
+                    ComputeVectors::Full,
+                    ComputeVectors::Full,
+                    Parallelism::None,
+                )
+                .unwrap()),
+            );
+
+            let reconstructed = &u * &s * v.transpose();
+
+            for j in 0..n {
+                for i in 0..m {
+                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_zero() {
+        for (m, n) in [(15, 10), (10, 15), (10, 10), (15, 15)] {
+            let mat = Mat::zeros(m, n);
+            let size = m.min(n);
+
+            let mut s = Mat::zeros(m, n);
+            let mut u = Mat::zeros(m, m);
+            let mut v = Mat::zeros(n, n);
+
+            compute_real_svd_big(
+                mat.as_ref(),
+                s.as_mut().submatrix(0, 0, size, size).diagonal(),
+                Some(u.as_mut()),
+                Some(v.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_real_svd_big_req::<f64>(
+                    m,
+                    n,
+                    ComputeVectors::Full,
+                    ComputeVectors::Full,
+                    Parallelism::None,
+                )
+                .unwrap()),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -388,7 +631,14 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(compute_real_svd_small_req::<f64>(
+                    m,
+                    n,
+                    ComputeVectors::Full,
+                    ComputeVectors::Full,
+                    Parallelism::None,
+                )
+                .unwrap()),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -420,7 +670,16 @@ mod tests {
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                     Parallelism::None,
-                    placeholder_stack!(),
+                    make_stack!(compute_svd_req::<f64>(
+                        m,
+                        n,
+                        ComputeVectors::Full,
+                        ComputeVectors::Full,
+                        Parallelism::None,
+                        SvdParams::default(),
+                    )
+                    .unwrap()),
+                    SvdParams::default(),
                 );
 
                 let reconstructed = &u * &s * v.transpose();
@@ -441,6 +700,7 @@ mod tests {
                 use ComputeVectors::*;
                 for compute_u in [No, Thin, Full] {
                     for compute_v in [No, Thin, Full] {
+                        dbg!(m, n, compute_u, compute_v);
                         let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
                         let size = m.min(n);
 
@@ -478,7 +738,16 @@ mod tests {
                             f64::EPSILON,
                             f64::MIN_POSITIVE,
                             Parallelism::None,
-                            placeholder_stack!(),
+                            make_stack!(compute_svd_req::<f64>(
+                                m,
+                                n,
+                                compute_u,
+                                compute_v,
+                                Parallelism::None,
+                                SvdParams::default(),
+                            )
+                            .unwrap()),
+                            SvdParams::default(),
                         );
 
                         let mut s_target = Mat::zeros(m, n);
@@ -493,7 +762,16 @@ mod tests {
                             f64::EPSILON,
                             f64::MIN_POSITIVE,
                             Parallelism::None,
-                            placeholder_stack!(),
+                            make_stack!(compute_svd_req::<f64>(
+                                m,
+                                n,
+                                ComputeVectors::Full,
+                                ComputeVectors::Full,
+                                Parallelism::None,
+                                SvdParams::default(),
+                            )
+                            .unwrap()),
+                            SvdParams::default(),
                         );
 
                         for j in 0..u.ncols() {

@@ -79,7 +79,7 @@ fn qr_in_place_unblocked<T: ComplexField>(
 
 /// The recommended block size to use for a QR decomposition of a matrix with the given shape.
 #[inline]
-pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usize {
+pub fn recommended_blocksize<T: 'static>(nrows: usize, ncols: usize) -> usize {
     let prod = nrows * ncols;
     let size = nrows.min(ncols);
 
@@ -95,6 +95,7 @@ pub fn recommended_blocksize<T: ComplexField>(nrows: usize, ncols: usize) -> usi
         16
     })
     .min(size)
+    .max(1)
 }
 
 fn default_disable_parallelism(m: usize, n: usize) -> bool {

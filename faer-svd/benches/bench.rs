@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use faer_svd::{
     bidiag::bidiagonalize_in_place, bidiag_real_svd::bidiag_svd as bidiag_svd_, compute_svd,
+    SvdParams,
 };
 use std::time::Duration;
 
@@ -20,14 +21,16 @@ pub fn bidiag(c: &mut Criterion) {
         (10000, 1024),
         (2048, 2048),
         (4096, 4096),
-        (8192, 8192),
     ] {
         c.bench_function(&format!("faer-st-bidiag-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
             let mut householder_left = Mat::with_dims(|_, _| random::<f64>(), n, 1);
             let mut householder_right = Mat::with_dims(|_, _| random::<f64>(), n, 1);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)
+                    .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
@@ -46,7 +49,10 @@ pub fn bidiag(c: &mut Criterion) {
             let mut householder_left = Mat::with_dims(|_, _| random::<f64>(), n, 1);
             let mut householder_right = Mat::with_dims(|_, _| random::<f64>(), n, 1);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::Rayon(0))
+                    .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
@@ -76,7 +82,10 @@ fn bidiag_svd(c: &mut Criterion) {
             let mut u = Mat::zeros(n + 1, n + 1);
             let mut v = Mat::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::bidiag_real_svd::bidiag_svd_req::<f64>(n, true, true, Parallelism::None)
+                    .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             bencher.iter(|| {
@@ -89,6 +98,7 @@ fn bidiag_svd(c: &mut Criterion) {
                     &mut subdiag,
                     u.as_mut(),
                     Some(v.as_mut()),
+                    false,
                     4,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
@@ -104,7 +114,15 @@ fn bidiag_svd(c: &mut Criterion) {
             let mut u = Mat::zeros(n + 1, n + 1);
             let mut v = Mat::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::bidiag_real_svd::bidiag_svd_req::<f64>(
+                    n,
+                    true,
+                    true,
+                    Parallelism::Rayon(0),
+                )
+                .unwrap(),
+            );
             let mut stack = DynStack::new(&mut mem);
 
             bencher.iter(|| {
@@ -115,6 +133,7 @@ fn bidiag_svd(c: &mut Criterion) {
                     &mut subdiag_copy,
                     u.as_mut(),
                     Some(v.as_mut()),
+                    false,
                     4,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
@@ -127,18 +146,38 @@ fn bidiag_svd(c: &mut Criterion) {
 }
 
 fn real_svd(c: &mut Criterion) {
-    for n in [64, 128, 256, 1024, 4096] {
-        let mat = Mat::with_dims(|_, _| rand::random::<f64>(), n, n);
+    for (m, n) in [
+        (32, 32),
+        (64, 64),
+        (128, 128),
+        (256, 256),
+        (512, 512),
+        (1024, 1024),
+        (10000, 128),
+        (10000, 1024),
+        (2048, 2048),
+        (4096, 4096),
+    ] {
+        let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
         let mat = mat.as_ref();
 
         let mut s = Mat::zeros(n, 1);
-        let mut u = Mat::zeros(n, n);
+        let mut u = Mat::zeros(m, m);
         let mut v = Mat::zeros(n, n);
 
-        let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-        let mut stack = DynStack::new(&mut mem);
-
-        c.bench_function(&format!("faer-st-svd-f64-{n}"), |bencher| {
+        c.bench_function(&format!("faer-st-svd-f64-{m}x{n}"), |bencher| {
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::compute_svd_req::<f64>(
+                    m,
+                    n,
+                    faer_svd::ComputeVectors::Full,
+                    faer_svd::ComputeVectors::Full,
+                    Parallelism::None,
+                    SvdParams::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
             bencher.iter(|| {
                 compute_svd(
                     mat,
@@ -149,10 +188,23 @@ fn real_svd(c: &mut Criterion) {
                     f64::MIN_POSITIVE,
                     Parallelism::None,
                     stack.rb_mut(),
+                    SvdParams::default(),
                 );
             });
         });
-        c.bench_function(&format!("faer-mt-svd-f64-{n}"), |bencher| {
+        c.bench_function(&format!("faer-mt-svd-f64-{m}x{n}"), |bencher| {
+            let mut mem = GlobalMemBuffer::new(
+                faer_svd::compute_svd_req::<f64>(
+                    m,
+                    n,
+                    faer_svd::ComputeVectors::Full,
+                    faer_svd::ComputeVectors::Full,
+                    Parallelism::Rayon(0),
+                    SvdParams::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
             bencher.iter(|| {
                 compute_svd(
                     mat,
@@ -163,6 +215,7 @@ fn real_svd(c: &mut Criterion) {
                     f64::MIN_POSITIVE,
                     Parallelism::Rayon(0),
                     stack.rb_mut(),
+                    SvdParams::default(),
                 );
             });
         });

@@ -13,12 +13,12 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use core::{any::TypeId, iter::zip, mem::swap};
-use faer_core::zip;
+use faer_core::{temp_mat_req, zip};
 
 use crate::jacobi::{jacobi_svd, JacobiRotation, Skip};
 use assert2::assert as fancy_assert;
 use coe::Coerce;
-use dyn_stack::DynStack;
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw, temp_mat_uninit, temp_mat_zeroed, zip::ColUninit, ColMut, ColRef, Conj, MatMut,
     Parallelism, RealField,
@@ -54,7 +54,7 @@ fn norm<T: RealField>(v: ColRef<'_, T>) -> T {
 }
 
 fn compute_svd_of_m<T: RealField>(
-    mut um: MatMut<'_, T>,
+    mut um: Option<MatMut<'_, T>>,
     mut vm: Option<MatMut<'_, T>>,
     diag: &mut [T],
     col0: &[T],
@@ -162,7 +162,7 @@ fn compute_svd_of_m<T: RealField>(
 
 #[inline(never)]
 fn compute_singular_vectors<T: RealField>(
-    mut um: MatMut<T>,
+    mut um: Option<MatMut<T>>,
     mut vm: Option<MatMut<T>>,
     zhat: ColRef<T>,
     diag: &[T],
@@ -182,11 +182,13 @@ fn compute_singular_vectors<T: RealField>(
         } else {
             actual_n - col_perm_inv[k] - 1
         };
-        let mut u = um.rb_mut().col(actual_k);
+        let mut u = um.rb_mut().map(|u| u.col(actual_k));
         let mut v = vm.rb_mut().map(|v| v.col(actual_k));
 
         if zhat[k] == T::zero() {
-            u[outer_perm[k]] = T::one();
+            if let Some(mut u) = u.rb_mut() {
+                u[outer_perm[k]] = T::one();
+            }
             if let Some(mut v) = v.rb_mut() {
                 v[outer_perm[k]] = T::one();
             }
@@ -197,16 +199,18 @@ fn compute_singular_vectors<T: RealField>(
         let shift = shifts[k];
 
         assert_eq!(zhat.row_stride(), 1);
-        assert_eq!(u.row_stride(), 1);
 
-        for l in 0..m {
-            let i = perm[l];
-            u[outer_perm[i]] = zhat[i] / (diag[i] - shift - mu) / (diag[i] + (shift + mu));
-        }
-        u[n] = T::zero();
-        let norm_inv = norm(u.rb()).inv();
-        for x in u.rb_mut() {
-            *x = *x * norm_inv;
+        if let Some(mut u) = u.rb_mut() {
+            assert_eq!(u.row_stride(), 1);
+            for l in 0..m {
+                let i = perm[l];
+                u[outer_perm[i]] = zhat[i] / (diag[i] - shift - mu) / (diag[i] + (shift + mu));
+            }
+            u[n] = T::zero();
+            let norm_inv = norm(u.rb()).inv();
+            for x in u.rb_mut() {
+                *x = *x * norm_inv;
+            }
         }
 
         if let Some(mut v) = v {
@@ -223,7 +227,9 @@ fn compute_singular_vectors<T: RealField>(
             }
         }
     }
-    um[(n, n)] = T::one();
+    if let Some(mut um) = um {
+        um[(n, n)] = T::one();
+    }
 }
 
 fn perturb_col0<T: RealField>(
@@ -1032,6 +1038,7 @@ pub fn bidiag_svd<T: RealField>(
     subdiag: &mut [T],
     mut u: MatMut<'_, T>,
     mut v: Option<MatMut<'_, T>>,
+    fill_u: bool,
     jacobi_fallback_threshold: usize,
     epsilon: T,
     consider_zero_threshold: T,
@@ -1219,6 +1226,7 @@ pub fn bidiag_svd<T: RealField>(
                     sub_d1,
                     u1.rb_mut(),
                     v1.rb_mut(),
+                    true,
                     jacobi_fallback_threshold,
                     epsilon,
                     consider_zero_threshold,
@@ -1232,6 +1240,7 @@ pub fn bidiag_svd<T: RealField>(
                     sub_d2,
                     u2.rb_mut(),
                     v2.rb_mut(),
+                    true,
                     jacobi_fallback_threshold,
                     epsilon,
                     consider_zero_threshold,
@@ -1375,13 +1384,14 @@ pub fn bidiag_svd<T: RealField>(
     };
 
     let allocate_vm = v.is_some() as usize;
+    let allocate_um = fill_u as usize;
     temp_mat_zeroed! {
-        let (mut um, stack) = temp_mat_zeroed::<T>(n + 1, n + 1, stack);
+        let (mut um, stack) = temp_mat_zeroed::<T>(n + 1, allocate_um * (n + 1), stack);
         let (mut vm, mut stack) = temp_mat_zeroed::<T>(n, allocate_vm * n, stack);
     }
 
     compute_svd_of_m(
-        um.rb_mut(),
+        fill_u.then_some(um.rb_mut()),
         v.is_some().then_some(vm.rb_mut()),
         diag,
         col0,
@@ -1391,13 +1401,15 @@ pub fn bidiag_svd<T: RealField>(
         stack.rb_mut(),
     );
 
-    for (rot, &i) in jacobi_coeffs[..jacobi_0i]
-        .iter()
-        .zip(&jacobi_indices[..jacobi_0i])
-        .rev()
-    {
-        let (um_top, um_bot) = um.rb_mut().split_at_row(i);
-        rot.apply_on_the_left_in_place(um_top.row(0), um_bot.row(0));
+    if fill_u {
+        for (rot, &i) in jacobi_coeffs[..jacobi_0i]
+            .iter()
+            .zip(&jacobi_indices[..jacobi_0i])
+            .rev()
+        {
+            let (um_top, um_bot) = um.rb_mut().split_at_row(i);
+            rot.apply_on_the_left_in_place(um_top.row(0), um_bot.row(0));
+        }
     }
 
     for (rot, &i) in jacobi_coeffs[jacobi_0i..][..jacobi_ij]
@@ -1417,14 +1429,16 @@ pub fn bidiag_svd<T: RealField>(
             }
         }
 
-        let (row_i, row_j) = if actual_i < actual_j {
-            let (um_top, um_bot) = um.rb_mut().split_at_row(actual_j);
-            (um_top.row(actual_i), um_bot.row(0))
-        } else {
-            let (um_top, um_bot) = um.rb_mut().split_at_row(actual_i);
-            (um_top.row(actual_j), um_bot.row(0))
-        };
-        rot.apply_on_the_left_in_place(row_i, row_j);
+        if fill_u {
+            let (row_i, row_j) = if actual_i < actual_j {
+                let (um_top, um_bot) = um.rb_mut().split_at_row(actual_j);
+                (um_top.row(actual_i), um_bot.row(0))
+            } else {
+                let (um_top, um_bot) = um.rb_mut().split_at_row(actual_i);
+                (um_top.row(actual_j), um_bot.row(0))
+            };
+            rot.apply_on_the_left_in_place(row_i, row_j);
+        }
 
         if v.is_some() {
             let (row_i, row_j) = if actual_i < actual_j {
@@ -1505,94 +1519,98 @@ pub fn bidiag_svd<T: RealField>(
 
     let mut update_u = |parallelism, stack: DynStack<'_>| {
         temp_mat_uninit! {
-            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(n + 1, n + 1, stack) };
+            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(n + 1, allocate_um * (n + 1), stack) };
         }
 
-        let (mut combined_u1, mut combined_u2) = combined_u.rb_mut().split_at_row(k + 1);
-        let u_lhs = u.rb();
-        let u_rhs = um.rb();
-        let (u_lhs1, u_lhs2) = (
-            u_lhs.submatrix(0, 0, k + 1, k + 1),
-            u_lhs.submatrix(k + 1, k + 1, rem + 1, rem + 1),
-        );
-        let (u_rhs1, u_rhs2) = u_rhs.rb().split_at_row(k + 1);
+        if fill_u {
+            let (mut combined_u1, mut combined_u2) = combined_u.rb_mut().split_at_row(k + 1);
+            let u_lhs = u.rb();
+            let u_rhs = um.rb();
+            let (u_lhs1, u_lhs2) = (
+                u_lhs.submatrix(0, 0, k + 1, k + 1),
+                u_lhs.submatrix(k + 1, k + 1, rem + 1, rem + 1),
+            );
+            let (u_rhs1, u_rhs2) = u_rhs.rb().split_at_row(k + 1);
 
-        join_raw(
-            |parallelism| {
-                // matrix matrix
-                faer_core::mul::matmul(
-                    combined_u1.rb_mut(),
-                    no_conj,
-                    u_lhs1,
-                    no_conj,
-                    u_rhs1,
-                    no_conj,
-                    None,
-                    T::one(),
-                    parallelism,
-                );
-                // rank 1 update
-                faer_core::mul::matmul(
-                    combined_u1.rb_mut(),
-                    no_conj,
-                    u_lhs.col(n).subrows(0, k + 1).as_2d(),
-                    no_conj,
-                    u_rhs2.row(rem).as_2d(),
-                    no_conj,
-                    Some(T::one()),
-                    T::one(),
-                    parallelism,
-                );
-            },
-            |parallelism| {
-                // matrix matrix
-                faer_core::mul::matmul(
-                    combined_u2.rb_mut(),
-                    no_conj,
-                    u_lhs2,
-                    no_conj,
-                    u_rhs2,
-                    no_conj,
-                    None,
-                    T::one(),
-                    parallelism,
-                );
-                // rank 1 update
-                faer_core::mul::matmul(
-                    combined_u2.rb_mut(),
-                    no_conj,
-                    u_lhs.col(0).subrows(k + 1, rem + 1).as_2d(),
-                    no_conj,
-                    u_rhs1.row(0).as_2d(),
-                    no_conj,
-                    Some(T::one()),
-                    T::one(),
-                    parallelism,
-                );
-            },
-            parallelism,
-        );
+            join_raw(
+                |parallelism| {
+                    // matrix matrix
+                    faer_core::mul::matmul(
+                        combined_u1.rb_mut(),
+                        no_conj,
+                        u_lhs1,
+                        no_conj,
+                        u_rhs1,
+                        no_conj,
+                        None,
+                        T::one(),
+                        parallelism,
+                    );
+                    // rank 1 update
+                    faer_core::mul::matmul(
+                        combined_u1.rb_mut(),
+                        no_conj,
+                        u_lhs.col(n).subrows(0, k + 1).as_2d(),
+                        no_conj,
+                        u_rhs2.row(rem).as_2d(),
+                        no_conj,
+                        Some(T::one()),
+                        T::one(),
+                        parallelism,
+                    );
+                },
+                |parallelism| {
+                    // matrix matrix
+                    faer_core::mul::matmul(
+                        combined_u2.rb_mut(),
+                        no_conj,
+                        u_lhs2,
+                        no_conj,
+                        u_rhs2,
+                        no_conj,
+                        None,
+                        T::one(),
+                        parallelism,
+                    );
+                    // rank 1 update
+                    faer_core::mul::matmul(
+                        combined_u2.rb_mut(),
+                        no_conj,
+                        u_lhs.col(0).subrows(k + 1, rem + 1).as_2d(),
+                        no_conj,
+                        u_rhs1.row(0).as_2d(),
+                        no_conj,
+                        Some(T::one()),
+                        T::one(),
+                        parallelism,
+                    );
+                },
+                parallelism,
+            );
 
-        zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
+            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
+        }
     };
 
     if compact_u == 1 {
         update_v(parallelism, stack.rb_mut());
-        temp_mat_uninit! {
-            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+        if fill_u {
+            temp_mat_uninit! {
+                let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+            }
+            faer_core::mul::matmul(
+                combined_u.rb_mut(),
+                Conj::No,
+                u.rb(),
+                Conj::No,
+                um.rb(),
+                Conj::No,
+                None,
+                T::one(),
+                parallelism,
+            );
+            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
         }
-        faer_core::mul::matmul(
-            combined_u.rb_mut(),
-            Conj::No,
-            u.rb(),
-            Conj::No,
-            um.rb(),
-            Conj::No,
-            None,
-            T::one(),
-            parallelism,
-        );
-        zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
     } else {
         match parallelism {
             Parallelism::Rayon(_) if !v_is_none => {
@@ -1614,6 +1632,40 @@ pub fn bidiag_svd<T: RealField>(
     }
 
     0
+}
+
+pub fn bidiag_svd_req<T: 'static>(
+    n: usize,
+    compute_u: bool,
+    compute_v: bool,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
+    let perm = StackReq::try_new::<usize>(n)?;
+    let jacobi_coeffs = StackReq::try_new::<JacobiRotation<T>>(n)?;
+    let jacobi_indices = perm;
+    let transpositions = perm;
+    let real_ind = perm;
+    let real_col = perm;
+
+    let um = temp_mat_req::<T>(n + 1, n + 1)?;
+    let vm = temp_mat_req::<T>(n, if compute_v { n } else { 0 })?;
+
+    let combined_u = temp_mat_req::<T>(if compute_u { n + 1 } else { 2 }, n + 1)?;
+    let combined_v = vm;
+
+    let prologue = StackReq::try_all_of([perm, jacobi_coeffs, jacobi_indices])?;
+
+    StackReq::try_all_of([
+        prologue,
+        um,
+        vm,
+        combined_u,
+        combined_v,
+        transpositions,
+        real_ind,
+        real_col,
+    ])
 }
 
 #[cfg(test)]
@@ -1648,6 +1700,7 @@ mod tests {
                     &mut subdiag,
                     u.as_mut(),
                     Some(v.as_mut()),
+                    true,
                     5,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
@@ -1820,6 +1873,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 15,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
@@ -2119,6 +2173,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
@@ -4210,6 +4265,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
@@ -5277,6 +5333,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
@@ -7368,6 +7425,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
@@ -9459,6 +9517,7 @@ mod tests {
                 &mut subdiag,
                 u.as_mut(),
                 Some(v.as_mut()),
+                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
