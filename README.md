@@ -35,9 +35,15 @@ The LU module implements the LU factorization with row pivoting, as well as the 
 
 The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
 
+## faer-svd
+
+[![Documentation](https://docs.rs/faer-svd/badge.svg)](https://docs.rs/faer-svd)
+[![Crate](https://img.shields.io/crates/v/faer-svd.svg)](https://crates.io/crates/faer-svd)
+
+The SVD module implements the singular value decomposition for real matrices (complex support will be following soon).
+
 ## Coming soon
 
-- `faer-svd`
 - `faer-eigen`
 
 # Contributing
