@@ -1,7 +1,7 @@
 use super::timeit;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
-use ndarray_linalg::SVD;
+use ndarray_linalg::{SVDDC, JobSvd};
 use rand::random;
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ pub fn ndarray(sizes: &[usize]) -> Vec<Duration> {
             }
 
             let time = timeit(|| {
-                c.svd(true, true).unwrap();
+                c.svddc(JobSvd::All).unwrap();
             });
 
             time

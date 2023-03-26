@@ -243,16 +243,16 @@ Computing the SVD of a square matrix with dimension `n`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32    115.6µs    138.3µs    124.7µs     94.2µs    219.3µs
-   64    409.7µs    374.9µs    665.4µs    576.7µs        1ms
-   96    913.3µs    905.7µs      3.4ms      1.7ms      2.6ms
-  128      1.7ms      1.6ms      9.8ms      4.5ms      4.3ms
-  192        4ms      4.1ms     28.1ms     15.1ms      9.6ms
-  256      7.8ms      7.1ms     75.5ms     45.3ms     17.3ms
-  384     21.1ms     15.4ms    167.3ms    119.4ms     43.5ms
-  512     45.8ms     28.7ms    455.4ms    456.2ms     84.7ms
-  640       81ms     45.8ms    621.6ms    657.8ms    135.5ms
-  768    132.9ms     80.4ms      1.37s      1.43s    208.9ms
-  896    201.3ms    112.6ms         2s      2.09s    295.2ms
- 1024    300.9ms    155.9ms       3.5s      3.91s    438.9ms
+   32    120.2µs    137.1µs     92.6µs    103.6µs    235.7µs
+   64    403.8µs    362.6µs    559.1µs    551.1µs    983.6µs
+   96      918µs    899.1µs      1.6ms      1.7ms      2.6ms
+  128      1.7ms      1.6ms      2.9ms      4.7ms      4.3ms
+  192        4ms        4ms      6.5ms     15.2ms      9.7ms
+  256      7.9ms        7ms     11.2ms     46.5ms     17.4ms
+  384     21.1ms     15.4ms     25.1ms    120.2ms     42.4ms
+  512     45.9ms     29.3ms     51.6ms    454.2ms     82.1ms
+  640     80.7ms     45.8ms     78.4ms    651.1ms    129.5ms
+  768      132ms     68.7ms    121.9ms      1.44s    201.2ms
+  896    199.9ms     94.8ms    171.4ms       2.1s    282.4ms
+ 1024    298.2ms    131.7ms    270.7ms      3.83s    422.4ms
 ```
