@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-gemm = { version = "0.13", default-features = false, features = ["rayon"] }
+gemm = { version = "0.14", default-features = false }
 pulp = { version = "0.11", default-features = false }
 aligned-vec = "0.5"
 seq-macro = "0.3"
@@ -31,7 +31,7 @@ nightly = ["gemm/nightly", "pulp/nightly"]
 [dev-dependencies]
 criterion = "0.4"
 rand = "0.8.5"
-nalgebra = "0.32.1"
+nalgebra = "0.32.2"
 assert_approx_eq = "1.1.0"
 
 [[bench]]
