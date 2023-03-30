@@ -1,103 +1,125 @@
-use core::{any::TypeId, mem::size_of};
-use faer_core::RealField;
-use num_traits::Zero;
-
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::{
-    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
-    ComplexField, Conj, MatMut, Parallelism,
-};
-use pulp::{Arch, Simd};
-use reborrow::*;
-use seq_macro::seq;
-
+use super::CholeskyError;
 use crate::{
     ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
     llt::compute::{cholesky_in_place, cholesky_in_place_req},
 };
-
-use super::CholeskyError;
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use core::{any::TypeId, mem::size_of};
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use faer_core::{
+    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
+    ComplexField, Conj, MatMut, Parallelism, RealField,
+};
+use num_traits::Zero;
+use pulp::Arch;
+use reborrow::*;
+use seq_macro::seq;
 
 macro_rules! generate {
     ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident, $mul: ident) => {
         #[inline(always)]
-        unsafe fn $name<S: Simd, T: 'static>(
-            simd: S,
+        unsafe fn $name(
+            arch: Arch,
             n: usize,
-            l_col: *mut T,
-            w: *mut T,
+            l_col: *mut $ty,
+            w: *mut $ty,
             w_col_stride: isize,
-            neg_wj_over_ljj_array: *const T,
-            alpha_wj_over_nljj_array: *const T,
-            nljj_over_ljj_array: *const T,
+            neg_wj_over_ljj_array: *const $ty,
+            alpha_wj_over_nljj_array: *const $ty,
+            nljj_over_ljj_array: *const $ty,
         ) {
-            assert_eq!(core::any::TypeId::of::<T>(), core::any::TypeId::of::<$ty>());
-            let l_col = l_col as *mut $ty;
-            let w = w as *mut $ty;
-            let neg_wj_over_ljj_array = neg_wj_over_ljj_array as *const $ty;
-            let nljj_over_ljj_array = nljj_over_ljj_array as *const $ty;
-            let alpha_wj_over_nljj_array = alpha_wj_over_nljj_array as *const $ty;
-            let lanes = size_of::<$tys>() / size_of::<$ty>();
+            struct Impl {
+                n: usize,
+                l_col: *mut $ty,
+                w: *mut $ty,
+                w_col_stride: isize,
+                neg_wj_over_ljj_array: *const $ty,
+                alpha_wj_over_nljj_array: *const $ty,
+                nljj_over_ljj_array: *const $ty,
+            }
+            impl pulp::WithSimd for Impl {
+                type Output = ();
 
-            let n_vec = n / lanes;
-            let n_rem = n % lanes;
 
-            seq!(I in 0..$r {
-                let neg_wj_over_ljj~I = *neg_wj_over_ljj_array.add(I);
-                let nljj_over_ljj~I = *nljj_over_ljj_array.add(I);
-                let alpha_wj_over_nljj~I = *alpha_wj_over_nljj_array.add(I);
-                let w_col~I = w.offset(I * w_col_stride);
-            });
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) {
+                    unsafe {
+                        let Self { n, l_col, w, w_col_stride, neg_wj_over_ljj_array, alpha_wj_over_nljj_array, nljj_over_ljj_array } = self;
+                        let l_col = l_col as *mut $ty;
+                        let w = w as *mut $ty;
+                        let neg_wj_over_ljj_array = neg_wj_over_ljj_array as *const $ty;
+                        let nljj_over_ljj_array = nljj_over_ljj_array as *const $ty;
+                        let alpha_wj_over_nljj_array = alpha_wj_over_nljj_array as *const $ty;
+                        let lanes = size_of::<$tys>() / size_of::<$ty>();
 
-            // vectorized section
-            {
-                let l_col = l_col as *mut $tys;
+                        let n_vec = n / lanes;
+                        let n_rem = n % lanes;
 
-                seq!(I in 0..$r {
-                    let neg_wj_over_ljj~I = simd.$splat(neg_wj_over_ljj~I);
-                    let nljj_over_ljj~I = simd.$splat(nljj_over_ljj~I);
-                    let alpha_wj_over_nljj~I = simd.$splat(alpha_wj_over_nljj~I);
-                    let w_col~I = w_col~I as *mut $tys;
-                });
+                        seq!(I in 0..$r {
+                            let neg_wj_over_ljj~I = *neg_wj_over_ljj_array.add(I);
+                            let nljj_over_ljj~I = *nljj_over_ljj_array.add(I);
+                            let alpha_wj_over_nljj~I = *alpha_wj_over_nljj_array.add(I);
+                            let w_col~I = w.offset(I * w_col_stride);
+                        });
 
-                for i in 0..n_vec {
-                    let mut l = *l_col.add(i);
+                        // vectorized section
+                        {
+                            let l_col = l_col as *mut $tys;
 
-                    seq!(I in 0..$r {
-                        let mut w~I = *w_col~I.add(i);
-                        w~I = simd.$mul_add(neg_wj_over_ljj~I, l, w~I);
-                        l = simd.$mul_add(alpha_wj_over_nljj~I, w~I, simd.$mul(nljj_over_ljj~I, l));
-                        w_col~I.add(i).write(w~I);
-                    });
+                            seq!(I in 0..$r {
+                                let neg_wj_over_ljj~I = simd.$splat(neg_wj_over_ljj~I);
+                                let nljj_over_ljj~I = simd.$splat(nljj_over_ljj~I);
+                                let alpha_wj_over_nljj~I = simd.$splat(alpha_wj_over_nljj~I);
+                                let w_col~I = w_col~I as *mut $tys;
+                            });
 
-                    l_col.add(i).write(l);
+                            for i in 0..n_vec {
+                                let mut l = *l_col.add(i);
+
+                                seq!(I in 0..$r {
+                                    let mut w~I = *w_col~I.add(i);
+                                    w~I = simd.$mul_add(neg_wj_over_ljj~I, l, w~I);
+                                    l = simd.$mul_add(alpha_wj_over_nljj~I, w~I, simd.$mul(nljj_over_ljj~I, l));
+                                    w_col~I.add(i).write(w~I);
+                                });
+
+                                l_col.add(i).write(l);
+                            }
+                        }
+                        // scalar section
+                        {
+                            for i in n - n_rem..n {
+                                let mut l = *l_col.add(i);
+
+                                seq!(I in 0..$r {
+                                    let mut w~I = *w_col~I.add(i);
+                                    w~I = $ty::mul_add(neg_wj_over_ljj~I, l, w~I);
+                                    l = $ty::mul_add(alpha_wj_over_nljj~I, w~I, nljj_over_ljj~I * l);
+                                    w_col~I.add(i).write(w~I);
+                                });
+
+                                l_col.add(i).write(l);
+                            }
+                        }
+                    }
                 }
             }
-            // scalar section
-            {
-                for i in n - n_rem..n {
-                    let mut l = *l_col.add(i);
-
-                    seq!(I in 0..$r {
-                        let mut w~I = *w_col~I.add(i);
-                        w~I = $ty::mul_add(neg_wj_over_ljj~I, l, w~I);
-                        l = $ty::mul_add(alpha_wj_over_nljj~I, w~I, nljj_over_ljj~I * l);
-                        w_col~I.add(i).write(w~I);
-                    });
-
-                    l_col.add(i).write(l);
-                }
-            }
+            arch.dispatch(Impl {
+                n,
+                l_col,
+                w,
+                w_col_stride,
+                neg_wj_over_ljj_array,
+                alpha_wj_over_nljj_array,
+                nljj_over_ljj_array,
+            })
         }
     };
 }
 
 macro_rules! generate_generic {
     ($name: ident, $r: tt) => {
-        #[inline(always)]
-        unsafe fn $name<S: Simd, T: ComplexField>(
-            _simd: S,
+        unsafe fn $name<T: ComplexField>(
             n: usize,
             l_col: *mut T,
             l_row_stride: isize,
@@ -161,11 +183,8 @@ struct RankRUpdate<'a, T> {
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
-    type Output = Result<(), CholeskyError>;
-
-    #[inline(always)]
-    fn with_simd<S: Simd>(self, s: S) -> Self::Output {
+impl<'a, T: ComplexField> RankRUpdate<'a, T> {
+    fn run(self) -> Result<(), CholeskyError> {
         // On the Modification of LDLT Factorizations
         // By R. Fletcher and M. J. D. Powell
         // https://www.ams.org/journals/mcom/1974-28-128/S0025-5718-1974-0359297-1/S0025-5718-1974-0359297-1.pdf
@@ -187,6 +206,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
         let w_cs = w.col_stride();
         let w_rs = w.row_stride();
 
+        let arch = Arch::new();
         unsafe {
             for j in 0..n {
                 let r = (*r)().min(k);
@@ -236,166 +256,138 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 
                     if TypeId::of::<T>() == TypeId::of::<f64>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| {
-                                rank_1_f64(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            2 => s.vectorize(|| {
-                                rank_2_f64(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            3 => s.vectorize(|| {
-                                rank_3_f64(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            4 => s.vectorize(|| {
-                                rank_4_f64(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
+                            1 => rank_1_f64(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            2 => rank_2_f64(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            3 => rank_3_f64(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            4 => rank_4_f64(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
                             _ => unreachable!(),
                         };
                     } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| {
-                                rank_1_f32(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            2 => s.vectorize(|| {
-                                rank_2_f32(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            3 => s.vectorize(|| {
-                                rank_3_f32(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            4 => s.vectorize(|| {
-                                rank_4_f32(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    w_ptr,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
+                            1 => rank_1_f32(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            2 => rank_2_f32(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            3 => rank_3_f32(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
+                            4 => rank_4_f32(
+                                arch,
+                                rem,
+                                l_ptr as _,
+                                w_ptr as _,
+                                w_cs,
+                                neg_wj_over_ljj as _,
+                                alpha_wj_over_nljj as _,
+                                nljj_over_ljj as _,
+                            ),
                             _ => unreachable!(),
                         };
                     } else {
                         match r_chunk {
-                            1 => s.vectorize(|| {
-                                r1(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    l_rs,
-                                    w_ptr,
-                                    w_rs,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            2 => s.vectorize(|| {
-                                r2(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    l_rs,
-                                    w_ptr,
-                                    w_rs,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            3 => s.vectorize(|| {
-                                r3(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    l_rs,
-                                    w_ptr,
-                                    w_rs,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
-                            4 => s.vectorize(|| {
-                                r4(
-                                    s,
-                                    rem,
-                                    l_ptr,
-                                    l_rs,
-                                    w_ptr,
-                                    w_rs,
-                                    w_cs,
-                                    neg_wj_over_ljj,
-                                    alpha_wj_over_nljj,
-                                    nljj_over_ljj,
-                                )
-                            }),
+                            1 => r1(
+                                rem,
+                                l_ptr,
+                                l_rs,
+                                w_ptr,
+                                w_rs,
+                                w_cs,
+                                neg_wj_over_ljj,
+                                alpha_wj_over_nljj,
+                                nljj_over_ljj,
+                            ),
+                            2 => r2(
+                                rem,
+                                l_ptr,
+                                l_rs,
+                                w_ptr,
+                                w_rs,
+                                w_cs,
+                                neg_wj_over_ljj,
+                                alpha_wj_over_nljj,
+                                nljj_over_ljj,
+                            ),
+                            3 => r3(
+                                rem,
+                                l_ptr,
+                                l_rs,
+                                w_ptr,
+                                w_rs,
+                                w_cs,
+                                neg_wj_over_ljj,
+                                alpha_wj_over_nljj,
+                                nljj_over_ljj,
+                            ),
+                            4 => r4(
+                                rem,
+                                l_ptr,
+                                l_rs,
+                                w_ptr,
+                                w_rs,
+                                w_cs,
+                                neg_wj_over_ljj,
+                                alpha_wj_over_nljj,
+                                nljj_over_ljj,
+                            ),
                             _ => unreachable!(),
                         };
                     }
@@ -431,12 +423,13 @@ pub fn rank_r_update_clobber<T: ComplexField>(
     fancy_assert!(w.nrows() == n);
     fancy_assert!(alpha.nrows() == k);
 
-    Arch::new().dispatch(RankRUpdate {
+    RankRUpdate {
         l: cholesky_factor,
         w,
         alpha,
         r: &mut || k,
-    })
+    }
+    .run()
 }
 
 /// Computes the size and alignment of required workspace for deleting the rows and columns from a
@@ -514,16 +507,16 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     let mut cholesky_factor = cholesky_factor;
     delete_rows_and_cols_triangular(cholesky_factor.rb_mut(), indices);
 
-    Arch::new()
-        .dispatch(RankRUpdate {
-            l: unsafe {
-                cholesky_factor.submatrix_unchecked(first, first, n - first - r, n - first - r)
-            },
-            w,
-            alpha,
-            r: &mut rank_update_indices(first, indices),
-        })
-        .unwrap();
+    RankRUpdate {
+        l: unsafe {
+            cholesky_factor.submatrix_unchecked(first, first, n - first - r, n - first - r)
+        },
+        w,
+        alpha,
+        r: &mut rank_update_indices(first, indices),
+    }
+    .run()
+    .unwrap();
 }
 
 /// Computes the size and alignment of the required workspace for inserting the rows and columns at

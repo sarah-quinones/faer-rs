@@ -26,20 +26,7 @@ use faer_core::{
 use reborrow::*;
 
 fn norm_f64(v: ColRef<'_, f64>) -> f64 {
-    struct Impl<'a> {
-        v: ColRef<'a, f64>,
-    }
-    impl pulp::WithSimd for Impl<'_> {
-        type Output = f64;
-
-        #[inline(always)]
-        fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-            let Self { v } = self;
-            faer_core::mul::dot(simd, v, v).sqrt()
-        }
-    }
-
-    pulp::Arch::new().dispatch(Impl { v })
+    faer_core::mul::dot(pulp::Arch::new(), v, v).sqrt()
 }
 
 fn norm<T: RealField>(v: ColRef<'_, T>) -> T {

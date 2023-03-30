@@ -1,7 +1,6 @@
 //! Triangular solve module.
 
 use crate::{join_raw, ComplexField, Conj, MatMut, MatRef, Parallelism};
-
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
 

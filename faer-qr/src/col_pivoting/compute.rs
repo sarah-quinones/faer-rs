@@ -19,82 +19,91 @@ pub use crate::no_pivoting::compute::recommended_blocksize;
 //
 // returns ||a||²
 #[inline(always)]
-fn update_and_norm2_f64<S: Simd>(simd: S, a: &mut [f64], b: &[f64], k: f64) -> f64 {
-    let mut acc0 = simd.f64s_splat(0.0);
-    let mut acc1 = simd.f64s_splat(0.0);
-    let mut acc2 = simd.f64s_splat(0.0);
-    let mut acc3 = simd.f64s_splat(0.0);
-    let mut acc4 = simd.f64s_splat(0.0);
-    let mut acc5 = simd.f64s_splat(0.0);
-    let mut acc6 = simd.f64s_splat(0.0);
-    let mut acc7 = simd.f64s_splat(0.0);
-
-    let (a, a_rem) = S::f64s_as_mut_simd(a);
-    let (b, b_rem) = S::f64s_as_simd(b);
-
-    let (a, a_remv) = as_arrays_mut::<8, _>(a);
-    let (b, b_remv) = as_arrays::<8, _>(b);
-
-    let vk = simd.f64s_splat(k);
-
-    for (a, b) in a.iter_mut().zip(b.iter()) {
-        a[0] = simd.f64s_mul_adde(vk, b[0], a[0]);
-        acc0 = simd.f64s_mul_adde(a[0], a[0], acc0);
-
-        a[1] = simd.f64s_mul_adde(vk, b[1], a[1]);
-        acc1 = simd.f64s_mul_adde(a[1], a[1], acc1);
-
-        a[2] = simd.f64s_mul_adde(vk, b[2], a[2]);
-        acc2 = simd.f64s_mul_adde(a[2], a[2], acc2);
-
-        a[3] = simd.f64s_mul_adde(vk, b[3], a[3]);
-        acc3 = simd.f64s_mul_adde(a[3], a[3], acc3);
-
-        a[4] = simd.f64s_mul_adde(vk, b[4], a[4]);
-        acc4 = simd.f64s_mul_adde(a[4], a[4], acc4);
-
-        a[5] = simd.f64s_mul_adde(vk, b[5], a[5]);
-        acc5 = simd.f64s_mul_adde(a[5], a[5], acc5);
-
-        a[6] = simd.f64s_mul_adde(vk, b[6], a[6]);
-        acc6 = simd.f64s_mul_adde(a[6], a[6], acc6);
-
-        a[7] = simd.f64s_mul_adde(vk, b[7], a[7]);
-        acc7 = simd.f64s_mul_adde(a[7], a[7], acc7);
+fn update_and_norm2_f64(arch: pulp::Arch, a: &mut [f64], b: &[f64], k: f64) -> f64 {
+    struct Impl<'a> {
+        a: &'a mut [f64],
+        b: &'a [f64],
+        k: f64,
     }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f64;
 
-    for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
-        *a = simd.f64s_mul_adde(vk, *b, *a);
-        acc0 = simd.f64s_mul_adde(*a, *a, acc0);
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b, k } = self;
+            let mut acc0 = simd.f64s_splat(0.0);
+            let mut acc1 = simd.f64s_splat(0.0);
+            let mut acc2 = simd.f64s_splat(0.0);
+            let mut acc3 = simd.f64s_splat(0.0);
+            let mut acc4 = simd.f64s_splat(0.0);
+            let mut acc5 = simd.f64s_splat(0.0);
+            let mut acc6 = simd.f64s_splat(0.0);
+            let mut acc7 = simd.f64s_splat(0.0);
+
+            let (a, a_rem) = S::f64s_as_mut_simd(a);
+            let (b, b_rem) = S::f64s_as_simd(b);
+
+            let (a, a_remv) = as_arrays_mut::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            let vk = simd.f64s_splat(k);
+
+            for (a, b) in a.iter_mut().zip(b.iter()) {
+                a[0] = simd.f64s_mul_adde(vk, b[0], a[0]);
+                acc0 = simd.f64s_mul_adde(a[0], a[0], acc0);
+
+                a[1] = simd.f64s_mul_adde(vk, b[1], a[1]);
+                acc1 = simd.f64s_mul_adde(a[1], a[1], acc1);
+
+                a[2] = simd.f64s_mul_adde(vk, b[2], a[2]);
+                acc2 = simd.f64s_mul_adde(a[2], a[2], acc2);
+
+                a[3] = simd.f64s_mul_adde(vk, b[3], a[3]);
+                acc3 = simd.f64s_mul_adde(a[3], a[3], acc3);
+
+                a[4] = simd.f64s_mul_adde(vk, b[4], a[4]);
+                acc4 = simd.f64s_mul_adde(a[4], a[4], acc4);
+
+                a[5] = simd.f64s_mul_adde(vk, b[5], a[5]);
+                acc5 = simd.f64s_mul_adde(a[5], a[5], acc5);
+
+                a[6] = simd.f64s_mul_adde(vk, b[6], a[6]);
+                acc6 = simd.f64s_mul_adde(a[6], a[6], acc6);
+
+                a[7] = simd.f64s_mul_adde(vk, b[7], a[7]);
+                acc7 = simd.f64s_mul_adde(a[7], a[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
+                *a = simd.f64s_mul_adde(vk, *b, *a);
+                acc0 = simd.f64s_mul_adde(*a, *a, acc0);
+            }
+
+            acc0 = simd.f64s_add(acc0, acc1);
+            acc2 = simd.f64s_add(acc2, acc3);
+            acc4 = simd.f64s_add(acc4, acc5);
+            acc6 = simd.f64s_add(acc6, acc7);
+
+            acc0 = simd.f64s_add(acc0, acc2);
+            acc4 = simd.f64s_add(acc4, acc6);
+
+            acc0 = simd.f64s_add(acc0, acc4);
+
+            let mut acc = simd.f64s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
+                *a = f64::mul_add(k, *b, *a);
+                acc = f64::mul_add(*a, *a, acc);
+            }
+
+            acc
+        }
     }
-
-    acc0 = simd.f64s_add(acc0, acc1);
-    acc2 = simd.f64s_add(acc2, acc3);
-    acc4 = simd.f64s_add(acc4, acc5);
-    acc6 = simd.f64s_add(acc6, acc7);
-
-    acc0 = simd.f64s_add(acc0, acc2);
-    acc4 = simd.f64s_add(acc4, acc6);
-
-    acc0 = simd.f64s_add(acc0, acc4);
-
-    let mut acc = simd.f64s_reduce_sum(acc0);
-
-    for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
-        *a = f64::mul_add(k, *b, *a);
-        acc = f64::mul_add(*a, *a, acc);
-    }
-
-    acc
+    arch.dispatch(Impl { a, b, k })
 }
 
 #[inline(always)]
-fn update_and_norm2_generic<S: Simd, T: ComplexField>(
-    _simd: S,
-    a: &mut [T],
-    b: &[T],
-    k: T,
-) -> T::Real {
+fn update_and_norm2_generic<T: ComplexField>(a: &mut [T], b: &[T], k: T) -> T::Real {
     let mut acc = T::Real::zero();
 
     for (a, b) in a.iter_mut().zip(b.iter()) {
@@ -106,13 +115,13 @@ fn update_and_norm2_generic<S: Simd, T: ComplexField>(
 }
 
 #[inline(always)]
-fn norm2<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>) -> T::Real {
-    dot(simd, a, a).real()
+fn norm2<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>) -> T::Real {
+    dot(arch, a, a).real()
 }
 
 #[inline(always)]
-fn update_and_norm2<S: Simd, T: ComplexField>(
-    simd: S,
+fn update_and_norm2<T: ComplexField>(
+    arch: pulp::Arch,
     a: ColMut<'_, T>,
     b: ColRef<'_, T>,
     k: T,
@@ -124,14 +133,13 @@ fn update_and_norm2<S: Simd, T: ComplexField>(
 
         if coe::is_same::<f64, T>() {
             coe::coerce_static(update_and_norm2_f64(
-                simd,
+                arch,
                 unsafe { from_raw_parts_mut(a.as_ptr(), a_len).coerce() },
                 unsafe { from_raw_parts(b.as_ptr(), b_len).coerce() },
                 coe::coerce_static(k),
             ))
         } else {
             update_and_norm2_generic(
-                simd,
                 unsafe { from_raw_parts_mut(a.as_ptr(), a_len) },
                 unsafe { from_raw_parts(b.as_ptr(), b_len) },
                 k,
@@ -149,9 +157,8 @@ fn update_and_norm2<S: Simd, T: ComplexField>(
     }
 }
 
-#[inline(always)]
-fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
-    simd: S,
+fn qr_in_place_colmajor<T: ComplexField>(
+    arch: pulp::Arch,
     mut matrix: MatMut<'_, T>,
     mut householder_coeffs: ColMut<'_, T>,
     col_perm: &mut [usize],
@@ -173,7 +180,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     let mut biggest_col_idx = 0;
     let mut biggest_col_value = T::Real::zero();
     for j in 0..n {
-        let col_value = norm2(simd, matrix.rb().col(j));
+        let col_value = norm2(arch, matrix.rb().col(j));
         if col_value > biggest_col_value {
             biggest_col_value = col_value;
             biggest_col_idx = j;
@@ -197,7 +204,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
         let first_col = first_col.col(0);
 
         let (mut first_head, mut first_tail) = first_col.split_at(1);
-        let tail_squared_norm = norm2(simd, first_tail.rb());
+        let tail_squared_norm = norm2(arch, first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place(
             Some(first_tail.rb_mut()),
             first_head[0],
@@ -236,7 +243,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                     .for_each(
                         |((col_start, matrix), (biggest_col_value, biggest_col_idx))| {
                             process_cols(
-                                simd,
+                                arch,
                                 matrix,
                                 col_start,
                                 first_tail,
@@ -262,7 +269,7 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
                 biggest_col_idx = 0;
 
                 process_cols(
-                    simd,
+                    arch,
                     last_cols,
                     0,
                     first_tail,
@@ -277,8 +284,8 @@ fn qr_in_place_colmajor<S: Simd, T: ComplexField>(
     n_transpositions
 }
 
-fn process_cols<S: Simd, T: ComplexField>(
-    simd: S,
+fn process_cols<T: ComplexField>(
+    arch: pulp::Arch,
     mut matrix: MatMut<'_, T>,
     offset: usize,
     first_tail: ColRef<'_, T>,
@@ -286,22 +293,20 @@ fn process_cols<S: Simd, T: ComplexField>(
     biggest_col_value: &mut T::Real,
     biggest_col_idx: &mut usize,
 ) {
-    simd.vectorize(|| {
-        for j in 0..matrix.ncols() {
-            let (col_head, col_tail) = matrix.rb_mut().col(j).split_at(1);
-            let col_head = col_head.get(0);
+    for j in 0..matrix.ncols() {
+        let (col_head, col_tail) = matrix.rb_mut().col(j).split_at(1);
+        let col_head = col_head.get(0);
 
-            let dot = *col_head + dot(simd, first_tail, col_tail.rb());
-            let k = -tau_inv * dot;
-            *col_head = *col_head + k;
+        let dot = *col_head + dot(arch, first_tail, col_tail.rb());
+        let k = -tau_inv * dot;
+        *col_head = *col_head + k;
 
-            let col_value = update_and_norm2(simd, col_tail, first_tail, k);
-            if col_value > *biggest_col_value {
-                *biggest_col_value = col_value;
-                *biggest_col_idx = j + offset;
-            }
+        let col_value = update_and_norm2(arch, col_tail, first_tail, k);
+        if col_value > *biggest_col_value {
+            *biggest_col_value = col_value;
+            *biggest_col_idx = j + offset;
         }
-    });
+    }
 }
 
 fn default_disable_parallelism(m: usize, n: usize) -> bool {
@@ -385,42 +390,19 @@ pub fn qr_in_place<'out, T: ComplexField>(
         *p = j;
     }
 
-    struct QrInPlaceColMajor<'a, T> {
-        matrix: MatMut<'a, T>,
-        householder_coeffs: ColMut<'a, T>,
-        col_perm: &'a mut [usize],
-        parallelism: Parallelism,
-        disable_parallelism: fn(usize, usize) -> bool,
-    }
-
-    impl<'a, T: ComplexField> pulp::WithSimd for QrInPlaceColMajor<'a, T> {
-        type Output = usize;
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            qr_in_place_colmajor(
-                simd,
-                self.matrix,
-                self.householder_coeffs,
-                self.col_perm,
-                self.parallelism,
-                self.disable_parallelism,
-            )
-        }
-    }
-
     let mut householder_factor = householder_factor;
     let householder_coeffs = householder_factor.rb_mut().row(0).transpose();
 
     let mut matrix = matrix;
 
-    let n_transpositions = pulp::Arch::new().dispatch(QrInPlaceColMajor {
-        matrix: matrix.rb_mut(),
+    let n_transpositions = qr_in_place_colmajor(
+        pulp::Arch::new(),
+        matrix.rb_mut(),
         householder_coeffs,
         col_perm,
         parallelism,
         disable_parallelism,
-    });
+    );
 
     fn div_ceil(a: usize, b: usize) -> usize {
         let (div, rem) = (a / b, a % b);

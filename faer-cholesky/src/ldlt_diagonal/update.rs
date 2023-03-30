@@ -1,13 +1,11 @@
-use core::{any::TypeId, mem::size_of};
-use faer_core::{ComplexField, Parallelism};
-
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use core::{any::TypeId, mem::size_of};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut, Conj,
-    MatMut,
+    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
+    ComplexField, Conj, MatMut, Parallelism,
 };
-use pulp::{Arch, Simd};
+use pulp::Arch;
 use reborrow::*;
 use seq_macro::seq;
 
@@ -15,87 +13,103 @@ use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place
 
 macro_rules! generate {
     ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {
-        #[inline(always)]
-        unsafe fn $name<S: Simd, T: 'static>(
-            simd: S,
+        unsafe fn $name(
+            arch: pulp::Arch,
             n: usize,
-            l_col: *mut T,
-            w: *mut T,
+            l_col: *mut $ty,
+            w: *mut $ty,
             w_col_stride: isize,
-            p_array: *const T,
-            beta_array: *const T,
+            p_array: *const $ty,
+            beta_array: *const $ty,
         ) {
-            assert_eq!(core::any::TypeId::of::<T>(), core::any::TypeId::of::<$ty>());
-            let l_col = l_col as *mut $ty;
-            let w = w as *mut $ty;
-            let p_array = p_array as *const $ty;
-            let beta_array = beta_array as *const $ty;
-            let lanes = size_of::<$tys>() / size_of::<$ty>();
+            struct Impl {
+                n: usize,
+                l_col: *mut $ty,
+                w: *mut $ty,
+                w_col_stride: isize,
+                p_array: *const $ty,
+                beta_array: *const $ty,
+            }
+            impl pulp::WithSimd for Impl {
+                type Output = ();
 
-            let n_vec = n / lanes;
-            let n_rem = n % lanes;
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) {
+                    unsafe {
+                        let Self { n, l_col, w, w_col_stride, p_array, beta_array } = self;
 
-            seq!(I in 0..$r {
-                let p~I = -*p_array.add(I);
-                let beta~I = *beta_array.add(I);
-                let w_col~I = w.offset(I * w_col_stride);
-            });
+                        let l_col = l_col as *mut $ty;
+                        let w = w as *mut $ty;
+                        let p_array = p_array as *const $ty;
+                        let beta_array = beta_array as *const $ty;
+                        let lanes = size_of::<$tys>() / size_of::<$ty>();
 
-            // vectorized section
-            {
-                let l_col = l_col as *mut $tys;
+                        let n_vec = n / lanes;
+                        let n_rem = n % lanes;
 
-                seq!(I in 0..$r {
-                    let p~I = simd.$splat(p~I);
-                    let beta~I = simd.$splat(beta~I);
-                    let w_col~I = w_col~I as *mut $tys;
-                });
+                        seq!(I in 0..$r {
+                            let p~I = -*p_array.add(I);
+                            let beta~I = *beta_array.add(I);
+                            let w_col~I = w.offset(I * w_col_stride);
+                        });
 
-                for i in 0..n_vec {
-                    let mut l = *l_col.add(i);
-                    seq!(I in 0..$r {
-                        let mut w~I = *w_col~I.add(i);
-                    });
+                        // vectorized section
+                        {
+                            let l_col = l_col as *mut $tys;
 
-                    seq!(I in 0..$r {
-                        w~I = simd.$mul_add(p~I, l, w~I);
-                        l = simd.$mul_add(beta~I, w~I, l);
-                    });
+                            seq!(I in 0..$r {
+                                let p~I = simd.$splat(p~I);
+                                let beta~I = simd.$splat(beta~I);
+                                let w_col~I = w_col~I as *mut $tys;
+                            });
 
-                    l_col.add(i).write(l);
-                    seq!(I in 0..$r {
-                        w_col~I.add(i).write(w~I);
-                    });
+                            for i in 0..n_vec {
+                                let mut l = *l_col.add(i);
+                                seq!(I in 0..$r {
+                                    let mut w~I = *w_col~I.add(i);
+                                });
+
+                                seq!(I in 0..$r {
+                                    w~I = simd.$mul_add(p~I, l, w~I);
+                                    l = simd.$mul_add(beta~I, w~I, l);
+                                });
+
+                                l_col.add(i).write(l);
+                                seq!(I in 0..$r {
+                                    w_col~I.add(i).write(w~I);
+                                });
+                            }
+                        }
+                        // scalar section
+                        {
+                            for i in n - n_rem..n {
+                                let mut l = *l_col.add(i);
+                                seq!(I in 0..$r {
+                                    let mut w~I = *w_col~I.add(i);
+                                });
+
+                                seq!(I in 0..$r {
+                                    w~I = $ty::mul_add(p~I, l, w~I);
+                                    l = $ty::mul_add(beta~I, w~I, l);
+                                });
+
+                                l_col.add(i).write(l);
+                                seq!(I in 0..$r {
+                                    w_col~I.add(i).write(w~I);
+                                });
+                            }
+                        }
+                    }
                 }
             }
-            // scalar section
-            {
-                for i in n - n_rem..n {
-                    let mut l = *l_col.add(i);
-                    seq!(I in 0..$r {
-                        let mut w~I = *w_col~I.add(i);
-                    });
-
-                    seq!(I in 0..$r {
-                        w~I = $ty::mul_add(p~I, l, w~I);
-                        l = $ty::mul_add(beta~I, w~I, l);
-                    });
-
-                    l_col.add(i).write(l);
-                    seq!(I in 0..$r {
-                        w_col~I.add(i).write(w~I);
-                    });
-                }
-            }
+            arch.dispatch(Impl { n, l_col, w, w_col_stride, p_array, beta_array })
         }
     };
 }
 
 macro_rules! generate_generic {
     ($name: ident, $r: tt) => {
-        #[inline(always)]
-        unsafe fn $name<S: Simd, T: ComplexField>(
-            _simd: S,
+        unsafe fn $name<T: ComplexField>(
             n: usize,
             l_col: *mut T,
             l_row_stride: isize,
@@ -153,11 +167,8 @@ struct RankRUpdate<'a, T> {
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
-    type Output = ();
-
-    #[inline(always)]
-    fn with_simd<S: Simd>(self, s: S) -> Self::Output {
+impl<'a, T: ComplexField> RankRUpdate<'a, T> {
+    fn run(self) {
         // On the Modification of LDLT Factorizations
         // By R. Fletcher and M. J. D. Powell
         // https://www.ams.org/journals/mcom/1974-28-128/S0025-5718-1974-0359297-1/S0025-5718-1974-0359297-1.pdf
@@ -179,6 +190,7 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
         let w_cs = w.col_stride();
         let w_rs = w.row_stride();
 
+        let arch = pulp::Arch::new();
         unsafe {
             for j in 0..n {
                 let r = (*r)().min(k);
@@ -214,34 +226,42 @@ impl<'a, T: ComplexField> pulp::WithSimd for RankRUpdate<'a, T> {
 
                     if TypeId::of::<T>() == TypeId::of::<f64>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| rank_1_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            2 => s.vectorize(|| rank_2_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            3 => s.vectorize(|| rank_3_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            4 => s.vectorize(|| rank_4_f64(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            1 => rank_1_f64(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            2 => rank_2_f64(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            3 => rank_3_f64(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            4 => rank_4_f64(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
                             _ => unreachable!(),
                         };
                     } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
                         match r_chunk {
-                            1 => s.vectorize(|| rank_1_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            2 => s.vectorize(|| rank_2_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            3 => s.vectorize(|| rank_3_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
-                            4 => s.vectorize(|| rank_4_f32(s, rem, l_ptr, w_ptr, w_cs, p, beta)),
+                            1 => rank_1_f32(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            2 => rank_2_f32(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            3 => rank_3_f32(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
+                            4 => rank_4_f32(
+                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
+                            ),
                             _ => unreachable!(),
                         };
                     } else {
                         match r_chunk {
-                            1 => {
-                                s.vectorize(|| r1(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
-                            }
-                            2 => {
-                                s.vectorize(|| r2(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
-                            }
-                            3 => {
-                                s.vectorize(|| r3(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
-                            }
-                            4 => {
-                                s.vectorize(|| r4(s, rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta))
-                            }
+                            1 => r1(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
+                            2 => r2(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
+                            3 => r3(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
+                            4 => r4(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
                             _ => unreachable!(),
                         };
                     }
@@ -276,12 +296,13 @@ pub fn rank_r_update_clobber<T: ComplexField>(
     fancy_assert!(w.nrows() == n);
     fancy_assert!(alpha.nrows() == k);
 
-    Arch::new().dispatch(RankRUpdate {
+    RankRUpdate {
         ld: cholesky_factors,
         w,
         alpha,
         r: &mut || k,
-    });
+    }
+    .run();
 }
 
 pub(crate) fn delete_rows_and_cols_triangular<T: Copy>(mat: MatMut<'_, T>, idx: &[usize]) {
@@ -416,14 +437,15 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     let mut cholesky_factors = cholesky_factors;
     delete_rows_and_cols_triangular(cholesky_factors.rb_mut(), indices);
 
-    Arch::new().dispatch(RankRUpdate {
+    RankRUpdate {
         ld: unsafe {
             cholesky_factors.submatrix_unchecked(first, first, n - first - r, n - first - r)
         },
         w,
         alpha,
         r: &mut rank_update_indices(first, indices),
-    });
+    }
+    .run();
 }
 
 /// Computes the size and alignment of the required workspace for inserting the rows and columns at

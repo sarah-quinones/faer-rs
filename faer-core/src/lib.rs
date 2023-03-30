@@ -155,6 +155,10 @@ pub trait ComplexField:
     }
 
     fn nan() -> Self;
+    #[inline(always)]
+    fn is_nan(self) -> bool {
+        self != self
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -408,8 +412,16 @@ impl<T: RealField> ComplexField for Complex<T> {
     #[inline(always)]
     fn inv(self) -> Self {
         if self == Self::zero() {
+            // zero
             Self::from_real(T::zero().inv())
+        } else if self.re.is_nan() || self.im.is_nan() {
+            // nan
+            Self::nan()
+        } else if self.re.abs() == T::Real::zero().inv() || self.im.abs() == T::Real::zero().inv() {
+            // infinite
+            Self::zero()
         } else {
+            // generic
             Self::one() / self
         }
     }
@@ -436,22 +448,35 @@ pub fn join_raw(
     op_b: impl Send + for<'a> FnOnce(Parallelism),
     parallelism: Parallelism,
 ) {
-    match parallelism {
-        Parallelism::None => (op_a(parallelism), op_b(parallelism)),
-        Parallelism::Rayon(n_threads) => {
-            if n_threads == 1 {
-                (op_a(Parallelism::None), op_b(Parallelism::None))
-            } else {
-                let n_threads = if n_threads > 0 {
-                    n_threads
+    fn implementation(
+        op_a: &mut (dyn Send + FnMut(Parallelism)),
+        op_b: &mut (dyn Send + FnMut(Parallelism)),
+        parallelism: Parallelism,
+    ) {
+        match parallelism {
+            Parallelism::None => (op_a(parallelism), op_b(parallelism)),
+            Parallelism::Rayon(n_threads) => {
+                if n_threads == 1 {
+                    (op_a(Parallelism::None), op_b(Parallelism::None))
                 } else {
-                    rayon::current_num_threads()
-                };
-                let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
-                rayon::join(|| op_a(parallelism), || op_b(parallelism))
+                    let n_threads = if n_threads > 0 {
+                        n_threads
+                    } else {
+                        rayon::current_num_threads()
+                    };
+                    let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
+                    rayon::join(|| op_a(parallelism), || op_b(parallelism))
+                }
             }
-        }
-    };
+        };
+    }
+    let mut op_a = Some(op_a);
+    let mut op_b = Some(op_b);
+    implementation(
+        &mut |parallelism| (op_a.take().unwrap())(parallelism),
+        &mut |parallelism| (op_b.take().unwrap())(parallelism),
+        parallelism,
+    )
 }
 
 #[inline]

@@ -12,69 +12,49 @@ use num_traits::Zero;
 use reborrow::*;
 
 fn qr_in_place_unblocked<T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    householder_factor: ColMut<'_, T>,
+    mut matrix: MatMut<'_, T>,
+    mut householder_factor: ColMut<'_, T>,
     _stack: DynStack<'_>,
 ) {
-    struct QrInPlaceUnblocked<'a, T> {
-        matrix: MatMut<'a, T>,
-        householder_factor: ColMut<'a, T>,
-    }
+    let arch = pulp::Arch::new();
+    let m = matrix.nrows();
+    let n = matrix.ncols();
+    let size = n.min(m);
 
-    impl<'a, T: ComplexField> pulp::WithSimd for QrInPlaceUnblocked<'a, T> {
-        type Output = ();
+    fancy_assert!(householder_factor.nrows() == size);
 
-        #[inline(always)]
-        fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-            let Self {
-                mut matrix,
-                mut householder_factor,
-            } = self;
-            let m = matrix.nrows();
-            let n = matrix.ncols();
-            let size = n.min(m);
+    for k in 0..size {
+        let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
+        let (_, _, first_col, last_cols) = mat_rem.split_at(0, 1);
+        let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
 
-            fancy_assert!(householder_factor.nrows() == size);
+        let mut tail_squared_norm = T::Real::zero();
+        for &elem in first_col_tail.rb() {
+            tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
+        }
 
-            for k in 0..size {
-                let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
-                let (_, _, first_col, last_cols) = mat_rem.split_at(0, 1);
-                let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
+        let (tau, beta) = make_householder_in_place(
+            Some(first_col_tail.rb_mut()),
+            *first_col_head.rb().get(0),
+            tail_squared_norm,
+        );
+        unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau };
+        let tau_inv = tau.inv();
 
-                let mut tail_squared_norm = T::Real::zero();
-                for &elem in first_col_tail.rb() {
-                    tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
-                }
+        *first_col_head.rb_mut().get(0) = beta;
 
-                let (tau, beta) = make_householder_in_place(
-                    Some(first_col_tail.rb_mut()),
-                    *first_col_head.rb().get(0),
-                    tail_squared_norm,
-                );
-                unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau };
-                let tau_inv = tau.inv();
+        for col in last_cols.into_col_iter() {
+            let (col_head, col_tail) = col.split_at(1);
+            let col_head = col_head.get(0);
 
-                *first_col_head.rb_mut().get(0) = beta;
-
-                for col in last_cols.into_col_iter() {
-                    let (col_head, col_tail) = col.split_at(1);
-                    let col_head = col_head.get(0);
-
-                    let dot = *col_head + dot(simd, first_col_tail.rb(), col_tail.rb());
-                    let k = -dot * tau_inv;
-                    *col_head = *col_head + k;
-                    col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
-                        *a = *a + k * *b;
-                    });
-                }
-            }
+            let dot = *col_head + dot(arch, first_col_tail.rb(), col_tail.rb());
+            let k = -dot * tau_inv;
+            *col_head = *col_head + k;
+            col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
+                *a = *a + k * *b;
+            });
         }
     }
-
-    pulp::Arch::new().dispatch(QrInPlaceUnblocked {
-        matrix,
-        householder_factor,
-    });
 }
 
 /// The recommended block size to use for a QR decomposition of a matrix with the given shape.
@@ -393,6 +373,73 @@ mod tests {
         for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
             for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
                 let mat_orig = Mat::with_dims(|_, _| random_value(), m, n);
+                let mut mat = mat_orig.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    parallelism,
+                    make_stack!(qr_in_place_req::<T>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default(),
+                    )
+                    .unwrap()),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qhq = Mat::zeros(m, m);
+                let mut reconstructed = Mat::zeros(m, n);
+
+                matmul(
+                    reconstructed.as_mut(),
+                    Conj::No,
+                    q.as_ref(),
+                    Conj::No,
+                    r.as_ref(),
+                    Conj::No,
+                    None,
+                    T::one(),
+                    Parallelism::Rayon(8),
+                );
+                matmul(
+                    qhq.as_mut(),
+                    Conj::No,
+                    q.as_ref().transpose(),
+                    Conj::Yes,
+                    q.as_ref(),
+                    Conj::No,
+                    None,
+                    T::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                for i in 0..m {
+                    for j in 0..m {
+                        assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                    }
+                }
+                for i in 0..m {
+                    for j in 0..n {
+                        assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_zero() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+            for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
+                let mat_orig = Mat::<T>::zeros(m, n);
+
                 let mut mat = mat_orig.clone();
                 let size = m.min(n);
                 let blocksize = 8;

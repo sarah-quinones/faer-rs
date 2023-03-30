@@ -71,6 +71,7 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
     let mut tr = T::zero();
     let mut a01 = T::zero();
 
+    let arch = pulp::Arch::new();
     for k in 0..n {
         let (a_left, a_right) = a.rb_mut().split_at_col(k);
         let (mut a_top, mut a_cur) = a_right.split_at_row(k);
@@ -173,11 +174,7 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
         }
 
         a_row[(0, 0)] = T::one();
-        let b = faer_core::mul::dot(
-            pulp::Scalar::new(),
-            y.rb().col(0),
-            a_row.rb().row(0).transpose(),
-        );
+        let b = faer_core::mul::dot(arch, y.rb().col(0), a_row.rb().row(0).transpose());
 
         let factor = -b / tl;
         zip!(z.rb_mut(), u).for_each(|z, u| *z = *z + *u * factor);

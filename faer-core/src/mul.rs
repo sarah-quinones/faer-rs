@@ -9,58 +9,72 @@ use pulp::{as_arrays, Simd};
 use reborrow::*;
 
 #[inline(always)]
-fn dot_f64<S: Simd>(simd: S, a: &[f64], b: &[f64]) -> f64 {
-    let mut acc0 = simd.f64s_splat(0.0);
-    let mut acc1 = simd.f64s_splat(0.0);
-    let mut acc2 = simd.f64s_splat(0.0);
-    let mut acc3 = simd.f64s_splat(0.0);
-    let mut acc4 = simd.f64s_splat(0.0);
-    let mut acc5 = simd.f64s_splat(0.0);
-    let mut acc6 = simd.f64s_splat(0.0);
-    let mut acc7 = simd.f64s_splat(0.0);
-
-    let (a, a_rem) = S::f64s_as_simd(a);
-    let (b, b_rem) = S::f64s_as_simd(b);
-
-    let (a, a_remv) = as_arrays::<8, _>(a);
-    let (b, b_remv) = as_arrays::<8, _>(b);
-
-    for (a, b) in a.iter().zip(b.iter()) {
-        acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
-        acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
-        acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
-        acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
-        acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
-        acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
-        acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
-        acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
+fn dot_f64(arch: pulp::Arch, a: &[f64], b: &[f64]) -> f64 {
+    struct Impl<'a> {
+        a: &'a [f64],
+        b: &'a [f64],
     }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f64;
 
-    for (a, b) in a_remv.iter().zip(b_remv.iter()) {
-        acc0 = simd.f64s_mul_adde(*a, *b, acc0);
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b } = self;
+
+            let mut acc0 = simd.f64s_splat(0.0);
+            let mut acc1 = simd.f64s_splat(0.0);
+            let mut acc2 = simd.f64s_splat(0.0);
+            let mut acc3 = simd.f64s_splat(0.0);
+            let mut acc4 = simd.f64s_splat(0.0);
+            let mut acc5 = simd.f64s_splat(0.0);
+            let mut acc6 = simd.f64s_splat(0.0);
+            let mut acc7 = simd.f64s_splat(0.0);
+
+            let (a, a_rem) = S::f64s_as_simd(a);
+            let (b, b_rem) = S::f64s_as_simd(b);
+
+            let (a, a_remv) = as_arrays::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            for (a, b) in a.iter().zip(b.iter()) {
+                acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
+                acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
+                acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
+                acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
+                acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
+                acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
+                acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
+                acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter().zip(b_remv.iter()) {
+                acc0 = simd.f64s_mul_adde(*a, *b, acc0);
+            }
+
+            acc0 = simd.f64s_add(acc0, acc1);
+            acc2 = simd.f64s_add(acc2, acc3);
+            acc4 = simd.f64s_add(acc4, acc5);
+            acc6 = simd.f64s_add(acc6, acc7);
+
+            acc0 = simd.f64s_add(acc0, acc2);
+            acc4 = simd.f64s_add(acc4, acc6);
+
+            acc0 = simd.f64s_add(acc0, acc4);
+
+            let mut acc = simd.f64s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter().zip(b_rem.iter()) {
+                acc = f64::mul_add(*a, *b, acc);
+            }
+
+            acc
+        }
     }
-
-    acc0 = simd.f64s_add(acc0, acc1);
-    acc2 = simd.f64s_add(acc2, acc3);
-    acc4 = simd.f64s_add(acc4, acc5);
-    acc6 = simd.f64s_add(acc6, acc7);
-
-    acc0 = simd.f64s_add(acc0, acc2);
-    acc4 = simd.f64s_add(acc4, acc6);
-
-    acc0 = simd.f64s_add(acc0, acc4);
-
-    let mut acc = simd.f64s_reduce_sum(acc0);
-
-    for (a, b) in a_rem.iter().zip(b_rem.iter()) {
-        acc = f64::mul_add(*a, *b, acc);
-    }
-
-    acc
+    arch.dispatch(Impl { a, b })
 }
 
 #[inline(always)]
-fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
+fn dot_generic<T: ComplexField>(a: &[T], b: &[T]) -> T {
     let mut acc = T::zero();
     for (a, b) in a.iter().zip(b.iter()) {
         acc = acc + (*a).conj() * *b;
@@ -71,7 +85,7 @@ fn dot_generic<S: Simd, T: ComplexField>(_simd: S, a: &[T], b: &[T]) -> T {
 // a^H b
 #[doc(hidden)]
 #[inline(always)]
-pub fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
+pub fn dot<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
     let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
     let id = TypeId::of::<T>();
     if colmajor {
@@ -80,13 +94,12 @@ pub fn dot<S: Simd, T: ComplexField>(simd: S, a: ColRef<'_, T>, b: ColRef<'_, T>
 
         if id == TypeId::of::<f64>() {
             coe::coerce_static(dot_f64(
-                simd,
+                arch,
                 unsafe { core::slice::from_raw_parts(a.as_ptr() as _, a_len) },
                 unsafe { core::slice::from_raw_parts(b.as_ptr() as _, b_len) },
             ))
         } else {
-            dot_generic::<S, T>(
-                simd,
+            dot_generic::<T>(
                 unsafe { core::slice::from_raw_parts(a.as_ptr(), a_len) },
                 unsafe { core::slice::from_raw_parts(b.as_ptr(), b_len) },
             )
