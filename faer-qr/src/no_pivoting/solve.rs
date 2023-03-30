@@ -264,7 +264,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -288,8 +288,7 @@ mod tests {
                 blocksize,
                 Parallelism::None,
                 Default::default(),
-            )
-            .unwrap()),
+            )),
             Default::default(),
         );
 
@@ -305,7 +304,7 @@ mod tests {
                     sol.as_mut(),
                     conj_rhs,
                     Parallelism::None,
-                    make_stack!(solve_in_place_req::<T>(n, blocksize, k).unwrap()),
+                    make_stack!(solve_in_place_req::<T>(n, blocksize, k)),
                 );
 
                 let mut rhs_reconstructed = rhs.clone();
@@ -358,8 +357,7 @@ mod tests {
                 blocksize,
                 Parallelism::None,
                 Default::default(),
-            )
-            .unwrap()),
+            )),
             Default::default(),
         );
 
@@ -375,7 +373,7 @@ mod tests {
                     sol.as_mut(),
                     conj_rhs,
                     Parallelism::None,
-                    make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k).unwrap()),
+                    make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k)),
                 );
 
                 let mut rhs_reconstructed = rhs.clone();

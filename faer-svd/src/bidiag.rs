@@ -831,15 +831,15 @@ mod tests {
         householder::{
             apply_block_householder_sequence_on_the_right_in_place,
             apply_block_householder_sequence_transpose_on_the_left_in_place,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_req,
+            apply_block_householder_sequence_transpose_on_the_right_in_place_req,
         },
         Mat,
     };
 
-    macro_rules! placeholder_stack {
-        () => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
-                ::dyn_stack::StackReq::new::<f64>(1024 * 1024),
-            ))
+    macro_rules! make_stack {
+        ($req: expr $(,)?) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -859,7 +859,7 @@ mod tests {
             tau_left.as_mut().col(0),
             tau_right.as_mut().col(0),
             Parallelism::None,
-            placeholder_stack!(),
+            make_stack!(bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)),
         );
 
         let mut copy = mat.clone();
@@ -870,7 +870,9 @@ mod tests {
             copy.as_mut(),
             Conj::No,
             Parallelism::None,
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_transpose_on_the_left_in_place_req::<f64>(m, 1, n),
+            ),
         );
 
         apply_block_householder_sequence_on_the_right_in_place(
@@ -880,7 +882,13 @@ mod tests {
             copy.as_mut().submatrix(0, 1, m, n - 1),
             Conj::No,
             Parallelism::None,
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_transpose_on_the_right_in_place_req::<f64>(
+                    n - 1,
+                    1,
+                    m,
+                )
+            ),
         );
 
         for j in 0..n {
@@ -906,7 +914,7 @@ mod tests {
             tau_left.as_mut().col(0),
             tau_right.as_mut().col(0),
             Parallelism::Rayon(0),
-            placeholder_stack!(),
+            make_stack!(bidiagonalize_in_place_req::<c64>(m, n, Parallelism::Rayon(0))),
         );
 
         let mut copy = mat.clone();
@@ -917,7 +925,9 @@ mod tests {
             copy.as_mut(),
             Conj::No,
             Parallelism::Rayon(0),
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_transpose_on_the_left_in_place_req::<c64>(m, 1, n),
+            ),
         );
 
         apply_block_householder_sequence_on_the_right_in_place(
@@ -927,7 +937,13 @@ mod tests {
             copy.as_mut().submatrix(0, 1, m, n - 1),
             Conj::No,
             Parallelism::Rayon(0),
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_transpose_on_the_right_in_place_req::<c64>(
+                    n - 1,
+                    1,
+                    m,
+                )
+            ),
         );
 
         for j in 0..n {

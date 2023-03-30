@@ -395,7 +395,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -411,7 +411,11 @@ mod tests {
             lu_factors,
             row_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
+            make_stack!(reconstruct::reconstruct_req::<T>(
+                m,
+                n,
+                Parallelism::Rayon(0)
+            )),
         );
         dst
     }

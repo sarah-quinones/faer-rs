@@ -136,7 +136,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -172,9 +172,13 @@ mod tests {
                 &mut perm,
                 &mut perm_inv,
                 parallelism,
-                make_stack!(
-                    qr_in_place_req::<T>(n, n, blocksize, parallelism, Default::default()).unwrap()
-                ),
+                make_stack!(qr_in_place_req::<T>(
+                    n,
+                    n,
+                    blocksize,
+                    parallelism,
+                    Default::default()
+                )),
                 Default::default(),
             );
 
@@ -185,7 +189,7 @@ mod tests {
                 householder_factor.as_ref(),
                 perm.rb(),
                 parallelism,
-                make_stack!(reconstruct_req::<T>(n, n, blocksize, parallelism).unwrap()),
+                make_stack!(reconstruct_req::<T>(n, n, blocksize, parallelism)),
             );
 
             for i in 0..n {

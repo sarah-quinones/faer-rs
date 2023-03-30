@@ -155,7 +155,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -176,8 +176,7 @@ mod tests {
                     n,
                     Parallelism::Rayon(0),
                     Default::default()
-                )
-                .unwrap()),
+                )),
                 Default::default(),
             );
             let mut inv = Mat::zeros(n, n);
@@ -186,7 +185,7 @@ mod tests {
                 lu.as_ref(),
                 row_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_req::<f64>(n, n, Parallelism::Rayon(0)).unwrap()),
+                make_stack!(invert_req::<f64>(n, n, Parallelism::Rayon(0))),
             );
 
             let mut prod = Mat::zeros(n, n);

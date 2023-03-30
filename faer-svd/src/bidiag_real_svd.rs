@@ -1661,11 +1661,9 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use faer_core::Mat;
 
-    macro_rules! placeholder_stack {
-        () => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
-                ::dyn_stack::StackReq::new::<f64>(1024 * 1024 * 1024),
-            ))
+    macro_rules! make_stack {
+        ($req: expr) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -1702,7 +1700,7 @@ mod tests {
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                     Parallelism::None,
-                    placeholder_stack!(),
+                    make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
                 );
                 Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
             };
@@ -1875,7 +1873,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -2175,7 +2173,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -4267,7 +4265,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -5335,7 +5333,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -7427,7 +7425,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -9519,7 +9517,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                placeholder_stack!(),
+                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
