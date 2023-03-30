@@ -245,7 +245,11 @@ pub fn qr_in_place_req<T: 'static>(
 #[cfg(test)]
 mod tests {
     use faer_core::{
-        householder::apply_block_householder_sequence_on_the_left_in_place, Conj, Parallelism,
+        householder::{
+            apply_block_householder_sequence_on_the_left_in_place,
+            apply_block_householder_sequence_on_the_left_in_place_req,
+        },
+        Conj, Parallelism,
     };
     use num_traits::One;
     use std::cell::RefCell;
@@ -255,17 +259,9 @@ mod tests {
 
     use super::*;
 
-    macro_rules! placeholder_stack {
-        () => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new(
-                ::dyn_stack::StackReq::new::<T>(1024 * 1024),
-            ))
-        };
-    }
-
     macro_rules! make_stack {
-        ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+        ($req: expr $(,)?) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -308,7 +304,13 @@ mod tests {
             q.as_mut(),
             Conj::No,
             Parallelism::Rayon(0),
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+                    m,
+                    householder.nrows(),
+                    m,
+                )
+            ),
         );
 
         (q, r)
@@ -325,7 +327,7 @@ mod tests {
             qr_in_place_unblocked(
                 mat.as_mut(),
                 householder.as_mut().row(0).transpose(),
-                placeholder_stack!(),
+                make_stack!(StackReq::try_new::<()>(0)),
             );
 
             let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
@@ -388,8 +390,7 @@ mod tests {
                         blocksize,
                         parallelism,
                         Default::default(),
-                    )
-                    .unwrap()),
+                    )),
                     Default::default(),
                 );
 
@@ -455,8 +456,7 @@ mod tests {
                         blocksize,
                         parallelism,
                         Default::default(),
-                    )
-                    .unwrap()),
+                    )),
                     Default::default(),
                 );
 

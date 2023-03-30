@@ -1,5 +1,4 @@
 use assert2::assert as fancy_assert;
-
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::apply_block_householder_sequence_transpose_on_the_right_in_place,
@@ -126,7 +125,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -158,9 +157,13 @@ mod tests {
                 qr.as_mut(),
                 householder_factor.as_mut(),
                 parallelism,
-                make_stack!(
-                    qr_in_place_req::<T>(n, n, blocksize, parallelism, Default::default()).unwrap()
-                ),
+                make_stack!(qr_in_place_req::<T>(
+                    n,
+                    n,
+                    blocksize,
+                    parallelism,
+                    Default::default()
+                )),
                 Default::default(),
             );
 
@@ -170,7 +173,7 @@ mod tests {
                 qr.as_ref(),
                 householder_factor.as_ref(),
                 parallelism,
-                make_stack!(invert_req::<T>(n, n, blocksize, parallelism).unwrap()),
+                make_stack!(invert_req::<T>(n, n, blocksize, parallelism)),
             );
 
             let eye = &inv * &mat;

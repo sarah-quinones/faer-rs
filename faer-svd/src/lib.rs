@@ -526,7 +526,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -554,8 +554,7 @@ mod tests {
                     ComputeVectors::Full,
                     ComputeVectors::Full,
                     Parallelism::None,
-                )
-                .unwrap()),
+                )),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -595,8 +594,7 @@ mod tests {
                     ComputeVectors::Full,
                     ComputeVectors::Full,
                     Parallelism::None,
-                )
-                .unwrap()),
+                )),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -633,8 +631,7 @@ mod tests {
                     ComputeVectors::Full,
                     ComputeVectors::Full,
                     Parallelism::None,
-                )
-                .unwrap()),
+                )),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -671,8 +668,7 @@ mod tests {
                     ComputeVectors::Full,
                     ComputeVectors::Full,
                     Parallelism::None,
-                )
-                .unwrap()),
+                )),
             );
 
             let reconstructed = &u * &s * v.transpose();
@@ -711,8 +707,7 @@ mod tests {
                         ComputeVectors::Full,
                         Parallelism::None,
                         SvdParams::default(),
-                    )
-                    .unwrap()),
+                    )),
                     SvdParams::default(),
                 );
 
@@ -779,8 +774,7 @@ mod tests {
                                 compute_v,
                                 Parallelism::None,
                                 SvdParams::default(),
-                            )
-                            .unwrap()),
+                            )),
                             SvdParams::default(),
                         );
 
@@ -803,8 +797,7 @@ mod tests {
                                 ComputeVectors::Full,
                                 Parallelism::None,
                                 SvdParams::default(),
-                            )
-                            .unwrap()),
+                            )),
                             SvdParams::default(),
                         );
 

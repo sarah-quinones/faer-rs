@@ -319,19 +319,15 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
-    use assert2::assert as fancy_assert;
-    use dyn_stack::GlobalMemBuffer;
-    use faer_core::{c32, c64, mul::matmul, Mat};
-
-    use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
-
     use super::*;
+    use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
+    use assert2::assert as fancy_assert;
+    use faer_core::{c32, c64, mul::matmul, Mat};
+    use std::cell::RefCell;
 
     macro_rules! make_stack {
         ($req: expr) => {
-            DynStack::new(&mut GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -364,9 +360,7 @@ mod tests {
                         &mut col_perm,
                         &mut col_perm_inv,
                         parallelism,
-                        make_stack!(
-                            lu_in_place_req::<T>(n, n, parallelism, Default::default()).unwrap()
-                        ),
+                        make_stack!(lu_in_place_req::<T>(n, n, parallelism, Default::default())),
                         Default::default(),
                     );
 
@@ -379,7 +373,7 @@ mod tests {
                         rhs,
                         conj_rhs,
                         parallelism,
-                        make_stack!(solve_req::<T>(n, n, k, parallelism).unwrap()),
+                        make_stack!(solve_req::<T>(n, n, k, parallelism)),
                     );
 
                     let mut rhs_reconstructed = Mat::zeros(n, k);
@@ -441,9 +435,7 @@ mod tests {
                         &mut col_perm,
                         &mut col_perm_inv,
                         parallelism,
-                        make_stack!(
-                            lu_in_place_req::<T>(n, n, parallelism, Default::default()).unwrap()
-                        ),
+                        make_stack!(lu_in_place_req::<T>(n, n, parallelism, Default::default())),
                         Default::default(),
                     );
 
@@ -456,7 +448,7 @@ mod tests {
                         rhs,
                         conj_rhs,
                         parallelism,
-                        make_stack!(solve_transpose_req::<T>(n, n, k, parallelism).unwrap()),
+                        make_stack!(solve_transpose_req::<T>(n, n, k, parallelism)),
                     );
 
                     let mut rhs_reconstructed = Mat::zeros(n, k);

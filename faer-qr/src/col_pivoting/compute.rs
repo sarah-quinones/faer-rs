@@ -454,24 +454,26 @@ pub fn qr_in_place<'out, T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
     use faer_core::{
-        c64, householder::apply_block_householder_sequence_on_the_left_in_place, mul::matmul,
-        zip::Diag, Conj, Mat, MatRef,
+        c64,
+        householder::{
+            apply_block_householder_sequence_on_the_left_in_place,
+            apply_block_householder_sequence_on_the_left_in_place_req,
+        },
+        mul::matmul,
+        zip::Diag,
+        Conj, Mat, MatRef,
     };
     use num_traits::One;
     use rand::random;
 
-    macro_rules! placeholder_stack {
-        () => {
-            DynStack::new(&mut GlobalMemBuffer::new(StackReq::new::<T>(1024 * 1024)))
+    macro_rules! make_stack {
+        ($req: expr $(,)?) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
-
-    type T = c64;
 
     fn reconstruct_factors<T: ComplexField>(
         qr_factors: MatRef<'_, T>,
@@ -497,7 +499,13 @@ mod tests {
             q.as_mut(),
             Conj::No,
             Parallelism::Rayon(0),
-            placeholder_stack!(),
+            make_stack!(
+                apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+                    m,
+                    householder.nrows(),
+                    m
+                )
+            ),
         );
 
         (q, r)
@@ -521,7 +529,13 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    placeholder_stack!(),
+                    make_stack!(qr_in_place_req::<f64>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
                     Default::default(),
                 );
 
@@ -566,7 +580,13 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    placeholder_stack!(),
+                    make_stack!(qr_in_place_req::<c64>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
                     Default::default(),
                 );
 

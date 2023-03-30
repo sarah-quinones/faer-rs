@@ -1166,16 +1166,14 @@ pub fn lu_in_place<'out, T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::full_pivoting::reconstruct;
     use faer_core::{permutation::PermutationRef, Mat};
     use rand::random;
 
-    use crate::full_pivoting::reconstruct;
-
-    use super::*;
-
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req))
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
         };
     }
 
@@ -1193,7 +1191,11 @@ mod tests {
             row_perm,
             col_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<T>(m, n, Parallelism::Rayon(0)).unwrap()),
+            make_stack!(reconstruct::reconstruct_req::<T>(
+                m,
+                n,
+                Parallelism::Rayon(0)
+            )),
         );
         dst
     }
@@ -1234,8 +1236,7 @@ mod tests {
                         n,
                         Parallelism::None,
                         Default::default()
-                    )
-                    .unwrap()),
+                    )),
                     Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb(), col_perm.rb());
@@ -1289,8 +1290,7 @@ mod tests {
                         n,
                         Parallelism::None,
                         Default::default()
-                    )
-                    .unwrap()),
+                    )),
                     Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
