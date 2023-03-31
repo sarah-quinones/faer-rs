@@ -50,6 +50,7 @@ mod inverse;
 mod no_piv_qr;
 mod partial_piv_lu;
 mod svd;
+mod rectangular_svd;
 
 fn print_results(
     input_sizes: &[usize],
@@ -96,6 +97,7 @@ mod eigen {
         pub fn colqr(out: *mut f64, inputs: *const usize, count: usize);
         pub fn inverse(out: *mut f64, inputs: *const usize, count: usize);
         pub fn svd(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn rectangular_svd(out: *mut f64, inputs: *const usize, count: usize);
     }
 }
 
@@ -114,161 +116,161 @@ fn eigen(
 fn main() -> Result<()> {
     let input_sizes = vec![32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
 
+    // println!(
+    //     "
+// ## Matrix multiplication
+
+// Multiplication of two square matrices of dimension `n`.
+
+// ```"
+    // );
+    // print_results(
+    //     &input_sizes,
+    //     &gemm::faer(&input_sizes, Parallelism::None),
+    //     &gemm::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &gemm::ndarray(&input_sizes),
+    //     &gemm::nalgebra(&input_sizes),
+    //     &eigen(eigen::gemm, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!("
+// ## Triangular solve
+
+// Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and `A` is a triangular matrix.
+
+// ```");
+    // print_results(
+    //     &input_sizes,
+    //     &trsm::faer(&input_sizes, Parallelism::None),
+    //     &trsm::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &trsm::ndarray(&input_sizes),
+    //     &trsm::nalgebra(&input_sizes),
+    //     &eigen(eigen::trsm, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!(
+    //     "
+// ## Triangular inverse
+
+// Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
+
+// ```"
+    // );
+    // print_results(
+    //     &input_sizes,
+    //     &tr_inverse::faer(&input_sizes, Parallelism::None),
+    //     &tr_inverse::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &tr_inverse::ndarray(&input_sizes),
+    //     &tr_inverse::nalgebra(&input_sizes),
+    //     &eigen(eigen::trinv, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!(
+    //     "
+// ## Cholesky decomposition
+
+// Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
+
+// ```"
+    // );
+    // print_results(
+    //     &input_sizes,
+    //     &cholesky::faer(&input_sizes, Parallelism::None),
+    //     &cholesky::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &cholesky::ndarray(&input_sizes),
+    //     &cholesky::nalgebra(&input_sizes),
+    //     &eigen(eigen::chol, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!("
+// ## LU decomposition with partial pivoting
+
+// Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
+
+// ```");
+    // print_results(
+    //     &input_sizes,
+    //     &partial_piv_lu::faer(&input_sizes, Parallelism::None),
+    //     &partial_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &partial_piv_lu::ndarray(&input_sizes),
+    //     &partial_piv_lu::nalgebra(&input_sizes),
+    //     &eigen(eigen::plu, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!("
+// ## LU decomposition with full pivoting
+
+// Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
+
+// ```");
+    // print_results(
+    //     &input_sizes,
+    //     &full_piv_lu::faer(&input_sizes, Parallelism::None),
+    //     &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &full_piv_lu::ndarray(&input_sizes),
+    //     &full_piv_lu::nalgebra(&input_sizes),
+    //     &eigen(eigen::flu, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!("
+// ## QR decomposition with no pivoting
+
+// Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and `R` is upper triangular.
+
+// ```");
+    // print_results(
+    //     &input_sizes,
+    //     &no_piv_qr::faer(&input_sizes, Parallelism::None),
+    //     &no_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &no_piv_qr::ndarray(&input_sizes),
+    //     &no_piv_qr::nalgebra(&input_sizes),
+    //     &eigen(eigen::qr, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!("
+// ## QR decomposition with column pivoting
+
+// Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutation matrix, `Q` is unitary and `R` is upper triangular.
+
+// ```");
+    // print_results(
+    //     &input_sizes,
+    //     &col_piv_qr::faer(&input_sizes, Parallelism::None),
+    //     &col_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &col_piv_qr::ndarray(&input_sizes),
+    //     &col_piv_qr::nalgebra(&input_sizes),
+    //     &eigen(eigen::colqr, &input_sizes),
+    // );
+    // println!("```");
+
+    // println!(
+    //     "
+// ## Matrix inverse
+
+// Computing the inverse of a square matrix with dimension `n`.
+
+// ```"
+    // );
+    // print_results(
+    //     &input_sizes,
+    //     &inverse::faer(&input_sizes, Parallelism::None),
+    //     &inverse::faer(&input_sizes, Parallelism::Rayon(0)),
+    //     &inverse::ndarray(&input_sizes),
+    //     &inverse::nalgebra(&input_sizes),
+    //     &eigen(eigen::inverse, &input_sizes),
+    // );
+    // println!("```");
+
     println!(
         "
-## Matrix multiplication
-
-Multiplication of two square matrices of dimension `n`.
-
-```"
-    );
-    print_results(
-        &input_sizes,
-        &gemm::faer(&input_sizes, Parallelism::None),
-        &gemm::faer(&input_sizes, Parallelism::Rayon(0)),
-        &gemm::ndarray(&input_sizes),
-        &gemm::nalgebra(&input_sizes),
-        &eigen(eigen::gemm, &input_sizes),
-    );
-    println!("```");
-
-    println!("
-## Triangular solve
-
-Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and `A` is a triangular matrix.
-
-```");
-    print_results(
-        &input_sizes,
-        &trsm::faer(&input_sizes, Parallelism::None),
-        &trsm::faer(&input_sizes, Parallelism::Rayon(0)),
-        &trsm::ndarray(&input_sizes),
-        &trsm::nalgebra(&input_sizes),
-        &eigen(eigen::trsm, &input_sizes),
-    );
-    println!("```");
-
-    println!(
-        "
-## Triangular inverse
-
-Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
-
-```"
-    );
-    print_results(
-        &input_sizes,
-        &tr_inverse::faer(&input_sizes, Parallelism::None),
-        &tr_inverse::faer(&input_sizes, Parallelism::Rayon(0)),
-        &tr_inverse::ndarray(&input_sizes),
-        &tr_inverse::nalgebra(&input_sizes),
-        &eigen(eigen::trinv, &input_sizes),
-    );
-    println!("```");
-
-    println!(
-        "
-## Cholesky decomposition
-
-Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
-
-```"
-    );
-    print_results(
-        &input_sizes,
-        &cholesky::faer(&input_sizes, Parallelism::None),
-        &cholesky::faer(&input_sizes, Parallelism::Rayon(0)),
-        &cholesky::ndarray(&input_sizes),
-        &cholesky::nalgebra(&input_sizes),
-        &eigen(eigen::chol, &input_sizes),
-    );
-    println!("```");
-
-    println!("
-## LU decomposition with partial pivoting
-
-Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
-
-```");
-    print_results(
-        &input_sizes,
-        &partial_piv_lu::faer(&input_sizes, Parallelism::None),
-        &partial_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
-        &partial_piv_lu::ndarray(&input_sizes),
-        &partial_piv_lu::nalgebra(&input_sizes),
-        &eigen(eigen::plu, &input_sizes),
-    );
-    println!("```");
-
-    println!("
-## LU decomposition with full pivoting
-
-Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
-
-```");
-    print_results(
-        &input_sizes,
-        &full_piv_lu::faer(&input_sizes, Parallelism::None),
-        &full_piv_lu::faer(&input_sizes, Parallelism::Rayon(0)),
-        &full_piv_lu::ndarray(&input_sizes),
-        &full_piv_lu::nalgebra(&input_sizes),
-        &eigen(eigen::flu, &input_sizes),
-    );
-    println!("```");
-
-    println!("
-## QR decomposition with no pivoting
-
-Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and `R` is upper triangular.
-
-```");
-    print_results(
-        &input_sizes,
-        &no_piv_qr::faer(&input_sizes, Parallelism::None),
-        &no_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
-        &no_piv_qr::ndarray(&input_sizes),
-        &no_piv_qr::nalgebra(&input_sizes),
-        &eigen(eigen::qr, &input_sizes),
-    );
-    println!("```");
-
-    println!("
-## QR decomposition with column pivoting
-
-Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutation matrix, `Q` is unitary and `R` is upper triangular.
-
-```");
-    print_results(
-        &input_sizes,
-        &col_piv_qr::faer(&input_sizes, Parallelism::None),
-        &col_piv_qr::faer(&input_sizes, Parallelism::Rayon(0)),
-        &col_piv_qr::ndarray(&input_sizes),
-        &col_piv_qr::nalgebra(&input_sizes),
-        &eigen(eigen::colqr, &input_sizes),
-    );
-    println!("```");
-
-    println!(
-        "
-## Matrix inverse
-
-Computing the inverse of a square matrix with dimension `n`.
-
-```"
-    );
-    print_results(
-        &input_sizes,
-        &inverse::faer(&input_sizes, Parallelism::None),
-        &inverse::faer(&input_sizes, Parallelism::Rayon(0)),
-        &inverse::ndarray(&input_sizes),
-        &inverse::nalgebra(&input_sizes),
-        &eigen(eigen::inverse, &input_sizes),
-    );
-    println!("```");
-
-    println!(
-        "
-## Matrix singular value decomposition
+## Square matrix singular value decomposition
 
 Computing the SVD of a square matrix with dimension `n`.
 
@@ -283,6 +285,23 @@ Computing the SVD of a square matrix with dimension `n`.
         &eigen(eigen::svd, &input_sizes),
     );
     println!("```");
+
+    println!(
+        "
+## Thin matrix singular value decomposition
+
+Computing the SVD of a rectangular matrix with shape `(4096, n)`.
+
+```"
+    );
+    print_results(
+        &input_sizes,
+        &rectangular_svd::faer(&input_sizes, Parallelism::None),
+        &rectangular_svd::faer(&input_sizes, Parallelism::Rayon(0)),
+        &rectangular_svd::ndarray(&input_sizes),
+        &rectangular_svd::nalgebra(&input_sizes),
+        &eigen(eigen::rectangular_svd, &input_sizes),
+    );
 
     Ok(())
 }

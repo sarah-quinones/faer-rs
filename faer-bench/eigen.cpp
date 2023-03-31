@@ -161,3 +161,15 @@ extern "C" void svd(double *out, std::size_t const *inputs, std::size_t count) {
     out[i] = timeit([&] { svd.compute(a); });
   }
 }
+
+extern "C" void rectangular_svd(double *out, std::size_t const *inputs, std::size_t count) {
+  for (std::size_t i = 0; i < count; ++i) {
+    auto n = inputs[i];
+
+    auto a = Eigen::MatrixXd(4096, n);
+    a.setRandom();
+    Eigen::BDCSVD<Eigen::MatrixXd> svd(
+        n, n, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    out[i] = timeit([&] { svd.compute(a); });
+  }
+}

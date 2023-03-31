@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use faer_svd::{
-    bidiag::bidiagonalize_in_place, bidiag_real_svd::bidiag_svd as bidiag_svd_, compute_svd,
+    bidiag::bidiagonalize_in_place, bidiag_real_svd::compute_bidiag_real_svd, compute_svd,
     SvdParams,
 };
 use std::time::Duration;
@@ -83,8 +83,14 @@ fn bidiag_svd(c: &mut Criterion) {
             let mut v = Mat::zeros(n, n);
 
             let mut mem = GlobalMemBuffer::new(
-                faer_svd::bidiag_real_svd::bidiag_svd_req::<f64>(n, true, true, Parallelism::None)
-                    .unwrap(),
+                faer_svd::bidiag_real_svd::bidiag_real_svd_req::<f64>(
+                    n,
+                    4,
+                    true,
+                    true,
+                    Parallelism::None,
+                )
+                .unwrap(),
             );
             let mut stack = DynStack::new(&mut mem);
 
@@ -93,12 +99,11 @@ fn bidiag_svd(c: &mut Criterion) {
                 subdiag_copy.clone_from_slice(&subdiag);
                 let mut diag = (0..n).map(|_| rand::random::<f64>()).collect::<Vec<_>>();
                 let mut subdiag = (0..n).map(|_| rand::random::<f64>()).collect::<Vec<_>>();
-                bidiag_svd_(
+                compute_bidiag_real_svd(
                     &mut diag,
                     &mut subdiag,
-                    u.as_mut(),
+                    Some(u.as_mut()),
                     Some(v.as_mut()),
-                    false,
                     4,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
@@ -115,8 +120,9 @@ fn bidiag_svd(c: &mut Criterion) {
             let mut v = Mat::zeros(n, n);
 
             let mut mem = GlobalMemBuffer::new(
-                faer_svd::bidiag_real_svd::bidiag_svd_req::<f64>(
+                faer_svd::bidiag_real_svd::bidiag_real_svd_req::<f64>(
                     n,
+                    4,
                     true,
                     true,
                     Parallelism::Rayon(0),
@@ -128,12 +134,11 @@ fn bidiag_svd(c: &mut Criterion) {
             bencher.iter(|| {
                 diag_copy.clone_from_slice(&diag);
                 subdiag_copy.clone_from_slice(&subdiag);
-                bidiag_svd_(
+                compute_bidiag_real_svd(
                     &mut diag_copy,
                     &mut subdiag_copy,
-                    u.as_mut(),
+                    Some(u.as_mut()),
                     Some(v.as_mut()),
-                    false,
                     4,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
@@ -147,6 +152,7 @@ fn bidiag_svd(c: &mut Criterion) {
 
 fn real_svd(c: &mut Criterion) {
     for (m, n) in [
+        (32, 4096),
         (32, 32),
         (64, 64),
         (128, 128),
@@ -161,9 +167,10 @@ fn real_svd(c: &mut Criterion) {
         let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
         let mat = mat.as_ref();
 
-        let mut s = Mat::zeros(n, 1);
-        let mut u = Mat::zeros(m, m);
-        let mut v = Mat::zeros(n, n);
+        let size = m.min(n);
+        let mut s = Mat::zeros(size, 1);
+        let mut u = Mat::zeros(m, size);
+        let mut v = Mat::zeros(n, size);
 
         c.bench_function(&format!("faer-st-svd-f64-{m}x{n}"), |bencher| {
             let mut mem = GlobalMemBuffer::new(
@@ -218,6 +225,26 @@ fn real_svd(c: &mut Criterion) {
                     SvdParams::default(),
                 );
             });
+        });
+    }
+
+    for (m, n) in [
+        (32, 4096),
+        (32, 32),
+        (64, 64),
+        (128, 128),
+        (256, 256),
+        (512, 512),
+    ] {
+        let mut mat = nalgebra::DMatrix::<f64>::zeros(m, n);
+        for i in 0..m {
+            for j in 0..n {
+                mat[(i, j)] = random();
+            }
+        }
+
+        c.bench_function(&format!("nalgebra-svd-f64-{m}x{n}"), |bencher| {
+            bencher.iter(|| mat.clone().svd(true, true))
         });
     }
 }

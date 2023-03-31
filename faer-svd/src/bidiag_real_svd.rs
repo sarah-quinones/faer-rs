@@ -12,16 +12,15 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use core::{any::TypeId, iter::zip, mem::swap};
-use faer_core::{temp_mat_req, zip};
-
 use crate::jacobi::{jacobi_svd, JacobiRotation, Skip};
 use assert2::assert as fancy_assert;
 use coe::Coerce;
+use core::{any::TypeId, iter::zip, mem::swap};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    join_raw, temp_mat_uninit, temp_mat_zeroed, zip::ColUninit, ColMut, ColRef, Conj, MatMut,
-    Parallelism, RealField,
+    join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zip,
+    zip::{ColUninit, RowUninit},
+    ColMut, ColRef, Conj, MatMut, Parallelism, RealField,
 };
 use reborrow::*;
 
@@ -551,8 +550,8 @@ fn compute_singular_values_generic<T: RealField>(
                         )
                     };
 
-                fancy_assert!(f_left <= T::zero());
-                fancy_assert!(f_right >= T::zero());
+                fancy_assert!(!(f_left > T::zero()));
+                fancy_assert!(!(f_right < T::zero()));
 
                 let mut iteration_count = 0;
                 let mut f_prev = f_mid;
@@ -1019,8 +1018,86 @@ fn deflation44<T: RealField>(
     Some(rot)
 }
 
+/// svd of bidiagonal lower matrix of shape (n + 1, n), with the last row being all zeros
+pub fn compute_bidiag_real_svd<T: RealField>(
+    diag: &mut [T],
+    subdiag: &mut [T],
+    mut u: Option<MatMut<'_, T>>,
+    v: Option<MatMut<'_, T>>,
+    jacobi_fallback_threshold: usize,
+    epsilon: T,
+    consider_zero_threshold: T,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+) {
+    let n = diag.len();
+
+    if n <= jacobi_fallback_threshold {
+        temp_mat_zeroed! {
+            let (mut s, _) = temp_mat_zeroed::<T>(n, n, stack);
+        }
+
+        for i in 0..n {
+            s[(i, i)] = diag[i];
+            if i + 1 < n {
+                s[(i + 1, i)] = subdiag[i];
+            }
+        }
+
+        jacobi_svd(
+            s.rb_mut(),
+            u.rb_mut().map(|u| u.submatrix(0, 0, n, n)),
+            v,
+            Skip::None,
+            epsilon,
+            consider_zero_threshold,
+        );
+
+        for i in 0..n {
+            diag[i] = s[(i, i)];
+        }
+        if let Some(mut u) = u {
+            zip!(RowUninit(u.rb_mut().row(n))).for_each(|x| unsafe { *x = T::zero() });
+            zip!(ColUninit(u.rb_mut().col(n))).for_each(|x| unsafe { *x = T::zero() });
+            u[(n, n)] = T::one();
+        }
+    } else {
+        match u {
+            Some(u) => bidiag_svd_impl(
+                diag,
+                subdiag,
+                u,
+                v,
+                true,
+                jacobi_fallback_threshold,
+                epsilon,
+                consider_zero_threshold,
+                parallelism,
+                stack,
+            ),
+            None => {
+                temp_mat_uninit! {
+                    let (u, stack) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+                }
+                bidiag_svd_impl(
+                    diag,
+                    subdiag,
+                    u,
+                    v,
+                    false,
+                    jacobi_fallback_threshold,
+                    epsilon,
+                    consider_zero_threshold,
+                    parallelism,
+                    stack,
+                );
+            }
+        }
+    }
+}
+
 /// svd of bidiagonal lower matrix
-pub fn bidiag_svd<T: RealField>(
+fn bidiag_svd_impl<T: RealField>(
     diag: &mut [T],
     subdiag: &mut [T],
     mut u: MatMut<'_, T>,
@@ -1031,7 +1108,7 @@ pub fn bidiag_svd<T: RealField>(
     consider_zero_threshold: T,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
-) -> usize {
+) {
     let n = diag.len();
     fancy_assert!(subdiag.len() == n);
     fancy_assert!(n > jacobi_fallback_threshold);
@@ -1208,7 +1285,7 @@ pub fn bidiag_svd<T: RealField>(
 
         join_raw(
             |parallelism| {
-                bidiag_svd(
+                bidiag_svd_impl(
                     d1,
                     sub_d1,
                     u1.rb_mut(),
@@ -1222,7 +1299,7 @@ pub fn bidiag_svd<T: RealField>(
                 );
             },
             |parallelism| {
-                bidiag_svd(
+                bidiag_svd_impl(
                     d2,
                     sub_d2,
                     u2.rb_mut(),
@@ -1617,42 +1694,45 @@ pub fn bidiag_svd<T: RealField>(
             }
         }
     }
-
-    0
 }
 
-pub fn bidiag_svd_req<T: 'static>(
+pub fn bidiag_real_svd_req<T: 'static>(
     n: usize,
+    jacobi_fallback_threshold: usize,
     compute_u: bool,
     compute_v: bool,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = parallelism;
-    let perm = StackReq::try_new::<usize>(n)?;
-    let jacobi_coeffs = StackReq::try_new::<JacobiRotation<T>>(n)?;
-    let jacobi_indices = perm;
-    let transpositions = perm;
-    let real_ind = perm;
-    let real_col = perm;
+    if n <= jacobi_fallback_threshold {
+        temp_mat_req::<T>(n, n)
+    } else {
+        let _ = parallelism;
+        let perm = StackReq::try_new::<usize>(n)?;
+        let jacobi_coeffs = StackReq::try_new::<JacobiRotation<T>>(n)?;
+        let jacobi_indices = perm;
+        let transpositions = perm;
+        let real_ind = perm;
+        let real_col = perm;
 
-    let um = temp_mat_req::<T>(n + 1, n + 1)?;
-    let vm = temp_mat_req::<T>(n, if compute_v { n } else { 0 })?;
+        let um = temp_mat_req::<T>(n + 1, n + 1)?;
+        let vm = temp_mat_req::<T>(n, if compute_v { n } else { 0 })?;
 
-    let combined_u = temp_mat_req::<T>(if compute_u { n + 1 } else { 2 }, n + 1)?;
-    let combined_v = vm;
+        let combined_u = temp_mat_req::<T>(if compute_u { n + 1 } else { 2 }, n + 1)?;
+        let combined_v = vm;
 
-    let prologue = StackReq::try_all_of([perm, jacobi_coeffs, jacobi_indices])?;
+        let prologue = StackReq::try_all_of([perm, jacobi_coeffs, jacobi_indices])?;
 
-    StackReq::try_all_of([
-        prologue,
-        um,
-        vm,
-        combined_u,
-        combined_v,
-        transpositions,
-        real_ind,
-        real_col,
-    ])
+        StackReq::try_all_of([
+            prologue,
+            um,
+            vm,
+            combined_u,
+            combined_v,
+            transpositions,
+            real_ind,
+            real_col,
+        ])
+    }
 }
 
 #[cfg(test)]
@@ -1690,17 +1770,22 @@ mod tests {
             let s = {
                 let mut diag = diag.clone();
                 let mut subdiag = subdiag.clone();
-                bidiag_svd(
+                compute_bidiag_real_svd(
                     &mut diag,
                     &mut subdiag,
-                    u.as_mut(),
+                    Some(u.as_mut()),
                     Some(v.as_mut()),
-                    true,
                     5,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                     Parallelism::None,
-                    make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                    make_stack!(bidiag_real_svd_req::<f64>(
+                        n,
+                        5,
+                        true,
+                        true,
+                        Parallelism::None
+                    )),
                 );
                 Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
             };
@@ -1863,17 +1948,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 15,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    15,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -2163,17 +2253,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    40,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -4255,17 +4350,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    40,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -5323,17 +5423,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    40,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -7415,17 +7520,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    40,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
@@ -9507,17 +9617,22 @@ mod tests {
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
-            bidiag_svd(
+            compute_bidiag_real_svd(
                 &mut diag,
                 &mut subdiag,
-                u.as_mut(),
+                Some(u.as_mut()),
                 Some(v.as_mut()),
-                true,
                 40,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(bidiag_svd_req::<f64>(n, true, true, Parallelism::None)),
+                make_stack!(bidiag_real_svd_req::<f64>(
+                    n,
+                    40,
+                    true,
+                    true,
+                    Parallelism::None
+                )),
             );
             Mat::with_dims(|i, j| if i == j { diag[i] } else { 0.0 }, n + 1, n)
         };
