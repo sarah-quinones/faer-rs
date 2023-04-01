@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Basic linear algebra routines"
 readme = "../README.md"
@@ -9,11 +9,11 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.5", default-features = false, path = "../faer-core" }
-faer-lu = { version = "0.5", default-features = false, path = "../faer-lu" }
-faer-cholesky = { version = "0.5", default-features = false, path = "../faer-cholesky" }
-faer-qr = { version = "0.5", default-features = false, path = "../faer-qr" }
-faer-svd = { version = "0.5", default-features = false, path = "../faer-svd" }
+faer-core = { version = "0.6", default-features = false, path = "../faer-core" }
+faer-lu = { version = "0.6", default-features = false, path = "../faer-lu" }
+faer-cholesky = { version = "0.6", default-features = false, path = "../faer-cholesky" }
+faer-qr = { version = "0.6", default-features = false, path = "../faer-qr" }
+faer-svd = { version = "0.6", default-features = false, path = "../faer-svd" }
 pulp = { version = "0.11", default-features = false }
 reborrow = "0.5"
 dyn-stack = "0.9"
