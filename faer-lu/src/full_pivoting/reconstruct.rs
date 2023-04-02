@@ -87,7 +87,8 @@ fn reconstruct_impl<T: ComplexField>(
                 let jj = *col_inv.get_unchecked(j);
                 for i in 0..m {
                     let ii = *row_inv.get_unchecked(i);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *lu.rb().get_unchecked(ii, jj);
+                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                        lu.rb().get_unchecked(ii, jj).clone();
                 }
             }
         } else {
@@ -95,7 +96,8 @@ fn reconstruct_impl<T: ComplexField>(
                 let ii = *row_inv.get_unchecked(i);
                 for j in 0..n {
                     let jj = *col_inv.get_unchecked(j);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *lu.rb().get_unchecked(ii, jj);
+                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                        lu.rb().get_unchecked(ii, jj).clone();
                 }
             }
         }

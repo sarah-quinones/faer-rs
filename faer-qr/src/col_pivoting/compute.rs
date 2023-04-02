@@ -1,8 +1,6 @@
+use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use coe::Coerce;
 use core::slice::{from_raw_parts, from_raw_parts_mut};
-use num_traits::Zero;
-
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::upgrade_householder_factor,
@@ -107,8 +105,8 @@ fn update_and_norm2_generic<T: ComplexField>(a: &mut [T], b: &[T], k: T) -> T::R
     let mut acc = T::Real::zero();
 
     for (a, b) in a.iter_mut().zip(b.iter()) {
-        *a = *a + k * *b;
-        acc = acc + ((*a).conj() * *a).real();
+        *a = a.add(&k.mul(b));
+        acc = acc.add(&(*a).conj().mul(a).real());
     }
 
     acc
@@ -149,8 +147,8 @@ fn update_and_norm2<T: ComplexField>(
         let mut acc = T::Real::zero();
 
         for (a, b) in a.into_iter().zip(b.into_iter()) {
-            *a = *a + k * *b;
-            acc = acc + ((*a).conj() * *a).real();
+            *a = a.add(&k.mul(b));
+            acc = acc.add(&((*a).conj().mul(a)).real());
         }
 
         acc
@@ -207,11 +205,11 @@ fn qr_in_place_colmajor<T: ComplexField>(
         let tail_squared_norm = norm2(arch, first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place(
             Some(first_tail.rb_mut()),
-            first_head[0],
+            first_head[0].clone(),
             tail_squared_norm,
         );
         first_head[0] = beta;
-        unsafe { *householder_coeffs.rb_mut().ptr_in_bounds_at(k) = tau };
+        unsafe { *householder_coeffs.rb_mut().ptr_in_bounds_at(k) = tau.clone() };
         let tau_inv = tau.inv();
 
         let first_tail = first_tail.rb();
@@ -247,7 +245,7 @@ fn qr_in_place_colmajor<T: ComplexField>(
                                 matrix,
                                 col_start,
                                 first_tail,
-                                tau_inv,
+                                tau_inv.clone(),
                                 biggest_col_value,
                                 biggest_col_idx,
                             );
@@ -297,9 +295,9 @@ fn process_cols<T: ComplexField>(
         let (col_head, col_tail) = matrix.rb_mut().col(j).split_at(1);
         let col_head = col_head.get(0);
 
-        let dot = *col_head + dot(arch, first_tail, col_tail.rb());
-        let k = -tau_inv * dot;
-        *col_head = *col_head + k;
+        let dot = col_head.add(&dot(arch, first_tail, col_tail.rb()));
+        let k = (tau_inv.mul(&dot)).neg();
+        *col_head = col_head.add(&k);
 
         let col_value = update_and_norm2(arch, col_tail, first_tail, k);
         if col_value > *biggest_col_value {
@@ -426,7 +424,7 @@ pub fn qr_in_place<'out, T: ComplexField>(
             unsafe { householder_factor.rb().const_cast() }.submatrix(0, j, blocksize, blocksize);
 
         for i in 0..blocksize {
-            let coeff = householder[(0, i)];
+            let coeff = householder[(0, i)].clone();
             householder[(i, i)] = coeff;
         }
 
@@ -466,7 +464,6 @@ mod tests {
         zip::Diag,
         Conj, Mat, MatRef,
     };
-    use num_traits::One;
     use rand::random;
 
     macro_rules! make_stack {
@@ -488,7 +485,7 @@ mod tests {
         r.as_mut()
             .cwise()
             .zip(qr_factors)
-            .for_each_triangular_upper(Diag::Include, |a, b| *a = *b);
+            .for_each_triangular_upper(Diag::Include, |a, b| *a = b.clone());
 
         q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
 

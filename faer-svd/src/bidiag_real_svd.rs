@@ -15,7 +15,7 @@
 use crate::jacobi::{jacobi_svd, JacobiRotation, Skip};
 use assert2::assert as fancy_assert;
 use coe::Coerce;
-use core::{any::TypeId, iter::zip, mem::swap};
+use core::{iter::zip, mem::swap};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zip,
@@ -24,19 +24,8 @@ use faer_core::{
 };
 use reborrow::*;
 
-fn norm_f64(v: ColRef<'_, f64>) -> f64 {
-    faer_core::mul::dot(pulp::Arch::new(), v, v).sqrt()
-}
-
 fn norm<T: RealField>(v: ColRef<'_, T>) -> T {
-    if TypeId::of::<T>() == TypeId::of::<f64>() {
-        return coe::coerce_static(norm_f64(v.coerce()));
-    }
-    let mut norm2 = T::zero();
-    for &x in v.rb() {
-        norm2 = norm2 + x * x;
-    }
-    norm2.sqrt()
+    faer_core::mul::dot(pulp::Arch::new(), v, v).sqrt()
 }
 
 fn compute_svd_of_m<T: RealField>(
@@ -61,14 +50,14 @@ fn compute_svd_of_m<T: RealField>(
     let (perm, stack) = stack.collect(
         col0.iter()
             .take(actual_n)
-            .map(|&x| x.abs())
+            .map(|x| x.abs())
             .enumerate()
-            .filter(|&(_, x)| x != T::zero())
+            .filter(|(_, x)| *x != T::zero())
             .map(|(i, _)| i),
     );
     let perm = &*perm;
-    let (col0_perm, stack) = stack.collect(perm.iter().map(|&p| col0[p]));
-    let (diag_perm, stack) = stack.collect(perm.iter().map(|&p| diag[p]));
+    let (col0_perm, stack) = stack.collect(perm.iter().map(|&p| col0[p].clone()));
+    let (diag_perm, stack) = stack.collect(perm.iter().map(|&p| diag[p].clone()));
 
     temp_mat_uninit! {
         let (shifts, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
@@ -107,15 +96,15 @@ fn compute_svd_of_m<T: RealField>(
 
     for i in 0..actual_n - 1 {
         if s[i] > s[i + 1] {
-            let si = s[i];
-            let sj = s[i + 1];
+            let si = s[i].clone();
+            let sj = s[i + 1].clone();
             s[i] = sj;
             s[i + 1] = si;
 
             col_perm.swap(i, i + 1);
         }
     }
-    for (i, p) in col_perm.iter().copied().enumerate() {
+    for (i, p) in col_perm.iter().cloned().enumerate() {
         col_perm_inv[p] = i;
     }
 
@@ -136,13 +125,13 @@ fn compute_svd_of_m<T: RealField>(
         .iter_mut()
         .zip(s.rb().subrows(0, actual_n).into_iter().rev())
     {
-        *dst = *src;
+        *dst = src.clone();
     }
     for (dst, src) in diag[actual_n..]
         .iter_mut()
         .zip(s.rb().subrows(actual_n, n - actual_n).into_iter())
     {
-        *dst = *src;
+        *dst = src.clone();
     }
 }
 
@@ -181,8 +170,8 @@ fn compute_singular_vectors<T: RealField>(
             continue;
         }
 
-        let mu = mus[k];
-        let shift = shifts[k];
+        let mu = mus[k].clone();
+        let shift = shifts[k].clone();
 
         assert_eq!(zhat.row_stride(), 1);
 
@@ -190,12 +179,14 @@ fn compute_singular_vectors<T: RealField>(
             assert_eq!(u.row_stride(), 1);
             for l in 0..m {
                 let i = perm[l];
-                u[outer_perm[i]] = zhat[i] / (diag[i] - shift - mu) / (diag[i] + (shift + mu));
+                u[outer_perm[i]] = zhat[i]
+                    .div(&diag[i].sub(&shift).sub(&mu))
+                    .div(&diag[i].add(&shift.add(&mu)));
             }
             u[n] = T::zero();
             let norm_inv = norm(u.rb()).inv();
             for x in u.rb_mut() {
-                *x = *x * norm_inv;
+                *x = (*x).mul(&norm_inv);
             }
         }
 
@@ -203,13 +194,15 @@ fn compute_singular_vectors<T: RealField>(
             assert_eq!(v.row_stride(), 1);
             for l in 1..m {
                 let i = perm[l];
-                v[outer_perm[i]] =
-                    diag[i] * zhat[i] / (diag[i] - shift - mu) / (diag[i] + (shift + mu));
+                v[outer_perm[i]] = diag[i]
+                    .mul(&zhat[i])
+                    .div(&diag[i].sub(&shift).sub(&mu))
+                    .div(&diag[i].add(&shift.add(&mu)));
             }
-            v[outer_perm[0]] = -T::one();
+            v[outer_perm[0]] = T::one().neg();
             let norm_inv = norm(v.rb()).inv();
             for x in v.rb_mut() {
-                *x = *x * norm_inv;
+                *x = (*x).mul(&norm_inv);
             }
         }
     }
@@ -241,8 +234,8 @@ fn perturb_col0<T: RealField>(
             continue;
         }
 
-        let dk = diag[k];
-        let mut prod = (s[last_idx] + dk) * (mus[last_idx] + (shifts[last_idx] - dk));
+        let dk = diag[k].clone();
+        let mut prod = (s[last_idx].add(&dk)).mul(&mus[last_idx].add(&shifts[last_idx].sub(&dk)));
 
         for l in 0..m {
             let i = perm[l];
@@ -261,16 +254,16 @@ fn perturb_col0<T: RealField>(
                 i
             };
 
-            let term =
-                ((s[j] + dk) / (diag[i] + dk)) * ((mus[j] + (shifts[j] - dk)) / (diag[i] - dk));
-            prod = prod * term;
+            let term = ((s[j].add(&dk)).div(&diag[i].add(&dk)))
+                .mul(&(mus[j].add(&shifts[j].sub(&dk))).div(&diag[i].sub(&dk)));
+            prod = prod.mul(&term);
         }
 
         let tmp = prod.sqrt();
         if col0[k] > T::zero() {
             zhat.write_at(k, tmp);
         } else {
-            zhat.write_at(k, -tmp);
+            zhat.write_at(k, tmp.neg());
         }
     }
 }
@@ -285,7 +278,7 @@ fn compute_singular_values<T: RealField>(
     col0_perm: &[T],
     epsilon: T,
 ) {
-    if TypeId::of::<T>() == TypeId::of::<f64>() {
+    if coe::is_same::<f64, T>() {
         struct ImplF64<'a> {
             shifts: ColMut<'a, f64>,
             mus: ColMut<'a, f64>,
@@ -364,8 +357,8 @@ fn compute_singular_values_generic<T: RealField>(
             }
             let actual_n = actual_n;
 
-            let two = T::one() + T::one();
-            let eight = two * two * two;
+            let two = T::one().add(&T::one());
+            let eight = two.scale_power_of_two(&two).scale_power_of_two(&two);
             let one_half = two.inv();
 
             'kth_value: for k in 0..n {
@@ -374,60 +367,64 @@ fn compute_singular_values_generic<T: RealField>(
                 mus.write_at(k, T::zero());
 
                 if col0[k] == T::zero() || actual_n == 1 {
-                    s[k] = if k == 0 { col0[0] } else { diag[k] };
-                    shifts[k] = s[k];
+                    s[k] = if k == 0 {
+                        col0[0].clone()
+                    } else {
+                        diag[k].clone()
+                    };
+                    shifts[k] = s[k].clone();
                     mus[k] = T::zero();
                     continue 'kth_value;
                 }
 
                 let last_k = k == actual_n - 1;
-                let left = diag[k];
+                let left = diag[k].clone();
                 let right = if last_k {
                     let mut norm2 = T::zero();
-                    for &x in col0 {
-                        norm2 = norm2 + x * x;
+                    for x in col0 {
+                        norm2 = norm2.add(&x.mul(x));
                     }
-                    diag[actual_n - 1] + norm2.sqrt()
+                    diag[actual_n - 1].add(&norm2.sqrt())
                 } else {
                     let mut l = k + 1;
                     while col0[l] == T::zero() {
                         l += 1;
                     }
-                    diag[l]
+                    diag[l].clone()
                 };
 
-                let mid = left + one_half * (right - left);
+                let mid = left.add(&right.sub(&left).scale_power_of_two(&one_half));
                 let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = secular_eq_multi_fast(
                     [
                         mid,
                         if last_k {
-                            right - left
+                            right.sub(&left)
                         } else {
-                            one_half * (right - left)
+                            (right.sub(&left)).scale_power_of_two(&one_half)
                         },
-                        one_half * (right - left),
-                        -(one_half * (right - left)),
+                        one_half.mul(&right.sub(&left)),
+                        one_half.mul(&right.sub(&left)).neg(),
                     ],
                     col0_perm,
                     diag_perm,
-                    [T::zero(), left, left, right],
+                    [T::zero(), left.clone(), left.clone(), right.clone()],
                 );
 
                 let mut shift = if last_k || f_mid > T::zero() {
-                    left
+                    left.clone()
                 } else {
-                    right
+                    right.clone()
                 };
 
                 if !last_k {
                     if shift == left {
                         if f_mid_left_shift < T::zero() {
-                            shift = right;
+                            shift = right.clone();
                             f_mid = f_mid_right_shift;
                         }
                     } else {
                         if f_mid_right_shift > T::zero() {
-                            shift = left;
+                            shift = left.clone();
                             f_mid = f_mid_left_shift;
                         }
                     }
@@ -450,12 +447,12 @@ fn compute_singular_values_generic<T: RealField>(
                         let mut right_candidate = None;
 
                         let mut use_bisection = false;
-                        let same_sign = f_prev * f_cur > T::zero();
+                        let same_sign = f_prev.mul(&f_cur) > T::zero();
                         if !same_sign {
                             let (min, max) = if mu_cur < mu_prev {
-                                (mu_cur, mu_prev)
+                                (mu_cur.clone(), mu_prev.clone())
                             } else {
-                                (mu_prev, mu_cur)
+                                (mu_prev.clone(), mu_cur.clone())
                             };
                             left_candidate = Some(min);
                             right_candidate = Some(max);
@@ -464,41 +461,45 @@ fn compute_singular_values_generic<T: RealField>(
                         let mut err = SecantError::PrecisionLimitReached;
 
                         while f_cur != T::zero()
-                            && ((mu_cur - mu_prev).abs()
-                                > eight
-                                    * epsilon
-                                    * (if mu_cur.abs() > mu_prev.abs() {
-                                        mu_cur.abs()
-                                    } else {
-                                        mu_prev.abs()
-                                    }))
-                            && ((f_cur - f_prev).abs() > epsilon)
+                            && ((mu_cur.sub(&mu_prev)).abs()
+                                > eight.mul(&epsilon).mul(&if mu_cur.abs() > mu_prev.abs() {
+                                    mu_cur.abs()
+                                } else {
+                                    mu_prev.abs()
+                                }))
+                            && ((f_cur.sub(&f_prev)).abs() > epsilon)
                             && !use_bisection
                         {
                             // rational interpolation: fit a function of the form a / mu + b through
                             // the two previous iterates and use its
                             // zero to compute the next iterate
-                            let a = (f_cur - f_prev) * (mu_prev * mu_cur) / (mu_prev - mu_cur);
-                            let b = f_cur - a / mu_cur;
-                            let mu_zero = -a / b;
-                            let f_zero = secular_eq(mu_zero, col0_perm, diag_perm, shift);
+                            let a = (f_cur.sub(&f_prev))
+                                .mul(&mu_prev.mul(&mu_cur))
+                                .div(&mu_prev.sub(&mu_cur));
+                            let b = f_cur.sub(&a.div(&mu_cur));
+                            let mu_zero = a.div(&b).neg();
+                            let f_zero =
+                                secular_eq(mu_zero.clone(), col0_perm, diag_perm, shift.clone());
 
                             if f_zero < T::zero() {
-                                left_candidate = Some(mu_zero);
+                                left_candidate = Some(mu_zero.clone());
                             } else {
-                                right_candidate = Some(mu_zero);
+                                right_candidate = Some(mu_zero.clone());
                             }
 
                             mu_prev = mu_cur;
                             f_prev = f_cur;
                             mu_cur = mu_zero;
-                            f_cur = f_zero;
+                            f_cur = f_zero.clone();
 
-                            if shift == left && (mu_cur < T::zero() || mu_cur > (right - left)) {
+                            if shift == left && (mu_cur < T::zero() || mu_cur > (right.sub(&left)))
+                            {
                                 err = SecantError::OutOfBounds;
                                 use_bisection = true;
                             }
-                            if shift == right && (mu_cur < -(right - left) || mu_cur > T::zero()) {
+                            if shift == right
+                                && (mu_cur < (right.sub(&left)).neg() || mu_cur > T::zero())
+                            {
                                 err = SecantError::OutOfBounds;
                                 use_bisection = true;
                             }
@@ -508,9 +509,13 @@ fn compute_singular_values_generic<T: RealField>(
                                 // mu = -a / (f_zero + b)
                                 let mut k = T::one();
                                 for _ in 0..4 {
-                                    let mu_opposite = -a / (k * f_zero + b);
-                                    let f_opposite =
-                                        secular_eq(mu_opposite, col0_perm, diag_perm, shift);
+                                    let mu_opposite = a.neg().div(&k.mul(&f_zero).add(&b));
+                                    let f_opposite = secular_eq(
+                                        mu_opposite.clone(),
+                                        col0_perm,
+                                        diag_perm,
+                                        shift.clone(),
+                                    );
                                     if f_zero < T::zero() && f_opposite >= T::zero() {
                                         // this will be our right candidate
                                         right_candidate = Some(mu_opposite);
@@ -520,7 +525,7 @@ fn compute_singular_values_generic<T: RealField>(
                                         left_candidate = Some(mu_opposite);
                                         break;
                                     }
-                                    k = k * two;
+                                    k = k.scale_power_of_two(&two);
                                 }
                                 use_bisection = true;
                             }
@@ -533,20 +538,20 @@ fn compute_singular_values_generic<T: RealField>(
                     if shift == left {
                         (
                             T::zero(),
-                            -T::one() / T::zero(),
+                            T::zero().inv().neg(),
                             if last_k {
-                                right - left
+                                right.sub(&left)
                             } else {
-                                (right - left) * one_half
+                                (right.sub(&left)).mul(&one_half)
                             },
-                            if last_k { f_max } else { f_mid },
+                            if last_k { f_max } else { f_mid.clone() },
                         )
                     } else {
                         (
-                            -(right - left) * one_half,
-                            f_mid,
+                            (right.sub(&left)).neg().scale_power_of_two(&one_half),
+                            f_mid.clone(),
                             T::zero(),
-                            T::one() / T::zero(),
+                            T::zero().inv(),
                         )
                     };
 
@@ -557,43 +562,48 @@ fn compute_singular_values_generic<T: RealField>(
                 let mut f_prev = f_mid;
                 // try to find non zero starting bounds
 
-                let half0 = one_half;
-                let half1 = half0 * half0;
-                let half2 = half1 * half1;
-                let half3 = half2 * half2;
-                let half4 = half3 * half3;
-                let half5 = half4 * half4;
-                let half6 = half5 * half5;
-                let half7 = half6 * half6;
+                let half0 = one_half.clone();
+                let half1 = half0.scale_power_of_two(&half0);
+                let half2 = half1.scale_power_of_two(&half1);
+                let half3 = half2.scale_power_of_two(&half2);
+                let half4 = half3.scale_power_of_two(&half3);
+                let half5 = half4.scale_power_of_two(&half4);
+                let half6 = half5.scale_power_of_two(&half5);
+                let half7 = half6.scale_power_of_two(&half6);
 
                 let mu_values = if shift == left {
                     [
-                        half7 * right_shifted,
-                        half6 * right_shifted,
-                        half5 * right_shifted,
-                        half4 * right_shifted,
-                        half3 * right_shifted,
-                        half2 * right_shifted,
-                        half1 * right_shifted,
-                        half0 * right_shifted,
+                        right_shifted.scale_power_of_two(&half7),
+                        right_shifted.scale_power_of_two(&half6),
+                        right_shifted.scale_power_of_two(&half5),
+                        right_shifted.scale_power_of_two(&half4),
+                        right_shifted.scale_power_of_two(&half3),
+                        right_shifted.scale_power_of_two(&half2),
+                        right_shifted.scale_power_of_two(&half1),
+                        right_shifted.scale_power_of_two(&half0),
                     ]
                 } else {
                     [
-                        half7 * left_shifted,
-                        half6 * left_shifted,
-                        half5 * left_shifted,
-                        half4 * left_shifted,
-                        half3 * left_shifted,
-                        half2 * left_shifted,
-                        half1 * left_shifted,
-                        half0 * left_shifted,
+                        left_shifted.scale_power_of_two(&half7),
+                        left_shifted.scale_power_of_two(&half6),
+                        left_shifted.scale_power_of_two(&half5),
+                        left_shifted.scale_power_of_two(&half4),
+                        left_shifted.scale_power_of_two(&half3),
+                        left_shifted.scale_power_of_two(&half2),
+                        left_shifted.scale_power_of_two(&half1),
+                        left_shifted.scale_power_of_two(&half0),
                     ]
                 };
-                let f_values = secular_eq_multi_fast(mu_values, col0_perm, diag_perm, [shift; 8]);
+                let f_values = secular_eq_multi_fast(
+                    mu_values.clone(),
+                    col0_perm,
+                    diag_perm,
+                    [(); 8].map(|_| shift.clone()),
+                );
 
                 if shift == left {
                     let mut i = 0;
-                    for (mu, f) in zip(mu_values, f_values) {
+                    for (mu, f) in zip(mu_values.clone(), f_values.clone()) {
                         if f < T::zero() {
                             left_shifted = mu;
                             f_left = f;
@@ -601,12 +611,12 @@ fn compute_singular_values_generic<T: RealField>(
                         }
                     }
                     if i < f_values.len() {
-                        right_shifted = mu_values[i];
-                        f_right = f_values[i];
+                        right_shifted = mu_values[i].clone();
+                        f_right = f_values[i].clone();
                     }
                 } else {
                     let mut i = 0;
-                    for (mu, f) in zip(mu_values, f_values) {
+                    for (mu, f) in zip(mu_values.clone(), f_values.clone()) {
                         if f > T::zero() {
                             right_shifted = mu;
                             f_right = f;
@@ -614,37 +624,39 @@ fn compute_singular_values_generic<T: RealField>(
                         }
                     }
                     if i < f_values.len() {
-                        left_shifted = mu_values[i];
-                        f_left = f_values[i];
+                        left_shifted = mu_values[i].clone();
+                        f_left = f_values[i].clone();
                     }
                 }
 
                 // try bisection just to get a good guess for secant
-                while right_shifted - left_shifted
+                while right_shifted.sub(&left_shifted)
                     > two
-                        * epsilon
-                        * (if left_shifted.abs() > right_shifted.abs() {
+                        .mul(&epsilon)
+                        .mul(&if left_shifted.abs() > right_shifted.abs() {
                             left_shifted.abs()
                         } else {
                             right_shifted.abs()
                         })
                 {
-                    let mid_shifted_arithmetic = (left_shifted + right_shifted) * one_half;
+                    let mid_shifted_arithmetic =
+                        (left_shifted.add(&right_shifted)).scale_power_of_two(&one_half);
                     let mut mid_shifted_geometric =
-                        left_shifted.abs().sqrt() * right_shifted.abs().sqrt();
+                        left_shifted.abs().sqrt().mul(&right_shifted.abs().sqrt());
                     if left_shifted < T::zero() {
-                        mid_shifted_geometric = -mid_shifted_geometric;
+                        mid_shifted_geometric = mid_shifted_geometric.neg();
                     }
                     let mid_shifted = if mid_shifted_geometric == T::zero() {
                         mid_shifted_arithmetic
                     } else {
                         mid_shifted_geometric
                     };
-                    let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
+                    let f_mid =
+                        secular_eq(mid_shifted.clone(), col0_perm, diag_perm, shift.clone());
 
                     if f_mid == T::zero() {
-                        s[k] = shift + mid_shifted;
-                        shifts[k] = shift;
+                        s[k] = shift.add(&mid_shifted);
+                        shifts[k] = shift.clone();
                         mus[k] = mid_shifted;
                         continue 'kth_value;
                     } else if f_mid > T::zero() {
@@ -667,15 +679,20 @@ fn compute_singular_values_generic<T: RealField>(
                 // try secant with the guess from bisection
                 let args = if left_shifted == T::zero() {
                     (
-                        right_shifted + right_shifted,
-                        right_shifted,
+                        right_shifted.add(&right_shifted),
+                        right_shifted.clone(),
                         f_prev,
                         f_right,
                     )
                 } else if right_shifted == T::zero() {
-                    (left_shifted + left_shifted, left_shifted, f_prev, f_left)
+                    (
+                        left_shifted.add(&left_shifted),
+                        left_shifted.clone(),
+                        f_prev,
+                        f_left,
+                    )
                 } else {
-                    (left_shifted, right_shifted, f_left, f_right)
+                    (left_shifted.clone(), right_shifted.clone(), f_left, f_right)
                 };
 
                 let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
@@ -695,17 +712,19 @@ fn compute_singular_values_generic<T: RealField>(
 
                 // secant failed, use bisection again
                 if use_bisection {
-                    while (right_shifted - left_shifted)
+                    while (right_shifted.sub(&left_shifted))
                         > two
-                            * epsilon
-                            * (if left_shifted.abs() > right_shifted.abs() {
+                            .mul(&epsilon)
+                            .mul(&if left_shifted.abs() > right_shifted.abs() {
                                 left_shifted.abs()
                             } else {
                                 right_shifted.abs()
                             })
                     {
-                        let mid_shifted = (left_shifted + right_shifted) * one_half;
-                        let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
+                        let mid_shifted =
+                            (left_shifted.add(&right_shifted)).scale_power_of_two(&one_half);
+                        let f_mid =
+                            secular_eq(mid_shifted.clone(), col0_perm, diag_perm, shift.clone());
 
                         if f_mid == T::zero() {
                             break;
@@ -716,10 +735,10 @@ fn compute_singular_values_generic<T: RealField>(
                         }
                     }
 
-                    mu_cur = (left_shifted + right_shifted) * one_half;
+                    mu_cur = (left_shifted.add(&right_shifted)).mul(&one_half);
                 }
 
-                s[k] = shift + mu_cur;
+                s[k] = shift.add(&mu_cur);
                 shifts[k] = shift;
                 mus[k] = mu_cur;
             }
@@ -734,10 +753,15 @@ fn secular_eq_multi_fast<const N: usize, T: RealField>(
     diag_perm: &[T],
     shift: [T; N],
 ) -> [T; N] {
-    let mut res0 = [T::one(); N];
-    for (&c0, &d0) in col0_perm.iter().zip(diag_perm) {
-        for ((res0, &mu), &shift) in res0.iter_mut().zip(&mu).zip(&shift) {
-            *res0 = *res0 + ((c0 * c0) / ((d0 - shift - mu) * (d0 + shift + mu)));
+    let mut res0 = [(); N].map(|_| T::one());
+    for (c0, d0) in col0_perm.iter().cloned().zip(diag_perm.iter().cloned()) {
+        for ((res0, mu), shift) in res0
+            .iter_mut()
+            .zip(mu.iter().cloned())
+            .zip(shift.iter().cloned())
+        {
+            *res0 = (*res0)
+                .add(&(c0.mul(&c0)).div(&(d0.sub(&shift).sub(&mu)).mul(&d0.add(&shift).add(&mu))));
         }
     }
     res0
@@ -756,40 +780,40 @@ fn secular_eq<T: RealField>(mu: T, col0_perm: &[T], diag_perm: &[T], shift: T) -
 
     let (col0_head, col0_perm) = pulp::as_arrays::<8, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<8, _>(diag_perm);
-    for (&[c0, c1, c2, c3, c4, c5, c6, c7], &[d0, d1, d2, d3, d4, d5, d6, d7]) in
+    for ([c0, c1, c2, c3, c4, c5, c6, c7], [d0, d1, d2, d3, d4, d5, d6, d7]) in
         col0_head.iter().zip(diag_head)
     {
-        res0 = res0 + (c0 / (d0 - shift - mu)) * (c0 / (d0 + shift + mu));
-        res1 = res1 + (c1 / (d1 - shift - mu)) * (c1 / (d1 + shift + mu));
-        res2 = res2 + (c2 / (d2 - shift - mu)) * (c2 / (d2 + shift + mu));
-        res3 = res3 + (c3 / (d3 - shift - mu)) * (c3 / (d3 + shift + mu));
-        res4 = res4 + (c4 / (d4 - shift - mu)) * (c4 / (d4 + shift + mu));
-        res5 = res5 + (c5 / (d5 - shift - mu)) * (c5 / (d5 + shift + mu));
-        res6 = res6 + (c6 / (d6 - shift - mu)) * (c6 / (d6 + shift + mu));
-        res7 = res7 + (c7 / (d7 - shift - mu)) * (c7 / (d7 + shift + mu));
+        res0 = res0.add(&(c0.div(&d0.sub(&shift).sub(&mu))).mul(&c0.div(&d0.add(&shift).add(&mu))));
+        res1 = res1.add(&(c1.div(&d1.sub(&shift).sub(&mu))).mul(&c1.div(&d1.add(&shift).add(&mu))));
+        res2 = res2.add(&(c2.div(&d2.sub(&shift).sub(&mu))).mul(&c2.div(&d2.add(&shift).add(&mu))));
+        res3 = res3.add(&(c3.div(&d3.sub(&shift).sub(&mu))).mul(&c3.div(&d3.add(&shift).add(&mu))));
+        res4 = res4.add(&(c4.div(&d4.sub(&shift).sub(&mu))).mul(&c4.div(&d4.add(&shift).add(&mu))));
+        res5 = res5.add(&(c5.div(&d5.sub(&shift).sub(&mu))).mul(&c5.div(&d5.add(&shift).add(&mu))));
+        res6 = res6.add(&(c6.div(&d6.sub(&shift).sub(&mu))).mul(&c6.div(&d6.add(&shift).add(&mu))));
+        res7 = res7.add(&(c7.div(&d7.sub(&shift).sub(&mu))).mul(&c7.div(&d7.add(&shift).add(&mu))));
     }
 
     let (col0_head, col0_perm) = pulp::as_arrays::<4, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<4, _>(diag_perm);
-    for (&[c0, c1, c2, c3], &[d0, d1, d2, d3]) in col0_head.iter().zip(diag_head) {
-        res0 = res0 + (c0 / (d0 - shift - mu)) * (c0 / (d0 + shift + mu));
-        res1 = res1 + (c1 / (d1 - shift - mu)) * (c1 / (d1 + shift + mu));
-        res2 = res2 + (c2 / (d2 - shift - mu)) * (c2 / (d2 + shift + mu));
-        res3 = res3 + (c3 / (d3 - shift - mu)) * (c3 / (d3 + shift + mu));
+    for ([c0, c1, c2, c3], [d0, d1, d2, d3]) in col0_head.iter().zip(diag_head) {
+        res0 = res0.add(&(c0.div(&d0.sub(&shift).sub(&mu))).mul(&c0.div(&d0.add(&shift).add(&mu))));
+        res1 = res1.add(&(c1.div(&d1.sub(&shift).sub(&mu))).mul(&c1.div(&d1.add(&shift).add(&mu))));
+        res2 = res2.add(&(c2.div(&d2.sub(&shift).sub(&mu))).mul(&c2.div(&d2.add(&shift).add(&mu))));
+        res3 = res3.add(&(c3.div(&d3.sub(&shift).sub(&mu))).mul(&c3.div(&d3.add(&shift).add(&mu))));
     }
 
     let (col0_head, col0_perm) = pulp::as_arrays::<2, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<2, _>(diag_perm);
-    for (&[c0, c1], &[d0, d1]) in col0_head.iter().zip(diag_head) {
-        res0 = res0 + (c0 / (d0 - shift - mu)) * (c0 / (d0 + shift + mu));
-        res1 = res1 + (c1 / (d1 - shift - mu)) * (c1 / (d1 + shift + mu));
+    for ([c0, c1], [d0, d1]) in col0_head.iter().zip(diag_head) {
+        res0 = res0.add(&(c0.div(&d0.sub(&shift).sub(&mu))).mul(&c0.div(&d0.add(&shift).add(&mu))));
+        res1 = res1.add(&(c1.div(&d1.sub(&shift).sub(&mu))).mul(&c1.div(&d1.add(&shift).add(&mu))));
     }
 
-    for (&c0, &d0) in col0_perm.iter().zip(diag_perm) {
-        res0 = res0 + (c0 / (d0 - shift - mu)) * (c0 / (d0 + shift + mu));
+    for (c0, d0) in col0_perm.iter().zip(diag_perm) {
+        res0 = res0.add(&(c0.div(&d0.sub(&shift).sub(&mu))).mul(&c0.div(&d0.add(&shift).add(&mu))));
     }
 
-    ((res0 + res1) + (res2 + res3)) + ((res4 + res5) + (res6 + res7))
+    ((res0.add(&res1)).add(&res2.add(&res3))).add(&(res4.add(&res5)).add(&res6.add(&res7)))
 }
 
 fn deflate<T: RealField>(
@@ -812,14 +836,14 @@ fn deflate<T: RealField>(
 
     let mut max_diag = T::zero();
     let mut max_col0 = T::zero();
-    for d in diag[1..].iter().copied() {
+    for d in diag[1..].iter().cloned() {
         max_diag = if d.abs() > max_diag {
             d.abs()
         } else {
             max_diag
         };
     }
-    for d in col0.iter().copied() {
+    for d in col0.iter().cloned() {
         max_col0 = if d.abs() > max_col0 {
             d.abs()
         } else {
@@ -827,27 +851,25 @@ fn deflate<T: RealField>(
         };
     }
 
-    let epsilon_strict = epsilon * max_diag;
+    let epsilon_strict = epsilon.mul(&max_diag);
     let epsilon_strict = if epsilon_strict > consider_zero_threshold {
         epsilon_strict
     } else {
-        consider_zero_threshold
+        consider_zero_threshold.clone()
     };
 
-    let eight =
-        T::one() + T::one() + T::one() + T::one() + T::one() + T::one() + T::one() + T::one();
-    let epsilon_coarse = eight
-        * epsilon
-        * if max_diag > max_col0 {
-            max_diag
-        } else {
-            max_col0
-        };
+    let two = T::one().add(&T::one());
+    let eight = two.scale_power_of_two(&two).scale_power_of_two(&two);
+    let epsilon_coarse = eight.mul(&epsilon).mul(&if max_diag > max_col0 {
+        max_diag
+    } else {
+        max_col0
+    });
 
     // condition 4.1
     if diag[0] < epsilon_coarse {
-        diag[0] = epsilon_coarse;
-        col0[0] = epsilon_coarse;
+        diag[0] = epsilon_coarse.clone();
+        col0[0] = epsilon_coarse.clone();
     }
 
     // condition 4.2
@@ -869,7 +891,7 @@ fn deflate<T: RealField>(
     }
 
     let mut total_deflation = true;
-    for c in col0[1..].iter().copied() {
+    for c in col0[1..].iter().cloned() {
         if !(c.abs() < consider_zero_threshold) {
             total_deflation = false;
             break;
@@ -878,7 +900,7 @@ fn deflate<T: RealField>(
 
     let mut p = 1;
 
-    for (d, i) in diag[1..].iter().copied().zip(1..n) {
+    for (d, i) in diag[1..].iter().cloned().zip(1..n) {
         if d.abs() < consider_zero_threshold {
             perm[p] = i;
             p += 1;
@@ -937,11 +959,11 @@ fn deflate<T: RealField>(
         real_ind[j] = real_i;
         real_ind[i] = pi;
     }
-    col0[0] = diag[0];
+    col0[0] = diag[0].clone();
     for (i, p) in perm.iter_mut().enumerate() {
         *p = i;
     }
-    for (i, j) in transpositions.iter().copied().enumerate() {
+    for (i, j) in transpositions.iter().cloned().enumerate() {
         perm.swap(i, j);
     }
 
@@ -953,7 +975,7 @@ fn deflate<T: RealField>(
         i -= 1;
     }
     while i > 1 {
-        if diag[i] - diag[i - 1] < epsilon_strict {
+        if diag[i].sub(&diag[i - 1]) < epsilon_strict {
             if let Some(rot) = deflation44(diag, col0, u.rb_mut(), v.rb_mut(), i - 1, i) {
                 jacobi_coeffs[jacobi_0i + jacobi_ij] = rot;
                 jacobi_indices[jacobi_0i + jacobi_ij] = i;
@@ -972,22 +994,22 @@ fn deflation43<T: RealField>(
     _u: MatMut<T>,
     i: usize,
 ) -> Option<JacobiRotation<T>> {
-    let c = col0[0];
-    let s = col0[i];
-    let r = (c * c + s * s).sqrt();
+    let c = col0[0].clone();
+    let s = col0[i].clone();
+    let r = ((c.mul(&c)).add(&s.mul(&s))).sqrt();
     if r == T::zero() {
         diag[i] = T::zero();
         return None;
     }
 
-    col0[0] = r;
-    diag[0] = r;
+    col0[0] = r.clone();
+    diag[0] = r.clone();
     col0[i] = T::zero();
     diag[i] = T::zero();
 
     let rot = JacobiRotation {
-        c: c / r,
-        s: -s / r,
+        c: c.div(&r),
+        s: s.neg().div(&r),
     };
     Some(rot)
 }
@@ -1000,18 +1022,18 @@ fn deflation44<T: RealField>(
     i: usize,
     j: usize,
 ) -> Option<JacobiRotation<T>> {
-    let c = col0[i];
-    let s = col0[j];
-    let r = (c * c + s * s).sqrt();
+    let c = col0[i].clone();
+    let s = col0[j].clone();
+    let r = ((c.mul(&c)).add(&s.mul(&s))).sqrt();
     if r == T::zero() {
-        diag[i] = diag[j];
+        diag[i] = diag[j].clone();
         return None;
     }
 
-    let c = c / r;
-    let s = -s / r;
+    let c = c.div(&r);
+    let s = s.neg().div(&r);
     col0[i] = r;
-    diag[j] = diag[i];
+    diag[j] = diag[i].clone();
     col0[j] = T::zero();
 
     let rot = JacobiRotation { c, s };
@@ -1038,9 +1060,9 @@ pub fn compute_bidiag_real_svd<T: RealField>(
         }
 
         for i in 0..n {
-            s[(i, i)] = diag[i];
+            s[(i, i)] = diag[i].clone();
             if i + 1 < n {
-                s[(i + 1, i)] = subdiag[i];
+                s[(i + 1, i)] = subdiag[i].clone();
             }
         }
 
@@ -1054,7 +1076,7 @@ pub fn compute_bidiag_real_svd<T: RealField>(
         );
 
         for i in 0..n {
-            diag[i] = s[(i, i)];
+            diag[i] = s[(i, i)].clone();
         }
         if let Some(mut u) = u {
             zip!(RowUninit(u.rb_mut().row(n))).for_each(|x| unsafe { *x = T::zero() });
@@ -1118,8 +1140,10 @@ fn bidiag_svd_impl<T: RealField>(
 
     let (d1, alpha_d2) = diag.split_at_mut(k);
     let (sub_d1, beta_sub_d2) = subdiag.split_at_mut(k);
-    let (&mut alpha, d2) = alpha_d2.split_first_mut().unwrap();
-    let (&mut beta, sub_d2) = beta_sub_d2.split_first_mut().unwrap();
+    let (alpha, d2) = alpha_d2.split_first_mut().unwrap();
+    let (beta, sub_d2) = beta_sub_d2.split_first_mut().unwrap();
+    let alpha = (*alpha).clone();
+    let beta = (*beta).clone();
 
     let compact_u = !(u.nrows() == n + 1) as usize;
 
@@ -1161,12 +1185,12 @@ fn bidiag_svd_impl<T: RealField>(
             let (mut matrix2, _) = temp_mat_zeroed::<T>(rem + 1, rem + 1, stack);
         }
         for j in 0..k {
-            matrix1[(j, j)] = d1[j];
-            matrix1[(j + 1, j)] = sub_d1[j];
+            matrix1[(j, j)] = d1[j].clone();
+            matrix1[(j + 1, j)] = sub_d1[j].clone();
         }
         for j in 0..rem {
-            matrix2[(j, j + 1)] = d2[j];
-            matrix2[(j + 1, j + 1)] = sub_d2[j];
+            matrix2[(j, j + 1)] = d2[j].clone();
+            matrix2[(j + 1, j + 1)] = sub_d2[j].clone();
         }
 
         jacobi_svd(
@@ -1174,8 +1198,8 @@ fn bidiag_svd_impl<T: RealField>(
             Some(u1.rb_mut()),
             v1.rb_mut(),
             Skip::Last,
-            epsilon,
-            consider_zero_threshold,
+            epsilon.clone(),
+            consider_zero_threshold.clone(),
         );
         for j in 0..matrix1.ncols() {
             for i in 0..matrix1.nrows() {
@@ -1189,8 +1213,8 @@ fn bidiag_svd_impl<T: RealField>(
             Some(u2.rb_mut()),
             v2.rb_mut(),
             Skip::First,
-            epsilon,
-            consider_zero_threshold,
+            epsilon.clone(),
+            consider_zero_threshold.clone(),
         );
         for j in 0..matrix2.ncols() {
             for i in 0..matrix1.nrows() {
@@ -1210,10 +1234,10 @@ fn bidiag_svd_impl<T: RealField>(
         }
 
         for j in 0..k {
-            diag[j + 1] = matrix1[(j, j)];
+            diag[j + 1] = matrix1[(j, j)].clone();
         }
         for j in 0..rem {
-            diag[j + k + 1] = matrix2[(j + 1, j + 1)];
+            diag[j + k + 1] = matrix2[(j + 1, j + 1)].clone();
         }
 
         if compact_u == 1 {
@@ -1226,15 +1250,15 @@ fn bidiag_svd_impl<T: RealField>(
                     u.rb_mut().row(row).subcols(1, k),
                     u1_alloc.rb().row(row1).subcols(0, k),
                 )
-                .for_each(|dst, src| *dst = *src);
-                u[(row, 0)] = u1_alloc[(row1, k)];
+                .for_each(|dst, src| *dst = src.clone());
+                u[(row, 0)] = u1_alloc[(row1, k)].clone();
 
                 zip!(
                     u.rb_mut().row(row).subcols(k + 1, rem),
                     u2_alloc.rb().row(row2).subcols(1, rem),
                 )
-                .for_each(|dst, src| *dst = *src);
-                u[(row, n)] = u2_alloc[(row2, 0)];
+                .for_each(|dst, src| *dst = src.clone());
+                u[(row, n)] = u2_alloc[(row2, 0)].clone();
             }
         } else {
             let (_, u2) = if compact_u == 0 {
@@ -1249,7 +1273,7 @@ fn bidiag_svd_impl<T: RealField>(
             let left = left.col(k);
             let right = right.col(rem);
             zip!(ColUninit(right), left).for_each(|right, left| unsafe {
-                *right = *left;
+                *right = left.clone();
 
                 if cfg!(debug_assertions) {
                     *left = T::nan();
@@ -1292,8 +1316,8 @@ fn bidiag_svd_impl<T: RealField>(
                     v1.rb_mut(),
                     true,
                     jacobi_fallback_threshold,
-                    epsilon,
-                    consider_zero_threshold,
+                    epsilon.clone(),
+                    consider_zero_threshold.clone(),
                     parallelism,
                     stack1,
                 );
@@ -1306,8 +1330,8 @@ fn bidiag_svd_impl<T: RealField>(
                     v2.rb_mut(),
                     true,
                     jacobi_fallback_threshold,
-                    epsilon,
-                    consider_zero_threshold,
+                    epsilon.clone(),
+                    consider_zero_threshold.clone(),
                     parallelism,
                     stack2,
                 );
@@ -1322,7 +1346,9 @@ fn bidiag_svd_impl<T: RealField>(
             }
         }
 
-        diag.copy_within(0..k, 1);
+        for i in (0..k).rev() {
+            diag[i + 1] = diag[i].clone();
+        }
     }
 
     if let Some(mut v) = v.rb_mut() {
@@ -1330,30 +1356,30 @@ fn bidiag_svd_impl<T: RealField>(
     };
 
     let lambda = if compact_u == 0 {
-        u[(k, k + 1)]
+        u[(k, k + 1)].clone()
     } else {
         // we already rotated u
-        u[(1, 0)]
+        u[(1, 0)].clone()
     };
     let phi = if compact_u == 0 {
-        u[(k + 1, n)]
+        u[(k + 1, n)].clone()
     } else {
-        u[(0, n)]
+        u[(0, n)].clone()
     };
 
-    let al = alpha * lambda;
-    let bp = beta * phi;
+    let al = alpha.mul(&lambda);
+    let bp = beta.mul(&phi);
 
-    let r0 = (al * al + bp * bp).sqrt();
+    let r0 = ((al.mul(&al)).add(&bp.mul(&bp))).sqrt();
     let (c0, s0) = if r0 == T::zero() {
         (T::one(), T::zero())
     } else {
-        (al / r0, bp / r0)
+        (al.div(&r0), bp.div(&r0))
     };
 
     let col0 = subdiag;
-    diag[0] = r0;
-    col0[0] = r0;
+    diag[0] = r0.clone();
+    col0[0] = r0.clone();
 
     if compact_u == 0 {
         let (u1, u2) = if compact_u == 0 {
@@ -1370,10 +1396,10 @@ fn bidiag_svd_impl<T: RealField>(
         let (u2, mut un_bot) = u2.split_at_col(n - 1);
 
         for j in 0..k {
-            col0[j + 1] = alpha * (u1[(k, j)]);
+            col0[j + 1] = alpha.mul(&u1[(k, j)]);
         }
         for j in 0..rem {
-            col0[j + 1 + k] = beta * u2[(0, j + k)];
+            col0[j + 1 + k] = beta.mul(&u2[(0, j + k)]);
         }
 
         zip!(
@@ -1382,9 +1408,9 @@ fn bidiag_svd_impl<T: RealField>(
             u1.col(k),
         )
         .for_each(|dst0, dstn, src| unsafe {
-            let src_ = *src;
-            *dst0 = c0 * src_;
-            *dstn = -s0 * src_;
+            let src_ = src.clone();
+            *dst0 = c0.mul(&src_);
+            *dstn = s0.neg().mul(&src_);
             if cfg!(debug_assertions) {
                 *src = T::nan();
             }
@@ -1395,29 +1421,27 @@ fn bidiag_svd_impl<T: RealField>(
             ColUninit(un_bot.rb_mut().col(0)),
         )
         .for_each(|dst0, dstn| unsafe {
-            let src_ = *dstn;
-            *dst0 = s0 * src_;
-            *dstn = c0 * src_;
+            let src_ = (*dstn).clone();
+            *dst0 = s0.mul(&src_);
+            *dstn = c0.mul(&src_);
         });
     } else {
         for j in 0..k {
-            col0[j + 1] = alpha * (u[(1, j + 1)]);
+            col0[j + 1] = alpha.mul(&u[(1, j + 1)]);
             u[(1, j + 1)] = T::zero();
         }
         for j in 0..rem {
-            col0[j + 1 + k] = beta * u[(0, j + k + 1)];
+            col0[j + 1 + k] = beta.mul(&u[(0, j + k + 1)]);
             u[(0, j + k + 1)] = T::zero();
         }
 
-        let q10 = u[(0, 0)];
-        // let q11 = u[(1, 0)];
-        // let q20 = u[(0, n)];
-        let q21 = u[(1, n)];
+        let q10 = u[(0, 0)].clone();
+        let q21 = u[(1, n)].clone();
 
-        u[(0, 0)] = c0 * q10;
-        u[(0, n)] = -s0 * q10;
-        u[(1, 0)] = s0 * q21;
-        u[(1, n)] = c0 * q21;
+        u[(0, 0)] = c0.mul(&q10);
+        u[(0, n)] = s0.neg().mul(&q10);
+        u[(1, 0)] = s0.mul(&q21);
+        u[(1, n)] = c0.mul(&q21);
     }
 
     let (mut perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
@@ -1441,8 +1465,8 @@ fn bidiag_svd_impl<T: RealField>(
             transpositions,
             perm,
             k,
-            epsilon,
-            consider_zero_threshold,
+            epsilon.clone(),
+            consider_zero_threshold.clone(),
             stack,
         )
     };
@@ -1460,8 +1484,8 @@ fn bidiag_svd_impl<T: RealField>(
         diag,
         col0,
         perm,
-        epsilon,
-        consider_zero_threshold,
+        epsilon.clone(),
+        consider_zero_threshold.clone(),
         stack.rb_mut(),
     );
 
@@ -1577,7 +1601,7 @@ fn bidiag_svd_impl<T: RealField>(
                 parallelism,
             );
 
-            zip!(v.rb_mut(), combined_v.rb()).for_each(|dst, src| *dst = *src);
+            zip!(v.rb_mut(), combined_v.rb()).for_each(|dst, src| *dst = src.clone());
         }
     };
 
@@ -1652,7 +1676,7 @@ fn bidiag_svd_impl<T: RealField>(
                 parallelism,
             );
 
-            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
+            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = src.clone());
         }
     };
 
@@ -1673,7 +1697,7 @@ fn bidiag_svd_impl<T: RealField>(
                 T::one(),
                 parallelism,
             );
-            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = *src);
+            zip!(u.rb_mut(), combined_u.rb()).for_each(|dst, src| *dst = src.clone());
         }
     } else {
         match parallelism {

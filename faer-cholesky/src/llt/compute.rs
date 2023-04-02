@@ -1,13 +1,11 @@
+use super::CholeskyError;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, parallelism_degree, solve, ComplexField, Conj, MatMut,
     Parallelism, RealField,
 };
-use num_traits::Zero;
 use reborrow::*;
-
-use super::CholeskyError;
 
 fn cholesky_in_place_left_looking_impl<T: ComplexField>(
     matrix: MatMut<'_, T>,
@@ -26,7 +24,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         0 => return Ok(()),
         1 => {
             let elem = &mut matrix[(0, 0)];
-            let real = (*elem).into_real_imag().0;
+            let real = (*elem).real();
             return if real > T::Real::zero() {
                 *elem = T::from_real(real.sqrt());
                 Ok(())
@@ -75,7 +73,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
                 BlockStructure::Rectangular,
                 Conj::Yes,
                 Some(T::one()),
-                -T::one(),
+                T::one().neg(),
                 parallelism,
             );
         }
@@ -98,7 +96,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
             l10.transpose(),
             Conj::Yes,
             Some(T::one()),
-            -T::one(),
+            T::one().neg(),
             parallelism,
         );
 
@@ -178,7 +176,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
             BlockStructure::Rectangular,
             Conj::Yes,
             Some(T::one()),
-            -T::one(),
+            T::one().neg(),
             parallelism,
         );
 

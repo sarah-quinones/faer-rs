@@ -120,20 +120,20 @@ macro_rules! generate_generic {
             beta_array: *const T,
         ) {
             seq!(I in 0..$r {
-                let p~I = -*p_array.add(I);
-                let beta~I = *beta_array.add(I);
+                let p~I = (*p_array.add(I)).neg();
+                let beta~I = (*beta_array.add(I)).clone();
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
             for i in 0..n {
                 let mut l = (*l_col.offset(i as isize * l_row_stride)).clone();
                 seq!(I in 0..$r {
-                    let mut w~I = *w_col~I.offset(i as isize * w_row_stride);
+                    let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
                 });
 
                 seq!(I in 0..$r {
-                    w~I = p~I * l + w~I;
-                    l = beta~I * w~I + l;
+                    w~I = (p~I.mul(&l)).add(&w~I);
+                    l = (beta~I.mul(&w~I)).add(&l);
                 });
 
                 *l_col.offset(i as isize * l_row_stride) = l;
@@ -207,11 +207,11 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                         let beta = beta_array.get_unchecked_mut(k);
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
 
-                        *p = *w.rb().get_unchecked(j, r_idx + k);
-                        let alpha_conj_p = *alpha * (*p).conj();
-                        let new_dj = dj + (alpha_conj_p * *p);
-                        *beta = alpha_conj_p * new_dj.inv();
-                        *alpha = *alpha - new_dj * (*beta * (*beta).conj());
+                        *p = w.rb().get_unchecked(j, r_idx + k).clone();
+                        let alpha_conj_p = (&*alpha).mul(&p.conj());
+                        let new_dj = dj.add(&alpha_conj_p.mul(p));
+                        *beta = alpha_conj_p.mul(&new_dj.inv());
+                        *alpha = (&*alpha).sub(&new_dj.mul(&beta.mul(&beta.conj())));
 
                         dj = new_dj;
                     }
@@ -305,7 +305,7 @@ pub fn rank_r_update_clobber<T: ComplexField>(
     .run();
 }
 
-pub(crate) fn delete_rows_and_cols_triangular<T: Copy>(mat: MatMut<'_, T>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
@@ -328,7 +328,7 @@ pub(crate) fn delete_rows_and_cols_triangular<T: Copy>(mat: MatMut<'_, T>, idx: 
                         for i in i_start..i_finish {
                             unsafe {
                                 *mat.rb_mut().get_unchecked(i - chunk_i, j - chunk_j) =
-                                    *mat.rb().get_unchecked(i, j);
+                                    mat.rb().get_unchecked(i, j).clone();
                             }
                         }
                     }
@@ -498,7 +498,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
             for i in (current_col..old_n).rev() {
                 *ld.rb_mut()
                     .ptr_in_bounds_at_unchecked(i + r, current_col + r) =
-                    *ld.rb().ptr_in_bounds_at_unchecked(i, current_col);
+                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
             }
         }
     }
@@ -508,7 +508,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         unsafe {
             for i in (insertion_index..old_n).rev() {
                 *ld.rb_mut().ptr_in_bounds_at_unchecked(i + r, current_col) =
-                    *ld.rb().ptr_in_bounds_at_unchecked(i, current_col);
+                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
             }
         }
     }
@@ -542,7 +542,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         for i in 0..r {
             unsafe {
                 *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    (*a01.get_unchecked(j, i)).conj() * d0_inv;
+                    a01.get_unchecked(j, i).conj().mul(&d0_inv);
             }
         }
     }
@@ -550,7 +550,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
+                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    a11.rb().get_unchecked(i, j).clone();
             }
         }
     }
@@ -566,7 +567,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         BlockStructure::Rectangular,
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 
@@ -583,7 +584,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in 0..rem {
             unsafe {
-                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a21.rb().get_unchecked(i, j);
+                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    a21.rb().get_unchecked(i, j).clone();
             }
         }
     }
@@ -596,7 +598,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         a01.rb(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 
@@ -615,7 +617,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
             let d1_inv = (*d1.get_unchecked(j)).inv();
             for i in 0..rem {
                 let dst = l21.rb_mut().get_unchecked(i, j);
-                *dst = *dst * d1_inv;
+                *dst = dst.mul(&d1_inv);
             }
         }
     }
@@ -625,10 +627,10 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -*ld11.rb().get_unchecked(j, j);
+            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = ld11.rb().get_unchecked(j, j).neg();
 
             for i in 0..rem {
-                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *l21.rb().get_unchecked(i, j);
+                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get_unchecked(i, j).neg();
             }
         }
     }

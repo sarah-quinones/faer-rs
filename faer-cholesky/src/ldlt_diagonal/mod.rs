@@ -16,7 +16,6 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
     use faer_core::{c64, mat, Conj};
-    use num_traits::{One, Zero};
     use rand::random;
 
     use super::*;
@@ -303,11 +302,11 @@ mod tests {
 
             w[(2, 0)].im = 0.0;
             w[(3, 1)].im = 0.0;
-            w[(2, 1)] = ComplexField::conj(w[(3, 0)]);
+            w[(2, 1)] = ComplexField::conj(&w[(3, 0)]);
 
             let a_new = {
                 let w = |i, j| w[(i, j)];
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::conj(&w(i, j));
                 let a = |i, j| a[(i, j)];
                 mat![
                     [a(0, 0), a(0, 1), w(0, 0), w(0, 1), a(0, 2), a(0, 3)],
@@ -356,11 +355,11 @@ mod tests {
 
             w[(0, 0)].im = 0.0;
             w[(1, 1)].im = 0.0;
-            w[(0, 1)] = ComplexField::conj(w[(1, 0)]);
+            w[(0, 1)] = ComplexField::conj(&w[(1, 0)]);
 
             let a_new = {
                 let w = |i, j| w[(i, j)];
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::conj(&w(i, j));
                 let a = |i, j| a[(i, j)];
                 mat![
                     [w(0, 0), w(0, 1), wc(2, 0), wc(3, 0), wc(4, 0), wc(5, 0)],
@@ -409,11 +408,11 @@ mod tests {
 
             w[(4, 0)].im = 0.0;
             w[(5, 1)].im = 0.0;
-            w[(4, 1)] = ComplexField::conj(w[(5, 0)]);
+            w[(4, 1)] = ComplexField::conj(&w[(5, 0)]);
 
             let a_new = {
                 let w = |i, j| w[(i, j)];
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::conj(&w(i, j));
                 let a = |i, j| a[(i, j)];
                 mat![
                     [a(0, 0), a(0, 1), a(0, 2), a(0, 3), w(0, 0), w(0, 1)],

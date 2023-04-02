@@ -39,7 +39,6 @@ use crate::{
 };
 use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use num_traits::{One, Zero};
 use reborrow::*;
 
 #[doc(hidden)]
@@ -48,27 +47,29 @@ pub fn make_householder_in_place<T: ComplexField>(
     head: T,
     tail_squared_norm: T::Real,
 ) -> (T, T) {
-    let one_half = (T::Real::one() + T::Real::one()).inv();
-    let norm = ((head * head.conj()).real() + tail_squared_norm).sqrt();
+    let one_half = T::Real::one().add(&T::Real::one()).inv();
+    let head_squared_norm = head.mul(&head.conj()).real();
+    let norm = head_squared_norm.add(&tail_squared_norm).sqrt();
 
     let sign = if head != T::zero() {
-        head.scale_real((head * head.conj()).real().sqrt().inv())
+        head.scale_real(&head_squared_norm.sqrt().inv())
     } else {
         T::one()
     };
 
-    let signed_norm = sign * T::from_real(norm);
-    let head_with_beta = head + signed_norm;
+    let signed_norm = sign.mul(&T::from_real(norm));
+    let head_with_beta = head.add(&signed_norm);
     let inv = head_with_beta.inv();
 
     if head_with_beta != T::zero() {
         if let Some(essential) = essential {
-            essential.cwise().for_each(|e| *e = *e * inv);
+            essential.cwise().for_each(|e| *e = e.mul(&inv));
         }
-        let tau = one_half * (T::Real::one() + tail_squared_norm * (inv * inv.conj()).real());
-        (T::from_real(tau), -signed_norm)
+        let tau = one_half
+            .mul(&T::Real::one().add(&tail_squared_norm.mul(&(inv.mul(&inv.conj())).real())));
+        (T::from_real(tau), signed_norm.neg())
     } else {
-        (T::from_real(T::Real::one() / T::Real::zero()), T::zero())
+        (T::from_real(T::Real::zero().inv()), T::zero())
     }
 }
 
@@ -86,10 +87,10 @@ pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
     if m == 1 {
-        let factor = T::one() - tau_inv;
+        let factor = T::one().sub(&tau_inv);
         match conj_mat {
-            Conj::No => matrix.cwise().for_each(|e| *e = *e * factor),
-            Conj::Yes => matrix.cwise().for_each(|e| *e = (*e).conj() * factor),
+            Conj::No => matrix.cwise().for_each(|e| *e = e.mul(&factor)),
+            Conj::Yes => matrix.cwise().for_each(|e| *e = e.conj().mul(&factor)),
         };
     } else {
         let (first_row, last_rows) = matrix.split_at_row(1);
@@ -104,12 +105,12 @@ pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
                 .rb_mut()
                 .cwise()
                 .zip(first_row.rb())
-                .for_each(|a, b| *a = *b),
+                .for_each(|a, b| *a = b.clone()),
             Conj::Yes => tmp
                 .rb_mut()
                 .cwise()
                 .zip(first_row.rb())
-                .for_each(|a, b| *a = (*b).conj()),
+                .for_each(|a, b| *a = b.conj()),
         }
 
         matmul(
@@ -129,12 +130,12 @@ pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
                 .rb_mut()
                 .cwise()
                 .zip(tmp.rb())
-                .for_each(|a, b| *a = *a - tau_inv * *b),
+                .for_each(|a, b| *a = a.sub(&tau_inv.mul(b))),
             Conj::Yes => first_row
                 .rb_mut()
                 .cwise()
                 .zip(tmp.rb())
-                .for_each(|a, b| *a = (*a).conj() - tau_inv * *b),
+                .for_each(|a, b| *a = a.conj().sub(&tau_inv.mul(b))),
         };
 
         matmul(
@@ -145,7 +146,7 @@ pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
             tmp.rb().as_2d(),
             Conj::No,
             Some(T::one()),
-            -tau_inv,
+            tau_inv.neg(),
             Parallelism::None,
         )
     }
@@ -482,7 +483,7 @@ fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
         BlockStructure::Rectangular,
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
     matmul(
@@ -493,7 +494,7 @@ fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
         tmp.rb(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 }

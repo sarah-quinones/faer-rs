@@ -1,7 +1,5 @@
 //! Matrix multiplication module.
 
-use core::any::TypeId;
-
 use crate::{ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use gemm::gemm;
@@ -73,44 +71,28 @@ fn dot_f64(arch: pulp::Arch, a: &[f64], b: &[f64]) -> f64 {
     arch.dispatch(Impl { a, b })
 }
 
-#[inline(always)]
-fn dot_generic<T: ComplexField>(a: &[T], b: &[T]) -> T {
-    let mut acc = T::zero();
-    for (a, b) in a.iter().zip(b.iter()) {
-        acc = acc + (*a).conj() * *b;
-    }
-    acc
-}
-
 // a^H b
 #[doc(hidden)]
 #[inline(always)]
 pub fn dot<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>, b: ColRef<'_, T>) -> T {
     let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
-    let id = TypeId::of::<T>();
     if colmajor {
         let a_len = a.nrows();
         let b_len = b.nrows();
 
-        if id == TypeId::of::<f64>() {
-            coe::coerce_static(dot_f64(
+        if coe::is_same::<f64, T>() {
+            return coe::coerce_static(dot_f64(
                 arch,
                 unsafe { core::slice::from_raw_parts(a.as_ptr() as _, a_len) },
                 unsafe { core::slice::from_raw_parts(b.as_ptr() as _, b_len) },
-            ))
-        } else {
-            dot_generic::<T>(
-                unsafe { core::slice::from_raw_parts(a.as_ptr(), a_len) },
-                unsafe { core::slice::from_raw_parts(b.as_ptr(), b_len) },
-            )
+            ));
         }
-    } else {
-        let mut acc = T::zero();
-        for (a, b) in a.into_iter().zip(b.into_iter()) {
-            acc = acc + (*a).conj() * *b;
-        }
-        acc
     }
+    let mut acc = T::zero();
+    for (a, b) in a.into_iter().zip(b.into_iter()) {
+        acc = acc.add(&a.conj().mul(b));
+    }
+    acc
 }
 
 /// Same as [`matmul`], except that panics become undefined behavior.
@@ -311,8 +293,6 @@ pub fn matmul<T: ComplexField>(
 /// Triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices.
 pub mod triangular {
-    use core::mem::MaybeUninit;
-
     use super::*;
     use crate::{
         join_raw,
@@ -365,7 +345,7 @@ pub mod triangular {
             .for_each_triangular_lower(
                 if strict { Diag::Skip } else { Diag::Include },
                 |dst, src| {
-                    *dst = *src;
+                    *dst = src.clone();
                 },
             );
     }
@@ -387,7 +367,7 @@ pub mod triangular {
                 dst.cwise().zip_unchecked(src).for_each_triangular_lower(
                     if skip_diag { Diag::Skip } else { Diag::Include },
                     |dst, src| {
-                        *dst = alpha * *dst + *src;
+                        *dst = alpha.mul(&dst.add(src));
                     },
                 );
             }
@@ -398,7 +378,7 @@ pub mod triangular {
                     .for_each_triangular_lower(
                         if skip_diag { Diag::Skip } else { Diag::Include },
                         |dst, src| {
-                            *dst = *src;
+                            *dst = src.clone();
                         },
                     );
             }
@@ -461,10 +441,10 @@ pub mod triangular {
         fancy_debug_assert!(n == rhs.ncols());
 
         if n <= 16 {
-            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut dst_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_dst =
                 MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut rhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_rhs =
                 MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
             copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -500,8 +480,8 @@ pub mod triangular {
                 dst_bot_left.rb_mut(),
                 lhs_bot_right,
                 rhs_bot_left,
-                alpha,
-                beta,
+                alpha.clone(),
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -513,8 +493,8 @@ pub mod triangular {
                 lhs_bot_right,
                 rhs_bot_right,
                 rhs_diag,
-                alpha,
-                beta,
+                alpha.clone(),
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -527,8 +507,8 @@ pub mod triangular {
                 lhs_top_left,
                 rhs_top_left,
                 rhs_diag,
-                alpha,
-                beta,
+                alpha.clone(),
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -540,7 +520,7 @@ pub mod triangular {
                 lhs_top_right,
                 rhs_bot_left,
                 Some(T::one()),
-                beta,
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -552,7 +532,7 @@ pub mod triangular {
                 rhs_top_left,
                 rhs_diag,
                 Some(T::one()),
-                beta,
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -592,7 +572,7 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+                    let mut rhs_buffer = [(); 16 * 16].map(|_| T::zero());
                     let mut temp_rhs =
                         MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, 16);
 
@@ -631,8 +611,8 @@ pub mod triangular {
                         lhs_left,
                         rhs_top_left,
                         rhs_diag,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -645,8 +625,8 @@ pub mod triangular {
                         lhs_right,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -692,13 +672,13 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.ncols());
 
         if n <= 16 {
-            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut dst_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_dst =
                 MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut lhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_lhs =
                 MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut rhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_rhs =
                 MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
@@ -738,8 +718,8 @@ pub mod triangular {
                 lhs_diag,
                 rhs_top_left,
                 rhs_diag,
-                alpha,
-                beta,
+                alpha.clone(),
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -750,8 +730,8 @@ pub mod triangular {
                 lhs_bot_left,
                 rhs_top_left,
                 rhs_diag,
-                alpha,
-                beta,
+                alpha.clone(),
+                beta.clone(),
                 conj_dst,
                 conj_lhs,
                 conj_rhs,
@@ -763,7 +743,7 @@ pub mod triangular {
                 lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
                 Some(T::one()),
-                beta,
+                beta.clone(),
                 conj_dst,
                 conj_rhs,
                 conj_lhs,
@@ -808,10 +788,10 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.ncols());
 
         if n <= 16 {
-            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut lhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_lhs =
                 MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut rhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_rhs =
                 MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
@@ -852,8 +832,8 @@ pub mod triangular {
                         dst_top_left.rb_mut(),
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -866,7 +846,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(T::one()),
-                        beta,
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -881,8 +861,8 @@ pub mod triangular {
                                 lhs_top_right,
                                 rhs_bot_right,
                                 rhs_diag,
-                                alpha,
-                                beta,
+                                alpha.clone(),
+                                beta.clone(),
                                 conj_dst,
                                 conj_lhs,
                                 conj_rhs,
@@ -895,8 +875,8 @@ pub mod triangular {
                                 rhs_bot_left.transpose(),
                                 lhs_bot_right.transpose(),
                                 lhs_diag,
-                                alpha,
-                                beta,
+                                alpha.clone(),
+                                beta.clone(),
                                 conj_dst,
                                 conj_rhs,
                                 conj_lhs,
@@ -912,8 +892,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -948,13 +928,13 @@ pub mod triangular {
         fancy_debug_assert!(n == dst.ncols());
 
         if n <= 16 {
-            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut dst_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_dst =
                 MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut lhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut lhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_lhs =
                 MatMut::from_raw_parts(lhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
-            let mut rhs_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut rhs_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_rhs =
                 MatMut::from_raw_parts(rhs_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
 
@@ -996,8 +976,8 @@ pub mod triangular {
                         skip_diag,
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -1011,7 +991,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(T::one()),
-                        beta,
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -1024,8 +1004,8 @@ pub mod triangular {
                         rhs_bot_left.transpose(),
                         lhs_bot_right.transpose(),
                         lhs_diag,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_rhs,
                         conj_lhs,
@@ -1038,8 +1018,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -1078,7 +1058,7 @@ pub mod triangular {
         };
 
         if n <= 16 {
-            let mut dst_buffer = [MaybeUninit::<T>::uninit(); 16 * 16];
+            let mut dst_buffer = [(); 16 * 16].map(|_| T::zero());
             let mut temp_dst =
                 MatMut::from_raw_parts(dst_buffer.as_mut_ptr() as _, n, n, 1, n as isize);
             mul(
@@ -1105,8 +1085,8 @@ pub mod triangular {
                         dst_bot_left,
                         lhs_bot,
                         rhs_left,
-                        alpha,
-                        beta,
+                        alpha.clone(),
+                        beta.clone(),
                         conj_dst,
                         conj_lhs,
                         conj_rhs,
@@ -1121,8 +1101,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_top,
                                 rhs_left,
-                                alpha,
-                                beta,
+                                alpha.clone(),
+                                beta.clone(),
                                 conj_dst,
                                 conj_lhs,
                                 conj_rhs,
@@ -1135,8 +1115,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_bot,
                                 rhs_right,
-                                alpha,
-                                beta,
+                                alpha.clone(),
+                                beta.clone(),
                                 conj_dst,
                                 conj_lhs,
                                 conj_rhs,
@@ -1416,10 +1396,10 @@ pub mod triangular {
             false
         };
 
-        let clear_upper = |acc: MatMut<'_, T>, skip_diag: bool| match alpha {
+        let clear_upper = |acc: MatMut<'_, T>, skip_diag: bool| match &alpha {
             Some(alpha) => acc.cwise().for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |acc| *acc = alpha * *acc,
+                |acc| *acc = alpha.mul(acc),
             ),
 
             None => MatUninit(acc).cwise().for_each_triangular_upper(
@@ -1595,7 +1575,7 @@ pub mod triangular {
                 )
             } else if lhs_structure.is_lower() {
                 if !skip_diag {
-                    match alpha {
+                    match &alpha {
                         Some(alpha) => {
                             acc.rb_mut()
                                 .diagonal_unchecked()
@@ -1603,7 +1583,7 @@ pub mod triangular {
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
                                 .for_each(|acc, lhs, rhs| {
-                                    *acc = alpha * *acc + beta * (*lhs * *rhs)
+                                    *acc = (alpha.mul(acc)).add(&beta.mul(&lhs.mul(rhs)))
                                 });
                         }
                         None => {
@@ -1611,7 +1591,7 @@ pub mod triangular {
                                 .cwise()
                                 .zip(lhs.diagonal_unchecked())
                                 .zip(rhs.diagonal_unchecked())
-                                .for_each(|acc, lhs, rhs| *acc = beta * (*lhs * *rhs));
+                                .for_each(|acc, lhs, rhs| *acc = beta.mul(&lhs.mul(rhs)));
                         }
                     }
                 }

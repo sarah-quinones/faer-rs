@@ -40,9 +40,9 @@ pub fn solve_in_place<T: ComplexField>(
 
     for j in 0..k {
         for i in 0..n {
-            let d = *unsafe { cholesky_factors.get_unchecked(i, i) };
+            let d = unsafe { cholesky_factors.get_unchecked(i, i).clone() };
             let rhs = unsafe { rhs.rb_mut().get_unchecked(i, j) };
-            *rhs = *rhs / d;
+            *rhs = rhs.mul(&d.inv());
         }
     }
 
@@ -111,7 +111,7 @@ pub fn solve_transpose<T: ComplexField>(
     dst.rb_mut()
         .cwise()
         .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
     solve_transpose_in_place(
         cholesky_factors,
         conj_lhs,
@@ -144,7 +144,7 @@ pub fn solve<T: ComplexField>(
     dst.rb_mut()
         .cwise()
         .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
     solve_in_place(
         cholesky_factors,
         conj_lhs,

@@ -15,7 +15,6 @@ pub struct CholeskyError;
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
-    use num_traits::{One, Zero};
     use rand::random;
 
     use super::{compute::*, inverse::*, reconstruct::*, solve::*, update::*};

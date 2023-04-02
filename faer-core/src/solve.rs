@@ -5,21 +5,21 @@ use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use reborrow::*;
 
 #[inline(always)]
-fn identity<T>(x: T) -> T {
-    x
+fn identity<T: Clone>(x: &T) -> T {
+    x.clone()
 }
 
 #[inline(always)]
-fn conj<T: ComplexField>(x: T) -> T {
-    x.conj()
+fn conj<T: ComplexField>(x: &T) -> T {
+    x.clone().conj()
 }
 
 #[inline(always)]
 unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: ComplexField>(
     tril: MatRef<'_, T>,
     rhs: MatMut<'_, T>,
-    maybe_conj_lhs: impl Fn(T) -> T,
-    maybe_conj_rhs: impl Fn(T) -> T,
+    maybe_conj_lhs: impl Fn(&T) -> T,
+    maybe_conj_rhs: impl Fn(&T) -> T,
 ) {
     let n = tril.nrows();
     match n {
@@ -27,25 +27,25 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
         1 => {
             let x0 = rhs.row_unchecked(0);
             x0.cwise().for_each(|x0| {
-                *x0 = maybe_conj_rhs(*x0);
+                *x0 = maybe_conj_rhs(x0);
             });
         }
         2 => {
-            let nl10_div_l11 = -maybe_conj_lhs(*tril.get_unchecked(1, 0));
+            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
 
             let (_, x0, _, x1) = rhs.split_at_unchecked(1, 0);
             let x0 = x0.row_unchecked(0);
             let x1 = x1.row_unchecked(0);
 
             x0.cwise().zip_unchecked(x1).for_each(|x0, x1| {
-                *x0 = maybe_conj_rhs(*x0);
-                *x1 = maybe_conj_rhs(*x1) + nl10_div_l11 * *x0;
+                *x0 = maybe_conj_rhs(x0);
+                *x1 = maybe_conj_rhs(x1).add(&nl10_div_l11.mul(x0));
             });
         }
         3 => {
-            let nl10_div_l11 = -maybe_conj_lhs(*tril.get_unchecked(1, 0));
-            let nl20_div_l22 = -maybe_conj_lhs(*tril.get_unchecked(2, 0));
-            let nl21_div_l22 = -maybe_conj_lhs(*tril.get_unchecked(2, 1));
+            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 0)).neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 1)).neg();
 
             let (_, x0, _, x1_2) = rhs.split_at_unchecked(1, 0);
             let (_, x1, _, x2) = x1_2.split_at_unchecked(1, 0);
@@ -57,23 +57,23 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
                 .for_each(|x0, x1, x2| {
-                    let y0 = maybe_conj_rhs(*x0);
-                    let mut y1 = maybe_conj_rhs(*x1);
-                    let mut y2 = maybe_conj_rhs(*x2);
-                    y1 = y1 + nl10_div_l11 * y0;
-                    y2 = y2 + nl20_div_l22 * y0 + nl21_div_l22 * y1;
+                    let y0 = maybe_conj_rhs(x0);
+                    let mut y1 = maybe_conj_rhs(x1);
+                    let mut y2 = maybe_conj_rhs(x2);
+                    y1 = y1.add(&nl10_div_l11.mul(&y0));
+                    y2 = y2.add(&nl20_div_l22.mul(&y0)).add(&nl21_div_l22.mul(&y1));
                     *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
                 });
         }
         4 => {
-            let nl10_div_l11 = -maybe_conj_lhs(*tril.get_unchecked(1, 0));
-            let nl20_div_l22 = -maybe_conj_lhs(*tril.get_unchecked(2, 0));
-            let nl21_div_l22 = -maybe_conj_lhs(*tril.get_unchecked(2, 1));
-            let nl30_div_l33 = -maybe_conj_lhs(*tril.get_unchecked(3, 0));
-            let nl31_div_l33 = -maybe_conj_lhs(*tril.get_unchecked(3, 1));
-            let nl32_div_l33 = -maybe_conj_lhs(*tril.get_unchecked(3, 2));
+            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 0)).neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 1)).neg();
+            let nl30_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 0)).neg();
+            let nl31_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 1)).neg();
+            let nl32_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 2)).neg();
 
             let (_, x0, _, x1_2_3) = rhs.split_at_unchecked(1, 0);
             let (_, x1, _, x2_3) = x1_2_3.split_at_unchecked(1, 0);
@@ -88,13 +88,14 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
                 .zip_unchecked(x2)
                 .zip_unchecked(x3)
                 .for_each(|x0, x1, x2, x3| {
-                    let y0 = maybe_conj_rhs(*x0);
-                    let mut y1 = maybe_conj_rhs(*x1);
-                    let mut y2 = maybe_conj_rhs(*x2);
-                    let mut y3 = maybe_conj_rhs(*x3);
-                    y1 = y1 + nl10_div_l11 * y0;
-                    y2 = y2 + (nl20_div_l22 * y0 + nl21_div_l22 * y1);
-                    y3 = (y3 + nl30_div_l33 * y0) + (nl31_div_l33 * y1 + nl32_div_l33 * y2);
+                    let y0 = maybe_conj_rhs(x0);
+                    let mut y1 = maybe_conj_rhs(x1);
+                    let mut y2 = maybe_conj_rhs(x2);
+                    let mut y3 = maybe_conj_rhs(x3);
+                    y1 = y1.add(&nl10_div_l11.mul(&y0));
+                    y2 = y2.add(&nl20_div_l22.mul(&y0).add(&nl21_div_l22.mul(&y1)));
+                    y3 = (y3.add(&nl30_div_l33.mul(&y0)))
+                        .add(&nl31_div_l33.mul(&y1).add(&nl32_div_l33.mul(&y2)));
                     *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
@@ -109,38 +110,38 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
 unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: ComplexField>(
     tril: MatRef<'_, T>,
     rhs: MatMut<'_, T>,
-    maybe_conj_lhs: impl Fn(T) -> T,
-    maybe_conj_rhs: impl Fn(T) -> T,
+    maybe_conj_lhs: impl Fn(&T) -> T,
+    maybe_conj_rhs: impl Fn(&T) -> T,
 ) {
     let n = tril.nrows();
     match n {
         0 => (),
         1 => {
-            let inv = maybe_conj_lhs(*tril.get_unchecked(0, 0)).inv();
+            let inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
             let x0 = rhs.row_unchecked(0);
-            x0.cwise().for_each(|x0| *x0 = maybe_conj_rhs(*x0) * inv);
+            x0.cwise().for_each(|x0| *x0 = maybe_conj_rhs(x0).mul(&inv));
         }
         2 => {
-            let l00_inv = maybe_conj_lhs(*tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(*tril.get_unchecked(1, 1)).inv();
-            let nl10_div_l11 = -(maybe_conj_lhs(*tril.get_unchecked(1, 0)) * l11_inv);
+            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
 
             let (_, x0, _, x1) = rhs.split_at_unchecked(1, 0);
             let x0 = x0.row_unchecked(0);
             let x1 = x1.row_unchecked(0);
 
             x0.cwise().zip_unchecked(x1).for_each(|x0, x1| {
-                *x0 = maybe_conj_rhs(*x0) * l00_inv;
-                *x1 = maybe_conj_rhs(*x1) * l11_inv + nl10_div_l11 * *x0;
+                *x0 = maybe_conj_rhs(x0).mul(&l00_inv);
+                *x1 = maybe_conj_rhs(x1).mul(&l11_inv).add(&nl10_div_l11.mul(x0));
             });
         }
         3 => {
-            let l00_inv = maybe_conj_lhs(*tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(*tril.get_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(*tril.get_unchecked(2, 2)).inv();
-            let nl10_div_l11 = -(maybe_conj_lhs(*tril.get_unchecked(1, 0)) * l11_inv);
-            let nl20_div_l22 = -(maybe_conj_lhs(*tril.get_unchecked(2, 0)) * l22_inv);
-            let nl21_div_l22 = -(maybe_conj_lhs(*tril.get_unchecked(2, 1)) * l22_inv);
+            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
+            let l22_inv = maybe_conj_lhs(tril.get_unchecked(2, 2)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
+            let nl20_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 0)).mul(&l22_inv)).neg();
+            let nl21_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 1)).mul(&l22_inv)).neg();
 
             let (_, x0, _, x1_2) = rhs.split_at_unchecked(1, 0);
             let (_, x1, _, x2) = x1_2.split_at_unchecked(1, 0);
@@ -152,28 +153,31 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: Complex
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
                 .for_each(|x0, x1, x2| {
-                    let mut y0 = maybe_conj_rhs(*x0);
-                    let mut y1 = maybe_conj_rhs(*x1);
-                    let mut y2 = maybe_conj_rhs(*x2);
-                    y0 = y0 * l00_inv;
-                    y1 = y1 * l11_inv + nl10_div_l11 * y0;
-                    y2 = y2 * l22_inv + nl20_div_l22 * y0 + nl21_div_l22 * y1;
+                    let mut y0 = maybe_conj_rhs(x0);
+                    let mut y1 = maybe_conj_rhs(x1);
+                    let mut y2 = maybe_conj_rhs(x2);
+                    y0 = y0.mul(&l00_inv);
+                    y1 = y1.mul(&l11_inv).add(&nl10_div_l11.mul(&y0));
+                    y2 = y2
+                        .mul(&l22_inv)
+                        .add(&nl20_div_l22.mul(&y0))
+                        .add(&nl21_div_l22.mul(&y1));
                     *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
                 });
         }
         4 => {
-            let l00_inv = maybe_conj_lhs(*tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(*tril.get_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(*tril.get_unchecked(2, 2)).inv();
-            let l33_inv = maybe_conj_lhs(*tril.get_unchecked(3, 3)).inv();
-            let nl10_div_l11 = -(maybe_conj_lhs(*tril.get_unchecked(1, 0)) * l11_inv);
-            let nl20_div_l22 = -(maybe_conj_lhs(*tril.get_unchecked(2, 0)) * l22_inv);
-            let nl21_div_l22 = -(maybe_conj_lhs(*tril.get_unchecked(2, 1)) * l22_inv);
-            let nl30_div_l33 = -(maybe_conj_lhs(*tril.get_unchecked(3, 0)) * l33_inv);
-            let nl31_div_l33 = -(maybe_conj_lhs(*tril.get_unchecked(3, 1)) * l33_inv);
-            let nl32_div_l33 = -(maybe_conj_lhs(*tril.get_unchecked(3, 2)) * l33_inv);
+            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
+            let l22_inv = maybe_conj_lhs(tril.get_unchecked(2, 2)).inv();
+            let l33_inv = maybe_conj_lhs(tril.get_unchecked(3, 3)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
+            let nl20_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 0)).mul(&l22_inv)).neg();
+            let nl21_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 1)).mul(&l22_inv)).neg();
+            let nl30_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 0)).mul(&l33_inv)).neg();
+            let nl31_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 1)).mul(&l33_inv)).neg();
+            let nl32_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 2)).mul(&l33_inv)).neg();
 
             let (_, x0, _, x1_2_3) = rhs.split_at_unchecked(1, 0);
             let (_, x1, _, x2_3) = x1_2_3.split_at_unchecked(1, 0);
@@ -188,15 +192,17 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: Complex
                 .zip_unchecked(x2)
                 .zip_unchecked(x3)
                 .for_each(|x0, x1, x2, x3| {
-                    let mut y0 = maybe_conj_rhs(*x0);
-                    let mut y1 = maybe_conj_rhs(*x1);
-                    let mut y2 = maybe_conj_rhs(*x2);
-                    let mut y3 = maybe_conj_rhs(*x3);
-                    y0 = y0 * l00_inv;
-                    y1 = y1 * l11_inv + nl10_div_l11 * y0;
-                    y2 = y2 * l22_inv + (nl20_div_l22 * y0 + nl21_div_l22 * y1);
-                    y3 = (y3 * l33_inv + nl30_div_l33 * y0)
-                        + (nl31_div_l33 * y1 + nl32_div_l33 * y2);
+                    let mut y0 = maybe_conj_rhs(x0);
+                    let mut y1 = maybe_conj_rhs(x1);
+                    let mut y2 = maybe_conj_rhs(x2);
+                    let mut y3 = maybe_conj_rhs(x3);
+                    y0 = y0.mul(&l00_inv);
+                    y1 = y1.mul(&l11_inv).add(&nl10_div_l11.mul(&y0));
+                    y2 = y2
+                        .mul(&l22_inv)
+                        .add(&nl20_div_l22.mul(&y0).add(&nl21_div_l22.mul(&y1)));
+                    y3 = (y3.mul(&l33_inv).add(&nl30_div_l33.mul(&y0)))
+                        .add(&nl31_div_l33.mul(&y1).add(&nl32_div_l33.mul(&y2)));
                     *x0 = y0;
                     *x1 = y1;
                     *x2 = y2;
@@ -663,7 +669,7 @@ pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
         rhs_top.into_const(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 
@@ -798,7 +804,7 @@ pub unsafe fn solve_lower_triangular_in_place_unchecked<T: ComplexField>(
         rhs_top.into_const(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 

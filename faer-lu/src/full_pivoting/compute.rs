@@ -1,9 +1,7 @@
-use core::mem::size_of;
-use num_traits::Zero;
-
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
+use core::mem::size_of;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
     mul::matmul,
@@ -917,7 +915,7 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
             rhs.as_2d(),
             Conj::No,
             Some(T::one()),
-            -T::one(),
+            T::one().neg(),
             Parallelism::None,
         );
         best_in_matrix(dst.rb())
@@ -967,12 +965,12 @@ fn lu_in_place_unblocked<T: ComplexField>(
         if !transposed {
             for i in k + 1..m {
                 let elem = matrix.rb_mut().get(i, k);
-                *elem = *elem * inv;
+                *elem = elem.mul(&inv);
             }
         } else {
             for i in k + 1..n {
                 let elem = matrix.rb_mut().get(k, i);
-                *elem = *elem * inv;
+                *elem = elem.mul(&inv);
             }
         }
 
@@ -1243,7 +1241,9 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        fancy_assert!((mat_orig[(i, j)] - reconstructed[(i, j)]).abs() < epsilon);
+                        fancy_assert!(
+                            (mat_orig[(i, j)].sub(&reconstructed[(i, j)])).abs() < epsilon
+                        );
                     }
                 }
             }
@@ -1299,7 +1299,9 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        fancy_assert!((mat_orig[(i, j)] - reconstructed[(i, j)]).abs() < epsilon);
+                        fancy_assert!(
+                            (mat_orig[(i, j)].sub(&reconstructed[(i, j)])).abs() < epsilon
+                        );
                     }
                 }
             }

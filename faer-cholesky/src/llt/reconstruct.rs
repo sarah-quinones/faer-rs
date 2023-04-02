@@ -75,5 +75,5 @@ pub fn reconstruct_lower_in_place<T: ComplexField>(
     cholesky_factor
         .cwise()
         .zip(tmp.rb())
-        .for_each_triangular_lower(faer_core::zip::Diag::Include, |dst, src| *dst = *src);
+        .for_each_triangular_lower(faer_core::zip::Diag::Include, |dst, src| *dst = src.clone());
 }

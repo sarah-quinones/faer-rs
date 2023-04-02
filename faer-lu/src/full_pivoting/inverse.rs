@@ -84,7 +84,7 @@ fn invert_impl<T: ComplexField>(
                 for i in 0..m {
                     let ii = *row_p.get_unchecked(i);
                     *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        *inv.rb().get_unchecked(ii, jj);
+                        inv.rb().get_unchecked(ii, jj).clone();
                 }
             }
         } else {
@@ -93,7 +93,7 @@ fn invert_impl<T: ComplexField>(
                 for j in 0..n {
                     let jj = *col_p.get_unchecked(j);
                     *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        *inv.rb().get_unchecked(ii, jj);
+                        inv.rb().get_unchecked(ii, jj).clone();
                 }
             }
         }

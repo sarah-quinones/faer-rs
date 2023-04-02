@@ -5,7 +5,7 @@ use faer_core::{
         apply_block_householder_sequence_on_the_left_in_place,
         apply_block_householder_sequence_transpose_on_the_left_in_place,
     },
-    solve, temp_mat_req, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    solve, temp_mat_req, zip, ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -194,10 +194,7 @@ pub fn solve<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut dst = dst;
-    dst.rb_mut()
-        .cwise()
-        .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+    zip!(zip::MatUninit(dst.rb_mut()), rhs).for_each(|dst, src| unsafe { *dst = src.clone() });
     solve_in_place(
         qr_factors,
         householder_factor,
@@ -239,10 +236,7 @@ pub fn solve_transpose<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut dst = dst;
-    dst.rb_mut()
-        .cwise()
-        .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+    zip!(zip::MatUninit(dst.rb_mut()), rhs).for_each(|dst, src| unsafe { *dst = src.clone() });
     solve_transpose_in_place(
         qr_factors,
         householder_factor,
@@ -323,11 +317,11 @@ mod tests {
                 for j in 0..k {
                     for i in 0..n {
                         let target = match conj_rhs {
-                            Conj::No => rhs[(i, j)],
+                            Conj::No => rhs[(i, j)].clone(),
                             Conj::Yes => rhs[(i, j)].conj(),
                         };
 
-                        fancy_assert!((rhs_reconstructed[(i, j)] - target).abs() < epsilon)
+                        fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
                     }
                 }
             }
@@ -392,11 +386,11 @@ mod tests {
                 for j in 0..k {
                     for i in 0..n {
                         let target = match conj_rhs {
-                            Conj::No => rhs[(i, j)],
+                            Conj::No => rhs[(i, j)].clone(),
                             Conj::Yes => rhs[(i, j)].conj(),
                         };
 
-                        fancy_assert!((rhs_reconstructed[(i, j)] - target).abs() < epsilon)
+                        fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
                     }
                 }
             }

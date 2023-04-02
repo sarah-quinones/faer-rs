@@ -10,7 +10,6 @@ use faer_core::{
     mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
     ComplexField, Conj, MatMut, Parallelism, RealField,
 };
-use num_traits::Zero;
 use pulp::Arch;
 use reborrow::*;
 use seq_macro::seq;
@@ -131,9 +130,9 @@ macro_rules! generate_generic {
             nljj_over_ljj_array: *const T,
         ) {
             seq!(I in 0..$r {
-                let neg_wj_over_ljj~I = *neg_wj_over_ljj_array.add(I);
-                let nljj_over_ljj~I = *nljj_over_ljj_array.add(I);
-                let alpha_wj_over_nljj~I = *alpha_wj_over_nljj_array.add(I);
+                let neg_wj_over_ljj~I = (*neg_wj_over_ljj_array.add(I)).clone();
+                let nljj_over_ljj~I = (*nljj_over_ljj_array.add(I)).clone();
+                let alpha_wj_over_nljj~I = (*alpha_wj_over_nljj_array.add(I)).clone();
                 let w_col~I = w.offset(I * w_col_stride);
             });
 
@@ -142,8 +141,8 @@ macro_rules! generate_generic {
 
                 seq!(I in 0..$r {
                     let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
-                    w~I = (neg_wj_over_ljj~I * l) + w~I;
-                    l = (alpha_wj_over_nljj~I * w~I) + (nljj_over_ljj~I * l);
+                    w~I = (neg_wj_over_ljj~I.mul(&l)) .add(&w~I);
+                    l = (alpha_wj_over_nljj~I.mul(&w~I)).add(&nljj_over_ljj~I.mul(&l));
                     *w_col~I.offset(i as isize * w_row_stride) = w~I;
                 });
 
@@ -225,10 +224,10 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                         let nljj_over_ljj = nljj_over_ljj_array.get_unchecked_mut(k);
 
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
-                        let wj = *w.rb().get_unchecked(j, r_idx + k);
-                        let alpha_conj_wj = *alpha * wj.conj();
+                        let wj = w.rb().get_unchecked(j, r_idx + k).clone();
+                        let alpha_conj_wj = (*alpha).mul(&wj.conj());
 
-                        let sqr_nljj = ljj * ljj + alpha_conj_wj * wj;
+                        let sqr_nljj = ljj.mul(&ljj).add(&alpha_conj_wj.mul(&wj));
                         if !(sqr_nljj.real() > T::Real::zero()) {
                             return Err(CholeskyError);
                         }
@@ -236,11 +235,12 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                         let inv_ljj = ljj.inv();
                         let inv_nljj = nljj.inv();
 
-                        *neg_wj_over_ljj = -(wj * inv_ljj);
-                        *nljj_over_ljj = nljj * inv_ljj;
-                        *alpha_conj_wj_over_nljj = alpha_conj_wj * inv_nljj;
-                        *alpha =
-                            *alpha - *alpha_conj_wj_over_nljj * (*alpha_conj_wj_over_nljj).conj();
+                        *neg_wj_over_ljj = (wj.mul(&inv_ljj)).neg();
+                        *nljj_over_ljj = nljj.mul(&inv_ljj);
+                        *alpha_conj_wj_over_nljj = alpha_conj_wj.mul(&inv_nljj);
+                        *alpha = (*alpha).sub(
+                            &(*alpha_conj_wj_over_nljj).mul(&(*alpha_conj_wj_over_nljj).conj()),
+                        );
 
                         ljj = nljj;
                     }
@@ -611,7 +611,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *l11.rb_mut().ptr_in_bounds_at_unchecked(i, j) = *a11.rb().get_unchecked(i, j);
+                *l11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
+                    a11.rb().get_unchecked(i, j).clone();
             }
         }
     }
@@ -627,7 +628,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         BlockStructure::Rectangular,
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 
@@ -658,7 +659,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         a01.rb(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 
@@ -675,7 +676,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = -T::one();
+            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = T::one().neg();
 
             for i in 0..rem {
                 *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get(i, j).clone();

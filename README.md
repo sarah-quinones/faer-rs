@@ -281,3 +281,4 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
   768    388.5ms    190.6ms    439.3ms      5.18s      912ms
   896    540.6ms    260.4ms    551.6ms      7.26s       1.3s
  1024    733.6ms    335.6ms    849.9ms     10.68s      1.71s
+```

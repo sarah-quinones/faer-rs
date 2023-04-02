@@ -10,41 +10,43 @@
 #![warn(rust_2018_idioms)]
 #![allow(clippy::too_many_arguments)]
 
-use aligned_vec::CACHELINE_ALIGN;
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use coe::Coerce;
 use core::{
-    any::TypeId,
     fmt::Debug,
     marker::PhantomData,
     mem::{size_of, MaybeUninit},
-    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
+    ops::{Index, IndexMut},
     ptr::NonNull,
 };
 use dyn_stack::{SizeOverflow, StackReq};
-use num_traits::{Num, One};
-use rayon::prelude::IndexedParallelIterator;
-
-/// Complex floating point number type, where the real and imaginary parts each occupy 32 bits.
-pub use gemm::c32;
-/// Complex floating point number type, where the real and imaginary parts each occupy 64 bits.
-pub use gemm::c64;
-use iter::*;
 use num_complex::Complex;
+use rayon::iter::IndexedParallelIterator;
 use reborrow::*;
+use zip::*;
 
 extern crate alloc;
 
+pub mod householder;
 pub mod inverse;
 pub mod mul;
+pub mod permutation;
 pub mod solve;
 pub mod zip;
 
-pub mod householder;
-pub mod permutation;
+pub use pulp::{c32, c64};
 
-#[doc(hidden)]
-pub use num_traits::Zero;
+mod seal {
+    use super::*;
+
+    pub trait Seal {}
+    impl<'a, T> Seal for MatRef<'a, T> {}
+    impl<'a, T> Seal for MatMut<'a, T> {}
+    impl<'a, T> Seal for ColRef<'a, T> {}
+    impl<'a, T> Seal for ColMut<'a, T> {}
+    impl<'a, T> Seal for RowRef<'a, T> {}
+    impl<'a, T> Seal for RowMut<'a, T> {}
+}
 
 /// Indicates whether the corresponding operand should be conjugated or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -86,321 +88,345 @@ pub enum Parallelism {
     Rayon(usize),
 }
 
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct ComplexConj<T: RealField> {
+    re: T,
+    neg_im: T,
+}
+
 pub unsafe trait SameLayoutAs<Other> {}
 unsafe impl<T> SameLayoutAs<T> for T {}
 unsafe impl<T: RealField> SameLayoutAs<Complex<T>> for ComplexConj<T> {}
 unsafe impl<T: RealField> SameLayoutAs<ComplexConj<T>> for Complex<T> {}
 
-pub trait Conjugate: Copy + 'static {
-    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self, Num = Self::Num>;
-
+pub trait Conjugate: Clone + 'static {
     const IS_CONJ: bool;
+    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self, Num = Self::Num>;
     type Num: SameLayoutAs<Self> + ComplexField;
 
-    fn as_num(self) -> Self::Num;
+    fn into_num(self) -> Self::Num;
 }
 
-pub trait Scale<Rhs> {
-    type Output;
-
-    /// Scale a matrix `rhs` by `self`.
-    fn scale(self, rhs: Rhs) -> Self::Output;
-}
-
-/// Trait that describes a complex number field.
-///
-/// Real numbers can also be seen as complex numbers, where the imaginary part is always zero.
-///
-/// # Note
-///
-/// The implementation currently implies [`Copy`], but this may be replaced by [`Clone`] in a
-/// future version of this library.
-pub trait ComplexField:
-    Copy + Num + Neg<Output = Self> + Conjugate<Num = Self> + Send + Sync + Debug + 'static
-{
+pub trait ComplexField: Conjugate<Num = Self> + PartialEq + Send + Sync + Debug + 'static {
     type Real: RealField;
 
-    /// Returns a complex number whose real part is equal to `real`, and a zero imaginary part.
-    fn from_real(real: Self::Real) -> Self;
-    /// Returns the real and imaginary part.
-    fn into_real_imag(self) -> (Self::Real, Self::Real);
-    /// Returns the real part.
-    #[inline(always)]
-    fn real(self) -> Self::Real {
-        self.into_real_imag().0
-    }
-    /// Returns the imaginary part.
-    #[inline(always)]
-    fn imag(self) -> Self::Real {
-        self.into_real_imag().1
-    }
+    fn add(&self, rhs: &Self) -> Self;
+    fn sub(&self, rhs: &Self) -> Self;
+    fn mul(&self, rhs: &Self) -> Self;
+    fn neg(&self) -> Self;
+    fn inv(&self) -> Self;
+    fn conj(&self) -> Self;
 
-    fn inv(self) -> Self;
-
-    /// Returns the conjugate of the number.
-    fn conj(self) -> Self;
-    /// Returns the input, scaled by `factor`.
-    #[inline(always)]
-    fn scale_real(self, factor: Self::Real) -> Self {
-        self * Self::from_real(factor)
-    }
+    /// Returns the input, scaled by `rhs`.
+    fn scale_real(&self, rhs: &Self::Real) -> Self;
+    /// Returns the input, scaled by `rhs`.
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self;
     /// Returns either the norm or squared norm of the number.
     ///
     /// An implementation may choose either, so long as it chooses consistently.
-    fn score(self) -> Self::Real;
-
-    #[inline(always)]
-    fn abs(self) -> Self::Real {
-        (self * self.conj()).real().sqrt()
-    }
-
+    fn score(&self) -> Self::Real;
+    fn abs(&self) -> Self::Real;
     fn nan() -> Self;
-    #[inline(always)]
-    fn is_nan(self) -> bool {
+    fn is_nan(&self) -> bool {
         self != self
     }
+
+    /// Returns a complex number whose real part is equal to `real`, and a zero imaginary part.
+    fn from_real(real: Self::Real) -> Self;
+
+    /// Returns the real part.
+    fn real(&self) -> Self::Real;
+    /// Returns the imaginary part.
+    fn imag(&self) -> Self::Real;
+
+    fn zero() -> Self;
+    fn one() -> Self;
 }
 
-#[derive(Copy, Clone)]
-#[repr(transparent)]
-pub struct ComplexConj<T: RealField> {
-    inner: Complex<T>,
-}
-
-impl<T: RealField> ComplexConj<T> {
-    pub fn eval(self) -> Complex<T> {
-        self.inner.conj()
-    }
-}
-
-impl<T: RealField> From<Complex<T>> for ComplexConj<T> {
-    #[inline]
-    fn from(value: Complex<T>) -> Self {
-        Self {
-            inner: value.conj(),
-        }
-    }
-}
-impl<T: RealField> From<ComplexConj<T>> for Complex<T> {
-    #[inline]
-    fn from(value: ComplexConj<T>) -> Self {
-        value.inner.conj()
-    }
-}
-
-/// The imaginary unit. This struct is useful for copy-pasting matrix [`Debug`] output as code.
-///
-/// # Example
-///
-/// ```
-/// use faer_core::{c64, I};
-///
-/// let z = 1.0 + 2.0 * I;
-///
-/// assert_eq!(z, c64::new(1.0, 2.0));
-/// ```
-pub struct I;
-impl Mul<f32> for I {
-    type Output = c32;
-
-    #[inline]
-    fn mul(self, rhs: f32) -> Self::Output {
-        c32 { re: 0.0, im: rhs }
-    }
-}
-impl Mul<I> for f32 {
-    type Output = c32;
-
-    #[inline]
-    fn mul(self, rhs: I) -> Self::Output {
-        rhs * self
-    }
-}
-impl Mul<f64> for I {
-    type Output = c64;
-
-    #[inline]
-    fn mul(self, rhs: f64) -> Self::Output {
-        c64 { re: 0.0, im: rhs }
-    }
-}
-impl Mul<I> for f64 {
-    type Output = c64;
-
-    #[inline]
-    fn mul(self, rhs: I) -> Self::Output {
-        rhs * self
-    }
-}
-
-/// Trait that describes a real number field.
-pub trait RealField: ComplexField<Real = Self, Conj = Self> + PartialOrd {
-    /// Returns the square root of the number.
-    fn sqrt(self) -> Self;
+pub trait RealField: ComplexField<Real = Self> + PartialOrd + Conjugate<Conj = Self> {
+    fn sqrt(&self) -> Self;
+    fn div(&self, rhs: &Self) -> Self;
 }
 
 impl Conjugate for f32 {
-    type Conj = f32;
-
     const IS_CONJ: bool = false;
-    type Num = f32;
+    type Conj = Self;
+    type Num = Self;
 
-    #[inline]
-    fn as_num(self) -> Self::Num {
+    #[inline(always)]
+    fn into_num(self) -> Self::Num {
         self
     }
 }
 impl RealField for f32 {
     #[inline(always)]
-    fn sqrt(self) -> Self {
-        self.sqrt()
+    fn sqrt(&self) -> Self {
+        Self::sqrt(*self)
+    }
+
+    #[inline(always)]
+    fn div(&self, rhs: &Self) -> Self {
+        self / rhs
     }
 }
 impl ComplexField for f32 {
-    type Real = f32;
+    type Real = Self;
 
     #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        real
+    fn add(&self, rhs: &Self) -> Self {
+        self + rhs
     }
-
     #[inline(always)]
-    fn into_real_imag(self) -> (Self::Real, Self::Real) {
-        (self, 0.0)
+    fn sub(&self, rhs: &Self) -> Self {
+        self - rhs
     }
-
     #[inline(always)]
-    fn conj(self) -> Self {
-        self
+    fn mul(&self, rhs: &Self) -> Self {
+        self * rhs
     }
-
     #[inline(always)]
-    fn score(self) -> Self::Real {
-        self.abs()
+    fn inv(&self) -> Self {
+        self.recip()
     }
-
     #[inline(always)]
-    fn abs(self) -> Self::Real {
-        self.abs()
+    fn conj(&self) -> Self {
+        *self
     }
-
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        Self::abs(*self)
+    }
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        Self::abs(*self)
+    }
     #[inline(always)]
     fn nan() -> Self {
         Self::NAN
     }
-
     #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        *self
+    }
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        0.0
+    }
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+    #[inline(always)]
+    fn neg(&self) -> Self {
+        -self
     }
 }
 
 impl Conjugate for f64 {
-    type Conj = f64;
-
     const IS_CONJ: bool = false;
-    type Num = f64;
+    type Conj = Self;
+    type Num = Self;
 
-    #[inline]
-    fn as_num(self) -> Self::Num {
+    #[inline(always)]
+    fn into_num(self) -> Self::Num {
         self
     }
 }
 impl RealField for f64 {
     #[inline(always)]
-    fn sqrt(self) -> Self {
-        self.sqrt()
+    fn sqrt(&self) -> Self {
+        Self::sqrt(*self)
+    }
+    #[inline(always)]
+    fn div(&self, rhs: &Self) -> Self {
+        self / rhs
     }
 }
 impl ComplexField for f64 {
-    type Real = f64;
+    type Real = Self;
 
     #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        real
+    fn add(&self, rhs: &Self) -> Self {
+        self + rhs
     }
-
     #[inline(always)]
-    fn into_real_imag(self) -> (Self::Real, Self::Real) {
-        (self, 0.0)
+    fn sub(&self, rhs: &Self) -> Self {
+        self - rhs
     }
-
     #[inline(always)]
-    fn conj(self) -> Self {
-        self
+    fn mul(&self, rhs: &Self) -> Self {
+        self * rhs
     }
-
     #[inline(always)]
-    fn score(self) -> Self::Real {
-        self.abs()
+    fn inv(&self) -> Self {
+        self.recip()
     }
-
     #[inline(always)]
-    fn abs(self) -> Self::Real {
-        self.abs()
+    fn conj(&self) -> Self {
+        *self
     }
-
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        Self::abs(*self)
+    }
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        Self::abs(*self)
+    }
     #[inline(always)]
     fn nan() -> Self {
         Self::NAN
     }
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        *self
+    }
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        0.0
+    }
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+    #[inline(always)]
+    fn neg(&self) -> Self {
+        -self
+    }
+}
+
+impl<T: RealField> Conjugate for Complex<T> {
+    const IS_CONJ: bool = false;
+    type Conj = ComplexConj<T>;
+    type Num = Complex<T>;
 
     #[inline(always)]
-    fn inv(self) -> Self {
-        1.0 / self
-    }
-}
-
-impl<T: RealField> Conjugate for ComplexConj<T> {
-    type Conj = Complex<T>;
-    const IS_CONJ: bool = true;
-    type Num = Complex<T>;
-
-    #[inline]
-    fn as_num(self) -> Self::Num {
-        self.inner.conj()
-    }
-}
-impl<T: RealField> Conjugate for Complex<T> {
-    type Conj = ComplexConj<T>;
-    const IS_CONJ: bool = false;
-    type Num = Complex<T>;
-
-    #[inline]
-    fn as_num(self) -> Self::Num {
+    fn into_num(self) -> Self::Num {
         self
     }
 }
+impl<T: RealField> Conjugate for ComplexConj<T> {
+    const IS_CONJ: bool = true;
+    type Conj = Complex<T>;
+    type Num = Complex<T>;
 
+    #[inline(always)]
+    fn into_num(self) -> Self::Num {
+        Complex {
+            re: self.re,
+            im: self.neg_im.neg(),
+        }
+    }
+}
 impl<T: RealField> ComplexField for Complex<T> {
     type Real = T;
 
     #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        Complex {
-            re: real,
-            im: T::zero(),
+    fn add(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re.add(&rhs.re),
+            im: self.im.add(&rhs.im),
         }
     }
-
     #[inline(always)]
-    fn into_real_imag(self) -> (Self::Real, Self::Real) {
-        (self.re, self.im)
-    }
-
-    #[inline(always)]
-    fn conj(self) -> Self {
-        Complex {
-            re: self.re,
-            im: -self.im,
+    fn sub(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re.sub(&rhs.re),
+            im: self.im.sub(&rhs.im),
         }
     }
-
     #[inline(always)]
-    fn score(self) -> Self::Real {
-        self.re * self.re + self.im * self.im
+    fn mul(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re.mul(&rhs.re).sub(&self.im.mul(&rhs.im)),
+            im: self.re.mul(&rhs.im).add(&self.im.mul(&rhs.re)),
+        }
     }
-
+    #[inline(always)]
+    fn inv(&self) -> Self {
+        let inf = T::zero().inv();
+        if self.re == T::nan() || self.im == T::nan() {
+            Self::nan()
+        } else if self.re == inf || self.im == inf {
+            Self::zero()
+        } else if self == &Self::zero() {
+            Self {
+                re: inf.clone(),
+                im: inf,
+            }
+        } else {
+            self.conj().scale_real(&self.score().inv())
+        }
+    }
+    #[inline(always)]
+    fn conj(&self) -> Self {
+        Self {
+            re: self.re.clone(),
+            im: self.im.neg(),
+        }
+    }
+    #[inline(always)]
+    fn neg(&self) -> Self {
+        Self {
+            re: self.re.neg(),
+            im: self.im.neg(),
+        }
+    }
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: self.re.scale_real(rhs),
+            im: self.im.scale_real(rhs),
+        }
+    }
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: self.re.scale_power_of_two(rhs),
+            im: self.im.scale_power_of_two(rhs),
+        }
+    }
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        (self.re.mul(&self.re)).add(&self.im.mul(&self.im))
+    }
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        self.score().sqrt()
+    }
     #[inline(always)]
     fn nan() -> Self {
         Self {
@@ -408,37 +434,35 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: Self::Real::nan(),
         }
     }
-
     #[inline(always)]
-    fn inv(self) -> Self {
-        if self == Self::zero() {
-            // zero
-            Self::from_real(T::zero().inv())
-        } else if self.re.is_nan() || self.im.is_nan() {
-            // nan
-            Self::nan()
-        } else if self.re.abs() == T::Real::zero().inv() || self.im.abs() == T::Real::zero().inv() {
-            // infinite
-            Self::zero()
-        } else {
-            // generic
-            Self::one() / self
+    fn from_real(real: Self::Real) -> Self {
+        Self {
+            re: real,
+            im: Self::Real::zero(),
         }
     }
-}
-
-use zip::*;
-
-mod seal {
-    use super::*;
-
-    pub trait Seal {}
-    impl<'a, T> Seal for MatRef<'a, T> {}
-    impl<'a, T> Seal for MatMut<'a, T> {}
-    impl<'a, T> Seal for ColRef<'a, T> {}
-    impl<'a, T> Seal for ColMut<'a, T> {}
-    impl<'a, T> Seal for RowRef<'a, T> {}
-    impl<'a, T> Seal for RowMut<'a, T> {}
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        self.re.clone()
+    }
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        self.im.clone()
+    }
+    #[inline(always)]
+    fn zero() -> Self {
+        Self {
+            re: Self::Real::zero(),
+            im: Self::Real::zero(),
+        }
+    }
+    #[inline(always)]
+    fn one() -> Self {
+        Self {
+            re: Self::Real::one(),
+            im: Self::Real::zero(),
+        }
+    }
 }
 
 #[inline]
@@ -1682,14 +1706,14 @@ impl<'a, T> MatRef<'a, T> {
 
     /// Returns an iterator over the rows of the matrix.
     #[inline]
-    pub fn into_row_iter(self) -> RowIter<'a, T> {
-        RowIter(self)
+    pub fn into_row_iter(self) -> iter::RowIter<'a, T> {
+        iter::RowIter(self)
     }
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn into_col_iter(self) -> ColIter<'a, T> {
-        ColIter(self)
+    pub fn into_col_iter(self) -> iter::ColIter<'a, T> {
+        iter::ColIter(self)
     }
 
     /// Returns a parallel iterator over row chunks of the matrix.
@@ -2403,14 +2427,14 @@ impl<'a, T> MatMut<'a, T> {
 
     /// Returns an iterator over the rows of the matrix.
     #[inline]
-    pub fn into_row_iter(self) -> RowIterMut<'a, T> {
-        RowIterMut(self)
+    pub fn into_row_iter(self) -> iter::RowIterMut<'a, T> {
+        iter::RowIterMut(self)
     }
 
     /// Returns an iterator over the columns of the matrix.
     #[inline]
-    pub fn into_col_iter(self) -> ColIterMut<'a, T> {
-        ColIterMut(self)
+    pub fn into_col_iter(self) -> iter::ColIterMut<'a, T> {
+        iter::ColIterMut(self)
     }
 
     /// Returns a parallel iterator over the rows of the matrix.
@@ -3646,35 +3670,35 @@ impl<'a, T> IndexMut<usize> for ColMut<'a, T> {
 
 impl<'a, T> IntoIterator for RowRef<'a, T> {
     type Item = &'a T;
-    type IntoIter = ElemIter<'a, T>;
+    type IntoIter = iter::ElemIter<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIter(self.transpose())
+        iter::ElemIter(self.transpose())
     }
 }
 impl<'a, T> IntoIterator for RowMut<'a, T> {
     type Item = &'a mut T;
-    type IntoIter = ElemIterMut<'a, T>;
+    type IntoIter = iter::ElemIterMut<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIterMut(self.transpose())
+        iter::ElemIterMut(self.transpose())
     }
 }
 
 impl<'a, T> IntoIterator for ColRef<'a, T> {
     type Item = &'a T;
-    type IntoIter = ElemIter<'a, T>;
+    type IntoIter = iter::ElemIter<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIter(self)
+        iter::ElemIter(self)
     }
 }
 impl<'a, T> IntoIterator for ColMut<'a, T> {
     type Item = &'a mut T;
-    type IntoIter = ElemIterMut<'a, T>;
+    type IntoIter = iter::ElemIterMut<'a, T>;
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ElemIterMut(self)
+        iter::ElemIterMut(self)
     }
 }
 
@@ -4255,28 +4279,20 @@ pub fn round_up_to(n: usize, k: usize) -> usize {
 #[doc(hidden)]
 #[inline]
 pub fn is_vectorizable<T: 'static>() -> bool {
-    TypeId::of::<T>() == TypeId::of::<f64>()
-        || TypeId::of::<T>() == TypeId::of::<f32>()
-        || TypeId::of::<T>() == TypeId::of::<c64>()
-        || TypeId::of::<T>() == TypeId::of::<c32>()
+    coe::is_same::<f32, T>()
+        || coe::is_same::<f64, T>()
+        || coe::is_same::<c32, T>()
+        || coe::is_same::<c64, T>()
 }
 
 #[doc(hidden)]
 #[inline]
 pub fn align_for<T: 'static>() -> usize {
     if is_vectorizable::<T>() {
-        CACHELINE_ALIGN
+        aligned_vec::CACHELINE_ALIGN
     } else {
         core::mem::align_of::<T>()
     }
-}
-
-#[doc(hidden)]
-#[inline]
-pub unsafe fn as_uninit<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
-    let len = slice.len();
-    let ptr = slice.as_mut_ptr();
-    core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<T>, len)
 }
 
 #[doc(hidden)]
@@ -4410,7 +4426,7 @@ macro_rules! temp_mat_zeroed {
             let (mut temp_data, $stack_id) = $stack.make_aligned_with(
                 ncols * col_stride,
                 $crate::align_for::<$ty>(),
-                |_| <$ty as $crate::Zero>::zero(),
+                |_| <$ty as $crate::ComplexField>::zero(),
             );
 
             #[allow(unused_unsafe)]
@@ -5145,7 +5161,7 @@ impl<T> IndexMut<(usize, usize)> for Mat<T> {
     }
 }
 
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Add<MatRef<'a, U>> for MatRef<'a, T>
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Add<MatRef<'a, U>> for MatRef<'a, T>
 where
     T::Num: ComplexField,
 {
@@ -5156,13 +5172,18 @@ where
     fn add(self, rhs: MatRef<'a, U>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
         Self::Output::with_dims(
-            |i, j| self[(i, j)].as_num().add(rhs[(i, j)].as_num()),
+            |i, j| {
+                self[(i, j)]
+                    .clone()
+                    .into_num()
+                    .add(&rhs[(i, j)].clone().into_num())
+            },
             self.nrows(),
             self.ncols(),
         )
     }
 }
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Sub<MatRef<'a, U>> for MatRef<'a, T>
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Sub<MatRef<'a, U>> for MatRef<'a, T>
 where
     T::Num: ComplexField,
 {
@@ -5173,14 +5194,19 @@ where
     fn sub(self, rhs: MatRef<'a, U>) -> Self::Output {
         fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
         Self::Output::with_dims(
-            |i, j| self[(i, j)].as_num().sub(rhs[(i, j)].as_num()),
+            |i, j| {
+                self[(i, j)]
+                    .clone()
+                    .into_num()
+                    .sub(&rhs[(i, j)].clone().into_num())
+            },
             self.nrows(),
             self.ncols(),
         )
     }
 }
 
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> Mul<MatRef<'a, U>> for MatRef<'a, T>
+impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Mul<MatRef<'a, U>> for MatRef<'a, T>
 where
     T::Num: ComplexField,
 {
@@ -5211,15 +5237,30 @@ where
     }
 }
 
-impl<'a, T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatRef<'a, U>> for T {
+pub trait Scale<Rhs> {
+    type Output;
+
+    /// Scale a matrix `rhs` by `self`.
+    fn scale(self, rhs: Rhs) -> Self::Output;
+}
+
+impl<'a, T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatRef<'a, U>>
+    for T
+{
     type Output = Mat<U::Num>;
 
     #[inline]
     fn scale(self, rhs: MatRef<'a, U>) -> Self::Output {
-        Mat::with_dims(|i, j| self * rhs[(i, j)].as_num(), rhs.nrows(), rhs.ncols())
+        Mat::with_dims(
+            |i, j| self * rhs[(i, j)].clone().into_num(),
+            rhs.nrows(),
+            rhs.ncols(),
+        )
     }
 }
-impl<'a, T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatMut<'a, U>> for T {
+impl<'a, T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatMut<'a, U>>
+    for T
+{
     type Output = Mat<U::Num>;
 
     #[inline]
@@ -5227,7 +5268,7 @@ impl<'a, T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatMut<'a, 
         self.scale(rhs.rb())
     }
 }
-impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<Mat<U>> for T {
+impl<T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<Mat<U>> for T {
     type Output = Mat<U::Num>;
 
     #[inline]
@@ -5235,7 +5276,7 @@ impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<Mat<U>> for T {
         self.scale(rhs.as_ref())
     }
 }
-impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T {
+impl<T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T {
     type Output = Mat<U::Num>;
 
     #[inline]
@@ -5247,7 +5288,7 @@ impl<T: Copy + Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T 
 macro_rules! impl_scalar_mul {
     ($(impl$(<$generic_ty: ident: $bounds: tt>)? Mul<$scalar: ty> for $mat: ty { type Out = $out: ty; })*) => {
         $(
-            impl$(<$generic_ty>)? Mul<$mat> for $scalar {
+            impl$(<$generic_ty>)? core::ops::Mul<$mat> for $scalar {
                 type Output = Mat<$out>;
                 #[inline]
                 fn mul(self, rhs: $mat) -> Self::Output {
@@ -5255,7 +5296,7 @@ macro_rules! impl_scalar_mul {
                 }
             }
 
-            impl$(<$generic_ty>)? Mul<$scalar> for $mat {
+            impl$(<$generic_ty>)? core::ops::Mul<$scalar> for $mat {
                 type Output = Mat<$out>;
                 #[inline]
                 fn mul(self, rhs: $scalar) -> Self::Output {
@@ -5319,7 +5360,7 @@ macro_rules! impl_binop {
        $ty_rhs: ident$(,)?
     > Ops<$rhs: ty> for $lhs: ty {})*) => {
         $(
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Add<$rhs> for $lhs
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Add<$rhs> for $lhs
             where
                 T::Num: ComplexField,
             {
@@ -5331,7 +5372,7 @@ macro_rules! impl_binop {
                     self.as_ref() + rhs.as_ref()
                 }
             }
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Sub<$rhs> for $lhs
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Sub<$rhs> for $lhs
             where
                 T::Num: ComplexField,
             {
@@ -5344,7 +5385,7 @@ macro_rules! impl_binop {
                 }
             }
 
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> Mul<$rhs> for $lhs
+            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Mul<$rhs> for $lhs
             where
                 T::Num: ComplexField,
             {
@@ -5675,7 +5716,7 @@ mod tests {
 
         for i in 0..2 {
             for j in 0..2 {
-                fancy_assert!(y[(i, j)] == lhs[(i, j)].as_num() + rhs[(i, j)])
+                fancy_assert!(y[(i, j)] == lhs[(i, j)].into_num() + rhs[(i, j)])
             }
         }
     }

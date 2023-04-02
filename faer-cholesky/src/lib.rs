@@ -1,7 +1,6 @@
 use assert2::assert as fancy_assert;
 use core::cmp::Ordering;
-use faer_core::{permutation::PermutationMut, MatRef};
-use num_traits::Signed;
+use faer_core::{permutation::PermutationMut, ComplexField, MatRef};
 
 pub mod ldlt_diagonal;
 pub mod llt;
@@ -10,14 +9,11 @@ pub mod llt;
 /// factorization with diagonal $D$, then stores the result in `perm_indices` and
 /// `perm_inv_indices`.
 #[track_caller]
-pub fn compute_cholesky_permutation<'a, T>(
+pub fn compute_cholesky_permutation<'a, T: ComplexField>(
     perm_indices: &'a mut [usize],
     perm_inv_indices: &'a mut [usize],
     matrix: MatRef<'_, T>,
-) -> PermutationMut<'a>
-where
-    T: Signed + PartialOrd,
-{
+) -> PermutationMut<'a> {
     let n = matrix.nrows();
     fancy_assert!(
         matrix.nrows() == matrix.ncols(),

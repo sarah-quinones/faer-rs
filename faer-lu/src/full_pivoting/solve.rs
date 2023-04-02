@@ -394,11 +394,11 @@ mod tests {
                     for j in 0..k {
                         for i in 0..n {
                             let target = match conj_rhs {
-                                Conj::No => rhs[(i, j)],
+                                Conj::No => rhs[(i, j)].clone(),
                                 Conj::Yes => rhs[(i, j)].conj(),
                             };
 
-                            fancy_assert!((rhs_reconstructed[(i, j)] - target).abs() < epsilon)
+                            fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
                         }
                     }
                 }
@@ -469,11 +469,11 @@ mod tests {
                     for j in 0..k {
                         for i in 0..n {
                             let target = match conj_rhs {
-                                Conj::No => rhs[(i, j)],
+                                Conj::No => rhs[(i, j)].clone(),
                                 Conj::Yes => rhs[(i, j)].conj(),
                             };
 
-                            fancy_assert!((rhs_reconstructed[(i, j)] - target).abs() < epsilon)
+                            fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
                         }
                     }
                 }

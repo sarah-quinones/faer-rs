@@ -21,38 +21,42 @@ pub struct JacobiRotation<T> {
 impl<T: RealField> JacobiRotation<T> {
     pub fn from_triplet(x: T, y: T, z: T) -> Self {
         let abs_y = y.abs();
-        let two_abs_y = abs_y + abs_y;
+        let two_abs_y = abs_y.add(&abs_y);
         if two_abs_y == T::zero() {
             Self {
                 c: T::one(),
                 s: T::zero(),
             }
         } else {
-            let tau = (x - z) / two_abs_y;
-            let w = (tau * tau + T::one()).sqrt();
+            let tau = (x.sub(&z)).mul(&two_abs_y.inv());
+            let w = ((tau.mul(&tau)).add(&T::one())).sqrt();
             let t = if tau > T::zero() {
-                (tau + w).inv()
+                (tau.add(&w)).inv()
             } else {
-                (tau - w).inv()
+                (tau.sub(&w)).inv()
             };
 
-            let neg_sign_y = if y > T::zero() { -T::one() } else { T::one() };
-            let n = (t * t + T::one()).sqrt().inv();
+            let neg_sign_y = if y > T::zero() {
+                T::one().neg()
+            } else {
+                T::one()
+            };
+            let n = (t.mul(&t).add(&T::one())).sqrt().inv();
 
             Self {
-                c: n,
-                s: neg_sign_y * t * n,
+                c: n.clone(),
+                s: neg_sign_y.mul(&t).mul(&n),
             }
         }
     }
 
     pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
-        let Self { c, s } = *self;
+        let Self { c, s } = self;
         (
-            m00 * c + m10 * s,
-            m01 * c + m11 * s,
-            -s * m00 + c * m10,
-            -s * m01 + c * m11,
+            m00.mul(&c).add(&m10.mul(&s)),
+            m01.mul(&c).add(&m11.mul(&s)),
+            s.neg().mul(&m00).add(&c.mul(&m10)),
+            s.neg().mul(&m01).add(&c.mul(&m11)),
         )
     }
 
@@ -65,16 +69,16 @@ impl<T: RealField> JacobiRotation<T> {
         pulp::Arch::new().dispatch(
             #[inline(always)]
             move || {
-                let Self { c, s } = *self;
-                if c == T::one() && s == T::zero() {
+                let Self { c, s } = self;
+                if *c == T::one() && *s == T::zero() {
                     return;
                 }
 
                 x.cwise().zip(y).for_each(move |x, y| {
-                    let x_ = *x;
-                    let y_ = *y;
-                    *x = c * x_ + s * y_;
-                    *y = -s * x_ + c * y_;
+                    let x_ = x.clone();
+                    let y_ = y.clone();
+                    *x = c.mul(&x_).add(&s.mul(&y_));
+                    *y = s.neg().mul(&x_).add(&c.mul(&y_));
                 });
             },
         )
@@ -87,8 +91,8 @@ impl<T: RealField> JacobiRotation<T> {
 
     pub fn transpose(&self) -> Self {
         Self {
-            c: self.c,
-            s: -self.s,
+            c: self.c.clone(),
+            s: self.s.neg(),
         }
     }
 }
@@ -98,8 +102,8 @@ impl<T: RealField> core::ops::Mul for JacobiRotation<T> {
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self {
-            c: self.c * rhs.c - self.s * rhs.s,
-            s: self.c * rhs.s + self.s * rhs.c,
+            c: self.c.mul(&rhs.c).sub(&self.s.mul(&rhs.s)),
+            s: self.c.mul(&rhs.s).add(&self.s.mul(&rhs.c)),
         }
     }
 }
@@ -110,8 +114,8 @@ fn compute_2x2<T: RealField>(
     m10: T,
     m11: T,
 ) -> (JacobiRotation<T>, JacobiRotation<T>) {
-    let t = m00 + m11;
-    let d = m10 - m01;
+    let t = m00.add(&m11);
+    let d = m10.sub(&m01);
 
     let rot1 = if d == T::zero() {
         JacobiRotation {
@@ -119,10 +123,13 @@ fn compute_2x2<T: RealField>(
             s: T::zero(),
         }
     } else {
-        let u = t / d;
-        let tmp = (T::one() + u * u).sqrt().inv();
+        let u = t.mul(&d.inv());
+        let tmp = (T::one().add(&u.mul(&u))).sqrt().inv();
         let tmp = if tmp == T::zero() { u.abs().inv() } else { tmp };
-        JacobiRotation { c: u * tmp, s: tmp }
+        JacobiRotation {
+            c: u.mul(&tmp),
+            s: tmp,
+        }
     };
     let j_right = {
         let (m00, m01, _, m11) = rot1.apply_on_the_left_2x2(m00, m01, m10, m11);
@@ -204,25 +211,25 @@ pub fn jacobi_svd<T: RealField>(
         max_diag = if d > max_diag { d } else { max_diag };
     }
 
-    let precision = epsilon + epsilon;
+    let precision = epsilon.scale_power_of_two(&T::one().add(&T::one()));
     loop {
         let mut failed = false;
         for p in 1..n {
             for q in 0..p {
-                let threshold = precision * max_diag;
+                let threshold = precision.mul(&max_diag);
                 let threshold = if threshold > consider_zero_threshold {
                     threshold
                 } else {
-                    consider_zero_threshold
+                    consider_zero_threshold.clone()
                 };
 
                 if (matrix[(p, q)].abs() > threshold) || (matrix[(q, p)].abs() > threshold) {
                     failed = true;
                     let (j_left, j_right) = compute_2x2(
-                        matrix[(p, p)],
-                        matrix[(p, q)],
-                        matrix[(q, p)],
-                        matrix[(q, q)],
+                        matrix[(p, p)].clone(),
+                        matrix[(p, q)].clone(),
+                        matrix[(q, p)].clone(),
+                        matrix[(q, q)].clone(),
                     );
 
                     let (top, bottom) = matrix.rb_mut().split_at_row(p);
@@ -255,12 +262,12 @@ pub fn jacobi_svd<T: RealField>(
 
     // make diagonal elements positive
     for j in 0..n {
-        let d = matrix[(j, j)];
+        let d = matrix[(j, j)].clone();
         if d < T::zero() {
-            matrix[(j, j)] = -d;
+            matrix[(j, j)] = d.neg();
             if let Some(mut u) = u.rb_mut() {
                 for i in 0..n {
-                    u[(i, j)] = -u[(i, j)];
+                    u[(i, j)] = u[(i, j)].neg();
                 }
             }
         }
@@ -287,7 +294,7 @@ pub fn jacobi_svd<T: RealField>(
         let mut largest_pos = i;
 
         for j in i..n {
-            let mjj = matrix[(j, j)];
+            let mjj = matrix[(j, j)].clone();
             (largest_elem, largest_pos) = if mjj > largest_elem {
                 (mjj, j)
             } else {
@@ -300,7 +307,7 @@ pub fn jacobi_svd<T: RealField>(
         }
 
         if largest_pos > i {
-            let mii = matrix[(i, i)];
+            let mii = matrix[(i, i)].clone();
             matrix[(i, i)] = largest_elem;
             matrix[(largest_pos, largest_pos)] = mii;
             if let Some(u) = u.rb_mut() {

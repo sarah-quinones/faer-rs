@@ -93,7 +93,7 @@ pub fn invert_in_place<T: ComplexField>(
         stack,
     );
 
-    zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = *src);
+    zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = src.clone());
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
@@ -132,7 +132,6 @@ mod tests {
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c64, Mat};
-    use num_traits::{One, Zero};
     use rand::prelude::*;
     use std::cell::RefCell;
 

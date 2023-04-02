@@ -23,7 +23,6 @@ use faer_core::{
     ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use num_complex::Complex;
-use num_traits::{One, Zero};
 use reborrow::*;
 
 use crate::bidiag_real_svd::compute_bidiag_real_svd;
@@ -189,7 +188,7 @@ fn compute_real_svd_small<T: RealField>(
         temp_mat_uninit! {
             let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
         }
-        zip!(jacobi_mat.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
+        zip!(jacobi_mat.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
         jacobi::jacobi_svd(
             jacobi_mat.rb_mut(),
@@ -199,7 +198,7 @@ fn compute_real_svd_small<T: RealField>(
             epsilon,
             zero_threshold,
         );
-        zip!(s, jacobi_mat.rb().diagonal()).for_each(|dst, src| *dst = *src);
+        zip!(s, jacobi_mat.rb().diagonal()).for_each(|dst, src| *dst = src.clone());
         return;
     }
 
@@ -215,7 +214,7 @@ fn compute_real_svd_small<T: RealField>(
             let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
         }
 
-        zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
+        zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
         // matrix = q * r
         faer_qr::no_pivoting::compute::qr_in_place(
@@ -227,7 +226,7 @@ fn compute_real_svd_small<T: RealField>(
         );
         zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
         zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-            .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = *src);
+            .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = src.clone());
 
         // r = u s v
         jacobi::jacobi_svd(
@@ -238,7 +237,7 @@ fn compute_real_svd_small<T: RealField>(
             epsilon,
             zero_threshold,
         );
-        zip!(s, r.rb().diagonal()).for_each(|dst, src| *dst = *src);
+        zip!(s, r.rb().diagonal()).for_each(|dst, src| *dst = src.clone());
     }
 
     // matrix = q u s v
@@ -289,17 +288,17 @@ fn compute_bidiag_cplx_svd<T: RealField>(
         if x == Complex::<T>::zero() {
             Complex::<T>::one()
         } else {
-            x.scale_real(x.abs().inv())
+            x.scale_real(&x.abs().inv())
         }
     };
 
-    let mut col_normalized = normalized(diag[0]).conj();
-    col_mul[0] = col_normalized;
+    let mut col_normalized = normalized(diag[0].clone()).conj();
+    col_mul[0] = col_normalized.clone();
     for i in 1..n {
-        let row_normalized = normalized(subdiag[i - 1] * col_normalized).conj();
+        let row_normalized = normalized(subdiag[i - 1].mul(&col_normalized)).conj();
         row_mul[i - 1] = row_normalized.conj();
-        col_normalized = normalized(diag[i] * row_normalized).conj();
-        col_mul[i] = col_normalized;
+        col_normalized = normalized(diag[i].mul(&row_normalized)).conj();
+        col_mul[i] = col_normalized.clone();
     }
 
     compute_bidiag_real_svd(
@@ -315,7 +314,7 @@ fn compute_bidiag_cplx_svd<T: RealField>(
     );
 
     for i in 0..n {
-        diag[i] = Complex::<T>::from_real(diag_real[i]);
+        diag[i] = Complex::<T>::from_real(diag_real[i].clone());
     }
 
     let u_real = u_real.rb();
@@ -323,22 +322,22 @@ fn compute_bidiag_cplx_svd<T: RealField>(
 
     if let Some(mut u) = u.rb_mut() {
         zip!(RowUninit(u.rb_mut().row(0)), u_real.row(0))
-            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(*u_real) });
+            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(u_real.clone()) });
         zip!(RowUninit(u.rb_mut().row(n)), u_real.row(n))
-            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(*u_real) });
+            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(u_real.clone()) });
 
         for (u, u_real) in zip(u.into_col_iter(), u_real.into_col_iter()) {
             let u = u.subrows(1, n - 1);
             let u_real = u_real.subrows(1, n - 1);
             for ((u, u_real), k) in zip(zip(u, u_real), &*row_mul) {
-                *u = k.scale_real(*u_real);
+                *u = k.scale_real(u_real);
             }
         }
     }
     if let Some(v) = v.rb_mut() {
         for (v, v_real) in zip(v.into_col_iter(), v_real.into_col_iter()) {
             for ((v, v_real), k) in zip(zip(v, v_real), &*col_mul) {
-                *v = k.scale_real(*v_real);
+                *v = k.scale_real(v_real);
             }
         }
     }
@@ -404,7 +403,7 @@ fn compute_svd_big<T: ComplexField>(
         let (mut householder_right, mut stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n - 1, stack) };
     }
 
-    zip!(bid.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
+    zip!(bid.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
     bidiag::bidiagonalize_in_place(
         bid.rb_mut(),
@@ -431,7 +430,7 @@ fn compute_svd_big<T: ComplexField>(
         let mut householder = householder_left.rb_mut().submatrix(0, j_base, bs, bs);
         let essentials = bid.submatrix(j_base, j_base, m - j_base, bs);
         for j in 0..bs {
-            householder[(j, j)] = householder[(0, j)];
+            householder[(j, j)] = householder[(0, j)].clone();
         }
         upgrade_householder_factor(householder, essentials, bs, 1, parallelism);
         j_base += bs;
@@ -443,7 +442,7 @@ fn compute_svd_big<T: ComplexField>(
         let full_essentials = bid.submatrix(0, 1, m, n - 1).transpose();
         let essentials = full_essentials.submatrix(j_base, j_base, n - 1 - j_base, bs);
         for j in 0..bs {
-            householder[(j, j)] = householder[(0, j)];
+            householder[(j, j)] = householder[(0, j)].clone();
         }
         upgrade_householder_factor(householder, essentials, bs, 1, parallelism);
         j_base += bs;
@@ -467,7 +466,7 @@ fn compute_svd_big<T: ComplexField>(
     );
 
     for (s, val) in s.into_iter().zip(&*diag) {
-        *s = *val;
+        *s = val.clone();
     }
 
     if let Some(mut u) = u {
@@ -476,7 +475,7 @@ fn compute_svd_big<T: ComplexField>(
             u.rb_mut().submatrix(0, 0, n, n),
             v_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
 
         zip!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|x| *x = T::zero());
         zip!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|x| *x = T::zero());
@@ -498,7 +497,7 @@ fn compute_svd_big<T: ComplexField>(
             v.rb_mut().submatrix(0, 0, n, n),
             u_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
 
         apply_block_householder_sequence_on_the_left_in_place(
             bid.submatrix(0, 1, m, n - 1).transpose(),
@@ -690,7 +689,7 @@ pub fn compute_svd<T: ComplexField>(
                 let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
             }
 
-            zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = *src);
+            zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
             // matrix = q * r
             faer_qr::no_pivoting::compute::qr_in_place(
@@ -702,7 +701,7 @@ pub fn compute_svd<T: ComplexField>(
             );
             zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
             zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-                .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = *src);
+                .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = src.clone());
 
             // r = u s v
             squareish_svd(

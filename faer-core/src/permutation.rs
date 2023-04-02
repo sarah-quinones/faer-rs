@@ -240,7 +240,7 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationMut<'a> {
 /// - Panics if the matrices are not square or if they do not have the same shape.
 /// - Panics if the size of the permutation doesn't match the dimension of the matrices.
 #[track_caller]
-pub fn permute_rows_and_cols_symmetric_lower<T: Copy>(
+pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationRef<'_>,
@@ -263,7 +263,7 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Copy>(
         for i in j..n {
             unsafe {
                 *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    *src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j));
+                    src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j)).clone();
             }
         }
     }
@@ -278,7 +278,7 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Copy>(
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_cols<T: Copy>(
+pub fn permute_cols<T: Clone>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationRef<'_>,
@@ -298,7 +298,7 @@ pub fn permute_cols<T: Copy>(
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_rows<T: Copy>(
+pub fn permute_rows<T: Clone>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,
     perm_indices: PermutationRef<'_>,
@@ -319,7 +319,7 @@ pub fn permute_rows<T: Copy>(
             for i in 0..m {
                 unsafe {
                     *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        *src.get_unchecked(*perm.get_unchecked(i), j);
+                        src.get_unchecked(*perm.get_unchecked(i), j).clone();
                 }
             }
         }
@@ -330,7 +330,7 @@ pub fn permute_rows<T: Copy>(
                 let dst_i = dst.rb_mut().row_unchecked(i);
 
                 dst_i.cwise().zip_unchecked(src_i).for_each(|dst, src| {
-                    *dst = *src;
+                    *dst = src.clone();
                 });
             }
         }
@@ -374,7 +374,7 @@ pub fn permute_rows_in_place<T: ComplexField>(
             temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
         };
     }
-    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = *src);
+    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
     permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
 }
 
@@ -397,6 +397,6 @@ pub fn permute_cols_in_place<T: ComplexField>(
             temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
         };
     }
-    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = *src);
+    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
     permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);
 }

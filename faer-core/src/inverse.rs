@@ -16,9 +16,9 @@ unsafe fn invert_lower_triangular_impl_small<const DO_CONJ: bool, T: ComplexFiel
     let mut dst = |i: usize, j: usize| dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
     let src = |i: usize, j: usize| {
         if !DO_CONJ {
-            *src.ptr_in_bounds_at_unchecked(i, j)
+            src.get_unchecked(i, j).clone()
         } else {
-            (*src.ptr_in_bounds_at_unchecked(i, j)).conj()
+            src.get_unchecked(i, j).conj()
         }
     };
     match m {
@@ -27,7 +27,7 @@ unsafe fn invert_lower_triangular_impl_small<const DO_CONJ: bool, T: ComplexFiel
         2 => {
             let dst00 = src(0, 0).inv();
             let dst11 = src(1, 1).inv();
-            let dst10 = -dst11 * src(1, 0) * dst00;
+            let dst10 = (dst11.mul(&src(1, 0)).mul(&dst00)).neg();
 
             *dst(0, 0) = dst00;
             *dst(1, 1) = dst11;
@@ -45,15 +45,15 @@ unsafe fn invert_unit_lower_triangular_impl_small<const DO_CONJ: bool, T: Comple
     let mut dst = |i: usize, j: usize| dst.rb_mut().ptr_in_bounds_at_unchecked(i, j);
     let src = |i: usize, j: usize| {
         if !DO_CONJ {
-            *src.ptr_in_bounds_at_unchecked(i, j)
+            src.get_unchecked(i, j).clone()
         } else {
-            (*src.ptr_in_bounds_at_unchecked(i, j)).conj()
+            src.get_unchecked(i, j).conj()
         }
     };
     match m {
         0 | 1 => {}
         2 => {
-            *dst(1, 0) = -src(1, 0);
+            *dst(1, 0) = src(1, 0).neg();
         }
         _ => unreachable!(),
     }
@@ -100,7 +100,7 @@ unsafe fn invert_lower_triangular_impl<T: ComplexField>(
         BlockStructure::TriangularLower,
         Conj::No,
         None,
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
     solve::solve_lower_triangular_in_place(src_br, conj, dst_bl, Conj::No, parallelism);
@@ -147,7 +147,7 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
         BlockStructure::UnitTriangularLower,
         Conj::No,
         None,
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
     solve::solve_unit_lower_triangular_in_place(src_br, conj, dst_bl, Conj::No, parallelism);

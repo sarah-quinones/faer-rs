@@ -8,7 +8,6 @@ use faer_core::{
     mul::dot,
     temp_mat_req, ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
-use num_traits::Zero;
 use reborrow::*;
 
 fn qr_in_place_unblocked<T: ComplexField>(
@@ -29,16 +28,16 @@ fn qr_in_place_unblocked<T: ComplexField>(
         let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
 
         let mut tail_squared_norm = T::Real::zero();
-        for &elem in first_col_tail.rb() {
-            tail_squared_norm = tail_squared_norm + (elem * elem.conj()).real();
+        for elem in first_col_tail.rb() {
+            tail_squared_norm = tail_squared_norm.add(&elem.mul(&elem.conj()).real());
         }
 
         let (tau, beta) = make_householder_in_place(
             Some(first_col_tail.rb_mut()),
-            *first_col_head.rb().get(0),
+            first_col_head.rb().get(0).clone(),
             tail_squared_norm,
         );
-        unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau };
+        unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau.clone() };
         let tau_inv = tau.inv();
 
         *first_col_head.rb_mut().get(0) = beta;
@@ -47,11 +46,11 @@ fn qr_in_place_unblocked<T: ComplexField>(
             let (col_head, col_tail) = col.split_at(1);
             let col_head = col_head.get(0);
 
-            let dot = *col_head + dot(arch, first_col_tail.rb(), col_tail.rb());
-            let k = -dot * tau_inv;
-            *col_head = *col_head + k;
+            let dot = col_head.add(&dot(arch, first_col_tail.rb(), col_tail.rb()));
+            let k = (dot.mul(&tau_inv)).neg();
+            *col_head = col_head.add(&k);
             col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
-                *a = *a + k * *b;
+                *a = a.add(&k.mul(b));
             });
         }
     }
@@ -251,7 +250,6 @@ mod tests {
         },
         Conj, Parallelism,
     };
-    use num_traits::One;
     use std::cell::RefCell;
 
     use assert_approx_eq::assert_approx_eq;

@@ -8,7 +8,6 @@ use faer_core::{
     zip::ColUninit,
     ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
-use num_traits::Zero;
 use reborrow::*;
 
 #[inline]
@@ -73,7 +72,7 @@ fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>
     let inv = matrix.rb().get(j, j).inv();
     for i in j + 1..m {
         let elem = matrix.rb_mut().get(i, j);
-        *elem = *elem * inv;
+        *elem = elem.mul(&inv);
     }
     let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(j + 1, j + 1);
     matmul(
@@ -84,7 +83,7 @@ fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>
         top_right.rb().row(j).as_2d(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         Parallelism::None,
     )
 }
@@ -182,7 +181,7 @@ fn lu_in_place_impl<T: ComplexField>(
         mat_top_right.rb(),
         Conj::No,
         Some(T::one()),
-        -T::one(),
+        T::one().neg(),
         parallelism,
     );
 

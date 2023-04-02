@@ -1,8 +1,7 @@
+use assert2::assert as fancy_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{solve, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use reborrow::*;
-
-use assert2::assert as fancy_assert;
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix in place, given its Cholesky decomposition.
@@ -123,7 +122,7 @@ pub fn solve<T: ComplexField>(
     dst.rb_mut()
         .cwise()
         .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
     solve_in_place(
         cholesky_factors,
         conj_lhs,
@@ -187,7 +186,7 @@ pub fn solve_transpose<T: ComplexField>(
     dst.rb_mut()
         .cwise()
         .zip(rhs)
-        .for_each(|dst, src| *dst = *src);
+        .for_each(|dst, src| *dst = src.clone());
     solve_transpose_in_place(
         cholesky_factors,
         conj_lhs,

@@ -49,14 +49,15 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         // reserve space for L10×D0
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
 
-        for ((l10xd0_col, l10_col), &d_factor) in l10xd0
+        for ((l10xd0_col, l10_col), d_factor) in l10xd0
             .rb_mut()
             .into_col_iter()
             .zip(l10.rb().into_col_iter())
             .zip(d0.into_iter())
         {
+            let d_factor = d_factor.clone();
             for (l10xd0_elem, l) in l10xd0_col.into_iter().zip(l10_col) {
-                *l10xd0_elem = *l * d_factor;
+                *l10xd0_elem = l.mul(&d_factor);
             }
         }
 
@@ -73,7 +74,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
             BlockStructure::Rectangular,
             Conj::Yes,
             Some(T::one()),
-            -T::one(),
+            T::one().neg(),
             parallelism,
         );
 
@@ -95,7 +96,7 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
             l10xd0.transpose(),
             Conj::Yes,
             Some(T::one()),
-            -T::one(),
+            T::one().neg(),
             parallelism,
         );
 
@@ -108,10 +109,10 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         );
 
         let l21xd1 = a21;
-        for (l21xd1_col, &d1_elem) in l21xd1.into_col_iter().zip(d1) {
+        for (l21xd1_col, d1_elem) in l21xd1.into_col_iter().zip(d1) {
             let d1_elem_inv = d1_elem.inv();
             for l21xd1_elem in l21xd1_col {
-                *l21xd1_elem = *l21xd1_elem * d1_elem_inv;
+                *l21xd1_elem = l21xd1_elem.mul(&d1_elem_inv);
             }
         }
 
@@ -173,7 +174,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
             // reserve space for L10×D0
             let mut l10xd0 = top_right.submatrix(0, 0, block_size, rem).transpose();
 
-            for ((l10xd0_col, a10_col), &d0_elem) in l10xd0
+            for ((l10xd0_col, a10_col), d0_elem) in l10xd0
                 .rb_mut()
                 .into_col_iter()
                 .zip(a10.rb_mut().into_col_iter())
@@ -182,7 +183,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
                 let d0_elem_inv = d0_elem.inv();
                 for (l10xd0_elem, a10_elem) in l10xd0_col.into_iter().zip(a10_col) {
                     *l10xd0_elem = a10_elem.clone();
-                    *a10_elem = *a10_elem * d0_elem_inv;
+                    *a10_elem = a10_elem.mul(&d0_elem_inv);
                 }
             }
 
@@ -197,7 +198,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
                 BlockStructure::Rectangular,
                 Conj::Yes,
                 Some(T::one()),
-                -T::one(),
+                T::one().neg(),
                 parallelism,
             );
         }

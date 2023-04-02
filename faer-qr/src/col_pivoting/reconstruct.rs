@@ -4,7 +4,9 @@ use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::apply_block_householder_sequence_on_the_left_in_place,
     permutation::{permute_cols_in_place, permute_cols_in_place_req, PermutationRef},
-    temp_mat_req, temp_mat_uninit, zip, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit, zip,
+    zip::MatUninit,
+    ComplexField, Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -36,10 +38,10 @@ pub fn reconstruct<T: ComplexField>(
     let mut stack = stack;
 
     // copy R
-    dst.rb_mut()
-        .cwise()
-        .zip(qr_factors)
-        .for_each_triangular_upper(faer_core::zip::Diag::Include, |dst, src| *dst = *src);
+    zip!(MatUninit(dst.rb_mut()), qr_factors)
+        .for_each_triangular_upper(faer_core::zip::Diag::Include, |dst, src| unsafe {
+            *dst = src.clone()
+        });
 
     // zero bottom part
     dst.rb_mut()
@@ -92,7 +94,7 @@ pub fn reconstruct_in_place<T: ComplexField>(
         stack,
     );
 
-    zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = *src);
+    zip!(qr_factors, dst.rb()).for_each(|dst, src| *dst = src.clone());
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
