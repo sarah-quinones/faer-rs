@@ -69,11 +69,9 @@ pub fn invert_in_place<T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    temp_mat_uninit! {
-        let (mut dst, stack) = unsafe {
-            temp_mat_uninit::<T>(qr_factors.nrows(), qr_factors.ncols(), stack)
-        };
-    }
+    let (mut dst, stack) =
+        unsafe { temp_mat_uninit::<T>(qr_factors.nrows(), qr_factors.ncols(), stack) };
+    let mut dst = dst.as_mut();
 
     invert(
         dst.rb_mut(),

@@ -57,14 +57,13 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
         }
     };
 
-    temp_mat_uninit! {
-        let (mut y, mut stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack.rb_mut()) };
-        let (mut z, mut stack) = unsafe { temp_mat_uninit::<T>(m, 1, stack.rb_mut()) };
-    }
+    let (mut y, mut stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack.rb_mut()) };
+    let mut y = y.as_mut();
+    let (mut z, mut stack) = unsafe { temp_mat_uninit::<T>(m, 1, stack.rb_mut()) };
+    let mut z = z.as_mut();
 
-    temp_mat_zeroed! {
-        let (mut z_tmp, _) = temp_mat_zeroed::<T>(m, n_threads, stack.rb_mut());
-    }
+    let (mut z_tmp, _) = temp_mat_zeroed::<T>(m, n_threads, stack.rb_mut());
+    let mut z_tmp = z_tmp.as_mut();
 
     let mut tl = T::zero();
     let mut tr = T::zero();

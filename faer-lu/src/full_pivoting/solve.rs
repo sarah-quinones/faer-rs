@@ -25,9 +25,8 @@ fn solve_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    temp_mat_uninit! {
-        let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
-    }
+    let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
+    let mut temp = temp.as_mut();
 
     // temp <- P(row_fwd) B
     let src = match rhs {
@@ -72,9 +71,8 @@ fn solve_transpose_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    temp_mat_uninit! {
-        let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
-    }
+    let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
+    let mut temp = temp.as_mut();
 
     // temp <- P(col_fwd) B
     let src = match rhs {

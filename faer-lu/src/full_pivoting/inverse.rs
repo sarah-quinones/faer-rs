@@ -26,10 +26,10 @@ fn invert_impl<T: ComplexField>(
     fancy_debug_assert!(dst.nrows() == n);
     fancy_debug_assert!(dst.ncols() == n);
 
-    temp_mat_uninit! {
-        let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-        let (mut inv, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-    }
+    let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut inv, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let mut inv_lu = inv_lu.as_mut();
+    let mut inv = inv.as_mut();
 
     let rs = inv_lu.row_stride();
     let cs = inv_lu.col_stride();

@@ -206,11 +206,8 @@ fn lu_in_place_impl<T: ComplexField>(
 
     if n_transpositions >= m - m / 2 {
         // use permutations
-        temp_mat_uninit! {
-            let (tmp_col, _) = unsafe {
-                temp_mat_uninit::<T>(m, 1, stack.rb_mut())
-            };
-        }
+        let (mut tmp_col, _) = unsafe { temp_mat_uninit::<T>(m, 1, stack.rb_mut()) };
+        let tmp_col = tmp_col.as_mut();
 
         let mut tmp_col = tmp_col.col(0);
         let mut func = |j| {

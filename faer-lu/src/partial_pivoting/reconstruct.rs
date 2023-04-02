@@ -24,9 +24,8 @@ fn reconstruct_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let size = m.min(n);
 
-    temp_mat_uninit! {
-        let (mut lu, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-    }
+    let (mut lu, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let mut lu = lu.as_mut();
 
     let (l_top, _, l_bot, _) = lu_factors.split_at(size, size);
     let (u_left, u_right, _, _) = lu_factors.split_at(size, size);

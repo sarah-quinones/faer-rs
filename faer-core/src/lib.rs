@@ -19,7 +19,7 @@ use core::{
     ops::{Index, IndexMut},
     ptr::NonNull,
 };
-use dyn_stack::{SizeOverflow, StackReq};
+use dyn_stack::{DynArray, DynStack, SizeOverflow, StackReq};
 use num_complex::Complex;
 use rayon::iter::IndexedParallelIterator;
 use reborrow::*;
@@ -4341,6 +4341,88 @@ macro_rules! zip {
     };
 }
 
+enum DynMatImpl<'a, T> {
+    Init(DynArray<'a, T>),
+    Uninit(DynArray<'a, MaybeUninit<T>>),
+}
+
+pub struct DynMat<'a, T> {
+    inner: DynMatImpl<'a, T>,
+    nrows: usize,
+    ncols: usize,
+    col_stride: usize,
+}
+
+impl<T> DynMat<'_, T> {
+    #[inline]
+    pub fn as_ref(&self) -> MatRef<'_, T> {
+        let ptr = match &self.inner {
+            DynMatImpl::Init(init) => init.as_ptr(),
+            DynMatImpl::Uninit(uninit) => uninit.as_ptr() as *const T,
+        };
+        unsafe { MatRef::from_raw_parts(ptr, self.nrows, self.ncols, 1, self.col_stride as isize) }
+    }
+    #[inline]
+    pub fn as_mut(&mut self) -> MatMut<'_, T> {
+        let ptr = match &mut self.inner {
+            DynMatImpl::Init(init) => init.as_mut_ptr(),
+            DynMatImpl::Uninit(uninit) => uninit.as_mut_ptr() as *mut T,
+        };
+        unsafe { MatMut::from_raw_parts(ptr, self.nrows, self.ncols, 1, self.col_stride as isize) }
+    }
+}
+
+/// Creates a temporary matrix of constant values, from the given memory stack.
+pub fn temp_mat_constant<T: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    value: T,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, T>, DynStack<'_>) {
+    let col_stride = if is_vectorizable::<T>() {
+        round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
+    } else {
+        nrows
+    };
+
+    let (alloc, stack) =
+        stack.make_aligned_with(ncols * col_stride, align_for::<T>(), |_| value.clone());
+    (
+        DynMat {
+            inner: DynMatImpl::Init(alloc),
+            nrows,
+            ncols,
+            col_stride,
+        },
+        stack,
+    )
+}
+
+/// Creates a temporary matrix of zeroed values, from the given memory stack.
+pub fn temp_mat_zeroed<T: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, T>, DynStack<'_>) {
+    let col_stride = if is_vectorizable::<T>() {
+        round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
+    } else {
+        nrows
+    };
+
+    let (alloc, stack) =
+        stack.make_aligned_with(ncols * col_stride, align_for::<T>(), |_| T::zero());
+    (
+        DynMat {
+            inner: DynMatImpl::Init(alloc),
+            nrows,
+            ncols,
+            col_stride,
+        },
+        stack,
+    )
+}
+
 /// Unsafe: Creates a temporary matrix of possibly uninitialized values, from the given memory
 /// stack.
 ///
@@ -4352,98 +4434,31 @@ macro_rules! zip {
 /// can cause undefined behavior.
 ///
 /// Use the pointer access API instead: e.g., [`MatMut::ptr_at`] or [`zip::MatUninit`].
-#[macro_export]
-macro_rules! temp_mat_uninit {
-    {
-        $(
-            let ($id: pat, $stack_id: pat) = unsafe {
-                temp_mat_uninit::<$ty: ty>(
-                    $nrows: expr,
-                    $ncols: expr,
-                    $stack: expr$(,)?
-                )
-            };
-        )*
-    } => {
-        $(
-            let nrows: usize = $nrows;
-            let ncols: usize = $ncols;
-            let col_stride = if $crate::is_vectorizable::<$ty>() {
-                $crate::round_up_to(
-                    nrows,
-                    $crate::align_for::<$ty>() / ::core::mem::size_of::<$ty>()
-                )
-            } else {
-                nrows
-            };
+pub unsafe fn temp_mat_uninit<T: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, T>, DynStack<'_>) {
+    if core::mem::needs_drop::<T>() || cfg!(debug_assertions) {
+        temp_mat_constant(nrows, ncols, T::nan(), stack)
+    } else {
+        let col_stride = if is_vectorizable::<T>() {
+            round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
+        } else {
+            nrows
+        };
 
-            let (mut temp_data, $stack_id) = $stack.make_aligned_uninit::<$ty>(
-                ncols * col_stride,
-                $crate::align_for::<$ty>(),
-            );
-
-            if cfg!(debug_assertions) {
-                for elem in &mut *temp_data {
-                    *elem = ::core::mem::MaybeUninit::new(<$ty as $crate::ComplexField>::nan());
-                }
-            }
-
-            #[allow(unused_unsafe)]
-            let $id = unsafe {
-                $crate::from_uninit_mut_slice(
-                    &mut (temp_data),
-                    nrows,
-                    ncols,
-                    1,
-                    col_stride,
-                )
-            };
-        )*
-    };
-}
-
-/// Creates a temporary matrix of zeroed values, from the given memory stack.
-#[macro_export]
-macro_rules! temp_mat_zeroed {
-    {
-        $(
-            let ($id: pat, $stack_id: pat) = temp_mat_zeroed::<$ty: ty>(
-                $nrows: expr,
-                $ncols: expr,
-                $stack: expr$(,)?
-            );
-        )*
-    } => {
-        $(
-            let nrows: usize = $nrows;
-            let ncols: usize = $ncols;
-            let col_stride = if $crate::is_vectorizable::<$ty>() {
-                $crate::round_up_to(
-                    nrows,
-                    $crate::align_for::<$ty>() / ::core::mem::size_of::<$ty>()
-                )
-            } else {
-                nrows
-            };
-
-            let (mut temp_data, $stack_id) = $stack.make_aligned_with(
-                ncols * col_stride,
-                $crate::align_for::<$ty>(),
-                |_| <$ty as $crate::ComplexField>::zero(),
-            );
-
-            #[allow(unused_unsafe)]
-            let $id = unsafe {
-                $crate::from_mut_slice(
-                    &mut temp_data,
-                    nrows,
-                    ncols,
-                    1,
-                    col_stride,
-                )
-            };
-        )*
-    };
+        let (alloc, stack) = stack.make_aligned_uninit::<T>(ncols * col_stride, align_for::<T>());
+        (
+            DynMat {
+                inner: DynMatImpl::Uninit(alloc),
+                nrows,
+                ncols,
+                col_stride,
+            },
+            stack,
+        )
+    }
 }
 
 /// Returns the stack requirements for creating a temporary matrix with the given dimensions.

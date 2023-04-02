@@ -68,9 +68,8 @@ pub fn reconstruct_lower_in_place<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let n = cholesky_factor.nrows();
-    temp_mat_uninit! {
-        let (mut tmp, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-    }
+    let (mut tmp, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+    let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
     cholesky_factor
         .cwise()

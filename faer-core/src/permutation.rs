@@ -370,11 +370,8 @@ pub fn permute_rows_in_place<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
-    temp_mat_uninit! {
-        let (mut tmp, _) = unsafe {
-            temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
-        };
-    }
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack) };
+    let mut tmp = tmp.as_mut();
     zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
     permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
 }
@@ -393,11 +390,8 @@ pub fn permute_cols_in_place<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
-    temp_mat_uninit! {
-        let (mut tmp, _) = unsafe {
-            temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack)
-        };
-    }
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack) };
+    let mut tmp = tmp.as_mut();
     zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
     permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);
 }

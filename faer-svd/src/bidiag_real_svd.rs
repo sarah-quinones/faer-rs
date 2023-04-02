@@ -59,12 +59,14 @@ fn compute_svd_of_m<T: RealField>(
     let (col0_perm, stack) = stack.collect(perm.iter().map(|&p| col0[p].clone()));
     let (diag_perm, stack) = stack.collect(perm.iter().map(|&p| diag[p].clone()));
 
-    temp_mat_uninit! {
-        let (shifts, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-        let (mus, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-        let (singular_vals, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-        let (zhat, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-    }
+    let (mut shifts, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+    let shifts = shifts.as_mut();
+    let (mut mus, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+    let mus = mus.as_mut();
+    let (mut singular_vals, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+    let singular_vals = singular_vals.as_mut();
+    let (mut zhat, stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+    let zhat = zhat.as_mut();
 
     let mut shifts = shifts.col(0);
     let mut mus = mus.col(0);
@@ -1050,9 +1052,8 @@ pub fn compute_bidiag_real_svd<T: RealField>(
     let n = diag.len();
 
     if n <= jacobi_fallback_threshold {
-        temp_mat_zeroed! {
-            let (mut s, _) = temp_mat_zeroed::<T>(n, n, stack);
-        }
+        let (mut s, _) = temp_mat_zeroed::<T>(n, n, stack);
+        let mut s = s.as_mut();
 
         for i in 0..n {
             s[(i, i)] = diag[i].clone();
@@ -1093,9 +1094,8 @@ pub fn compute_bidiag_real_svd<T: RealField>(
                 stack,
             ),
             None => {
-                temp_mat_uninit! {
-                    let (u, stack) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
-                }
+                let (mut u, stack) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+                let u = u.as_mut();
                 bidiag_svd_impl(
                     diag,
                     subdiag,
@@ -1143,10 +1143,12 @@ fn bidiag_svd_impl<T: RealField>(
     let compact_u = !(u.nrows() == n + 1) as usize;
 
     if k <= jacobi_fallback_threshold || rem <= jacobi_fallback_threshold {
-        temp_mat_uninit! {
-            let (mut u1_alloc, stack) = unsafe { temp_mat_uninit::<T>(k + 1, compact_u * (k + 1), stack.rb_mut()) };
-            let (mut u2_alloc, stack) = unsafe { temp_mat_uninit::<T>(rem + 1, compact_u * (rem + 1), stack) };
-        }
+        let (mut u1_alloc, stack) =
+            unsafe { temp_mat_uninit::<T>(k + 1, compact_u * (k + 1), stack.rb_mut()) };
+        let mut u1_alloc = u1_alloc.as_mut();
+        let (mut u2_alloc, stack) =
+            unsafe { temp_mat_uninit::<T>(rem + 1, compact_u * (rem + 1), stack) };
+        let mut u2_alloc = u2_alloc.as_mut();
 
         let (_u0, mut u1, mut u2) = if compact_u == 0 {
             let (u1, u2) = u.rb_mut().split_at_row(k + 1);
@@ -1175,10 +1177,11 @@ fn bidiag_svd_impl<T: RealField>(
             None => (None, None),
         };
 
-        temp_mat_zeroed! {
-            let (mut matrix1, stack) = temp_mat_zeroed::<T>(k + 1, k + 1, stack);
-            let (mut matrix2, _) = temp_mat_zeroed::<T>(rem + 1, rem + 1, stack);
-        }
+        let (mut matrix1, stack) = temp_mat_zeroed::<T>(k + 1, k + 1, stack);
+        let (mut matrix2, _) = temp_mat_zeroed::<T>(rem + 1, rem + 1, stack);
+        let mut matrix1 = matrix1.as_mut();
+        let mut matrix2 = matrix2.as_mut();
+
         for j in 0..k {
             matrix1[(j, j)] = d1[j].clone();
             matrix1[(j + 1, j)] = sub_d1[j].clone();
@@ -1468,10 +1471,10 @@ fn bidiag_svd_impl<T: RealField>(
 
     let allocate_vm = v.is_some() as usize;
     let allocate_um = fill_u as usize;
-    temp_mat_zeroed! {
-        let (mut um, stack) = temp_mat_zeroed::<T>(n + 1, allocate_um * (n + 1), stack);
-        let (mut vm, mut stack) = temp_mat_zeroed::<T>(n, allocate_vm * n, stack);
-    }
+    let (mut um, stack) = temp_mat_zeroed::<T>(n + 1, allocate_um * (n + 1), stack);
+    let (mut vm, mut stack) = temp_mat_zeroed::<T>(n, allocate_vm * n, stack);
+    let mut um = um.as_mut();
+    let mut vm = vm.as_mut();
 
     compute_svd_of_m(
         fill_u.then_some(um.rb_mut()),
@@ -1539,9 +1542,8 @@ fn bidiag_svd_impl<T: RealField>(
     let v_is_none = v.is_none();
 
     let mut update_v = |parallelism, stack: DynStack<'_>| {
-        temp_mat_uninit! {
-            let (mut combined_v, _) = unsafe { temp_mat_uninit::<T>(n, allocate_vm * n, stack) };
-        }
+        let (mut combined_v, _) = unsafe { temp_mat_uninit::<T>(n, allocate_vm * n, stack) };
+        let mut combined_v = combined_v.as_mut();
         let v_rhs = vm.rb();
 
         if let Some(mut v) = v.rb_mut() {
@@ -1601,9 +1603,9 @@ fn bidiag_svd_impl<T: RealField>(
     };
 
     let mut update_u = |parallelism, stack: DynStack<'_>| {
-        temp_mat_uninit! {
-            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(n + 1, allocate_um * (n + 1), stack) };
-        }
+        let (mut combined_u, _) =
+            unsafe { temp_mat_uninit::<T>(n + 1, allocate_um * (n + 1), stack) };
+        let mut combined_u = combined_u.as_mut();
 
         if fill_u {
             let (mut combined_u1, mut combined_u2) = combined_u.rb_mut().split_at_row(k + 1);
@@ -1678,9 +1680,8 @@ fn bidiag_svd_impl<T: RealField>(
     if compact_u == 1 {
         update_v(parallelism, stack.rb_mut());
         if fill_u {
-            temp_mat_uninit! {
-                let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
-            }
+            let (mut combined_u, _) = unsafe { temp_mat_uninit::<T>(2, n + 1, stack) };
+            let mut combined_u = combined_u.as_mut();
             faer_core::mul::matmul(
                 combined_u.rb_mut(),
                 Conj::No,

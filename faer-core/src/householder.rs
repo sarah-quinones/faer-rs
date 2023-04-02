@@ -95,9 +95,8 @@ pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
     } else {
         let (first_row, last_rows) = matrix.split_at_row(1);
         let mut first_row = first_row.row(0);
-        temp_mat_uninit! {
-            let (tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-        }
+        let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
+        let tmp = tmp.as_mut();
         let mut tmp = tmp.transpose().row(0);
 
         match conj_mat {
@@ -422,9 +421,8 @@ fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
     let (mut matrix_top, mut matrix_bot) = matrix.split_at_row(bs);
 
     // essentials* × mat
-    temp_mat_uninit! {
-        let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(bs, n, stack) };
-    }
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(bs, n, stack) };
+    let mut tmp = tmp.as_mut();
 
     triangular::matmul(
         tmp.rb_mut(),

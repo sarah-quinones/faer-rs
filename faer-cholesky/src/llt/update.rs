@@ -475,10 +475,10 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
     let first = indices[0];
 
-    temp_mat_uninit! {
-        let (mut w, stack) = unsafe { temp_mat_uninit::<T>(n - first - r, r, stack) };
-        let (alpha, _) = unsafe { temp_mat_uninit::<T>(r, 1, stack) };
-    }
+    let (mut w, stack) = unsafe { temp_mat_uninit::<T>(n - first - r, r, stack) };
+    let mut w = w.as_mut();
+    let (mut alpha, _) = unsafe { temp_mat_uninit::<T>(r, 1, stack) };
+    let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
 
     Arch::new().dispatch(|| {

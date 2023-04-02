@@ -21,9 +21,8 @@ fn invert_lower_impl<T: ComplexField>(
     };
     let n = cholesky_factor.nrows();
 
-    temp_mat_uninit! {
-        let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
-    }
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+    let mut tmp = tmp.as_mut();
 
     invert_lower_triangular(tmp.rb_mut(), cholesky_factor, Conj::No, parallelism);
 

@@ -185,9 +185,8 @@ fn compute_real_svd_small<T: RealField>(
 
     // if the matrix is square, skip the QR
     if m == n {
-        temp_mat_uninit! {
-            let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-        }
+        let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+        let mut jacobi_mat = jacobi_mat.as_mut();
         zip!(jacobi_mat.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
         jacobi::jacobi_svd(
@@ -204,15 +203,15 @@ fn compute_real_svd_small<T: RealField>(
 
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
 
-    temp_mat_uninit! {
-        let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-        let (mut householder, mut stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
-    }
+    let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut householder, mut stack) =
+        unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+    let mut qr = qr.as_mut();
+    let mut householder = householder.as_mut();
 
     {
-        temp_mat_uninit! {
-            let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
-        }
+        let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
+        let mut r = r.as_mut();
 
         zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
@@ -274,10 +273,12 @@ fn compute_bidiag_cplx_svd<T: RealField>(
     stack: DynStack<'_>,
 ) {
     let n = diag.len();
-    temp_mat_uninit! {
-        let (mut u_real, stack) = unsafe { temp_mat_uninit::<T>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
-        let (mut v_real, stack) = unsafe { temp_mat_uninit::<T>(n, if v.is_some() { n } else { 0 }, stack) };
-    }
+    let (mut u_real, stack) =
+        unsafe { temp_mat_uninit::<T>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
+    let mut u_real = u_real.as_mut();
+    let (mut v_real, stack) =
+        unsafe { temp_mat_uninit::<T>(n, if v.is_some() { n } else { 0 }, stack) };
+    let mut v_real = v_real.as_mut();
     let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.abs()));
     let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.abs()));
 
@@ -397,11 +398,14 @@ fn compute_svd_big<T: ComplexField>(
     let n = matrix.ncols();
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
 
-    temp_mat_uninit! {
-        let (mut bid, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack.rb_mut()) };
-        let (mut householder_left, stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
-        let (mut householder_right, mut stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n - 1, stack) };
-    }
+    let (mut bid, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack.rb_mut()) };
+    let mut bid = bid.as_mut();
+    let (mut householder_left, stack) =
+        unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+    let mut householder_left = householder_left.as_mut();
+    let (mut householder_right, mut stack) =
+        unsafe { temp_mat_uninit::<T>(householder_blocksize, n - 1, stack) };
+    let mut householder_right = householder_right.as_mut();
 
     zip!(bid.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
@@ -448,10 +452,12 @@ fn compute_svd_big<T: ComplexField>(
         j_base += bs;
     }
 
-    temp_mat_uninit! {
-        let (mut u_b, stack) = unsafe { temp_mat_uninit::<T>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack) };
-        let (mut v_b, mut stack) = unsafe { temp_mat_uninit::<T>(n, if u.is_some() { n } else { 0 }, stack) };
-    }
+    let (mut u_b, stack) =
+        unsafe { temp_mat_uninit::<T>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack) };
+    let mut u_b = u_b.as_mut();
+    let (mut v_b, mut stack) =
+        unsafe { temp_mat_uninit::<T>(n, if u.is_some() { n } else { 0 }, stack) };
+    let mut v_b = v_b.as_mut();
 
     bidiag_svd(
         &mut diag,
@@ -679,15 +685,15 @@ pub fn compute_svd<T: ComplexField>(
         // do a qr first, then do the svd
         let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
 
-        temp_mat_uninit! {
-            let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-            let (mut householder, mut stack) = unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
-        }
+        let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+        let mut qr = qr.as_mut();
+        let (mut householder, mut stack) =
+            unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+        let mut householder = householder.as_mut();
 
         {
-            temp_mat_uninit! {
-                let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
-            }
+            let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
+            let mut r = r.as_mut();
 
             zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
 
