@@ -216,7 +216,7 @@ fn update_and_best_in_col_f64_generic<S: pulp::Simd>(
     let (dst_head, dst_tail) = S::f64s_as_mut_simd(dst_suffix);
     let (lhs_head, lhs_tail) = S::f64s_as_simd(lhs_suffix);
 
-    let increment1 = simd.u64s_splat(1 * lane_count as u64);
+    let increment1 = simd.u64s_splat(lane_count as u64);
     let increment2 = simd.u64s_splat(2 * lane_count as u64);
 
     let mut best_value0 = simd.f64s_splat(0.0);
@@ -323,7 +323,7 @@ fn update_and_best_in_col_f32_generic<S: pulp::Simd>(
     let (dst_head, dst_tail) = S::f32s_as_mut_simd(dst_suffix);
     let (lhs_head, lhs_tail) = S::f32s_as_simd(lhs_suffix);
 
-    let increment1 = simd.u32s_splat(1 * lane_count as u32);
+    let increment1 = simd.u32s_splat(lane_count as u32);
     let increment2 = simd.u32s_splat(2 * lane_count as u32);
 
     let mut best_value0 = simd.f32s_splat(0.0);

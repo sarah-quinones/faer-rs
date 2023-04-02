@@ -403,7 +403,7 @@ mod tests {
         }
 
         {
-            let mut a = a_orig.clone();
+            let mut a = a_orig;
             let mut w = Mat::with_dims(|_, _| T::new(random(), random()), 6, 2);
 
             w[(4, 0)].im = 0.0;

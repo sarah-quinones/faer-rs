@@ -195,7 +195,7 @@ mod tests {
             ]));
         let mut stack = DynStack::new(&mut mem);
 
-        let mut qr = a.clone();
+        let mut qr = a;
         let mut h_factor = Mat::zeros(blocksize, rank);
         compute::qr_in_place(
             qr.as_mut(),

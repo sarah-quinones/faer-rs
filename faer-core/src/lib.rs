@@ -129,7 +129,10 @@ pub trait ComplexField: Conjugate<Num = Self> + PartialEq + Send + Sync + Debug 
     fn abs(&self) -> Self::Real;
     fn nan() -> Self;
     fn is_nan(&self) -> bool {
-        self != self
+        #[allow(clippy::eq_op)]
+        {
+            self != self
+        }
     }
 
     /// Returns a complex number whose real part is equal to `real`, and a zero imaginary part.
@@ -841,7 +844,7 @@ impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
     fn eq(&self, other: &MatRef<'a, U>) -> bool {
         let same_dims = self.nrows() == other.nrows() && self.ncols() == other.ncols();
         if !same_dims {
-            return false;
+            false
         } else {
             let m = self.nrows();
             let n = self.ncols();
@@ -856,7 +859,7 @@ impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
                 }
             }
 
-            return true;
+            true
         }
     }
 }
@@ -4229,7 +4232,7 @@ impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
             }
         }
 
-        write!(f, "[\n")?;
+        writeln!(f, "[")?;
         for elem in self.into_row_iter().map(DebugRowSlice) {
             elem.fmt(f)?;
             f.write_str(",\n")?;

@@ -53,8 +53,8 @@ impl<T: RealField> JacobiRotation<T> {
     pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
         let Self { c, s } = self;
         (
-            m00.mul(&c).add(&m10.mul(&s)),
-            m01.mul(&c).add(&m11.mul(&s)),
+            m00.mul(c).add(&m10.mul(s)),
+            m01.mul(c).add(&m11.mul(s)),
             s.neg().mul(&m00).add(&c.mul(&m10)),
             s.neg().mul(&m01).add(&c.mul(&m11)),
         )

@@ -1,4 +1,5 @@
 //! Permutation matrices.
+#![allow(clippy::len_without_is_empty)]
 
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};

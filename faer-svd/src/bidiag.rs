@@ -491,7 +491,7 @@ fn bidiag_fused_op_process_batch<T: ComplexField>(
                         .sub(&u_prev.get_unchecked(i).mul(&u_rhs))
                         .sub(&z.get_unchecked(i).mul(&z_rhs));
 
-                    yj = yj.add(&(*aij).conj().mul(&u.get_unchecked(i)));
+                    yj = yj.add(&(*aij).conj().mul(u.get_unchecked(i)));
                 }
             }
 

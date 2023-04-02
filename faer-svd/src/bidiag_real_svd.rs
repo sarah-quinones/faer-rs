@@ -104,7 +104,7 @@ fn compute_svd_of_m<T: RealField>(
             col_perm.swap(i, i + 1);
         }
     }
-    for (i, p) in col_perm.iter().cloned().enumerate() {
+    for (i, p) in col_perm.iter().copied().enumerate() {
         col_perm_inv[p] = i;
     }
 
@@ -149,7 +149,6 @@ fn compute_singular_vectors<T: RealField>(
     mus: ColRef<T>,
 ) {
     let n = diag.len();
-    let m = perm.len();
 
     for k in 0..n {
         let actual_k = if k >= actual_n {
@@ -177,8 +176,7 @@ fn compute_singular_vectors<T: RealField>(
 
         if let Some(mut u) = u.rb_mut() {
             assert_eq!(u.row_stride(), 1);
-            for l in 0..m {
-                let i = perm[l];
+            for &i in perm {
                 u[outer_perm[i]] = zhat[i]
                     .div(&diag[i].sub(&shift).sub(&mu))
                     .div(&diag[i].add(&shift.add(&mu)));
@@ -192,8 +190,7 @@ fn compute_singular_vectors<T: RealField>(
 
         if let Some(mut v) = v {
             assert_eq!(v.row_stride(), 1);
-            for l in 1..m {
-                let i = perm[l];
+            for &i in &perm[1..] {
                 v[outer_perm[i]] = diag[i]
                     .mul(&zhat[i])
                     .div(&diag[i].sub(&shift).sub(&mu))
@@ -422,11 +419,9 @@ fn compute_singular_values_generic<T: RealField>(
                             shift = right.clone();
                             f_mid = f_mid_right_shift;
                         }
-                    } else {
-                        if f_mid_right_shift > T::zero() {
-                            shift = left.clone();
-                            f_mid = f_mid_left_shift;
-                        }
+                    } else if f_mid_right_shift > T::zero() {
+                        shift = left.clone();
+                        f_mid = f_mid_left_shift;
                     }
                 }
 
@@ -836,14 +831,14 @@ fn deflate<T: RealField>(
 
     let mut max_diag = T::zero();
     let mut max_col0 = T::zero();
-    for d in diag[1..].iter().cloned() {
+    for d in diag[1..].iter() {
         max_diag = if d.abs() > max_diag {
             d.abs()
         } else {
             max_diag
         };
     }
-    for d in col0.iter().cloned() {
+    for d in col0.iter() {
         max_col0 = if d.abs() > max_col0 {
             d.abs()
         } else {
@@ -853,9 +848,9 @@ fn deflate<T: RealField>(
 
     let epsilon_strict = epsilon.mul(&max_diag);
     let epsilon_strict = if epsilon_strict > consider_zero_threshold {
-        epsilon_strict
+        &epsilon_strict
     } else {
-        consider_zero_threshold.clone()
+        &consider_zero_threshold
     };
 
     let two = T::one().add(&T::one());
@@ -874,7 +869,7 @@ fn deflate<T: RealField>(
 
     // condition 4.2
     for x in &mut col0[1..] {
-        if x.abs() < epsilon_strict {
+        if x.abs() < *epsilon_strict {
             *x = T::zero();
         }
     }
@@ -891,7 +886,7 @@ fn deflate<T: RealField>(
     }
 
     let mut total_deflation = true;
-    for c in col0[1..].iter().cloned() {
+    for c in col0[1..].iter() {
         if !(c.abs() < consider_zero_threshold) {
             total_deflation = false;
             break;
@@ -900,7 +895,7 @@ fn deflate<T: RealField>(
 
     let mut p = 1;
 
-    for (d, i) in diag[1..].iter().cloned().zip(1..n) {
+    for (d, i) in diag[1..].iter().zip(1..n) {
         if d.abs() < consider_zero_threshold {
             perm[p] = i;
             p += 1;
@@ -963,7 +958,7 @@ fn deflate<T: RealField>(
     for (i, p) in perm.iter_mut().enumerate() {
         *p = i;
     }
-    for (i, j) in transpositions.iter().cloned().enumerate() {
+    for (i, j) in transpositions.iter().copied().enumerate() {
         perm.swap(i, j);
     }
 
@@ -975,7 +970,7 @@ fn deflate<T: RealField>(
         i -= 1;
     }
     while i > 1 {
-        if diag[i].sub(&diag[i - 1]) < epsilon_strict {
+        if diag[i].sub(&diag[i - 1]) < *epsilon_strict {
             if let Some(rot) = deflation44(diag, col0, u.rb_mut(), v.rb_mut(), i - 1, i) {
                 jacobi_coeffs[jacobi_0i + jacobi_ij] = rot;
                 jacobi_indices[jacobi_0i + jacobi_ij] = i;
@@ -1379,7 +1374,7 @@ fn bidiag_svd_impl<T: RealField>(
 
     let col0 = subdiag;
     diag[0] = r0.clone();
-    col0[0] = r0.clone();
+    col0[0] = r0;
 
     if compact_u == 0 {
         let (u1, u2) = if compact_u == 0 {
@@ -1484,8 +1479,8 @@ fn bidiag_svd_impl<T: RealField>(
         diag,
         col0,
         perm,
-        epsilon.clone(),
-        consider_zero_threshold.clone(),
+        epsilon,
+        consider_zero_threshold,
         stack.rb_mut(),
     );
 

@@ -256,7 +256,7 @@ impl<{generics_row_decl}> ZipRow<({generics_use},)> {{
 "#
         )?;
     }
-    fs::write(&dest_path, &code)?;
+    fs::write(dest_path, &code)?;
     println!("cargo:rerun-if-changed=build.rs");
 
     Ok(())

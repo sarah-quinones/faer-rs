@@ -208,10 +208,10 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                         let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
 
                         *p = w.rb().get_unchecked(j, r_idx + k).clone();
-                        let alpha_conj_p = (&*alpha).mul(&p.conj());
+                        let alpha_conj_p = (*alpha).mul(&p.conj());
                         let new_dj = dj.add(&alpha_conj_p.mul(p));
                         *beta = alpha_conj_p.mul(&new_dj.inv());
-                        *alpha = (&*alpha).sub(&new_dj.mul(&beta.mul(&beta.conj())));
+                        *alpha = (*alpha).sub(&new_dj.mul(&beta.mul(&beta.conj())));
 
                         dj = new_dj;
                     }

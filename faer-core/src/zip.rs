@@ -236,11 +236,11 @@ impl<'short, 'a, T> CwiseCol<'short> for ColUninit<'a, T> {
     }
     #[inline]
     unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).0.rb_mut().get_unchecked(i)
+        self.0.rb_mut().get_unchecked(i)
     }
     #[inline]
     unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).0.rb_mut().as_ptr().add(i)
+        self.0.rb_mut().as_ptr().add(i)
     }
 }
 
@@ -296,11 +296,11 @@ impl<'short, 'a, T> CwiseRow<'short> for RowUninit<'a, T> {
     }
     #[inline]
     unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).0.rb_mut().get_unchecked(i)
+        self.0.rb_mut().get_unchecked(i)
     }
     #[inline]
     unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).0.rb_mut().as_ptr().add(i)
+        self.0.rb_mut().as_ptr().add(i)
     }
 }
 
