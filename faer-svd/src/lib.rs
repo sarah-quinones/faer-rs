@@ -812,7 +812,7 @@ fn squareish_svd<T: ComplexField>(
 mod tests {
     use super::*;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, Mat};
+    use faer_core::{c32, c64, Mat};
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -1019,6 +1019,47 @@ mod tests {
     }
 
     #[test]
+    fn test_real_f32() {
+        for m in 0..20 {
+            for n in 0..20 {
+                let mat = Mat::with_dims(|_, _| rand::random::<f32>(), m, n);
+                let size = m.min(n);
+
+                let mut s = Mat::zeros(m, n);
+                let mut u = Mat::zeros(m, m);
+                let mut v = Mat::zeros(n, n);
+
+                compute_svd(
+                    mat.as_ref(),
+                    s.as_mut().submatrix(0, 0, size, size).diagonal(),
+                    Some(u.as_mut()),
+                    Some(v.as_mut()),
+                    f32::EPSILON,
+                    f32::MIN_POSITIVE,
+                    Parallelism::None,
+                    make_stack!(compute_svd_req::<f32>(
+                        m,
+                        n,
+                        ComputeVectors::Full,
+                        ComputeVectors::Full,
+                        Parallelism::None,
+                        SvdParams::default(),
+                    )),
+                    SvdParams::default(),
+                );
+
+                let reconstructed = &u * &s * v.transpose();
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-5);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_real_thin() {
         for m in 0..20 {
             for n in 0..20 {
@@ -1153,6 +1194,47 @@ mod tests {
                 for j in 0..n {
                     for i in 0..m {
                         assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cplx_f32() {
+        for m in 0..20 {
+            for n in 0..20 {
+                let mat = Mat::with_dims(|_, _| c32::new(rand::random(), rand::random()), m, n);
+                let size = m.min(n);
+
+                let mut s = Mat::zeros(m, n);
+                let mut u = Mat::zeros(m, m);
+                let mut v = Mat::zeros(n, n);
+
+                compute_svd(
+                    mat.as_ref(),
+                    s.as_mut().submatrix(0, 0, size, size).diagonal(),
+                    Some(u.as_mut()),
+                    Some(v.as_mut()),
+                    f32::EPSILON,
+                    f32::MIN_POSITIVE,
+                    Parallelism::None,
+                    make_stack!(compute_svd_req::<c32>(
+                        m,
+                        n,
+                        ComputeVectors::Full,
+                        ComputeVectors::Full,
+                        Parallelism::None,
+                        SvdParams::default(),
+                    )),
+                    SvdParams::default(),
+                );
+
+                let reconstructed = &u * &s * v.adjoint();
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-5);
                     }
                 }
             }

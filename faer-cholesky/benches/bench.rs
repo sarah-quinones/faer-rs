@@ -110,6 +110,31 @@ pub fn cholesky(c: &mut Criterion) {
             })
         });
 
+        c.bench_function(&format!("faer-st-cplx-llt-{n}"), |b| {
+            let mut mat =
+                Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);
+
+            let mut mem = GlobalMemBuffer::new(
+                llt::compute::cholesky_in_place_req::<c64>(
+                    n,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            b.iter(|| {
+                llt::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    Parallelism::None,
+                    stack.rb_mut(),
+                    Default::default(),
+                )
+                .unwrap();
+            })
+        });
+
         c.bench_function(&format!("faer-mt-cplx-llt-{n}"), |b| {
             let mut mat =
                 Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);

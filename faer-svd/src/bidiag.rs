@@ -3,7 +3,7 @@ use coe::Coerce;
 use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    householder::make_householder_in_place, mul::matmul, temp_mat_req, temp_mat_uninit,
+    c32, c64, householder::make_householder_in_place, mul::matmul, temp_mat_req, temp_mat_uninit,
     temp_mat_zeroed, zip, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowMut,
     RowRef,
 };
@@ -281,7 +281,6 @@ fn bidiag_fused_op_reference<T: ComplexField>(
     }
 }
 
-#[inline]
 fn bidiag_fused_op_step0_f64(
     arch: pulp::Arch,
 
@@ -414,7 +413,6 @@ fn bidiag_fused_op_step0_f64(
     })
 }
 
-#[inline]
 fn bidiag_fused_op_step1_f64(
     arch: pulp::Arch,
 
@@ -443,6 +441,498 @@ fn bidiag_fused_op_step1_f64(
             }
             for (zi, aij) in z_tail.iter_mut().zip(a_j_tail) {
                 *zi = f64::mul_add(*aij, rhs, *zi);
+            }
+        }
+    }
+    arch.dispatch(Impl { z, a_j, rhs })
+}
+
+fn bidiag_fused_op_step0_c64(
+    arch: pulp::Arch,
+
+    // update a_next
+    a_j: &mut [c64],
+    z: &[c64],
+    u_prev: &[c64],
+    u_rhs: c64,
+    z_rhs: c64,
+
+    // compute yj
+    u: &[c64],
+) -> c64 {
+    struct Impl<'a> {
+        a_j: &'a mut [c64],
+        z: &'a [c64],
+        u_prev: &'a [c64],
+        u_rhs: c64,
+        z_rhs: c64,
+        u: &'a [c64],
+    }
+
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = c64;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self {
+                a_j,
+                z,
+                u_prev,
+                u_rhs,
+                z_rhs,
+                u,
+            } = self;
+            let (a_j_head, a_j_tail) = S::c64s_as_mut_simd(a_j);
+            let (z_head, z_tail) = S::c64s_as_simd(z);
+            let (u_prev_head, u_prev_tail) = S::c64s_as_simd(u_prev);
+            let (u_head, u_tail) = S::c64s_as_simd(u);
+
+            let (a_j_head4, a_j_head1) = pulp::as_arrays_mut::<4, _>(a_j_head);
+            let (z_head4, z_head1) = pulp::as_arrays::<4, _>(z_head);
+            let (u_prev_head4, u_prev_head1) = pulp::as_arrays::<4, _>(u_prev_head);
+            let (u_head4, u_head1) = pulp::as_arrays::<4, _>(u_head);
+
+            let mut sum_v0 = simd.c64s_splat(c64::zero());
+            let mut sum_v1 = simd.c64s_splat(c64::zero());
+            let mut sum_v2 = simd.c64s_splat(c64::zero());
+            let mut sum_v3 = simd.c64s_splat(c64::zero());
+
+            let u_rhs_v = simd.c64s_neg(simd.c64s_splat(u_rhs));
+            let z_rhs_v = simd.c64s_neg(simd.c64s_splat(z_rhs));
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head4
+                .iter_mut()
+                .zip(z_head4)
+                .zip(u_prev_head4)
+                .zip(u_head4)
+            {
+                let aij_new0 = simd.c64s_mul_adde(
+                    u_prev_i[0],
+                    u_rhs_v,
+                    simd.c64s_mul_adde(zi[0], z_rhs_v, aij[0]),
+                );
+                let aij_new1 = simd.c64s_mul_adde(
+                    u_prev_i[1],
+                    u_rhs_v,
+                    simd.c64s_mul_adde(zi[1], z_rhs_v, aij[1]),
+                );
+                let aij_new2 = simd.c64s_mul_adde(
+                    u_prev_i[2],
+                    u_rhs_v,
+                    simd.c64s_mul_adde(zi[2], z_rhs_v, aij[2]),
+                );
+                let aij_new3 = simd.c64s_mul_adde(
+                    u_prev_i[3],
+                    u_rhs_v,
+                    simd.c64s_mul_adde(zi[3], z_rhs_v, aij[3]),
+                );
+                sum_v0 = simd.c64s_conj_mul_adde(aij_new0, ui[0], sum_v0);
+                sum_v1 = simd.c64s_conj_mul_adde(aij_new1, ui[1], sum_v1);
+                sum_v2 = simd.c64s_conj_mul_adde(aij_new2, ui[2], sum_v2);
+                sum_v3 = simd.c64s_conj_mul_adde(aij_new3, ui[3], sum_v3);
+                aij[0] = aij_new0;
+                aij[1] = aij_new1;
+                aij[2] = aij_new2;
+                aij[3] = aij_new3;
+            }
+
+            sum_v0 = simd.c64s_add(sum_v0, sum_v1);
+            sum_v2 = simd.c64s_add(sum_v2, sum_v3);
+            sum_v0 = simd.c64s_add(sum_v0, sum_v2);
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head1
+                .iter_mut()
+                .zip(z_head1)
+                .zip(u_prev_head1)
+                .zip(u_head1)
+            {
+                let aij_new =
+                    simd.c64s_mul_adde(*u_prev_i, u_rhs_v, simd.c64s_mul_adde(*zi, z_rhs_v, *aij));
+                sum_v0 = simd.c64s_conj_mul_adde(aij_new, *ui, sum_v0);
+                *aij = aij_new;
+            }
+
+            let mut sum = simd.c64s_reduce_sum(sum_v0);
+
+            for (((aij, zi), u_prev_i), ui) in
+                a_j_tail.iter_mut().zip(z_tail).zip(u_prev_tail).zip(u_tail)
+            {
+                let aij_new = *aij - *u_prev_i * u_rhs - *zi * z_rhs;
+                sum = aij_new.conj() * *ui + sum;
+                *aij = aij_new;
+            }
+
+            sum
+        }
+    }
+
+    arch.dispatch(Impl {
+        a_j,
+        z,
+        u_prev,
+        u_rhs,
+        z_rhs,
+        u,
+    })
+}
+
+fn bidiag_fused_op_step1_c64(
+    arch: pulp::Arch,
+
+    // update z
+    z: &mut [c64],
+    a_j: &[c64],
+    rhs: c64,
+) {
+    struct Impl<'a> {
+        z: &'a mut [c64],
+        a_j: &'a [c64],
+        rhs: c64,
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { z, a_j, rhs } = self;
+            let (z_head, z_tail) = S::c64s_as_mut_simd(z);
+            let (a_j_head, a_j_tail) = S::c64s_as_simd(a_j);
+            let rhs_v = simd.c64s_splat(rhs);
+
+            for (zi, aij) in z_head.iter_mut().zip(a_j_head) {
+                *zi = simd.c64s_mul_adde(*aij, rhs_v, *zi);
+            }
+            for (zi, aij) in z_tail.iter_mut().zip(a_j_tail) {
+                *zi = *aij * rhs + *zi;
+            }
+        }
+    }
+    arch.dispatch(Impl { z, a_j, rhs })
+}
+
+fn bidiag_fused_op_step0_f32(
+    arch: pulp::Arch,
+
+    // update a_next
+    a_j: &mut [f32],
+    z: &[f32],
+    u_prev: &[f32],
+    u_rhs: f32,
+    z_rhs: f32,
+
+    // compute yj
+    u: &[f32],
+) -> f32 {
+    struct Impl<'a> {
+        a_j: &'a mut [f32],
+        z: &'a [f32],
+        u_prev: &'a [f32],
+        u_rhs: f32,
+        z_rhs: f32,
+        u: &'a [f32],
+    }
+
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self {
+                a_j,
+                z,
+                u_prev,
+                u_rhs,
+                z_rhs,
+                u,
+            } = self;
+            let (a_j_head, a_j_tail) = S::f32s_as_mut_simd(a_j);
+            let (z_head, z_tail) = S::f32s_as_simd(z);
+            let (u_prev_head, u_prev_tail) = S::f32s_as_simd(u_prev);
+            let (u_head, u_tail) = S::f32s_as_simd(u);
+
+            let (a_j_head4, a_j_head1) = pulp::as_arrays_mut::<4, _>(a_j_head);
+            let (z_head4, z_head1) = pulp::as_arrays::<4, _>(z_head);
+            let (u_prev_head4, u_prev_head1) = pulp::as_arrays::<4, _>(u_prev_head);
+            let (u_head4, u_head1) = pulp::as_arrays::<4, _>(u_head);
+
+            let mut sum_v0 = simd.f32s_splat(0.0_f32);
+            let mut sum_v1 = simd.f32s_splat(0.0_f32);
+            let mut sum_v2 = simd.f32s_splat(0.0_f32);
+            let mut sum_v3 = simd.f32s_splat(0.0_f32);
+
+            let u_rhs_v = simd.f32s_splat(u_rhs);
+            let z_rhs_v = simd.f32s_splat(z_rhs);
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head4
+                .iter_mut()
+                .zip(z_head4)
+                .zip(u_prev_head4)
+                .zip(u_head4)
+            {
+                let aij_new0 = simd.f32s_mul_adde(
+                    u_prev_i[0],
+                    simd.f32s_neg(u_rhs_v),
+                    simd.f32s_mul_adde(zi[0], simd.f32s_neg(z_rhs_v), aij[0]),
+                );
+                let aij_new1 = simd.f32s_mul_adde(
+                    u_prev_i[1],
+                    simd.f32s_neg(u_rhs_v),
+                    simd.f32s_mul_adde(zi[1], simd.f32s_neg(z_rhs_v), aij[1]),
+                );
+                let aij_new2 = simd.f32s_mul_adde(
+                    u_prev_i[2],
+                    simd.f32s_neg(u_rhs_v),
+                    simd.f32s_mul_adde(zi[2], simd.f32s_neg(z_rhs_v), aij[2]),
+                );
+                let aij_new3 = simd.f32s_mul_adde(
+                    u_prev_i[3],
+                    simd.f32s_neg(u_rhs_v),
+                    simd.f32s_mul_adde(zi[3], simd.f32s_neg(z_rhs_v), aij[3]),
+                );
+                sum_v0 = simd.f32s_mul_adde(aij_new0, ui[0], sum_v0);
+                sum_v1 = simd.f32s_mul_adde(aij_new1, ui[1], sum_v1);
+                sum_v2 = simd.f32s_mul_adde(aij_new2, ui[2], sum_v2);
+                sum_v3 = simd.f32s_mul_adde(aij_new3, ui[3], sum_v3);
+                aij[0] = aij_new0;
+                aij[1] = aij_new1;
+                aij[2] = aij_new2;
+                aij[3] = aij_new3;
+            }
+
+            sum_v0 = simd.f32s_add(sum_v0, sum_v1);
+            sum_v2 = simd.f32s_add(sum_v2, sum_v3);
+            sum_v0 = simd.f32s_add(sum_v0, sum_v2);
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head1
+                .iter_mut()
+                .zip(z_head1)
+                .zip(u_prev_head1)
+                .zip(u_head1)
+            {
+                let aij_new = simd.f32s_mul_adde(
+                    *u_prev_i,
+                    simd.f32s_neg(u_rhs_v),
+                    simd.f32s_mul_adde(*zi, simd.f32s_neg(z_rhs_v), *aij),
+                );
+                sum_v0 = simd.f32s_mul_adde(aij_new, *ui, sum_v0);
+                *aij = aij_new;
+            }
+
+            let mut sum = simd.f32s_reduce_sum(sum_v0);
+
+            for (((aij, zi), u_prev_i), ui) in
+                a_j_tail.iter_mut().zip(z_tail).zip(u_prev_tail).zip(u_tail)
+            {
+                let aij_new = f32::mul_add(*u_prev_i, -u_rhs, f32::mul_add(*zi, -z_rhs, *aij));
+                sum = f32::mul_add(aij_new, *ui, sum);
+                *aij = aij_new;
+            }
+
+            sum
+        }
+    }
+
+    arch.dispatch(Impl {
+        a_j,
+        z,
+        u_prev,
+        u_rhs,
+        z_rhs,
+        u,
+    })
+}
+
+fn bidiag_fused_op_step1_f32(
+    arch: pulp::Arch,
+
+    // update z
+    z: &mut [f32],
+    a_j: &[f32],
+    rhs: f32,
+) {
+    struct Impl<'a> {
+        z: &'a mut [f32],
+        a_j: &'a [f32],
+        rhs: f32,
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { z, a_j, rhs } = self;
+            let (z_head, z_tail) = S::f32s_as_mut_simd(z);
+            let (a_j_head, a_j_tail) = S::f32s_as_simd(a_j);
+            let rhs_v = simd.f32s_splat(rhs);
+
+            for (zi, aij) in z_head.iter_mut().zip(a_j_head) {
+                *zi = simd.f32s_mul_adde(*aij, rhs_v, *zi);
+            }
+            for (zi, aij) in z_tail.iter_mut().zip(a_j_tail) {
+                *zi = f32::mul_add(*aij, rhs, *zi);
+            }
+        }
+    }
+    arch.dispatch(Impl { z, a_j, rhs })
+}
+
+fn bidiag_fused_op_step0_c32(
+    arch: pulp::Arch,
+
+    // update a_next
+    a_j: &mut [c32],
+    z: &[c32],
+    u_prev: &[c32],
+    u_rhs: c32,
+    z_rhs: c32,
+
+    // compute yj
+    u: &[c32],
+) -> c32 {
+    struct Impl<'a> {
+        a_j: &'a mut [c32],
+        z: &'a [c32],
+        u_prev: &'a [c32],
+        u_rhs: c32,
+        z_rhs: c32,
+        u: &'a [c32],
+    }
+
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = c32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self {
+                a_j,
+                z,
+                u_prev,
+                u_rhs,
+                z_rhs,
+                u,
+            } = self;
+            let (a_j_head, a_j_tail) = S::c32s_as_mut_simd(a_j);
+            let (z_head, z_tail) = S::c32s_as_simd(z);
+            let (u_prev_head, u_prev_tail) = S::c32s_as_simd(u_prev);
+            let (u_head, u_tail) = S::c32s_as_simd(u);
+
+            let (a_j_head4, a_j_head1) = pulp::as_arrays_mut::<4, _>(a_j_head);
+            let (z_head4, z_head1) = pulp::as_arrays::<4, _>(z_head);
+            let (u_prev_head4, u_prev_head1) = pulp::as_arrays::<4, _>(u_prev_head);
+            let (u_head4, u_head1) = pulp::as_arrays::<4, _>(u_head);
+
+            let mut sum_v0 = simd.c32s_splat(c32::zero());
+            let mut sum_v1 = simd.c32s_splat(c32::zero());
+            let mut sum_v2 = simd.c32s_splat(c32::zero());
+            let mut sum_v3 = simd.c32s_splat(c32::zero());
+
+            let u_rhs_v = simd.c32s_neg(simd.c32s_splat(u_rhs));
+            let z_rhs_v = simd.c32s_neg(simd.c32s_splat(z_rhs));
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head4
+                .iter_mut()
+                .zip(z_head4)
+                .zip(u_prev_head4)
+                .zip(u_head4)
+            {
+                let aij_new0 = simd.c32s_mul_adde(
+                    u_prev_i[0],
+                    u_rhs_v,
+                    simd.c32s_mul_adde(zi[0], z_rhs_v, aij[0]),
+                );
+                let aij_new1 = simd.c32s_mul_adde(
+                    u_prev_i[1],
+                    u_rhs_v,
+                    simd.c32s_mul_adde(zi[1], z_rhs_v, aij[1]),
+                );
+                let aij_new2 = simd.c32s_mul_adde(
+                    u_prev_i[2],
+                    u_rhs_v,
+                    simd.c32s_mul_adde(zi[2], z_rhs_v, aij[2]),
+                );
+                let aij_new3 = simd.c32s_mul_adde(
+                    u_prev_i[3],
+                    u_rhs_v,
+                    simd.c32s_mul_adde(zi[3], z_rhs_v, aij[3]),
+                );
+                sum_v0 = simd.c32s_conj_mul_adde(aij_new0, ui[0], sum_v0);
+                sum_v1 = simd.c32s_conj_mul_adde(aij_new1, ui[1], sum_v1);
+                sum_v2 = simd.c32s_conj_mul_adde(aij_new2, ui[2], sum_v2);
+                sum_v3 = simd.c32s_conj_mul_adde(aij_new3, ui[3], sum_v3);
+                aij[0] = aij_new0;
+                aij[1] = aij_new1;
+                aij[2] = aij_new2;
+                aij[3] = aij_new3;
+            }
+
+            sum_v0 = simd.c32s_add(sum_v0, sum_v1);
+            sum_v2 = simd.c32s_add(sum_v2, sum_v3);
+            sum_v0 = simd.c32s_add(sum_v0, sum_v2);
+
+            for (((aij, zi), u_prev_i), ui) in a_j_head1
+                .iter_mut()
+                .zip(z_head1)
+                .zip(u_prev_head1)
+                .zip(u_head1)
+            {
+                let aij_new =
+                    simd.c32s_mul_adde(*u_prev_i, u_rhs_v, simd.c32s_mul_adde(*zi, z_rhs_v, *aij));
+                sum_v0 = simd.c32s_conj_mul_adde(aij_new, *ui, sum_v0);
+                *aij = aij_new;
+            }
+
+            let mut sum = simd.c32s_reduce_sum(sum_v0);
+
+            for (((aij, zi), u_prev_i), ui) in
+                a_j_tail.iter_mut().zip(z_tail).zip(u_prev_tail).zip(u_tail)
+            {
+                let aij_new = *aij - *u_prev_i * u_rhs - *zi * z_rhs;
+                sum = aij_new.conj() * *ui + sum;
+                *aij = aij_new;
+            }
+
+            sum
+        }
+    }
+
+    arch.dispatch(Impl {
+        a_j,
+        z,
+        u_prev,
+        u_rhs,
+        z_rhs,
+        u,
+    })
+}
+
+fn bidiag_fused_op_step1_c32(
+    arch: pulp::Arch,
+
+    // update z
+    z: &mut [c32],
+    a_j: &[c32],
+    rhs: c32,
+) {
+    struct Impl<'a> {
+        z: &'a mut [c32],
+        a_j: &'a [c32],
+        rhs: c32,
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { z, a_j, rhs } = self;
+            let (z_head, z_tail) = S::c32s_as_mut_simd(z);
+            let (a_j_head, a_j_tail) = S::c32s_as_simd(a_j);
+            let rhs_v = simd.c32s_splat(rhs);
+
+            for (zi, aij) in z_head.iter_mut().zip(a_j_head) {
+                *zi = simd.c32s_mul_adde(*aij, rhs_v, *zi);
+            }
+            for (zi, aij) in z_tail.iter_mut().zip(a_j_tail) {
+                *zi = *aij * rhs + *zi;
             }
         }
     }
@@ -481,6 +971,42 @@ fn bidiag_fused_op_process_batch<T: ComplexField>(
                     slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
                 ))
             }
+        } else if coe::is_same::<c64, T>() {
+            unsafe {
+                coe::coerce_static(bidiag_fused_op_step0_c64(
+                    arch,
+                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    coe::coerce_static(u_rhs),
+                    coe::coerce_static(z_rhs),
+                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                ))
+            }
+        } else if coe::is_same::<f32, T>() {
+            unsafe {
+                coe::coerce_static(bidiag_fused_op_step0_f32(
+                    arch,
+                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    coe::coerce_static(u_rhs),
+                    coe::coerce_static(z_rhs),
+                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                ))
+            }
+        } else if coe::is_same::<c32, T>() {
+            unsafe {
+                coe::coerce_static(bidiag_fused_op_step0_c32(
+                    arch,
+                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    coe::coerce_static(u_rhs),
+                    coe::coerce_static(z_rhs),
+                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                ))
+            }
         } else {
             let mut yj = T::zero();
             for i in 0..nrows {
@@ -504,6 +1030,33 @@ fn bidiag_fused_op_process_batch<T: ComplexField>(
         if coe::is_same::<f64, T>() {
             unsafe {
                 bidiag_fused_op_step1_f64(
+                    arch,
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    coe::coerce_static(rhs),
+                );
+            }
+        } else if coe::is_same::<c64, T>() {
+            unsafe {
+                bidiag_fused_op_step1_c64(
+                    arch,
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    coe::coerce_static(rhs),
+                );
+            }
+        } else if coe::is_same::<f32, T>() {
+            unsafe {
+                bidiag_fused_op_step1_f32(
+                    arch,
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    coe::coerce_static(rhs),
+                );
+            }
+        } else if coe::is_same::<c32, T>() {
+            unsafe {
+                bidiag_fused_op_step1_c32(
                     arch,
                     slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
                     slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),

@@ -1,8 +1,9 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use coe::Coerce;
-use core::slice::{from_raw_parts, from_raw_parts_mut};
+use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
+    c32, c64,
     householder::upgrade_householder_factor,
     mul::dot,
     permutation::{swap_cols, PermutationMut},
@@ -16,7 +17,6 @@ pub use crate::no_pivoting::compute::recommended_blocksize;
 // a += k * b
 //
 // returns ||a||²
-#[inline(always)]
 fn update_and_norm2_f64(arch: pulp::Arch, a: &mut [f64], b: &[f64], k: f64) -> f64 {
     struct Impl<'a> {
         a: &'a mut [f64],
@@ -100,16 +100,276 @@ fn update_and_norm2_f64(arch: pulp::Arch, a: &mut [f64], b: &[f64], k: f64) -> f
     arch.dispatch(Impl { a, b, k })
 }
 
-#[inline(always)]
-fn update_and_norm2_generic<T: ComplexField>(a: &mut [T], b: &[T], k: T) -> T::Real {
-    let mut acc = T::Real::zero();
-
-    for (a, b) in a.iter_mut().zip(b.iter()) {
-        *a = a.add(&k.mul(b));
-        acc = acc.add(&(*a).conj().mul(a).real());
+fn update_and_norm2_c64(arch: pulp::Arch, a: &mut [c64], b: &[c64], k: c64) -> f64 {
+    struct Impl<'a> {
+        a: &'a mut [c64],
+        b: &'a [c64],
+        k: c64,
     }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f64;
 
-    acc
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b, k } = self;
+            let mut acc0 = simd.f64s_splat(0.0);
+            let mut acc1 = simd.f64s_splat(0.0);
+            let mut acc2 = simd.f64s_splat(0.0);
+            let mut acc3 = simd.f64s_splat(0.0);
+            let mut acc4 = simd.f64s_splat(0.0);
+            let mut acc5 = simd.f64s_splat(0.0);
+            let mut acc6 = simd.f64s_splat(0.0);
+            let mut acc7 = simd.f64s_splat(0.0);
+
+            let (a, a_rem) = S::c64s_as_mut_simd(a);
+            let (b, b_rem) = S::c64s_as_simd(b);
+
+            let (a, a_remv) = as_arrays_mut::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            let vk = simd.c64s_splat(k);
+
+            #[inline(always)]
+            fn accumulate<S: Simd>(simd: S, acc: S::f64s, a: S::c64s) -> S::f64s {
+                if coe::is_same::<S, pulp::Scalar>() {
+                    let norm2: c64 = bytemuck::cast(simd.c64s_abs2(a));
+                    bytemuck::cast(norm2)
+                } else {
+                    simd.f64s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
+                }
+            }
+
+            for (a, b) in a.iter_mut().zip(b.iter()) {
+                a[0] = simd.c64s_mul_adde(vk, b[0], a[0]);
+                acc0 = accumulate(simd, acc0, a[0]);
+
+                a[1] = simd.c64s_mul_adde(vk, b[1], a[1]);
+                acc1 = accumulate(simd, acc1, a[1]);
+
+                a[2] = simd.c64s_mul_adde(vk, b[2], a[2]);
+                acc2 = accumulate(simd, acc2, a[2]);
+
+                a[3] = simd.c64s_mul_adde(vk, b[3], a[3]);
+                acc3 = accumulate(simd, acc3, a[3]);
+
+                a[4] = simd.c64s_mul_adde(vk, b[4], a[4]);
+                acc4 = accumulate(simd, acc4, a[4]);
+
+                a[5] = simd.c64s_mul_adde(vk, b[5], a[5]);
+                acc5 = accumulate(simd, acc5, a[5]);
+
+                a[6] = simd.c64s_mul_adde(vk, b[6], a[6]);
+                acc6 = accumulate(simd, acc6, a[6]);
+
+                a[7] = simd.c64s_mul_adde(vk, b[7], a[7]);
+                acc7 = accumulate(simd, acc7, a[7]);
+            }
+
+            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
+                *a = simd.c64s_mul_adde(vk, *b, *a);
+                acc0 = accumulate(simd, acc0, *a);
+            }
+
+            acc0 = simd.f64s_add(acc0, acc1);
+            acc2 = simd.f64s_add(acc2, acc3);
+            acc4 = simd.f64s_add(acc4, acc5);
+            acc6 = simd.f64s_add(acc6, acc7);
+
+            acc0 = simd.f64s_add(acc0, acc2);
+            acc4 = simd.f64s_add(acc4, acc6);
+
+            acc0 = simd.f64s_add(acc0, acc4);
+
+            let mut acc = simd.f64s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
+                *a = k * *b + *a;
+                acc = a.re * a.re + a.im * a.im;
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b, k })
+}
+
+// a += k * b
+//
+// returns ||a||²
+fn update_and_norm2_f32(arch: pulp::Arch, a: &mut [f32], b: &[f32], k: f32) -> f32 {
+    struct Impl<'a> {
+        a: &'a mut [f32],
+        b: &'a [f32],
+        k: f32,
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b, k } = self;
+            let mut acc0 = simd.f32s_splat(0.0);
+            let mut acc1 = simd.f32s_splat(0.0);
+            let mut acc2 = simd.f32s_splat(0.0);
+            let mut acc3 = simd.f32s_splat(0.0);
+            let mut acc4 = simd.f32s_splat(0.0);
+            let mut acc5 = simd.f32s_splat(0.0);
+            let mut acc6 = simd.f32s_splat(0.0);
+            let mut acc7 = simd.f32s_splat(0.0);
+
+            let (a, a_rem) = S::f32s_as_mut_simd(a);
+            let (b, b_rem) = S::f32s_as_simd(b);
+
+            let (a, a_remv) = as_arrays_mut::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            let vk = simd.f32s_splat(k);
+
+            for (a, b) in a.iter_mut().zip(b.iter()) {
+                a[0] = simd.f32s_mul_adde(vk, b[0], a[0]);
+                acc0 = simd.f32s_mul_adde(a[0], a[0], acc0);
+
+                a[1] = simd.f32s_mul_adde(vk, b[1], a[1]);
+                acc1 = simd.f32s_mul_adde(a[1], a[1], acc1);
+
+                a[2] = simd.f32s_mul_adde(vk, b[2], a[2]);
+                acc2 = simd.f32s_mul_adde(a[2], a[2], acc2);
+
+                a[3] = simd.f32s_mul_adde(vk, b[3], a[3]);
+                acc3 = simd.f32s_mul_adde(a[3], a[3], acc3);
+
+                a[4] = simd.f32s_mul_adde(vk, b[4], a[4]);
+                acc4 = simd.f32s_mul_adde(a[4], a[4], acc4);
+
+                a[5] = simd.f32s_mul_adde(vk, b[5], a[5]);
+                acc5 = simd.f32s_mul_adde(a[5], a[5], acc5);
+
+                a[6] = simd.f32s_mul_adde(vk, b[6], a[6]);
+                acc6 = simd.f32s_mul_adde(a[6], a[6], acc6);
+
+                a[7] = simd.f32s_mul_adde(vk, b[7], a[7]);
+                acc7 = simd.f32s_mul_adde(a[7], a[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
+                *a = simd.f32s_mul_adde(vk, *b, *a);
+                acc0 = simd.f32s_mul_adde(*a, *a, acc0);
+            }
+
+            acc0 = simd.f32s_add(acc0, acc1);
+            acc2 = simd.f32s_add(acc2, acc3);
+            acc4 = simd.f32s_add(acc4, acc5);
+            acc6 = simd.f32s_add(acc6, acc7);
+
+            acc0 = simd.f32s_add(acc0, acc2);
+            acc4 = simd.f32s_add(acc4, acc6);
+
+            acc0 = simd.f32s_add(acc0, acc4);
+
+            let mut acc = simd.f32s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
+                *a = f32::mul_add(k, *b, *a);
+                acc = f32::mul_add(*a, *a, acc);
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b, k })
+}
+
+fn update_and_norm2_c32(arch: pulp::Arch, a: &mut [c32], b: &[c32], k: c32) -> f32 {
+    struct Impl<'a> {
+        a: &'a mut [c32],
+        b: &'a [c32],
+        k: c32,
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b, k } = self;
+            let mut acc0 = simd.f32s_splat(0.0);
+            let mut acc1 = simd.f32s_splat(0.0);
+            let mut acc2 = simd.f32s_splat(0.0);
+            let mut acc3 = simd.f32s_splat(0.0);
+            let mut acc4 = simd.f32s_splat(0.0);
+            let mut acc5 = simd.f32s_splat(0.0);
+            let mut acc6 = simd.f32s_splat(0.0);
+            let mut acc7 = simd.f32s_splat(0.0);
+
+            let (a, a_rem) = S::c32s_as_mut_simd(a);
+            let (b, b_rem) = S::c32s_as_simd(b);
+
+            let (a, a_remv) = as_arrays_mut::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            let vk = simd.c32s_splat(k);
+
+            #[inline(always)]
+            fn accumulate<S: Simd>(simd: S, acc: S::f32s, a: S::c32s) -> S::f32s {
+                if coe::is_same::<S, pulp::Scalar>() {
+                    let norm2: c32 = bytemuck::cast(simd.c32s_abs2(a));
+                    bytemuck::cast(norm2)
+                } else {
+                    simd.f32s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
+                }
+            }
+
+            for (a, b) in a.iter_mut().zip(b.iter()) {
+                a[0] = simd.c32s_mul_adde(vk, b[0], a[0]);
+                acc0 = accumulate(simd, acc0, a[0]);
+
+                a[1] = simd.c32s_mul_adde(vk, b[1], a[1]);
+                acc1 = accumulate(simd, acc1, a[1]);
+
+                a[2] = simd.c32s_mul_adde(vk, b[2], a[2]);
+                acc2 = accumulate(simd, acc2, a[2]);
+
+                a[3] = simd.c32s_mul_adde(vk, b[3], a[3]);
+                acc3 = accumulate(simd, acc3, a[3]);
+
+                a[4] = simd.c32s_mul_adde(vk, b[4], a[4]);
+                acc4 = accumulate(simd, acc4, a[4]);
+
+                a[5] = simd.c32s_mul_adde(vk, b[5], a[5]);
+                acc5 = accumulate(simd, acc5, a[5]);
+
+                a[6] = simd.c32s_mul_adde(vk, b[6], a[6]);
+                acc6 = accumulate(simd, acc6, a[6]);
+
+                a[7] = simd.c32s_mul_adde(vk, b[7], a[7]);
+                acc7 = accumulate(simd, acc7, a[7]);
+            }
+
+            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
+                *a = simd.c32s_mul_adde(vk, *b, *a);
+                acc0 = accumulate(simd, acc0, *a);
+            }
+
+            acc0 = simd.f32s_add(acc0, acc1);
+            acc2 = simd.f32s_add(acc2, acc3);
+            acc4 = simd.f32s_add(acc4, acc5);
+            acc6 = simd.f32s_add(acc6, acc7);
+
+            acc0 = simd.f32s_add(acc0, acc2);
+            acc4 = simd.f32s_add(acc4, acc6);
+
+            acc0 = simd.f32s_add(acc0, acc4);
+
+            let mut acc = simd.f32s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
+                *a = k * *b + *a;
+                acc = a.re * a.re + a.im * a.im;
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b, k })
 }
 
 #[inline(always)]
@@ -120,7 +380,7 @@ fn norm2<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>) -> T::Real {
 #[inline(always)]
 fn update_and_norm2<T: ComplexField>(
     arch: pulp::Arch,
-    a: ColMut<'_, T>,
+    mut a: ColMut<'_, T>,
     b: ColRef<'_, T>,
     k: T,
 ) -> T::Real {
@@ -128,31 +388,50 @@ fn update_and_norm2<T: ComplexField>(
     if colmajor {
         let a_len = a.nrows();
         let b_len = b.nrows();
+        let a = unsafe { slice::from_raw_parts_mut(a.rb_mut().as_ptr(), a_len) };
+        let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
 
         if coe::is_same::<f64, T>() {
-            coe::coerce_static(update_and_norm2_f64(
+            return coe::coerce_static(update_and_norm2_f64(
                 arch,
-                unsafe { from_raw_parts_mut(a.as_ptr(), a_len).coerce() },
-                unsafe { from_raw_parts(b.as_ptr(), b_len).coerce() },
+                a.coerce(),
+                b.coerce(),
                 coe::coerce_static(k),
-            ))
-        } else {
-            update_and_norm2_generic(
-                unsafe { from_raw_parts_mut(a.as_ptr(), a_len) },
-                unsafe { from_raw_parts(b.as_ptr(), b_len) },
-                k,
-            )
+            ));
         }
-    } else {
-        let mut acc = T::Real::zero();
-
-        for (a, b) in a.into_iter().zip(b.into_iter()) {
-            *a = a.add(&k.mul(b));
-            acc = acc.add(&((*a).conj().mul(a)).real());
+        if coe::is_same::<c64, T>() {
+            return coe::coerce_static(update_and_norm2_c64(
+                arch,
+                a.coerce(),
+                b.coerce(),
+                coe::coerce_static(k),
+            ));
         }
-
-        acc
+        if coe::is_same::<f32, T>() {
+            return coe::coerce_static(update_and_norm2_f32(
+                arch,
+                a.coerce(),
+                b.coerce(),
+                coe::coerce_static(k),
+            ));
+        }
+        if coe::is_same::<c32, T>() {
+            return coe::coerce_static(update_and_norm2_c32(
+                arch,
+                a.coerce(),
+                b.coerce(),
+                coe::coerce_static(k),
+            ));
+        }
     }
+
+    let mut acc = T::Real::zero();
+    for (a, b) in a.into_iter().zip(b.into_iter()) {
+        *a = a.add(&k.mul(b));
+        acc = acc.add(&((*a).conj().mul(a)).real());
+    }
+
+    acc
 }
 
 fn qr_in_place_colmajor<T: ComplexField>(
@@ -617,6 +896,121 @@ mod tests {
                 for j in 0..n {
                     for i in 0..m {
                         assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_f32() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63), (1024, 1024)] {
+                let mut mat = Mat::<f32>::with_dims(|_, _| random(), m, n);
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    parallelism,
+                    make_stack!(qr_in_place_req::<f32>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qr = Mat::zeros(m, n);
+                matmul(
+                    qr.as_mut(),
+                    Conj::No,
+                    q.as_ref(),
+                    Conj::No,
+                    r.as_ref(),
+                    Conj::No,
+                    None,
+                    1.0,
+                    Parallelism::Rayon(8),
+                );
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])], 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c32() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let mut mat = Mat::<c32>::with_dims(|_, _| c32::new(random(), random()), m, n);
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    parallelism,
+                    make_stack!(qr_in_place_req::<c32>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qr = Mat::zeros(m, n);
+                let mut qhq = Mat::zeros(m, m);
+                matmul(
+                    qr.as_mut(),
+                    Conj::No,
+                    q.as_ref(),
+                    Conj::No,
+                    r.as_ref(),
+                    Conj::No,
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                matmul(
+                    qhq.as_mut(),
+                    Conj::No,
+                    q.as_ref().transpose(),
+                    Conj::Yes,
+                    q.as_ref(),
+                    Conj::No,
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])], 1e-4);
                     }
                 }
             }

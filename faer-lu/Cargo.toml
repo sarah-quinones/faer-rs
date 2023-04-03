@@ -21,6 +21,7 @@ num-traits = { workspace = true }
 num-complex = { workspace = true }
 rayon = { workspace = true }
 bytemuck = { workspace = true }
+paste = "1.0.12"
 
 [features]
 default = ["std"]

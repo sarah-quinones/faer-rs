@@ -3,10 +3,7 @@ use faer_qr::no_pivoting::compute::recommended_blocksize;
 use std::time::Duration;
 
 use dyn_stack::*;
-use faer_core::{
-    mul::triangular::{self, BlockStructure},
-    Conj, Parallelism,
-};
+use faer_core::{c64, Parallelism};
 use rand::random;
 
 use faer_core::Mat;
@@ -64,43 +61,6 @@ pub fn qr(c: &mut Criterion) {
             })
         });
 
-        c.bench_function(&format!("faer-mt-make-householder-{m}x{n}"), |b| {
-            let u = Mat::zeros(m, n);
-            let u = u.as_ref();
-            let mut t = Mat::zeros(n, n);
-
-            b.iter(|| {
-                triangular::matmul(
-                    t.as_mut(),
-                    BlockStructure::TriangularUpper,
-                    Conj::No,
-                    u.submatrix(0, 0, n, n).transpose(),
-                    BlockStructure::UnitTriangularUpper,
-                    Conj::No,
-                    u.submatrix(0, 0, n, n),
-                    BlockStructure::UnitTriangularLower,
-                    Conj::No,
-                    None,
-                    1.0,
-                    Parallelism::Rayon(0),
-                );
-                triangular::matmul(
-                    t.as_mut(),
-                    BlockStructure::TriangularUpper,
-                    Conj::No,
-                    u.submatrix(n, 0, m - n, n).transpose(),
-                    BlockStructure::Rectangular,
-                    Conj::No,
-                    u.submatrix(n, 0, m - n, n),
-                    BlockStructure::Rectangular,
-                    Conj::No,
-                    Some(1.0),
-                    1.0,
-                    Parallelism::Rayon(0),
-                );
-            })
-        });
-
         c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
             let blocksize = recommended_blocksize::<f64>(m, n);
@@ -125,6 +85,46 @@ pub fn qr(c: &mut Criterion) {
             let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
             let blocksize = recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(|_, _| random::<f64>(), blocksize, n);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
+
+            b.iter(|| {
+                col_pivoting::compute::qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::Rayon(0),
+                    DynStack::new(&mut []),
+                    Default::default(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-st-cplx-colqr-{m}x{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| c64::new(random(), random()), m, n);
+            let blocksize = recommended_blocksize::<c64>(m, n);
+            let mut householder = Mat::with_dims(|_, _| c64::new(random(), random()), blocksize, n);
+            let mut perm = vec![0; n];
+            let mut perm_inv = vec![0; n];
+
+            b.iter(|| {
+                col_pivoting::compute::qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::None,
+                    DynStack::new(&mut []),
+                    Default::default(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-mt-cplx-colqr-{m}x{n}"), |b| {
+            let mut mat = Mat::with_dims(|_, _| c64::new(random(), random()), m, n);
+            let blocksize = recommended_blocksize::<c64>(m, n);
+            let mut householder = Mat::with_dims(|_, _| c64::new(random(), random()), blocksize, n);
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 

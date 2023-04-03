@@ -1,7 +1,10 @@
 //! Matrix multiplication module.
 
-use crate::{ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism};
+use core::slice;
+
+use crate::{c32, c64, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism};
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use coe::Coerce;
 use gemm::gemm;
 use pulp::{as_arrays, Simd};
 use reborrow::*;
@@ -71,6 +74,205 @@ fn dot_f64(arch: pulp::Arch, a: &[f64], b: &[f64]) -> f64 {
     arch.dispatch(Impl { a, b })
 }
 
+#[inline(always)]
+fn dot_f32(arch: pulp::Arch, a: &[f32], b: &[f32]) -> f32 {
+    struct Impl<'a> {
+        a: &'a [f32],
+        b: &'a [f32],
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = f32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b } = self;
+
+            let mut acc0 = simd.f32s_splat(0.0);
+            let mut acc1 = simd.f32s_splat(0.0);
+            let mut acc2 = simd.f32s_splat(0.0);
+            let mut acc3 = simd.f32s_splat(0.0);
+            let mut acc4 = simd.f32s_splat(0.0);
+            let mut acc5 = simd.f32s_splat(0.0);
+            let mut acc6 = simd.f32s_splat(0.0);
+            let mut acc7 = simd.f32s_splat(0.0);
+
+            let (a, a_rem) = S::f32s_as_simd(a);
+            let (b, b_rem) = S::f32s_as_simd(b);
+
+            let (a, a_remv) = as_arrays::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            for (a, b) in a.iter().zip(b.iter()) {
+                acc0 = simd.f32s_mul_adde(a[0], b[0], acc0);
+                acc1 = simd.f32s_mul_adde(a[1], b[1], acc1);
+                acc2 = simd.f32s_mul_adde(a[2], b[2], acc2);
+                acc3 = simd.f32s_mul_adde(a[3], b[3], acc3);
+                acc4 = simd.f32s_mul_adde(a[4], b[4], acc4);
+                acc5 = simd.f32s_mul_adde(a[5], b[5], acc5);
+                acc6 = simd.f32s_mul_adde(a[6], b[6], acc6);
+                acc7 = simd.f32s_mul_adde(a[7], b[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter().zip(b_remv.iter()) {
+                acc0 = simd.f32s_mul_adde(*a, *b, acc0);
+            }
+
+            acc0 = simd.f32s_add(acc0, acc1);
+            acc2 = simd.f32s_add(acc2, acc3);
+            acc4 = simd.f32s_add(acc4, acc5);
+            acc6 = simd.f32s_add(acc6, acc7);
+
+            acc0 = simd.f32s_add(acc0, acc2);
+            acc4 = simd.f32s_add(acc4, acc6);
+
+            acc0 = simd.f32s_add(acc0, acc4);
+
+            let mut acc = simd.f32s_reduce_sum(acc0);
+
+            for (a, b) in a_rem.iter().zip(b_rem.iter()) {
+                acc = f32::mul_add(*a, *b, acc);
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b })
+}
+
+#[inline(always)]
+fn dot_c64(arch: pulp::Arch, a: &[c64], b: &[c64]) -> c64 {
+    struct Impl<'a> {
+        a: &'a [c64],
+        b: &'a [c64],
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = c64;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b } = self;
+
+            let mut acc0 = simd.c64s_splat(c64::zero());
+            let mut acc1 = simd.c64s_splat(c64::zero());
+            let mut acc2 = simd.c64s_splat(c64::zero());
+            let mut acc3 = simd.c64s_splat(c64::zero());
+            let mut acc4 = simd.c64s_splat(c64::zero());
+            let mut acc5 = simd.c64s_splat(c64::zero());
+            let mut acc6 = simd.c64s_splat(c64::zero());
+            let mut acc7 = simd.c64s_splat(c64::zero());
+
+            let (a, a_rem) = S::c64s_as_simd(a);
+            let (b, b_rem) = S::c64s_as_simd(b);
+
+            let (a, a_remv) = as_arrays::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            for (a, b) in a.iter().zip(b.iter()) {
+                acc0 = simd.c64s_conj_mul_adde(a[0], b[0], acc0);
+                acc1 = simd.c64s_conj_mul_adde(a[1], b[1], acc1);
+                acc2 = simd.c64s_conj_mul_adde(a[2], b[2], acc2);
+                acc3 = simd.c64s_conj_mul_adde(a[3], b[3], acc3);
+                acc4 = simd.c64s_conj_mul_adde(a[4], b[4], acc4);
+                acc5 = simd.c64s_conj_mul_adde(a[5], b[5], acc5);
+                acc6 = simd.c64s_conj_mul_adde(a[6], b[6], acc6);
+                acc7 = simd.c64s_conj_mul_adde(a[7], b[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter().zip(b_remv.iter()) {
+                acc0 = simd.c64s_conj_mul_adde(*a, *b, acc0);
+            }
+
+            acc0 = simd.c64s_add(acc0, acc1);
+            acc2 = simd.c64s_add(acc2, acc3);
+            acc4 = simd.c64s_add(acc4, acc5);
+            acc6 = simd.c64s_add(acc6, acc7);
+
+            acc0 = simd.c64s_add(acc0, acc2);
+            acc4 = simd.c64s_add(acc4, acc6);
+
+            acc0 = simd.c64s_add(acc0, acc4);
+
+            let acc0: &[c64] = bytemuck::cast_slice(slice::from_ref(&acc0));
+
+            let mut acc = acc0.iter().copied().sum();
+
+            for (a, b) in a_rem.iter().zip(b_rem.iter()) {
+                acc = (*a).conj() * *b + acc;
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b })
+}
+
+#[inline(always)]
+fn dot_c32(arch: pulp::Arch, a: &[c32], b: &[c32]) -> c32 {
+    struct Impl<'a> {
+        a: &'a [c32],
+        b: &'a [c32],
+    }
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = c32;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { a, b } = self;
+
+            let mut acc0 = simd.c32s_splat(c32::zero());
+            let mut acc1 = simd.c32s_splat(c32::zero());
+            let mut acc2 = simd.c32s_splat(c32::zero());
+            let mut acc3 = simd.c32s_splat(c32::zero());
+            let mut acc4 = simd.c32s_splat(c32::zero());
+            let mut acc5 = simd.c32s_splat(c32::zero());
+            let mut acc6 = simd.c32s_splat(c32::zero());
+            let mut acc7 = simd.c32s_splat(c32::zero());
+
+            let (a, a_rem) = S::c32s_as_simd(a);
+            let (b, b_rem) = S::c32s_as_simd(b);
+
+            let (a, a_remv) = as_arrays::<8, _>(a);
+            let (b, b_remv) = as_arrays::<8, _>(b);
+
+            for (a, b) in a.iter().zip(b.iter()) {
+                acc0 = simd.c32s_conj_mul_adde(a[0], b[0], acc0);
+                acc1 = simd.c32s_conj_mul_adde(a[1], b[1], acc1);
+                acc2 = simd.c32s_conj_mul_adde(a[2], b[2], acc2);
+                acc3 = simd.c32s_conj_mul_adde(a[3], b[3], acc3);
+                acc4 = simd.c32s_conj_mul_adde(a[4], b[4], acc4);
+                acc5 = simd.c32s_conj_mul_adde(a[5], b[5], acc5);
+                acc6 = simd.c32s_conj_mul_adde(a[6], b[6], acc6);
+                acc7 = simd.c32s_conj_mul_adde(a[7], b[7], acc7);
+            }
+
+            for (a, b) in a_remv.iter().zip(b_remv.iter()) {
+                acc0 = simd.c32s_conj_mul_adde(*a, *b, acc0);
+            }
+
+            acc0 = simd.c32s_add(acc0, acc1);
+            acc2 = simd.c32s_add(acc2, acc3);
+            acc4 = simd.c32s_add(acc4, acc5);
+            acc6 = simd.c32s_add(acc6, acc7);
+
+            acc0 = simd.c32s_add(acc0, acc2);
+            acc4 = simd.c32s_add(acc4, acc6);
+
+            acc0 = simd.c32s_add(acc0, acc4);
+
+            let acc0: &[c32] = bytemuck::cast_slice(slice::from_ref(&acc0));
+
+            let mut acc = acc0.iter().copied().sum();
+
+            for (a, b) in a_rem.iter().zip(b_rem.iter()) {
+                acc = (*a).conj() * *b + acc;
+            }
+
+            acc
+        }
+    }
+    arch.dispatch(Impl { a, b })
+}
+
 // a^H b
 #[doc(hidden)]
 #[inline(always)]
@@ -80,12 +282,20 @@ pub fn dot<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>, b: ColRef<'_, T>
         let a_len = a.nrows();
         let b_len = b.nrows();
 
+        let a = unsafe { core::slice::from_raw_parts(a.as_ptr(), a_len) };
+        let b = unsafe { core::slice::from_raw_parts(b.as_ptr(), b_len) };
+
+        if coe::is_same::<f32, T>() {
+            return coe::coerce_static(dot_f32(arch, a.coerce(), b.coerce()));
+        }
         if coe::is_same::<f64, T>() {
-            return coe::coerce_static(dot_f64(
-                arch,
-                unsafe { core::slice::from_raw_parts(a.as_ptr() as _, a_len) },
-                unsafe { core::slice::from_raw_parts(b.as_ptr() as _, b_len) },
-            ));
+            return coe::coerce_static(dot_f64(arch, a.coerce(), b.coerce()));
+        }
+        if coe::is_same::<c32, T>() {
+            return coe::coerce_static(dot_c32(arch, a.coerce(), b.coerce()));
+        }
+        if coe::is_same::<c64, T>() {
+            return coe::coerce_static(dot_c64(arch, a.coerce(), b.coerce()));
         }
     }
     let mut acc = T::zero();

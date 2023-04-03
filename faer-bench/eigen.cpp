@@ -37,139 +37,157 @@ template <typename F> auto timeit(F f) -> double {
          double(n);
 }
 
-extern "C" void gemm(double *out, std::size_t const *inputs,
-                     std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
+using f32 = float;
+using f64 = double;
+using c32 = std::complex<f32>;
+using c64 = std::complex<f64>;
 
-    auto a = Eigen::MatrixXd(n, n);
-    auto b = Eigen::MatrixXd(n, n);
-    auto c = Eigen::MatrixXd(n, n);
-    a.setZero();
-    b.setZero();
-    c.setZero();
+#define INSTANTIATE(T)                                                         \
+                                                                               \
+  extern "C" void gemm_##T(double *out, std::size_t const *inputs,             \
+                           std::size_t count) {                                \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      auto b = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      auto c = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setZero();                                                             \
+      b.setZero();                                                             \
+      c.setZero();                                                             \
+                                                                               \
+      out[i] = timeit([&] { c.noalias() += a * b; });                          \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void trsm_##T(double *out, std::size_t const *inputs,             \
+                           std::size_t count) {                                \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      auto b = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setZero();                                                             \
+      b.setZero();                                                             \
+      out[i] = timeit(                                                         \
+          [&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });      \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void trinv_##T(double *out, std::size_t const *inputs,            \
+                            std::size_t count) {                               \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      auto b = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setZero();                                                             \
+      b.setZero();                                                             \
+      out[i] = timeit(                                                         \
+          [&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });      \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void chol_##T(double *out, std::size_t const *inputs,             \
+                           std::size_t count) {                                \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setIdentity();                                                         \
+      auto b = a.llt();                                                        \
+      out[i] = timeit([&] { b.compute(a); });                                  \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void plu_##T(double *out, std::size_t const *inputs,              \
+                          std::size_t count) {                                 \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      auto b = a.partialPivLu();                                               \
+      out[i] = timeit([&] { b.compute(a); });                                  \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void flu_##T(double *out, std::size_t const *inputs,              \
+                          std::size_t count) {                                 \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      auto b = a.fullPivLu();                                                  \
+      out[i] = timeit([&] { b.compute(a); });                                  \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void qr_##T(double *out, std::size_t const *inputs,               \
+                         std::size_t count) {                                  \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      auto b = a.householderQr();                                              \
+      out[i] = timeit([&] { b.compute(a); });                                  \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void colqr_##T(double *out, std::size_t const *inputs,            \
+                            std::size_t count) {                               \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      auto b = a.colPivHouseholderQr();                                        \
+      out[i] = timeit([&] { b.compute(a); });                                  \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void inverse_##T(double *out, std::size_t const *inputs,          \
+                              std::size_t count) {                             \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      auto b = a;                                                              \
+      out[i] = timeit([&] { b = a.inverse(); });                               \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void svd_##T(double *out, std::size_t const *inputs,              \
+                          std::size_t count) {                                 \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      Eigen::BDCSVD<Eigen::Matrix<T, -1, -1>> svd(                             \
+          n, n, Eigen::ComputeFullU | Eigen::ComputeFullV);                    \
+      out[i] = timeit([&] { svd.compute(a); });                                \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void rectangular_svd_##T(double *out, std::size_t const *inputs,  \
+                                      std::size_t count) {                     \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(4096, n);                              \
+      a.setRandom();                                                           \
+      Eigen::BDCSVD<Eigen::Matrix<T, -1, -1>> svd(                             \
+          n, n, Eigen::ComputeThinU | Eigen::ComputeThinV);                    \
+      out[i] = timeit([&] { svd.compute(a); });                                \
+    }                                                                          \
+  }                                                                            \
+  static_assert(true, "")
 
-    out[i] = timeit([&] { c.noalias() += a * b; });
-  }
-}
-
-extern "C" void trsm(double *out, std::size_t const *inputs,
-                     std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    auto b = Eigen::MatrixXd(n, n);
-    a.setZero();
-    b.setZero();
-    out[i] =
-        timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });
-  }
-}
-
-extern "C" void trinv(double *out, std::size_t const *inputs,
-                      std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    auto b = Eigen::MatrixXd(n, n);
-    a.setZero();
-    b.setZero();
-    out[i] =
-        timeit([&] { a.triangularView<Eigen::UnitLower>().solveInPlace(b); });
-  }
-}
-
-extern "C" void chol(double *out, std::size_t const *inputs,
-                     std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setIdentity();
-    auto b = a.llt();
-    out[i] = timeit([&] { b.compute(a); });
-  }
-}
-
-extern "C" void plu(double *out, std::size_t const *inputs, std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    auto b = a.partialPivLu();
-    out[i] = timeit([&] { b.compute(a); });
-  }
-}
-
-extern "C" void flu(double *out, std::size_t const *inputs, std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    auto b = a.fullPivLu();
-    out[i] = timeit([&] { b.compute(a); });
-  }
-}
-
-extern "C" void qr(double *out, std::size_t const *inputs, std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    auto b = a.householderQr();
-    out[i] = timeit([&] { b.compute(a); });
-  }
-}
-
-extern "C" void colqr(double *out, std::size_t const *inputs,
-                      std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    auto b = a.colPivHouseholderQr();
-    out[i] = timeit([&] { b.compute(a); });
-  }
-}
-
-extern "C" void inverse(double *out, std::size_t const *inputs,
-                        std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    auto b = a;
-    out[i] = timeit([&] { b = a.inverse(); });
-  }
-}
-
-extern "C" void svd(double *out, std::size_t const *inputs, std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(n, n);
-    a.setRandom();
-    Eigen::BDCSVD<Eigen::MatrixXd> svd(
-        n, n, Eigen::ComputeFullU | Eigen::ComputeFullV);
-    out[i] = timeit([&] { svd.compute(a); });
-  }
-}
-
-extern "C" void rectangular_svd(double *out, std::size_t const *inputs, std::size_t count) {
-  for (std::size_t i = 0; i < count; ++i) {
-    auto n = inputs[i];
-
-    auto a = Eigen::MatrixXd(4096, n);
-    a.setRandom();
-    Eigen::BDCSVD<Eigen::MatrixXd> svd(
-        n, n, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    out[i] = timeit([&] { svd.compute(a); });
-  }
-}
+INSTANTIATE(f32);
+INSTANTIATE(f64);
+INSTANTIATE(c32);
+INSTANTIATE(c64);

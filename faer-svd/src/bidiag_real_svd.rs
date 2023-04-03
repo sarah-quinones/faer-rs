@@ -319,6 +319,48 @@ fn compute_singular_values<T: RealField>(
             col0_perm: col0_perm.coerce(),
             epsilon: coe::coerce_static(epsilon),
         });
+    } else if coe::is_same::<f32, T>() {
+        struct ImplF32<'a> {
+            shifts: ColMut<'a, f32>,
+            mus: ColMut<'a, f32>,
+            s: ColMut<'a, f32>,
+            diag: &'a [f32],
+            diag_perm: &'a [f32],
+            col0: &'a [f32],
+            col0_perm: &'a [f32],
+            epsilon: f32,
+        }
+        impl pulp::WithSimd for ImplF32<'_> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self {
+                    shifts,
+                    mus,
+                    s,
+                    diag,
+                    diag_perm,
+                    col0,
+                    col0_perm,
+                    epsilon,
+                } = self;
+                compute_singular_values_generic::<f32>(
+                    simd, shifts, mus, s, diag, diag_perm, col0, col0_perm, epsilon,
+                )
+            }
+        }
+
+        pulp::Arch::new().dispatch(ImplF32 {
+            shifts: shifts.coerce(),
+            mus: mus.coerce(),
+            s: s.coerce(),
+            diag: diag.coerce(),
+            diag_perm: diag_perm.coerce(),
+            col0: col0.coerce(),
+            col0_perm: col0_perm.coerce(),
+            epsilon: coe::coerce_static(epsilon),
+        });
     } else {
         compute_singular_values_generic(
             pulp::Scalar::new(),
