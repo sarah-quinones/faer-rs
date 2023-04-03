@@ -3762,25 +3762,22 @@ pub mod iter {
         }
     }
 
-    impl<'a, T> Copy for RowIter<'a, T> {}
-    impl<'a, T> Copy for ColIter<'a, T> {}
-    impl<'a, T> Copy for ElemIter<'a, T> {}
     impl<'a, T> Clone for RowIter<'a, T> {
         #[inline]
         fn clone(&self) -> Self {
-            *self
+            Self(self.0)
         }
     }
     impl<'a, T> Clone for ColIter<'a, T> {
         #[inline]
         fn clone(&self) -> Self {
-            *self
+            Self(self.0)
         }
     }
     impl<'a, T> Clone for ElemIter<'a, T> {
         #[inline]
         fn clone(&self) -> Self {
-            *self
+            Self(self.0)
         }
     }
 
@@ -3788,14 +3785,14 @@ pub mod iter {
         type Target = RowIter<'b, T>;
         #[inline]
         fn rb(&'b self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> ReborrowMut<'b> for RowIter<'a, T> {
         type Target = RowIter<'b, T>;
         #[inline]
         fn rb_mut(&'b mut self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> Reborrow<'b> for RowIterMut<'a, T> {
@@ -3817,14 +3814,14 @@ pub mod iter {
         type Target = ColIter<'b, T>;
         #[inline]
         fn rb(&'b self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> ReborrowMut<'b> for ColIter<'a, T> {
         type Target = ColIter<'b, T>;
         #[inline]
         fn rb_mut(&'b mut self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> Reborrow<'b> for ColIterMut<'a, T> {
@@ -3846,14 +3843,14 @@ pub mod iter {
         type Target = ElemIter<'b, T>;
         #[inline]
         fn rb(&'b self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> ReborrowMut<'b> for ElemIter<'a, T> {
         type Target = ElemIter<'b, T>;
         #[inline]
         fn rb_mut(&'b mut self) -> Self::Target {
-            *self
+            Self(self.0)
         }
     }
     impl<'b, 'a, T> Reborrow<'b> for ElemIterMut<'a, T> {
