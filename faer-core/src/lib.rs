@@ -1952,7 +1952,8 @@ impl<'a, T> MatRef<'a, T> {
             && self.is_col_major()
             && (self.col_stride() >= self.ncols() as isize)
         {
-            let mut mat: Mat<T> = Mat::with_capacity(self.nrows(), self.ncols());
+            let mut mat: Mat<T> = Mat::new();
+            mat.do_reserve_exact(self.col_stride() as usize, self.ncols());
             let ptr = mat.as_mut_ptr();
             let copy_len = self.ncols() * self.col_stride() as usize;
             unsafe {
@@ -2621,7 +2622,8 @@ impl<'a, T> MatMut<'a, T> {
             && self.is_col_major()
             && (self.col_stride() >= self.ncols() as isize)
         {
-            let mut mat: Mat<T> = Mat::with_capacity(self.nrows(), self.ncols());
+            let mut mat: Mat<T> = Mat::new();
+            mat.do_reserve_exact(self.col_stride() as usize, self.ncols());
             let ptr = mat.as_mut_ptr();
             let copy_len = self.ncols() * self.col_stride() as usize;
             unsafe {
@@ -5947,5 +5949,29 @@ mod tests {
         let _ = mrefu64.to_owned();
         let _ = mreff32.to_owned();
         let _ = mreff64.to_owned();
+    }
+
+    #[test]
+    fn to_owned_equality(){
+        let mut m = mat![
+            [1,2,3],
+            [4,5,6],
+        ];
+        
+        let owning = m.as_ref().transpose().to_owned();
+        fancy_assert!(owning[(0,0)] == 1);
+        fancy_assert!(owning[(0,1)] == 4);
+        fancy_assert!(owning[(1,0)] == 2);
+        fancy_assert!(owning[(1,1)] == 5);
+        fancy_assert!(owning[(2,0)] == 3);
+        fancy_assert!(owning[(2,1)] == 6);
+
+        let owning = m.as_mut().transpose().to_owned();
+        fancy_assert!(owning[(0,0)] == 1);
+        fancy_assert!(owning[(0,1)] == 4);
+        fancy_assert!(owning[(1,0)] == 2);
+        fancy_assert!(owning[(1,1)] == 5);
+        fancy_assert!(owning[(2,0)] == 3);
+        fancy_assert!(owning[(2,1)] == 6);
     }
 }
