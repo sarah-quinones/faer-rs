@@ -1928,52 +1928,20 @@ impl<'a, T> MatRef<'a, T> {
 
     /// Returns an owning [`Mat`] of the data
     #[inline]
-    pub fn to_owned(self) -> Mat<T>
+    pub fn to_owned(&self) -> Mat<T::Num>
     where
-        T: Clone,
+        T: Clone + Conjugate,
     {
-        // Fast bitwise copy implementation for the build-in numeric types. Since specialization is not supported no
-        // dispatch to a function with the same name and a Copy bound is possible. Therefor utilize this hack.
-        // The layout of the view also has to be compatible with an owning [`Mat`], as a [`Mat`] has a specified layout
-        // while a [`MatRef`] can have an arbitrary layout. Specifically the layout has to be column-major and the
-        // memory has to live in a contiguous allocation. This is ensured by testing that col-stride is equal to col-capacity.
-        if (coe::is_same::<T, i8>()
-            || coe::is_same::<T, u8>()
-            || coe::is_same::<T, i16>()
-            || coe::is_same::<T, u16>()
-            || coe::is_same::<T, i32>()
-            || coe::is_same::<T, u32>()
-            || coe::is_same::<T, i64>()
-            || coe::is_same::<T, u64>()
-            || coe::is_same::<T, i128>()
-            || coe::is_same::<T, u128>()
-            || coe::is_same::<T, f32>()
-            || coe::is_same::<T, f64>())
-            && self.is_col_major()
-            && (self.col_stride() >= self.ncols() as isize)
-        {
-            let mut mat: Mat<T> = Mat::new();
-            mat.do_reserve_exact(self.col_stride() as usize, self.ncols());
-            let ptr = mat.as_mut_ptr();
-            let copy_len = self.ncols() * self.col_stride() as usize;
-            unsafe {
-                ptr.copy_from(self.as_ptr(), copy_len);
-            }
-            mat
-        } else {
-            let mut mat = Mat::new();
-            let mat_ref = self.as_ref();
-            // SAFETY:
-            // The call to get_unchecked is safe, because row and col will always be in the range [0,nrows) and [0,ncols) respectively.
-            mat.resize_with(
-                    |row, col| unsafe {
-                        mat_ref.get_unchecked(row, col).clone()
-                    },
-                    self.nrows(),
-                    self.ncols(),
-                );
-            mat
-        }
+        let mut mat = Mat::new();
+        let mat_ref = self.as_ref();
+        // SAFETY:
+        // The call to get_unchecked is safe, because row and col will always be in the range [0,nrows) and [0,ncols) respectively.
+        mat.resize_with(
+            |row, col| unsafe { mat_ref.get_unchecked(row, col).clone().into_num() },
+            self.nrows(),
+            self.ncols(),
+        );
+        mat
     }
 }
 
@@ -2598,52 +2566,11 @@ impl<'a, T> MatMut<'a, T> {
 
     /// Returns an owning [`Mat`] of the data
     #[inline]
-    pub fn to_owned(self) -> Mat<T>
+    pub fn to_owned(&self) -> Mat<T::Num>
     where
-        T: Clone,
+        T: Clone + Conjugate,
     {
-        // Fast bitwise copy implementation for the build-in numeric types. Since specialization is not supported no
-        // dispatch to a function with the same name and a Copy bound is possible. Therefor utilize this hack.
-        // The layout of the view also has to be compatible with an owning [`Mat`], as a [`Mat`] has a specified layout
-        // while a [`MatMut`] can have an arbitrary layout. Specifically the layout has to be column-major and the
-        // memory has to live in a contiguous allocation. This is ensured by testing that col-stride is equal to col-capacity.
-        if (coe::is_same::<T, i8>()
-            || coe::is_same::<T, u8>()
-            || coe::is_same::<T, i16>()
-            || coe::is_same::<T, u16>()
-            || coe::is_same::<T, i32>()
-            || coe::is_same::<T, u32>()
-            || coe::is_same::<T, i64>()
-            || coe::is_same::<T, u64>()
-            || coe::is_same::<T, i128>()
-            || coe::is_same::<T, u128>()
-            || coe::is_same::<T, f32>()
-            || coe::is_same::<T, f64>())
-            && self.is_col_major()
-            && (self.col_stride() >= self.ncols() as isize)
-        {
-            let mut mat: Mat<T> = Mat::new();
-            mat.do_reserve_exact(self.col_stride() as usize, self.ncols());
-            let ptr = mat.as_mut_ptr();
-            let copy_len = self.ncols() * self.col_stride() as usize;
-            unsafe {
-                ptr.copy_from(self.as_ptr(), copy_len);
-            }
-            mat
-        } else {
-            let mut mat = Mat::new();
-            let mat_ref = self.as_ref();
-            // SAFETY:
-            // The call to get_unchecked is safe, because row and col will always be in the range [0,nrows) and [0,ncols) respectively.
-                mat.resize_with(
-                    |row, col| unsafe {
-                        mat_ref.get_unchecked(row, col).clone()
-                    },
-                    self.nrows(),
-                    self.ncols(),
-                );
-            mat
-        }
+        self.rb().to_owned()
     }
 }
 
@@ -5878,100 +5805,30 @@ mod tests {
         let _ = &mat![[1.0, -2.0], [4.0, -8.0],] - &mat![[4.0, 5.0],];
     }
 
-    // For miri
     #[test]
-    fn to_owned_specialization_mat_ref() {
-        let mi8: Mat<i8> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mu8: Mat<u8> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mi16: Mat<i16> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mu16: Mat<u16> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mi32: Mat<i32> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mu32: Mat<u32> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mi64: Mat<i64> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mu64: Mat<u64> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
-        let mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
-
-        let mrefi8 = mi8.as_ref();
-        let mrefu8 = mu8.as_ref();
-        let mrefi16 = mi16.as_ref();
-        let mrefu16 = mu16.as_ref();
-        let mrefi32 = mi32.as_ref();
-        let mrefu32 = mu32.as_ref();
-        let mrefi64 = mi64.as_ref();
-        let mrefu64 = mu64.as_ref();
-        let mreff32 = mf32.as_ref();
-        let mreff64 = mf64.as_ref();
-
-        let _ = mrefi8.to_owned();
-        let _ = mrefu8.to_owned();
-        let _ = mrefi16.to_owned();
-        let _ = mrefu16.to_owned();
-        let _ = mrefi32.to_owned();
-        let _ = mrefu32.to_owned();
-        let _ = mrefi64.to_owned();
-        let _ = mrefu64.to_owned();
-        let _ = mreff32.to_owned();
-        let _ = mreff64.to_owned();
-    }
-
-    // For miri
-    #[test]
-    fn to_owned_specialization_mat_mut() {
-        let mut mi8: Mat<i8> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mu8: Mat<u8> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mi16: Mat<i16> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mu16: Mat<u16> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mi32: Mat<i32> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mu32: Mat<u32> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mi64: Mat<i64> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-        let mut mu64: Mat<u64> = mat![[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    fn to_owned_equality() {
+        use num_complex::Complex as C;
         let mut mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
         let mut mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
-        let mrefi8 = mi8.as_mut();
-        let mrefu8 = mu8.as_mut();
-        let mrefi16 = mi16.as_mut();
-        let mrefu16 = mu16.as_mut();
-        let mrefi32 = mi32.as_mut();
-        let mrefu32 = mu32.as_mut();
-        let mrefi64 = mi64.as_mut();
-        let mrefu64 = mu64.as_mut();
-        let mreff32 = mf32.as_mut();
-        let mreff64 = mf64.as_mut();
-
-        let _ = mrefi8.to_owned();
-        let _ = mrefu8.to_owned();
-        let _ = mrefi16.to_owned();
-        let _ = mrefu16.to_owned();
-        let _ = mrefi32.to_owned();
-        let _ = mrefu32.to_owned();
-        let _ = mrefi64.to_owned();
-        let _ = mrefu64.to_owned();
-        let _ = mreff32.to_owned();
-        let _ = mreff64.to_owned();
-    }
-
-    #[test]
-    fn to_owned_equality(){
-        let mut m = mat![
-            [1,2,3],
-            [4,5,6],
+        let mut mf32c: Mat<Complex<f32>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
         ];
-        
-        let owning = m.as_ref().transpose().to_owned();
-        fancy_assert!(owning[(0,0)] == 1);
-        fancy_assert!(owning[(0,1)] == 4);
-        fancy_assert!(owning[(1,0)] == 2);
-        fancy_assert!(owning[(1,1)] == 5);
-        fancy_assert!(owning[(2,0)] == 3);
-        fancy_assert!(owning[(2,1)] == 6);
+        let mut mf64c: Mat<Complex<f64>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
+        ];
 
-        let owning = m.as_mut().transpose().to_owned();
-        fancy_assert!(owning[(0,0)] == 1);
-        fancy_assert!(owning[(0,1)] == 4);
-        fancy_assert!(owning[(1,0)] == 2);
-        fancy_assert!(owning[(1,1)] == 5);
-        fancy_assert!(owning[(2,0)] == 3);
-        fancy_assert!(owning[(2,1)] == 6);
+        fancy_assert!(mf32.as_ref().transpose().conjugate().to_owned().as_ref() == mf32.transpose().conjugate());
+        fancy_assert!(mf64.as_ref().transpose().conjugate().to_owned().as_ref() == mf64.transpose().conjugate());
+        fancy_assert!(mf32c.as_ref().transpose().conjugate().to_owned().as_ref() == mf32c.transpose().conjugate());
+        fancy_assert!(mf64c.as_ref().transpose().conjugate().to_owned().as_ref() == mf64c.transpose().conjugate());
+
+        fancy_assert!(mf32.as_mut().transpose().conjugate().to_owned().as_ref() == mf32.transpose().conjugate());
+        fancy_assert!(mf64.as_mut().transpose().conjugate().to_owned().as_ref() == mf64.transpose().conjugate());
+        fancy_assert!(mf32c.as_mut().transpose().conjugate().to_owned().as_ref() == mf32c.transpose().conjugate());
+        fancy_assert!(mf64c.as_mut().transpose().conjugate().to_owned().as_ref() == mf64c.transpose().conjugate());
     }
 }
