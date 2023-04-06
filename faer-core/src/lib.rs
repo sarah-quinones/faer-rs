@@ -5821,14 +5821,14 @@ mod tests {
             [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
         ];
 
-        fancy_assert!(mf32.as_ref().transpose().conjugate().to_owned().as_ref() == mf32.transpose().conjugate());
-        fancy_assert!(mf64.as_ref().transpose().conjugate().to_owned().as_ref() == mf64.transpose().conjugate());
-        fancy_assert!(mf32c.as_ref().transpose().conjugate().to_owned().as_ref() == mf32c.transpose().conjugate());
-        fancy_assert!(mf64c.as_ref().transpose().conjugate().to_owned().as_ref() == mf64c.transpose().conjugate());
+        fancy_assert!(mf32.as_ref().transpose().to_owned().as_ref() == mf32.transpose());
+        fancy_assert!(mf64.as_ref().transpose().to_owned().as_ref() == mf64.transpose());
+        fancy_assert!(mf32c.as_ref().transpose().to_owned().as_ref() == mf32c.transpose());
+        fancy_assert!(mf64c.as_ref().transpose().to_owned().as_ref() == mf64c.transpose());
 
-        fancy_assert!(mf32.as_mut().transpose().conjugate().to_owned().as_ref() == mf32.transpose().conjugate());
-        fancy_assert!(mf64.as_mut().transpose().conjugate().to_owned().as_ref() == mf64.transpose().conjugate());
-        fancy_assert!(mf32c.as_mut().transpose().conjugate().to_owned().as_ref() == mf32c.transpose().conjugate());
-        fancy_assert!(mf64c.as_mut().transpose().conjugate().to_owned().as_ref() == mf64c.transpose().conjugate());
+        fancy_assert!(mf32.as_mut().transpose().to_owned().as_ref() == mf32.transpose());
+        fancy_assert!(mf64.as_mut().transpose().to_owned().as_ref() == mf64.transpose());
+        fancy_assert!(mf32c.as_mut().transpose().to_owned().as_ref() == mf32c.transpose());
+        fancy_assert!(mf64c.as_mut().transpose().to_owned().as_ref() == mf64c.transpose());
     }
 }
