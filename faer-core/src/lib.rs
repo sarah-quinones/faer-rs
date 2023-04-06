@@ -1925,6 +1925,24 @@ impl<'a, T> MatRef<'a, T> {
     pub fn as_ref(&self) -> MatRef<'_, T> {
         *self
     }
+
+    /// Returns an owning [`Mat`] of the data
+    #[inline]
+    pub fn to_owned(&self) -> Mat<T::Num>
+    where
+        T: Clone + Conjugate,
+    {
+        let mut mat = Mat::new();
+        let mat_ref = self.as_ref();
+        // SAFETY:
+        // The call to get_unchecked is safe, because row and col will always be in the range [0,nrows) and [0,ncols) respectively.
+        mat.resize_with(
+            |row, col| unsafe { mat_ref.get_unchecked(row, col).clone().into_num() },
+            self.nrows(),
+            self.ncols(),
+        );
+        mat
+    }
 }
 
 impl<'a, T> MatMut<'a, T> {
@@ -2544,6 +2562,15 @@ impl<'a, T> MatMut<'a, T> {
     #[inline]
     pub fn as_mut(&mut self) -> MatMut<'_, T> {
         self.rb_mut()
+    }
+
+    /// Returns an owning [`Mat`] of the data
+    #[inline]
+    pub fn to_owned(&self) -> Mat<T::Num>
+    where
+        T: Clone + Conjugate,
+    {
+        self.rb().to_owned()
     }
 }
 
@@ -5776,5 +5803,32 @@ mod tests {
     #[should_panic]
     fn sub_different_size() {
         let _ = &mat![[1.0, -2.0], [4.0, -8.0],] - &mat![[4.0, 5.0],];
+    }
+
+    #[test]
+    fn to_owned_equality() {
+        use num_complex::Complex as C;
+        let mut mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
+        let mut mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
+        let mut mf32c: Mat<Complex<f32>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
+        ];
+        let mut mf64c: Mat<Complex<f64>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
+        ];
+
+        fancy_assert!(mf32.as_ref().transpose().to_owned().as_ref() == mf32.transpose());
+        fancy_assert!(mf64.as_ref().transpose().to_owned().as_ref() == mf64.transpose());
+        fancy_assert!(mf32c.as_ref().transpose().to_owned().as_ref() == mf32c.transpose());
+        fancy_assert!(mf64c.as_ref().transpose().to_owned().as_ref() == mf64c.transpose());
+
+        fancy_assert!(mf32.as_mut().transpose().to_owned().as_ref() == mf32.transpose());
+        fancy_assert!(mf64.as_mut().transpose().to_owned().as_ref() == mf64.transpose());
+        fancy_assert!(mf32c.as_mut().transpose().to_owned().as_ref() == mf32c.transpose());
+        fancy_assert!(mf64c.as_mut().transpose().to_owned().as_ref() == mf64c.transpose());
     }
 }
