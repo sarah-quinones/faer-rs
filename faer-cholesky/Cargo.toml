@@ -1,6 +1,6 @@
 [package]
 name = "faer-cholesky"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.6", default-features = false, path = "../faer-core" }
+faer-core = { version = "0.7.0", default-features = false, path = "../faer-core" }
 seq-macro = "0.3"
 
 pulp = { workspace = true, default-features = false }
