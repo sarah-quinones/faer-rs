@@ -4,7 +4,7 @@ use faer_core::{
     mul::matmul,
     permutation::{swap_rows, PermutationMut},
     solve::solve_unit_lower_triangular_in_place,
-    temp_mat_req, temp_mat_uninit,
+    temp_mat_req, temp_mat_uninit, zip,
     zip::ColUninit,
     ColMut, ComplexField, Conj, MatMut, Parallelism,
 };
@@ -75,17 +75,13 @@ fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>
         *elem = elem.mul(&inv);
     }
     let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(j + 1, j + 1);
-    matmul(
-        bottom_right,
-        Conj::No,
-        bottom_left.rb().col(j).as_2d(),
-        Conj::No,
-        top_right.rb().row(j).as_2d(),
-        Conj::No,
-        Some(T::one()),
-        T::one().neg(),
-        Parallelism::None,
-    )
+    let lhs = bottom_left.rb().col(j);
+    let rhs = top_right.rb().row(j);
+    let mat = bottom_right;
+
+    for (col, rhs) in mat.into_col_iter().zip(rhs) {
+        zip!(col, lhs).for_each(|x, lhs| *x = (*x).sub(&lhs.mul(rhs)));
+    }
 }
 
 fn recursion_threshold<T: 'static>(_m: usize) -> usize {

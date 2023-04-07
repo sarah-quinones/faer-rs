@@ -1,7 +1,7 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
-use core::{mem::size_of, slice};
+use core::slice;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
     c32, c64,
@@ -117,6 +117,42 @@ fn best_c32<S: pulp::Simd>(
     }
 }
 
+#[inline(always)]
+fn best2d_f64<S: pulp::Simd>(
+    simd: S,
+    best_value: S::f64s,
+    best_row_indices: S::u64s,
+    best_col_indices: S::u64s,
+    value: S::f64s,
+    row_indices: S::u64s,
+    col_indices: S::u64s,
+) -> (S::f64s, S::u64s, S::u64s) {
+    let is_better = simd.f64s_greater_than(value, best_value);
+    (
+        simd.m64s_select_f64s(is_better, value, best_value),
+        simd.m64s_select_u64s(is_better, row_indices, best_row_indices),
+        simd.m64s_select_u64s(is_better, col_indices, best_col_indices),
+    )
+}
+
+#[inline(always)]
+fn best2d_f32<S: pulp::Simd>(
+    simd: S,
+    best_value: S::f32s,
+    best_row_indices: S::u32s,
+    best_col_indices: S::u32s,
+    value: S::f32s,
+    row_indices: S::u32s,
+    col_indices: S::u32s,
+) -> (S::f32s, S::u32s, S::u32s) {
+    let is_better = simd.f32s_greater_than(value, best_value);
+    (
+        simd.m32s_select_f32s(is_better, value, best_value),
+        simd.m32s_select_u32s(is_better, row_indices, best_row_indices),
+        simd.m32s_select_u32s(is_better, col_indices, best_col_indices),
+    )
+}
+
 macro_rules! best_in_col_simd {
     ($scalar: ident, $real_scalar: ident, $uint: ident) => {
         paste! {
@@ -125,7 +161,7 @@ macro_rules! best_in_col_simd {
                 simd: S,
                 iota: S::[<$uint s>],
                 data: &[$scalar],
-            ) -> (S::[<$real_scalar s>], S::[<$uint s>], $real_scalar, $uint) {
+            ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
                 let (head, tail) = S::[<$scalar s_as_simd>](data);
 
                 let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
@@ -166,6 +202,14 @@ macro_rules! best_in_col_simd {
                     indices0 = simd.[<$uint s_add>](indices0, increment1);
                 }
 
+                (best_value0, best_indices0) = [<best_ $scalar>](
+                    simd,
+                    best_value0,
+                    best_indices0,
+                    simd.[<$scalar s_partial_load>](tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
+                    indices0
+                );
+
                 let mut best_value_scalar = 0.0;
                 let mut best_index_scalar = 0;
                 let mut index = (head.len() * lane_count) as $uint;
@@ -183,8 +227,6 @@ macro_rules! best_in_col_simd {
                 (
                     best_value0,
                     best_indices0,
-                    best_value_scalar,
-                    best_index_scalar,
                 )
             }
 
@@ -195,35 +237,11 @@ macro_rules! best_in_col_simd {
                 dst: &mut [$scalar],
                 lhs: &[$scalar],
                 rhs: $scalar,
-            ) -> (S::[<$real_scalar s>], S::[<$uint s>], $real_scalar, $uint) {
+            ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
                 let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
-                let len = dst.len();
 
-                let offset = dst.as_ptr().align_offset(size_of::<S::[<$real_scalar s>]>());
-                let ((dst_prefix, dst_suffix), (lhs_prefix, lhs_suffix)) = (
-                    dst.split_at_mut(offset.min(len)),
-                    lhs.split_at(offset.min(len)),
-                );
-
-                let mut best_value_scalar = 0.0;
-                let mut best_index_scalar = 0;
-                let mut index: $uint = 0;
-
-                for (dst, lhs) in dst_prefix.iter_mut().zip(lhs_prefix) {
-                    let new_dst = *lhs * rhs + *dst;
-                    *dst = new_dst;
-                    (best_value_scalar, best_index_scalar) = [<best_ $scalar>](
-                        pulp::Scalar::new(),
-                        best_value_scalar,
-                        best_index_scalar,
-                        new_dst,
-                        index,
-                    );
-                    index += 1;
-                }
-
-                let (dst_head, dst_tail) = S::[<$scalar s_as_mut_simd>](dst_suffix);
-                let (lhs_head, lhs_tail) = S::[<$scalar s_as_simd>](lhs_suffix);
+                let (dst_head, dst_tail) = S::[<$scalar s_as_mut_simd>](dst);
+                let (lhs_head, lhs_tail) = S::[<$scalar s_as_simd>](lhs);
 
                 let increment1 = simd.[<$uint s_splat>](lane_count as $uint);
                 let increment2 = simd.[<$uint s_splat>](2 * lane_count as $uint);
@@ -232,22 +250,16 @@ macro_rules! best_in_col_simd {
                 let mut best_value1 = simd.[<$real_scalar s_splat>](0.0);
                 let mut best_indices0 = simd.[<$uint s_splat>](0);
                 let mut best_indices1 = simd.[<$uint s_splat>](0);
-                let mut indices0 = simd.[<$uint s_add>](iota, simd.[<$uint s_splat>](offset as $uint));
+                let mut indices0 = simd.[<$uint s_add>](iota, simd.[<$uint s_splat>](0));
                 let mut indices1 = simd.[<$uint s_add>](indices0, increment1);
 
-                let mut dst_head_chunks = dst_head.chunks_exact_mut(2);
-                let lhs_head_chunks = lhs_head.chunks_exact(2);
+                let (dst_head2, dst_tail2) = pulp::as_arrays_mut::<2, _>(dst_head);
+                let (lhs_head2, lhs_tail2) = pulp::as_arrays::<2, _>(lhs_head);
 
                 let rhs_v = simd.[<$scalar s_splat>](rhs);
-                for (dst, lhs) in (&mut dst_head_chunks).zip(lhs_head_chunks.clone()) {
-                    let (dst0, dst1) = dst.split_at_mut(1);
-                    let dst0 = &mut dst0[0];
-                    let dst1 = &mut dst1[0];
-                    let lhs0 = lhs[0];
-                    let lhs1 = lhs[1];
-
-                    let new_dst0 = simd.[<$scalar s_mul_adde>](lhs0, rhs_v, *dst0);
-                    let new_dst1 = simd.[<$scalar s_mul_adde>](lhs1, rhs_v, *dst1);
+                for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
+                    let new_dst0 = simd.[<$scalar s_mul_adde>](*lhs0, rhs_v, *dst0);
+                    let new_dst1 = simd.[<$scalar s_mul_adde>](*lhs1, rhs_v, *dst1);
                     *dst0 = new_dst0;
                     *dst1 = new_dst1;
 
@@ -262,36 +274,31 @@ macro_rules! best_in_col_simd {
                 (best_value0, best_indices0) =
                     [<best_ $real_scalar>](simd, best_value0, best_indices0, best_value1, best_indices1);
 
-                for (dst, lhs) in dst_head_chunks
-                    .into_remainder()
+                for (dst, lhs) in dst_tail2
                     .iter_mut()
-                    .zip(lhs_head_chunks.remainder().iter().copied())
+                    .zip(lhs_tail2)
                 {
-                    let new_dst = simd.[<$scalar s_mul_adde>](lhs, rhs_v, *dst);
+                    let new_dst = simd.[<$scalar s_mul_adde>](*lhs, rhs_v, *dst);
                     *dst = new_dst;
                     (best_value0, best_indices0) =
                         [<best_ $scalar>](simd, best_value0, best_indices0, new_dst, indices0);
+                    indices0 = simd.[<$uint s_add>](indices0, increment1);
                 }
 
-                index = (offset + dst_head.len() * lane_count) as $uint;
-                for (dst, lhs) in dst_tail.iter_mut().zip(lhs_tail) {
-                    let new_dst = *lhs * rhs + *dst;
-                    *dst = new_dst;
-                    (best_value_scalar, best_index_scalar) = [<best_ $scalar>](
-                        pulp::Scalar::new(),
-                        best_value_scalar,
-                        best_index_scalar,
-                        new_dst,
-                        index,
+                {
+                    let new_dst = simd.[<$scalar s_mul_adde>](
+                        simd.[<$scalar s_partial_load>](lhs_tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
+                        rhs_v,
+                        simd.[<$scalar s_partial_load>](dst_tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
                     );
-                    index += 1;
+                    simd.[<$scalar s_partial_store>](dst_tail, new_dst);
+                    (best_value0, best_indices0) =
+                        [<best_ $scalar>](simd, best_value0, best_indices0, new_dst, indices0);
                 }
 
                 (
                     best_value0,
                     best_indices0,
-                    best_value_scalar,
-                    best_index_scalar,
                 )
             }
         }
@@ -303,52 +310,42 @@ best_in_col_simd!(c64, f64, u64);
 best_in_col_simd!(c32, f32, u32);
 
 #[inline(always)]
-fn reduce_f64(
-    mut best_value_scalar: f64,
-    mut best_index_scalar: u64,
-    best_value: &[f64],
-    best_indices: &[u64],
-) -> (f64, u64) {
-    for (data, index) in best_value.iter().copied().zip(best_indices.iter().copied()) {
-        (best_value_scalar, best_index_scalar) = best_f64(
+fn reduce2d_f64(best_value: &[f64], best_row: &[u64], best_col: &[u64]) -> (f64, u64, u64) {
+    let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) = (0.0, 0, 0);
+    for ((data, &row), &col) in best_value.iter().copied().zip(best_row).zip(best_col) {
+        (best_value_scalar, best_row_scalar, best_col_scalar) = best2d_f64(
             pulp::Scalar::new(),
             best_value_scalar,
-            best_index_scalar,
+            best_row_scalar,
+            best_col_scalar,
             data,
-            index,
+            row,
+            col,
         );
     }
-    (best_value_scalar, best_index_scalar)
-}
-
-fn reduce_f32(
-    mut best_value_scalar: f32,
-    mut best_index_scalar: u32,
-    best_value: &[f32],
-    best_indices: &[u32],
-) -> (f32, u32) {
-    for (data, index) in best_value.iter().copied().zip(best_indices.iter().copied()) {
-        (best_value_scalar, best_index_scalar) = best_f32(
-            pulp::Scalar::new(),
-            best_value_scalar,
-            best_index_scalar,
-            data,
-            index,
-        );
-    }
-    (best_value_scalar, best_index_scalar)
+    (best_value_scalar, best_row_scalar, best_col_scalar)
 }
 
 #[inline(always)]
-fn best_in_col_f64<S: Simd>(simd: S, data: &[f64]) -> (f64, u64) {
-    let (best_value, best_indices, best_value_s, best_index_s) =
-        best_in_col_f64_generic(simd, cast_lossy([0, 1, 2, 3, 4, 5, 6, 7_u64]), data);
-    reduce_f64(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
-    )
+fn reduce2d_f32(best_value: &[f32], best_row: &[u32], best_col: &[u32]) -> (f32, u32, u32) {
+    let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) = (0.0, 0, 0);
+    for ((data, &row), &col) in best_value.iter().copied().zip(best_row).zip(best_col) {
+        (best_value_scalar, best_row_scalar, best_col_scalar) = best2d_f32(
+            pulp::Scalar::new(),
+            best_value_scalar,
+            best_row_scalar,
+            best_col_scalar,
+            data,
+            row,
+            col,
+        );
+    }
+    (best_value_scalar, best_row_scalar, best_col_scalar)
+}
+
+#[inline(always)]
+fn best_in_col_f64<S: Simd>(simd: S, data: &[f64]) -> (S::f64s, S::u64s) {
+    best_in_col_f64_generic(simd, cast_lossy([0, 1, 2, 3, 4, 5, 6, 7_u64]), data)
 }
 
 #[inline(always)]
@@ -357,35 +354,22 @@ fn update_and_best_in_col_f64<S: Simd>(
     dst: &mut [f64],
     lhs: &[f64],
     rhs: f64,
-) -> (f64, u64) {
-    let (best_value, best_indices, best_value_s, best_index_s) = update_and_best_in_col_f64_generic(
+) -> (S::f64s, S::u64s) {
+    update_and_best_in_col_f64_generic(
         simd,
         cast_lossy([0, 1, 2, 3, 4, 5, 6, 7_u64]),
         dst,
         lhs,
         rhs,
-    );
-
-    reduce_f64(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
 #[inline(always)]
-fn best_in_col_f32<S: Simd>(simd: S, data: &[f32]) -> (f32, u32) {
-    let (best_value, best_indices, best_value_s, best_index_s) = best_in_col_f32_generic(
+fn best_in_col_f32<S: Simd>(simd: S, data: &[f32]) -> (S::f32s, S::u32s) {
+    best_in_col_f32_generic(
         simd,
         cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u32]),
         data,
-    );
-    reduce_f32(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
@@ -395,32 +379,19 @@ fn update_and_best_in_col_f32<S: Simd>(
     dst: &mut [f32],
     lhs: &[f32],
     rhs: f32,
-) -> (f32, u32) {
-    let (best_value, best_indices, best_value_s, best_index_s) = update_and_best_in_col_f32_generic(
+) -> (S::f32s, S::u32s) {
+    update_and_best_in_col_f32_generic(
         simd,
         cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u32]),
         dst,
         lhs,
         rhs,
-    );
-    reduce_f32(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
 #[inline(always)]
-fn best_in_col_c64<S: Simd>(simd: S, data: &[c64]) -> (f64, u64) {
-    let (best_value, best_indices, best_value_s, best_index_s) =
-        best_in_col_c64_generic(simd, cast_lossy([0, 0, 1, 1, 2, 2, 3, 3_u64]), data);
-    reduce_f64(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
-    )
+fn best_in_col_c64<S: Simd>(simd: S, data: &[c64]) -> (S::f64s, S::u64s) {
+    best_in_col_c64_generic(simd, cast_lossy([0, 0, 1, 1, 2, 2, 3, 3_u64]), data)
 }
 
 #[inline(always)]
@@ -429,35 +400,22 @@ fn update_and_best_in_col_c64<S: Simd>(
     dst: &mut [c64],
     lhs: &[c64],
     rhs: c64,
-) -> (f64, u64) {
-    let (best_value, best_indices, best_value_s, best_index_s) = update_and_best_in_col_c64_generic(
+) -> (S::f64s, S::u64s) {
+    update_and_best_in_col_c64_generic(
         simd,
         cast_lossy([0, 0, 1, 1, 2, 2, 3, 3_u64]),
         dst,
         lhs,
         rhs,
-    );
-
-    reduce_f64(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
 #[inline(always)]
-fn best_in_col_c32<S: Simd>(simd: S, data: &[c32]) -> (f32, u32) {
-    let (best_value, best_indices, best_value_s, best_index_s) = best_in_col_c32_generic(
+fn best_in_col_c32<S: Simd>(simd: S, data: &[c32]) -> (S::f32s, S::u32s) {
+    best_in_col_c32_generic(
         simd,
         cast_lossy([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7_u32]),
         data,
-    );
-    reduce_f32(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
@@ -467,19 +425,13 @@ fn update_and_best_in_col_c32<S: Simd>(
     dst: &mut [c32],
     lhs: &[c32],
     rhs: c32,
-) -> (f32, u32) {
-    let (best_value, best_indices, best_value_s, best_index_s) = update_and_best_in_col_c32_generic(
+) -> (S::f32s, S::u32s) {
+    update_and_best_in_col_c32_generic(
         simd,
         cast_lossy([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 7_u32]),
         dst,
         lhs,
         rhs,
-    );
-    reduce_f32(
-        best_value_s,
-        best_index_s,
-        bytemuck::cast_slice(slice::from_ref(&best_value)),
-        bytemuck::cast_slice(slice::from_ref(&best_indices)),
     )
 }
 
@@ -495,22 +447,32 @@ fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u64s_splat(0);
+            let mut best_col = simd.u64s_splat(0);
+            let mut best_value = simd.f64s_splat(0.0);
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
                 let col = unsafe { slice::from_raw_parts(ptr, m) };
                 let (best_value_in_col, best_index_in_col) = best_in_col_f64(simd, col);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f64(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u64s_splat(j as u64),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f64(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(BestInMat(matrix))
@@ -533,9 +495,9 @@ fn update_and_best_in_matrix_f64(
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u64s_splat(0);
+            let mut best_col = simd.u64s_splat(0);
+            let mut best_value = simd.f64s_splat(0.0);
 
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
@@ -547,14 +509,25 @@ fn update_and_best_in_matrix_f64(
 
                 let (best_value_in_col, best_index_in_col) =
                     update_and_best_in_col_f64(simd, dst, lhs, rhs);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+
+                (best_value, best_row, best_col) = best2d_f64(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u64s_splat(j as u64),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f64(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
@@ -572,22 +545,32 @@ fn best_in_matrix_f32(matrix: MatRef<'_, f32>) -> (usize, usize, f32) {
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u32s_splat(0);
+            let mut best_col = simd.u32s_splat(0);
+            let mut best_value = simd.f32s_splat(0.0);
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
                 let col = unsafe { slice::from_raw_parts(ptr, m) };
                 let (best_value_in_col, best_index_in_col) = best_in_col_f32(simd, col);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f32(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u32s_splat(j as u32),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f32(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(BestInMat(matrix))
@@ -605,14 +588,14 @@ fn update_and_best_in_matrix_f32(
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_debug_assert!(matrix.row_stride() == 1);
-            fancy_debug_assert!(lhs.row_stride() == 1);
+            fancy_assert!(matrix.row_stride() == 1);
+            fancy_assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u32s_splat(0);
+            let mut best_col = simd.u32s_splat(0);
+            let mut best_value = simd.f32s_splat(0.0);
 
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
@@ -624,14 +607,25 @@ fn update_and_best_in_matrix_f32(
 
                 let (best_value_in_col, best_index_in_col) =
                     update_and_best_in_col_f32(simd, dst, lhs, rhs);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+
+                (best_value, best_row, best_col) = best2d_f32(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u32s_splat(j as u32),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f32(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
@@ -649,22 +643,32 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u64s_splat(0);
+            let mut best_col = simd.u64s_splat(0);
+            let mut best_value = simd.f64s_splat(0.0);
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
                 let col = unsafe { slice::from_raw_parts(ptr, m) };
                 let (best_value_in_col, best_index_in_col) = best_in_col_c64(simd, col);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f64(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u64s_splat(j as u64),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f64(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(BestInMat(matrix))
@@ -687,9 +691,9 @@ pub fn update_and_best_in_matrix_c64(
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u64s_splat(0);
+            let mut best_col = simd.u64s_splat(0);
+            let mut best_value = simd.f64s_splat(0.0);
 
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
@@ -701,14 +705,24 @@ pub fn update_and_best_in_matrix_c64(
 
                 let (best_value_in_col, best_index_in_col) =
                     update_and_best_in_col_c64(simd, dst, lhs, rhs);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f64(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u64s_splat(j as u64),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f64(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
@@ -726,22 +740,32 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u32s_splat(0);
+            let mut best_col = simd.u32s_splat(0);
+            let mut best_value = simd.f32s_splat(0.0);
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
                 let col = unsafe { slice::from_raw_parts(ptr, m) };
                 let (best_value_in_col, best_index_in_col) = best_in_col_c32(simd, col);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f32(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u32s_splat(j as u32),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f32(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(BestInMat(matrix))
@@ -764,9 +788,9 @@ fn update_and_best_in_matrix_c32(
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = 0;
-            let mut best_col = 0;
-            let mut best_value = 0.0;
+            let mut best_row = simd.u32s_splat(0);
+            let mut best_col = simd.u32s_splat(0);
+            let mut best_value = simd.f32s_splat(0.0);
 
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
@@ -778,14 +802,24 @@ fn update_and_best_in_matrix_c32(
 
                 let (best_value_in_col, best_index_in_col) =
                     update_and_best_in_col_c32(simd, dst, lhs, rhs);
-                if best_value_in_col > best_value {
-                    best_value = best_value_in_col;
-                    best_row = best_index_in_col as usize;
-                    best_col = j;
-                }
+                (best_value, best_row, best_col) = best2d_f32(
+                    simd,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd.u32s_splat(j as u32),
+                );
             }
 
-            (best_row, best_col, best_value)
+            let (best_value, best_row, best_col) = reduce2d_f32(
+                bytemuck::cast_slice(&[best_value]),
+                bytemuck::cast_slice(&[best_row]),
+                bytemuck::cast_slice(&[best_col]),
+            );
+
+            (best_row as usize, best_col as usize, best_value)
         }
     }
     pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))

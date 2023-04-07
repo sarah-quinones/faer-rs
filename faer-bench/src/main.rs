@@ -418,6 +418,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::nalgebra::<f32>(&input_sizes),
             &eigen(eigen::rectangular_svd_f32, &input_sizes),
         )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("f64");
@@ -625,6 +626,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::nalgebra::<f64>(&input_sizes),
             &eigen(eigen::rectangular_svd_f64, &input_sizes),
         )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c32");
@@ -832,6 +834,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::nalgebra::<c32>(&input_sizes),
             &eigen(eigen::rectangular_svd_c32, &input_sizes),
         )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c64");
@@ -1039,6 +1042,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::nalgebra::<c64>(&input_sizes),
             &eigen(eigen::rectangular_svd_c64, &input_sizes),
         )?;
+        printwriteln!(file, "```")?;
     }
     Ok(())
 }

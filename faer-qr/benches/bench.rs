@@ -1,17 +1,15 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use faer_qr::no_pivoting::compute::recommended_blocksize;
-use std::time::Duration;
-
 use dyn_stack::*;
-use faer_core::{c64, Parallelism};
+use faer_core::{c64, Mat, Parallelism};
+use faer_qr::no_pivoting::compute::recommended_blocksize;
 use rand::random;
-
-use faer_core::Mat;
+use std::time::Duration;
 
 pub fn qr(c: &mut Criterion) {
     use faer_qr::*;
 
     for (m, n) in [
+        (32, 32),
         (64, 64),
         (128, 128),
         (256, 256),
@@ -62,15 +60,17 @@ pub fn qr(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
+            let mat = Mat::with_dims(|_, _| random::<f64>(), m, n);
+            let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(|_, _| random::<f64>(), blocksize, n);
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
             b.iter(|| {
+                faer_core::zip!(copy.as_mut(), mat.as_ref()).for_each(|dst, src| *dst = *src);
                 col_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
+                    copy.as_mut(),
                     householder.as_mut(),
                     &mut perm,
                     &mut perm_inv,

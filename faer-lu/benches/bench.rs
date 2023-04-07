@@ -1,21 +1,18 @@
-use std::time::Duration;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
-use faer_core::Parallelism;
+use faer_core::{Mat, Parallelism};
 use faer_lu::{
     full_pivoting::compute::FullPivLuComputeParams,
     partial_pivoting::compute::PartialPivLuComputeParams,
 };
 use rand::random;
 use reborrow::*;
-
-use faer_core::Mat;
+use std::time::Duration;
 
 pub fn lu(c: &mut Criterion) {
     use faer_lu::{full_pivoting, partial_pivoting};
 
-    for n in [64, 128, 256, 512, 1023, 1024, 4096] {
+    for n in [4, 6, 8, 12, 32, 64, 128, 256, 512, 1023, 1024, 4096] {
         let partial_params = PartialPivLuComputeParams::default();
         let full_params = FullPivLuComputeParams::default();
         c.bench_function(&format!("faer-st-plu-{n}"), |b| {

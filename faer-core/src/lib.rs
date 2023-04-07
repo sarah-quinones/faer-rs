@@ -1935,7 +1935,8 @@ impl<'a, T> MatRef<'a, T> {
         let mut mat = Mat::new();
         let mat_ref = self.as_ref();
         // SAFETY:
-        // The call to get_unchecked is safe, because row and col will always be in the range [0,nrows) and [0,ncols) respectively.
+        // The call to get_unchecked is safe, because row and col will always be in the range
+        // [0,nrows) and [0,ncols) respectively.
         mat.resize_with(
             |row, col| unsafe { mat_ref.get_unchecked(row, col).clone().into_num() },
             self.nrows(),

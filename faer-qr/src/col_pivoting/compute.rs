@@ -41,10 +41,10 @@ fn update_and_norm2_f64(arch: pulp::Arch, a: &mut [f64], b: &[f64], k: f64) -> f
             let (a, a_rem) = S::f64s_as_mut_simd(a);
             let (b, b_rem) = S::f64s_as_simd(b);
 
+            let vk = simd.f64s_splat(k);
+
             let (a, a_remv) = as_arrays_mut::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
-
-            let vk = simd.f64s_splat(k);
 
             for (a, b) in a.iter_mut().zip(b.iter()) {
                 a[0] = simd.f64s_mul_adde(vk, b[0], a[0]);
@@ -574,7 +574,7 @@ fn process_cols<T: ComplexField>(
         let (col_head, col_tail) = matrix.rb_mut().col(j).split_at(1);
         let col_head = col_head.get(0);
 
-        let dot = col_head.add(&dot(arch, first_tail, col_tail.rb()));
+        let dot = (*col_head).add(&dot(arch, first_tail, col_tail.rb()));
         let k = (tau_inv.mul(&dot)).neg();
         *col_head = col_head.add(&k);
 

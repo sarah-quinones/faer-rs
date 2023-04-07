@@ -37,30 +37,32 @@ fn dot_f64(arch: pulp::Arch, a: &[f64], b: &[f64]) -> f64 {
             let (a, a_remv) = as_arrays::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
 
-            for (a, b) in a.iter().zip(b.iter()) {
-                acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
-                acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
-                acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
-                acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
-                acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
-                acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
-                acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
-                acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
+            if !a.is_empty() {
+                for (a, b) in a.iter().zip(b.iter()) {
+                    acc0 = simd.f64s_mul_adde(a[0], b[0], acc0);
+                    acc1 = simd.f64s_mul_adde(a[1], b[1], acc1);
+                    acc2 = simd.f64s_mul_adde(a[2], b[2], acc2);
+                    acc3 = simd.f64s_mul_adde(a[3], b[3], acc3);
+                    acc4 = simd.f64s_mul_adde(a[4], b[4], acc4);
+                    acc5 = simd.f64s_mul_adde(a[5], b[5], acc5);
+                    acc6 = simd.f64s_mul_adde(a[6], b[6], acc6);
+                    acc7 = simd.f64s_mul_adde(a[7], b[7], acc7);
+                }
+
+                acc0 = simd.f64s_add(acc0, acc1);
+                acc2 = simd.f64s_add(acc2, acc3);
+                acc4 = simd.f64s_add(acc4, acc5);
+                acc6 = simd.f64s_add(acc6, acc7);
+
+                acc0 = simd.f64s_add(acc0, acc2);
+                acc4 = simd.f64s_add(acc4, acc6);
+
+                acc0 = simd.f64s_add(acc0, acc4);
             }
 
             for (a, b) in a_remv.iter().zip(b_remv.iter()) {
                 acc0 = simd.f64s_mul_adde(*a, *b, acc0);
             }
-
-            acc0 = simd.f64s_add(acc0, acc1);
-            acc2 = simd.f64s_add(acc2, acc3);
-            acc4 = simd.f64s_add(acc4, acc5);
-            acc6 = simd.f64s_add(acc6, acc7);
-
-            acc0 = simd.f64s_add(acc0, acc2);
-            acc4 = simd.f64s_add(acc4, acc6);
-
-            acc0 = simd.f64s_add(acc0, acc4);
 
             let mut acc = simd.f64s_reduce_sum(acc0);
 
@@ -102,30 +104,32 @@ fn dot_f32(arch: pulp::Arch, a: &[f32], b: &[f32]) -> f32 {
             let (a, a_remv) = as_arrays::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
 
-            for (a, b) in a.iter().zip(b.iter()) {
-                acc0 = simd.f32s_mul_adde(a[0], b[0], acc0);
-                acc1 = simd.f32s_mul_adde(a[1], b[1], acc1);
-                acc2 = simd.f32s_mul_adde(a[2], b[2], acc2);
-                acc3 = simd.f32s_mul_adde(a[3], b[3], acc3);
-                acc4 = simd.f32s_mul_adde(a[4], b[4], acc4);
-                acc5 = simd.f32s_mul_adde(a[5], b[5], acc5);
-                acc6 = simd.f32s_mul_adde(a[6], b[6], acc6);
-                acc7 = simd.f32s_mul_adde(a[7], b[7], acc7);
+            if !a.is_empty() {
+                for (a, b) in a.iter().zip(b.iter()) {
+                    acc0 = simd.f32s_mul_adde(a[0], b[0], acc0);
+                    acc1 = simd.f32s_mul_adde(a[1], b[1], acc1);
+                    acc2 = simd.f32s_mul_adde(a[2], b[2], acc2);
+                    acc3 = simd.f32s_mul_adde(a[3], b[3], acc3);
+                    acc4 = simd.f32s_mul_adde(a[4], b[4], acc4);
+                    acc5 = simd.f32s_mul_adde(a[5], b[5], acc5);
+                    acc6 = simd.f32s_mul_adde(a[6], b[6], acc6);
+                    acc7 = simd.f32s_mul_adde(a[7], b[7], acc7);
+                }
+
+                acc0 = simd.f32s_add(acc0, acc1);
+                acc2 = simd.f32s_add(acc2, acc3);
+                acc4 = simd.f32s_add(acc4, acc5);
+                acc6 = simd.f32s_add(acc6, acc7);
+
+                acc0 = simd.f32s_add(acc0, acc2);
+                acc4 = simd.f32s_add(acc4, acc6);
+
+                acc0 = simd.f32s_add(acc0, acc4);
             }
 
             for (a, b) in a_remv.iter().zip(b_remv.iter()) {
                 acc0 = simd.f32s_mul_adde(*a, *b, acc0);
             }
-
-            acc0 = simd.f32s_add(acc0, acc1);
-            acc2 = simd.f32s_add(acc2, acc3);
-            acc4 = simd.f32s_add(acc4, acc5);
-            acc6 = simd.f32s_add(acc6, acc7);
-
-            acc0 = simd.f32s_add(acc0, acc2);
-            acc4 = simd.f32s_add(acc4, acc6);
-
-            acc0 = simd.f32s_add(acc0, acc4);
 
             let mut acc = simd.f32s_reduce_sum(acc0);
 
@@ -167,30 +171,31 @@ fn dot_c64(arch: pulp::Arch, a: &[c64], b: &[c64]) -> c64 {
             let (a, a_remv) = as_arrays::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
 
-            for (a, b) in a.iter().zip(b.iter()) {
-                acc0 = simd.c64s_conj_mul_adde(a[0], b[0], acc0);
-                acc1 = simd.c64s_conj_mul_adde(a[1], b[1], acc1);
-                acc2 = simd.c64s_conj_mul_adde(a[2], b[2], acc2);
-                acc3 = simd.c64s_conj_mul_adde(a[3], b[3], acc3);
-                acc4 = simd.c64s_conj_mul_adde(a[4], b[4], acc4);
-                acc5 = simd.c64s_conj_mul_adde(a[5], b[5], acc5);
-                acc6 = simd.c64s_conj_mul_adde(a[6], b[6], acc6);
-                acc7 = simd.c64s_conj_mul_adde(a[7], b[7], acc7);
+            if !a.is_empty() {
+                for (a, b) in a.iter().zip(b.iter()) {
+                    acc0 = simd.c64s_conj_mul_adde(a[0], b[0], acc0);
+                    acc1 = simd.c64s_conj_mul_adde(a[1], b[1], acc1);
+                    acc2 = simd.c64s_conj_mul_adde(a[2], b[2], acc2);
+                    acc3 = simd.c64s_conj_mul_adde(a[3], b[3], acc3);
+                    acc4 = simd.c64s_conj_mul_adde(a[4], b[4], acc4);
+                    acc5 = simd.c64s_conj_mul_adde(a[5], b[5], acc5);
+                    acc6 = simd.c64s_conj_mul_adde(a[6], b[6], acc6);
+                    acc7 = simd.c64s_conj_mul_adde(a[7], b[7], acc7);
+                }
+                acc0 = simd.c64s_add(acc0, acc1);
+                acc2 = simd.c64s_add(acc2, acc3);
+                acc4 = simd.c64s_add(acc4, acc5);
+                acc6 = simd.c64s_add(acc6, acc7);
+
+                acc0 = simd.c64s_add(acc0, acc2);
+                acc4 = simd.c64s_add(acc4, acc6);
+
+                acc0 = simd.c64s_add(acc0, acc4);
             }
 
             for (a, b) in a_remv.iter().zip(b_remv.iter()) {
                 acc0 = simd.c64s_conj_mul_adde(*a, *b, acc0);
             }
-
-            acc0 = simd.c64s_add(acc0, acc1);
-            acc2 = simd.c64s_add(acc2, acc3);
-            acc4 = simd.c64s_add(acc4, acc5);
-            acc6 = simd.c64s_add(acc6, acc7);
-
-            acc0 = simd.c64s_add(acc0, acc2);
-            acc4 = simd.c64s_add(acc4, acc6);
-
-            acc0 = simd.c64s_add(acc0, acc4);
 
             let acc0: &[c64] = bytemuck::cast_slice(slice::from_ref(&acc0));
 
@@ -234,30 +239,31 @@ fn dot_c32(arch: pulp::Arch, a: &[c32], b: &[c32]) -> c32 {
             let (a, a_remv) = as_arrays::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
 
-            for (a, b) in a.iter().zip(b.iter()) {
-                acc0 = simd.c32s_conj_mul_adde(a[0], b[0], acc0);
-                acc1 = simd.c32s_conj_mul_adde(a[1], b[1], acc1);
-                acc2 = simd.c32s_conj_mul_adde(a[2], b[2], acc2);
-                acc3 = simd.c32s_conj_mul_adde(a[3], b[3], acc3);
-                acc4 = simd.c32s_conj_mul_adde(a[4], b[4], acc4);
-                acc5 = simd.c32s_conj_mul_adde(a[5], b[5], acc5);
-                acc6 = simd.c32s_conj_mul_adde(a[6], b[6], acc6);
-                acc7 = simd.c32s_conj_mul_adde(a[7], b[7], acc7);
+            if !a.is_empty() {
+                for (a, b) in a.iter().zip(b.iter()) {
+                    acc0 = simd.c32s_conj_mul_adde(a[0], b[0], acc0);
+                    acc1 = simd.c32s_conj_mul_adde(a[1], b[1], acc1);
+                    acc2 = simd.c32s_conj_mul_adde(a[2], b[2], acc2);
+                    acc3 = simd.c32s_conj_mul_adde(a[3], b[3], acc3);
+                    acc4 = simd.c32s_conj_mul_adde(a[4], b[4], acc4);
+                    acc5 = simd.c32s_conj_mul_adde(a[5], b[5], acc5);
+                    acc6 = simd.c32s_conj_mul_adde(a[6], b[6], acc6);
+                    acc7 = simd.c32s_conj_mul_adde(a[7], b[7], acc7);
+                }
+                acc0 = simd.c32s_add(acc0, acc1);
+                acc2 = simd.c32s_add(acc2, acc3);
+                acc4 = simd.c32s_add(acc4, acc5);
+                acc6 = simd.c32s_add(acc6, acc7);
+
+                acc0 = simd.c32s_add(acc0, acc2);
+                acc4 = simd.c32s_add(acc4, acc6);
+
+                acc0 = simd.c32s_add(acc0, acc4);
             }
 
             for (a, b) in a_remv.iter().zip(b_remv.iter()) {
                 acc0 = simd.c32s_conj_mul_adde(*a, *b, acc0);
             }
-
-            acc0 = simd.c32s_add(acc0, acc1);
-            acc2 = simd.c32s_add(acc2, acc3);
-            acc4 = simd.c32s_add(acc4, acc5);
-            acc6 = simd.c32s_add(acc6, acc7);
-
-            acc0 = simd.c32s_add(acc0, acc2);
-            acc4 = simd.c32s_add(acc4, acc6);
-
-            acc0 = simd.c32s_add(acc0, acc4);
 
             let acc0: &[c32] = bytemuck::cast_slice(slice::from_ref(&acc0));
 

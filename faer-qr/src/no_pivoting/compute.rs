@@ -15,26 +15,24 @@ fn qr_in_place_unblocked<T: ComplexField>(
     mut householder_factor: ColMut<'_, T>,
     _stack: DynStack<'_>,
 ) {
-    let arch = pulp::Arch::new();
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = n.min(m);
 
     fancy_assert!(householder_factor.nrows() == size);
 
+    let arch = pulp::Arch::new();
     for k in 0..size {
         let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let (_, _, first_col, last_cols) = mat_rem.split_at(0, 1);
         let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
 
-        let mut tail_squared_norm = T::Real::zero();
-        for elem in first_col_tail.rb() {
-            tail_squared_norm = tail_squared_norm.add(&elem.mul(&elem.conj()).real());
-        }
+        let tail_squared_norm =
+            faer_core::mul::dot(arch, first_col_tail.rb(), first_col_tail.rb()).real();
 
         let (tau, beta) = make_householder_in_place(
             Some(first_col_tail.rb_mut()),
-            first_col_head.rb().get(0).clone(),
+            first_col_head[0].clone(),
             tail_squared_norm,
         );
         unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau.clone() };
@@ -46,7 +44,7 @@ fn qr_in_place_unblocked<T: ComplexField>(
             let (col_head, col_tail) = col.split_at(1);
             let col_head = col_head.get(0);
 
-            let dot = col_head.add(&dot(arch, first_col_tail.rb(), col_tail.rb()));
+            let dot = (*col_head).add(&dot(arch, first_col_tail.rb(), col_tail.rb()));
             let k = (dot.mul(&tau_inv)).neg();
             *col_head = col_head.add(&k);
             col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
@@ -173,15 +171,17 @@ fn qr_in_place_blocked<T: ComplexField>(
             parallelism,
         );
 
-        apply_block_householder_transpose_on_the_left_in_place(
-            current_block.rb(),
-            householder_factor.rb(),
-            Conj::Yes,
-            trailing_cols.rb_mut(),
-            Conj::No,
-            parallelism,
-            stack.rb_mut(),
-        );
+        if trailing_cols.ncols() > 0 {
+            apply_block_householder_transpose_on_the_left_in_place(
+                current_block.rb(),
+                householder_factor.rb(),
+                Conj::Yes,
+                trailing_cols.rb_mut(),
+                Conj::No,
+                parallelism,
+                stack.rb_mut(),
+            );
+        }
 
         j += bs;
     }
