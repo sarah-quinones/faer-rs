@@ -241,6 +241,7 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationMut<'a> {
 /// - Panics if the matrices are not square or if they do not have the same shape.
 /// - Panics if the size of the permutation doesn't match the dimension of the matrices.
 #[track_caller]
+// TODO: make this hermitian?
 pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
     dst: MatMut<'_, T>,
     src: MatRef<'_, T>,

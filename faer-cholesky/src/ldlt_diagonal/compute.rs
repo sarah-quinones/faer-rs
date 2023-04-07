@@ -1,14 +1,17 @@
 use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
-use faer_core::{mul::triangular::BlockStructure, solve, ComplexField, Conj, MatMut, Parallelism};
+use faer_core::{
+    mul::triangular::BlockStructure, solve, zip, zip::RowUninit, ComplexField, Conj, MatMut,
+    Parallelism,
+};
 use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<T: ComplexField>(
     matrix: MatMut<'_, T>,
-    block_size: usize,
     parallelism: Parallelism,
 ) {
     let mut matrix = matrix;
+    let _ = parallelism;
 
     fancy_debug_assert!(
         matrix.ncols() == matrix.nrows(),
@@ -23,8 +26,9 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
     };
 
     let mut idx = 0;
+    let arch = pulp::Arch::new();
     loop {
-        let block_size = (n - idx).min(block_size);
+        let block_size = 1;
 
         // we split L/D rows/cols into 3 sections each
         //     ┌             ┐
@@ -44,10 +48,18 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
         let l00 = top_left.into_const();
         let d0 = l00.diagonal();
         let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
-        let (mut a11, _, mut a21, _) = bottom_right.split_at(block_size, block_size);
+        let (mut a11, _, a21, _) = bottom_right.split_at(block_size, block_size);
 
         // reserve space for L10×D0
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
+
+        {
+            let l10xd0 = l10xd0.rb_mut().row(0);
+            let l10 = l10.rb().row(0);
+
+            zip!(RowUninit(l10xd0), l10, d0.transpose())
+                .for_each(|dst, src, factor| unsafe { *dst = src.mul(factor) });
+        }
 
         for ((l10xd0_col, l10_col), d_factor) in l10xd0
             .rb_mut()
@@ -63,22 +75,15 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
 
         let l10xd0 = l10xd0.into_const();
 
-        faer_core::mul::triangular::matmul(
-            a11.rb_mut(),
-            BlockStructure::TriangularLower,
-            Conj::No,
-            l10xd0,
-            BlockStructure::Rectangular,
-            Conj::No,
-            l10.transpose(),
-            BlockStructure::Rectangular,
-            Conj::Yes,
-            Some(T::one()),
-            T::one().neg(),
-            parallelism,
+        a11.write_at(
+            0,
+            0,
+            a11[(0, 0)].sub(&faer_core::mul::dot(
+                arch,
+                l10xd0.row(0).transpose(),
+                l10.row(0).transpose(),
+            )),
         );
-
-        cholesky_in_place_left_looking_impl(a11.rb_mut(), block_size / 2, parallelism);
 
         if idx + block_size == n {
             break;
@@ -86,35 +91,17 @@ fn cholesky_in_place_left_looking_impl<T: ComplexField>(
 
         let ld11 = a11.into_const();
         let l11 = ld11;
-        let d1 = ld11.diagonal();
 
-        faer_core::mul::matmul(
-            a21.rb_mut(),
-            Conj::No,
-            l20,
-            Conj::No,
-            l10xd0.transpose(),
-            Conj::Yes,
-            Some(T::one()),
-            T::one().neg(),
-            parallelism,
-        );
+        let mut a21 = a21.col(0);
 
-        solve::solve_unit_lower_triangular_in_place(
-            l11,
-            Conj::Yes,
-            a21.rb_mut().transpose(),
-            Conj::No,
-            parallelism,
-        );
-
-        let l21xd1 = a21;
-        for (l21xd1_col, d1_elem) in l21xd1.into_col_iter().zip(d1) {
-            let d1_elem_inv = d1_elem.inv();
-            for l21xd1_elem in l21xd1_col {
-                *l21xd1_elem = l21xd1_elem.mul(&d1_elem_inv);
-            }
+        for (l20_col, l10) in l20.into_col_iter().zip(l10xd0.row(0)) {
+            let l10_conj = l10.conj();
+            zip!(a21.rb_mut(), l20_col.rb())
+                .for_each(|dst, src| *dst = (*dst).sub(&src.mul(&l10_conj)));
         }
+
+        let r = l11[(0, 0)].real().inv();
+        zip!(a21.rb_mut()).for_each(|x| *x = (*x).scale_real(&r));
 
         idx += block_size;
     }
@@ -150,7 +137,7 @@ fn cholesky_in_place_impl<T: ComplexField>(
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_impl(matrix, 16, parallelism);
+        cholesky_in_place_left_looking_impl(matrix, parallelism);
     } else {
         let block_size = (n / 2).min(128);
         let rem = n - block_size;

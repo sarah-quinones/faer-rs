@@ -1123,7 +1123,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// See [`Self::split_at`].
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_debug_assert!(i <= self.nrows());
         fancy_debug_assert!(j <= self.ncols());
@@ -1196,7 +1196,7 @@ impl<'a, T> MatRef<'a, T> {
     /// assert_eq!(bot_right[(0, 1)], 5.0);
     /// ```
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -1213,7 +1213,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
         let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
         (top, bottom)
@@ -1228,7 +1228,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at_row(self, i: usize) -> (Self, Self) {
         let (_, top, _, bottom) = self.split_at(i, 0);
         (top, bottom)
@@ -1243,7 +1243,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
         let (_, _, left, right) = self.split_at_unchecked(0, j);
         (left, right)
@@ -1258,7 +1258,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at_col(self, j: usize) -> (Self, Self) {
         let (_, _, left, right) = self.split_at(0, j);
         (left, right)
@@ -1278,7 +1278,7 @@ impl<'a, T> MatRef<'a, T> {
     ///
     /// See [`Self::get`].
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -1303,7 +1303,7 @@ impl<'a, T> MatRef<'a, T> {
     /// assert_eq!(m.get(1, 2), &7.0);
     /// ```
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, i: usize, j: usize) -> &'a T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -2107,7 +2107,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_debug_assert!(i <= self.nrows());
         fancy_debug_assert!(j <= self.ncols());
@@ -2152,7 +2152,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
         fancy_assert!(i <= self.nrows());
         fancy_assert!(j <= self.ncols());
@@ -2169,7 +2169,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
         let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
         (top, bottom)
@@ -2184,7 +2184,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at_row(self, i: usize) -> (Self, Self) {
         let (_, top, _, bottom) = self.split_at(i, 0);
         (top, bottom)
@@ -2199,7 +2199,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
         let (_, _, left, right) = self.split_at_unchecked(0, j);
         (left, right)
@@ -2214,7 +2214,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at_col(self, j: usize) -> (Self, Self) {
         let (_, _, left, right) = self.split_at(0, j);
         (left, right)
@@ -2230,7 +2230,7 @@ impl<'a, T> MatMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -2240,7 +2240,7 @@ impl<'a, T> MatMut<'a, T> {
     /// Returns a mutable reference to the element at position (i, j), or panics if the indices are
     /// out of bounds.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, i: usize, j: usize) -> &'a mut T {
         fancy_assert!(i < self.nrows());
         fancy_assert!(j < self.ncols());
@@ -2677,7 +2677,7 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
         fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
@@ -2697,7 +2697,7 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, j: usize) -> (Self, Self) {
         fancy_assert!(j <= self.ncols());
         // SAFETY: bounds have been checked
@@ -2712,7 +2712,7 @@ impl<'a, T> RowRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -2722,7 +2722,7 @@ impl<'a, T> RowRef<'a, T> {
     /// Returns a reference to the element at position (0, j), or panics if the index is out of
     /// bounds.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, j: usize) -> &'a T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
@@ -2933,7 +2933,7 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
         fancy_debug_assert!(j <= self.ncols());
         let ptr = self.base.ptr.as_ptr();
@@ -2953,7 +2953,7 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, j: usize) -> (Self, Self) {
         fancy_assert!(j <= self.ncols());
         // SAFETY: bounds have been checked
@@ -2968,7 +2968,7 @@ impl<'a, T> RowMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, j: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -2978,7 +2978,7 @@ impl<'a, T> RowMut<'a, T> {
     /// Returns a mutable reference to the element at position (0, j), or panics if the index is
     /// out of bounds.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, j: usize) -> &'a mut T {
         fancy_assert!(j < self.ncols());
         // SAFETY: bounds have been checked.
@@ -3149,7 +3149,7 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
         fancy_debug_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
@@ -3169,7 +3169,7 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, i: usize) -> (Self, Self) {
         fancy_assert!(i <= self.nrows());
         // SAFETY: bounds have been checked
@@ -3184,7 +3184,7 @@ impl<'a, T> ColRef<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -3194,7 +3194,7 @@ impl<'a, T> ColRef<'a, T> {
     /// Returns a reference to the element at position (i, 0), or panics if the index is out of
     /// bounds.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, i: usize) -> &'a T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked.
@@ -3405,7 +3405,7 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
         fancy_debug_assert!(i <= self.nrows());
         let ptr = self.base.ptr.as_ptr();
@@ -3425,7 +3425,7 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// Otherwise, it panics.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn split_at(self, i: usize) -> (Self, Self) {
         fancy_assert!(i <= self.nrows());
         // SAFETY: bounds have been checked
@@ -3440,7 +3440,7 @@ impl<'a, T> ColMut<'a, T> {
     ///
     /// Otherwise, the behavior is undefined.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub unsafe fn get_unchecked(self, i: usize) -> &'a mut T {
         // SAFETY: same preconditions. And we can dereference this pointer because it lives as
         // long as the underlying data.
@@ -3450,7 +3450,7 @@ impl<'a, T> ColMut<'a, T> {
     /// Returns a mutable reference to the element at position (i, 0), or panics if the index is
     /// out of bounds.
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     pub fn get(self, i: usize) -> &'a mut T {
         fancy_assert!(i < self.nrows());
         // SAFETY: bounds have been checked.
@@ -3624,7 +3624,7 @@ impl<'a, T> Index<(usize, usize)> for MatRef<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
         self.get(i, j)
     }
@@ -3633,14 +3633,14 @@ impl<'a, T> Index<(usize, usize)> for MatMut<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
         self.rb().get(i, j)
     }
 }
 impl<'a, T> IndexMut<(usize, usize)> for MatMut<'a, T> {
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
         self.rb_mut().get(i, j)
     }
@@ -3650,7 +3650,7 @@ impl<'a, T> Index<usize> for RowRef<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, j: usize) -> &Self::Output {
         self.get(j)
     }
@@ -3659,14 +3659,14 @@ impl<'a, T> Index<usize> for RowMut<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, j: usize) -> &Self::Output {
         self.rb().get(j)
     }
 }
 impl<'a, T> IndexMut<usize> for RowMut<'a, T> {
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
         self.rb_mut().get(j)
     }
@@ -3676,7 +3676,7 @@ impl<'a, T> Index<usize> for ColRef<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, j: usize) -> &Self::Output {
         self.get(j)
     }
@@ -3685,14 +3685,14 @@ impl<'a, T> Index<usize> for ColMut<'a, T> {
     type Output = T;
 
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index(&self, j: usize) -> &Self::Output {
         self.rb().get(j)
     }
 }
 impl<'a, T> IndexMut<usize> for ColMut<'a, T> {
     #[track_caller]
-    #[inline]
+    #[inline(always)]
     fn index_mut(&mut self, j: usize) -> &mut Self::Output {
         self.rb_mut().get(j)
     }
