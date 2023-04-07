@@ -840,7 +840,7 @@ impl<'a, T: 'static, U: 'static> Coerce<ColMut<'a, U>> for ColMut<'a, T> {
     }
 }
 
-impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
+impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
     fn eq(&self, other: &MatRef<'a, U>) -> bool {
         let same_dims = self.nrows() == other.nrows() && self.ncols() == other.ncols();
         if !same_dims {
@@ -852,7 +852,9 @@ impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
             for j in 0..n {
                 for i in 0..m {
                     unsafe {
-                        if !(self.get_unchecked(i, j) == other.get_unchecked(i, j)) {
+                        if !(self.get_unchecked(i, j).clone().into_num()
+                            == other.get_unchecked(i, j).clone().into_num())
+                        {
                             return false;
                         }
                     }
@@ -864,28 +866,28 @@ impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
     }
 }
 
-impl<'a, U, T: PartialEq<U>> PartialEq<MatRef<'a, U>> for MatMut<'a, T> {
+impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for MatMut<'a, T> {
     #[inline]
     fn eq(&self, other: &MatRef<'a, U>) -> bool {
         self.rb() == other.rb()
     }
 }
 
-impl<'a, U, T: PartialEq<U>> PartialEq<MatMut<'a, U>> for MatRef<'a, T> {
+impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatMut<'a, U>> for MatRef<'a, T> {
     #[inline]
     fn eq(&self, other: &MatMut<'a, U>) -> bool {
         self.rb() == other.rb()
     }
 }
 
-impl<'a, U, T: PartialEq<U>> PartialEq<MatMut<'a, U>> for MatMut<'a, T> {
+impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatMut<'a, U>> for MatMut<'a, T> {
     #[inline]
     fn eq(&self, other: &MatMut<'a, U>) -> bool {
         self.rb() == other.rb()
     }
 }
 
-impl<U, T: PartialEq<U>> PartialEq<Mat<U>> for Mat<T> {
+impl<U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<Mat<U>> for Mat<T> {
     #[inline]
     fn eq(&self, other: &Mat<U>) -> bool {
         self.as_ref() == other.as_ref()
@@ -5831,5 +5833,32 @@ mod tests {
         fancy_assert!(mf64.as_mut().transpose().to_owned().as_ref() == mf64.transpose());
         fancy_assert!(mf32c.as_mut().transpose().to_owned().as_ref() == mf32c.transpose());
         fancy_assert!(mf64c.as_mut().transpose().to_owned().as_ref() == mf64c.transpose());
+    }
+
+    #[test]
+    fn conj_to_owned_equality() {
+        use num_complex::Complex as C;
+        let mut mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
+        let mut mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
+        let mut mf32c: Mat<Complex<f32>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
+        ];
+        let mut mf64c: Mat<Complex<f64>> = mat![
+            [C::new(1., 1.), C::new(2., 2.), C::new(3., 3.)],
+            [C::new(4., 4.), C::new(5., 5.), C::new(6., 6.)],
+            [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
+        ];
+
+        fancy_assert!(mf32.as_ref().adjoint().to_owned().as_ref() == mf32.adjoint());
+        fancy_assert!(mf64.as_ref().adjoint().to_owned().as_ref() == mf64.adjoint());
+        fancy_assert!(mf32c.as_ref().adjoint().to_owned().as_ref() == mf32c.adjoint());
+        fancy_assert!(mf64c.as_ref().adjoint().to_owned().as_ref() == mf64c.adjoint());
+
+        fancy_assert!(mf32.as_mut().adjoint().to_owned().as_ref() == mf32.adjoint());
+        fancy_assert!(mf64.as_mut().adjoint().to_owned().as_ref() == mf64.adjoint());
+        fancy_assert!(mf32c.as_mut().adjoint().to_owned().as_ref() == mf32c.adjoint());
+        fancy_assert!(mf64c.as_mut().adjoint().to_owned().as_ref() == mf64c.adjoint());
     }
 }
