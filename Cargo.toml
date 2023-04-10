@@ -1,13 +1,7 @@
 [workspace]
 members = [
   "faer-core",
-  "faer-cholesky",
-  "faer-lu",
-  "faer-qr",
-  "faer-svd",
-  "faer",
 ]
-exclude = ["faer-bench"]
 
 [workspace.dependencies]
 coe-rs = "0.1"

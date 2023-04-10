@@ -1,133 +1,339 @@
-//! `faer` core module.
-//!
-//! This module contains:
-//! - definitions of matrix structures ([`MatRef`], [`MatMut`], etc.),
-//! - element-wise routines using multiple matrices,
-//! - matrix multiplication routines,
-//! - triangular matrix solve routines,
-//! - etc.
-
-#![warn(rust_2018_idioms)]
-#![allow(clippy::too_many_arguments)]
-
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::{
     fmt::Debug,
     marker::PhantomData,
-    mem::{size_of, MaybeUninit},
-    ops::{Index, IndexMut},
+    mem::{ManuallyDrop, MaybeUninit},
     ptr::NonNull,
 };
 use dyn_stack::{DynArray, DynStack, SizeOverflow, StackReq};
 use num_complex::Complex;
-use rayon::iter::IndexedParallelIterator;
+use pulp::Simd;
 use reborrow::*;
-use zip::*;
 
 extern crate alloc;
 
-pub mod householder;
-pub mod inverse;
 pub mod mul;
-pub mod permutation;
-pub mod solve;
-pub mod zip;
+#[doc(hidden)]
+pub mod simd;
 
-pub use pulp::{c32, c64};
-
-mod seal {
-    use super::*;
-
-    pub trait Seal {}
-    impl<'a, T> Seal for MatRef<'a, T> {}
-    impl<'a, T> Seal for MatMut<'a, T> {}
-    impl<'a, T> Seal for ColRef<'a, T> {}
-    impl<'a, T> Seal for ColMut<'a, T> {}
-    impl<'a, T> Seal for RowRef<'a, T> {}
-    impl<'a, T> Seal for RowMut<'a, T> {}
+#[inline(always)]
+unsafe fn transmute_unchecked<From, To>(t: From) -> To {
+    assert!(core::mem::size_of::<From>() == core::mem::size_of::<To>());
+    core::mem::transmute_copy(&ManuallyDrop::new(t))
 }
 
-/// Indicates whether the corresponding operand should be conjugated or not.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Conj {
-    /// Do not conjugate
-    No,
-    /// Do conjugate
-    Yes,
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, PartialEq)]
+#[repr(C)]
+pub struct c32 {
+    pub re: f32,
+    pub im: f32,
 }
 
-impl Conj {
-    #[inline]
-    pub fn compose(self, other: Conj) -> Conj {
-        if self == other {
-            Conj::No
-        } else {
-            Conj::Yes
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, PartialEq)]
+#[repr(C)]
+pub struct c64 {
+    pub re: f64,
+    pub im: f64,
+}
+
+impl From<c32> for num_complex::Complex32 {
+    #[inline(always)]
+    fn from(value: c32) -> Self {
+        Self {
+            re: value.re,
+            im: value.im,
+        }
+    }
+}
+impl From<num_complex::Complex32> for c32 {
+    #[inline(always)]
+    fn from(value: num_complex::Complex32) -> Self {
+        c32 {
+            re: value.re,
+            im: value.im,
+        }
+    }
+}
+impl From<c64> for num_complex::Complex64 {
+    #[inline(always)]
+    fn from(value: c64) -> Self {
+        Self {
+            re: value.re,
+            im: value.im,
+        }
+    }
+}
+impl From<num_complex::Complex64> for c64 {
+    #[inline(always)]
+    fn from(value: num_complex::Complex64) -> Self {
+        c64 {
+            re: value.re,
+            im: value.im,
         }
     }
 }
 
-/// Parallelism strategy that can be passed to most of the routines in the library.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Parallelism {
-    /// No parallelism.
-    ///
-    /// The code is executed sequentially on the same thread that calls a function
-    /// and passes this argument.
-    None,
-    /// Rayon parallelism.
-    ///
-    /// The code is possibly executed in parallel on the current thread, as well as the currently
-    /// active rayon thread pool.
-    ///
-    /// The contained value represents a hint about the number of threads an implementation should
-    /// use, but there is no way to guarantee how many or which threads will be used.
-    ///
-    /// A value of `0` treated as equivalent to `rayon::current_num_threads()`.
-    Rayon(usize),
-}
-
-#[derive(Debug, Copy, Clone)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
-pub struct ComplexConj<T: RealField> {
-    re: T,
-    neg_im: T,
+pub struct c32conj {
+    pub re: f32,
+    pub neg_im: f32,
 }
 
-pub unsafe trait SameLayoutAs<Other> {}
-unsafe impl<T> SameLayoutAs<T> for T {}
-unsafe impl<T: RealField> SameLayoutAs<Complex<T>> for ComplexConj<T> {}
-unsafe impl<T: RealField> SameLayoutAs<ComplexConj<T>> for Complex<T> {}
-
-pub trait Conjugate: Clone + 'static {
-    const IS_CONJ: bool;
-    type Conj: SameLayoutAs<Self> + Conjugate<Conj = Self, Num = Self::Num>;
-    type Num: SameLayoutAs<Self> + ComplexField;
-
-    fn into_num(self) -> Self::Num;
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, PartialEq)]
+#[repr(C)]
+pub struct c64conj {
+    pub re: f64,
+    pub neg_im: f64,
 }
 
-pub trait ComplexField: Conjugate<Num = Self> + PartialEq + Send + Sync + Debug + 'static {
+unsafe impl bytemuck::Zeroable for c32 {}
+unsafe impl bytemuck::Zeroable for c32conj {}
+unsafe impl bytemuck::Zeroable for c64 {}
+unsafe impl bytemuck::Zeroable for c64conj {}
+unsafe impl bytemuck::Pod for c32 {}
+unsafe impl bytemuck::Pod for c32conj {}
+unsafe impl bytemuck::Pod for c64 {}
+unsafe impl bytemuck::Pod for c64conj {}
+
+impl Debug for c32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.re.fmt(f)?;
+        f.write_str(" + ")?;
+        self.im.fmt(f)?;
+        f.write_str(" * I")
+    }
+}
+impl Debug for c64 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.re.fmt(f)?;
+        f.write_str(" + ")?;
+        self.im.fmt(f)?;
+        f.write_str(" * I")
+    }
+}
+impl Debug for c32conj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.re.fmt(f)?;
+        f.write_str(" - ")?;
+        self.neg_im.fmt(f)?;
+        f.write_str(" * I")
+    }
+}
+impl Debug for c64conj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.re.fmt(f)?;
+        f.write_str(" - ")?;
+        self.neg_im.fmt(f)?;
+        f.write_str(" * I")
+    }
+}
+
+pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
+    type Unit: Clone + Send + Sync + Debug + 'static;
+    type SimdUnit<S: Simd>: Copy + Send + Sync + Debug + 'static;
+
+    type Group<T>;
+    type GroupCopy<T: Copy>: Copy;
+    type GroupThreadSafe<T: Send + Sync>: Send + Sync;
+    type Iter<I: Iterator>: Iterator<Item = Self::Group<I::Item>>;
+
+    const N_COMPONENTS: usize;
+    const HAS_SIMD: bool;
+    const UNIT: Self::GroupCopy<()>;
+
+    fn from_units(group: Self::Group<Self::Unit>) -> Self;
+    fn into_units(self) -> Self::Group<Self::Unit>;
+
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T>;
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T>;
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U>;
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)>;
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>);
+
+    #[inline(always)]
+    fn unzip2<T>(zipped: Self::Group<[T; 2]>) -> [Self::Group<T>; 2] {
+        let (a, b) = Self::unzip(Self::map(
+            zipped,
+            #[inline(always)]
+            |[a, b]| (a, b),
+        ));
+        [a, b]
+    }
+
+    #[inline(always)]
+    fn unzip4<T>(zipped: Self::Group<[T; 4]>) -> [Self::Group<T>; 4] {
+        let (ab, cd) = Self::unzip(Self::map(
+            zipped,
+            #[inline(always)]
+            |[a, b, c, d]| ([a, b], [c, d]),
+        ));
+        let [a, b] = Self::unzip2(ab);
+        let [c, d] = Self::unzip2(cd);
+        [a, b, c, d]
+    }
+
+    #[inline(always)]
+    fn unzip8<T>(zipped: Self::Group<[T; 8]>) -> [Self::Group<T>; 8] {
+        let (abcd, efgh) = Self::unzip(Self::map(
+            zipped,
+            #[inline(always)]
+            |[a, b, c, d, e, f, g, h]| ([a, b, c, d], [e, f, g, h]),
+        ));
+        let [a, b, c, d] = Self::unzip4(abcd);
+        let [e, f, g, h] = Self::unzip4(efgh);
+        [a, b, c, d, e, f, g, h]
+    }
+
+    #[inline(always)]
+    fn as_arrays<const N: usize, T>(
+        group: Self::Group<&[T]>,
+    ) -> (Self::Group<&[[T; N]]>, Self::Group<&[T]>) {
+        #[inline(always)]
+        fn do_as_arrays<const N: usize, T>() -> impl Fn(&[T]) -> (&[[T; N]], &[T]) {
+            #[inline(always)]
+            |slice| pulp::as_arrays(slice)
+        }
+        Self::unzip(Self::map(group, do_as_arrays()))
+    }
+
+    #[inline(always)]
+    fn as_arrays_mut<const N: usize, T>(
+        group: Self::Group<&mut [T]>,
+    ) -> (Self::Group<&mut [[T; N]]>, Self::Group<&mut [T]>) {
+        #[inline(always)]
+        fn do_as_arrays_mut<const N: usize, T>() -> impl Fn(&mut [T]) -> (&mut [[T; N]], &mut [T]) {
+            #[inline(always)]
+            |slice| pulp::as_arrays_mut(slice)
+        }
+        Self::unzip(Self::map(group, do_as_arrays_mut()))
+    }
+
+    #[inline(always)]
+    fn deref<T: Clone>(group: Self::Group<&T>) -> Self::Group<T> {
+        #[inline(always)]
+        fn do_deref<T: Clone>() -> impl FnMut(&T) -> T {
+            #[inline(always)]
+            |group| group.clone()
+        }
+        Self::map(group, do_deref())
+    }
+    #[inline(always)]
+    fn rb<'short, T: Reborrow<'short>>(value: Self::Group<&'short T>) -> Self::Group<T::Target> {
+        Self::map(
+            value,
+            #[inline(always)]
+            |value| value.rb(),
+        )
+    }
+
+    #[inline(always)]
+    fn rb_mut<'short, T: ReborrowMut<'short>>(
+        value: Self::Group<&'short mut T>,
+    ) -> Self::Group<T::Target> {
+        Self::map(
+            value,
+            #[inline(always)]
+            |value| value.rb_mut(),
+        )
+    }
+    #[inline(always)]
+    fn into_const<T: IntoConst>(value: Self::Group<T>) -> Self::Group<T::Target> {
+        Self::map(
+            value,
+            #[inline(always)]
+            |value| value.into_const(),
+        )
+    }
+
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>);
+
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter>;
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        unsafe { transmute_unchecked(group) }
+    }
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        unsafe { transmute_unchecked(group) }
+    }
+
+    #[inline(always)]
+    fn map_copy<T: Copy, U: Copy>(
+        group: Self::GroupCopy<T>,
+        f: impl FnMut(T) -> U,
+    ) -> Self::GroupCopy<U> {
+        Self::into_copy(Self::map(Self::from_copy(group), f))
+    }
+
+    #[inline(always)]
+    fn copy<T: Copy>(group: &Self::Group<T>) -> Self::Group<T> {
+        unsafe { core::mem::transmute_copy(group) }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Conj {
+    Yes,
+    No,
+}
+
+pub unsafe trait Conjugate: Entity {
+    type Conj: Entity + Conjugate<Conj = Self, Canonical = Self::Canonical>;
+    type Canonical: Entity + Conjugate;
+
+    fn canonicalize(self) -> Self::Canonical;
+}
+
+type SimdGroup<E, S> = <E as Entity>::Group<<E as Entity>::SimdUnit<S>>;
+
+pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     type Real: RealField;
+
+    fn from_f64(value: f64) -> Self;
 
     fn add(&self, rhs: &Self) -> Self;
     fn sub(&self, rhs: &Self) -> Self;
     fn mul(&self, rhs: &Self) -> Self;
+
+    #[inline(always)]
+    fn mul_adde(lhs: &Self, rhs: &Self, acc: &Self) -> Self {
+        acc.add(&lhs.mul(rhs))
+    }
+    #[inline(always)]
+    fn conj_mul_adde(lhs: &Self, rhs: &Self, acc: &Self) -> Self {
+        acc.add(&lhs.conj().mul(rhs))
+    }
+
     fn neg(&self) -> Self;
     fn inv(&self) -> Self;
     fn conj(&self) -> Self;
 
     /// Returns the input, scaled by `rhs`.
     fn scale_real(&self, rhs: &Self::Real) -> Self;
+
     /// Returns the input, scaled by `rhs`.
     fn scale_power_of_two(&self, rhs: &Self::Real) -> Self;
+
     /// Returns either the norm or squared norm of the number.
     ///
     /// An implementation may choose either, so long as it chooses consistently.
     fn score(&self) -> Self::Real;
     fn abs(&self) -> Self::Real;
+    fn abs2(&self) -> Self::Real;
+
     fn nan() -> Self;
+    #[inline(always)]
     fn is_nan(&self) -> bool {
         #[allow(clippy::eq_op)]
         {
@@ -145,217 +351,954 @@ pub trait ComplexField: Conjugate<Num = Self> + PartialEq + Send + Sync + Debug 
 
     fn zero() -> Self;
     fn one() -> Self;
+
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]);
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]);
+
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S>;
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>);
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S>;
+
+    #[inline(always)]
+    fn partial_load<S: Simd>(
+        simd: S,
+        slice: Self::Group<&[Self::Unit]>,
+        padding: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self::map(
+            Self::zip(slice, padding),
+            #[inline(always)]
+            |(slice, unit)| Self::partial_load_unit(simd, slice, unit),
+        )
+    }
+    #[inline(always)]
+    fn partial_store<S: Simd>(
+        simd: S,
+        slice: Self::Group<&mut [Self::Unit]>,
+        values: SimdGroup<Self, S>,
+    ) {
+        Self::map(
+            Self::zip(slice, values),
+            #[inline(always)]
+            |(slice, unit)| Self::partial_store_unit(simd, slice, unit),
+        );
+    }
+    #[inline(always)]
+    fn simd_splat<S: Simd>(simd: S, value: Self) -> SimdGroup<Self, S> {
+        Self::map(
+            Self::into_units(value),
+            #[inline(always)]
+            |unit| Self::simd_splat_unit(simd, unit),
+        )
+    }
+
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S>;
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S>;
+
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
 }
 
-pub trait RealField: ComplexField<Real = Self> + PartialOrd + Conjugate<Conj = Self> {
+pub trait RealField: ComplexField<Real = Self> + PartialOrd {
     fn sqrt(&self) -> Self;
-    fn div(&self, rhs: &Self) -> Self;
+    fn div(&self, rhs: Self) -> Self;
 }
 
-impl Conjugate for f32 {
-    const IS_CONJ: bool = false;
-    type Conj = Self;
-    type Num = Self;
-
-    #[inline(always)]
-    fn into_num(self) -> Self::Num {
-        self
-    }
-}
-impl RealField for f32 {
-    #[inline(always)]
-    fn sqrt(&self) -> Self {
-        Self::sqrt(*self)
-    }
-
-    #[inline(always)]
-    fn div(&self, rhs: &Self) -> Self {
-        self / rhs
-    }
-}
 impl ComplexField for f32 {
     type Real = Self;
+
+    #[inline(always)]
+    fn from_f64(value: f64) -> Self {
+        value as _
+    }
 
     #[inline(always)]
     fn add(&self, rhs: &Self) -> Self {
         self + rhs
     }
+
     #[inline(always)]
     fn sub(&self, rhs: &Self) -> Self {
         self - rhs
     }
+
     #[inline(always)]
     fn mul(&self, rhs: &Self) -> Self {
         self * rhs
     }
-    #[inline(always)]
-    fn inv(&self) -> Self {
-        self.recip()
-    }
-    #[inline(always)]
-    fn conj(&self) -> Self {
-        *self
-    }
-    #[inline(always)]
-    fn scale_real(&self, rhs: &Self::Real) -> Self {
-        self * rhs
-    }
-    #[inline(always)]
-    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
-        self * rhs
-    }
-    #[inline(always)]
-    fn score(&self) -> Self::Real {
-        Self::abs(*self)
-    }
-    #[inline(always)]
-    fn abs(&self) -> Self::Real {
-        Self::abs(*self)
-    }
-    #[inline(always)]
-    fn nan() -> Self {
-        Self::NAN
-    }
-    #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        real
-    }
-    #[inline(always)]
-    fn real(&self) -> Self::Real {
-        *self
-    }
-    #[inline(always)]
-    fn imag(&self) -> Self::Real {
-        0.0
-    }
-    #[inline(always)]
-    fn zero() -> Self {
-        0.0
-    }
-    #[inline(always)]
-    fn one() -> Self {
-        1.0
-    }
+
     #[inline(always)]
     fn neg(&self) -> Self {
         -self
     }
-}
-
-impl Conjugate for f64 {
-    const IS_CONJ: bool = false;
-    type Conj = Self;
-    type Num = Self;
 
     #[inline(always)]
-    fn into_num(self) -> Self::Num {
-        self
+    fn inv(&self) -> Self {
+        self.recip()
     }
-}
-impl RealField for f64 {
+
     #[inline(always)]
-    fn sqrt(&self) -> Self {
-        Self::sqrt(*self)
+    fn conj(&self) -> Self {
+        *self
+    }
+
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        (*self).abs()
+    }
+
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        (*self).abs()
+    }
+
+    #[inline(always)]
+    fn abs2(&self) -> Self::Real {
+        self * self
+    }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self::NAN
+    }
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        *self
+    }
+
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        0.0
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+
+    #[inline(always)]
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        S::f32s_as_simd(slice)
+    }
+
+    #[inline(always)]
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        S::f32s_as_mut_simd(slice)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S> {
+        simd.f32s_partial_load(slice, padding)
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>) {
+        simd.f32s_partial_store(slice, values)
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S> {
+        simd.f32s_splat(unit)
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        simd.f32s_neg(values)
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        let _ = simd;
+        values
+    }
+
+    #[inline(always)]
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_add(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_sub(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_mul(lhs, rhs)
     }
     #[inline(always)]
-    fn div(&self, rhs: &Self) -> Self {
-        self / rhs
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_mul(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f32s_mul_adde(lhs, rhs, acc)
     }
 }
 impl ComplexField for f64 {
     type Real = Self;
 
     #[inline(always)]
+    fn from_f64(value: f64) -> Self {
+        value
+    }
+
+    #[inline(always)]
     fn add(&self, rhs: &Self) -> Self {
         self + rhs
     }
+
     #[inline(always)]
     fn sub(&self, rhs: &Self) -> Self {
         self - rhs
     }
+
     #[inline(always)]
     fn mul(&self, rhs: &Self) -> Self {
         self * rhs
     }
-    #[inline(always)]
-    fn inv(&self) -> Self {
-        self.recip()
-    }
-    #[inline(always)]
-    fn conj(&self) -> Self {
-        *self
-    }
-    #[inline(always)]
-    fn scale_real(&self, rhs: &Self::Real) -> Self {
-        self * rhs
-    }
-    #[inline(always)]
-    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
-        self * rhs
-    }
-    #[inline(always)]
-    fn score(&self) -> Self::Real {
-        Self::abs(*self)
-    }
-    #[inline(always)]
-    fn abs(&self) -> Self::Real {
-        Self::abs(*self)
-    }
-    #[inline(always)]
-    fn nan() -> Self {
-        Self::NAN
-    }
-    #[inline(always)]
-    fn from_real(real: Self::Real) -> Self {
-        real
-    }
-    #[inline(always)]
-    fn real(&self) -> Self::Real {
-        *self
-    }
-    #[inline(always)]
-    fn imag(&self) -> Self::Real {
-        0.0
-    }
-    #[inline(always)]
-    fn zero() -> Self {
-        0.0
-    }
-    #[inline(always)]
-    fn one() -> Self {
-        1.0
-    }
+
     #[inline(always)]
     fn neg(&self) -> Self {
         -self
     }
-}
-
-impl<T: RealField> Conjugate for Complex<T> {
-    const IS_CONJ: bool = false;
-    type Conj = ComplexConj<T>;
-    type Num = Complex<T>;
 
     #[inline(always)]
-    fn into_num(self) -> Self::Num {
-        self
+    fn inv(&self) -> Self {
+        self.recip()
+    }
+
+    #[inline(always)]
+    fn conj(&self) -> Self {
+        *self
+    }
+
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        self * rhs
+    }
+
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        (*self).abs()
+    }
+
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        (*self).abs()
+    }
+
+    #[inline(always)]
+    fn abs2(&self) -> Self::Real {
+        self * self
+    }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self::NAN
+    }
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        real
+    }
+
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        *self
+    }
+
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        0.0
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        0.0
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        1.0
+    }
+
+    #[inline(always)]
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        S::f64s_as_simd(slice)
+    }
+
+    #[inline(always)]
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        S::f64s_as_mut_simd(slice)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S> {
+        simd.f64s_partial_load(slice, padding)
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>) {
+        simd.f64s_partial_store(slice, values)
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S> {
+        simd.f64s_splat(unit)
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        simd.f64s_neg(values)
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        let _ = simd;
+        values
+    }
+
+    #[inline(always)]
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_add(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_sub(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_mul(lhs, rhs)
+    }
+    #[inline(always)]
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_mul(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.f64s_mul_adde(lhs, rhs, acc)
     }
 }
-impl<T: RealField> Conjugate for ComplexConj<T> {
-    const IS_CONJ: bool = true;
-    type Conj = Complex<T>;
-    type Num = Complex<T>;
+impl RealField for f32 {
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        (*self).sqrt()
+    }
 
     #[inline(always)]
-    fn into_num(self) -> Self::Num {
-        Complex {
-            re: self.re,
-            im: self.neg_im.neg(),
+    fn div(&self, rhs: Self) -> Self {
+        self / rhs
+    }
+}
+impl RealField for f64 {
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        (*self).sqrt()
+    }
+
+    #[inline(always)]
+    fn div(&self, rhs: Self) -> Self {
+        self / rhs
+    }
+}
+
+impl ComplexField for c32 {
+    type Real = f32;
+
+    #[inline(always)]
+    fn from_f64(value: f64) -> Self {
+        Self {
+            re: value as _,
+            im: 0.0,
         }
     }
+
+    #[inline(always)]
+    fn add(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re + rhs.re,
+            im: self.im + rhs.im,
+        }
+    }
+
+    #[inline(always)]
+    fn sub(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re - rhs.re,
+            im: self.im - rhs.im,
+        }
+    }
+
+    #[inline(always)]
+    fn mul(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re * rhs.re - self.im * rhs.im,
+            im: self.re * rhs.im + self.im * rhs.re,
+        }
+    }
+
+    #[inline(always)]
+    fn neg(&self) -> Self {
+        Self {
+            re: -self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn inv(&self) -> Self {
+        self.conj().scale_real(&self.abs2().inv())
+    }
+
+    #[inline(always)]
+    fn conj(&self) -> Self {
+        Self {
+            re: self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: rhs * self.re,
+            im: rhs * self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: rhs * self.re,
+            im: rhs * self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        self.abs2()
+    }
+
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        self.abs2().sqrt()
+    }
+
+    #[inline(always)]
+    fn abs2(&self) -> Self::Real {
+        self.re * self.re + self.im * self.im
+    }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self {
+            re: Self::Real::NAN,
+            im: Self::Real::NAN,
+        }
+    }
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        Self { re: real, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        self.re
+    }
+
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        self.im
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        Self { re: 0.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        Self { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        let (head, tail) = S::c32s_as_simd(bytemuck::cast_slice(slice));
+        (bytemuck::cast_slice(head), bytemuck::cast_slice(tail))
+    }
+
+    #[inline(always)]
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        let (head, tail) = S::c32s_as_mut_simd(bytemuck::cast_slice_mut(slice));
+        (
+            bytemuck::cast_slice_mut(head),
+            bytemuck::cast_slice_mut(tail),
+        )
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S> {
+        simd.c32s_partial_load(bytemuck::cast_slice(slice), padding)
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>) {
+        simd.c32s_partial_store(bytemuck::cast_slice_mut(slice), values)
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S> {
+        simd.c32s_splat(pulp::cast(unit))
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        simd.c32s_neg(values)
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        let _ = simd;
+        values
+    }
+
+    #[inline(always)]
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_add(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_sub(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_mul(lhs, rhs)
+    }
+    #[inline(always)]
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_conj_mul(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c32s_conj_mul_adde(lhs, rhs, acc)
+    }
 }
-impl<T: RealField> ComplexField for Complex<T> {
-    type Real = T;
+impl ComplexField for c64 {
+    type Real = f64;
+
+    #[inline(always)]
+    fn from_f64(value: f64) -> Self {
+        Self {
+            re: value as _,
+            im: 0.0,
+        }
+    }
+
+    #[inline(always)]
+    fn add(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re + rhs.re,
+            im: self.im + rhs.im,
+        }
+    }
+
+    #[inline(always)]
+    fn sub(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re - rhs.re,
+            im: self.im - rhs.im,
+        }
+    }
+
+    #[inline(always)]
+    fn mul(&self, rhs: &Self) -> Self {
+        Self {
+            re: self.re * rhs.re - self.im * rhs.im,
+            im: self.re * rhs.im + self.im * rhs.re,
+        }
+    }
+
+    #[inline(always)]
+    fn neg(&self) -> Self {
+        Self {
+            re: -self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn inv(&self) -> Self {
+        self.conj().scale_real(&self.abs2().inv())
+    }
+
+    #[inline(always)]
+    fn conj(&self) -> Self {
+        Self {
+            re: self.re,
+            im: -self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn scale_real(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: rhs * self.re,
+            im: rhs * self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        Self {
+            re: rhs * self.re,
+            im: rhs * self.im,
+        }
+    }
+
+    #[inline(always)]
+    fn score(&self) -> Self::Real {
+        self.abs2()
+    }
+
+    #[inline(always)]
+    fn abs(&self) -> Self::Real {
+        self.abs2().sqrt()
+    }
+
+    #[inline(always)]
+    fn abs2(&self) -> Self::Real {
+        self.re * self.re + self.im * self.im
+    }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self {
+            re: Self::Real::NAN,
+            im: Self::Real::NAN,
+        }
+    }
+
+    #[inline(always)]
+    fn from_real(real: Self::Real) -> Self {
+        Self { re: real, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn real(&self) -> Self::Real {
+        self.re
+    }
+
+    #[inline(always)]
+    fn imag(&self) -> Self::Real {
+        self.im
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        Self { re: 0.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        Self { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        let (head, tail) = S::c64s_as_simd(bytemuck::cast_slice(slice));
+        (bytemuck::cast_slice(head), bytemuck::cast_slice(tail))
+    }
+
+    #[inline(always)]
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        let (head, tail) = S::c64s_as_mut_simd(bytemuck::cast_slice_mut(slice));
+        (
+            bytemuck::cast_slice_mut(head),
+            bytemuck::cast_slice_mut(tail),
+        )
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S> {
+        simd.c64s_partial_load(bytemuck::cast_slice(slice), padding)
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>) {
+        simd.c64s_partial_store(bytemuck::cast_slice_mut(slice), values)
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S> {
+        simd.c64s_splat(pulp::cast(unit))
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        simd.c64s_neg(values)
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        let _ = simd;
+        values
+    }
+
+    #[inline(always)]
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_add(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_sub(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_mul(lhs, rhs)
+    }
+    #[inline(always)]
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_conj_mul(lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.c64s_conj_mul_adde(lhs, rhs, acc)
+    }
+}
+
+impl<E: RealField> ComplexField for Complex<E> {
+    type Real = E;
+
+    #[inline(always)]
+    fn from_f64(value: f64) -> Self {
+        Self {
+            re: Self::Real::from_f64(value),
+            im: Self::Real::zero(),
+        }
+    }
 
     #[inline(always)]
     fn add(&self, rhs: &Self) -> Self {
@@ -364,6 +1307,7 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: self.im.add(&rhs.im),
         }
     }
+
     #[inline(always)]
     fn sub(&self, rhs: &Self) -> Self {
         Self {
@@ -371,36 +1315,15 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: self.im.sub(&rhs.im),
         }
     }
+
     #[inline(always)]
     fn mul(&self, rhs: &Self) -> Self {
         Self {
-            re: self.re.mul(&rhs.re).sub(&self.im.mul(&rhs.im)),
-            im: self.re.mul(&rhs.im).add(&self.im.mul(&rhs.re)),
+            re: Self::Real::sub(&self.re.mul(&rhs.re), &self.im.mul(&rhs.im)),
+            im: Self::Real::add(&self.re.mul(&rhs.im), &self.im.mul(&rhs.re)),
         }
     }
-    #[inline(always)]
-    fn inv(&self) -> Self {
-        let inf = T::zero().inv();
-        if self.re == T::nan() || self.im == T::nan() {
-            Self::nan()
-        } else if self.re == inf || self.im == inf {
-            Self::zero()
-        } else if self == &Self::zero() {
-            Self {
-                re: inf.clone(),
-                im: inf,
-            }
-        } else {
-            self.conj().scale_real(&self.score().inv())
-        }
-    }
-    #[inline(always)]
-    fn conj(&self) -> Self {
-        Self {
-            re: self.re.clone(),
-            im: self.im.neg(),
-        }
-    }
+
     #[inline(always)]
     fn neg(&self) -> Self {
         Self {
@@ -408,6 +1331,20 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: self.im.neg(),
         }
     }
+
+    #[inline(always)]
+    fn inv(&self) -> Self {
+        self.conj().scale_real(&self.abs2().inv())
+    }
+
+    #[inline(always)]
+    fn conj(&self) -> Self {
+        Self {
+            re: self.re.clone(),
+            im: self.im.neg(),
+        }
+    }
+
     #[inline(always)]
     fn scale_real(&self, rhs: &Self::Real) -> Self {
         Self {
@@ -415,6 +1352,7 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: self.im.scale_real(rhs),
         }
     }
+
     #[inline(always)]
     fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
         Self {
@@ -422,14 +1360,22 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: self.im.scale_power_of_two(rhs),
         }
     }
+
     #[inline(always)]
     fn score(&self) -> Self::Real {
-        (self.re.mul(&self.re)).add(&self.im.mul(&self.im))
+        self.abs2()
     }
+
     #[inline(always)]
     fn abs(&self) -> Self::Real {
-        self.score().sqrt()
+        self.abs2().sqrt()
     }
+
+    #[inline(always)]
+    fn abs2(&self) -> Self::Real {
+        Self::Real::add(&self.re.mul(&self.re), &self.im.mul(&self.im))
+    }
+
     #[inline(always)]
     fn nan() -> Self {
         Self {
@@ -437,6 +1383,7 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: Self::Real::nan(),
         }
     }
+
     #[inline(always)]
     fn from_real(real: Self::Real) -> Self {
         Self {
@@ -444,14 +1391,17 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: Self::Real::zero(),
         }
     }
+
     #[inline(always)]
     fn real(&self) -> Self::Real {
         self.re.clone()
     }
+
     #[inline(always)]
     fn imag(&self) -> Self::Real {
         self.im.clone()
     }
+
     #[inline(always)]
     fn zero() -> Self {
         Self {
@@ -459,6 +1409,7 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: Self::Real::zero(),
         }
     }
+
     #[inline(always)]
     fn one() -> Self {
         Self {
@@ -466,381 +1417,1587 @@ impl<T: RealField> ComplexField for Complex<T> {
             im: Self::Real::zero(),
         }
     }
-}
 
-#[inline]
-#[doc(hidden)]
-pub fn join_raw(
-    op_a: impl Send + for<'a> FnOnce(Parallelism),
-    op_b: impl Send + for<'a> FnOnce(Parallelism),
-    parallelism: Parallelism,
-) {
-    fn implementation(
-        op_a: &mut (dyn Send + FnMut(Parallelism)),
-        op_b: &mut (dyn Send + FnMut(Parallelism)),
-        parallelism: Parallelism,
-    ) {
-        match parallelism {
-            Parallelism::None => (op_a(parallelism), op_b(parallelism)),
-            Parallelism::Rayon(n_threads) => {
-                if n_threads == 1 {
-                    (op_a(Parallelism::None), op_b(Parallelism::None))
-                } else {
-                    let n_threads = if n_threads > 0 {
-                        n_threads
-                    } else {
-                        rayon::current_num_threads()
-                    };
-                    let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
-                    rayon::join(|| op_a(parallelism), || op_b(parallelism))
-                }
-            }
-        };
+    #[inline(always)]
+    fn slice_as_simd<S: Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        E::slice_as_simd(slice)
     }
-    let mut op_a = Some(op_a);
-    let mut op_b = Some(op_b);
-    implementation(
-        &mut |parallelism| (op_a.take().unwrap())(parallelism),
-        &mut |parallelism| (op_b.take().unwrap())(parallelism),
-        parallelism,
-    )
-}
 
-#[inline]
-#[doc(hidden)]
-pub fn parallelism_degree(parallelism: Parallelism) -> usize {
-    match parallelism {
-        Parallelism::None => 1,
-        Parallelism::Rayon(0) => rayon::current_num_threads(),
-        Parallelism::Rayon(n_threads) => n_threads,
+    #[inline(always)]
+    fn slice_as_mut_simd<S: Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        E::slice_as_mut_simd(slice)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(
+        simd: S,
+        slice: &[Self::Unit],
+        padding: Self::SimdUnit<S>,
+    ) -> Self::SimdUnit<S> {
+        E::partial_load_unit(simd, slice, padding)
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>) {
+        E::partial_store_unit(simd, slice, values)
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S> {
+        E::simd_splat_unit(simd, unit)
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_neg(simd, values.re),
+            im: E::simd_neg(simd, values.im),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        Complex {
+            re: values.re,
+            im: E::simd_neg(simd, values.im),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_add<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_add(simd, lhs.re, rhs.re),
+            im: E::simd_add(simd, lhs.im, rhs.im),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_sub(simd, lhs.re, rhs.re),
+            im: E::simd_sub(simd, lhs.im, rhs.im),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_mul_adde(
+                simd,
+                E::copy(&lhs.re),
+                E::copy(&rhs.re),
+                E::simd_mul(simd, E::simd_neg(simd, E::copy(&lhs.im)), E::copy(&rhs.im)),
+            ),
+            im: E::simd_mul_adde(simd, lhs.re, rhs.im, E::simd_mul(simd, lhs.im, rhs.re)),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_mul_adde(
+                simd,
+                E::copy(&lhs.re),
+                E::copy(&rhs.re),
+                E::simd_mul(simd, E::copy(&lhs.im), E::copy(&rhs.im)),
+            ),
+            im: E::simd_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_mul(simd, E::simd_neg(simd, lhs.im), rhs.re),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_mul_adde(
+                simd,
+                E::copy(&lhs.re),
+                E::copy(&rhs.re),
+                E::simd_mul_adde(
+                    simd,
+                    E::simd_neg(simd, E::copy(&lhs.im)),
+                    E::copy(&rhs.im),
+                    acc.re,
+                ),
+            ),
+            im: E::simd_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_mul_adde(simd, lhs.im, rhs.re, acc.im),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: Simd>(
+        simd: S,
+        lhs: SimdGroup<Self, S>,
+        rhs: SimdGroup<Self, S>,
+        acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_mul_adde(
+                simd,
+                E::copy(&lhs.re),
+                E::copy(&rhs.re),
+                E::simd_mul_adde(simd, E::copy(&lhs.im), E::copy(&rhs.im), acc.re),
+            ),
+            im: E::simd_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_mul_adde(simd, E::simd_neg(simd, lhs.im), rhs.re, acc.im),
+            ),
+        }
     }
 }
 
-struct MatrixSliceBase<T> {
-    ptr: NonNull<T>,
+#[doc(hidden)]
+pub use pulp;
+
+unsafe impl Entity for c32 {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::c32s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+unsafe impl Entity for c32conj {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::c32s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+
+unsafe impl Entity for c64 {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::c64s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+unsafe impl Entity for c64conj {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::c64s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+
+unsafe impl Entity for f32 {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::f32s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+
+unsafe impl Entity for f64 {
+    type Unit = Self;
+    type SimdUnit<S: Simd> = S::f64s;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type GroupThreadSafe<T: Send + Sync> = T;
+    type Iter<I: Iterator> = I;
+
+    const N_COMPONENTS: usize = 1;
+    const HAS_SIMD: bool = true;
+    const UNIT: Self::GroupCopy<()> = ();
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        f(group)
+    }
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+
+    #[inline(always)]
+    fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+        group
+    }
+
+    #[inline(always)]
+    fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+        group
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct ComplexConj<T> {
+    pub re: T,
+    pub neg_im: T,
+}
+
+#[derive(Clone, Debug)]
+pub struct ComplexIter<I> {
+    re: I,
+    im: I,
+}
+#[derive(Clone, Debug)]
+pub struct ComplexConjIter<I> {
+    re: I,
+    neg_im: I,
+}
+
+impl<I: Iterator> Iterator for ComplexIter<I> {
+    type Item = Complex<I::Item>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.re.next(), self.im.next()) {
+            (None, None) => None,
+            (Some(re), Some(im)) => Some(Complex { re, im }),
+            _ => panic!(),
+        }
+    }
+}
+impl<I: Iterator> Iterator for ComplexConjIter<I> {
+    type Item = ComplexConj<I::Item>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.re.next(), self.neg_im.next()) {
+            (None, None) => None,
+            (Some(re), Some(neg_im)) => Some(ComplexConj { re, neg_im }),
+            _ => panic!(),
+        }
+    }
+}
+
+unsafe impl<E: Entity> Entity for Complex<E> {
+    type Unit = E::Unit;
+    type SimdUnit<S: Simd> = E::SimdUnit<S>;
+    type Group<T> = Complex<E::Group<T>>;
+    type GroupCopy<T: Copy> = Complex<E::GroupCopy<T>>;
+    type GroupThreadSafe<T: Send + Sync> = Complex<E::GroupThreadSafe<T>>;
+    type Iter<I: Iterator> = ComplexIter<E::Iter<I>>;
+
+    const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
+    const HAS_SIMD: bool = E::HAS_SIMD;
+    const UNIT: Self::GroupCopy<()> = Complex {
+        re: E::UNIT,
+        im: E::UNIT,
+    };
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        let re = E::from_units(group.re);
+        let im = E::from_units(group.im);
+        Self { re, im }
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        let Self { re, im } = self;
+        Complex {
+            re: re.into_units(),
+            im: im.into_units(),
+        }
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        Complex {
+            re: E::as_ref(&group.re),
+            im: E::as_ref(&group.im),
+        }
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        Complex {
+            re: E::as_mut(&mut group.re),
+            im: E::as_mut(&mut group.im),
+        }
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        Complex {
+            re: E::map(group.re, &mut f),
+            im: E::map(group.im, &mut f),
+        }
+    }
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
+        let (ctx, im) = E::map_with_context(ctx, group.im, &mut f);
+        (ctx, Complex { re, im })
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        Complex {
+            re: E::zip(first.re, second.re),
+            im: E::zip(first.im, second.im),
+        }
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        let (re0, re1) = E::unzip(zipped.re);
+        let (im0, im1) = E::unzip(zipped.im);
+        (Complex { re: re0, im: im0 }, Complex { re: re1, im: im1 })
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        ComplexIter {
+            re: E::into_iter(iter.re),
+            im: E::into_iter(iter.im),
+        }
+    }
+}
+
+unsafe impl<E: Entity> Entity for ComplexConj<E> {
+    type Unit = E::Unit;
+    type SimdUnit<S: Simd> = S::f32s;
+    type Group<T> = ComplexConj<E::Group<T>>;
+    type GroupCopy<T: Copy> = ComplexConj<E::GroupCopy<T>>;
+    type GroupThreadSafe<T: Send + Sync> = ComplexConj<E::GroupThreadSafe<T>>;
+    type Iter<I: Iterator> = ComplexConjIter<E::Iter<I>>;
+
+    const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
+    const HAS_SIMD: bool = E::HAS_SIMD;
+    const UNIT: Self::GroupCopy<()> = ComplexConj {
+        re: E::UNIT,
+        neg_im: E::UNIT,
+    };
+
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        let re = E::from_units(group.re);
+        let neg_im = E::from_units(group.neg_im);
+        Self { re, neg_im }
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        let Self { re, neg_im } = self;
+        ComplexConj {
+            re: re.into_units(),
+            neg_im: neg_im.into_units(),
+        }
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        ComplexConj {
+            re: E::as_ref(&group.re),
+            neg_im: E::as_ref(&group.neg_im),
+        }
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        ComplexConj {
+            re: E::as_mut(&mut group.re),
+            neg_im: E::as_mut(&mut group.neg_im),
+        }
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+        let mut f = f;
+        ComplexConj {
+            re: E::map(group.re, &mut f),
+            neg_im: E::map(group.neg_im, &mut f),
+        }
+    }
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        let mut f = f;
+        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
+        let (ctx, neg_im) = E::map_with_context(ctx, group.neg_im, &mut f);
+        (ctx, ComplexConj { re, neg_im })
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        ComplexConj {
+            re: E::zip(first.re, second.re),
+            neg_im: E::zip(first.neg_im, second.neg_im),
+        }
+    }
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        let (re0, re1) = E::unzip(zipped.re);
+        let (neg_im0, neg_im1) = E::unzip(zipped.neg_im);
+        (
+            ComplexConj {
+                re: re0,
+                neg_im: neg_im0,
+            },
+            ComplexConj {
+                re: re1,
+                neg_im: neg_im1,
+            },
+        )
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        ComplexConjIter {
+            re: E::into_iter(iter.re),
+            neg_im: E::into_iter(iter.neg_im),
+        }
+    }
+}
+
+unsafe impl Conjugate for f32 {
+    type Conj = f32;
+    type Canonical = f32;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+
+unsafe impl Conjugate for c32 {
+    type Conj = c32conj;
+    type Canonical = c32;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+unsafe impl Conjugate for c32conj {
+    type Conj = c32;
+    type Canonical = c32;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        c32 {
+            re: self.re,
+            im: -self.neg_im,
+        }
+    }
+}
+
+unsafe impl Conjugate for f64 {
+    type Conj = f64;
+    type Canonical = f64;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+
+unsafe impl Conjugate for c64 {
+    type Conj = c64conj;
+    type Canonical = c64;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+unsafe impl Conjugate for c64conj {
+    type Conj = c64;
+    type Canonical = c64;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        c64 {
+            re: self.re,
+            im: -self.neg_im,
+        }
+    }
+}
+
+unsafe impl<E: Entity + ComplexField> Conjugate for Complex<E> {
+    type Conj = ComplexConj<E>;
+    type Canonical = Complex<E>;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+
+unsafe impl<E: Entity + ComplexField> Conjugate for ComplexConj<E> {
+    type Conj = Complex<E>;
+    type Canonical = Complex<E>;
+
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        Complex {
+            re: self.re,
+            im: self.neg_im.neg(),
+        }
+    }
+}
+
+struct MatImpl<E: Entity> {
+    ptr: E::GroupCopy<NonNull<E::Unit>>,
     nrows: usize,
     ncols: usize,
     row_stride: isize,
     col_stride: isize,
 }
-struct VecSliceBase<T> {
-    ptr: NonNull<T>,
-    len: usize,
-    stride: isize,
-}
-impl<T> Copy for MatrixSliceBase<T> {}
-impl<T> Clone for MatrixSliceBase<T> {
-    #[inline]
+
+impl<E: Entity> Copy for MatImpl<E> {}
+impl<E: Entity> Clone for MatImpl<E> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Copy for VecSliceBase<T> {}
-impl<T> Clone for VecSliceBase<T> {
-    #[inline]
+pub struct MatRef<'a, E: Entity> {
+    inner: MatImpl<E>,
+    __marker: PhantomData<&'a E>,
+}
+
+impl<E: Entity> Copy for MatRef<'_, E> {}
+impl<E: Entity> Clone for MatRef<'_, E> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-/// Matrix view with general row and column strides.
-pub struct MatRef<'a, T> {
-    base: MatrixSliceBase<T>,
-    _marker: PhantomData<&'a T>,
+pub struct MatMut<'a, E: Entity> {
+    inner: MatImpl<E>,
+    __marker: PhantomData<&'a mut E>,
 }
 
-/// Mutable matrix view with general row and column strides.
-///
-/// For usage examples, see [`MatRef`].
-pub struct MatMut<'a, T> {
-    base: MatrixSliceBase<T>,
-    _marker: PhantomData<&'a mut T>,
-}
+impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
+    type Target = MatRef<'a, E>;
 
-/// Row vector view with general column stride.
-///
-/// For usage examples, see [`MatRef`].
-pub struct RowRef<'a, T> {
-    base: VecSliceBase<T>,
-    _marker: PhantomData<&'a T>,
-}
-
-/// Mutable row vector view with general column stride.
-///
-/// For usage examples, see [`MatRef`].
-pub struct RowMut<'a, T> {
-    base: VecSliceBase<T>,
-    _marker: PhantomData<&'a mut T>,
-}
-
-/// Column vector view with general row stride.
-///
-/// For usage examples, see [`MatRef`].
-pub struct ColRef<'a, T> {
-    base: VecSliceBase<T>,
-    _marker: PhantomData<&'a T>,
-}
-
-/// Mutable column vector view with general row stride.
-///
-/// For usage examples, see [`MatRef`].
-pub struct ColMut<'a, T> {
-    base: VecSliceBase<T>,
-    _marker: PhantomData<&'a mut T>,
-}
-
-unsafe impl<'a, T: Sync> Sync for MatRef<'a, T> {}
-unsafe impl<'a, T: Sync> Send for MatRef<'a, T> {}
-unsafe impl<'a, T: Sync> Sync for MatMut<'a, T> {}
-unsafe impl<'a, T: Send> Send for MatMut<'a, T> {}
-
-unsafe impl<'a, T: Sync> Sync for RowRef<'a, T> {}
-unsafe impl<'a, T: Sync> Send for RowRef<'a, T> {}
-unsafe impl<'a, T: Sync> Sync for RowMut<'a, T> {}
-unsafe impl<'a, T: Send> Send for RowMut<'a, T> {}
-
-unsafe impl<'a, T: Sync> Sync for ColRef<'a, T> {}
-unsafe impl<'a, T: Sync> Send for ColRef<'a, T> {}
-unsafe impl<'a, T: Sync> Sync for ColMut<'a, T> {}
-unsafe impl<'a, T: Send> Send for ColMut<'a, T> {}
-
-impl<'a, T> Copy for MatRef<'a, T> {}
-impl<'a, T> Copy for RowRef<'a, T> {}
-impl<'a, T> Copy for ColRef<'a, T> {}
-
-impl<'a, T> Clone for MatRef<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<'a, T> Clone for RowRef<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<'a, T> Clone for ColRef<'a, T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for MatRef<'a, T> {
-    type Target = MatRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for MatRef<'a, T> {
-    type Target = MatRef<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for MatMut<'a, T> {
-    type Target = MatRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for MatMut<'a, T> {
-    type Target = MatMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for RowRef<'a, T> {
-    type Target = RowRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowRef<'a, T> {
-    type Target = RowRef<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for RowMut<'a, T> {
-    type Target = RowRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for RowMut<'a, T> {
-    type Target = RowMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for ColRef<'a, T> {
-    type Target = ColRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        *self
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ColRef<'a, T> {
-    type Target = ColRef<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        *self
-    }
-}
-
-impl<'b, 'a, T> Reborrow<'b> for ColMut<'a, T> {
-    type Target = ColRef<'b, T>;
-    #[inline]
-    fn rb(&'b self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-impl<'b, 'a, T> ReborrowMut<'b> for ColMut<'a, T> {
-    type Target = ColMut<'b, T>;
-    #[inline]
-    fn rb_mut(&'b mut self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> IntoConst for MatRef<'a, T> {
-    type Target = MatRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        self
-    }
-}
-impl<'a, T> IntoConst for MatMut<'a, T> {
-    type Target = MatRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> IntoConst for ColRef<'a, T> {
-    type Target = ColRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        self
-    }
-}
-impl<'a, T> IntoConst for ColMut<'a, T> {
-    type Target = ColRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> IntoConst for RowRef<'a, T> {
-    type Target = RowRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        self
-    }
-}
-impl<'a, T> IntoConst for RowMut<'a, T> {
-    type Target = RowRef<'a, T>;
-
-    #[inline]
-    fn into_const(self) -> Self::Target {
-        Self::Target {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T: 'static, U: 'static> Coerce<MatRef<'a, U>> for MatRef<'a, T> {
     #[inline(always)]
-    fn coerce(self) -> MatRef<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
-    }
-}
-impl<'a, T: 'static, U: 'static> Coerce<MatMut<'a, U>> for MatMut<'a, T> {
-    #[inline(always)]
-    fn coerce(self) -> MatMut<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
+    fn into_const(self) -> Self::Target {
+        MatRef {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
     }
 }
 
-impl<'a, T: 'static, U: 'static> Coerce<RowRef<'a, U>> for RowRef<'a, T> {
+impl<'short, 'a, E: Entity> Reborrow<'short> for MatMut<'a, E> {
+    type Target = MatRef<'short, E>;
+
     #[inline(always)]
-    fn coerce(self) -> RowRef<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
-    }
-}
-impl<'a, T: 'static, U: 'static> Coerce<RowMut<'a, U>> for RowMut<'a, T> {
-    #[inline(always)]
-    fn coerce(self) -> RowMut<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
-    }
-}
-impl<'a, T: 'static, U: 'static> Coerce<ColRef<'a, U>> for ColRef<'a, T> {
-    #[inline(always)]
-    fn coerce(self) -> ColRef<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
-    }
-}
-impl<'a, T: 'static, U: 'static> Coerce<ColMut<'a, U>> for ColMut<'a, T> {
-    #[inline(always)]
-    fn coerce(self) -> ColMut<'a, U> {
-        coe::assert_same::<T, U>();
-        unsafe { core::mem::transmute(self) }
+    fn rb(&'short self) -> Self::Target {
+        MatRef {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
     }
 }
 
-impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for MatRef<'a, T> {
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for MatMut<'a, E> {
+    type Target = MatMut<'short, E>;
+
+    #[inline(always)]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        MatMut {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
+    }
+}
+
+unsafe impl<E: Entity> Send for MatRef<'_, E> {}
+unsafe impl<E: Entity> Sync for MatRef<'_, E> {}
+unsafe impl<E: Entity> Send for MatMut<'_, E> {}
+unsafe impl<E: Entity> Sync for MatMut<'_, E> {}
+
+impl<'a, E: Entity> MatRef<'a, E> {
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn from_raw_parts(
+        ptr: E::Group<*const E::Unit>,
+        nrows: usize,
+        ncols: usize,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> Self {
+        E::map(E::as_ref(&ptr), |ptr| debug_assert!(!ptr.is_null()));
+        Self {
+            inner: MatImpl {
+                ptr: E::into_copy(E::map(ptr, |ptr| {
+                    NonNull::new_unchecked(ptr as *mut E::Unit)
+                })),
+                nrows,
+                ncols,
+                row_stride,
+                col_stride,
+            },
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_ptr(self) -> E::Group<*const E::Unit> {
+        E::map(E::from_copy(self.inner.ptr), |ptr| {
+            ptr.as_ptr() as *const E::Unit
+        })
+    }
+
+    #[inline(always)]
+    pub fn nrows(&self) -> usize {
+        self.inner.nrows
+    }
+
+    #[inline(always)]
+    pub fn ncols(&self) -> usize {
+        self.inner.ncols
+    }
+
+    #[inline(always)]
+    pub fn row_stride(&self) -> isize {
+        self.inner.row_stride
+    }
+
+    #[inline(always)]
+    pub fn col_stride(&self) -> isize {
+        self.inner.col_stride
+    }
+
+    #[inline(always)]
+    pub fn ptr_at(self, row: usize, col: usize) -> E::Group<*const E::Unit> {
+        E::map(self.as_ptr(), |ptr| {
+            ptr.wrapping_offset(row as isize * self.inner.row_stride)
+                .wrapping_offset(col as isize * self.inner.col_stride)
+        })
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> E::Group<*const E::Unit> {
+        debug_assert!(row < self.nrows());
+        debug_assert!(col < self.ncols());
+        E::map(self.as_ptr(), |ptr| {
+            ptr.offset(row as isize * self.inner.row_stride)
+                .offset(col as isize * self.inner.col_stride)
+        })
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at(self, row: usize, col: usize) -> [Self; 4] {
+        assert!(row <= self.nrows());
+        assert!(col <= self.ncols());
+
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+
+        unsafe {
+            let top_left = self.ptr_at(0, 0);
+            let top_right = self.ptr_at(0, col);
+            let bot_left = self.ptr_at(row, 0);
+            let bot_right = self.ptr_at(row, col);
+
+            [
+                Self::from_raw_parts(top_left, row, col, row_stride, col_stride),
+                Self::from_raw_parts(top_right, row, ncols - col, row_stride, col_stride),
+                Self::from_raw_parts(bot_left, nrows - row, col, row_stride, col_stride),
+                Self::from_raw_parts(bot_right, nrows - row, ncols - col, row_stride, col_stride),
+            ]
+        }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_row(self, row: usize) -> [Self; 2] {
+        let [_, top, _, bot] = self.split_at(row, 0);
+        [top, bot]
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_col(self, col: usize) -> [Self; 2] {
+        let [_, _, left, right] = self.split_at(0, col);
+        [left, right]
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn get_unchecked(self, row: usize, col: usize) -> E::Group<&'a E::Unit> {
+        E::map(self.ptr_inbounds_at(row, col), |ptr| &*ptr)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> E::Group<&'a E::Unit> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+        unsafe { self.get_unchecked(row, col) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        E::from_units(E::map(self.get_unchecked(row, col), |ptr| (*ptr).clone())).canonicalize()
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        E::from_units(E::map(self.get(row, col), |ptr| (*ptr).clone())).canonicalize()
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn transpose(self) -> Self {
+        Self {
+            inner: MatImpl {
+                ptr: self.inner.ptr,
+                nrows: self.inner.ncols,
+                ncols: self.inner.nrows,
+                row_stride: self.inner.col_stride,
+                col_stride: self.inner.row_stride,
+            },
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate(self) -> MatRef<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        unsafe {
+            // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
+            // and that E::GroupCopy<X> == E::Conj::GroupCopy<X>
+            MatRef {
+                inner: MatImpl {
+                    ptr: transmute_unchecked::<
+                        E::GroupCopy<NonNull<E::Unit>>,
+                        <E::Conj as Entity>::GroupCopy<NonNull<<E::Conj as Entity>::Unit>>,
+                    >(self.inner.ptr),
+                    nrows: self.inner.nrows,
+                    ncols: self.inner.ncols,
+                    row_stride: self.inner.row_stride,
+                    col_stride: self.inner.col_stride,
+                },
+                __marker: PhantomData,
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn adjoint(self) -> MatRef<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.transpose().conjugate()
+    }
+
+    #[inline(always)]
+    pub fn canonicalize(self) -> (MatRef<'a, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            unsafe {
+                // SAFETY: see Self::conjugate
+                MatRef {
+                    inner: MatImpl {
+                        ptr: transmute_unchecked::<
+                            E::GroupCopy<NonNull<E::Unit>>,
+                            <E::Canonical as Entity>::GroupCopy<
+                                NonNull<<E::Canonical as Entity>::Unit>,
+                            >,
+                        >(self.inner.ptr),
+                        nrows: self.inner.nrows,
+                        ncols: self.inner.ncols,
+                        row_stride: self.inner.row_stride,
+                        col_stride: self.inner.col_stride,
+                    },
+                    __marker: PhantomData,
+                }
+            },
+            if coe::is_same::<E, E::Canonical>() {
+                Conj::No
+            } else {
+                Conj::Yes
+            },
+        )
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = self.col_stride();
+
+        let ptr = self.ptr_at(if nrows == 0 { 0 } else { nrows - 1 }, 0);
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = self.row_stride();
+        let col_stride = -self.col_stride();
+        let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_and_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = -self.col_stride();
+
+        let ptr = self.ptr_at(
+            if nrows == 0 { 0 } else { nrows - 1 },
+            if ncols == 0 { 0 } else { ncols - 1 },
+        );
+        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn submatrix(self, row_start: usize, col_start: usize, nrows: usize, ncols: usize) -> Self {
+        assert!(row_start <= self.nrows());
+        assert!(col_start <= self.ncols());
+        assert!(nrows <= self.nrows() - row_start);
+        assert!(ncols <= self.ncols() - col_start);
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe {
+            Self::from_raw_parts(
+                self.ptr_at(row_start, col_start),
+                nrows,
+                ncols,
+                row_stride,
+                col_stride,
+            )
+        }
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn diagonal(self) -> Self {
+        let size = self.nrows().min(self.ncols());
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe { Self::from_raw_parts(self.as_ptr(), size, 1, row_stride + col_stride, 0) }
+    }
+
+    /// Returns an owning [`Mat`] of the data
+    #[inline]
+    pub fn to_owned(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+    {
+        let mut mat = Mat::new();
+        mat.resize_with(self.nrows(), self.ncols(), |row, col| unsafe {
+            self.read_unchecked(row, col)
+        });
+        mat
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(self) -> MatMut<'a, E> {
+        MatMut {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, E: Entity> MatMut<'a, E> {
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn from_raw_parts(
+        ptr: E::Group<*mut E::Unit>,
+        nrows: usize,
+        ncols: usize,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> Self {
+        E::map(E::as_ref(&ptr), |ptr| debug_assert!(!ptr.is_null()));
+        Self {
+            inner: MatImpl {
+                ptr: E::into_copy(E::map(ptr, |ptr| {
+                    NonNull::new_unchecked(ptr as *mut E::Unit)
+                })),
+                nrows,
+                ncols,
+                row_stride,
+                col_stride,
+            },
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_ptr(self) -> E::Group<*mut E::Unit> {
+        E::map(E::from_copy(self.inner.ptr), |ptr| {
+            ptr.as_ptr() as *mut E::Unit
+        })
+    }
+
+    #[inline(always)]
+    pub fn nrows(&self) -> usize {
+        self.inner.nrows
+    }
+
+    #[inline(always)]
+    pub fn ncols(&self) -> usize {
+        self.inner.ncols
+    }
+
+    #[inline(always)]
+    pub fn row_stride(&self) -> isize {
+        self.inner.row_stride
+    }
+
+    #[inline(always)]
+    pub fn col_stride(&self) -> isize {
+        self.inner.col_stride
+    }
+
+    #[inline(always)]
+    pub fn ptr_at(self, row: usize, col: usize) -> E::Group<*mut E::Unit> {
+        let row_stride = self.inner.row_stride;
+        let col_stride = self.inner.col_stride;
+        E::map(self.as_ptr(), |ptr| {
+            ptr.wrapping_offset(row as isize * row_stride)
+                .wrapping_offset(col as isize * col_stride)
+        })
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> E::Group<*mut E::Unit> {
+        debug_assert!(row < self.nrows());
+        debug_assert!(col < self.ncols());
+        let row_stride = self.inner.row_stride;
+        let col_stride = self.inner.col_stride;
+        E::map(self.as_ptr(), |ptr| {
+            ptr.offset(row as isize * row_stride)
+                .offset(col as isize * col_stride)
+        })
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at(self, row: usize, col: usize) -> [Self; 4] {
+        let [top_left, top_right, bot_left, bot_right] = self.into_const().split_at(row, col);
+        unsafe {
+            [
+                top_left.const_cast(),
+                top_right.const_cast(),
+                bot_left.const_cast(),
+                bot_right.const_cast(),
+            ]
+        }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_row(self, row: usize) -> [Self; 2] {
+        let [_, top, _, bot] = self.split_at(row, 0);
+        [top, bot]
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_col(self, col: usize) -> [Self; 2] {
+        let [_, _, left, right] = self.split_at(0, col);
+        [left, right]
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn get_unchecked(self, row: usize, col: usize) -> E::Group<&'a mut E::Unit> {
+        E::map(self.ptr_inbounds_at(row, col), |ptr| &mut *ptr)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> E::Group<&'a mut E::Unit> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+        unsafe { self.get_unchecked(row, col) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        self.rb().read_unchecked(row, col)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        self.rb().read(row, col)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn write_unchecked(&mut self, row: usize, col: usize, value: E) {
+        let units = value.into_units();
+        let zipped = E::zip(units, self.rb_mut().ptr_inbounds_at(row, col));
+        E::map(zipped, |(unit, ptr)| *ptr = unit);
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn write(&mut self, row: usize, col: usize, value: E) {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+        unsafe { self.write_unchecked(row, col, value) };
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn transpose(self) -> Self {
+        Self {
+            inner: MatImpl {
+                ptr: self.inner.ptr,
+                nrows: self.inner.ncols,
+                ncols: self.inner.nrows,
+                row_stride: self.inner.col_stride,
+                col_stride: self.inner.row_stride,
+            },
+            __marker: PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate(self) -> MatMut<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        unsafe { self.into_const().conjugate().const_cast() }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn adjoint(self) -> MatMut<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.transpose().conjugate()
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize(self) -> (MatMut<'a, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        let (canonical, conj) = self.into_const().canonicalize();
+        unsafe { (canonical.const_cast(), conj) }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows(self) -> Self {
+        unsafe { self.into_const().reverse_rows().const_cast() }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_cols(self) -> Self {
+        unsafe { self.into_const().reverse_cols().const_cast() }
+    }
+
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_and_cols(self) -> Self {
+        unsafe { self.into_const().reverse_rows_and_cols().const_cast() }
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn submatrix(self, row_start: usize, col_start: usize, nrows: usize, ncols: usize) -> Self {
+        unsafe {
+            self.into_const()
+                .submatrix(row_start, col_start, nrows, ncols)
+                .const_cast()
+        }
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn diagonal(self) -> Self {
+        unsafe { self.into_const().diagonal().const_cast() }
+    }
+
+    /// Returns an owning [`Mat`] of the data
+    #[inline]
+    pub fn to_owned(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+    {
+        self.rb().to_owned()
+    }
+}
+
+impl<'a, E: RealField> MatRef<'a, Complex<E>> {
+    #[inline(always)]
+    pub fn real_imag(self) -> Complex<MatRef<'a, E>> {
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let Complex { re, im } = self.as_ptr();
+        unsafe {
+            Complex {
+                re: MatRef::from_raw_parts(re, nrows, ncols, row_stride, col_stride),
+                im: MatRef::from_raw_parts(im, nrows, ncols, row_stride, col_stride),
+            }
+        }
+    }
+}
+
+impl<'a, E: RealField> MatMut<'a, Complex<E>> {
+    #[inline(always)]
+    pub fn real_imag(self) -> Complex<MatMut<'a, E>> {
+        let Complex { re, im } = self.into_const().real_imag();
+        unsafe {
+            Complex {
+                re: re.const_cast(),
+                im: im.const_cast(),
+            }
+        }
+    }
+}
+
+impl<'a, U: Conjugate, T: Conjugate<Canonical = U::Canonical>> PartialEq<MatRef<'a, U>>
+    for MatRef<'a, T>
+where
+    T::Canonical: ComplexField,
+{
     fn eq(&self, other: &MatRef<'a, U>) -> bool {
         let same_dims = self.nrows() == other.nrows() && self.ncols() == other.ncols();
         if !same_dims {
@@ -851,12 +3008,8 @@ impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for 
 
             for j in 0..n {
                 for i in 0..m {
-                    unsafe {
-                        if !(self.get_unchecked(i, j).clone().into_num()
-                            == other.get_unchecked(i, j).clone().into_num())
-                        {
-                            return false;
-                        }
+                    if !(self.read(i, j).canonicalize() == other.read(i, j).canonicalize()) {
+                        return false;
                     }
                 }
             }
@@ -866,3662 +3019,38 @@ impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for 
     }
 }
 
-impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatRef<'a, U>> for MatMut<'a, T> {
-    #[inline]
-    fn eq(&self, other: &MatRef<'a, U>) -> bool {
-        self.rb() == other.rb()
-    }
-}
-
-impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatMut<'a, U>> for MatRef<'a, T> {
-    #[inline]
+impl<'a, U: Conjugate, T: Conjugate<Canonical = U::Canonical>> PartialEq<MatMut<'a, U>>
+    for MatMut<'a, T>
+where
+    T::Canonical: ComplexField,
+{
     fn eq(&self, other: &MatMut<'a, U>) -> bool {
-        self.rb() == other.rb()
+        self.rb().eq(&other.rb())
     }
 }
 
-impl<'a, U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<MatMut<'a, U>> for MatMut<'a, T> {
-    #[inline]
-    fn eq(&self, other: &MatMut<'a, U>) -> bool {
-        self.rb() == other.rb()
-    }
-}
-
-impl<U: Conjugate, T: Conjugate<Num = U::Num>> PartialEq<Mat<U>> for Mat<T> {
-    #[inline]
+impl<U: Conjugate, T: Conjugate<Canonical = U::Canonical>> PartialEq<Mat<U>> for Mat<T>
+where
+    T::Canonical: ComplexField,
+{
     fn eq(&self, other: &Mat<U>) -> bool {
-        self.as_ref() == other.as_ref()
+        self.as_ref().eq(&other.as_ref())
     }
-}
-
-impl<'a, T> MatRef<'a, T> {
-    /// Returns a matrix slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the matrix.  
-    /// `nrows`: number of rows of the matrix.  
-    /// `ncols`: number of columns of the matrix.  
-    /// `row_stride`: offset between the first elements of two successive rows in the matrix.
-    /// `col_stride`: offset between the first elements of two successive columns in the matrix.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `i < nrows` and `j < ncols`,  
-    /// `ptr.offset(i as isize * row_stride + j as isize * col_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never accessed.  
-    /// The referenced memory must not be mutated during the lifetime `'a`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::MatRef;
-    ///
-    /// let nan = f64::NAN;
-    /// let data = vec![0.0, 1.0, nan, 2.0, 3.0, nan, 4.0, 5.0];
-    ///
-    /// let nrows = 2;
-    /// let ncols = 3;
-    /// let row_stride = 1;
-    /// let col_stride = 3;
-    /// let m = unsafe { MatRef::from_raw_parts(data.as_ptr(), nrows, ncols, row_stride, col_stride) };
-    ///
-    /// assert_eq!(m.nrows(), 2);
-    /// assert_eq!(m.ncols(), 3);
-    ///
-    /// assert_eq!(m[(0, 0)], 0.0);
-    /// assert_eq!(m[(1, 0)], 1.0);
-    /// assert_eq!(m[(0, 1)], 2.0);
-    /// assert_eq!(m[(1, 1)], 3.0);
-    /// assert_eq!(m[(0, 2)], 4.0);
-    /// assert_eq!(m[(1, 2)], 5.0);
-    /// ```
-    #[inline]
-    pub unsafe fn from_raw_parts(
-        ptr: *const T,
-        nrows: usize,
-        ncols: usize,
-        row_stride: isize,
-        col_stride: isize,
-    ) -> Self {
-        Self {
-            base: MatrixSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr as *mut T),
-                nrows,
-                ncols,
-                row_stride,
-                col_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a pointer to the first (top left) element of the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(unsafe { *m.as_ptr() }, 0.0);
-    /// ```
-    #[inline]
-    pub fn as_ptr(self) -> *const T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(m.nrows(), 2);
-    /// ```
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.base.nrows
-    }
-
-    /// Returns the number of columns of the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(m.ncols(), 3);
-    /// ```
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.base.ncols
-    }
-
-    /// Returns the offset between the first elements of two successive rows in the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(m.row_stride(), 1); // mat! returns a column major matrix
-    /// ```
-    #[inline]
-    pub fn row_stride(&self) -> isize {
-        self.base.row_stride
-    }
-
-    /// Returns the offset between the first elements of two successive columns in the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert!(m.col_stride() >= 2); // the stride has to be at least 2, since the matrix is
-    ///                               // column major and each column has 2 elements.
-    /// ```
-    #[inline]
-    pub fn col_stride(&self) -> isize {
-        self.base.col_stride
-    }
-
-    /// Returns a pointer to the element at position (i, j) in the matrix.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(unsafe { *m.ptr_at(1, 2) }, 5.0);
-    /// ```
-    #[inline]
-    pub fn ptr_at(self, i: usize, j: usize) -> *const T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(i as isize * self.row_stride())
-            .wrapping_offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a pointer to the element at position (i, j) in the matrix, assuming it falls within
-    /// its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::ptr_at`].
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *const T {
-        fancy_debug_assert!(i < self.nrows());
-        fancy_debug_assert!(j < self.ncols());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(i as isize * self.row_stride())
-            .offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a pointer to the element at position (i, j) in the matrix, while asserting that
-    /// it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::ptr_at`].
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *const T {
-        fancy_assert!(i < self.nrows());
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(i, j) }
-    }
-
-    /// Splits the matrix into four corner parts in the following order: top left, top right,
-    /// bottom left, bottom right.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::split_at`].
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(j <= self.ncols());
-        let ptr = self.base.ptr.as_ptr();
-        let cs = self.col_stride();
-        let rs = self.row_stride();
-        (
-            Self::from_raw_parts(ptr, i, j, rs, cs),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(j as isize * cs),
-                i,
-                self.ncols() - j,
-                rs,
-                cs,
-            ),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(i as isize * rs),
-                self.nrows() - i,
-                j,
-                rs,
-                cs,
-            ),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(i as isize * rs)
-                    .wrapping_offset(j as isize * cs),
-                self.nrows() - i,
-                self.ncols() - j,
-                rs,
-                cs,
-            ),
-        )
-    }
-
-    /// Splits the matrix into four corner parts in the following order: top left, top right,
-    /// bottom left, bottom right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 2.0, 4.0], [1.0, 3.0, 5.0]];
-    /// let m = m.as_ref();
-    /// let (top_left, top_right, bot_left, bot_right) = m.split_at(1, 1);
-    ///
-    /// assert_eq!(top_left.nrows(), 1);
-    /// assert_eq!(top_left.ncols(), 1);
-    /// assert_eq!(top_left[(0, 0)], 0.0);
-    ///
-    /// assert_eq!(top_right.nrows(), 1);
-    /// assert_eq!(top_right.ncols(), 2);
-    /// assert_eq!(top_right[(0, 0)], 2.0);
-    /// assert_eq!(top_right[(0, 1)], 4.0);
-    ///
-    /// assert_eq!(bot_left.nrows(), 1);
-    /// assert_eq!(bot_left.ncols(), 1);
-    /// assert_eq!(bot_left[(0, 0)], 1.0);
-    ///
-    /// assert_eq!(bot_right.nrows(), 1);
-    /// assert_eq!(bot_right.ncols(), 2);
-    /// assert_eq!(bot_right[(0, 0)], 3.0);
-    /// assert_eq!(bot_right[(0, 1)], 5.0);
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(j <= self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(i, j) }
-    }
-
-    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
-        let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
-        (top, bottom)
-    }
-
-    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at_row(self, i: usize) -> (Self, Self) {
-        let (_, top, _, bottom) = self.split_at(i, 0);
-        (top, bottom)
-    }
-
-    /// Splits the matrix vertically into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.nrows()`,
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
-        let (_, _, left, right) = self.split_at_unchecked(0, j);
-        (left, right)
-    }
-
-    /// Splits the matrix vertically into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.nrows()`,
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at_col(self, j: usize) -> (Self, Self) {
-        let (_, _, left, right) = self.split_at(0, j);
-        (left, right)
-    }
-
-    /// Returns a reference to the element at position (i, j), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::get`].
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &*self.ptr_in_bounds_at_unchecked(i, j)
-    }
-
-    /// Returns a reference to the element at position (i, j), or panics if the indices are out of
-    /// bounds.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// assert_eq!(m.get(1, 2), &7.0);
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, i: usize, j: usize) -> &'a T {
-        fancy_assert!(i < self.nrows());
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(i, j) }
-    }
-
-    /// Returns the `i`-th row of the matrix, with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::row`].
-    #[track_caller]
-    #[inline]
-    pub unsafe fn row_unchecked(self, i: usize) -> RowRef<'a, T> {
-        fancy_debug_assert!(i < self.nrows());
-        let ncols = self.ncols();
-        let cs = self.col_stride();
-        RowRef::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
-    }
-
-    /// Returns the `i`-th row of the matrix.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let r = m.row(1);
-    ///
-    /// assert_eq!(r[2], 7.0);
-    /// ```
-    #[track_caller]
-    #[inline]
-    pub fn row(self, i: usize) -> RowRef<'a, T> {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked
-        unsafe { self.row_unchecked(i) }
-    }
-
-    /// Returns the `j`-th column of the matrix, with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::col`].
-    #[track_caller]
-    #[inline]
-    pub unsafe fn col_unchecked(self, j: usize) -> ColRef<'a, T> {
-        fancy_debug_assert!(j < self.ncols());
-        let nrows = self.nrows();
-        let rs = self.row_stride();
-        ColRef::from_raw_parts(self.ptr_at(0, j), nrows, rs)
-    }
-
-    /// Returns the `j`-th column of the matrix.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let c = m.col(1);
-    ///
-    /// assert_eq!(c[2], 5.0);
-    /// ```
-    #[track_caller]
-    #[inline]
-    pub fn col(self, j: usize) -> ColRef<'a, T> {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.col_unchecked(j) }
-    }
-
-    /// Returns the transpose of `self`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let t = m.transpose();
-    ///
-    /// assert_eq!(t.nrows(), m.ncols());
-    /// assert_eq!(t.ncols(), m.nrows());
-    ///
-    /// assert_eq!(t[(0, 0)], m[(0, 0)]);
-    /// assert_eq!(t[(1, 0)], m[(0, 1)]);
-    /// assert_eq!(t[(2, 0)], m[(0, 2)]);
-    /// assert_eq!(t[(3, 0)], m[(0, 3)]);
-    ///
-    /// assert_eq!(t[(0, 1)], m[(1, 0)]);
-    /// assert_eq!(t[(1, 1)], m[(1, 1)]);
-    /// assert_eq!(t[(2, 1)], m[(1, 2)]);
-    /// assert_eq!(t[(3, 1)], m[(1, 3)]);
-    ///
-    /// assert_eq!(t[(0, 2)], m[(2, 0)]);
-    /// assert_eq!(t[(1, 2)], m[(2, 1)]);
-    /// assert_eq!(t[(2, 2)], m[(2, 2)]);
-    /// assert_eq!(t[(3, 2)], m[(2, 3)]);
-    /// ```
-    #[inline]
-    pub fn transpose(self) -> MatRef<'a, T> {
-        unsafe {
-            MatRef::from_raw_parts(
-                self.base.ptr.as_ptr(),
-                self.ncols(),
-                self.nrows(),
-                self.col_stride(),
-                self.row_stride(),
-            )
-        }
-    }
-
-    /// Returns the conjugate of `self`.
-    #[inline]
-    pub fn conjugate(self) -> MatRef<'a, T::Conj>
-    where
-        T: Conjugate,
-    {
-        unsafe {
-            MatRef::from_raw_parts(
-                self.base.ptr.as_ptr() as _,
-                self.nrows(),
-                self.ncols(),
-                self.row_stride(),
-                self.col_stride(),
-            )
-        }
-    }
-
-    /// Returns the conjugate transpose of `self`.
-    #[inline]
-    pub fn adjoint(self) -> MatRef<'a, T::Conj>
-    where
-        T: Conjugate,
-    {
-        self.conjugate().transpose()
-    }
-
-    /// Returns the raw representation of `self`, along with whether it should be conjugated or not.
-    #[inline]
-    pub fn raw_with_conj(self) -> (MatRef<'a, T::Num>, Conj)
-    where
-        T: Conjugate,
-    {
-        (
-            unsafe {
-                MatRef::from_raw_parts(
-                    self.base.ptr.as_ptr() as _,
-                    self.nrows(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                )
-            },
-            if T::IS_CONJ { Conj::Yes } else { Conj::No },
-        )
-    }
-
-    /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let i = m.reverse_rows();
-    ///
-    /// assert_eq!(i.nrows(), m.nrows());
-    /// assert_eq!(i.ncols(), m.ncols());
-    ///
-    /// assert_eq!(i[(0, 0)], m[(2, 0)]);
-    /// assert_eq!(i[(1, 0)], m[(1, 0)]);
-    /// assert_eq!(i[(2, 0)], m[(0, 0)]);
-    ///
-    /// assert_eq!(i[(0, 1)], m[(2, 1)]);
-    /// assert_eq!(i[(1, 1)], m[(1, 1)]);
-    /// assert_eq!(i[(2, 1)], m[(0, 1)]);
-    ///
-    /// assert_eq!(i[(0, 2)], m[(2, 2)]);
-    /// assert_eq!(i[(1, 2)], m[(1, 2)]);
-    /// assert_eq!(i[(2, 2)], m[(0, 2)]);
-    ///
-    /// assert_eq!(i[(0, 3)], m[(2, 3)]);
-    /// assert_eq!(i[(1, 3)], m[(1, 3)]);
-    /// assert_eq!(i[(2, 3)], m[(0, 3)]);
-    /// ```
-    #[inline]
-    pub fn reverse_rows(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = -self.row_stride();
-        let col_stride = self.col_stride();
-
-        let ptr = self.ptr_at(if nrows == 0 { 0 } else { nrows - 1 }, 0);
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a matrix whose columns are the the columns of the input matrix in reverse order.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let i = m.reverse_cols();
-    ///
-    /// assert_eq!(i.nrows(), m.nrows());
-    /// assert_eq!(i.ncols(), m.ncols());
-    ///
-    /// assert_eq!(i[(0, 0)], m[(0, 3)]);
-    /// assert_eq!(i[(1, 0)], m[(1, 3)]);
-    /// assert_eq!(i[(2, 0)], m[(2, 3)]);
-    ///
-    /// assert_eq!(i[(0, 1)], m[(0, 2)]);
-    /// assert_eq!(i[(1, 1)], m[(1, 2)]);
-    /// assert_eq!(i[(2, 1)], m[(2, 2)]);
-    ///
-    /// assert_eq!(i[(0, 2)], m[(0, 1)]);
-    /// assert_eq!(i[(1, 2)], m[(1, 1)]);
-    /// assert_eq!(i[(2, 2)], m[(2, 1)]);
-    ///
-    /// assert_eq!(i[(0, 3)], m[(0, 0)]);
-    /// assert_eq!(i[(1, 3)], m[(1, 0)]);
-    /// assert_eq!(i[(2, 3)], m[(2, 0)]);
-    /// ```
-    #[inline]
-    pub fn reverse_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = self.row_stride();
-        let col_stride = -self.col_stride();
-        let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
-    /// reverse order.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let i = m.reverse_rows_and_cols();
-    ///
-    /// assert_eq!(i.nrows(), m.nrows());
-    /// assert_eq!(i.ncols(), m.ncols());
-    ///
-    /// assert_eq!(i[(0, 0)], m[(2, 3)]);
-    /// assert_eq!(i[(1, 0)], m[(1, 3)]);
-    /// assert_eq!(i[(2, 0)], m[(0, 3)]);
-    ///
-    /// assert_eq!(i[(0, 1)], m[(2, 2)]);
-    /// assert_eq!(i[(1, 1)], m[(1, 2)]);
-    /// assert_eq!(i[(2, 1)], m[(0, 2)]);
-    ///
-    /// assert_eq!(i[(0, 2)], m[(2, 1)]);
-    /// assert_eq!(i[(1, 2)], m[(1, 1)]);
-    /// assert_eq!(i[(2, 2)], m[(0, 1)]);
-    ///
-    /// assert_eq!(i[(0, 3)], m[(2, 0)]);
-    /// assert_eq!(i[(1, 3)], m[(1, 0)]);
-    /// assert_eq!(i[(2, 3)], m[(0, 0)]);
-    /// ```
-    #[inline]
-    pub fn reverse_rows_and_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = -self.row_stride();
-        let col_stride = -self.col_stride();
-
-        let ptr = self.ptr_at(
-            if nrows == 0 { 0 } else { nrows - 1 },
-            if ncols == 0 { 0 } else { ncols - 1 },
-        );
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns the diagonal of the matrix, as a column vector.
-    ///
-    /// # Safety
-    ///
-    /// Requires that the matrix be square.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::diagonal`].
-    #[track_caller]
-    #[inline]
-    pub unsafe fn diagonal_unchecked(self) -> ColRef<'a, T> {
-        fancy_debug_assert!(self.nrows() == self.ncols());
-        ColRef::from_raw_parts(
-            self.base.ptr.as_ptr(),
-            self.base.nrows,
-            self.base.row_stride + self.base.col_stride,
-        )
-    }
-
-    /// Returns the diagonal of the matrix, as a column vector.
-    ///
-    /// # Panics
-    ///
-    /// Requires that the matrix be square.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![[0.0, 3.0, 6.0], [1.0, 4.0, 7.0], [2.0, 5.0, 8.0]];
-    /// let m = m.as_ref();
-    ///
-    /// let d = m.diagonal();
-    ///
-    /// assert_eq!(d.nrows(), 3);
-    /// assert_eq!(d.ncols(), 1);
-    ///
-    /// assert_eq!(d[0], 0.0);
-    /// assert_eq!(d[1], 4.0);
-    /// assert_eq!(d[2], 8.0);
-    /// ```
-    #[track_caller]
-    #[inline]
-    pub fn diagonal(self) -> ColRef<'a, T> {
-        fancy_assert!(self.nrows() == self.ncols());
-        unsafe { self.diagonal_unchecked() }
-    }
-
-    /// Returns an iterator over the rows of the matrix.
-    #[inline]
-    pub fn into_row_iter(self) -> iter::RowIter<'a, T> {
-        iter::RowIter(self)
-    }
-
-    /// Returns an iterator over the columns of the matrix.
-    #[inline]
-    pub fn into_col_iter(self) -> iter::ColIter<'a, T> {
-        iter::ColIter(self)
-    }
-
-    /// Returns a parallel iterator over row chunks of the matrix.
-    #[inline]
-    #[track_caller]
-    pub fn into_par_row_chunks(
-        self,
-        chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = (usize, MatRef<'a, T>)>
-    where
-        T: Sync,
-    {
-        use rayon::prelude::*;
-        fancy_assert!(chunk_count != 0);
-        let chunk_size = self.nrows() / chunk_count;
-        let rem = self.nrows() % chunk_count;
-        let ncols = self.ncols();
-
-        let idx_to_col_start = move |idx| {
-            if idx < rem {
-                idx * (chunk_size + 1)
-            } else {
-                rem + idx * chunk_size
-            }
-        };
-
-        (0..chunk_count).into_par_iter().map(move |idx| unsafe {
-            let col_start = idx_to_col_start(idx);
-            (
-                col_start,
-                self.submatrix_unchecked(
-                    col_start,
-                    0,
-                    idx_to_col_start(idx + 1) - col_start,
-                    ncols,
-                ),
-            )
-        })
-    }
-
-    /// Returns a parallel iterator over column chunks of the matrix.
-    #[inline]
-    #[track_caller]
-    pub fn into_par_col_chunks(
-        self,
-        chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = (usize, MatRef<'a, T>)>
-    where
-        T: Sync,
-    {
-        use rayon::prelude::*;
-        self.transpose()
-            .into_par_row_chunks(chunk_count)
-            .map(|(idx, mat)| (idx, mat.transpose()))
-    }
-
-    /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
-    /// with dimensions `(nrows, ncols)`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`,
-    /// - `nrows <= self.nrows() - i`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    ///
-    /// # Example
-    ///
-    /// See [`Self::submatrix`].
-    #[track_caller]
-    #[inline]
-    pub unsafe fn submatrix_unchecked(
-        self,
-        i: usize,
-        j: usize,
-        nrows: usize,
-        ncols: usize,
-    ) -> Self {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(j <= self.ncols());
-        fancy_debug_assert!(nrows <= self.nrows() - i);
-        fancy_debug_assert!(ncols <= self.ncols() - j);
-        Self::from_raw_parts(
-            self.rb().ptr_at(i, j),
-            nrows,
-            ncols,
-            self.row_stride(),
-            self.col_stride(),
-        )
-    }
-
-    /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
-    /// with dimensions `(nrows, ncols)`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`,
-    /// - `nrows <= self.nrows() - i`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, it panics.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let m = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let m = m.as_ref();
-    ///
-    /// let sub = m.submatrix(1, 2, 2, 2);
-    ///
-    /// assert_eq!(sub.nrows(), 2);
-    /// assert_eq!(sub.ncols(), 2);
-    ///
-    /// assert_eq!(sub[(0, 0)], 7.0);
-    /// assert_eq!(sub[(1, 0)], 8.0);
-    /// assert_eq!(sub[(0, 1)], 10.0);
-    /// assert_eq!(sub[(1, 1)], 11.0);
-    /// ```
-    #[track_caller]
-    #[inline]
-    pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(j <= self.ncols());
-        fancy_assert!(nrows <= self.nrows() - i);
-        fancy_assert!(ncols <= self.ncols() - j);
-        unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use faer_core::mat;
-    /// use reborrow::*;
-    ///
-    /// let a = mat![
-    ///     [0.0, 3.0, 6.0, 9.0],
-    ///     [1.0, 4.0, 7.0, 10.0],
-    ///     [2.0, 5.0, 8.0, 11.0],
-    /// ];
-    /// let b = mat![
-    ///     [12.0, 15.0, 18.0, 21.0],
-    ///     [13.0, 16.0, 19.0, 22.0],
-    ///     [14.0, 17.0, 20.0, 23.0],
-    /// ];
-    /// let mut c = mat![
-    ///     [0.0, 0.0, 0.0, 0.0],
-    ///     [0.0, 0.0, 0.0, 0.0],
-    ///     [0.0, 0.0, 0.0, 0.0],
-    /// ];
-    ///
-    /// let a = a.as_ref();
-    /// let b = b.as_ref();
-    /// let mut c = c.as_mut();
-    ///
-    /// c.rb_mut()
-    ///     .cwise()
-    ///     .zip(a)
-    ///     .zip(b)
-    ///     .for_each(|c, a, b| *c = *a + *b);
-    ///
-    /// assert_eq!(c[(0, 0)], a[(0, 0)] + b[(0, 0)]);
-    /// assert_eq!(c[(1, 0)], a[(1, 0)] + b[(1, 0)]);
-    /// assert_eq!(c[(2, 0)], a[(2, 0)] + b[(2, 0)]);
-    ///
-    /// assert_eq!(c[(0, 1)], a[(0, 1)] + b[(0, 1)]);
-    /// assert_eq!(c[(1, 1)], a[(1, 1)] + b[(1, 1)]);
-    /// assert_eq!(c[(2, 1)], a[(2, 1)] + b[(2, 1)]);
-    ///
-    /// assert_eq!(c[(0, 2)], a[(0, 2)] + b[(0, 2)]);
-    /// assert_eq!(c[(1, 2)], a[(1, 2)] + b[(1, 2)]);
-    /// assert_eq!(c[(2, 2)], a[(2, 2)] + b[(2, 2)]);
-    ///
-    /// assert_eq!(c[(0, 3)], a[(0, 3)] + b[(0, 3)]);
-    /// assert_eq!(c[(1, 3)], a[(1, 3)] + b[(1, 3)]);
-    /// assert_eq!(c[(2, 3)], a[(2, 3)] + b[(2, 3)]);
-    /// ```
-    #[inline]
-    pub fn cwise(self) -> ZipMat<(Self,)> {
-        ZipMat { tuple: (self,) }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn const_cast(self) -> MatMut<'a, T> {
-        MatMut {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a view over the matrix.
-    #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, T> {
-        *self
-    }
-
-    /// Returns an owning [`Mat`] of the data
-    #[inline]
-    pub fn to_owned(&self) -> Mat<T::Num>
-    where
-        T: Clone + Conjugate,
-    {
-        let mut mat = Mat::new();
-        let mat_ref = self.as_ref();
-        // SAFETY:
-        // The call to get_unchecked is safe, because row and col will always be in the range
-        // [0,nrows) and [0,ncols) respectively.
-        mat.resize_with(
-            |row, col| unsafe { mat_ref.get_unchecked(row, col).clone().into_num() },
-            self.nrows(),
-            self.ncols(),
-        );
-        mat
-    }
-}
-
-impl<'a, T> MatMut<'a, T> {
-    /// Returns a mutable matrix slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the matrix.  
-    /// `nrows`: number of rows of the matrix.  
-    /// `ncols`: number of columns of the matrix.  
-    /// `row_stride`: offset between the first elements of two successive rows in the matrix.
-    /// `col_stride`: offset between the first elements of two successive columns in the matrix.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `i < nrows` and `j < ncols`,  
-    /// `ptr.offset(i as isize * row_stride + j as isize * col_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.
-    /// Additionally, when `(i, j) != (0, 0)`, this pointer is never equal to `ptr` (no self
-    /// aliasing).  
-    /// The referenced memory must not be accessed by another pointer which was not derived from
-    /// the return value, during the lifetime `'a`.
-    #[inline]
-    pub unsafe fn from_raw_parts(
-        ptr: *mut T,
-        nrows: usize,
-        ncols: usize,
-        row_stride: isize,
-        col_stride: isize,
-    ) -> Self {
-        Self {
-            base: MatrixSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr),
-                nrows,
-                ncols,
-                row_stride,
-                col_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a mutable pointer to the first (top left) element of the matrix.
-    #[inline]
-    pub fn as_ptr(self) -> *mut T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the matrix.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.base.nrows
-    }
-
-    /// Returns the number of columns of the matrix.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.base.ncols
-    }
-
-    /// Returns the offset between the first elements of two successive rows in the matrix.
-    #[inline]
-    pub fn row_stride(&self) -> isize {
-        self.base.row_stride
-    }
-
-    /// Returns the offset between the first elements of two successive columns in the matrix.
-    #[inline]
-    pub fn col_stride(&self) -> isize {
-        self.base.col_stride
-    }
-
-    /// Returns a mutable pointer to the element at position (i, j) in the matrix.
-    #[inline]
-    pub fn ptr_at(self, i: usize, j: usize) -> *mut T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(i as isize * self.row_stride())
-            .wrapping_offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a mutable pointer to the element at position (i, j) in the matrix, assuming it falls
-    /// within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize, j: usize) -> *mut T {
-        fancy_debug_assert!(i < self.nrows());
-        fancy_debug_assert!(j < self.ncols());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(i as isize * self.row_stride())
-            .offset(j as isize * self.col_stride())
-    }
-
-    /// Writes the given value to the matrix at position (i, j) in the matrix, assuming it falls
-    /// within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn write_at_unchecked(&mut self, i: usize, j: usize, value: T) {
-        *self.rb_mut().ptr_in_bounds_at_unchecked(i, j) = value;
-    }
-
-    /// Writes the given value to the matrix at position (i, j) in the matrix, or panics if the
-    /// indices are out of bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn write_at(&mut self, i: usize, j: usize, value: T) {
-        unsafe { *self.rb_mut().ptr_in_bounds_at(i, j) = value };
-    }
-
-    /// Returns a mutable pointer to the element at position (i, j) in the matrix, while asserting
-    /// that it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, i: usize, j: usize) -> *mut T {
-        fancy_assert!(i < self.nrows());
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(i, j) }
-    }
-
-    /// Splits the matrix into four corner parts in the following order: top left, top right,
-    /// bottom left, bottom right.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(j <= self.ncols());
-        let ptr = self.base.ptr.as_ptr();
-        let cs = self.col_stride();
-        let rs = self.row_stride();
-        (
-            Self::from_raw_parts(ptr, i, j, rs, cs),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(j as isize * cs),
-                i,
-                self.ncols() - j,
-                rs,
-                cs,
-            ),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(i as isize * rs),
-                self.nrows() - i,
-                j,
-                rs,
-                cs,
-            ),
-            Self::from_raw_parts(
-                ptr.wrapping_offset(i as isize * rs)
-                    .wrapping_offset(j as isize * cs),
-                self.nrows() - i,
-                self.ncols() - j,
-                rs,
-                cs,
-            ),
-        )
-    }
-
-    /// Splits the matrix into four corner parts in the following order: top left, top right,
-    /// bottom left, bottom right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, i: usize, j: usize) -> (Self, Self, Self, Self) {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(j <= self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(i, j) }
-    }
-
-    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_row_unchecked(self, i: usize) -> (Self, Self) {
-        let (_, top, _, bottom) = self.split_at_unchecked(i, 0);
-        (top, bottom)
-    }
-
-    /// Splits the matrix horizontally into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at_row(self, i: usize) -> (Self, Self) {
-        let (_, top, _, bottom) = self.split_at(i, 0);
-        (top, bottom)
-    }
-
-    /// Splits the matrix vertically into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.nrows()`,
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_col_unchecked(self, j: usize) -> (Self, Self) {
-        let (_, _, left, right) = self.split_at_unchecked(0, j);
-        (left, right)
-    }
-
-    /// Splits the matrix vertically into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.nrows()`,
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at_col(self, j: usize) -> (Self, Self) {
-        let (_, _, left, right) = self.split_at(0, j);
-        (left, right)
-    }
-
-    /// Returns a mutable reference to the element at position (i, j), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`,
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, i: usize, j: usize) -> &'a mut T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &mut *self.ptr_in_bounds_at_unchecked(i, j)
-    }
-
-    /// Returns a mutable reference to the element at position (i, j), or panics if the indices are
-    /// out of bounds.
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, i: usize, j: usize) -> &'a mut T {
-        fancy_assert!(i < self.nrows());
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(i, j) }
-    }
-
-    /// Returns the `i`-th row of the matrix, with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn row_unchecked(self, i: usize) -> RowMut<'a, T> {
-        fancy_debug_assert!(i < self.nrows());
-        let ncols = self.ncols();
-        let cs = self.col_stride();
-        RowMut::from_raw_parts(self.ptr_at(i, 0), ncols, cs)
-    }
-
-    /// Returns the `i`-th row of the matrix.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn row(self, i: usize) -> RowMut<'a, T> {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked.
-        unsafe { self.row_unchecked(i) }
-    }
-
-    /// Returns the `j`-th column of the matrix, with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn col_unchecked(self, j: usize) -> ColMut<'a, T> {
-        fancy_debug_assert!(j < self.ncols());
-        let nrows = self.nrows();
-        let rs = self.row_stride();
-        ColMut::from_raw_parts(self.ptr_at(0, j), nrows, rs)
-    }
-
-    /// Returns the `j`-th column of the matrix.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn col(self, j: usize) -> ColMut<'a, T> {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.col_unchecked(j) }
-    }
-
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(self) -> MatMut<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe {
-            MatMut::from_raw_parts(
-                ptr,
-                self.ncols(),
-                self.nrows(),
-                self.col_stride(),
-                self.row_stride(),
-            )
-        }
-    }
-
-    /// Returns the conjugate of `self`.
-    #[inline]
-    pub fn conjugate(self) -> MatMut<'a, T::Conj>
-    where
-        T: Conjugate,
-    {
-        unsafe {
-            MatMut::from_raw_parts(
-                self.base.ptr.as_ptr() as _,
-                self.nrows(),
-                self.ncols(),
-                self.row_stride(),
-                self.col_stride(),
-            )
-        }
-    }
-
-    /// Returns the conjugate transpose of `self`.
-    #[inline]
-    pub fn adjoint(self) -> MatMut<'a, T::Conj>
-    where
-        T: Conjugate,
-    {
-        self.conjugate().transpose()
-    }
-
-    /// Returns the raw representation of `self`, along with whether it should be conjugated or not.
-    #[inline]
-    pub fn raw_with_conj(self) -> (MatMut<'a, T::Num>, Conj)
-    where
-        T: Conjugate,
-    {
-        (
-            unsafe {
-                MatMut::from_raw_parts(
-                    self.base.ptr.as_ptr() as _,
-                    self.nrows(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                )
-            },
-            if T::IS_CONJ { Conj::Yes } else { Conj::No },
-        )
-    }
-
-    /// Returns a matrix whose rows are the the rows of the input matrix in reverse order.
-    #[inline]
-    pub fn reverse_rows(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = -self.row_stride();
-        let col_stride = self.col_stride();
-
-        let ptr = self.ptr_at(if nrows == 0 { 0 } else { nrows - 1 }, 0);
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a matrix whose columns are the the columns of the input matrix in reverse order.
-    #[inline]
-    pub fn reverse_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = self.row_stride();
-        let col_stride = -self.col_stride();
-        let ptr = self.ptr_at(0, if ncols == 0 { 0 } else { ncols - 1 });
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a matrix whose rows and columns are the the rows and columns of the input matrix in
-    /// reverse order.
-    #[inline]
-    pub fn reverse_rows_and_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = -self.row_stride();
-        let col_stride = -self.col_stride();
-
-        let ptr = self.ptr_at(
-            if nrows == 0 { 0 } else { nrows - 1 },
-            if ncols == 0 { 0 } else { ncols - 1 },
-        );
-        unsafe { Self::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns the diagonal of the matrix, as a column vector.
-    ///
-    /// # Safety
-    ///
-    /// Requires that the matrix be square.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn diagonal_unchecked(self) -> ColMut<'a, T> {
-        fancy_debug_assert!(self.nrows() == self.ncols());
-        ColMut::from_raw_parts(
-            self.base.ptr.as_ptr(),
-            self.base.nrows,
-            self.base.row_stride + self.base.col_stride,
-        )
-    }
-
-    /// Returns the diagonal of the matrix, as a column vector.
-    ///
-    /// # Panics
-    ///
-    /// Requires that the matrix be square.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn diagonal(self) -> ColMut<'a, T> {
-        fancy_assert!(self.nrows() == self.ncols());
-        unsafe { self.diagonal_unchecked() }
-    }
-
-    /// Returns an iterator over the rows of the matrix.
-    #[inline]
-    pub fn into_row_iter(self) -> iter::RowIterMut<'a, T> {
-        iter::RowIterMut(self)
-    }
-
-    /// Returns an iterator over the columns of the matrix.
-    #[inline]
-    pub fn into_col_iter(self) -> iter::ColIterMut<'a, T> {
-        iter::ColIterMut(self)
-    }
-
-    /// Returns a parallel iterator over the rows of the matrix.
-    #[inline]
-    pub fn into_par_row_chunks(
-        self,
-        chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = (usize, MatMut<'a, T>)>
-    where
-        T: Sync + Send,
-    {
-        use rayon::prelude::*;
-        self.into_const()
-            .into_par_row_chunks(chunk_count)
-            .map(|(idx, chunk)| (idx, unsafe { chunk.const_cast() }))
-    }
-
-    /// Returns a parallel iterator over the rows of the matrix.
-    #[inline]
-    pub fn into_par_col_chunks(
-        self,
-        chunk_count: usize,
-    ) -> impl IndexedParallelIterator<Item = (usize, MatMut<'a, T>)>
-    where
-        T: Sync + Send,
-    {
-        use rayon::prelude::*;
-        self.into_const()
-            .into_par_col_chunks(chunk_count)
-            .map(|(idx, chunk)| (idx, unsafe { chunk.const_cast() }))
-    }
-
-    /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
-    /// with dimensions `(nrows, ncols)`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`,
-    /// - `nrows <= self.nrows() - i`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn submatrix_unchecked(
-        self,
-        i: usize,
-        j: usize,
-        nrows: usize,
-        ncols: usize,
-    ) -> Self {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(j <= self.ncols());
-        fancy_debug_assert!(nrows <= self.nrows() - i);
-        fancy_debug_assert!(ncols <= self.ncols() - j);
-
-        let mut s = self;
-        Self::from_raw_parts(
-            s.rb_mut().ptr_at(i, j),
-            nrows,
-            ncols,
-            s.row_stride(),
-            s.col_stride(),
-        )
-    }
-
-    /// Returns a view over a submatrix of `self`, starting at position `(i, j)`
-    /// with dimensions `(nrows, ncols)`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `j <= self.ncols()`,
-    /// - `nrows <= self.nrows() - i`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn submatrix(self, i: usize, j: usize, nrows: usize, ncols: usize) -> Self {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(j <= self.ncols());
-        fancy_assert!(nrows <= self.nrows() - i);
-        fancy_assert!(ncols <= self.ncols() - j);
-        unsafe { self.submatrix_unchecked(i, j, nrows, ncols) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    #[inline]
-    pub fn cwise(self) -> ZipMat<(Self,)> {
-        ZipMat { tuple: (self,) }
-    }
-
-    /// Returns a view over the matrix.
-    #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, T> {
-        self.rb()
-    }
-
-    /// Returns a mutable view over the matrix.
-    #[inline]
-    pub fn as_mut(&mut self) -> MatMut<'_, T> {
-        self.rb_mut()
-    }
-
-    /// Returns an owning [`Mat`] of the data
-    #[inline]
-    pub fn to_owned(&self) -> Mat<T::Num>
-    where
-        T: Clone + Conjugate,
-    {
-        self.rb().to_owned()
-    }
-}
-
-impl<'a, T> RowRef<'a, T> {
-    /// Returns a row vector slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the row vector.  
-    /// `ncols`: number of columns of the row vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the row vector.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `j < ncols`,  
-    /// `ptr.offset(j as isize * col_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.  
-    /// The referenced memory must not be mutated during the lifetime `'a`.
-    #[inline]
-    pub unsafe fn from_raw_parts(ptr: *const T, ncols: usize, col_stride: isize) -> Self {
-        Self {
-            base: VecSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr as *mut T),
-                len: ncols,
-                stride: col_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a pointer to the first (left) element of the row vector.
-    #[inline]
-    pub fn as_ptr(self) -> *const T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the row vector. Always returns `1`.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        1
-    }
-
-    /// Returns the number of columns of the row vector.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.base.len
-    }
-
-    /// Returns the offset between the first elements of two successive columns in the row vector.
-    #[inline]
-    pub fn col_stride(&self) -> isize {
-        self.base.stride
-    }
-
-    /// Returns a pointer to the element at position (0, j) in the row vector.
-    #[inline]
-    pub fn ptr_at(self, j: usize) -> *const T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a pointer to the element at position (0, j) in the row vector, assuming it falls
-    /// within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *const T {
-        fancy_debug_assert!(j < self.ncols());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a pointer to the element at position (0, j) in the row vector, while asserting that
-    /// it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, j: usize) -> *const T {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(j) }
-    }
-
-    /// Splits the row vector into two parts in the following order: left, right.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
-        fancy_debug_assert!(j <= self.ncols());
-        let ptr = self.base.ptr.as_ptr();
-        let cs = self.col_stride();
-        (
-            Self::from_raw_parts(ptr, j, cs),
-            Self::from_raw_parts(ptr.wrapping_offset(j as isize * cs), self.ncols() - j, cs),
-        )
-    }
-
-    /// Splits the row vector into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, j: usize) -> (Self, Self) {
-        fancy_assert!(j <= self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(j) }
-    }
-
-    /// Returns a reference to the element at position (0, j), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, j: usize) -> &'a T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &*self.ptr_in_bounds_at_unchecked(j)
-    }
-
-    /// Returns a reference to the element at position (0, j), or panics if the index is out of
-    /// bounds.
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, j: usize) -> &'a T {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(j) }
-    }
-
-    /// Returns an equivalent matrix view over the same data.
-    #[inline]
-    pub fn as_2d(self) -> MatRef<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride()) }
-    }
-
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(self) -> ColRef<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { ColRef::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    #[inline]
-    pub fn cwise(self) -> ZipRow<(Self,)> {
-        ZipRow { tuple: (self,) }
-    }
-
-    /// Returns a view over subcolumns of `self`, starting at position `j`
-    /// with a column count of `ncols`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn subcols_unchecked(self, j: usize, ncols: usize) -> Self {
-        fancy_debug_assert!(j <= self.ncols());
-        fancy_debug_assert!(ncols <= self.ncols() - j);
-
-        let mut s = self;
-        Self::from_raw_parts(s.rb_mut().ptr_at(j), ncols, s.col_stride())
-    }
-
-    /// Returns a view over subcolumnss of `self`, starting at position `j`
-    /// with a col count of `ncols`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn subcols(self, j: usize, ncols: usize) -> Self {
-        fancy_assert!(j <= self.ncols());
-        fancy_assert!(ncols <= self.ncols() - j);
-
-        unsafe { self.subcols_unchecked(j, ncols) }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn const_cast(self) -> RowMut<'a, T> {
-        RowMut {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> RowMut<'a, T> {
-    /// Returns a mutable row vector slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the row vector.  
-    /// `ncols`: number of columns of the row vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the row vector.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `j < ncols`,  
-    /// `ptr.offset(j as isize * col_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.  
-    /// Additionally, when `j != 0`, this pointer is never equal to `ptr` (no self aliasing).  
-    /// The referenced memory must not be accessed by another pointer which was not derived from
-    /// the return value, during the lifetime `'a`.
-    #[inline]
-    pub unsafe fn from_raw_parts(ptr: *mut T, ncols: usize, col_stride: isize) -> Self {
-        Self {
-            base: VecSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr),
-                len: ncols,
-                stride: col_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a mutable pointer to the first (left) element of the row vector.
-    #[inline]
-    pub fn as_ptr(self) -> *mut T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the row vector. Always returns `1`.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        1
-    }
-
-    /// Returns the number of columns of the row vector.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.base.len
-    }
-
-    /// Returns the offset between the first elements of two successive columns in the row vector.
-    #[inline]
-    pub fn col_stride(&self) -> isize {
-        self.base.stride
-    }
-
-    /// Returns a mutable pointer to the element at position (0, j) in the row vector.
-    #[inline]
-    pub fn ptr_at(self, j: usize) -> *mut T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a mutable pointer to the element at position (0, j) in the row vector, assuming it
-    /// falls within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, j: usize) -> *mut T {
-        fancy_debug_assert!(j < self.ncols());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(j as isize * self.col_stride())
-    }
-
-    /// Returns a mutable pointer to the element at position (0, j) in the row vector, while
-    /// asserting that it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, j: usize) -> *mut T {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(j) }
-    }
-
-    /// Writes the given value to the matrix at position (0, j) in the row vector, assuming it
-    /// falls within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn write_at_unchecked(&mut self, j: usize, value: T) {
-        *self.rb_mut().ptr_in_bounds_at_unchecked(j) = value;
-    }
-
-    /// Writes the given value to the matrix at position (0, j) in the row vector, or panics if the
-    /// index is out of bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j < self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn write_at(&mut self, j: usize, value: T) {
-        unsafe { *self.rb_mut().ptr_in_bounds_at(j) = value };
-    }
-
-    /// Splits the row vector into two parts in the following order: left, right.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, j: usize) -> (Self, Self) {
-        fancy_debug_assert!(j <= self.ncols());
-        let ptr = self.base.ptr.as_ptr();
-        let cs = self.col_stride();
-        (
-            Self::from_raw_parts(ptr, j, cs),
-            Self::from_raw_parts(ptr.wrapping_offset(j as isize * cs), self.ncols() - j, cs),
-        )
-    }
-
-    /// Splits the row vector into two parts in the following order: left, right.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, j: usize) -> (Self, Self) {
-        fancy_assert!(j <= self.ncols());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(j) }
-    }
-
-    /// Returns a mutable reference to the element at position (0, j), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires `j < self.ncols()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, j: usize) -> &'a mut T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &mut *self.ptr_in_bounds_at_unchecked(j)
-    }
-
-    /// Returns a mutable reference to the element at position (0, j), or panics if the index is
-    /// out of bounds.
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, j: usize) -> &'a mut T {
-        fancy_assert!(j < self.ncols());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(j) }
-    }
-
-    /// Returns an equivalent matrix view over the same data.
-    #[inline]
-    pub fn as_2d(self) -> MatMut<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { MatMut::from_raw_parts(ptr, self.nrows(), self.ncols(), 0, self.col_stride()) }
-    }
-
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(self) -> ColMut<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { ColMut::from_raw_parts(ptr, self.ncols(), self.col_stride()) }
-    }
-
-    /// Returns a view over subcolumns of `self`, starting at position `j`
-    /// with a column count of `ncols`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn subcols_unchecked(self, j: usize, ncols: usize) -> Self {
-        fancy_debug_assert!(j <= self.ncols());
-        fancy_debug_assert!(ncols <= self.ncols() - j);
-
-        let mut s = self;
-        Self::from_raw_parts(s.rb_mut().ptr_at(j), ncols, s.col_stride())
-    }
-
-    /// Returns a view over subcolumnss of `self`, starting at position `j`
-    /// with a col count of `ncols`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `j <= self.ncols()`,
-    /// - `ncols <= self.ncols() - j`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn subcols(self, j: usize, ncols: usize) -> Self {
-        fancy_assert!(j <= self.ncols());
-        fancy_assert!(ncols <= self.ncols() - j);
-
-        unsafe { self.subcols_unchecked(j, ncols) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    #[inline]
-    pub fn cwise(self) -> ZipRow<(Self,)> {
-        ZipRow { tuple: (self,) }
-    }
-}
-
-impl<'a, T> ColRef<'a, T> {
-    /// Returns a column vector slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the column vector.  
-    /// `ncols`: number of columns of the column vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the column
-    /// vector.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `i < nrows`,  
-    /// `ptr.offset(i as isize * row_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.  
-    /// The referenced memory must not be mutated during the lifetime `'a`.
-    #[inline]
-    pub unsafe fn from_raw_parts(ptr: *const T, nrows: usize, row_stride: isize) -> Self {
-        Self {
-            base: VecSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr as *mut T),
-                len: nrows,
-                stride: row_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a pointer to the first (top) element of the column vector.
-    #[inline]
-    pub fn as_ptr(self) -> *const T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the column vector.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.base.len
-    }
-
-    /// Returns the number of columns of the column vector. Always returns `1`.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        1
-    }
-
-    /// Returns the offset between the first elements of two successive rows in the column vector.
-    #[inline]
-    pub fn row_stride(&self) -> isize {
-        self.base.stride
-    }
-
-    /// Returns a pointer to the element at position (i, 0) in the column vector.
-    #[inline]
-    pub fn ptr_at(self, i: usize) -> *const T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(i as isize * self.row_stride())
-    }
-
-    /// Returns a pointer to the element at position (i, 0) in the column vector, assuming it falls
-    /// within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *const T {
-        fancy_debug_assert!(i < self.nrows());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(i as isize * self.row_stride())
-    }
-
-    /// Returns a pointer to the element at position (i, 0) in the column vector, while asserting
-    /// that it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, i: usize) -> *const T {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(i) }
-    }
-
-    /// Splits the column vector into two parts in the following order: top, bottom.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
-        fancy_debug_assert!(i <= self.nrows());
-        let ptr = self.base.ptr.as_ptr();
-        let rs = self.row_stride();
-        (
-            Self::from_raw_parts(ptr, i, rs),
-            Self::from_raw_parts(ptr.wrapping_offset(i as isize * rs), self.nrows() - i, rs),
-        )
-    }
-
-    /// Splits the column vector into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, i: usize) -> (Self, Self) {
-        fancy_assert!(i <= self.nrows());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(i) }
-    }
-
-    /// Returns a reference to the element at position (i, 0), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, i: usize) -> &'a T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &*self.ptr_in_bounds_at_unchecked(i)
-    }
-
-    /// Returns a reference to the element at position (i, 0), or panics if the index is out of
-    /// bounds.
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, i: usize) -> &'a T {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(i) }
-    }
-
-    /// Returns an equivalent matrix view over the same data.
-    #[inline]
-    pub fn as_2d(self) -> MatRef<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { MatRef::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0) }
-    }
-
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(self) -> RowRef<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { RowRef::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
-    }
-
-    /// Returns a view over subrows of `self`, starting at position `i`
-    /// with a row count of `nrows`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `nrows <= self.nrows() - i`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn subrows_unchecked(self, i: usize, nrows: usize) -> Self {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(nrows <= self.nrows() - i);
-
-        let mut s = self;
-        Self::from_raw_parts(s.rb_mut().ptr_at(i), nrows, s.row_stride())
-    }
-
-    /// Returns a view over subrows of `self`, starting at position `i`
-    /// with a row count of `nrows`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `nrows <= self.nrows() - i`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn subrows(self, i: usize, nrows: usize) -> Self {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(nrows <= self.nrows() - i);
-
-        unsafe { self.subrows_unchecked(i, nrows) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    #[inline]
-    pub fn cwise(self) -> ZipCol<(Self,)> {
-        ZipCol { tuple: (self,) }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub unsafe fn const_cast(self) -> ColMut<'a, T> {
-        ColMut {
-            base: self.base,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, T> ColMut<'a, T> {
-    /// Returns a mutable column vector slice from the given arguments.  
-    /// `ptr`: pointer to the first element of the column vector.  
-    /// `ncols`: number of columns of the column vector.  
-    /// `col_stride`: offset between the first elements of two successive columns in the column
-    /// vector.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must be non null and properly aligned for type `T`.  
-    /// For each `i < nrows`,  
-    /// `ptr.offset(i as isize * row_stride)` must point to a valid
-    /// initialized object of type `T`, unless memory pointing to that address is never read.  
-    /// Additionally, when `i != 0`, this pointer is never equal to `ptr` (no self aliasing).  
-    /// The referenced memory must not be mutated during the lifetime `'a`.
-    #[inline]
-    pub unsafe fn from_raw_parts(ptr: *mut T, nrows: usize, row_stride: isize) -> Self {
-        Self {
-            base: VecSliceBase::<T> {
-                ptr: NonNull::new_unchecked(ptr),
-                len: nrows,
-                stride: row_stride,
-            },
-            _marker: PhantomData,
-        }
-    }
-
-    /// Returns a mutable pointer to the first (top) element of the column vector.
-    #[inline]
-    pub fn as_ptr(self) -> *mut T {
-        self.base.ptr.as_ptr()
-    }
-
-    /// Returns the number of rows of the column vector.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.base.len
-    }
-
-    /// Returns the number of columns of the column vector. Always returns `1`.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        1
-    }
-
-    /// Returns the offset between the first elements of two successive rows in the column vector.
-    #[inline]
-    pub fn row_stride(&self) -> isize {
-        self.base.stride
-    }
-
-    /// Returns a mutable pointer to the element at position (i, 0) in the column vector.
-    #[inline]
-    pub fn ptr_at(self, i: usize) -> *mut T {
-        self.base
-            .ptr
-            .as_ptr()
-            .wrapping_offset(i as isize * self.row_stride())
-    }
-
-    /// Returns a mutable pointer to the element at position (i, 0) in the column vector,
-    /// assuming it falls within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn ptr_in_bounds_at_unchecked(self, i: usize) -> *mut T {
-        fancy_debug_assert!(i < self.nrows());
-        self.base
-            .ptr
-            .as_ptr()
-            .offset(i as isize * self.row_stride())
-    }
-
-    /// Returns a mutable pointer to the element at position (i, 0) in the column vector,
-    /// while asserting that it falls within its bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn ptr_in_bounds_at(self, i: usize) -> *mut T {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked
-        unsafe { self.ptr_in_bounds_at_unchecked(i) }
-    }
-
-    /// Writes the given value to the matrix at position (i, 0) in the column vector, assuming it
-    /// falls within its bounds with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn write_at_unchecked(&mut self, i: usize, value: T) {
-        *self.rb_mut().ptr_in_bounds_at_unchecked(i) = value;
-    }
-
-    /// Writes the given value to the matrix at position (i, 0) in the column vector, or panics if
-    /// the index is out of bounds.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i < self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn write_at(&mut self, i: usize, value: T) {
-        unsafe { *self.rb_mut().ptr_in_bounds_at(i) = value };
-    }
-
-    /// Splits the column vector into two parts in the following order: top, bottom.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn split_at_unchecked(self, i: usize) -> (Self, Self) {
-        fancy_debug_assert!(i <= self.nrows());
-        let ptr = self.base.ptr.as_ptr();
-        let rs = self.row_stride();
-        (
-            Self::from_raw_parts(ptr, i, rs),
-            Self::from_raw_parts(ptr.wrapping_offset(i as isize * rs), self.nrows() - i, rs),
-        )
-    }
-
-    /// Splits the column vector into two parts in the following order: top, bottom.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline(always)]
-    pub fn split_at(self, i: usize) -> (Self, Self) {
-        fancy_assert!(i <= self.nrows());
-        // SAFETY: bounds have been checked
-        unsafe { self.split_at_unchecked(i) }
-    }
-
-    /// Returns a mutable reference to the element at position (i, 0), with no bound checks.
-    ///
-    /// # Safety
-    ///
-    /// Requires `i < self.nrows()`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn get_unchecked(self, i: usize) -> &'a mut T {
-        // SAFETY: same preconditions. And we can dereference this pointer because it lives as
-        // long as the underlying data.
-        &mut *self.ptr_in_bounds_at_unchecked(i)
-    }
-
-    /// Returns a mutable reference to the element at position (i, 0), or panics if the index is
-    /// out of bounds.
-    #[track_caller]
-    #[inline(always)]
-    pub fn get(self, i: usize) -> &'a mut T {
-        fancy_assert!(i < self.nrows());
-        // SAFETY: bounds have been checked.
-        unsafe { self.get_unchecked(i) }
-    }
-
-    /// Returns an equivalent matrix view over the same data.
-    #[inline]
-    pub fn as_2d(self) -> MatMut<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { MatMut::from_raw_parts(ptr, self.nrows(), self.ncols(), self.row_stride(), 0) }
-    }
-
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(self) -> RowMut<'a, T> {
-        let ptr = self.base.ptr.as_ptr();
-        unsafe { RowMut::from_raw_parts(ptr, self.nrows(), self.row_stride()) }
-    }
-
-    /// Returns a view over subrows of `self`, starting at position `i`
-    /// with a row count of `nrows`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `nrows <= self.nrows() - i`.
-    ///
-    /// Otherwise, the behavior is undefined.
-    #[track_caller]
-    #[inline]
-    pub unsafe fn subrows_unchecked(self, i: usize, nrows: usize) -> Self {
-        fancy_debug_assert!(i <= self.nrows());
-        fancy_debug_assert!(nrows <= self.nrows() - i);
-
-        let mut s = self;
-        Self::from_raw_parts(s.rb_mut().ptr_at(i), nrows, s.row_stride())
-    }
-
-    /// Returns a view over subrows of `self`, starting at position `i`
-    /// with a row count of `nrows`.
-    ///
-    /// # Panics
-    ///
-    /// Requires that
-    /// - `i <= self.nrows()`,
-    /// - `nrows <= self.nrows() - i`.
-    ///
-    /// Otherwise, it panics.
-    #[track_caller]
-    #[inline]
-    pub fn subrows(self, i: usize, nrows: usize) -> Self {
-        fancy_assert!(i <= self.nrows());
-        fancy_assert!(nrows <= self.nrows() - i);
-
-        unsafe { self.subrows_unchecked(i, nrows) }
-    }
-
-    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
-    #[inline]
-    pub fn cwise(self) -> ZipCol<(Self,)> {
-        ZipCol { tuple: (self,) }
-    }
-}
-
-impl<'a, T> MatRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (MatRef<'a, T>, MatRef<'a, T>) {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let rs = self.row_stride() * 2;
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                MatRef::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
-                MatRef::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
-            )
-        }
-    }
-}
-impl<'a, T> MatMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (MatMut<'a, T>, MatMut<'a, T>) {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let rs = self.row_stride() * 2;
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                MatMut::from_raw_parts(ptr_re, nrows, ncols, rs, cs),
-                MatMut::from_raw_parts(ptr_im, nrows, ncols, rs, cs),
-            )
-        }
-    }
-}
-
-impl<'a, T> ColRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (ColRef<'a, T>, ColRef<'a, T>) {
-        let nrows = self.nrows();
-        let rs = self.row_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                ColRef::from_raw_parts(ptr_re, nrows, rs),
-                ColRef::from_raw_parts(ptr_im, nrows, rs),
-            )
-        }
-    }
-}
-impl<'a, T> ColMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (ColMut<'a, T>, ColMut<'a, T>) {
-        let nrows = self.nrows();
-        let rs = self.row_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                ColMut::from_raw_parts(ptr_re, nrows, rs),
-                ColMut::from_raw_parts(ptr_im, nrows, rs),
-            )
-        }
-    }
-}
-
-impl<'a, T> RowRef<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (RowRef<'a, T>, RowRef<'a, T>) {
-        let ncols = self.ncols();
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *const T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                RowRef::from_raw_parts(ptr_re, ncols, cs),
-                RowRef::from_raw_parts(ptr_im, ncols, cs),
-            )
-        }
-    }
-}
-impl<'a, T> RowMut<'a, Complex<T>> {
-    #[inline]
-    pub fn into_real_imag(self) -> (RowMut<'a, T>, RowMut<'a, T>) {
-        let ncols = self.ncols();
-        let cs = self.col_stride() * 2;
-        let ptr_re = self.as_ptr() as *mut T;
-        let ptr_im = ptr_re.wrapping_add(1);
-
-        unsafe {
-            (
-                RowMut::from_raw_parts(ptr_re, ncols, cs),
-                RowMut::from_raw_parts(ptr_im, ncols, cs),
-            )
-        }
-    }
-}
-
-impl<'a, T> Index<(usize, usize)> for MatRef<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.get(i, j)
-    }
-}
-impl<'a, T> Index<(usize, usize)> for MatMut<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.rb().get(i, j)
-    }
-}
-impl<'a, T> IndexMut<(usize, usize)> for MatMut<'a, T> {
-    #[track_caller]
-    #[inline(always)]
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
-        self.rb_mut().get(i, j)
-    }
-}
-
-impl<'a, T> Index<usize> for RowRef<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, j: usize) -> &Self::Output {
-        self.get(j)
-    }
-}
-impl<'a, T> Index<usize> for RowMut<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, j: usize) -> &Self::Output {
-        self.rb().get(j)
-    }
-}
-impl<'a, T> IndexMut<usize> for RowMut<'a, T> {
-    #[track_caller]
-    #[inline(always)]
-    fn index_mut(&mut self, j: usize) -> &mut Self::Output {
-        self.rb_mut().get(j)
-    }
-}
-
-impl<'a, T> Index<usize> for ColRef<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, j: usize) -> &Self::Output {
-        self.get(j)
-    }
-}
-impl<'a, T> Index<usize> for ColMut<'a, T> {
-    type Output = T;
-
-    #[track_caller]
-    #[inline(always)]
-    fn index(&self, j: usize) -> &Self::Output {
-        self.rb().get(j)
-    }
-}
-impl<'a, T> IndexMut<usize> for ColMut<'a, T> {
-    #[track_caller]
-    #[inline(always)]
-    fn index_mut(&mut self, j: usize) -> &mut Self::Output {
-        self.rb_mut().get(j)
-    }
-}
-
-impl<'a, T> IntoIterator for RowRef<'a, T> {
-    type Item = &'a T;
-    type IntoIter = iter::ElemIter<'a, T>;
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        iter::ElemIter(self.transpose())
-    }
-}
-impl<'a, T> IntoIterator for RowMut<'a, T> {
-    type Item = &'a mut T;
-    type IntoIter = iter::ElemIterMut<'a, T>;
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        iter::ElemIterMut(self.transpose())
-    }
-}
-
-impl<'a, T> IntoIterator for ColRef<'a, T> {
-    type Item = &'a T;
-    type IntoIter = iter::ElemIter<'a, T>;
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        iter::ElemIter(self)
-    }
-}
-impl<'a, T> IntoIterator for ColMut<'a, T> {
-    type Item = &'a mut T;
-    type IntoIter = iter::ElemIterMut<'a, T>;
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        iter::ElemIterMut(self)
-    }
-}
-
-/// Matrix iterators.
-pub mod iter {
-    use crate::{ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
-    use reborrow::*;
-
-    pub struct RowIter<'a, T>(pub(crate) MatRef<'a, T>);
-    pub struct ColIter<'a, T>(pub(crate) MatRef<'a, T>);
-    pub struct RowIterMut<'a, T>(pub(crate) MatMut<'a, T>);
-    pub struct ColIterMut<'a, T>(pub(crate) MatMut<'a, T>);
-    pub struct ElemIter<'a, T>(pub(crate) ColRef<'a, T>);
-    pub struct ElemIterMut<'a, T>(pub(crate) ColMut<'a, T>);
-
-    impl<'a, T> RowIter<'a, T> {
-        #[inline]
-        pub fn into_matrix(self) -> MatRef<'a, T> {
-            self.0
-        }
-    }
-    impl<'a, T> RowIterMut<'a, T> {
-        #[inline]
-        pub fn into_matrix(self) -> MatMut<'a, T> {
-            self.0
-        }
-    }
-    impl<'a, T> ColIter<'a, T> {
-        #[inline]
-        pub fn into_matrix(self) -> MatRef<'a, T> {
-            self.0
-        }
-    }
-    impl<'a, T> ColIterMut<'a, T> {
-        #[inline]
-        pub fn into_matrix(self) -> MatMut<'a, T> {
-            self.0
-        }
-    }
-    impl<'a, T> ElemIter<'a, T> {
-        #[inline]
-        pub fn into_col(self) -> ColRef<'a, T> {
-            self.0
-        }
-        #[inline]
-        pub fn into_row(self) -> RowRef<'a, T> {
-            self.0.transpose()
-        }
-    }
-    impl<'a, T> ElemIterMut<'a, T> {
-        #[inline]
-        pub fn into_col(self) -> ColMut<'a, T> {
-            self.0
-        }
-        #[inline]
-        pub fn into_row(self) -> RowMut<'a, T> {
-            self.0.transpose()
-        }
-    }
-
-    impl<'a, T> Clone for RowIter<'a, T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0)
-        }
-    }
-    impl<'a, T> Clone for ColIter<'a, T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0)
-        }
-    }
-    impl<'a, T> Clone for ElemIter<'a, T> {
-        #[inline]
-        fn clone(&self) -> Self {
-            Self(self.0)
-        }
-    }
-
-    impl<'b, 'a, T> Reborrow<'b> for RowIter<'a, T> {
-        type Target = RowIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for RowIter<'a, T> {
-        type Target = RowIter<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> Reborrow<'b> for RowIterMut<'a, T> {
-        type Target = RowIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            RowIter(self.0.rb())
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for RowIterMut<'a, T> {
-        type Target = RowIterMut<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            RowIterMut(self.0.rb_mut())
-        }
-    }
-
-    impl<'b, 'a, T> Reborrow<'b> for ColIter<'a, T> {
-        type Target = ColIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for ColIter<'a, T> {
-        type Target = ColIter<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> Reborrow<'b> for ColIterMut<'a, T> {
-        type Target = ColIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            ColIter(self.0.rb())
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for ColIterMut<'a, T> {
-        type Target = ColIterMut<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            ColIterMut(self.0.rb_mut())
-        }
-    }
-
-    impl<'b, 'a, T> Reborrow<'b> for ElemIter<'a, T> {
-        type Target = ElemIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for ElemIter<'a, T> {
-        type Target = ElemIter<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            Self(self.0)
-        }
-    }
-    impl<'b, 'a, T> Reborrow<'b> for ElemIterMut<'a, T> {
-        type Target = ElemIter<'b, T>;
-        #[inline]
-        fn rb(&'b self) -> Self::Target {
-            ElemIter(self.0.rb())
-        }
-    }
-    impl<'b, 'a, T> ReborrowMut<'b> for ElemIterMut<'a, T> {
-        type Target = ElemIterMut<'b, T>;
-        #[inline]
-        fn rb_mut(&'b mut self) -> Self::Target {
-            ElemIterMut(self.0.rb_mut())
-        }
-    }
-
-    impl<'a, T> Iterator for ElemIter<'a, T> {
-        type Item = &'a T;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let rs = self.0.row_stride();
-                let top = unsafe { &*ptr };
-                let bot = unsafe { ColRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
-
-                self.0 = bot;
-
-                Some(top)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.nrows();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for ElemIter<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let rs = self.0.row_stride();
-                let top = unsafe { ColRef::from_raw_parts(ptr, nrows - 1, rs) };
-                let bot = unsafe { &*ptr.wrapping_offset(rs * (nrows - 1) as isize) };
-
-                self.0 = top;
-
-                Some(bot)
-            }
-        }
-    }
-
-    impl<'a, T> Iterator for ElemIterMut<'a, T> {
-        type Item = &'a mut T;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let rs = self.0.row_stride();
-                let top = unsafe { &mut *ptr };
-                let bot = unsafe { ColMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, rs) };
-
-                self.0 = bot;
-
-                Some(top)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.nrows();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for ElemIterMut<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let rs = self.0.row_stride();
-                let top = unsafe { ColMut::from_raw_parts(ptr, nrows - 1, rs) };
-                let bot = unsafe { &mut *ptr.wrapping_offset(rs * (nrows - 1) as isize) };
-
-                self.0 = top;
-
-                Some(bot)
-            }
-        }
-    }
-
-    impl<'a, T> Iterator for RowIter<'a, T> {
-        type Item = RowRef<'a, T>;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let ncols = self.0.ncols();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
-                let bot = unsafe {
-                    MatRef::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
-                };
-
-                self.0 = bot;
-
-                Some(top)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.nrows();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for RowIter<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let ncols = self.0.ncols();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let top = unsafe { MatRef::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
-                let bot = unsafe {
-                    Self::Item::from_raw_parts(
-                        ptr.wrapping_offset((nrows - 1) as isize * rs),
-                        ncols,
-                        cs,
-                    )
-                };
-
-                self.0 = top;
-
-                Some(bot)
-            }
-        }
-    }
-
-    impl<'a, T> Iterator for RowIterMut<'a, T> {
-        type Item = RowMut<'a, T>;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let ncols = self.0.ncols();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let top = unsafe { Self::Item::from_raw_parts(ptr, ncols, cs) };
-                let bot = unsafe {
-                    MatMut::from_raw_parts(ptr.wrapping_offset(rs), nrows - 1, ncols, rs, cs)
-                };
-
-                self.0 = bot;
-
-                Some(top)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.nrows();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for RowIterMut<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let nrows = self.0.nrows();
-            if nrows == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let ncols = self.0.ncols();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let top = unsafe { MatMut::from_raw_parts(ptr, nrows - 1, ncols, rs, cs) };
-                let bot = unsafe {
-                    Self::Item::from_raw_parts(
-                        ptr.wrapping_offset((nrows - 1) as isize * rs),
-                        ncols,
-                        cs,
-                    )
-                };
-
-                self.0 = top;
-
-                Some(bot)
-            }
-        }
-    }
-
-    impl<'a, T> Iterator for ColIter<'a, T> {
-        type Item = ColRef<'a, T>;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let ncols = self.0.ncols();
-            if ncols == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let nrows = self.0.nrows();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
-                let right = unsafe {
-                    MatRef::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
-                };
-
-                self.0 = right;
-                Some(left)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.ncols();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for ColIter<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let ncols = self.0.ncols();
-            if ncols == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let nrows = self.0.nrows();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let left = unsafe { MatRef::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
-                let right = unsafe {
-                    Self::Item::from_raw_parts(
-                        ptr.wrapping_offset((ncols - 1) as isize * cs),
-                        nrows,
-                        rs,
-                    )
-                };
-
-                self.0 = left;
-                Some(right)
-            }
-        }
-    }
-    impl<'a, T> Iterator for ColIterMut<'a, T> {
-        type Item = ColMut<'a, T>;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            let ncols = self.0.ncols();
-            if ncols == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let nrows = self.0.nrows();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let left = unsafe { Self::Item::from_raw_parts(ptr, nrows, rs) };
-                let right = unsafe {
-                    MatMut::from_raw_parts(ptr.wrapping_offset(cs), nrows, ncols - 1, rs, cs)
-                };
-
-                self.0 = right;
-                Some(left)
-            }
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = self.0.ncols();
-            (len, Some(len))
-        }
-    }
-    impl<'a, T> DoubleEndedIterator for ColIterMut<'a, T> {
-        #[inline]
-        fn next_back(&mut self) -> Option<Self::Item> {
-            let ncols = self.0.ncols();
-            if ncols == 0 {
-                None
-            } else {
-                let ptr = self.0.base.ptr.as_ptr();
-                let nrows = self.0.nrows();
-                let rs = self.0.row_stride();
-                let cs = self.0.col_stride();
-                let left = unsafe { MatMut::from_raw_parts(ptr, nrows, ncols - 1, rs, cs) };
-                let right = unsafe {
-                    Self::Item::from_raw_parts(
-                        ptr.wrapping_offset((ncols - 1) as isize * cs),
-                        nrows,
-                        rs,
-                    )
-                };
-
-                self.0 = left;
-                Some(right)
-            }
-        }
-    }
-
-    impl<'a, T> ExactSizeIterator for RowIter<'a, T> {}
-    impl<'a, T> ExactSizeIterator for RowIterMut<'a, T> {}
-    impl<'a, T> ExactSizeIterator for ColIter<'a, T> {}
-    impl<'a, T> ExactSizeIterator for ColIterMut<'a, T> {}
-    impl<'a, T> ExactSizeIterator for ElemIter<'a, T> {}
-    impl<'a, T> ExactSizeIterator for ElemIterMut<'a, T> {}
-}
-
-impl<'a, T: Debug + 'static> Debug for MatRef<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        struct DebugRowSlice<'a, T>(RowRef<'a, T>);
-        struct ComplexDebug<'a, T>(&'a T);
-
-        impl<'a, T: Debug + 'static> Debug for ComplexDebug<'a, T> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                fn as_debug(t: impl Debug) -> impl Debug {
-                    t
-                }
-                if coe::is_same::<c32, T>() {
-                    let value: c32 = *self.0.coerce();
-                    let re = as_debug(value.re);
-                    let im = as_debug(value.im);
-                    re.fmt(f)?;
-                    f.write_str(" + ")?;
-                    im.fmt(f)?;
-                    f.write_str("I")
-                } else if coe::is_same::<c64, T>() {
-                    let value: c64 = *self.0.coerce();
-                    let re = as_debug(value.re);
-                    let im = as_debug(value.im);
-                    re.fmt(f)?;
-                    f.write_str(" + ")?;
-                    im.fmt(f)?;
-                    f.write_str(" * I")
-                } else {
-                    self.0.fmt(f)
-                }
-            }
-        }
-
-        impl<'a, T: Debug + 'static> Debug for DebugRowSlice<'a, T> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                f.debug_list()
-                    .entries(self.0.into_iter().map(|x| ComplexDebug(x)))
-                    .finish()
-            }
-        }
-
-        writeln!(f, "[")?;
-        for elem in self.into_row_iter().map(DebugRowSlice) {
-            elem.fmt(f)?;
-            f.write_str(",\n")?;
-        }
-        write!(f, "]")
-    }
-}
-impl<'a, T: Debug + 'static> Debug for MatMut<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.rb().fmt(f)
-    }
-}
-impl<'a, T: Debug + 'static> Debug for RowRef<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-impl<'a, T: Debug + 'static> Debug for RowMut<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-
-impl<'a, T: Debug + 'static> Debug for ColRef<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-impl<'a, T: Debug + 'static> Debug for ColMut<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.rb().as_2d().fmt(f)
-    }
-}
-
-#[doc(hidden)]
-pub enum Either<A, B> {
-    Left(A),
-    Right(B),
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn round_up_to(n: usize, k: usize) -> usize {
-    (n + (k - 1)) / k * k
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn is_vectorizable<T: 'static>() -> bool {
-    coe::is_same::<f32, T>()
-        || coe::is_same::<f64, T>()
-        || coe::is_same::<c32, T>()
-        || coe::is_same::<c64, T>()
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn align_for<T: 'static>() -> usize {
-    if is_vectorizable::<T>() {
-        aligned_vec::CACHELINE_ALIGN
-    } else {
-        core::mem::align_of::<T>()
-    }
-}
-
-#[doc(hidden)]
-#[inline]
-pub unsafe fn from_mut_slice<T>(
-    slice: &mut [T],
-    nrows: usize,
-    ncols: usize,
-    row_stride: usize,
-    col_stride: usize,
-) -> MatMut<'_, T> {
-    MatMut::from_raw_parts(
-        slice.as_mut_ptr(),
-        nrows,
-        ncols,
-        row_stride as isize,
-        col_stride as isize,
-    )
-}
-
-#[doc(hidden)]
-#[inline]
-pub unsafe fn from_uninit_mut_slice<T>(
-    slice: &mut [MaybeUninit<T>],
-    nrows: usize,
-    ncols: usize,
-    row_stride: usize,
-    col_stride: usize,
-) -> MatMut<'_, T> {
-    MatMut::from_raw_parts(
-        slice.as_mut_ptr() as *mut T,
-        nrows,
-        ncols,
-        row_stride as isize,
-        col_stride as isize,
-    )
-}
-
-#[macro_export]
-macro_rules! zip {
-    ($first: expr $(, $rest: expr)* $(,)?) => {
-        $first.cwise()$(.zip($rest))*
-    };
-}
-
-enum DynMatImpl<'a, T> {
-    Init(DynArray<'a, T>),
-    Uninit(DynArray<'a, MaybeUninit<T>>),
-}
-
-pub struct DynMat<'a, T> {
-    inner: DynMatImpl<'a, T>,
-    nrows: usize,
-    ncols: usize,
-    col_stride: usize,
-}
-
-impl<T> DynMat<'_, T> {
-    #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, T> {
-        let ptr = match &self.inner {
-            DynMatImpl::Init(init) => init.as_ptr(),
-            DynMatImpl::Uninit(uninit) => uninit.as_ptr() as *const T,
-        };
-        unsafe { MatRef::from_raw_parts(ptr, self.nrows, self.ncols, 1, self.col_stride as isize) }
-    }
-    #[inline]
-    pub fn as_mut(&mut self) -> MatMut<'_, T> {
-        let ptr = match &mut self.inner {
-            DynMatImpl::Init(init) => init.as_mut_ptr(),
-            DynMatImpl::Uninit(uninit) => uninit.as_mut_ptr() as *mut T,
-        };
-        unsafe { MatMut::from_raw_parts(ptr, self.nrows, self.ncols, 1, self.col_stride as isize) }
-    }
-}
-
-/// Creates a temporary matrix of constant values, from the given memory stack.
-pub fn temp_mat_constant<T: ComplexField>(
-    nrows: usize,
-    ncols: usize,
-    value: T,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, T>, DynStack<'_>) {
-    let col_stride = if is_vectorizable::<T>() {
-        round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
-    } else {
-        nrows
-    };
-
-    let (alloc, stack) =
-        stack.make_aligned_with(ncols * col_stride, align_for::<T>(), |_| value.clone());
-    (
-        DynMat {
-            inner: DynMatImpl::Init(alloc),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
-}
-
-/// Creates a temporary matrix of zeroed values, from the given memory stack.
-pub fn temp_mat_zeroed<T: ComplexField>(
-    nrows: usize,
-    ncols: usize,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, T>, DynStack<'_>) {
-    let col_stride = if is_vectorizable::<T>() {
-        round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
-    } else {
-        nrows
-    };
-
-    let (alloc, stack) =
-        stack.make_aligned_with(ncols * col_stride, align_for::<T>(), |_| T::zero());
-    (
-        DynMat {
-            inner: DynMatImpl::Init(alloc),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
-}
-
-/// Unsafe: Creates a temporary matrix of possibly uninitialized values, from the given memory
-/// stack.
-///
-/// # Warning
-///
-/// Working with uninitialized values is trickier in Rust than other languages. In particular,
-/// references must always point to initialized data, which means that using
-/// [`MatMut::get`], [`MatMut::get_unchecked`], the indexing operator, etc., on the resulting matrix
-/// can cause undefined behavior.
-///
-/// Use the pointer access API instead: e.g., [`MatMut::ptr_at`] or [`zip::MatUninit`].
-pub unsafe fn temp_mat_uninit<T: ComplexField>(
-    nrows: usize,
-    ncols: usize,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, T>, DynStack<'_>) {
-    if core::mem::needs_drop::<T>() || cfg!(debug_assertions) {
-        temp_mat_constant(nrows, ncols, T::nan(), stack)
-    } else {
-        let col_stride = if is_vectorizable::<T>() {
-            round_up_to(nrows, align_for::<T>() / core::mem::size_of::<T>())
-        } else {
-            nrows
-        };
-
-        let (alloc, stack) = stack.make_aligned_uninit::<T>(ncols * col_stride, align_for::<T>());
-        (
-            DynMat {
-                inner: DynMatImpl::Uninit(alloc),
-                nrows,
-                ncols,
-                col_stride,
-            },
-            stack,
-        )
-    }
-}
-
-/// Returns the stack requirements for creating a temporary matrix with the given dimensions.
-#[inline]
-pub fn temp_mat_req<T: 'static>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
-    let col_stride = if is_vectorizable::<T>() {
-        round_up_to(nrows, align_for::<T>() / size_of::<T>())
-    } else {
-        nrows
-    };
-
-    StackReq::try_new_aligned::<T>(col_stride * ncols, align_for::<T>())
 }
 
 #[repr(C)]
-struct RawMat<T: 'static> {
+struct RawMatUnit<T: 'static> {
     ptr: NonNull<T>,
     row_capacity: usize,
     col_capacity: usize,
 }
 
-#[cold]
-fn capacity_overflow_impl() -> ! {
-    panic!("capacity overflow")
-}
-
-#[cold]
-fn capacity_overflow<T>() -> T {
-    capacity_overflow_impl();
-}
-
-impl<T: 'static> RawMat<T> {
+impl<T: 'static> RawMatUnit<T> {
     pub fn new(row_capacity: usize, col_capacity: usize) -> Self {
+        let dangling = NonNull::<T>::dangling();
         if core::mem::size_of::<T>() == 0 {
             Self {
-                ptr: NonNull::<T>::dangling(),
+                ptr: dangling,
                 row_capacity,
                 col_capacity,
             }
@@ -4543,7 +3072,7 @@ impl<T: 'static> RawMat<T> {
                 .unwrap_or_else(capacity_overflow);
 
             let ptr = if layout.size() == 0 {
-                core::ptr::NonNull::<T>::dangling()
+                dangling
             } else {
                 // SAFETY: we checked that layout has non zero size
                 let ptr = unsafe { alloc(layout) } as *mut T;
@@ -4564,7 +3093,7 @@ impl<T: 'static> RawMat<T> {
     }
 }
 
-impl<T> Drop for RawMat<T> {
+impl<T: 'static> Drop for RawMatUnit<T> {
     fn drop(&mut self) {
         use alloc::alloc::{dealloc, Layout};
         // this cannot overflow because we already allocated this much memory
@@ -4584,147 +3113,252 @@ impl<T> Drop for RawMat<T> {
     }
 }
 
-struct BlockGuard<T> {
-    ptr: *mut T,
+#[repr(C)]
+struct RawMat<E: Entity> {
+    ptr: E::GroupCopy<NonNull<E::Unit>>,
+    row_capacity: usize,
+    col_capacity: usize,
+}
+
+#[cold]
+fn capacity_overflow_impl() -> ! {
+    panic!("capacity overflow")
+}
+
+#[inline(always)]
+fn capacity_overflow<T>() -> T {
+    capacity_overflow_impl();
+}
+
+#[doc(hidden)]
+#[inline(always)]
+pub fn is_vectorizable<T: 'static>() -> bool {
+    coe::is_same::<f32, T>()
+        || coe::is_same::<f64, T>()
+        || coe::is_same::<c32, T>()
+        || coe::is_same::<c64, T>()
+        || coe::is_same::<c32conj, T>()
+        || coe::is_same::<c64conj, T>()
+}
+
+#[doc(hidden)]
+#[inline(always)]
+pub fn align_for<T: 'static>() -> usize {
+    if is_vectorizable::<T>() {
+        aligned_vec::CACHELINE_ALIGN
+    } else {
+        core::mem::align_of::<T>()
+    }
+}
+
+impl<E: Entity> RawMat<E> {
+    pub fn new(row_capacity: usize, col_capacity: usize) -> Self {
+        // allocate the unit matrices
+        let group = E::map(E::from_copy(E::UNIT), |()| {
+            RawMatUnit::<E::Unit>::new(row_capacity, col_capacity)
+        });
+
+        let group = E::map(group, ManuallyDrop::new);
+
+        let this = Self {
+            ptr: E::into_copy(E::map(group, |mat| mat.ptr)),
+            row_capacity,
+            col_capacity,
+        };
+
+        this
+    }
+}
+
+impl<E: Entity> Drop for RawMat<E> {
+    fn drop(&mut self) {
+        // implicitly dropped
+        let _ = E::map(E::from_copy(self.ptr), |ptr| RawMatUnit {
+            ptr,
+            row_capacity: self.row_capacity,
+            col_capacity: self.col_capacity,
+        });
+    }
+}
+
+struct BlockGuard<E: Entity> {
+    ptr: E::GroupCopy<*mut E::Unit>,
     nrows: usize,
     ncols: usize,
     cs: isize,
 }
-struct ColGuard<T> {
-    ptr: *mut T,
+struct ColGuard<E: Entity> {
+    ptr: E::GroupCopy<*mut E::Unit>,
     nrows: usize,
 }
 
-impl<T> Drop for BlockGuard<T> {
+impl<E: Entity> Drop for BlockGuard<E> {
     fn drop(&mut self) {
         for j in 0..self.ncols {
-            let ptr_j = self.ptr.wrapping_offset(j as isize * self.cs);
-            // SAFETY: this is safe because we created these elements and need to
-            // drop them
-            let slice = unsafe { core::slice::from_raw_parts_mut(ptr_j, self.nrows) };
-            unsafe { core::ptr::drop_in_place(slice) };
+            E::map(E::from_copy(self.ptr), |ptr| {
+                let ptr_j = ptr.wrapping_offset(j as isize * self.cs);
+                // SAFETY: this is safe because we created these elements and need to
+                // drop them
+                let slice = unsafe { core::slice::from_raw_parts_mut(ptr_j, self.nrows) };
+                unsafe { core::ptr::drop_in_place(slice) };
+            });
         }
     }
 }
-impl<T> Drop for ColGuard<T> {
+impl<E: Entity> Drop for ColGuard<E> {
     fn drop(&mut self) {
-        let ptr = self.ptr;
-        // SAFETY: this is safe because we created these elements and need to
-        // drop them
-        let slice = unsafe { core::slice::from_raw_parts_mut(ptr, self.nrows) };
-        unsafe { core::ptr::drop_in_place(slice) };
+        E::map(E::from_copy(self.ptr), |ptr| {
+            // SAFETY: this is safe because we created these elements and need to
+            // drop them
+            let slice = unsafe { core::slice::from_raw_parts_mut(ptr, self.nrows) };
+            unsafe { core::ptr::drop_in_place(slice) };
+        });
     }
 }
 
-/// Owning matrix structure stored in column major format.
-///
-/// A matrix can be thought of as a 2D array of values.
-/// These values are stored in memory so that the columns are contiguous.
-///
-/// # Note
-///
-/// Note that the matrix as a whole may not necessarily be contiguous.
-/// The implementation may add padding at the end of each column when
-/// overaligning each column can provide a performance gain.
-///
-/// Let us consider a 3×4 matrix
-///
-/// ```notrust
-///  0 │ 3 │ 6 │  9
-/// ───┼───┼───┼───
-///  1 │ 4 │ 7 │ 10
-/// ───┼───┼───┼───
-///  2 │ 5 │ 8 │ 11
-/// ```
-///
-/// The memory representation of such a matrix could look like the following:
-///
-/// ```notrust
-/// 0 1 2 X 3 4 5 X 6 7 8 X 9 10 11 X
-/// ```
-/// where `X` represents padding elements.
 #[repr(C)]
-pub struct Mat<T: 'static> {
-    raw: RawMat<T>,
+pub struct Mat<E: Entity> {
+    raw: RawMat<E>,
     nrows: usize,
     ncols: usize,
 }
 
-unsafe impl<T: Send> Send for Mat<T> {}
-unsafe impl<T: Sync> Sync for Mat<T> {}
+#[repr(C)]
+pub struct MatUnit<T: 'static> {
+    raw: RawMatUnit<T>,
+    nrows: usize,
+    ncols: usize,
+}
 
-impl<T: 'static> Default for Mat<T> {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+unsafe impl<E: Entity> Send for Mat<E> {}
+unsafe impl<E: Entity> Sync for Mat<E> {}
+
+impl<T> MatUnit<T> {
+    #[cold]
+    fn do_reserve_exact(&mut self, mut new_row_capacity: usize, mut new_col_capacity: usize) {
+        new_row_capacity = self.raw.row_capacity.max(new_row_capacity);
+        new_col_capacity = self.raw.col_capacity.max(new_col_capacity);
+
+        let new_ptr = if self.raw.row_capacity == new_row_capacity
+            && self.raw.row_capacity != 0
+            && self.raw.col_capacity != 0
+        {
+            // case 1:
+            // we have enough row capacity, and we've already allocated memory.
+            // use realloc to get extra column memory
+
+            use alloc::alloc::{handle_alloc_error, realloc, Layout};
+
+            // this shouldn't overflow since we already hold this many bytes
+            let old_cap = self.raw.row_capacity * self.raw.col_capacity;
+            let old_cap_bytes = old_cap * core::mem::size_of::<T>();
+
+            let new_cap = new_row_capacity
+                .checked_mul(new_col_capacity)
+                .unwrap_or_else(capacity_overflow);
+            let new_cap_bytes = new_cap
+                .checked_mul(core::mem::size_of::<T>())
+                .unwrap_or_else(capacity_overflow);
+
+            if new_cap_bytes > isize::MAX as usize {
+                capacity_overflow::<()>();
+            }
+
+            // SAFETY: this shouldn't overflow since we already checked that it's valid during
+            // allocation
+            let old_layout =
+                unsafe { Layout::from_size_align_unchecked(old_cap_bytes, align_for::<T>()) };
+            let new_layout = Layout::from_size_align(new_cap_bytes, align_for::<T>())
+                .ok()
+                .unwrap_or_else(capacity_overflow);
+
+            // SAFETY:
+            // * old_ptr is non null and is the return value of some previous call to alloc
+            // * old_layout is the same layout that was used to provide the old allocation
+            // * new_cap_bytes is non zero since new_row_capacity and new_col_capacity are larger
+            // than self.raw.row_capacity and self.raw.col_capacity respectively, and the computed
+            // product doesn't overflow.
+            // * new_cap_bytes, when rounded up to the nearest multiple of the alignment does not
+            // overflow, since we checked that we can create new_layout with it.
+            unsafe {
+                let old_ptr = self.raw.ptr.as_ptr();
+                let new_ptr = realloc(old_ptr as *mut u8, old_layout, new_cap_bytes);
+                if new_ptr.is_null() {
+                    handle_alloc_error(new_layout);
+                }
+                new_ptr as *mut T
+            }
+        } else {
+            // case 2:
+            // use alloc and move stuff manually.
+
+            // allocate new memory region
+            let new_ptr = {
+                let m = ManuallyDrop::new(RawMatUnit::<T>::new(new_row_capacity, new_col_capacity));
+                m.ptr.as_ptr()
+            };
+
+            let old_ptr = self.raw.ptr.as_ptr();
+
+            // copy each column to new matrix
+            for j in 0..self.ncols {
+                // SAFETY:
+                // * pointer offsets can't overflow since they're within an already allocated
+                // memory region less than isize::MAX bytes in size.
+                // * new and old allocation can't overlap, so copy_nonoverlapping is fine here.
+                unsafe {
+                    let old_ptr = old_ptr.add(j * self.raw.row_capacity);
+                    let new_ptr = new_ptr.add(j * new_row_capacity);
+                    core::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.nrows);
+                }
+            }
+
+            // deallocate old matrix memory
+            let _ = RawMatUnit::<T> {
+                // SAFETY: this ptr was checked to be non null, or was acquired from a NonNull
+                // pointer.
+                ptr: unsafe { NonNull::new_unchecked(old_ptr) },
+                row_capacity: self.raw.row_capacity,
+                col_capacity: self.raw.col_capacity,
+            };
+
+            new_ptr
+        };
+        self.raw.row_capacity = new_row_capacity;
+        self.raw.col_capacity = new_col_capacity;
+        self.raw.ptr = unsafe { NonNull::<T>::new_unchecked(new_ptr) };
     }
 }
 
-impl<T: Clone> Clone for Mat<T> {
-    fn clone(&self) -> Self {
-        let mut other = Self::with_capacity(self.row_capacity(), self.col_capacity());
-        let this = self.as_ref();
-        other.resize_with(
-            |i, j| unsafe { (*this.ptr_in_bounds_at_unchecked(i, j)).clone() },
-            self.nrows(),
-            self.ncols(),
-        );
-        other
+impl<T> Drop for MatUnit<T> {
+    fn drop(&mut self) {
+        let mut ptr = self.raw.ptr.as_ptr();
+        let nrows = self.nrows;
+        let ncols = self.ncols;
+        let cs = self.raw.row_capacity;
+
+        for _ in 0..ncols {
+            // SAFETY: these elements were previously created in this storage.
+            unsafe {
+                core::ptr::drop_in_place(core::slice::from_raw_parts_mut(ptr, nrows));
+            }
+            ptr = ptr.wrapping_add(cs);
+        }
     }
 }
 
-impl<T: 'static> Mat<T> {
-    /// Returns a new matrix with dimensions `(0, 0)`. This does not allocate.
+impl<E: Entity> Mat<E> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            raw: RawMat::<T> {
-                ptr: NonNull::<T>::dangling(),
+            raw: RawMat::<E> {
+                ptr: E::map_copy(E::UNIT, |()| NonNull::<E::Unit>::dangling()),
                 row_capacity: 0,
                 col_capacity: 0,
             },
             nrows: 0,
             ncols: 0,
         }
-    }
-
-    /// Returns a matrix from preallocated pointer, dimensions, and capacities.
-    ///
-    /// # Safety
-    ///
-    /// The inputs to this function must be acquired from the return value of some previous call
-    /// to `Self::into_raw_parts`.
-    #[inline]
-    pub unsafe fn from_raw_parts(
-        ptr: *mut T,
-        nrows: usize,
-        ncols: usize,
-        row_capacity: usize,
-        col_capacity: usize,
-    ) -> Self {
-        Self {
-            raw: RawMat::<T> {
-                ptr: NonNull::new_unchecked(ptr),
-                row_capacity,
-                col_capacity,
-            },
-            nrows,
-            ncols,
-        }
-    }
-
-    /// Consumes `self` and returns its raw parts in this order: pointer to data, number of rows,
-    /// number of columns, row capacity and column capacity.
-    #[inline]
-    pub fn into_raw_parts(self) -> (*mut T, usize, usize, usize, usize) {
-        let mut m = core::mem::ManuallyDrop::<Mat<T>>::new(self);
-        (
-            m.as_mut_ptr(),
-            m.nrows(),
-            m.ncols(),
-            m.row_capacity(),
-            m.col_capacity(),
-        )
     }
 
     /// Returns a new matrix with dimensions `(0, 0)`, with enough capacity to hold a maximum of
@@ -4737,7 +3371,7 @@ impl<T: 'static> Mat<T> {
     #[inline]
     pub fn with_capacity(row_capacity: usize, col_capacity: usize) -> Self {
         Self {
-            raw: RawMat::<T>::new(row_capacity, col_capacity),
+            raw: RawMat::<E>::new(row_capacity, col_capacity),
             nrows: 0,
             ncols: 0,
         }
@@ -4749,9 +3383,9 @@ impl<T: 'static> Mat<T> {
     ///
     /// Panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn with_dims(f: impl FnMut(usize, usize) -> T, nrows: usize, ncols: usize) -> Self {
+    pub fn with_dims(nrows: usize, ncols: usize, f: impl FnMut(usize, usize) -> E) -> Self {
         let mut this = Self::new();
-        this.resize_with(f, nrows, ncols);
+        this.resize_with(nrows, ncols, f);
         this
     }
 
@@ -4763,9 +3397,9 @@ impl<T: 'static> Mat<T> {
     #[inline]
     pub fn zeros(nrows: usize, ncols: usize) -> Self
     where
-        T: ComplexField,
+        E: ComplexField,
     {
-        Self::with_dims(|_, _| T::zero(), nrows, ncols)
+        Self::with_dims(nrows, ncols, |_, _| E::zero())
     }
 
     /// Set the dimensions of the matrix.
@@ -4784,14 +3418,16 @@ impl<T: 'static> Mat<T> {
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        self.raw.ptr.as_ptr()
+    pub fn as_ptr(&self) -> E::Group<*const E::Unit> {
+        E::map(E::from_copy(self.raw.ptr), |ptr| {
+            ptr.as_ptr() as *const E::Unit
+        })
     }
 
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.raw.ptr.as_ptr()
+    pub fn as_mut_ptr(&mut self) -> E::Group<*mut E::Unit> {
+        E::map(E::from_copy(self.raw.ptr), |ptr| ptr.as_ptr())
     }
 
     /// Returns the number of rows of the matrix.
@@ -4834,100 +3470,41 @@ impl<T: 'static> Mat<T> {
     }
 
     #[cold]
-    fn do_reserve_exact(&mut self, mut new_row_capacity: usize, mut new_col_capacity: usize) {
-        use core::mem::ManuallyDrop;
+    fn do_reserve_exact(&mut self, mut new_row_capacity: usize, new_col_capacity: usize) {
+        if is_vectorizable::<E::Unit>() {
+            let align_factor = align_for::<E::Unit>() / core::mem::size_of::<E::Unit>();
+            new_row_capacity =
+                (new_row_capacity + (align_factor - 1)) / align_factor * align_factor;
+        }
 
-        new_row_capacity = self.row_capacity().max(new_row_capacity);
-        new_col_capacity = self.col_capacity().max(new_col_capacity);
+        use core::mem::swap;
+        let nrows = self.nrows;
+        let ncols = self.ncols;
+        let old_row_capacity = self.raw.row_capacity;
+        let old_col_capacity = self.raw.col_capacity;
 
-        let new_ptr = if self.row_capacity() == new_row_capacity
-            && self.row_capacity() != 0
-            && self.col_capacity() != 0
-        {
-            // case 1:
-            // we have enough row capacity, and we've already allocated memory.
-            // use realloc to get extra column memory
+        let mut this = Self::new();
+        swap(self, &mut this);
 
-            use alloc::alloc::{handle_alloc_error, realloc, Layout};
+        let mut this_group = E::map(E::from_copy(this.raw.ptr), |ptr| MatUnit {
+            raw: RawMatUnit {
+                ptr,
+                row_capacity: old_row_capacity,
+                col_capacity: old_col_capacity,
+            },
+            nrows,
+            ncols,
+        });
 
-            // this shouldn't overflow since we already hold this many bytes
-            let old_cap = self.row_capacity() * self.col_capacity();
-            let old_cap_bytes = old_cap * core::mem::size_of::<T>();
+        E::map(E::as_mut(&mut this_group), |mat_unit| {
+            mat_unit.do_reserve_exact(new_row_capacity, new_col_capacity);
+        });
 
-            let new_cap = new_row_capacity
-                .checked_mul(new_col_capacity)
-                .unwrap_or_else(capacity_overflow);
-            let new_cap_bytes = new_cap
-                .checked_mul(core::mem::size_of::<T>())
-                .unwrap_or_else(capacity_overflow);
-
-            if new_cap_bytes > isize::MAX as usize {
-                capacity_overflow::<()>();
-            }
-
-            // SAFETY: this shouldn't overflow since we already checked that it's valid during
-            // allocation
-            let old_layout =
-                unsafe { Layout::from_size_align_unchecked(old_cap_bytes, align_for::<T>()) };
-            let new_layout = Layout::from_size_align(new_cap_bytes, align_for::<T>())
-                .ok()
-                .unwrap_or_else(capacity_overflow);
-
-            // SAFETY:
-            // * old_ptr is non null and is the return value of some previous call to alloc
-            // * old_layout is the same layout that was used to provide the old allocation
-            // * new_cap_bytes is non zero since new_row_capacity and new_col_capacity are larger
-            // than self.row_capacity() and self.col_capacity() respectively, and the computed
-            // product doesn't overflow.
-            // * new_cap_bytes, when rounded up to the nearest multiple of the alignment does not
-            // overflow, since we checked that we can create new_layout with it.
-            unsafe {
-                let old_ptr = self.as_mut_ptr();
-                let new_ptr = realloc(old_ptr as *mut u8, old_layout, new_cap_bytes);
-                if new_ptr.is_null() {
-                    handle_alloc_error(new_layout);
-                }
-                new_ptr as *mut T
-            }
-        } else {
-            // case 2:
-            // use alloc and move stuff manually.
-
-            // allocate new memory region
-            let new_ptr = {
-                let m = ManuallyDrop::new(RawMat::<T>::new(new_row_capacity, new_col_capacity));
-                m.ptr.as_ptr()
-            };
-
-            let old_ptr = self.as_mut_ptr();
-
-            // copy each column to new matrix
-            for j in 0..self.ncols() {
-                // SAFETY:
-                // * pointer offsets can't overflow since they're within an already allocated
-                // memory region less than isize::MAX bytes in size.
-                // * new and old allocation can't overlap, so copy_nonoverlapping is fine here.
-                unsafe {
-                    let old_ptr = old_ptr.add(j * self.row_capacity());
-                    let new_ptr = new_ptr.add(j * new_row_capacity);
-                    core::ptr::copy_nonoverlapping(old_ptr, new_ptr, self.nrows());
-                }
-            }
-
-            // deallocate old matrix memory
-            let _ = RawMat::<T> {
-                // SAFETY: this ptr was checked to be non null, or was acquired from a NonNull
-                // pointer.
-                ptr: unsafe { NonNull::new_unchecked(old_ptr) },
-                row_capacity: self.row_capacity(),
-                col_capacity: self.col_capacity(),
-            };
-
-            new_ptr
-        };
-        self.raw.row_capacity = new_row_capacity;
-        self.raw.col_capacity = new_col_capacity;
-        self.raw.ptr = unsafe { NonNull::<T>::new_unchecked(new_ptr) };
+        let this_group = E::map(this_group, ManuallyDrop::new);
+        this.raw.ptr = E::into_copy(E::map(this_group, |mat_unit| mat_unit.raw.ptr));
+        this.raw.row_capacity = new_row_capacity;
+        this.raw.col_capacity = new_col_capacity;
+        swap(self, &mut this);
     }
 
     /// Reserves the minimum capacity for `row_capacity` rows and `col_capacity`
@@ -4940,7 +3517,7 @@ impl<T: 'static> Mat<T> {
     pub fn reserve_exact(&mut self, row_capacity: usize, col_capacity: usize) {
         if self.row_capacity() >= row_capacity && self.col_capacity() >= col_capacity {
             // do nothing
-        } else if core::mem::size_of::<T>() == 0 {
+        } else if core::mem::size_of::<E::Unit>() == 0 {
             self.raw.row_capacity = self.row_capacity().max(row_capacity);
             self.raw.col_capacity = self.col_capacity().max(col_capacity);
         } else {
@@ -4955,26 +3532,27 @@ impl<T: 'static> Mat<T> {
         col_start: usize,
         col_end: usize,
     ) {
-        fancy_debug_assert!(row_start <= row_end);
-        fancy_debug_assert!(col_start <= col_end);
+        debug_assert!(row_start <= row_end);
+        debug_assert!(col_start <= col_end);
 
-        let ptr = self.as_mut_ptr();
+        E::map(self.as_mut_ptr(), |ptr| {
+            for j in col_start..col_end {
+                let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
 
-        for j in col_start..col_end {
-            let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
-            for i in row_start..row_end {
-                // SAFETY: this points to a valid matrix element at index (i, j), which
+                // SAFETY: this points to a valid matrix element at index (_, j), which
                 // is within bounds
-                let ptr_ij = ptr_j.add(i);
 
                 // SAFETY: we drop an object that is within its lifetime since the matrix
                 // contains valid elements at each index within bounds
-                core::ptr::drop_in_place(ptr_ij);
+                core::ptr::drop_in_place(core::slice::from_raw_parts_mut(
+                    ptr_j.add(row_start),
+                    row_end - row_start,
+                ));
             }
-        }
+        });
     }
 
-    unsafe fn insert_block_with<F: FnMut(usize, usize) -> T>(
+    unsafe fn insert_block_with<F: FnMut(usize, usize) -> E>(
         &mut self,
         f: &mut F,
         row_start: usize,
@@ -4982,25 +3560,27 @@ impl<T: 'static> Mat<T> {
         col_start: usize,
         col_end: usize,
     ) {
-        fancy_debug_assert!(row_start <= row_end);
-        fancy_debug_assert!(col_start <= col_end);
+        debug_assert!(row_start <= row_end);
+        debug_assert!(col_start <= col_end);
 
-        let ptr = self.as_mut_ptr();
+        let ptr = E::into_copy(self.as_mut_ptr());
 
-        let mut block_guard = BlockGuard::<T> {
-            ptr: ptr.wrapping_add(row_start),
+        let mut block_guard = BlockGuard::<E> {
+            ptr: E::map_copy(ptr, |ptr| ptr.wrapping_add(row_start)),
             nrows: row_end - row_start,
             ncols: 0,
             cs: self.col_stride(),
         };
 
         for j in col_start..col_end {
-            let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
+            let ptr_j = E::map_copy(ptr, |ptr| {
+                ptr.wrapping_offset(j as isize * self.col_stride())
+            });
 
             // create a guard for the same purpose as the previous one
-            let mut col_guard = ColGuard::<T> {
+            let mut col_guard = ColGuard::<E> {
                 // SAFETY: same as above
-                ptr: ptr_j.wrapping_add(row_start),
+                ptr: E::map_copy(ptr_j, |ptr_j| ptr_j.wrapping_add(row_start)),
                 nrows: 0,
             };
 
@@ -5010,8 +3590,12 @@ impl<T: 'static> Mat<T> {
                 // allocation since we reserved enough space
                 // * writing to this memory region is sound since it is properly
                 // aligned and valid for writes
-                let ptr_ij = ptr_j.add(i);
-                core::ptr::write(ptr_ij, f(i, j));
+                let ptr_ij = E::map(E::from_copy(ptr_j), |ptr_j| ptr_j.add(i));
+                let value = E::into_units(f(i, j));
+
+                E::map(E::zip(ptr_ij, value), |(ptr_ij, value)| {
+                    core::ptr::write(ptr_ij, value)
+                });
                 col_guard.nrows += 1;
             }
             core::mem::forget(col_guard);
@@ -5023,7 +3607,7 @@ impl<T: 'static> Mat<T> {
     fn erase_last_cols(&mut self, new_ncols: usize) {
         let old_ncols = self.ncols();
 
-        fancy_debug_assert!(new_ncols <= old_ncols);
+        debug_assert!(new_ncols <= old_ncols);
 
         // change the size before dropping the elements, since if one of them panics the
         // matrix drop function will double drop them.
@@ -5037,7 +3621,7 @@ impl<T: 'static> Mat<T> {
     fn erase_last_rows(&mut self, new_nrows: usize) {
         let old_nrows = self.nrows();
 
-        fancy_debug_assert!(new_nrows <= old_nrows);
+        debug_assert!(new_nrows <= old_nrows);
 
         // see comment above
         self.nrows = new_nrows;
@@ -5046,27 +3630,27 @@ impl<T: 'static> Mat<T> {
         }
     }
 
-    unsafe fn insert_last_cols_with<F: FnMut(usize, usize) -> T>(
+    unsafe fn insert_last_cols_with<F: FnMut(usize, usize) -> E>(
         &mut self,
         f: &mut F,
         new_ncols: usize,
     ) {
         let old_ncols = self.ncols();
 
-        fancy_debug_assert!(new_ncols > old_ncols);
+        debug_assert!(new_ncols > old_ncols);
 
         self.insert_block_with(f, 0, self.nrows(), old_ncols, new_ncols);
         self.ncols = new_ncols;
     }
 
-    unsafe fn insert_last_rows_with<F: FnMut(usize, usize) -> T>(
+    unsafe fn insert_last_rows_with<F: FnMut(usize, usize) -> E>(
         &mut self,
         f: &mut F,
         new_nrows: usize,
     ) {
         let old_nrows = self.nrows();
 
-        fancy_debug_assert!(new_nrows > old_nrows);
+        debug_assert!(new_nrows > old_nrows);
 
         self.insert_block_with(f, old_nrows, new_nrows, 0, self.ncols());
         self.nrows = new_nrows;
@@ -5077,9 +3661,9 @@ impl<T: 'static> Mat<T> {
     /// given function `f`, so that elements at position `(i, j)` are created by calling `f(i, j)`.
     pub fn resize_with(
         &mut self,
-        f: impl FnMut(usize, usize) -> T,
         new_nrows: usize,
         new_ncols: usize,
+        f: impl FnMut(usize, usize) -> E,
     ) {
         let mut f = f;
         let old_nrows = self.nrows();
@@ -5111,35 +3695,11 @@ impl<T: 'static> Mat<T> {
         }
     }
 
-    /// Returns the transpose of `self`.
-    #[inline]
-    pub fn transpose(&self) -> MatRef<'_, T> {
-        self.as_ref().transpose()
-    }
-
-    /// Returns the conjugate of `self`.
-    #[inline]
-    pub fn conjugate(&self) -> MatRef<'_, T::Conj>
-    where
-        T: Conjugate,
-    {
-        self.as_ref().conjugate()
-    }
-
-    /// Returns the conjugate transpose of `self`.
-    #[inline]
-    pub fn adjoint(&self) -> MatRef<'_, T::Conj>
-    where
-        T: Conjugate,
-    {
-        self.as_ref().adjoint()
-    }
-
     /// Returns a view over the matrix.
     #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, T> {
+    pub fn as_ref(&self) -> MatRef<'_, E> {
         unsafe {
-            MatRef::<'_, T>::from_raw_parts(
+            MatRef::<'_, E>::from_raw_parts(
                 self.as_ptr(),
                 self.nrows(),
                 self.ncols(),
@@ -5151,9 +3711,9 @@ impl<T: 'static> Mat<T> {
 
     /// Returns a mutable view over the matrix.
     #[inline]
-    pub fn as_mut(&mut self) -> MatMut<'_, T> {
+    pub fn as_mut(&mut self) -> MatMut<'_, E> {
         unsafe {
-            MatMut::<'_, T>::from_raw_parts(
+            MatMut::<'_, E>::from_raw_parts(
                 self.as_mut_ptr(),
                 self.nrows(),
                 self.ncols(),
@@ -5162,309 +3722,75 @@ impl<T: 'static> Mat<T> {
             )
         }
     }
-}
 
-impl<T> Drop for Mat<T> {
-    fn drop(&mut self) {
-        let mut ptr = self.raw.ptr.as_ptr();
-        let nrows = self.nrows;
-        let ncols = self.ncols;
-        let cs = self.raw.row_capacity;
-
-        for _ in 0..ncols {
-            for i in 0..nrows {
-                // SAFETY: these elements were previously created in this storage.
-                unsafe {
-                    core::ptr::drop_in_place(ptr.add(i));
-                }
-            }
-            ptr = ptr.wrapping_add(cs);
-        }
-    }
-}
-
-impl<T: Debug + 'static> Debug for Mat<T> {
-    #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_ref().fmt(f)
-    }
-}
-
-impl<T> Index<(usize, usize)> for Mat<T> {
-    type Output = T;
-
-    #[inline]
-    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        self.as_ref().get(i, j)
-    }
-}
-
-impl<T> IndexMut<(usize, usize)> for Mat<T> {
-    #[inline]
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
-        self.as_mut().get(i, j)
-    }
-}
-
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Add<MatRef<'a, U>> for MatRef<'a, T>
-where
-    T::Num: ComplexField,
-{
-    type Output = Mat<T::Num>;
-
+    #[inline(always)]
     #[track_caller]
-    #[inline]
-    fn add(self, rhs: MatRef<'a, U>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(
-            |i, j| {
-                self[(i, j)]
-                    .clone()
-                    .into_num()
-                    .add(&rhs[(i, j)].clone().into_num())
-            },
-            self.nrows(),
-            self.ncols(),
-        )
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        self.as_ref().read_unchecked(row, col)
     }
-}
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Sub<MatRef<'a, U>> for MatRef<'a, T>
-where
-    T::Num: ComplexField,
-{
-    type Output = Mat<T::Num>;
 
+    #[inline(always)]
     #[track_caller]
-    #[inline]
-    fn sub(self, rhs: MatRef<'a, U>) -> Self::Output {
-        fancy_assert!((self.nrows(), self.ncols()) == (rhs.nrows(), rhs.ncols()));
-        Self::Output::with_dims(
-            |i, j| {
-                self[(i, j)]
-                    .clone()
-                    .into_num()
-                    .sub(&rhs[(i, j)].clone().into_num())
-            },
-            self.nrows(),
-            self.ncols(),
-        )
+    pub fn read(&self, row: usize, col: usize) -> E::Canonical
+    where
+        E: Conjugate,
+    {
+        self.as_ref().read(row, col)
     }
-}
 
-impl<'a, T: Conjugate, U: Conjugate<Num = T::Num>> core::ops::Mul<MatRef<'a, U>> for MatRef<'a, T>
-where
-    T::Num: ComplexField,
-{
-    type Output = Mat<T::Num>;
-
+    #[inline(always)]
     #[track_caller]
+    pub unsafe fn write_unchecked(&mut self, row: usize, col: usize, value: E) {
+        self.as_mut().write_unchecked(row, col, value);
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn write(&mut self, row: usize, col: usize, value: E) {
+        self.as_mut().write(row, col, value);
+    }
+
+    /// Returns the transpose of `self`.
     #[inline]
-    fn mul(self, rhs: MatRef<'a, U>) -> Self::Output {
-        fancy_assert!(self.ncols() == rhs.nrows());
-        let mut output = Mat::zeros(self.nrows(), rhs.ncols());
+    pub fn transpose(&self) -> MatRef<'_, E> {
+        self.as_ref().transpose()
+    }
 
-        let (lhs, lhs_conj) = self.raw_with_conj();
-        let (rhs, rhs_conj) = rhs.raw_with_conj();
+    /// Returns the conjugate of `self`.
+    #[inline]
+    pub fn conjugate(&self) -> MatRef<'_, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.as_ref().conjugate()
+    }
 
-        mul::matmul(
-            output.as_mut(),
-            Conj::No,
-            lhs,
-            lhs_conj,
-            rhs,
-            rhs_conj,
-            None,
-            T::Num::one(),
-            Parallelism::Rayon(0),
-        );
+    /// Returns the conjugate transpose of `self`.
+    #[inline]
+    pub fn adjoint(&self) -> MatRef<'_, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.as_ref().adjoint()
+    }
 
-        output
+    /// Returns an owning [`Mat`] of the data
+    #[inline]
+    pub fn to_owned(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+    {
+        self.as_ref().to_owned()
     }
 }
 
-pub trait Scale<Rhs> {
-    type Output;
-
-    /// Scale a matrix `rhs` by `self`.
-    fn scale(self, rhs: Rhs) -> Self::Output;
-}
-
-impl<'a, T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatRef<'a, U>>
-    for T
-{
-    type Output = Mat<U::Num>;
-
-    #[inline]
-    fn scale(self, rhs: MatRef<'a, U>) -> Self::Output {
-        Mat::with_dims(
-            |i, j| self * rhs[(i, j)].clone().into_num(),
-            rhs.nrows(),
-            rhs.ncols(),
-        )
-    }
-}
-impl<'a, T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<MatMut<'a, U>>
-    for T
-{
-    type Output = Mat<U::Num>;
-
-    #[inline]
-    fn scale(self, rhs: MatMut<'a, U>) -> Self::Output {
-        self.scale(rhs.rb())
-    }
-}
-impl<T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<Mat<U>> for T {
-    type Output = Mat<U::Num>;
-
-    #[inline]
-    fn scale(self, rhs: Mat<U>) -> Self::Output {
-        self.scale(rhs.as_ref())
-    }
-}
-impl<T: Copy + core::ops::Mul<U::Num, Output = U::Num>, U: Conjugate> Scale<&Mat<U>> for T {
-    type Output = Mat<U::Num>;
-
-    #[inline]
-    fn scale(self, rhs: &Mat<U>) -> Self::Output {
-        self.scale(rhs.as_ref())
-    }
-}
-
-macro_rules! impl_scalar_mul {
-    ($(impl$(<$generic_ty: ident: $bounds: tt>)? Mul<$scalar: ty> for $mat: ty { type Out = $out: ty; })*) => {
-        $(
-            impl$(<$generic_ty>)? core::ops::Mul<$mat> for $scalar {
-                type Output = Mat<$out>;
-                #[inline]
-                fn mul(self, rhs: $mat) -> Self::Output {
-                    self.scale(rhs)
-                }
-            }
-
-            impl$(<$generic_ty>)? core::ops::Mul<$scalar> for $mat {
-                type Output = Mat<$out>;
-                #[inline]
-                fn mul(self, rhs: $scalar) -> Self::Output {
-                    rhs.scale(self)
-                }
-            }
-        )*
-    };
-}
-
-impl_scalar_mul! {
-    impl Mul<f32> for MatRef<'_, f32> { type Out = f32; }
-    impl Mul<f64> for MatRef<'_, f64> { type Out = f64; }
-    impl Mul<f32> for MatRef<'_, c32> { type Out = c32; }
-    impl Mul<f64> for MatRef<'_, c64> { type Out = c64; }
-    impl Mul<c32> for MatRef<'_, c32> { type Out = c32; }
-    impl Mul<c64> for MatRef<'_, c64> { type Out = c64; }
-    impl Mul<f32> for MatRef<'_, ComplexConj<f32>> { type Out = c32; }
-    impl Mul<f64> for MatRef<'_, ComplexConj<f64>> { type Out = c64; }
-    impl Mul<c32> for MatRef<'_, ComplexConj<f32>> { type Out = c32; }
-    impl Mul<c64> for MatRef<'_, ComplexConj<f64>> { type Out = c64; }
-
-    impl Mul<f32> for MatMut<'_, f32> { type Out = f32; }
-    impl Mul<f64> for MatMut<'_, f64> { type Out = f64; }
-    impl Mul<f32> for MatMut<'_, c32> { type Out = c32; }
-    impl Mul<f64> for MatMut<'_, c64> { type Out = c64; }
-    impl Mul<c32> for MatMut<'_, c32> { type Out = c32; }
-    impl Mul<c64> for MatMut<'_, c64> { type Out = c64; }
-    impl Mul<f32> for MatMut<'_, ComplexConj<f32>> { type Out = c32; }
-    impl Mul<f64> for MatMut<'_, ComplexConj<f64>> { type Out = c64; }
-    impl Mul<c32> for MatMut<'_, ComplexConj<f32>> { type Out = c32; }
-    impl Mul<c64> for MatMut<'_, ComplexConj<f64>> { type Out = c64; }
-
-    impl Mul<f32> for Mat<f32> { type Out = f32; }
-    impl Mul<f64> for Mat<f64> { type Out = f64; }
-    impl Mul<f32> for Mat<c32> { type Out = c32; }
-    impl Mul<f64> for Mat<c64> { type Out = c64; }
-    impl Mul<c32> for Mat<c32> { type Out = c32; }
-    impl Mul<c64> for Mat<c64> { type Out = c64; }
-    impl Mul<f32> for Mat<ComplexConj<f32>> { type Out = c32; }
-    impl Mul<f64> for Mat<ComplexConj<f64>> { type Out = c64; }
-    impl Mul<c32> for Mat<ComplexConj<f32>> { type Out = c32; }
-    impl Mul<c64> for Mat<ComplexConj<f64>> { type Out = c64; }
-
-    impl Mul<f32> for &Mat<f32> { type Out = f32; }
-    impl Mul<f64> for &Mat<f64> { type Out = f64; }
-    impl Mul<f32> for &Mat<c32> { type Out = c32; }
-    impl Mul<f64> for &Mat<c64> { type Out = c64; }
-    impl Mul<c32> for &Mat<c32> { type Out = c32; }
-    impl Mul<c64> for &Mat<c64> { type Out = c64; }
-    impl Mul<f32> for &Mat<ComplexConj<f32>> { type Out = c32; }
-    impl Mul<f64> for &Mat<ComplexConj<f64>> { type Out = c64; }
-    impl Mul<c32> for &Mat<ComplexConj<f32>> { type Out = c32; }
-    impl Mul<c64> for &Mat<ComplexConj<f64>> { type Out = c64; }
-}
-
-macro_rules! impl_binop {
-    ($(impl<
-       $($lt: lifetime,)*
-       $ty_lhs: ident,
-       $ty_rhs: ident$(,)?
-    > Ops<$rhs: ty> for $lhs: ty {})*) => {
-        $(
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Add<$rhs> for $lhs
-            where
-                T::Num: ComplexField,
-            {
-                type Output = Mat<<$ty_lhs>::Num>;
-
-                #[track_caller]
-                #[inline]
-                fn add(self, rhs: $rhs) -> Self::Output {
-                    self.as_ref() + rhs.as_ref()
-                }
-            }
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Sub<$rhs> for $lhs
-            where
-                T::Num: ComplexField,
-            {
-                type Output = Mat<<$ty_lhs>::Num>;
-
-                #[track_caller]
-                #[inline]
-                fn sub(self, rhs: $rhs) -> Self::Output {
-                    self.as_ref() - rhs.as_ref()
-                }
-            }
-
-            impl<$($lt,)* $ty_lhs: Conjugate, $ty_rhs: Conjugate<Num = <$ty_lhs>::Num>> core::ops::Mul<$rhs> for $lhs
-            where
-                T::Num: ComplexField,
-            {
-                type Output = Mat<<$ty_lhs>::Num>;
-
-                #[track_caller]
-                #[inline]
-                fn mul(self, rhs: $rhs) -> Self::Output {
-                    self.as_ref() * rhs.as_ref()
-                }
-            }
-        )*
-    };
-}
-
-impl_binop! {
-    impl<'a, T, U> Ops<&'a Mat<U>> for &'a Mat<T> {}
-    impl<'a, T, U> Ops<    Mat<U>> for &'a Mat<T> {}
-    impl<'a, T, U> Ops<MatRef<'a, U>> for &'a Mat<T> {}
-    impl<'a, T, U> Ops<MatMut<'a, U>> for &'a Mat<T> {}
-
-    impl<'a, T, U> Ops<&'a Mat<U>> for Mat<T> {}
-    impl<    T, U> Ops<    Mat<U>> for Mat<T> {}
-    impl<'a, T, U> Ops<MatRef<'a, U>> for Mat<T> {}
-    impl<'a, T, U> Ops<MatMut<'a, U>> for Mat<T> {}
-
-    impl<'a, T, U> Ops<&'a Mat<U>> for MatRef<'a, T> {}
-    impl<'a, T, U> Ops<    Mat<U>> for MatRef<'a, T> {}
-    impl<'a, T, U> Ops<MatMut<'a, U>> for MatRef<'a, T> {}
-
-    impl<'a, T, U> Ops<&'a Mat<U>> for &'a MatMut<'a, T> {}
-    impl<'a, T, U> Ops<    Mat<U>> for &'a MatMut<'a, T> {}
-    impl<'a, T, U> Ops<MatRef<'a, U>> for &'a MatMut<'a, T> {}
-    impl<'a, T, U> Ops<MatMut<'a, U>> for &'a MatMut<'a, T> {}
+#[doc(hidden)]
+#[inline(always)]
+pub fn ref_to_ptr<T>(ptr: &T) -> *const T {
+    ptr
 }
 
 #[macro_export]
@@ -5478,35 +3804,6 @@ macro_rules! __transpose_impl {
     };
 }
 
-/// Returns a [`Mat`] containing the arguments.
-///
-/// # Example
-///
-/// ```
-/// use faer_core::mat;
-///
-/// let m = mat![
-///     [0.0, 3.0, 6.0, 9.0],
-///     [1.0, 4.0, 7.0, 10.0],
-///     [2.0, 5.0, 8.0, 11.0],
-/// ];
-///
-/// assert_eq!(m[(0, 0)], 0.0);
-/// assert_eq!(m[(1, 0)], 1.0);
-/// assert_eq!(m[(2, 0)], 2.0);
-///
-/// assert_eq!(m[(0, 1)], 3.0);
-/// assert_eq!(m[(1, 1)], 4.0);
-/// assert_eq!(m[(2, 1)], 5.0);
-///
-/// assert_eq!(m[(0, 2)], 6.0);
-/// assert_eq!(m[(1, 2)], 7.0);
-/// assert_eq!(m[(2, 2)], 8.0);
-///
-/// assert_eq!(m[(0, 3)], 9.0);
-/// assert_eq!(m[(1, 3)], 10.0);
-/// assert_eq!(m[(2, 3)], 11.0);
-/// ```
 #[macro_export]
 macro_rules! mat {
     () => {
@@ -5522,99 +3819,435 @@ macro_rules! mat {
             let ncols = data.len();
             let nrows = (*data.get(0).unwrap()).len();
 
-            let mut m = $crate::Mat::<_>::with_capacity(nrows, ncols);
-            let dst = m.as_mut_ptr();
-            let mut src = data.as_ptr() as *const _;
-            let _ = || src = &data[0][0];
-
             #[allow(unused_unsafe)]
             unsafe {
-                ::core::ptr::copy_nonoverlapping(src, dst, ncols * nrows);
-                m.set_dims(nrows, ncols);
+                $crate::Mat::<_>::with_dims(nrows, ncols, |i, j| $crate::ref_to_ptr(&data[j][i]).read())
             }
-            m
         }
     };
 }
 
+/// Parallelism strategy that can be passed to most of the routines in the library.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Parallelism {
+    /// No parallelism.
+    ///
+    /// The code is executed sequentially on the same thread that calls a function
+    /// and passes this argument.
+    None,
+    /// Rayon parallelism.
+    ///
+    /// The code is possibly executed in parallel on the current thread, as well as the currently
+    /// active rayon thread pool.
+    ///
+    /// The contained value represents a hint about the number of threads an implementation should
+    /// use, but there is no way to guarantee how many or which threads will be used.
+    ///
+    /// A value of `0` treated as equivalent to `rayon::current_num_threads()`.
+    Rayon(usize),
+}
+
+#[inline]
+#[doc(hidden)]
+pub fn join_raw(
+    op_a: impl Send + FnOnce(Parallelism),
+    op_b: impl Send + FnOnce(Parallelism),
+    parallelism: Parallelism,
+) {
+    fn implementation(
+        op_a: &mut (dyn Send + FnMut(Parallelism)),
+        op_b: &mut (dyn Send + FnMut(Parallelism)),
+        parallelism: Parallelism,
+    ) {
+        match parallelism {
+            Parallelism::None => (op_a(parallelism), op_b(parallelism)),
+            Parallelism::Rayon(n_threads) => {
+                if n_threads == 1 {
+                    (op_a(Parallelism::None), op_b(Parallelism::None))
+                } else {
+                    let n_threads = if n_threads > 0 {
+                        n_threads
+                    } else {
+                        rayon::current_num_threads()
+                    };
+                    let parallelism = Parallelism::Rayon(n_threads - n_threads / 2);
+                    rayon::join(|| op_a(parallelism), || op_b(parallelism))
+                }
+            }
+        };
+    }
+    let mut op_a = Some(op_a);
+    let mut op_b = Some(op_b);
+    implementation(
+        &mut |parallelism| (op_a.take().unwrap())(parallelism),
+        &mut |parallelism| (op_b.take().unwrap())(parallelism),
+        parallelism,
+    )
+}
+
+#[inline]
+#[doc(hidden)]
+pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelism: Parallelism) {
+    fn implementation(
+        n_tasks: usize,
+        op: &(dyn Send + Sync + Fn(usize)),
+        parallelism: Parallelism,
+    ) {
+        match parallelism {
+            Parallelism::None => (0..n_tasks).for_each(op),
+            Parallelism::Rayon(n_threads) => {
+                let n_threads = if n_threads > 0 {
+                    n_threads
+                } else {
+                    rayon::current_num_threads()
+                };
+
+                use rayon::prelude::*;
+                let min_len = n_tasks / n_threads;
+                (0..n_tasks)
+                    .into_par_iter()
+                    .with_min_len(min_len)
+                    .for_each(op);
+            }
+        }
+    }
+    implementation(n_tasks, &op, parallelism);
+}
+
+#[inline]
+#[doc(hidden)]
+pub fn parallelism_degree(parallelism: Parallelism) -> usize {
+    match parallelism {
+        Parallelism::None => 1,
+        Parallelism::Rayon(0) => rayon::current_num_threads(),
+        Parallelism::Rayon(n_threads) => n_threads,
+    }
+}
+
+enum DynMatUnitImpl<'a, T> {
+    Init(DynArray<'a, T>),
+    Uninit(DynArray<'a, MaybeUninit<T>>),
+}
+
+pub struct DynMat<'a, E: Entity> {
+    inner: E::Group<DynMatUnitImpl<'a, E::Unit>>,
+    nrows: usize,
+    ncols: usize,
+    col_stride: usize,
+}
+
+impl<'a, E: Entity> DynMat<'a, E> {
+    #[inline]
+    pub fn as_ref(&self) -> MatRef<'_, E> {
+        unsafe {
+            MatRef::from_raw_parts(
+                E::map(E::as_ref(&self.inner), |inner| match inner {
+                    DynMatUnitImpl::Init(init) => init.as_ptr(),
+                    DynMatUnitImpl::Uninit(uninit) => uninit.as_ptr() as *const E::Unit,
+                }),
+                self.nrows,
+                self.ncols,
+                1,
+                self.col_stride as isize,
+            )
+        }
+    }
+    #[inline]
+    pub fn as_mut(&mut self) -> MatMut<'_, E> {
+        unsafe {
+            MatMut::from_raw_parts(
+                E::map(E::as_mut(&mut self.inner), |inner| match inner {
+                    DynMatUnitImpl::Init(init) => init.as_mut_ptr(),
+                    DynMatUnitImpl::Uninit(uninit) => uninit.as_mut_ptr() as *mut E::Unit,
+                }),
+                self.nrows,
+                self.ncols,
+                1,
+                self.col_stride as isize,
+            )
+        }
+    }
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn round_up_to(n: usize, k: usize) -> usize {
+    (n.checked_add(k - 1).unwrap()) / k * k
+}
+
+/// Creates a temporary matrix of constant values, from the given memory stack.
+pub fn temp_mat_constant<E: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    value: E,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, E>, DynStack<'_>) {
+    let col_stride = if is_vectorizable::<E::Unit>() {
+        round_up_to(
+            nrows,
+            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
+        )
+    } else {
+        nrows
+    };
+
+    let value = value.into_units();
+
+    let (stack, alloc) = E::map_with_context(stack, value, |stack, value| {
+        let (alloc, stack) =
+            stack.make_aligned_with(ncols * col_stride, align_for::<E::Unit>(), |_| {
+                value.clone()
+            });
+        (stack, alloc)
+    });
+
+    (
+        DynMat {
+            inner: E::map(alloc, |alloc| DynMatUnitImpl::Init(alloc)),
+            nrows,
+            ncols,
+            col_stride,
+        },
+        stack,
+    )
+}
+
+/// Creates a temporary matrix of zero values, from the given memory stack.
+pub fn temp_mat_zeroed<E: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, E>, DynStack<'_>) {
+    let col_stride = if is_vectorizable::<E::Unit>() {
+        round_up_to(
+            nrows,
+            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
+        )
+    } else {
+        nrows
+    };
+
+    let value = E::into_units(E::zero());
+
+    let (stack, alloc) = E::map_with_context(
+        stack,
+        value,
+        #[inline(always)]
+        |stack, value| {
+            let (alloc, stack) = stack.make_aligned_with(
+                ncols * col_stride,
+                align_for::<E::Unit>(),
+                #[inline(always)]
+                |_| value.clone(),
+            );
+            (stack, alloc)
+        },
+    );
+
+    (
+        DynMat {
+            inner: E::map(alloc, |alloc| DynMatUnitImpl::Init(alloc)),
+            nrows,
+            ncols,
+            col_stride,
+        },
+        stack,
+    )
+}
+
+/// Creates a temporary matrix of zero values, from the given memory stack.
+pub fn temp_mat_uninit<E: ComplexField>(
+    nrows: usize,
+    ncols: usize,
+    stack: DynStack<'_>,
+) -> (DynMat<'_, E>, DynStack<'_>) {
+    if core::mem::needs_drop::<E::Unit>() || (cfg!(debug_assertions) && !cfg!(miri)) {
+        temp_mat_constant(nrows, ncols, E::nan(), stack)
+    } else {
+        let col_stride = if is_vectorizable::<E::Unit>() {
+            round_up_to(
+                nrows,
+                align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
+            )
+        } else {
+            nrows
+        };
+
+        let (stack, alloc) = E::map_with_context(
+            stack,
+            E::from_copy(E::UNIT),
+            #[inline(always)]
+            |stack, ()| {
+                let (alloc, stack) = stack
+                    .make_aligned_uninit::<E::Unit>(ncols * col_stride, align_for::<E::Unit>());
+                (stack, alloc)
+            },
+        );
+        (
+            DynMat {
+                inner: E::map(alloc, |alloc| DynMatUnitImpl::Uninit(alloc)),
+                nrows,
+                ncols,
+                col_stride,
+            },
+            stack,
+        )
+    }
+}
+
+/// Returns the stack requirements for creating a temporary matrix with the given dimensions.
+#[inline]
+pub fn temp_mat_req<E: Entity>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+    let col_stride = if is_vectorizable::<E::Unit>() {
+        round_up_to(
+            nrows,
+            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
+        )
+    } else {
+        nrows
+    };
+
+    let req = Ok(StackReq::empty());
+    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), |req, ()| {
+        let req = match (
+            req,
+            StackReq::try_new_aligned::<E::Unit>(ncols * col_stride, align_for::<E::Unit>()),
+        ) {
+            (Ok(req), Ok(additional)) => req.try_and(additional),
+            _ => Err(SizeOverflow),
+        };
+
+        (req, ())
+    });
+
+    req
+}
+
+impl<'a, FromE: Entity, ToE: Entity> Coerce<MatRef<'a, ToE>> for MatRef<'a, FromE> {
+    fn coerce(self) -> MatRef<'a, ToE> {
+        assert!(coe::is_same::<FromE, ToE>());
+        unsafe { transmute_unchecked(self) }
+    }
+}
+impl<'a, FromE: Entity, ToE: Entity> Coerce<MatMut<'a, ToE>> for MatMut<'a, FromE> {
+    fn coerce(self) -> MatMut<'a, ToE> {
+        assert!(coe::is_same::<FromE, ToE>());
+        unsafe { transmute_unchecked(self) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    macro_rules! impl_unit_entity {
+        ($ty: ty) => {
+            unsafe impl Entity for $ty {
+                type Unit = Self;
+                type SimdUnit<S: $crate::pulp::Simd> = ();
+                type Group<T> = T;
+                type GroupCopy<T: Copy> = T;
+                type GroupThreadSafe<T: Send + Sync> = T;
+                type Iter<I: Iterator> = I;
+
+                const N_COMPONENTS: usize = 1;
+                const HAS_SIMD: bool = false;
+                const UNIT: Self::GroupCopy<()> = ();
+
+                #[inline(always)]
+                fn from_units(group: Self::Group<Self::Unit>) -> Self {
+                    group
+                }
+
+                #[inline(always)]
+                fn into_units(self) -> Self::Group<Self::Unit> {
+                    self
+                }
+
+                #[inline(always)]
+                fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+                    group
+                }
+
+                #[inline(always)]
+                fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+                    group
+                }
+
+                #[inline(always)]
+                fn map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+                    let mut f = f;
+                    f(group)
+                }
+
+                #[inline(always)]
+                fn map_with_context<Ctx, T, U>(
+                    ctx: Ctx,
+                    group: Self::Group<T>,
+                    f: impl FnMut(Ctx, T) -> (Ctx, U),
+                ) -> (Ctx, Self::Group<U>) {
+                    let mut f = f;
+                    f(ctx, group)
+                }
+
+                #[inline(always)]
+                fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+                    (first, second)
+                }
+                #[inline(always)]
+                fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+                    zipped
+                }
+
+                #[inline(always)]
+                fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+                    iter.into_iter()
+                }
+
+                #[inline(always)]
+                fn from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
+                    group
+                }
+
+                #[inline(always)]
+                fn into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
+                    group
+                }
+            }
+        };
+    }
+
     use super::*;
+    use assert2::assert;
 
     #[test]
     fn basic_slice() {
         let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let slice = unsafe { MatRef::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
+        let slice = unsafe { MatRef::<'_, f64>::from_raw_parts(data.as_ptr(), 2, 3, 3, 1) };
 
-        fancy_assert!(slice.rb().get(0, 0) == &1.0);
-        fancy_assert!(slice.rb().get(0, 1) == &2.0);
-        fancy_assert!(slice.rb().get(0, 2) == &3.0);
+        assert!(slice.get(0, 0) == &1.0);
+        assert!(slice.get(0, 1) == &2.0);
+        assert!(slice.get(0, 2) == &3.0);
 
-        fancy_assert!(slice.rb().get(1, 0) == &4.0);
-        fancy_assert!(slice.rb().get(1, 1) == &5.0);
-        fancy_assert!(slice.rb().get(1, 2) == &6.0);
-
-        // miri tests
-        for r in slice.rb().into_row_iter() {
-            for _ in r {}
-        }
-        for r in slice.rb().into_row_iter().rev() {
-            for _ in r.into_iter().rev() {}
-        }
-
-        for c in slice.rb().into_col_iter() {
-            for _ in c {}
-        }
-        for c in slice.rb().into_col_iter().rev() {
-            for _ in c.into_iter().rev() {}
-        }
-    }
-
-    #[test]
-    fn basic_slice_mut() {
-        let mut data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let mut slice = unsafe { MatMut::from_raw_parts(data.as_mut_ptr(), 2, 3, 3, 1) };
-
-        fancy_assert!(slice.rb_mut().get(0, 0) == &mut 1.0);
-        fancy_assert!(slice.rb_mut().get(0, 1) == &mut 2.0);
-        fancy_assert!(slice.rb_mut().get(0, 2) == &mut 3.0);
-
-        fancy_assert!(slice.rb_mut().get(1, 0) == &mut 4.0);
-        fancy_assert!(slice.rb_mut().get(1, 1) == &mut 5.0);
-        fancy_assert!(slice.rb_mut().get(1, 2) == &mut 6.0);
-
-        // miri tests
-        for r in slice.rb_mut().into_row_iter() {
-            for _ in r {}
-        }
-        for r in slice.rb_mut().into_row_iter().rev() {
-            for _ in r.into_iter().rev() {}
-        }
-
-        for c in slice.rb_mut().into_col_iter() {
-            for _ in c {}
-        }
-        for c in slice.rb_mut().into_col_iter().rev() {
-            for _ in c.into_iter().rev() {}
-        }
+        assert!(slice.get(1, 0) == &4.0);
+        assert!(slice.get(1, 1) == &5.0);
+        assert!(slice.get(1, 2) == &6.0);
     }
 
     #[test]
     fn empty() {
         {
             let m = Mat::<f64>::new();
-            fancy_assert!(m.nrows() == 0);
-            fancy_assert!(m.ncols() == 0);
-            fancy_assert!(m.row_capacity() == 0);
-            fancy_assert!(m.col_capacity() == 0);
+            assert!(m.nrows() == 0);
+            assert!(m.ncols() == 0);
+            assert!(m.row_capacity() == 0);
+            assert!(m.col_capacity() == 0);
         }
 
         {
             let m = Mat::<f64>::with_capacity(100, 120);
-            fancy_assert!(m.nrows() == 0);
-            fancy_assert!(m.ncols() == 0);
-            fancy_assert!(m.row_capacity() == 100);
-            fancy_assert!(m.col_capacity() == 120);
+            assert!(m.nrows() == 0);
+            assert!(m.ncols() == 0);
+            assert!(m.row_capacity() == 100);
+            assert!(m.col_capacity() == 120);
         }
     }
 
@@ -5623,41 +4256,46 @@ mod tests {
         let mut m = Mat::<f64>::new();
 
         m.reserve_exact(0, 0);
-        fancy_assert!(m.row_capacity() == 0);
-        fancy_assert!(m.col_capacity() == 0);
+        assert!(m.row_capacity() == 0);
+        assert!(m.col_capacity() == 0);
 
         m.reserve_exact(1, 1);
-        fancy_assert!(m.row_capacity() == 1);
-        fancy_assert!(m.col_capacity() == 1);
+        assert!(m.row_capacity() >= 1);
+        assert!(m.col_capacity() == 1);
 
         m.reserve_exact(2, 0);
-        fancy_assert!(m.row_capacity() == 2);
-        fancy_assert!(m.col_capacity() == 1);
+        assert!(m.row_capacity() >= 2);
+        assert!(m.col_capacity() == 1);
 
         m.reserve_exact(2, 3);
-        fancy_assert!(m.row_capacity() == 2);
-        fancy_assert!(m.col_capacity() == 3);
+        assert!(m.row_capacity() >= 2);
+        assert!(m.col_capacity() == 3);
     }
+
+    #[derive(Debug, PartialEq, Clone)]
+    struct ZST;
 
     #[test]
     fn reserve_zst() {
-        let mut m = Mat::<()>::new();
+        impl_unit_entity!(ZST);
+
+        let mut m = Mat::<ZST>::new();
 
         m.reserve_exact(0, 0);
-        fancy_assert!(m.row_capacity() == 0);
-        fancy_assert!(m.col_capacity() == 0);
+        assert!(m.row_capacity() == 0);
+        assert!(m.col_capacity() == 0);
 
         m.reserve_exact(1, 1);
-        fancy_assert!(m.row_capacity() == 1);
-        fancy_assert!(m.col_capacity() == 1);
+        assert!(m.row_capacity() == 1);
+        assert!(m.col_capacity() == 1);
 
         m.reserve_exact(2, 0);
-        fancy_assert!(m.row_capacity() == 2);
-        fancy_assert!(m.col_capacity() == 1);
+        assert!(m.row_capacity() == 2);
+        assert!(m.col_capacity() == 1);
 
         m.reserve_exact(2, 3);
-        fancy_assert!(m.row_capacity() == 2);
-        fancy_assert!(m.col_capacity() == 3);
+        assert!(m.row_capacity() == 2);
+        assert!(m.col_capacity() == 3);
 
         m.reserve_exact(usize::MAX, usize::MAX);
     }
@@ -5666,62 +4304,36 @@ mod tests {
     fn resize() {
         let mut m = Mat::new();
         let f = |i, j| i as f64 - j as f64;
-        m.resize_with(f, 2, 3);
-        fancy_assert!(m[(0, 0)] == 0.0);
-        fancy_assert!(m[(0, 1)] == -1.0);
-        fancy_assert!(m[(0, 2)] == -2.0);
-        fancy_assert!(m[(1, 0)] == 1.0);
-        fancy_assert!(m[(1, 1)] == 0.0);
-        fancy_assert!(m[(1, 2)] == -1.0);
+        m.resize_with(2, 3, f);
+        assert!(m.read(0, 0) == 0.0);
+        assert!(m.read(0, 1) == -1.0);
+        assert!(m.read(0, 2) == -2.0);
+        assert!(m.read(1, 0) == 1.0);
+        assert!(m.read(1, 1) == 0.0);
+        assert!(m.read(1, 2) == -1.0);
 
-        m.resize_with(f, 1, 2);
-        fancy_assert!(m[(0, 0)] == 0.0);
-        fancy_assert!(m[(0, 1)] == -1.0);
+        m.resize_with(1, 2, f);
+        assert!(m.read(0, 0) == 0.0);
+        assert!(m.read(0, 1) == -1.0);
 
-        m.resize_with(f, 2, 1);
-        fancy_assert!(m[(0, 0)] == 0.0);
-        fancy_assert!(m[(1, 0)] == 1.0);
+        m.resize_with(2, 1, f);
+        assert!(m.read(0, 0) == 0.0);
+        assert!(m.read(1, 0) == 1.0);
 
-        m.resize_with(f, 1, 2);
-        fancy_assert!(m[(0, 0)] == 0.0);
-        fancy_assert!(m[(0, 1)] == -1.0);
-    }
-
-    #[test]
-    fn matrix_macro() {
-        let x = mat![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0],
-            [10.0, 11.0, 12.0],
-        ];
-
-        fancy_assert!(x[(0, 0)] == 1.0);
-        fancy_assert!(x[(0, 1)] == 2.0);
-        fancy_assert!(x[(0, 2)] == 3.0);
-
-        fancy_assert!(x[(1, 0)] == 4.0);
-        fancy_assert!(x[(1, 1)] == 5.0);
-        fancy_assert!(x[(1, 2)] == 6.0);
-
-        fancy_assert!(x[(2, 0)] == 7.0);
-        fancy_assert!(x[(2, 1)] == 8.0);
-        fancy_assert!(x[(2, 2)] == 9.0);
-
-        fancy_assert!(x[(3, 0)] == 10.0);
-        fancy_assert!(x[(3, 1)] == 11.0);
-        fancy_assert!(x[(3, 2)] == 12.0);
+        m.resize_with(1, 2, f);
+        assert!(m.read(0, 0) == 0.0);
+        assert!(m.read(0, 1) == -1.0);
     }
 
     #[test]
     fn resize_zst() {
         // miri test
         let mut m = Mat::new();
-        let f = |_i, _j| ();
-        m.resize_with(f, 2, 3);
-        m.resize_with(f, 1, 2);
-        m.resize_with(f, 2, 1);
-        m.resize_with(f, 1, 2);
+        let f = |_i, _j| ZST;
+        m.resize_with(2, 3, f);
+        m.resize_with(1, 2, f);
+        m.resize_with(2, 1, f);
+        m.resize_with(1, 2, f);
     }
 
     #[test]
@@ -5737,75 +4349,70 @@ mod tests {
     }
 
     #[test]
-    fn add_mat() {
-        let x = mat![[1.0, -2.0], [4.0, -8.0],] + mat![[4.0, 5.0], [-6.0, -7.0],];
+    fn matrix_macro() {
+        let x = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 
-        fancy_assert!(x[(0, 0)] == 5.0);
-        fancy_assert!(x[(0, 1)] == 3.0);
+        assert!(x.read(0, 0) == 1.0);
+        assert!(x.read(0, 1) == 2.0);
+        assert!(x.read(0, 2) == 3.0);
 
-        fancy_assert!(x[(1, 0)] == -2.0);
-        fancy_assert!(x[(1, 1)] == -15.0);
+        assert!(x.read(1, 0) == 4.0);
+        assert!(x.read(1, 1) == 5.0);
+        assert!(x.read(1, 2) == 6.0);
 
-        let lhs = mat![
-            [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
-            [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
-        ];
-        let rhs = mat![
-            [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
-            [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
-        ];
-
-        let lhs = lhs.conjugate();
-
-        let y = lhs + &rhs;
-
-        for i in 0..2 {
-            for j in 0..2 {
-                fancy_assert!(y[(i, j)] == lhs[(i, j)].into_num() + rhs[(i, j)])
-            }
-        }
+        assert!(x.read(2, 0) == 7.0);
+        assert!(x.read(2, 1) == 8.0);
+        assert!(x.read(2, 2) == 9.0);
     }
 
     #[test]
-    #[should_panic]
-    fn add_different_size() {
-        let _ = &mat![[1.0, -2.0], [4.0, -8.0],] + &mat![[4.0, 5.0],];
+    fn matrix_macro_cplx() {
+        let new = Complex::new;
+        let mut x = mat![
+            [new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0)],
+            [new(7.0, 8.0), new(9.0, 10.0), new(11.0, 12.0)],
+            [new(13.0, 14.0), new(15.0, 16.0), new(17.0, 18.0)]
+        ];
+
+        assert!(x.read(0, 0) == Complex::new(1.0, 2.0));
+        assert!(x.read(0, 1) == Complex::new(3.0, 4.0));
+        assert!(x.read(0, 2) == Complex::new(5.0, 6.0));
+
+        assert!(x.read(1, 0) == Complex::new(7.0, 8.0));
+        assert!(x.read(1, 1) == Complex::new(9.0, 10.0));
+        assert!(x.read(1, 2) == Complex::new(11.0, 12.0));
+
+        assert!(x.read(2, 0) == Complex::new(13.0, 14.0));
+        assert!(x.read(2, 1) == Complex::new(15.0, 16.0));
+        assert!(x.read(2, 2) == Complex::new(17.0, 18.0));
+
+        x.write(1, 0, Complex::new(3.0, 2.0));
+        assert!(x.read(1, 0) == Complex::new(3.0, 2.0));
     }
 
     #[test]
-    fn sub_mat() {
-        let x =
-            mat![[1.0, -2.0, 3.0], [4.0, -8.0, 2.0],] - mat![[4.0, 5.0, 3.0], [-6.0, -7.0, 4.0],];
-
-        fancy_assert!(x[(0, 0)] == -3.0);
-        fancy_assert!(x[(0, 1)] == -7.0);
-        fancy_assert!(x[(0, 2)] == 0.0);
-
-        fancy_assert!(x[(1, 0)] == 10.0);
-        fancy_assert!(x[(1, 1)] == -1.0);
-        fancy_assert!(x[(1, 2)] == -2.0);
-
-        let lhs = mat![
-            [c64::new(4.0, 5.0), c64::new(6.0, 7.0)],
-            [c64::new(1.0, 2.0), c64::new(2.0, 3.0)],
+    fn matrix_macro_native_cplx() {
+        let new = Complex::new;
+        let mut x = mat![
+            [new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0)],
+            [new(7.0, 8.0), new(9.0, 10.0), new(11.0, 12.0)],
+            [new(13.0, 14.0), new(15.0, 16.0), new(17.0, 18.0)]
         ];
-        let rhs = mat![
-            [c64::new(1.0, 2.0), c64::new(3.0, -4.0)],
-            [c64::new(-1.0, 2.0), c64::new(-3.0, -4.0)],
-        ];
-        let y = (&lhs - rhs.conjugate()) * 2.0;
 
-        for i in 0..2 {
-            for j in 0..2 {
-                fancy_assert!(y[(i, j)] == 2.0 * (lhs[(i, j)] - rhs[(i, j)].conj()));
-            }
-        }
-    }
+        assert!(x.read(0, 0) == Complex::new(1.0, 2.0));
+        assert!(x.read(0, 1) == Complex::new(3.0, 4.0));
+        assert!(x.read(0, 2) == Complex::new(5.0, 6.0));
 
-    #[test]
-    #[should_panic]
-    fn sub_different_size() {
-        let _ = &mat![[1.0, -2.0], [4.0, -8.0],] - &mat![[4.0, 5.0],];
+        assert!(x.read(1, 0) == Complex::new(7.0, 8.0));
+        assert!(x.read(1, 1) == Complex::new(9.0, 10.0));
+        assert!(x.read(1, 2) == Complex::new(11.0, 12.0));
+
+        assert!(x.read(2, 0) == Complex::new(13.0, 14.0));
+        assert!(x.read(2, 1) == Complex::new(15.0, 16.0));
+        assert!(x.read(2, 2) == Complex::new(17.0, 18.0));
+
+        x.write(1, 0, Complex::new(3.0, 2.0));
+        assert!(x.read(1, 0) == Complex::new(3.0, 2.0));
     }
 
     #[test]
@@ -5824,15 +4431,15 @@ mod tests {
             [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
         ];
 
-        fancy_assert!(mf32.as_ref().transpose().to_owned().as_ref() == mf32.transpose());
-        fancy_assert!(mf64.as_ref().transpose().to_owned().as_ref() == mf64.transpose());
-        fancy_assert!(mf32c.as_ref().transpose().to_owned().as_ref() == mf32c.transpose());
-        fancy_assert!(mf64c.as_ref().transpose().to_owned().as_ref() == mf64c.transpose());
+        assert!(mf32.transpose().to_owned().as_ref() == mf32.transpose());
+        assert!(mf64.transpose().to_owned().as_ref() == mf64.transpose());
+        assert!(mf32c.transpose().to_owned().as_ref() == mf32c.transpose());
+        assert!(mf64c.transpose().to_owned().as_ref() == mf64c.transpose());
 
-        fancy_assert!(mf32.as_mut().transpose().to_owned().as_ref() == mf32.transpose());
-        fancy_assert!(mf64.as_mut().transpose().to_owned().as_ref() == mf64.transpose());
-        fancy_assert!(mf32c.as_mut().transpose().to_owned().as_ref() == mf32c.transpose());
-        fancy_assert!(mf64c.as_mut().transpose().to_owned().as_ref() == mf64c.transpose());
+        assert!(mf32.as_mut().transpose().to_owned().as_ref() == mf32.transpose());
+        assert!(mf64.as_mut().transpose().to_owned().as_ref() == mf64.transpose());
+        assert!(mf32c.as_mut().transpose().to_owned().as_ref() == mf32c.transpose());
+        assert!(mf64c.as_mut().transpose().to_owned().as_ref() == mf64c.transpose());
     }
 
     #[test]
@@ -5851,14 +4458,14 @@ mod tests {
             [C::new(7., 7.), C::new(8., 8.), C::new(9., 9.)]
         ];
 
-        fancy_assert!(mf32.as_ref().adjoint().to_owned().as_ref() == mf32.adjoint());
-        fancy_assert!(mf64.as_ref().adjoint().to_owned().as_ref() == mf64.adjoint());
-        fancy_assert!(mf32c.as_ref().adjoint().to_owned().as_ref() == mf32c.adjoint());
-        fancy_assert!(mf64c.as_ref().adjoint().to_owned().as_ref() == mf64c.adjoint());
+        assert!(mf32.as_ref().adjoint().to_owned().as_ref() == mf32.adjoint());
+        assert!(mf64.as_ref().adjoint().to_owned().as_ref() == mf64.adjoint());
+        assert!(mf32c.as_ref().adjoint().to_owned().as_ref() == mf32c.adjoint());
+        assert!(mf64c.as_ref().adjoint().to_owned().as_ref() == mf64c.adjoint());
 
-        fancy_assert!(mf32.as_mut().adjoint().to_owned().as_ref() == mf32.adjoint());
-        fancy_assert!(mf64.as_mut().adjoint().to_owned().as_ref() == mf64.adjoint());
-        fancy_assert!(mf32c.as_mut().adjoint().to_owned().as_ref() == mf32c.adjoint());
-        fancy_assert!(mf64c.as_mut().adjoint().to_owned().as_ref() == mf64c.adjoint());
+        assert!(mf32.as_mut().adjoint().to_owned().as_ref() == mf32.adjoint());
+        assert!(mf64.as_mut().adjoint().to_owned().as_ref() == mf64.adjoint());
+        assert!(mf32c.as_mut().adjoint().to_owned().as_ref() == mf32c.adjoint());
+        assert!(mf64c.as_mut().adjoint().to_owned().as_ref() == mf64c.adjoint());
     }
 }
