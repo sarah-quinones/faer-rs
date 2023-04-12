@@ -10,10 +10,17 @@ use dyn_stack::{DynArray, DynStack, SizeOverflow, StackReq};
 use num_complex::Complex;
 use pulp::Simd;
 use reborrow::*;
+use zip::Zip;
 
 extern crate alloc;
 
+pub mod householder;
+pub mod inverse;
 pub mod mul;
+pub mod permutation;
+pub mod solve;
+pub mod zip;
+
 #[doc(hidden)]
 pub mod simd;
 
@@ -286,6 +293,17 @@ pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
 pub enum Conj {
     Yes,
     No,
+}
+
+impl Conj {
+    #[inline]
+    pub fn compose(self, other: Conj) -> Conj {
+        if self == other {
+            Conj::No
+        } else {
+            Conj::Yes
+        }
+    }
 }
 
 pub unsafe trait Conjugate: Entity {
@@ -2695,6 +2713,17 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     #[track_caller]
     #[inline(always)]
+    pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
+        self.submatrix(row_start, 0, nrows, self.ncols())
+    }
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
+        self.submatrix(0, col_start, self.nrows(), ncols)
+    }
+
+    #[track_caller]
+    #[inline(always)]
     pub fn diagonal(self) -> Self {
         let size = self.nrows().min(self.ncols());
         let row_stride = self.row_stride();
@@ -2713,6 +2742,12 @@ impl<'a, E: Entity> MatRef<'a, E> {
             self.read_unchecked(row, col)
         });
         mat
+    }
+
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
+    #[inline]
+    pub fn cwise(self) -> Zip<(Self,)> {
+        Zip { tuple: (self,) }
     }
 
     #[doc(hidden)]
@@ -2949,6 +2984,19 @@ impl<'a, E: Entity> MatMut<'a, E> {
 
     #[track_caller]
     #[inline(always)]
+    pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
+        let ncols = self.ncols();
+        self.submatrix(row_start, 0, nrows, ncols)
+    }
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
+        let nrows = self.nrows();
+        self.submatrix(0, col_start, nrows, ncols)
+    }
+
+    #[track_caller]
+    #[inline(always)]
     pub fn diagonal(self) -> Self {
         unsafe { self.into_const().diagonal().const_cast() }
     }
@@ -2960,6 +3008,12 @@ impl<'a, E: Entity> MatMut<'a, E> {
         E: Conjugate,
     {
         self.rb().to_owned()
+    }
+
+    /// Returns a thin wrapper that can be used to execute coefficientwise operations on matrices.
+    #[inline]
+    pub fn cwise(self) -> Zip<(Self,)> {
+        Zip { tuple: (self,) }
     }
 }
 
@@ -3232,6 +3286,17 @@ pub struct MatUnit<T: 'static> {
 
 unsafe impl<E: Entity> Send for Mat<E> {}
 unsafe impl<E: Entity> Sync for Mat<E> {}
+
+impl<E: Entity> Clone for Mat<E> {
+    fn clone(&self) -> Self {
+        let this = self.as_ref();
+        unsafe {
+            Self::with_dims(self.nrows, self.ncols, |i, j| {
+                E::from_units(E::deref(this.get_unchecked(i, j)))
+            })
+        }
+    }
+}
 
 impl<T> MatUnit<T> {
     #[cold]
@@ -4056,7 +4121,7 @@ pub fn temp_mat_zeroed<E: ComplexField>(
 }
 
 /// Creates a temporary matrix of zero values, from the given memory stack.
-pub fn temp_mat_uninit<E: ComplexField>(
+pub unsafe fn temp_mat_uninit<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     stack: DynStack<'_>,
@@ -4124,15 +4189,67 @@ pub fn temp_mat_req<E: Entity>(nrows: usize, ncols: usize) -> Result<StackReq, S
 }
 
 impl<'a, FromE: Entity, ToE: Entity> Coerce<MatRef<'a, ToE>> for MatRef<'a, FromE> {
+    #[inline(always)]
     fn coerce(self) -> MatRef<'a, ToE> {
         assert!(coe::is_same::<FromE, ToE>());
         unsafe { transmute_unchecked(self) }
     }
 }
 impl<'a, FromE: Entity, ToE: Entity> Coerce<MatMut<'a, ToE>> for MatMut<'a, FromE> {
+    #[inline(always)]
     fn coerce(self) -> MatMut<'a, ToE> {
         assert!(coe::is_same::<FromE, ToE>());
         unsafe { transmute_unchecked(self) }
+    }
+}
+
+#[macro_export]
+macro_rules! zipped {
+    ($first: expr $(, $rest: expr)* $(,)?) => {
+        $first.cwise()$(.zip($rest))*
+    };
+}
+
+impl<'a, E: Entity> Debug for MatRef<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        struct DebugRow<'a, T: Entity>(MatRef<'a, T>);
+
+        impl<'a, T: Entity> Debug for DebugRow<'a, T> {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let mut j = 0;
+                f.debug_list()
+                    .entries(core::iter::from_fn(|| {
+                        let ret = if j < self.0.ncols() {
+                            Some(T::from_units(T::deref(self.0.get(0, j))))
+                        } else {
+                            None
+                        };
+                        j += 1;
+                        ret
+                    }))
+                    .finish()
+            }
+        }
+
+        writeln!(f, "[")?;
+        for i in 0..self.nrows() {
+            let row = self.subrows(i, 1);
+            DebugRow(row).fmt(f)?;
+            f.write_str(",\n")?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'a, E: Entity> Debug for MatMut<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.rb().fmt(f)
+    }
+}
+
+impl<E: Entity> Debug for Mat<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
     }
 }
 
