@@ -1,7 +1,8 @@
 use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular::BlockStructure, solve, zipped, ComplexField, Conj, Entity, MatMut, Parallelism,
+    mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
+    Conj, Entity, MatMut, Parallelism,
 };
 use reborrow::*;
 
@@ -102,10 +103,9 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
     parallelism: Parallelism,
     params: LdltDiagParams,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = dim;
     let _ = parallelism;
     let _ = params;
-    Ok(StackReq::default())
+    temp_mat_req::<E>(dim, dim)
 }
 
 fn cholesky_in_place_impl<E: ComplexField>(
@@ -125,8 +125,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     } else {
         let block_size = <usize as Ord>::min(n / 2, 128);
         let rem = n - block_size;
-        let [mut l00, top_right, mut a10, mut a11] =
-            matrix.rb_mut().split_at(block_size, block_size);
+        let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
 
         cholesky_in_place_impl(l00.rb_mut(), parallelism, stack.rb_mut());
 
@@ -141,7 +140,8 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
         {
             // reserve space for L10×D0
-            let mut l10xd0 = top_right.submatrix(0, 0, block_size, rem).transpose();
+            let (mut l10xd0, _) = unsafe { temp_mat_uninit(rem, block_size, stack.rb_mut()) };
+            let mut l10xd0 = l10xd0.as_mut();
 
             for j in 0..block_size {
                 let l10xd0_col = l10xd0.rb_mut().col(j);
@@ -149,6 +149,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 let d0_elem = d0.read(j, 0);
 
                 let d0_elem_inv = d0_elem.inv();
+
                 zipped!(l10xd0_col, a10_col).for_each(|mut l10xd0_elem, mut a10_elem| {
                     let a10_elem_read = a10_elem.read();
                     a10_elem.write(a10_elem_read.mul(&d0_elem_inv));

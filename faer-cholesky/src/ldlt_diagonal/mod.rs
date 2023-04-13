@@ -86,7 +86,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
             let a_reconstructed = reconstruct_matrix(a.as_ref());
@@ -112,7 +115,10 @@ mod tests {
         raw_cholesky_in_place(
             a.as_mut(),
             Parallelism::Rayon(8),
-            DynStack::new(&mut []),
+            DynStack::new(&mut GlobalMemBuffer::new(
+                raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    .unwrap(),
+            )),
             Default::default(),
         );
         solve_in_place_with_conj(
@@ -191,7 +197,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
             rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
@@ -220,7 +229,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
@@ -246,7 +258,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
@@ -272,7 +287,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
@@ -336,7 +354,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
@@ -403,7 +424,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
@@ -470,7 +494,10 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut []),
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             );
 
