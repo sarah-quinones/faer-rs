@@ -85,7 +85,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A21 -= L20 × L10^H
         for j in 0..idx {
             let l20_col = l20.col(j);
-            let l10_conj = l10.read(0, idx).conj();
+            let l10_conj = l10.read(0, j).conj();
 
             zipped!(a21.rb_mut(), l20_col)
                 .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));

@@ -9,140 +9,6 @@ use faer_core::{
 use pulp::Arch;
 use reborrow::*;
 
-macro_rules! generate {
-    ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {
-        unsafe fn $name(
-            arch: pulp::Arch,
-            n: usize,
-            l_col: *mut $ty,
-            w: *mut $ty,
-            w_col_stride: isize,
-            p_array: *const $ty,
-            beta_array: *const $ty,
-        ) {
-            struct Impl {
-                n: usize,
-                l_col: *mut $ty,
-                w: *mut $ty,
-                w_col_stride: isize,
-                p_array: *const $ty,
-                beta_array: *const $ty,
-            }
-            impl pulp::WithSimd for Impl {
-                type Output = ();
-
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) {
-                    unsafe {
-                        let Self { n, l_col, w, w_col_stride, p_array, beta_array } = self;
-
-                        let l_col = l_col as *mut $ty;
-                        let w = w as *mut $ty;
-                        let p_array = p_array as *const $ty;
-                        let beta_array = beta_array as *const $ty;
-                        let lanes = size_of::<$tys>() / size_of::<$ty>();
-
-                        let n_vec = n / lanes;
-                        let n_rem = n % lanes;
-
-                        seq!(I in 0..$r {
-                            let p~I = -*p_array.add(I);
-                            let beta~I = *beta_array.add(I);
-                            let w_col~I = w.offset(I * w_col_stride);
-                        });
-
-                        // vectorized section
-                        {
-                            let l_col = l_col as *mut $tys;
-
-                            seq!(I in 0..$r {
-                                let p~I = simd.$splat(p~I);
-                                let beta~I = simd.$splat(beta~I);
-                                let w_col~I = w_col~I as *mut $tys;
-                            });
-
-                            for i in 0..n_vec {
-                                let mut l = *l_col.add(i);
-                                seq!(I in 0..$r {
-                                    let mut w~I = *w_col~I.add(i);
-                                });
-
-                                seq!(I in 0..$r {
-                                    w~I = simd.$mul_add(p~I, l, w~I);
-                                    l = simd.$mul_add(beta~I, w~I, l);
-                                });
-
-                                l_col.add(i).write(l);
-                                seq!(I in 0..$r {
-                                    w_col~I.add(i).write(w~I);
-                                });
-                            }
-                        }
-                        // scalar section
-                        {
-                            for i in n - n_rem..n {
-                                let mut l = *l_col.add(i);
-                                seq!(I in 0..$r {
-                                    let mut w~I = *w_col~I.add(i);
-                                });
-
-                                seq!(I in 0..$r {
-                                    w~I = $ty::mul_add(p~I, l, w~I);
-                                    l = $ty::mul_add(beta~I, w~I, l);
-                                });
-
-                                l_col.add(i).write(l);
-                                seq!(I in 0..$r {
-                                    w_col~I.add(i).write(w~I);
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            arch.dispatch(Impl { n, l_col, w, w_col_stride, p_array, beta_array })
-        }
-    };
-}
-
-macro_rules! generate_generic {
-    ($name: ident, $r: tt) => {
-        unsafe fn $name<T: ComplexField>(
-            n: usize,
-            l_col: *mut T,
-            l_row_stride: isize,
-            w: *mut T,
-            w_row_stride: isize,
-            w_col_stride: isize,
-            p_array: *const T,
-            beta_array: *const T,
-        ) {
-            seq!(I in 0..$r {
-                let p~I = (*p_array.add(I)).neg();
-                let beta~I = (*beta_array.add(I)).clone();
-                let w_col~I = w.offset(I * w_col_stride);
-            });
-
-            for i in 0..n {
-                let mut l = (*l_col.offset(i as isize * l_row_stride)).clone();
-                seq!(I in 0..$r {
-                    let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
-                });
-
-                seq!(I in 0..$r {
-                    w~I = (p~I.mul(&l)).add(&w~I);
-                    l = (beta~I.mul(&w~I)).add(&l);
-                });
-
-                *l_col.offset(i as isize * l_row_stride) = l;
-                seq!(I in 0..$r {
-                    *w_col~I.offset(i as isize * w_row_stride) = w~I;
-                });
-            }
-        }
-    };
-}
-
 struct RankRUpdate<'a, T: Entity> {
     ld: MatMut<'a, T>,
     w: MatMut<'a, T>,
@@ -491,7 +357,7 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
     }
 }
 
-pub fn rank_update_step_impl4<E: ComplexField>(
+fn rank_update_step_impl4<E: ComplexField>(
     arch: pulp::Arch,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
@@ -550,7 +416,7 @@ pub fn rank_update_step_impl4<E: ComplexField>(
     }
 }
 
-pub fn rank_update_step_impl3<E: ComplexField>(
+fn rank_update_step_impl3<E: ComplexField>(
     arch: pulp::Arch,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
@@ -606,7 +472,7 @@ pub fn rank_update_step_impl3<E: ComplexField>(
     }
 }
 
-pub fn rank_update_step_impl2<E: ComplexField>(
+fn rank_update_step_impl2<E: ComplexField>(
     arch: pulp::Arch,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
@@ -654,7 +520,7 @@ pub fn rank_update_step_impl2<E: ComplexField>(
     }
 }
 
-pub fn rank_update_step_impl1<E: ComplexField>(
+fn rank_update_step_impl1<E: ComplexField>(
     arch: pulp::Arch,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
