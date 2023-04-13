@@ -1,0 +1,42 @@
+[package]
+name = "faer-cholesky"
+version = "0.7.0"
+edition = "2021"
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
+
+[dependencies]
+faer-core = { version = "0.7.0", default-features = false, path = "../faer-core" }
+seq-macro = "0.3"
+
+pulp = { workspace = true, default-features = false }
+reborrow = { workspace = true }
+dyn-stack = { workspace = true }
+assert2 = { workspace = true }
+num-traits = { workspace = true }
+num-complex = { workspace = true }
+rayon = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["faer-core/std", "pulp/std"]
+nightly = ["faer-core/nightly", "pulp/nightly"]
+
+[dev-dependencies]
+criterion = "0.4"
+rand = "0.8.5"
+nalgebra = "0.32.2"
+assert_approx_eq = "1.1.0"
+rayon = "1.7"
+dbgf = "0.1.0"
+
+# [[bench]]
+# name = "bench"
+# harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]

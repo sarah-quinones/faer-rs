@@ -25,7 +25,8 @@ pub mod zip;
 pub mod simd;
 
 #[inline(always)]
-unsafe fn transmute_unchecked<From, To>(t: From) -> To {
+#[doc(hidden)]
+pub unsafe fn transmute_unchecked<From, To>(t: From) -> To {
     assert!(core::mem::size_of::<From>() == core::mem::size_of::<To>());
     core::mem::transmute_copy(&ManuallyDrop::new(t))
 }
@@ -44,6 +45,40 @@ pub struct c32 {
 pub struct c64 {
     pub re: f64,
     pub im: f64,
+}
+
+impl core::ops::Sub for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        <Self as ComplexField>::sub(&self, &rhs)
+    }
+}
+impl core::ops::Add for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        <Self as ComplexField>::add(&self, &rhs)
+    }
+}
+
+impl core::ops::Sub for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        <Self as ComplexField>::sub(&self, &rhs)
+    }
+}
+impl core::ops::Add for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        <Self as ComplexField>::add(&self, &rhs)
+    }
 }
 
 impl From<c32> for num_complex::Complex32 {
@@ -2557,20 +2592,14 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
-        E::from_units(E::map(self.get_unchecked(row, col), |ptr| (*ptr).clone())).canonicalize()
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E {
+        E::from_units(E::map(self.get_unchecked(row, col), |ptr| (*ptr).clone()))
     }
 
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
-        E::from_units(E::map(self.get(row, col), |ptr| (*ptr).clone())).canonicalize()
+    pub fn read(&self, row: usize, col: usize) -> E {
+        E::from_units(E::map(self.get(row, col), |ptr| (*ptr).clone()))
     }
 
     #[inline(always)]
@@ -2716,10 +2745,23 @@ impl<'a, E: Entity> MatRef<'a, E> {
     pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
         self.submatrix(row_start, 0, nrows, self.ncols())
     }
+
     #[track_caller]
     #[inline(always)]
     pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
         self.submatrix(0, col_start, self.nrows(), ncols)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn row(self, row_idx: usize) -> Self {
+        self.subrows(row_idx, 1)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn col(self, col_idx: usize) -> Self {
+        self.subcols(col_idx, 1)
     }
 
     #[track_caller]
@@ -2739,7 +2781,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     {
         let mut mat = Mat::new();
         mat.resize_with(self.nrows(), self.ncols(), |row, col| unsafe {
-            self.read_unchecked(row, col)
+            self.read_unchecked(row, col).canonicalize()
         });
         mat
     }
@@ -2879,19 +2921,13 @@ impl<'a, E: Entity> MatMut<'a, E> {
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E {
         self.rb().read_unchecked(row, col)
     }
 
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
+    pub fn read(&self, row: usize, col: usize) -> E {
         self.rb().read(row, col)
     }
 
@@ -2993,6 +3029,18 @@ impl<'a, E: Entity> MatMut<'a, E> {
     pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
         let nrows = self.nrows();
         self.submatrix(0, col_start, nrows, ncols)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn row(self, row_idx: usize) -> Self {
+        self.subrows(row_idx, 1)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    pub fn col(self, col_idx: usize) -> Self {
+        self.subcols(col_idx, 1)
     }
 
     #[track_caller]
@@ -3790,19 +3838,13 @@ impl<E: Entity> Mat<E> {
 
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
+    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E {
         self.as_ref().read_unchecked(row, col)
     }
 
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: usize, col: usize) -> E::Canonical
-    where
-        E: Conjugate,
-    {
+    pub fn read(&self, row: usize, col: usize) -> E {
         self.as_ref().read(row, col)
     }
 

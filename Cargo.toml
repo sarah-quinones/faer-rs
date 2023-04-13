@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "faer-core",
+  "faer-cholesky",
 ]
 
 [workspace.dependencies]
