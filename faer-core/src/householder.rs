@@ -406,7 +406,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
 /// Computes the product of the matrix, multiplied by the given block Householder transformation,
 /// and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_right_in_place<E: ComplexField>(
+pub fn apply_block_householder_on_the_right_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
@@ -414,7 +414,7 @@ pub fn apply_block_householder_on_the_right_in_place<E: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_transpose_on_the_left_in_place(
+    apply_block_householder_transpose_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -427,7 +427,7 @@ pub fn apply_block_householder_on_the_right_in_place<E: ComplexField>(
 /// Computes the product of the matrix, multiplied by the transpose of the given block Householder
 /// transformation, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_right_in_place<E: ComplexField>(
+pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
@@ -435,7 +435,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place<E: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_on_the_left_in_place(
+    apply_block_householder_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -448,7 +448,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place<E: ComplexField>(
 /// Computes the product of the given block Householder transformation, multiplied by `matrix`, and
 /// stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_left_in_place<E: ComplexField>(
+pub fn apply_block_householder_on_the_left_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
@@ -470,7 +470,7 @@ pub fn apply_block_householder_on_the_left_in_place<E: ComplexField>(
 /// Computes the product of the transpose of the given block Householder transformation, multiplied
 /// by `matrix`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_left_in_place<E: ComplexField>(
+pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
@@ -493,7 +493,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place<E: ComplexField>(
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_left_in_place<E: ComplexField>(
+pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
@@ -524,7 +524,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place<E: ComplexField>(
         let essentials = householder_basis.submatrix(j, j, m - j, bs);
         let householder = householder_factor.submatrix(0, j, bs, bs);
 
-        apply_block_householder_on_the_left_in_place(
+        apply_block_householder_on_the_left_in_place_with_conj(
             essentials,
             householder,
             conj_lhs,
@@ -541,7 +541,9 @@ pub fn apply_block_householder_sequence_on_the_left_in_place<E: ComplexField>(
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_transpose_on_the_left_in_place<E: ComplexField>(
+pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj<
+    E: ComplexField,
+>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
@@ -564,7 +566,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place<E: Comple
         let essentials = householder_basis.submatrix(j, j, m - j, bs);
         let householder = householder_factor.submatrix(0, j, bs, bs);
 
-        apply_block_householder_transpose_on_the_left_in_place(
+        apply_block_householder_transpose_on_the_left_in_place_with_conj(
             essentials,
             householder,
             conj_lhs,
@@ -580,7 +582,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place<E: Comple
 /// Computes the product of `matrix`, multiplied by a sequence of block Householder transformations
 /// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_right_in_place<E: ComplexField>(
+pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<E: ComplexField>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
@@ -588,7 +590,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place<E: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_sequence_transpose_on_the_left_in_place(
+    apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
@@ -602,7 +604,9 @@ pub fn apply_block_householder_sequence_on_the_right_in_place<E: ComplexField>(
 /// transformations given by `householder_basis` and `householder_factor`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_transpose_on_the_right_in_place<E: ComplexField>(
+pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj<
+    E: ComplexField,
+>(
     householder_basis: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
@@ -610,7 +614,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place<E: Compl
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_sequence_on_the_left_in_place(
+    apply_block_householder_sequence_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,

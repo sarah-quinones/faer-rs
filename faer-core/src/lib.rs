@@ -47,6 +47,19 @@ pub struct c64 {
     pub im: f64,
 }
 
+impl c32 {
+    #[inline(always)]
+    pub fn new(re: f32, im: f32) -> Self {
+        Self { re, im }
+    }
+}
+impl c64 {
+    #[inline(always)]
+    pub fn new(re: f64, im: f64) -> Self {
+        Self { re, im }
+    }
+}
+
 impl core::ops::Neg for c32 {
     type Output = c32;
 
@@ -958,7 +971,18 @@ impl ComplexField for c32 {
 
     #[inline(always)]
     fn inv(&self) -> Self {
-        self.conj().scale_real(&self.abs2().inv())
+        let inf = Self::Real::zero().inv();
+        if self != self {
+            // NAN
+            Self::nan()
+        } else if *self == Self::zero() {
+            // zero
+            Self { re: inf, im: inf }
+        } else if self.re == inf || self.im == inf {
+            Self::zero()
+        } else {
+            self.conj().scale_real(&self.abs2().inv())
+        }
     }
 
     #[inline(always)]
@@ -1180,7 +1204,18 @@ impl ComplexField for c64 {
 
     #[inline(always)]
     fn inv(&self) -> Self {
-        self.conj().scale_real(&self.abs2().inv())
+        let inf = Self::Real::zero().inv();
+        if self != self {
+            // NAN
+            Self::nan()
+        } else if *self == Self::zero() {
+            // zero
+            Self { re: inf, im: inf }
+        } else if self.re == inf || self.im == inf {
+            Self::zero()
+        } else {
+            self.conj().scale_real(&self.abs2().inv())
+        }
     }
 
     #[inline(always)]
@@ -1403,7 +1438,21 @@ impl<E: RealField> ComplexField for Complex<E> {
 
     #[inline(always)]
     fn inv(&self) -> Self {
-        self.conj().scale_real(&self.abs2().inv())
+        let inf = Self::Real::zero().inv();
+        if self != self {
+            // NAN
+            Self::nan()
+        } else if *self == Self::zero() {
+            // zero
+            Self {
+                re: inf.clone(),
+                im: inf,
+            }
+        } else if self.re == inf || self.im == inf {
+            Self::zero()
+        } else {
+            self.conj().scale_real(&self.abs2().inv())
+        }
     }
 
     #[inline(always)]

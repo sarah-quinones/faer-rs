@@ -19,9 +19,9 @@ mod tests {
     use super::{compute::*, inverse::*, reconstruct::*, solve::*, update::*};
     use faer_core::{c64, mul, ComplexField, Conj, Mat, MatRef, Parallelism};
 
-    type T = c64;
+    type E = c64;
 
-    fn reconstruct_matrix(cholesky_factor: MatRef<'_, T>) -> Mat<T> {
+    fn reconstruct_matrix(cholesky_factor: MatRef<'_, E>) -> Mat<E> {
         let n = cholesky_factor.nrows();
 
         let mut a_reconstructed = Mat::zeros(n, n);
@@ -30,21 +30,21 @@ mod tests {
             cholesky_factor,
             Parallelism::Rayon(0),
             DynStack::new(&mut GlobalMemBuffer::new(
-                reconstruct_lower_req::<T>(n).unwrap(),
+                reconstruct_lower_req::<E>(n).unwrap(),
             )),
         );
 
         a_reconstructed
     }
 
-    fn random() -> T {
-        T {
+    fn random() -> E {
+        E {
             re: rand::random(),
             im: rand::random(),
         }
     }
 
-    fn random_positive_definite(n: usize) -> Mat<T> {
+    fn random_positive_definite(n: usize) -> Mat<E> {
         let a = Mat::with_dims(n, n, |_, _| random());
         let mut ata = Mat::zeros(n, n);
 
@@ -53,7 +53,7 @@ mod tests {
             a.as_ref().adjoint(),
             a.as_ref(),
             None,
-            T::one(),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
@@ -79,7 +79,7 @@ mod tests {
                 a.as_ref(),
                 Parallelism::Rayon(0),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    invert_lower_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
+                    invert_lower_req::<E>(n, Parallelism::Rayon(0)).unwrap(),
                 )),
             );
 
@@ -96,7 +96,7 @@ mod tests {
                 a_reconstructed.as_ref(),
                 inv.as_ref(),
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(0),
             );
 
@@ -108,7 +108,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..n {
-                    let target = if i == j { T::one() } else { T::zero() };
+                    let target = if i == j { E::one() } else { E::zero() };
                     assert_approx_eq!(prod.read(i, j), target);
                 }
             }
@@ -149,7 +149,7 @@ mod tests {
                 rhs.as_ref(),
                 Rectangular,
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
@@ -160,8 +160,8 @@ mod tests {
                 StrictTriangularUpper,
                 rhs.as_ref(),
                 Rectangular,
-                Some(T::one()),
-                T::one(),
+                Some(E::one()),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
@@ -181,7 +181,7 @@ mod tests {
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
             let mut w = Mat::with_dims(n, k, |_, _| random());
-            let mut alpha = Mat::with_dims(k, 1, |_, _| T::from_real(rand::random()));
+            let mut alpha = Mat::with_dims(k, 1, |_, _| E::from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);
@@ -198,8 +198,8 @@ mod tests {
                 Rectangular,
                 w.as_ref().adjoint(),
                 Rectangular,
-                Some(T::one()),
-                T::one(),
+                Some(E::one()),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
@@ -244,7 +244,7 @@ mod tests {
                 a.as_mut(),
                 &mut [1, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -271,7 +271,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -298,7 +298,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -346,7 +346,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<T>(r, Parallelism::Rayon(8)).unwrap(),
+                    insert_rows_and_cols_clobber_req::<E>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             )
             .unwrap();

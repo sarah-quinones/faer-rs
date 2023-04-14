@@ -23,9 +23,9 @@ mod tests {
     use solve::*;
     use update::*;
 
-    type T = c64;
+    type E = c64;
 
-    fn reconstruct_matrix(cholesky_factors: MatRef<'_, T>) -> Mat<T> {
+    fn reconstruct_matrix(cholesky_factors: MatRef<'_, E>) -> Mat<E> {
         let n = cholesky_factors.nrows();
 
         let mut lxd = Mat::zeros(n, n);
@@ -47,21 +47,21 @@ mod tests {
             cholesky_factors.adjoint(),
             BlockStructure::UnitTriangularUpper,
             None,
-            T::one(),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
         a_reconstructed
     }
 
-    fn random() -> T {
-        T {
+    fn random() -> E {
+        E {
             re: rand::random(),
             im: rand::random(),
         }
     }
 
-    fn random_positive_definite(n: usize) -> Mat<T> {
+    fn random_positive_definite(n: usize) -> Mat<E> {
         let a = Mat::with_dims(n, n, |_, _| random());
         let mut ata = Mat::zeros(n, n);
 
@@ -70,7 +70,7 @@ mod tests {
             a.as_ref().adjoint(),
             a.as_ref(),
             None,
-            T::one(),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
@@ -87,7 +87,7 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
@@ -116,7 +116,7 @@ mod tests {
             a.as_mut(),
             Parallelism::Rayon(8),
             DynStack::new(&mut GlobalMemBuffer::new(
-                raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                     .unwrap(),
             )),
             Default::default(),
@@ -139,7 +139,7 @@ mod tests {
             rhs.as_ref(),
             Rectangular,
             None,
-            T::one(),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
@@ -150,8 +150,8 @@ mod tests {
             StrictTriangularUpper,
             rhs.as_ref(),
             Rectangular,
-            Some(T::one()),
-            T::one(),
+            Some(E::one()),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
@@ -172,7 +172,7 @@ mod tests {
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
             let mut w = Mat::with_dims(n, k, |_, _| random());
-            let mut alpha = Mat::with_dims(k, 1, |_, _| T::from_real(rand::random()));
+            let mut alpha = Mat::with_dims(k, 1, |_, _| E::from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);
@@ -189,8 +189,8 @@ mod tests {
                 Rectangular,
                 w.as_ref().adjoint(),
                 Rectangular,
-                Some(T::one()),
-                T::one(),
+                Some(E::one()),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
@@ -198,7 +198,7 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
@@ -230,7 +230,7 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
@@ -240,7 +240,7 @@ mod tests {
                 a.as_mut(),
                 &mut [1, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -259,7 +259,7 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
@@ -269,7 +269,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -288,7 +288,7 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
@@ -298,7 +298,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
@@ -318,7 +318,7 @@ mod tests {
             w.write(
                 2,
                 0,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(2, 0)
                 },
@@ -326,7 +326,7 @@ mod tests {
             w.write(
                 3,
                 1,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(3, 1)
                 },
@@ -355,13 +355,13 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| T::zero());
+            a.resize_with(n + r, n + r, |_, _| E::zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
@@ -388,7 +388,7 @@ mod tests {
             w.write(
                 0,
                 0,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(0, 0)
                 },
@@ -396,7 +396,7 @@ mod tests {
             w.write(
                 1,
                 1,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(1, 1)
                 },
@@ -425,13 +425,13 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| T::zero());
+            a.resize_with(n + r, n + r, |_, _| E::zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
@@ -458,7 +458,7 @@ mod tests {
             w.write(
                 4,
                 0,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(4, 0)
                 },
@@ -466,7 +466,7 @@ mod tests {
             w.write(
                 5,
                 1,
-                T {
+                E {
                     im: 0.0,
                     ..w.read(5, 1)
                 },
@@ -495,13 +495,13 @@ mod tests {
                 a.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    raw_cholesky_in_place_req::<T>(n, Parallelism::Rayon(8), Default::default())
+                    raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| T::zero());
+            a.resize_with(n + r, n + r, |_, _| E::zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,

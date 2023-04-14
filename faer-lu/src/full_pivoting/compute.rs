@@ -1015,15 +1015,6 @@ fn lu_in_place_unblocked<T: ComplexField>(
                     );
                 }
 
-                // bottom_right
-                //     .into_par_col_chunks(n_threads)
-                //     .zip(biggest.par_iter_mut())
-                //     .for_each(|((col_start, matrix), biggest)| {
-                //         let rhs = rhs.subcols(col_start, matrix.ncols());
-                //         *biggest = rank_one_update_and_best_in_matrix(matrix, lhs, rhs);
-                //         biggest.1 += col_start;
-                //     });
-
                 max_row = 0;
                 max_col = 0;
                 let mut biggest_value = T::Real::zero();
