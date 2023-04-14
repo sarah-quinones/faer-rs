@@ -1,105 +1,97 @@
 //! Triangular solve module.
 
-use crate::{join_raw, ComplexField, Conj, MatMut, MatRef, Parallelism};
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use crate::{join_raw, ComplexField, Conj, Conjugate, MatMut, MatRef, Parallelism};
+use assert2::{assert, debug_assert};
 use reborrow::*;
 
 #[inline(always)]
-fn identity<T: Clone>(x: &T) -> T {
+fn identity<E: Clone>(x: E) -> E {
     x.clone()
 }
 
 #[inline(always)]
-fn conj<T: ComplexField>(x: &T) -> T {
+fn conj<E: ComplexField>(x: E) -> E {
     x.clone().conj()
 }
 
 #[inline(always)]
-unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: ComplexField>(
-    tril: MatRef<'_, T>,
-    rhs: MatMut<'_, T>,
-    maybe_conj_lhs: impl Fn(&T) -> T,
-    maybe_conj_rhs: impl Fn(&T) -> T,
+unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: ComplexField>(
+    tril: MatRef<'_, E>,
+    rhs: MatMut<'_, E>,
+    maybe_conj_lhs: impl Fn(E) -> E,
 ) {
     let n = tril.nrows();
     match n {
-        0 => (),
-        1 => {
-            let x0 = rhs.row_unchecked(0);
-            x0.cwise().for_each(|x0| {
-                *x0 = maybe_conj_rhs(x0);
-            });
-        }
+        0 | 1 => (),
         2 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
 
-            let (_, x0, _, x1) = rhs.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
+            let [_, x0, _, x1] = rhs.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
 
-            x0.cwise().zip_unchecked(x1).for_each(|x0, x1| {
-                *x0 = maybe_conj_rhs(x0);
-                *x1 = maybe_conj_rhs(x1).add(&nl10_div_l11.mul(x0));
+            x0.cwise().zip_unchecked(x1).for_each(|x0, mut x1| {
+                x1.write(x1.read().add(&nl10_div_l11.mul(&x0.read())));
             });
         }
         3 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
-            let nl20_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 0)).neg();
-            let nl21_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 1)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).neg();
 
-            let (_, x0, _, x1_2) = rhs.split_at_unchecked(1, 0);
-            let (_, x1, _, x2) = x1_2.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
-            let x2 = x2.row_unchecked(0);
+            let [_, x0, _, x1_2] = rhs.split_at(1, 0);
+            let [_, x1, _, x2] = x1_2.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
+            let x2 = x2.subrows(0, 1);
 
             x0.cwise()
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
-                .for_each(|x0, x1, x2| {
-                    let y0 = maybe_conj_rhs(x0);
-                    let mut y1 = maybe_conj_rhs(x1);
-                    let mut y2 = maybe_conj_rhs(x2);
+                .for_each(|mut x0, mut x1, mut x2| {
+                    let y0 = x0.read();
+                    let mut y1 = x1.read();
+                    let mut y2 = x2.read();
                     y1 = y1.add(&nl10_div_l11.mul(&y0));
                     y2 = y2.add(&nl20_div_l22.mul(&y0)).add(&nl21_div_l22.mul(&y1));
-                    *x0 = y0;
-                    *x1 = y1;
-                    *x2 = y2;
+                    x0.write(y0);
+                    x1.write(y1);
+                    x2.write(y2);
                 });
         }
         4 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.get_unchecked(1, 0)).neg();
-            let nl20_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 0)).neg();
-            let nl21_div_l22 = maybe_conj_lhs(tril.get_unchecked(2, 1)).neg();
-            let nl30_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 0)).neg();
-            let nl31_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 1)).neg();
-            let nl32_div_l33 = maybe_conj_lhs(tril.get_unchecked(3, 2)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).neg();
+            let nl30_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 0)).neg();
+            let nl31_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 1)).neg();
+            let nl32_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 2)).neg();
 
-            let (_, x0, _, x1_2_3) = rhs.split_at_unchecked(1, 0);
-            let (_, x1, _, x2_3) = x1_2_3.split_at_unchecked(1, 0);
-            let (_, x2, _, x3) = x2_3.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
-            let x2 = x2.row_unchecked(0);
-            let x3 = x3.row_unchecked(0);
+            let [_, x0, _, x1_2_3] = rhs.split_at(1, 0);
+            let [_, x1, _, x2_3] = x1_2_3.split_at(1, 0);
+            let [_, x2, _, x3] = x2_3.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
+            let x2 = x2.subrows(0, 1);
+            let x3 = x3.subrows(0, 1);
 
             x0.cwise()
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
                 .zip_unchecked(x3)
-                .for_each(|x0, x1, x2, x3| {
-                    let y0 = maybe_conj_rhs(x0);
-                    let mut y1 = maybe_conj_rhs(x1);
-                    let mut y2 = maybe_conj_rhs(x2);
-                    let mut y3 = maybe_conj_rhs(x3);
+                .for_each(|mut x0, mut x1, mut x2, mut x3| {
+                    let y0 = x0.read();
+                    let mut y1 = x1.read();
+                    let mut y2 = x2.read();
+                    let mut y3 = x3.read();
                     y1 = y1.add(&nl10_div_l11.mul(&y0));
                     y2 = y2.add(&nl20_div_l22.mul(&y0).add(&nl21_div_l22.mul(&y1)));
                     y3 = (y3.add(&nl30_div_l33.mul(&y0)))
                         .add(&nl31_div_l33.mul(&y1).add(&nl32_div_l33.mul(&y2)));
-                    *x0 = y0;
-                    *x1 = y1;
-                    *x2 = y2;
-                    *x3 = y3;
+                    x0.write(y0);
+                    x1.write(y1);
+                    x2.write(y2);
+                    x3.write(y3);
                 });
         }
         _ => unreachable!(),
@@ -107,95 +99,94 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<T: Co
 }
 
 #[inline(always)]
-unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: ComplexField>(
-    tril: MatRef<'_, T>,
-    rhs: MatMut<'_, T>,
-    maybe_conj_lhs: impl Fn(&T) -> T,
-    maybe_conj_rhs: impl Fn(&T) -> T,
+unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: ComplexField>(
+    tril: MatRef<'_, E>,
+    rhs: MatMut<'_, E>,
+    maybe_conj_lhs: impl Fn(E) -> E,
 ) {
     let n = tril.nrows();
     match n {
         0 => (),
         1 => {
-            let inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
-            let x0 = rhs.row_unchecked(0);
-            x0.cwise().for_each(|x0| *x0 = maybe_conj_rhs(x0).mul(&inv));
+            let inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
+            let x0 = rhs.subrows(0, 1);
+            x0.cwise().for_each(|mut x0| x0.write(x0.read().mul(&inv)));
         }
         2 => {
-            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(&l11_inv)).neg();
 
-            let (_, x0, _, x1) = rhs.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
+            let [_, x0, _, x1] = rhs.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
 
-            x0.cwise().zip_unchecked(x1).for_each(|x0, x1| {
-                *x0 = maybe_conj_rhs(x0).mul(&l00_inv);
-                *x1 = maybe_conj_rhs(x1).mul(&l11_inv).add(&nl10_div_l11.mul(x0));
+            x0.cwise().zip_unchecked(x1).for_each(|mut x0, mut x1| {
+                x0.write(x0.read().mul(&l00_inv));
+                x1.write(x1.read().mul(&l11_inv).add(&nl10_div_l11.mul(&x0.read())));
             });
         }
         3 => {
-            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(tril.get_unchecked(2, 2)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
-            let nl20_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 0)).mul(&l22_inv)).neg();
-            let nl21_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 1)).mul(&l22_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
+            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(&l11_inv)).neg();
+            let nl20_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 0)).mul(&l22_inv)).neg();
+            let nl21_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 1)).mul(&l22_inv)).neg();
 
-            let (_, x0, _, x1_2) = rhs.split_at_unchecked(1, 0);
-            let (_, x1, _, x2) = x1_2.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
-            let x2 = x2.row_unchecked(0);
+            let [_, x0, _, x1_2] = rhs.split_at(1, 0);
+            let [_, x1, _, x2] = x1_2.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
+            let x2 = x2.subrows(0, 1);
 
             x0.cwise()
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
-                .for_each(|x0, x1, x2| {
-                    let mut y0 = maybe_conj_rhs(x0);
-                    let mut y1 = maybe_conj_rhs(x1);
-                    let mut y2 = maybe_conj_rhs(x2);
+                .for_each(|mut x0, mut x1, mut x2| {
+                    let mut y0 = x0.read();
+                    let mut y1 = x1.read();
+                    let mut y2 = x2.read();
                     y0 = y0.mul(&l00_inv);
                     y1 = y1.mul(&l11_inv).add(&nl10_div_l11.mul(&y0));
                     y2 = y2
                         .mul(&l22_inv)
                         .add(&nl20_div_l22.mul(&y0))
                         .add(&nl21_div_l22.mul(&y1));
-                    *x0 = y0;
-                    *x1 = y1;
-                    *x2 = y2;
+                    x0.write(y0);
+                    x1.write(y1);
+                    x2.write(y2);
                 });
         }
         4 => {
-            let l00_inv = maybe_conj_lhs(tril.get_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.get_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(tril.get_unchecked(2, 2)).inv();
-            let l33_inv = maybe_conj_lhs(tril.get_unchecked(3, 3)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.get_unchecked(1, 0)).mul(&l11_inv)).neg();
-            let nl20_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 0)).mul(&l22_inv)).neg();
-            let nl21_div_l22 = (maybe_conj_lhs(tril.get_unchecked(2, 1)).mul(&l22_inv)).neg();
-            let nl30_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 0)).mul(&l33_inv)).neg();
-            let nl31_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 1)).mul(&l33_inv)).neg();
-            let nl32_div_l33 = (maybe_conj_lhs(tril.get_unchecked(3, 2)).mul(&l33_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
+            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).inv();
+            let l33_inv = maybe_conj_lhs(tril.read_unchecked(3, 3)).inv();
+            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(&l11_inv)).neg();
+            let nl20_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 0)).mul(&l22_inv)).neg();
+            let nl21_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 1)).mul(&l22_inv)).neg();
+            let nl30_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 0)).mul(&l33_inv)).neg();
+            let nl31_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 1)).mul(&l33_inv)).neg();
+            let nl32_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 2)).mul(&l33_inv)).neg();
 
-            let (_, x0, _, x1_2_3) = rhs.split_at_unchecked(1, 0);
-            let (_, x1, _, x2_3) = x1_2_3.split_at_unchecked(1, 0);
-            let (_, x2, _, x3) = x2_3.split_at_unchecked(1, 0);
-            let x0 = x0.row_unchecked(0);
-            let x1 = x1.row_unchecked(0);
-            let x2 = x2.row_unchecked(0);
-            let x3 = x3.row_unchecked(0);
+            let [_, x0, _, x1_2_3] = rhs.split_at(1, 0);
+            let [_, x1, _, x2_3] = x1_2_3.split_at(1, 0);
+            let [_, x2, _, x3] = x2_3.split_at(1, 0);
+            let x0 = x0.subrows(0, 1);
+            let x1 = x1.subrows(0, 1);
+            let x2 = x2.subrows(0, 1);
+            let x3 = x3.subrows(0, 1);
 
             x0.cwise()
                 .zip_unchecked(x1)
                 .zip_unchecked(x2)
                 .zip_unchecked(x3)
-                .for_each(|x0, x1, x2, x3| {
-                    let mut y0 = maybe_conj_rhs(x0);
-                    let mut y1 = maybe_conj_rhs(x1);
-                    let mut y2 = maybe_conj_rhs(x2);
-                    let mut y3 = maybe_conj_rhs(x3);
+                .for_each(|mut x0, mut x1, mut x2, mut x3| {
+                    let mut y0 = x0.read();
+                    let mut y1 = x1.read();
+                    let mut y2 = x2.read();
+                    let mut y3 = x3.read();
                     y0 = y0.mul(&l00_inv);
                     y1 = y1.mul(&l11_inv).add(&nl10_div_l11.mul(&y0));
                     y2 = y2
@@ -203,10 +194,10 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: Complex
                         .add(&nl20_div_l22.mul(&y0).add(&nl21_div_l22.mul(&y1)));
                     y3 = (y3.mul(&l33_inv).add(&nl30_div_l33.mul(&y0)))
                         .add(&nl31_div_l33.mul(&y1).add(&nl32_div_l33.mul(&y2)));
-                    *x0 = y0;
-                    *x1 = y1;
-                    *x2 = y2;
-                    *x3 = y3;
+                    x0.write(y0);
+                    x1.write(y1);
+                    x2.write(y2);
+                    x3.write(y3);
                 });
         }
         _ => unreachable!(),
@@ -214,7 +205,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<T: Complex
 }
 
 #[inline]
-fn blocksize<T: 'static>(n: usize) -> usize {
+fn blocksize<E: 'static>(n: usize) -> usize {
     // we want remainder to be a multiple of register size
 
     let base_rem = n / 2;
@@ -230,11 +221,11 @@ fn blocksize<T: 'static>(n: usize) -> usize {
 }
 
 #[inline]
-fn recursion_threshold<T: 'static>() -> usize {
+fn recursion_threshold<E: 'static>() -> usize {
     4
 }
 
-/// Computes the solution of `Op_lhs(triangular_lower)×X = Op(rhs)`, and stores the result in
+/// Computes the solution of `Op_lhs(triangular_lower)×X = rhs`, and stores the result in
 /// `rhs`.
 ///
 /// `triangular_lower` is interpreted as a lower triangular matrix (diagonal included).
@@ -242,8 +233,6 @@ fn recursion_threshold<T: 'static>() -> usize {
 ///
 /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
 /// `Conj::Yes`.  
-/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it
-/// is `Conj::Yes`.
 ///
 /// # Panics
 ///
@@ -256,19 +245,18 @@ fn recursion_threshold<T: 'static>() -> usize {
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_lower_triangular_in_place,
-///     Conj, Mat, Parallelism,
+///     solve::solve_lower_triangular_in_place_with_conj,
+///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 0.0], [2.0, 3.0]];
 /// let rhs = mat![[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 ///
 /// let mut sol = rhs.clone();
-/// solve_lower_triangular_in_place(
+/// solve_lower_triangular_in_place_with_conj(
 ///     m.as_ref(),
 ///     Conj::No,
 ///     sol.as_mut(),
-///     Conj::No,
 ///     Parallelism::None,
 /// );
 ///
@@ -276,48 +264,46 @@ fn recursion_threshold<T: 'static>() -> usize {
 /// matmul(
 ///     m_times_sol.as_mut(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     m.as_ref(),
 ///     BlockStructure::TriangularLower,
-///     Conj::No,
 ///     sol.as_ref(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     None,
 ///     1.0,
 ///     Parallelism::None,
 /// );
 ///
-/// m_times_sol
-///     .as_ref()
-///     .cwise()
-///     .zip(rhs.as_ref())
-///     .for_each(|x, target| assert!((x - target).abs() < 1e-10));
+/// zipped!(m_times_sol.as_ref(), rhs.as_ref())
+///     .for_each(|x, target| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn solve_lower_triangular_in_place<T: ComplexField>(
-    triangular_lower: MatRef<'_, T>,
+pub fn solve_lower_triangular_in_place_with_conj<E: ComplexField>(
+    triangular_lower: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    assert!(rhs.nrows() == triangular_lower.ncols());
 
     unsafe {
-        solve_lower_triangular_in_place_unchecked(
-            triangular_lower,
-            conj_lhs,
-            rhs,
-            conj_rhs,
-            parallelism,
-        );
+        solve_lower_triangular_in_place_unchecked(triangular_lower, conj_lhs, rhs, parallelism);
     }
 }
 
-/// Computes the solution of `Op_lhs(triangular_upper)×X = Op(rhs)`, and stores the result in
+#[track_caller]
+#[inline]
+pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
+    triangular_lower: MatRef<'_, TriE>,
+    rhs: MatMut<'_, E>,
+    parallelism: Parallelism,
+) {
+    let (tri, conj) = triangular_lower.canonicalize();
+    solve_lower_triangular_in_place_with_conj(tri, conj, rhs, parallelism)
+}
+
+/// Computes the solution of `Op_lhs(triangular_upper)×X = rhs`, and stores the result in
 /// `rhs`.
 ///
 /// `triangular_upper` is interpreted as a upper triangular matrix (diagonal included).
@@ -325,8 +311,6 @@ pub fn solve_lower_triangular_in_place<T: ComplexField>(
 ///
 /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
 /// `Conj::Yes`.  
-/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it
-/// is `Conj::Yes`.
 ///
 /// # Panics
 ///
@@ -339,19 +323,18 @@ pub fn solve_lower_triangular_in_place<T: ComplexField>(
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_upper_triangular_in_place,
-///     Conj, Mat, Parallelism,
+///     solve::solve_upper_triangular_in_place_with_conj,
+///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 2.0], [0.0, 3.0]];
 /// let rhs = mat![[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 ///
 /// let mut sol = rhs.clone();
-/// solve_upper_triangular_in_place(
+/// solve_upper_triangular_in_place_with_conj(
 ///     m.as_ref(),
 ///     Conj::No,
 ///     sol.as_mut(),
-///     Conj::No,
 ///     Parallelism::None,
 /// );
 ///
@@ -359,48 +342,46 @@ pub fn solve_lower_triangular_in_place<T: ComplexField>(
 /// matmul(
 ///     m_times_sol.as_mut(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     m.as_ref(),
 ///     BlockStructure::TriangularUpper,
-///     Conj::No,
 ///     sol.as_ref(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     None,
 ///     1.0,
 ///     Parallelism::None,
 /// );
 ///
-/// m_times_sol
-///     .as_ref()
-///     .cwise()
-///     .zip(rhs.as_ref())
-///     .for_each(|x, target| assert!((x - target).abs() < 1e-10));
+/// zipped!(m_times_sol.as_ref(), rhs.as_ref())
+///     .for_each(|x, target| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn solve_upper_triangular_in_place<T: ComplexField>(
-    triangular_upper: MatRef<'_, T>,
+pub fn solve_upper_triangular_in_place_with_conj<E: ComplexField>(
+    triangular_upper: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    assert!(rhs.nrows() == triangular_upper.ncols());
 
     unsafe {
-        solve_upper_triangular_in_place_unchecked(
-            triangular_upper,
-            conj_lhs,
-            rhs,
-            conj_rhs,
-            parallelism,
-        );
+        solve_upper_triangular_in_place_unchecked(triangular_upper, conj_lhs, rhs, parallelism);
     }
 }
 
-/// Computes the solution of `Op_lhs(triangular_lower)×X = Op(rhs)`, and stores the result in
+#[track_caller]
+#[inline]
+pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
+    triangular_upper: MatRef<'_, TriE>,
+    rhs: MatMut<'_, E>,
+    parallelism: Parallelism,
+) {
+    let (tri, conj) = triangular_upper.canonicalize();
+    solve_upper_triangular_in_place_with_conj(tri, conj, rhs, parallelism)
+}
+
+/// Computes the solution of `Op_lhs(triangular_lower)×X = rhs`, and stores the result in
 /// `rhs`.
 ///
 /// `triangular_lower` is interpreted as a lower triangular matrix, and its diagonal elements are
@@ -408,8 +389,6 @@ pub fn solve_upper_triangular_in_place<T: ComplexField>(
 ///
 /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
 /// `Conj::Yes`.  
-/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it
-/// is `Conj::Yes`.
 ///
 /// # Panics
 ///
@@ -422,19 +401,18 @@ pub fn solve_upper_triangular_in_place<T: ComplexField>(
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_unit_lower_triangular_in_place,
-///     Conj, Mat, Parallelism,
+///     solve::solve_unit_lower_triangular_in_place_with_conj,
+///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 0.0], [2.0, 0.0]];
 /// let rhs = mat![[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 ///
 /// let mut sol = rhs.clone();
-/// solve_unit_lower_triangular_in_place(
+/// solve_unit_lower_triangular_in_place_with_conj(
 ///     m.as_ref(),
 ///     Conj::No,
 ///     sol.as_mut(),
-///     Conj::No,
 ///     Parallelism::None,
 /// );
 ///
@@ -442,48 +420,51 @@ pub fn solve_upper_triangular_in_place<T: ComplexField>(
 /// matmul(
 ///     m_times_sol.as_mut(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     m.as_ref(),
 ///     BlockStructure::UnitTriangularLower,
-///     Conj::No,
 ///     sol.as_ref(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     None,
 ///     1.0,
 ///     Parallelism::None,
 /// );
 ///
-/// m_times_sol
-///     .as_ref()
-///     .cwise()
-///     .zip(rhs.as_ref())
-///     .for_each(|x, target| assert!((x - target).abs() < 1e-10));
+/// zipped!(m_times_sol.as_ref(), rhs.as_ref())
+///     .for_each(|x, target| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
-    triangular_lower: MatRef<'_, T>,
+pub fn solve_unit_lower_triangular_in_place_with_conj<E: ComplexField>(
+    triangular_lower: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    assert!(rhs.nrows() == triangular_lower.ncols());
 
     unsafe {
         solve_unit_lower_triangular_in_place_unchecked(
             triangular_lower,
             conj_lhs,
             rhs,
-            conj_rhs,
             parallelism,
         );
     }
 }
 
-/// Computes the solution of `Op_lhs(triangular_upper)×X = Op(rhs)`, and stores the result in
+#[track_caller]
+#[inline]
+pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
+    triangular_lower: MatRef<'_, TriE>,
+    rhs: MatMut<'_, E>,
+    parallelism: Parallelism,
+) {
+    let (tri, conj) = triangular_lower.canonicalize();
+    solve_unit_lower_triangular_in_place_with_conj(tri, conj, rhs, parallelism)
+}
+
+/// Computes the solution of `Op_lhs(triangular_upper)×X = rhs`, and stores the result in
 /// `rhs`.
 ///
 /// `triangular_upper` is interpreted as a upper triangular matrix, and its diagonal elements are
@@ -491,8 +472,6 @@ pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
 ///
 /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
 /// `Conj::Yes`.  
-/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it
-/// is `Conj::Yes`.
 ///
 /// # Panics
 ///
@@ -503,19 +482,18 @@ pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_unit_upper_triangular_in_place,
-///     Conj, Mat, Parallelism,
+///     solve::solve_unit_upper_triangular_in_place_with_conj,
+///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 2.0], [0.0, 0.0]];
 /// let rhs = mat![[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 ///
 /// let mut sol = rhs.clone();
-/// solve_unit_upper_triangular_in_place(
+/// solve_unit_upper_triangular_in_place_with_conj(
 ///     m.as_ref(),
 ///     Conj::No,
 ///     sol.as_mut(),
-///     Conj::No,
 ///     Parallelism::None,
 /// );
 ///
@@ -523,45 +501,48 @@ pub fn solve_unit_lower_triangular_in_place<T: ComplexField>(
 /// matmul(
 ///     m_times_sol.as_mut(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     m.as_ref(),
 ///     BlockStructure::UnitTriangularUpper,
-///     Conj::No,
 ///     sol.as_ref(),
 ///     BlockStructure::Rectangular,
-///     Conj::No,
 ///     None,
 ///     1.0,
 ///     Parallelism::None,
 /// );
 ///
-/// m_times_sol
-///     .as_ref()
-///     .cwise()
-///     .zip(rhs.as_ref())
-///     .for_each(|x, target| assert!((x - target).abs() < 1e-10));
+/// zipped!(m_times_sol.as_ref(), rhs.as_ref())
+///     .for_each(|x, target| assert!((x.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
 #[inline]
-pub fn solve_unit_upper_triangular_in_place<T: ComplexField>(
-    triangular_upper: MatRef<'_, T>,
+pub fn solve_unit_upper_triangular_in_place_with_conj<E: ComplexField>(
+    triangular_upper: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    assert!(rhs.nrows() == triangular_upper.ncols());
 
     unsafe {
         solve_unit_upper_triangular_in_place_unchecked(
             triangular_upper,
             conj_lhs,
             rhs,
-            conj_rhs,
             parallelism,
         );
     }
+}
+
+#[track_caller]
+#[inline]
+pub fn solve_unit_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
+    triangular_upper: MatRef<'_, TriE>,
+    rhs: MatMut<'_, E>,
+    parallelism: Parallelism,
+) {
+    let (tri, conj) = triangular_upper.canonicalize();
+    solve_unit_upper_triangular_in_place_with_conj(tri, conj, rhs, parallelism)
 }
 
 /// # Safety
@@ -571,25 +552,23 @@ pub fn solve_unit_upper_triangular_in_place<T: ComplexField>(
 /// # Example
 ///
 /// See [`solve_unit_lower_triangular_in_place`].
-pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
-    tril: MatRef<'_, T>,
+unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
+    tril: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
     let n = tril.nrows();
     let k = rhs.ncols();
 
     if k > 64 && n <= 128 {
-        let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+        let [_, _, rhs_left, rhs_right] = rhs.split_at(0, k / 2);
         join_raw(
             |_| {
                 solve_unit_lower_triangular_in_place_unchecked(
                     tril,
                     conj_lhs,
                     rhs_left,
-                    conj_rhs,
                     parallelism,
                 )
             },
@@ -598,7 +577,6 @@ pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
                     tril,
                     conj_lhs,
                     rhs_right,
-                    conj_rhs,
                     parallelism,
                 )
             },
@@ -607,42 +585,28 @@ pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
         return;
     }
 
-    fancy_debug_assert!(tril.nrows() == tril.ncols());
-    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(tril.nrows() == tril.ncols());
+    debug_assert!(rhs.nrows() == tril.ncols());
 
-    if n <= recursion_threshold::<T>() {
+    if n <= recursion_threshold::<E>() {
         pulp::Arch::new().dispatch(
             #[inline(always)]
-            || match (conj_lhs, conj_rhs) {
-                (Conj::Yes, Conj::Yes) => {
-                    solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, conj,
-                    )
-                }
-                (Conj::Yes, Conj::No) => {
-                    solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, identity,
-                    )
-                }
-                (Conj::No, Conj::Yes) => {
-                    solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, conj,
-                    )
-                }
-                (Conj::No, Conj::No) => {
-                    solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, identity,
-                    )
-                }
+            || match conj_lhs {
+                Conj::Yes => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, conj,
+                ),
+                Conj::No => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
+                    tril, rhs, identity,
+                ),
             },
         );
         return;
     }
 
-    let bs = blocksize::<T>(n);
+    let bs = blocksize::<E>(n);
 
-    let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
-    let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
+    let [tril_top_left, _, tril_bot_left, tril_bot_right] = tril.split_at(bs, bs);
+    let [_, mut rhs_top, _, mut rhs_bot] = rhs.split_at(bs, 0);
 
     //       (A00    )   X0         (B0)
     // ConjA?(A10 A11)   X1 = ConjB?(B1)
@@ -657,29 +621,21 @@ pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
         tril_top_left,
         conj_lhs,
         rhs_top.rb_mut(),
-        conj_rhs,
         parallelism,
     );
 
-    crate::mul::matmul(
+    crate::mul::matmul_with_conj(
         rhs_bot.rb_mut(),
-        conj_rhs,
         tril_bot_left,
         conj_lhs,
         rhs_top.into_const(),
         Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
-    solve_unit_lower_triangular_in_place_unchecked(
-        tril_bot_right,
-        conj_lhs,
-        rhs_bot,
-        Conj::No,
-        parallelism,
-    );
+    solve_unit_lower_triangular_in_place_unchecked(tril_bot_right, conj_lhs, rhs_bot, parallelism);
 }
 
 /// # Safety
@@ -690,18 +646,16 @@ pub unsafe fn solve_unit_lower_triangular_in_place_unchecked<T: ComplexField>(
 ///
 /// See [`solve_unit_upper_triangular_in_place`].
 #[inline]
-pub unsafe fn solve_unit_upper_triangular_in_place_unchecked<T: ComplexField>(
-    triu: MatRef<'_, T>,
+unsafe fn solve_unit_upper_triangular_in_place_unchecked<E: ComplexField>(
+    triu: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
     solve_unit_lower_triangular_in_place_unchecked(
         triu.reverse_rows_and_cols(),
         conj_lhs,
         rhs.reverse_rows(),
-        conj_rhs,
         parallelism,
     );
 }
@@ -713,108 +667,69 @@ pub unsafe fn solve_unit_upper_triangular_in_place_unchecked<T: ComplexField>(
 /// # Example
 ///
 /// See [`solve_lower_triangular_in_place`].
-pub unsafe fn solve_lower_triangular_in_place_unchecked<T: ComplexField>(
-    tril: MatRef<'_, T>,
+unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
+    tril: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
     let n = tril.nrows();
     let k = rhs.ncols();
 
     if k > 64 && n <= 128 {
-        let (_, _, rhs_left, rhs_right) = rhs.split_at_unchecked(0, k / 2);
+        let [_, _, rhs_left, rhs_right] = rhs.split_at(0, k / 2);
         join_raw(
-            |_| {
-                solve_lower_triangular_in_place_unchecked(
-                    tril,
-                    conj_lhs,
-                    rhs_left,
-                    conj_rhs,
-                    parallelism,
-                )
-            },
-            |_| {
-                solve_lower_triangular_in_place_unchecked(
-                    tril,
-                    conj_lhs,
-                    rhs_right,
-                    conj_rhs,
-                    parallelism,
-                )
-            },
+            |_| solve_lower_triangular_in_place_unchecked(tril, conj_lhs, rhs_left, parallelism),
+            |_| solve_lower_triangular_in_place_unchecked(tril, conj_lhs, rhs_right, parallelism),
             parallelism,
         );
         return;
     }
 
-    fancy_debug_assert!(tril.nrows() == tril.ncols());
-    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(tril.nrows() == tril.ncols());
+    debug_assert!(rhs.nrows() == tril.ncols());
 
     let n = tril.nrows();
 
-    if n <= recursion_threshold::<T>() {
+    if n <= recursion_threshold::<E>() {
         pulp::Arch::new().dispatch(
             #[inline(always)]
-            || match (conj_lhs, conj_rhs) {
-                (Conj::Yes, Conj::Yes) => {
-                    solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, conj,
-                    )
+            || match conj_lhs {
+                Conj::Yes => {
+                    solve_lower_triangular_in_place_base_case_generic_unchecked(tril, rhs, conj)
                 }
-                (Conj::Yes, Conj::No) => {
-                    solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, conj, identity,
-                    )
-                }
-                (Conj::No, Conj::Yes) => {
-                    solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, conj,
-                    )
-                }
-                (Conj::No, Conj::No) => {
-                    solve_lower_triangular_in_place_base_case_generic_unchecked(
-                        tril, rhs, identity, identity,
-                    )
+                Conj::No => {
+                    solve_lower_triangular_in_place_base_case_generic_unchecked(tril, rhs, identity)
                 }
             },
         );
         return;
     }
 
-    let bs = blocksize::<T>(n);
+    let bs = blocksize::<E>(n);
 
-    let (tril_top_left, _, tril_bot_left, tril_bot_right) = tril.split_at_unchecked(bs, bs);
-    let (_, mut rhs_top, _, mut rhs_bot) = rhs.split_at_unchecked(bs, 0);
+    let [tril_top_left, _, tril_bot_left, tril_bot_right] = tril.split_at(bs, bs);
+    let [_, mut rhs_top, _, mut rhs_bot] = rhs.split_at(bs, 0);
 
     solve_lower_triangular_in_place_unchecked(
         tril_top_left,
         conj_lhs,
         rhs_top.rb_mut(),
-        conj_rhs,
         parallelism,
     );
 
-    crate::mul::matmul(
+    crate::mul::matmul_with_conj(
         rhs_bot.rb_mut(),
-        conj_rhs,
         tril_bot_left,
         conj_lhs,
         rhs_top.into_const(),
         Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
-    solve_lower_triangular_in_place_unchecked(
-        tril_bot_right,
-        conj_lhs,
-        rhs_bot,
-        Conj::No,
-        parallelism,
-    );
+    solve_lower_triangular_in_place_unchecked(tril_bot_right, conj_lhs, rhs_bot, parallelism);
 }
 
 /// # Safety
@@ -825,18 +740,16 @@ pub unsafe fn solve_lower_triangular_in_place_unchecked<T: ComplexField>(
 ///
 /// See [`solve_upper_triangular_in_place`].
 #[inline]
-pub unsafe fn solve_upper_triangular_in_place_unchecked<T: ComplexField>(
-    triu: MatRef<'_, T>,
+unsafe fn solve_upper_triangular_in_place_unchecked<E: ComplexField>(
+    triu: MatRef<'_, E>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
     solve_lower_triangular_in_place_unchecked(
         triu.reverse_rows_and_cols(),
         conj_lhs,
         rhs.reverse_rows(),
-        conj_rhs,
         parallelism,
     );
 }

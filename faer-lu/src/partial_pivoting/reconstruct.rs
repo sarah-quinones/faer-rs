@@ -1,16 +1,16 @@
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
-    Conj, MatMut, MatRef, Parallelism,
+    Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
 
 #[track_caller]
-fn reconstruct_impl<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: Option<MatRef<'_, T>>,
+fn reconstruct_impl<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -22,56 +22,47 @@ fn reconstruct_impl<T: ComplexField>(
 
     let m = lu_factors.nrows();
     let n = lu_factors.ncols();
-    let size = m.min(n);
+    let size = <usize as Ord>::min(m, n);
 
-    let (mut lu, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut lu, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
     let mut lu = lu.as_mut();
 
-    let (l_top, _, l_bot, _) = lu_factors.split_at(size, size);
-    let (u_left, u_right, _, _) = lu_factors.split_at(size, size);
+    let [l_top, _, l_bot, _] = lu_factors.split_at(size, size);
+    let [u_left, u_right, _, _] = lu_factors.split_at(size, size);
 
-    let (lu_topleft, lu_topright, lu_botleft, _) = lu.rb_mut().split_at(size, size);
+    let [lu_topleft, lu_topright, lu_botleft, _] = lu.rb_mut().split_at(size, size);
 
     triangular::matmul(
         lu_topleft,
         BlockStructure::Rectangular,
-        Conj::No,
         l_top,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         u_left,
         BlockStructure::TriangularUpper,
-        Conj::No,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
     triangular::matmul(
         lu_topright,
         BlockStructure::Rectangular,
-        Conj::No,
         l_top,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         u_right,
         BlockStructure::Rectangular,
-        Conj::No,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
     triangular::matmul(
         lu_botleft,
         BlockStructure::Rectangular,
-        Conj::No,
         l_bot,
         BlockStructure::Rectangular,
-        Conj::No,
         u_left,
         BlockStructure::TriangularUpper,
-        Conj::No,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
 
@@ -88,15 +79,15 @@ fn reconstruct_impl<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn reconstruct<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
+pub fn reconstruct<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
-    fancy_assert!(row_perm.len() == lu_factors.nrows());
+    assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
+    assert!(row_perm.len() == lu_factors.nrows());
     reconstruct_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
@@ -109,33 +100,33 @@ pub fn reconstruct<T: ComplexField>(
 /// matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn reconstruct_in_place<T: ComplexField>(
-    lu_factors: MatMut<'_, T>,
+pub fn reconstruct_in_place<E: ComplexField>(
+    lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!(row_perm.len() == lu_factors.nrows());
+    assert!(row_perm.len() == lu_factors.nrows());
     reconstruct_impl(lu_factors, None, row_perm, parallelism, stack)
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its partial pivoting LU decomposition.
-pub fn reconstruct_req<T: 'static>(
+pub fn reconstruct_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)
+    temp_mat_req::<E>(nrows, ncols)
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its partial pivoting LU decomposition.
-pub fn reconstruct_in_place_req<T: 'static>(
+pub fn reconstruct_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    reconstruct_req::<T>(nrows, ncols, parallelism)
+    reconstruct_req::<E>(nrows, ncols, parallelism)
 }

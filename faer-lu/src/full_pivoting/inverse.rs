@@ -1,8 +1,8 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw, mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit,
-    ComplexField, Conj, MatMut, MatRef, Parallelism,
+    ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
@@ -22,36 +22,25 @@ fn invert_impl<T: ComplexField>(
 
     let m = lu_factors.nrows();
     let n = lu_factors.ncols();
-    fancy_debug_assert!(m == n);
-    fancy_debug_assert!(dst.nrows() == n);
-    fancy_debug_assert!(dst.ncols() == n);
+    debug_assert!(m == n);
+    debug_assert!(dst.nrows() == n);
+    debug_assert!(dst.ncols() == n);
 
     let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
     let (mut inv, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-    let mut inv_lu = inv_lu.as_mut();
+    let inv_lu = inv_lu.as_mut();
     let mut inv = inv.as_mut();
-
-    let rs = inv_lu.row_stride();
-    let cs = inv_lu.col_stride();
-    let ptr = inv_lu.rb_mut().as_ptr();
 
     // SAFETY: even though the matrices alias, only the strictly lower triangular part of l_inv is
     // accessed and only the upper triangular part of u_inv is accessed.
-    let l_inv = unsafe { MatMut::from_raw_parts(ptr, n, n, rs, cs) };
-    let u_inv = unsafe { MatMut::from_raw_parts(ptr, n, n, rs, cs) };
+    let l_inv = unsafe { inv_lu.rb().const_cast() };
+    let u_inv = unsafe { inv_lu.rb().const_cast() };
 
     join_raw(
         |parallelism| {
-            faer_core::inverse::invert_unit_lower_triangular(
-                l_inv,
-                lu_factors,
-                Conj::No,
-                parallelism,
-            )
+            faer_core::inverse::invert_unit_lower_triangular(l_inv, lu_factors, parallelism)
         },
-        |parallelism| {
-            faer_core::inverse::invert_upper_triangular(u_inv, lu_factors, Conj::No, parallelism)
-        },
+        |parallelism| faer_core::inverse::invert_upper_triangular(u_inv, lu_factors, parallelism),
         parallelism,
     );
 
@@ -61,13 +50,10 @@ fn invert_impl<T: ComplexField>(
     triangular::matmul(
         inv.rb_mut(),
         BlockStructure::Rectangular,
-        Conj::No,
         u_inv,
         BlockStructure::TriangularUpper,
-        Conj::No,
         l_inv,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         None,
         T::one(),
         parallelism,
@@ -75,16 +61,15 @@ fn invert_impl<T: ComplexField>(
 
     let col_p = row_perm.into_arrays().1;
     let row_p = col_perm.into_arrays().1;
-    fancy_assert!(row_p.len() == n);
-    fancy_assert!(col_p.len() == n);
+    assert!(row_p.len() == n);
+    assert!(col_p.len() == n);
     unsafe {
         if dst.row_stride().abs() <= dst.col_stride().abs() {
             for j in 0..n {
                 let jj = *col_p.get_unchecked(j);
                 for i in 0..m {
                     let ii = *row_p.get_unchecked(i);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        inv.rb().get_unchecked(ii, jj).clone();
+                    dst.write_unchecked(i, j, inv.read_unchecked(ii, jj));
                 }
             }
         } else {
@@ -92,8 +77,7 @@ fn invert_impl<T: ComplexField>(
                 let ii = *row_p.get_unchecked(i);
                 for j in 0..n {
                     let jj = *col_p.get_unchecked(j);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        inv.rb().get_unchecked(ii, jj).clone();
+                    dst.write_unchecked(i, j, inv.read_unchecked(ii, jj));
                 }
             }
         }
@@ -120,9 +104,9 @@ pub fn invert<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    fancy_assert!(lu_factors.nrows() == lu_factors.ncols());
-    fancy_assert!((row_perm.len(), col_perm.len()) == (n, n));
-    fancy_assert!((dst.nrows(), dst.ncols()) == (n, n));
+    assert!(lu_factors.nrows() == lu_factors.ncols());
+    assert!((row_perm.len(), col_perm.len()) == (n, n));
+    assert!((dst.nrows(), dst.ncols()) == (n, n));
     invert_impl(
         dst,
         Some(lu_factors),
@@ -151,14 +135,14 @@ pub fn invert_in_place<T: ComplexField>(
     stack: DynStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    fancy_assert!(lu_factors.nrows() == lu_factors.ncols());
-    fancy_assert!((row_perm.len(), col_perm.len()) == (n, n));
+    assert!(lu_factors.nrows() == lu_factors.ncols());
+    assert!((row_perm.len(), col_perm.len()) == (n, n));
     invert_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn invert_req<T: 'static>(
+pub fn invert_req<T: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -169,7 +153,7 @@ pub fn invert_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix in place, given its full pivoting LU decomposition.
-pub fn invert_in_place_req<T: 'static>(
+pub fn invert_in_place_req<T: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -182,6 +166,7 @@ pub fn invert_in_place_req<T: 'static>(
 mod tests {
     use super::*;
     use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{mul::matmul, Mat, Parallelism};
     use rand::random;
@@ -195,7 +180,7 @@ mod tests {
     #[test]
     fn test_inverse() {
         (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
-            let mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut lu = mat.clone();
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
@@ -229,11 +214,8 @@ mod tests {
             let mut prod = Mat::zeros(n, n);
             matmul(
                 prod.as_mut(),
-                Conj::No,
                 mat.as_ref(),
-                Conj::No,
                 inv.as_ref(),
-                Conj::No,
                 None,
                 1.0,
                 Parallelism::Rayon(0),
@@ -242,7 +224,7 @@ mod tests {
             for j in 0..n {
                 for i in 0..n {
                     let target = if i == j { 1.0 } else { 0.0 };
-                    assert_approx_eq!(prod[(i, j)], target);
+                    assert_approx_eq!(prod.read(i, j), target);
                 }
             }
         });

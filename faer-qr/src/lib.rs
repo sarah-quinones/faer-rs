@@ -97,30 +97,27 @@
 //! let mut solution = b.clone();
 //!
 //! // compute Q^H×B
-//! faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place(
+//! faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
 //!     qr.as_ref(),
 //!     h_factor.as_ref(),
 //!     Conj::Yes,
 //!     solution.as_mut(),
-//!     Conj::No,
 //!     Parallelism::None,
 //!     stack.rb_mut(),
 //! );
 //!
-//! solution.resize_with(|_, _| unreachable!(), rank, b.ncols());
+//! solution.resize_with(rank, b.ncols(), |_, _| unreachable!());
 //!
 //! // compute R_rect^{-1} Q_thin^H×B
 //! solve::solve_upper_triangular_in_place(
-//!     qr.as_ref().split_at_row(rank).0,
-//!     Conj::No,
+//!     qr.as_ref().split_at_row(rank)[0],
 //!     solution.as_mut(),
-//!     Conj::No,
 //!     Parallelism::None,
 //! );
 //!
 //! for i in 0..rank {
 //!     for j in 0..b.ncols() {
-//!         assert_approx_eq!(solution[(i, j)], expected_solution[(i, j)]);
+//!         assert_approx_eq!(solution.read(i, j), expected_solution.read(i, j));
 //!     }
 //! }
 //! ```
@@ -211,30 +208,27 @@ mod tests {
         let mut solution = b.clone();
 
         // compute Q^H×B
-        householder::apply_block_householder_sequence_transpose_on_the_left_in_place(
+        householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
             qr.as_ref(),
             h_factor.as_ref(),
             Conj::Yes,
             solution.as_mut(),
-            Conj::No,
             Parallelism::None,
             stack.rb_mut(),
         );
 
-        solution.resize_with(|_, _| unreachable!(), rank, b.ncols());
+        solution.resize_with(rank, b.ncols(), |_, _| unreachable!());
 
         // compute R_rect^{-1} Q_thin^H×B
         solve::solve_upper_triangular_in_place(
-            qr.as_ref().split_at_row(rank).0,
-            Conj::No,
+            qr.as_ref().split_at_row(rank)[0],
             solution.as_mut(),
-            Conj::No,
             Parallelism::None,
         );
 
         for i in 0..rank {
             for j in 0..b.ncols() {
-                assert_approx_eq!(solution[(i, j)], expected_solution[(i, j)]);
+                assert_approx_eq!(solution.read(i, j), expected_solution.read(i, j));
             }
         }
     }

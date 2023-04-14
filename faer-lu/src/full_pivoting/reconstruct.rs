@@ -1,8 +1,8 @@
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
-    Conj, MatMut, MatRef, Parallelism,
+    Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
@@ -23,26 +23,23 @@ fn reconstruct_impl<T: ComplexField>(
 
     let m = lu_factors.nrows();
     let n = lu_factors.ncols();
-    let size = m.min(n);
+    let size = <usize as Ord>::min(m, n);
 
     let (mut lu, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
     let mut lu = lu.as_mut();
 
-    let (l_top, _, l_bot, _) = lu_factors.split_at(size, size);
-    let (u_left, u_right, _, _) = lu_factors.split_at(size, size);
+    let [l_top, _, l_bot, _] = lu_factors.split_at(size, size);
+    let [u_left, u_right, _, _] = lu_factors.split_at(size, size);
 
-    let (lu_topleft, lu_topright, lu_botleft, _) = lu.rb_mut().split_at(size, size);
+    let [lu_topleft, lu_topright, lu_botleft, _] = lu.rb_mut().split_at(size, size);
 
     triangular::matmul(
         lu_topleft,
         BlockStructure::Rectangular,
-        Conj::No,
         l_top,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         u_left,
         BlockStructure::TriangularUpper,
-        Conj::No,
         None,
         T::one(),
         parallelism,
@@ -50,13 +47,10 @@ fn reconstruct_impl<T: ComplexField>(
     triangular::matmul(
         lu_topright,
         BlockStructure::Rectangular,
-        Conj::No,
         l_top,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         u_right,
         BlockStructure::Rectangular,
-        Conj::No,
         None,
         T::one(),
         parallelism,
@@ -64,13 +58,10 @@ fn reconstruct_impl<T: ComplexField>(
     triangular::matmul(
         lu_botleft,
         BlockStructure::Rectangular,
-        Conj::No,
         l_bot,
         BlockStructure::Rectangular,
-        Conj::No,
         u_left,
         BlockStructure::TriangularUpper,
-        Conj::No,
         None,
         T::one(),
         parallelism,
@@ -78,16 +69,15 @@ fn reconstruct_impl<T: ComplexField>(
 
     let row_inv = row_perm.into_arrays().1;
     let col_inv = col_perm.into_arrays().1;
-    fancy_assert!(row_inv.len() == m);
-    fancy_assert!(col_inv.len() == n);
+    assert!(row_inv.len() == m);
+    assert!(col_inv.len() == n);
     unsafe {
-        if dst.row_stride().abs() <= dst.col_stride().abs() {
+        if dst.row_stride().unsigned_abs() <= dst.col_stride().unsigned_abs() {
             for j in 0..n {
                 let jj = *col_inv.get_unchecked(j);
                 for i in 0..m {
                     let ii = *row_inv.get_unchecked(i);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        lu.rb().get_unchecked(ii, jj).clone();
+                    dst.write_unchecked(i, j, lu.read_unchecked(ii, jj));
                 }
             }
         } else {
@@ -95,8 +85,7 @@ fn reconstruct_impl<T: ComplexField>(
                 let ii = *row_inv.get_unchecked(i);
                 for j in 0..n {
                     let jj = *col_inv.get_unchecked(j);
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        lu.rb().get_unchecked(ii, jj).clone();
+                    dst.write_unchecked(i, j, lu.read_unchecked(ii, jj));
                 }
             }
         }
@@ -123,8 +112,8 @@ pub fn reconstruct<T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
-    fancy_assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
+    assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
+    assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
     reconstruct_impl(
         dst,
         Some(lu_factors),
@@ -153,13 +142,13 @@ pub fn reconstruct_in_place<T: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
+    assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
     reconstruct_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_in_place_req<T: 'static>(
+pub fn reconstruct_in_place_req<T: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -170,7 +159,7 @@ pub fn reconstruct_in_place_req<T: 'static>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_req<T: 'static>(
+pub fn reconstruct_req<T: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,

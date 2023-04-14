@@ -5,7 +5,6 @@ members = [
   "faer-lu",
   "faer-qr",
   "faer-svd",
-  "faer",
 ]
 exclude = ["faer-bench"]
 

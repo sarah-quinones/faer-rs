@@ -1,5 +1,5 @@
 use super::timeit;
-use faer_core::{Conj, Mat, Parallelism};
+use faer_core::{Mat, Parallelism};
 use ndarray_linalg::*;
 use std::time::Duration;
 
@@ -44,7 +44,10 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer<T: faer_core::ComplexField>(
+    sizes: &[usize],
+    parallelism: Parallelism,
+) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -55,9 +58,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
             let time = timeit(|| {
                 faer_core::solve::solve_unit_lower_triangular_in_place(
                     a.as_ref(),
-                    Conj::No,
                     c.as_mut(),
-                    Conj::No,
                     parallelism,
                 );
             });

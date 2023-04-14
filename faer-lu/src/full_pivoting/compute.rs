@@ -1,13 +1,14 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
 use core::slice;
 use dyn_stack::{DynStack, StackReq};
 use faer_core::{
-    c32, c64,
+    c32, c64, for_each_raw,
     mul::matmul,
+    par_split_indices, parallelism_degree,
     permutation::{swap_cols, swap_rows, PermutationMut},
-    ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowRef,
+    ComplexField, MatMut, MatRef, Parallelism, Ptr,
 };
 use paste::paste;
 use pulp::{cast_lossy, Simd};
@@ -48,7 +49,7 @@ fn best_f32<S: pulp::Simd>(
 #[inline(always)]
 fn best_c64_scalar(best_value: f64, best_indices: u64, data: c64, indices: u64) -> (f64, u64) {
     let simd = pulp::Scalar::new();
-    let value = simd.c64s_abs2(data).re;
+    let value = simd.c64s_abs2(pulp::cast(data)).re;
     let is_better = simd.f64s_greater_than(value, best_value);
     (
         simd.m64s_select_f64s(is_better, value, best_value),
@@ -68,7 +69,7 @@ fn best_c64<S: pulp::Simd>(
         coe::coerce_static(best_c64_scalar(
             coe::coerce_static(best_value),
             coe::coerce_static(best_indices),
-            coe::coerce_static(data),
+            bytemuck::cast(data),
             coe::coerce_static(indices),
         ))
     } else {
@@ -84,7 +85,7 @@ fn best_c64<S: pulp::Simd>(
 #[inline(always)]
 fn best_c32_scalar(best_value: f32, best_indices: u32, data: c32, indices: u32) -> (f32, u32) {
     let simd = pulp::Scalar::new();
-    let value = simd.c32s_abs2(data).re;
+    let value = simd.c32s_abs2(pulp::cast(data)).re;
     let is_better = simd.f32s_greater_than(value, best_value);
     (
         simd.m32s_select_f32s(is_better, value, best_value),
@@ -104,7 +105,7 @@ fn best_c32<S: pulp::Simd>(
         coe::coerce_static(best_c32_scalar(
             coe::coerce_static(best_value),
             coe::coerce_static(best_indices),
-            coe::coerce_static(data),
+            bytemuck::cast(data),
             coe::coerce_static(indices),
         ))
     } else {
@@ -162,7 +163,7 @@ macro_rules! best_in_col_simd {
                 iota: S::[<$uint s>],
                 data: &[$scalar],
             ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
-                let (head, tail) = S::[<$scalar s_as_simd>](data);
+                let (head, tail) = S::[<$scalar s_as_simd>](bytemuck::cast_slice(data));
 
                 let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
                 let increment1 = simd.[<$uint s_splat>](lane_count as $uint);
@@ -206,7 +207,7 @@ macro_rules! best_in_col_simd {
                     simd,
                     best_value0,
                     best_indices0,
-                    simd.[<$scalar s_partial_load>](tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
+                    simd.[<$scalar s_partial_load>](tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
                     indices0
                 );
 
@@ -240,8 +241,8 @@ macro_rules! best_in_col_simd {
             ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
                 let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
 
-                let (dst_head, dst_tail) = S::[<$scalar s_as_mut_simd>](dst);
-                let (lhs_head, lhs_tail) = S::[<$scalar s_as_simd>](lhs);
+                let (dst_head, dst_tail) = S::[<$scalar s_as_mut_simd>](bytemuck::cast_slice_mut(dst));
+                let (lhs_head, lhs_tail) = S::[<$scalar s_as_simd>](bytemuck::cast_slice(lhs));
 
                 let increment1 = simd.[<$uint s_splat>](lane_count as $uint);
                 let increment2 = simd.[<$uint s_splat>](2 * lane_count as $uint);
@@ -256,7 +257,7 @@ macro_rules! best_in_col_simd {
                 let (dst_head2, dst_tail2) = pulp::as_arrays_mut::<2, _>(dst_head);
                 let (lhs_head2, lhs_tail2) = pulp::as_arrays::<2, _>(lhs_head);
 
-                let rhs_v = simd.[<$scalar s_splat>](rhs);
+                let rhs_v = simd.[<$scalar s_splat>](pulp::cast(rhs));
                 for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
                     let new_dst0 = simd.[<$scalar s_mul_adde>](*lhs0, rhs_v, *dst0);
                     let new_dst1 = simd.[<$scalar s_mul_adde>](*lhs1, rhs_v, *dst1);
@@ -287,9 +288,9 @@ macro_rules! best_in_col_simd {
 
                 {
                     let new_dst = simd.[<$scalar s_mul_adde>](
-                        simd.[<$scalar s_partial_load>](lhs_tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
+                        simd.[<$scalar s_partial_load>](lhs_tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
                         rhs_v,
-                        simd.[<$scalar s_partial_load>](dst_tail, simd.[<$scalar s_splat>](<$scalar>::zero())),
+                        simd.[<$scalar s_partial_load>](dst_tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
                     );
                     simd.[<$scalar s_partial_store>](dst_tail, new_dst);
                     (best_value0, best_indices0) =
@@ -443,7 +444,7 @@ fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let matrix = self.0;
-            fancy_debug_assert!(matrix.row_stride() == 1);
+            debug_assert!(matrix.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -480,18 +481,18 @@ fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
 
 fn update_and_best_in_matrix_f64(
     matrix: MatMut<'_, f64>,
-    lhs: ColRef<'_, f64>,
-    rhs: RowRef<'_, f64>,
+    lhs: MatRef<'_, f64>,
+    rhs: MatRef<'_, f64>,
 ) -> (usize, usize, f64) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, f64>, ColRef<'a, f64>, RowRef<'a, f64>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, f64>, MatRef<'a, f64>, MatRef<'a, f64>);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f64);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_assert!(matrix.row_stride() == 1);
-            fancy_assert!(lhs.row_stride() == 1);
+            assert!(matrix.row_stride() == 1);
+            assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -502,7 +503,7 @@ fn update_and_best_in_matrix_f64(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
-                let rhs = -*rhs.get(j);
+                let rhs = -rhs.read(0, j);
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -541,7 +542,7 @@ fn best_in_matrix_f32(matrix: MatRef<'_, f32>) -> (usize, usize, f32) {
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let matrix = self.0;
-            fancy_debug_assert!(matrix.row_stride() == 1);
+            debug_assert!(matrix.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -578,18 +579,18 @@ fn best_in_matrix_f32(matrix: MatRef<'_, f32>) -> (usize, usize, f32) {
 
 fn update_and_best_in_matrix_f32(
     matrix: MatMut<'_, f32>,
-    lhs: ColRef<'_, f32>,
-    rhs: RowRef<'_, f32>,
+    lhs: MatRef<'_, f32>,
+    rhs: MatRef<'_, f32>,
 ) -> (usize, usize, f32) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, f32>, ColRef<'a, f32>, RowRef<'a, f32>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, f32>, MatRef<'a, f32>, MatRef<'a, f32>);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f32);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_assert!(matrix.row_stride() == 1);
-            fancy_assert!(lhs.row_stride() == 1);
+            assert!(matrix.row_stride() == 1);
+            assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -600,7 +601,7 @@ fn update_and_best_in_matrix_f32(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
-                let rhs = -*rhs.get(j);
+                let rhs = -rhs.read(0, j);
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -639,7 +640,7 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let matrix = self.0;
-            fancy_debug_assert!(matrix.row_stride() == 1);
+            debug_assert!(matrix.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -676,18 +677,18 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
 
 pub fn update_and_best_in_matrix_c64(
     matrix: MatMut<'_, c64>,
-    lhs: ColRef<'_, c64>,
-    rhs: RowRef<'_, c64>,
+    lhs: MatRef<'_, c64>,
+    rhs: MatRef<'_, c64>,
 ) -> (usize, usize, f64) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, ColRef<'a, c64>, RowRef<'a, c64>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, MatRef<'a, c64>, MatRef<'a, c64>);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f64);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_assert!(matrix.row_stride() == 1);
-            fancy_assert!(lhs.row_stride() == 1);
+            assert!(matrix.row_stride() == 1);
+            assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -698,7 +699,7 @@ pub fn update_and_best_in_matrix_c64(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
-                let rhs = -*rhs.get(j);
+                let rhs = -rhs.read(0, j);
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -736,7 +737,7 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let matrix = self.0;
-            fancy_debug_assert!(matrix.row_stride() == 1);
+            debug_assert!(matrix.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -773,18 +774,18 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
 
 fn update_and_best_in_matrix_c32(
     matrix: MatMut<'_, c32>,
-    lhs: ColRef<'_, c32>,
-    rhs: RowRef<'_, c32>,
+    lhs: MatRef<'_, c32>,
+    rhs: MatRef<'_, c32>,
 ) -> (usize, usize, f32) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, ColRef<'a, c32>, RowRef<'a, c32>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, MatRef<'a, c32>, MatRef<'a, c32>);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f32);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            fancy_debug_assert!(matrix.row_stride() == 1);
-            fancy_debug_assert!(lhs.row_stride() == 1);
+            debug_assert!(matrix.row_stride() == 1);
+            debug_assert!(lhs.row_stride() == 1);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
@@ -795,7 +796,7 @@ fn update_and_best_in_matrix_c32(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
-                let rhs = -*rhs.get(j);
+                let rhs = -rhs.read(0, j);
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -852,7 +853,7 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
 
         for j in 0..n {
             for i in 0..m {
-                let abs = (*matrix.get(i, j)).score();
+                let abs = matrix.read(i, j).score();
                 if abs > max {
                     max_row = i;
                     max_col = j;
@@ -868,8 +869,8 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
 #[inline]
 fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     mut dst: MatMut<'_, T>,
-    lhs: ColRef<'_, T>,
-    rhs: RowRef<'_, T>,
+    lhs: MatRef<'_, T>,
+    rhs: MatRef<'_, T>,
 ) -> (usize, usize, T::Real) {
     let is_f64 = coe::is_same::<f64, T>();
     let is_f32 = coe::is_same::<f32, T>();
@@ -905,11 +906,8 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
     } else {
         matmul(
             dst.rb_mut(),
-            Conj::No,
-            lhs.as_2d(),
-            Conj::No,
-            rhs.as_2d(),
-            Conj::No,
+            lhs,
+            rhs,
             Some(T::one()),
             T::one().neg(),
             Parallelism::None,
@@ -930,14 +928,14 @@ fn lu_in_place_unblocked<T: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
 
-    fancy_debug_assert!(row_transpositions.len() == m);
-    fancy_debug_assert!(col_transpositions.len() == n);
+    debug_assert!(row_transpositions.len() == m);
+    debug_assert!(col_transpositions.len() == n);
 
     if n == 0 || m == 0 {
         return 0;
     }
 
-    let size = m.min(n);
+    let size = <usize as Ord>::min(m, n);
 
     let mut n_transpositions = 0;
 
@@ -957,16 +955,16 @@ fn lu_in_place_unblocked<T: ComplexField>(
             swap_cols(matrix.rb_mut(), k, max_col);
         }
 
-        let inv = matrix.rb().get(k, k).inv();
+        let inv = matrix.read(k, k).inv();
         if !transposed {
             for i in k + 1..m {
-                let elem = matrix.rb_mut().get(i, k);
-                *elem = elem.mul(&inv);
+                let elem = matrix.read(i, k);
+                matrix.write(i, k, elem.mul(&inv));
             }
         } else {
             for i in k + 1..n {
-                let elem = matrix.rb_mut().get(k, i);
-                *elem = elem.mul(&inv);
+                let elem = matrix.read(k, i);
+                matrix.write(k, i, elem.mul(&inv));
             }
         }
 
@@ -974,7 +972,7 @@ fn lu_in_place_unblocked<T: ComplexField>(
             break;
         }
 
-        let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(k + 1, k + 1);
+        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(k + 1, k + 1);
 
         let parallelism = if disable_parallelism(m - k, n - k) {
             Parallelism::None
@@ -990,27 +988,32 @@ fn lu_in_place_unblocked<T: ComplexField>(
                     top_right.row(k).rb(),
                 );
             }
-            Parallelism::Rayon(n_threads) => {
-                use rayon::prelude::*;
-                let n_threads = if n_threads > 0 {
-                    n_threads
-                } else {
-                    rayon::current_num_threads()
-                };
+            _ => {
+                let n_threads = parallelism_degree(parallelism);
 
                 let mut biggest = vec![(0_usize, 0_usize, T::Real::zero()); n_threads];
 
                 let lhs = bottom_left.col(k).into_const();
                 let rhs = top_right.row(k).into_const();
 
-                bottom_right
-                    .into_par_col_chunks(n_threads)
-                    .zip(biggest.par_iter_mut())
-                    .for_each(|((col_start, matrix), biggest)| {
-                        let rhs = rhs.subcols(col_start, matrix.ncols());
-                        *biggest = rank_one_update_and_best_in_matrix(matrix, lhs, rhs);
-                        biggest.1 += col_start;
-                    });
+                {
+                    let biggest = Ptr(biggest.as_mut_ptr());
+
+                    for_each_raw(
+                        n_threads,
+                        |idx| {
+                            let (col_start, ncols) =
+                                par_split_indices(bottom_right.ncols(), idx, n_threads);
+                            let matrix =
+                                unsafe { bottom_right.rb().subcols(col_start, ncols).const_cast() };
+                            let rhs = rhs.subcols(col_start, matrix.ncols());
+                            let biggest = unsafe { &mut *{ biggest }.0.add(idx) };
+                            *biggest = rank_one_update_and_best_in_matrix(matrix, lhs, rhs);
+                            biggest.1 += col_start;
+                        },
+                        parallelism,
+                    );
+                }
 
                 max_row = 0;
                 max_col = 0;
@@ -1104,10 +1107,10 @@ pub fn lu_in_place<'out, T: ComplexField>(
     let _ = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
-    fancy_assert!(row_perm.len() == m);
-    fancy_assert!(row_perm_inv.len() == m);
-    fancy_assert!(col_perm.len() == n);
-    fancy_assert!(col_perm_inv.len() == n);
+    assert!(row_perm.len() == m);
+    assert!(row_perm_inv.len() == m);
+    assert!(col_perm.len() == n);
+    assert!(col_perm_inv.len() == n);
 
     let (mut row_transpositions, stack) = stack.make_with(m, |i| i);
     let (mut col_transpositions, _) = stack.make_with(n, |i| i);
@@ -1162,6 +1165,7 @@ pub fn lu_in_place<'out, T: ComplexField>(
 mod tests {
     use super::*;
     use crate::full_pivoting::reconstruct;
+    use assert2::assert;
     use faer_core::{c32, c64, permutation::PermutationRef, Mat};
     use rand::random;
 
@@ -1209,7 +1213,7 @@ mod tests {
             (20, 40),
             (1024, 1023),
         ] {
-            let random_mat = Mat::with_dims(|_i, _j| random(), m, n);
+            let random_mat = Mat::with_dims(m, n, |_i, _j| random());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
@@ -1237,8 +1241,8 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        fancy_assert!(
-                            (mat_orig[(i, j)].sub(&reconstructed[(i, j)])).abs() < epsilon
+                        assert!(
+                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
@@ -1261,7 +1265,7 @@ mod tests {
             (20, 40),
             (1024, 1023),
         ] {
-            let random_mat = Mat::with_dims(|_i, _j| random(), n, m);
+            let random_mat = Mat::with_dims(n, m, |_i, _j| random());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
@@ -1290,17 +1294,28 @@ mod tests {
                     Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
-                println!("target:{mat_orig:5.3?}");
-                println!("actual:{reconstructed:5.3?}");
 
                 for i in 0..m {
                     for j in 0..n {
-                        fancy_assert!(
-                            (mat_orig[(i, j)].sub(&reconstructed[(i, j)])).abs() < epsilon
+                        assert!(
+                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
             }
+        }
+    }
+
+    fn random_c64() -> c64 {
+        c64 {
+            re: random(),
+            im: random(),
+        }
+    }
+    fn random_c32() -> c32 {
+        c32 {
+            re: random(),
+            im: random(),
         }
     }
 
@@ -1310,9 +1325,9 @@ mod tests {
         compute_lu_col_major_generic::<f32>(random, 1e-2);
         compute_lu_row_major_generic::<f64>(random, 1e-6);
         compute_lu_row_major_generic::<f32>(random, 1e-2);
-        compute_lu_col_major_generic::<c64>(|| c64::new(random(), random()), 1e-6);
-        compute_lu_col_major_generic::<c32>(|| c32::new(random(), random()), 1e-2);
-        compute_lu_row_major_generic::<c64>(|| c64::new(random(), random()), 1e-6);
-        compute_lu_row_major_generic::<c32>(|| c32::new(random(), random()), 1e-2);
+        compute_lu_col_major_generic::<c64>(random_c64, 1e-6);
+        compute_lu_col_major_generic::<c32>(random_c32, 1e-2);
+        compute_lu_row_major_generic::<c64>(random_c64, 1e-6);
+        compute_lu_row_major_generic::<c32>(random_c32, 1e-2);
     }
 }

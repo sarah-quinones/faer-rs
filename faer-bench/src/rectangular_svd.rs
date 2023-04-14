@@ -60,7 +60,7 @@ pub fn faer<T: faer_core::ComplexField>(
             let mut c = Mat::<T>::zeros(4096, n);
             for i in 0..4096 {
                 for j in 0..n {
-                    c[(i, j)] = random();
+                    c.write(i, j, random());
                 }
             }
             let mut s = Mat::<T>::zeros(n, n);

@@ -15,14 +15,13 @@ pub struct CholeskyError;
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::{DynStack, GlobalMemBuffer};
-    use rand::random;
 
     use super::{compute::*, inverse::*, reconstruct::*, solve::*, update::*};
     use faer_core::{c64, mul, ComplexField, Conj, Mat, MatRef, Parallelism};
 
-    type T = c64;
+    type E = c64;
 
-    fn reconstruct_matrix(cholesky_factor: MatRef<'_, T>) -> Mat<T> {
+    fn reconstruct_matrix(cholesky_factor: MatRef<'_, E>) -> Mat<E> {
         let n = cholesky_factor.nrows();
 
         let mut a_reconstructed = Mat::zeros(n, n);
@@ -31,26 +30,30 @@ mod tests {
             cholesky_factor,
             Parallelism::Rayon(0),
             DynStack::new(&mut GlobalMemBuffer::new(
-                reconstruct_lower_req::<T>(n).unwrap(),
+                reconstruct_lower_req::<E>(n).unwrap(),
             )),
         );
 
         a_reconstructed
     }
 
-    fn random_positive_definite(n: usize) -> Mat<T> {
-        let a = Mat::with_dims(|_, _| T::new(random(), random()), n, n);
+    fn random() -> E {
+        E {
+            re: rand::random(),
+            im: rand::random(),
+        }
+    }
+
+    fn random_positive_definite(n: usize) -> Mat<E> {
+        let a = Mat::with_dims(n, n, |_, _| random());
         let mut ata = Mat::zeros(n, n);
 
         mul::matmul(
             ata.as_mut(),
-            Conj::No,
-            a.as_ref().transpose(),
-            Conj::Yes,
+            a.as_ref().adjoint(),
             a.as_ref(),
-            Conj::No,
             None,
-            T::one(),
+            E::one(),
             Parallelism::Rayon(8),
         );
 
@@ -76,40 +79,37 @@ mod tests {
                 a.as_ref(),
                 Parallelism::Rayon(0),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    invert_lower_req::<T>(n, Parallelism::Rayon(0)).unwrap(),
+                    invert_lower_req::<E>(n, Parallelism::Rayon(0)).unwrap(),
                 )),
             );
 
             for j in 0..n {
                 for i in 0..j {
-                    a_reconstructed[(i, j)] = a_reconstructed[(j, i)].conj();
-                    inv[(i, j)] = inv[(j, i)].conj();
+                    a_reconstructed.write(i, j, a_reconstructed.read(j, i).conj());
+                    inv.write(i, j, inv.read(j, i).conj());
                 }
             }
 
             let mut prod = Mat::zeros(n, n);
             mul::matmul(
                 prod.as_mut(),
-                Conj::No,
                 a_reconstructed.as_ref(),
-                Conj::No,
                 inv.as_ref(),
-                Conj::No,
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(0),
             );
 
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(a_reconstructed[(i, j)], a_orig[(i, j)]);
+                    assert_approx_eq!(a_reconstructed.read(i, j), a_orig.read(i, j));
                 }
             }
 
             for j in 0..n {
                 for i in 0..n {
-                    let target = if i == j { T::one() } else { T::zero() };
-                    assert_approx_eq!(prod[(i, j)], target);
+                    let target = if i == j { E::one() } else { E::zero() };
+                    assert_approx_eq!(prod.read(i, j), target);
                 }
             }
         }
@@ -120,7 +120,7 @@ mod tests {
         for n in 0..20 {
             let k = 5;
             let mut a = random_positive_definite(n);
-            let mut rhs = Mat::with_dims(|_, _| T::new(random(), random()), n, k);
+            let mut rhs = Mat::with_dims(n, k, |_, _| random());
             let a_orig = a.clone();
             let rhs_orig = rhs.clone();
 
@@ -131,11 +131,10 @@ mod tests {
                 Default::default(),
             )
             .unwrap();
-            solve_in_place(
+            solve_in_place_with_conj(
                 a.as_ref(),
                 Conj::No,
                 rhs.as_mut(),
-                Conj::No,
                 Parallelism::Rayon(8),
                 DynStack::new(&mut []),
             );
@@ -145,36 +144,30 @@ mod tests {
             mul::triangular::matmul(
                 result.as_mut(),
                 Rectangular,
-                Conj::No,
                 a_orig.as_ref(),
                 TriangularLower,
-                Conj::No,
                 rhs.as_ref(),
                 Rectangular,
-                Conj::No,
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
             mul::triangular::matmul(
                 result.as_mut(),
                 Rectangular,
-                Conj::No,
-                a_orig.as_ref().transpose(),
+                a_orig.as_ref().adjoint(),
                 StrictTriangularUpper,
-                Conj::Yes,
                 rhs.as_ref(),
                 Rectangular,
-                Conj::No,
-                Some(T::one()),
-                T::one(),
+                Some(E::one()),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
             for j in 0..k {
                 for i in 0..n {
-                    assert_approx_eq!(result[(i, j)], rhs_orig[(i, j)], 1e-3);
+                    assert_approx_eq!(result.read(i, j), rhs_orig.read(i, j), 1e-3);
                 }
             }
         }
@@ -187,29 +180,26 @@ mod tests {
             let n = 4;
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
-            let mut w = Mat::with_dims(|_, _| T::new(random(), random()), n, k);
-            let mut alpha = Mat::with_dims(|_, _| T::from_real(random()), k, 1);
+            let mut w = Mat::with_dims(n, k, |_, _| random());
+            let mut alpha = Mat::with_dims(k, 1, |_, _| E::from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha[(i, j)] = alpha[j] * w[(i, j)];
+                    w_alpha.write(i, j, alpha.read(j, 0).mul(&w.read(i, j)));
                 }
             }
 
             mul::triangular::matmul(
                 a_updated.as_mut(),
                 TriangularLower,
-                Conj::No,
                 w_alpha.as_ref(),
                 Rectangular,
-                Conj::No,
-                w.as_ref().transpose(),
+                w.as_ref().adjoint(),
                 Rectangular,
-                Conj::Yes,
-                Some(T::one()),
-                T::one(),
+                Some(E::one()),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
@@ -227,7 +217,7 @@ mod tests {
 
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(a_reconstructed[(i, j)], a_updated[(i, j)], 1e-4);
+                    assert_approx_eq!(a_reconstructed.read(i, j), a_updated.read(i, j), 1e-4);
                 }
             }
         }
@@ -254,14 +244,14 @@ mod tests {
                 a.as_mut(),
                 &mut [1, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
             let a_reconstructed = reconstruct_matrix(a.as_ref().submatrix(0, 0, n - r, n - r));
-            assert_approx_eq!(a_reconstructed[(0, 0)], a_orig[(0, 0)]);
-            assert_approx_eq!(a_reconstructed[(1, 0)], a_orig[(2, 0)]);
-            assert_approx_eq!(a_reconstructed[(1, 1)], a_orig[(2, 2)]);
+            assert_approx_eq!(a_reconstructed.read(0, 0), a_orig.read(0, 0));
+            assert_approx_eq!(a_reconstructed.read(1, 0), a_orig.read(2, 0));
+            assert_approx_eq!(a_reconstructed.read(1, 1), a_orig.read(2, 2));
         }
 
         {
@@ -281,14 +271,14 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
             let a_reconstructed = reconstruct_matrix(a.as_ref().submatrix(0, 0, n - r, n - r));
-            assert_approx_eq!(a_reconstructed[(0, 0)], a_orig[(1, 1)]);
-            assert_approx_eq!(a_reconstructed[(1, 0)], a_orig[(3, 1)]);
-            assert_approx_eq!(a_reconstructed[(1, 1)], a_orig[(3, 3)]);
+            assert_approx_eq!(a_reconstructed.read(0, 0), a_orig.read(1, 1));
+            assert_approx_eq!(a_reconstructed.read(1, 0), a_orig.read(3, 1));
+            assert_approx_eq!(a_reconstructed.read(1, 1), a_orig.read(3, 3));
         }
 
         {
@@ -308,12 +298,12 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2, 3],
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<T>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
                 )),
             );
 
             let a_reconstructed = reconstruct_matrix(a.as_ref().submatrix(0, 0, n - r, n - r));
-            assert_approx_eq!(a_reconstructed[(0, 0)], a_orig[(1, 1)]);
+            assert_approx_eq!(a_reconstructed.read(0, 0), a_orig.read(1, 1));
         }
     }
 
@@ -330,7 +320,7 @@ mod tests {
 
             for j in 0..r {
                 for i in 0..n + r {
-                    w[(i, j)] = a[(i, j + position)];
+                    w.write(i, j, a.read(i, j + position));
                 }
             }
 
@@ -356,7 +346,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    insert_rows_and_cols_clobber_req::<T>(r, Parallelism::Rayon(8)).unwrap(),
+                    insert_rows_and_cols_clobber_req::<E>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             )
             .unwrap();
@@ -364,7 +354,7 @@ mod tests {
             let a_reconstructed = reconstruct_matrix(a.as_ref());
             for j in 0..n + r {
                 for i in j..n + r {
-                    assert_approx_eq!(a_reconstructed[(i, j)], a_orig[(i, j)], 1e-4);
+                    assert_approx_eq!(a_reconstructed.read(i, j), a_orig.read(i, j), 1e-4);
                 }
             }
         }

@@ -1,173 +1,564 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
-use core::{any::TypeId, mem::size_of};
+use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
+use assert2::{assert, debug_assert};
+use core::{iter::zip, slice};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul, mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, ColMut,
-    ComplexField, Conj, MatMut, Parallelism,
+    mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
+    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use pulp::Arch;
 use reborrow::*;
-use seq_macro::seq;
 
-use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
-
-macro_rules! generate {
-    ($name: ident, $r: tt, $ty: ty, $tys: ty, $splat: ident, $mul_add: ident) => {
-        unsafe fn $name(
-            arch: pulp::Arch,
-            n: usize,
-            l_col: *mut $ty,
-            w: *mut $ty,
-            w_col_stride: isize,
-            p_array: *const $ty,
-            beta_array: *const $ty,
-        ) {
-            struct Impl {
-                n: usize,
-                l_col: *mut $ty,
-                w: *mut $ty,
-                w_col_stride: isize,
-                p_array: *const $ty,
-                beta_array: *const $ty,
-            }
-            impl pulp::WithSimd for Impl {
-                type Output = ();
-
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) {
-                    unsafe {
-                        let Self { n, l_col, w, w_col_stride, p_array, beta_array } = self;
-
-                        let l_col = l_col as *mut $ty;
-                        let w = w as *mut $ty;
-                        let p_array = p_array as *const $ty;
-                        let beta_array = beta_array as *const $ty;
-                        let lanes = size_of::<$tys>() / size_of::<$ty>();
-
-                        let n_vec = n / lanes;
-                        let n_rem = n % lanes;
-
-                        seq!(I in 0..$r {
-                            let p~I = -*p_array.add(I);
-                            let beta~I = *beta_array.add(I);
-                            let w_col~I = w.offset(I * w_col_stride);
-                        });
-
-                        // vectorized section
-                        {
-                            let l_col = l_col as *mut $tys;
-
-                            seq!(I in 0..$r {
-                                let p~I = simd.$splat(p~I);
-                                let beta~I = simd.$splat(beta~I);
-                                let w_col~I = w_col~I as *mut $tys;
-                            });
-
-                            for i in 0..n_vec {
-                                let mut l = *l_col.add(i);
-                                seq!(I in 0..$r {
-                                    let mut w~I = *w_col~I.add(i);
-                                });
-
-                                seq!(I in 0..$r {
-                                    w~I = simd.$mul_add(p~I, l, w~I);
-                                    l = simd.$mul_add(beta~I, w~I, l);
-                                });
-
-                                l_col.add(i).write(l);
-                                seq!(I in 0..$r {
-                                    w_col~I.add(i).write(w~I);
-                                });
-                            }
-                        }
-                        // scalar section
-                        {
-                            for i in n - n_rem..n {
-                                let mut l = *l_col.add(i);
-                                seq!(I in 0..$r {
-                                    let mut w~I = *w_col~I.add(i);
-                                });
-
-                                seq!(I in 0..$r {
-                                    w~I = $ty::mul_add(p~I, l, w~I);
-                                    l = $ty::mul_add(beta~I, w~I, l);
-                                });
-
-                                l_col.add(i).write(l);
-                                seq!(I in 0..$r {
-                                    w_col~I.add(i).write(w~I);
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            arch.dispatch(Impl { n, l_col, w, w_col_stride, p_array, beta_array })
-        }
-    };
-}
-
-macro_rules! generate_generic {
-    ($name: ident, $r: tt) => {
-        unsafe fn $name<T: ComplexField>(
-            n: usize,
-            l_col: *mut T,
-            l_row_stride: isize,
-            w: *mut T,
-            w_row_stride: isize,
-            w_col_stride: isize,
-            p_array: *const T,
-            beta_array: *const T,
-        ) {
-            seq!(I in 0..$r {
-                let p~I = (*p_array.add(I)).neg();
-                let beta~I = (*beta_array.add(I)).clone();
-                let w_col~I = w.offset(I * w_col_stride);
-            });
-
-            for i in 0..n {
-                let mut l = (*l_col.offset(i as isize * l_row_stride)).clone();
-                seq!(I in 0..$r {
-                    let mut w~I = (*w_col~I.offset(i as isize * w_row_stride)).clone();
-                });
-
-                seq!(I in 0..$r {
-                    w~I = (p~I.mul(&l)).add(&w~I);
-                    l = (beta~I.mul(&w~I)).add(&l);
-                });
-
-                *l_col.offset(i as isize * l_row_stride) = l;
-                seq!(I in 0..$r {
-                    *w_col~I.offset(i as isize * w_row_stride) = w~I;
-                });
-            }
-        }
-    };
-}
-
-generate_generic!(r1, 1);
-generate_generic!(r2, 2);
-generate_generic!(r3, 3);
-generate_generic!(r4, 4);
-
-generate!(rank_1_f64, 1, f64, S::f64s, f64s_splat, f64s_mul_adde);
-generate!(rank_2_f64, 2, f64, S::f64s, f64s_splat, f64s_mul_adde);
-generate!(rank_3_f64, 3, f64, S::f64s, f64s_splat, f64s_mul_adde);
-generate!(rank_4_f64, 4, f64, S::f64s, f64s_splat, f64s_mul_adde);
-
-generate!(rank_1_f32, 1, f32, S::f32s, f32s_splat, f32s_mul_adde);
-generate!(rank_2_f32, 2, f32, S::f32s, f32s_splat, f32s_mul_adde);
-generate!(rank_3_f32, 3, f32, S::f32s, f32s_splat, f32s_mul_adde);
-generate!(rank_4_f32, 4, f32, S::f32s, f32s_splat, f32s_mul_adde);
-
-struct RankRUpdate<'a, T> {
-    ld: MatMut<'a, T>,
-    w: MatMut<'a, T>,
-    alpha: ColMut<'a, T>,
+struct RankRUpdate<'a, E: Entity> {
+    ld: MatMut<'a, E>,
+    w: MatMut<'a, E>,
+    alpha: MatMut<'a, E>,
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T: ComplexField> RankRUpdate<'a, T> {
+struct RankUpdateStepImpl<'a, E: Entity, const R: usize> {
+    l_col: E::Group<&'a mut [E::Unit]>,
+    w: [E::Group<&'a mut [E::Unit]>; R],
+    p_array: [E; R],
+    beta_array: [E; R],
+}
+
+impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self {
+            l_col,
+            w,
+            p_array,
+            beta_array,
+        } = self;
+
+        let [p0, p1, p2, p3] = p_array;
+        let [beta0, beta1, beta2, beta3] = beta_array;
+        let [w0, w1, w2, w3] = w;
+
+        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
+        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
+        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
+        let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
+        let (w3_head, w3_tail) = slice_as_mut_simd::<E, S>(w3);
+
+        {
+            let p0 = E::simd_splat(simd, p0.clone());
+            let p1 = E::simd_splat(simd, p1.clone());
+            let p2 = E::simd_splat(simd, p2.clone());
+            let p3 = E::simd_splat(simd, p3.clone());
+            let beta0 = E::simd_splat(simd, beta0.clone());
+            let beta1 = E::simd_splat(simd, beta1.clone());
+            let beta2 = E::simd_splat(simd, beta2.clone());
+            let beta3 = E::simd_splat(simd, beta3.clone());
+
+            for (l, (w0, (w1, (w2, w3)))) in zip(
+                E::into_iter(l_head),
+                zip(
+                    E::into_iter(w0_head),
+                    zip(
+                        E::into_iter(w1_head),
+                        zip(E::into_iter(w2_head), E::into_iter(w3_head)),
+                    ),
+                ),
+            ) {
+                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
+                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
+                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
+                let mut local_w2 = E::deref(E::rb(E::as_ref(&w2)));
+                let mut local_w3 = E::deref(E::rb(E::as_ref(&w3)));
+
+                local_w0 = E::simd_mul_adde(simd, E::copy(&p0), E::copy(&local_l), local_w0);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta0), E::copy(&local_w0), local_l);
+
+                local_w1 = E::simd_mul_adde(simd, E::copy(&p1), E::copy(&local_l), local_w1);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta1), E::copy(&local_w1), local_l);
+
+                local_w2 = E::simd_mul_adde(simd, E::copy(&p2), E::copy(&local_l), local_w2);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta2), E::copy(&local_w2), local_l);
+
+                local_w3 = E::simd_mul_adde(simd, E::copy(&p3), E::copy(&local_l), local_w3);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta3), E::copy(&local_w3), local_l);
+
+                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+                E::map(E::zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
+                E::map(E::zip(w3, local_w3), |(w3, local_w3)| *w3 = local_w3);
+            }
+        }
+
+        for (l, (w0, (w1, (w2, w3)))) in zip(
+            E::into_iter(l_tail),
+            zip(
+                E::into_iter(w0_tail),
+                zip(
+                    E::into_iter(w1_tail),
+                    zip(E::into_iter(w2_tail), E::into_iter(w3_tail)),
+                ),
+            ),
+        ) {
+            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
+            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
+            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
+            let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
+            let mut local_w3 = E::from_units(E::deref(E::rb(E::as_ref(&w3))));
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            local_w2 = E::mul_adde(&p2, &local_l, &local_w2);
+            local_l = E::mul_adde(&beta2, &local_w2, &local_l);
+
+            local_w3 = E::mul_adde(&p3, &local_l, &local_w3);
+            local_l = E::mul_adde(&beta3, &local_w3, &local_l);
+
+            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
+                *l = local_l
+            });
+            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
+                *w0 = local_w0
+            });
+            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
+                *w1 = local_w1
+            });
+            E::map(E::zip(w2, E::into_units(local_w2)), |(w2, local_w2)| {
+                *w2 = local_w2
+            });
+            E::map(E::zip(w3, E::into_units(local_w3)), |(w3, local_w3)| {
+                *w3 = local_w3
+            });
+        }
+    }
+}
+
+impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 3> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self {
+            l_col,
+            w,
+            p_array,
+            beta_array,
+        } = self;
+
+        let [p0, p1, p2] = p_array;
+        let [beta0, beta1, beta2] = beta_array;
+        let [w0, w1, w2] = w;
+
+        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
+        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
+        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
+        let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
+
+        {
+            let p0 = E::simd_splat(simd, p0.clone());
+            let p1 = E::simd_splat(simd, p1.clone());
+            let p2 = E::simd_splat(simd, p2.clone());
+            let beta0 = E::simd_splat(simd, beta0.clone());
+            let beta1 = E::simd_splat(simd, beta1.clone());
+            let beta2 = E::simd_splat(simd, beta2.clone());
+
+            for (l, (w0, (w1, w2))) in zip(
+                E::into_iter(l_head),
+                zip(
+                    E::into_iter(w0_head),
+                    zip(E::into_iter(w1_head), E::into_iter(w2_head)),
+                ),
+            ) {
+                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
+                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
+                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
+                let mut local_w2 = E::deref(E::rb(E::as_ref(&w2)));
+
+                local_w0 = E::simd_mul_adde(simd, E::copy(&p0), E::copy(&local_l), local_w0);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta0), E::copy(&local_w0), local_l);
+
+                local_w1 = E::simd_mul_adde(simd, E::copy(&p1), E::copy(&local_l), local_w1);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta1), E::copy(&local_w1), local_l);
+
+                local_w2 = E::simd_mul_adde(simd, E::copy(&p2), E::copy(&local_l), local_w2);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta2), E::copy(&local_w2), local_l);
+
+                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+                E::map(E::zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
+            }
+        }
+
+        for (l, (w0, (w1, w2))) in zip(
+            E::into_iter(l_tail),
+            zip(
+                E::into_iter(w0_tail),
+                zip(E::into_iter(w1_tail), E::into_iter(w2_tail)),
+            ),
+        ) {
+            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
+            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
+            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
+            let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            local_w2 = E::mul_adde(&p2, &local_l, &local_w2);
+            local_l = E::mul_adde(&beta2, &local_w2, &local_l);
+
+            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
+                *l = local_l
+            });
+            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
+                *w0 = local_w0
+            });
+            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
+                *w1 = local_w1
+            });
+            E::map(E::zip(w2, E::into_units(local_w2)), |(w2, local_w2)| {
+                *w2 = local_w2
+            });
+        }
+    }
+}
+
+impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 2> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self {
+            l_col,
+            w,
+            p_array,
+            beta_array,
+        } = self;
+
+        let [p0, p1] = p_array;
+        let [beta0, beta1] = beta_array;
+        let [w0, w1] = w;
+
+        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
+        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
+        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
+
+        {
+            let p0 = E::simd_splat(simd, p0.clone());
+            let p1 = E::simd_splat(simd, p1.clone());
+            let beta0 = E::simd_splat(simd, beta0.clone());
+            let beta1 = E::simd_splat(simd, beta1.clone());
+
+            for (l, (w0, w1)) in zip(
+                E::into_iter(l_head),
+                zip(E::into_iter(w0_head), E::into_iter(w1_head)),
+            ) {
+                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
+                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
+                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
+
+                local_w0 = E::simd_mul_adde(simd, E::copy(&p0), E::copy(&local_l), local_w0);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta0), E::copy(&local_w0), local_l);
+
+                local_w1 = E::simd_mul_adde(simd, E::copy(&p1), E::copy(&local_l), local_w1);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta1), E::copy(&local_w1), local_l);
+
+                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+            }
+        }
+
+        for (l, (w0, w1)) in zip(
+            E::into_iter(l_tail),
+            zip(E::into_iter(w0_tail), E::into_iter(w1_tail)),
+        ) {
+            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
+            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
+            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
+                *l = local_l
+            });
+            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
+                *w0 = local_w0
+            });
+            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
+                *w1 = local_w1
+            });
+        }
+    }
+}
+
+impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self {
+            l_col,
+            w,
+            p_array,
+            beta_array,
+        } = self;
+
+        let [p0] = p_array;
+        let [beta0] = beta_array;
+        let [w0] = w;
+
+        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
+        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
+
+        {
+            let p0 = E::simd_splat(simd, p0.clone());
+            let beta0 = E::simd_splat(simd, beta0.clone());
+
+            for (l, w0) in zip(E::into_iter(l_head), E::into_iter(w0_head)) {
+                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
+                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
+
+                local_w0 = E::simd_mul_adde(simd, E::copy(&p0), E::copy(&local_l), local_w0);
+                local_l = E::simd_mul_adde(simd, E::copy(&beta0), E::copy(&local_w0), local_l);
+
+                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+            }
+        }
+
+        for (l, w0) in zip(E::into_iter(l_tail), E::into_iter(w0_tail)) {
+            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
+            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
+                *l = local_l
+            });
+            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
+                *w0 = local_w0
+            });
+        }
+    }
+}
+
+fn rank_update_step_impl4<E: ComplexField>(
+    arch: pulp::Arch,
+    l_col: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    p_array: [E; 4],
+    beta_array: [E; 4],
+) {
+    let m = l_col.nrows();
+    let w = w.into_const();
+    let w0 = unsafe { w.col(0).const_cast() };
+    let w1 = unsafe { w.col(1).const_cast() };
+    let w2 = unsafe { w.col(2).const_cast() };
+    let w3 = unsafe { w.col(3).const_cast() };
+    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+        arch.dispatch(RankUpdateStepImpl::<'_, E, 4> {
+            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            w: unsafe {
+                [
+                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w3.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                ]
+            },
+            p_array,
+            beta_array,
+        });
+    } else {
+        let [p0, p1, p2, p3] = p_array;
+        let [beta0, beta1, beta2, beta3] = beta_array;
+
+        zipped!(l_col, w0, w1, w2, w3).for_each(|mut l, mut w0, mut w1, mut w2, mut w3| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+            let mut local_w1 = w1.read();
+            let mut local_w2 = w2.read();
+            let mut local_w3 = w3.read();
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            local_w2 = E::mul_adde(&p2, &local_l, &local_w2);
+            local_l = E::mul_adde(&beta2, &local_w2, &local_l);
+
+            local_w3 = E::mul_adde(&p3, &local_l, &local_w3);
+            local_l = E::mul_adde(&beta3, &local_w3, &local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+            w2.write(local_w2);
+            w3.write(local_w3);
+        });
+    }
+}
+
+fn rank_update_step_impl3<E: ComplexField>(
+    arch: pulp::Arch,
+    l_col: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    p_array: [E; 4],
+    beta_array: [E; 4],
+) {
+    let m = l_col.nrows();
+    let w = w.into_const();
+    let w0 = unsafe { w.col(0).const_cast() };
+    let w1 = unsafe { w.col(1).const_cast() };
+    let w2 = unsafe { w.col(2).const_cast() };
+
+    let [p_array @ .., _] = p_array;
+    let [beta_array @ .., _] = beta_array;
+
+    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+        arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
+            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            w: unsafe {
+                [
+                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                ]
+            },
+            p_array,
+            beta_array,
+        });
+    } else {
+        let [p0, p1, p2] = p_array;
+        let [beta0, beta1, beta2] = beta_array;
+
+        zipped!(l_col, w0, w1, w2).for_each(|mut l, mut w0, mut w1, mut w2| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+            let mut local_w1 = w1.read();
+            let mut local_w2 = w2.read();
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            local_w2 = E::mul_adde(&p2, &local_l, &local_w2);
+            local_l = E::mul_adde(&beta2, &local_w2, &local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+            w2.write(local_w2);
+        });
+    }
+}
+
+fn rank_update_step_impl2<E: ComplexField>(
+    arch: pulp::Arch,
+    l_col: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    p_array: [E; 4],
+    beta_array: [E; 4],
+) {
+    let m = l_col.nrows();
+    let w = w.into_const();
+    let w0 = unsafe { w.col(0).const_cast() };
+    let w1 = unsafe { w.col(1).const_cast() };
+    let [p_array @ .., _, _] = p_array;
+    let [beta_array @ .., _, _] = beta_array;
+
+    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+        arch.dispatch(RankUpdateStepImpl::<'_, E, 2> {
+            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            w: unsafe {
+                [
+                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                ]
+            },
+            p_array,
+            beta_array,
+        });
+    } else {
+        let [p0, p1] = p_array;
+        let [beta0, beta1] = beta_array;
+
+        zipped!(l_col, w0, w1).for_each(|mut l, mut w0, mut w1| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+            let mut local_w1 = w1.read();
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            local_w1 = E::mul_adde(&p1, &local_l, &local_w1);
+            local_l = E::mul_adde(&beta1, &local_w1, &local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+        });
+    }
+}
+
+fn rank_update_step_impl1<E: ComplexField>(
+    arch: pulp::Arch,
+    l_col: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    p_array: [E; 4],
+    beta_array: [E; 4],
+) {
+    let m = l_col.nrows();
+    let w_rs = w.row_stride();
+
+    let w0 = w.col(0);
+    let [p_array @ .., _, _, _] = p_array;
+    let [beta_array @ .., _, _, _] = beta_array;
+
+    if E::HAS_SIMD && l_col.row_stride() == 1 && w_rs == 1 {
+        arch.dispatch(RankUpdateStepImpl::<'_, E, 1> {
+            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            w: unsafe { [E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m))] },
+            p_array,
+            beta_array,
+        });
+    } else {
+        let [p0] = p_array;
+        let [beta0] = beta_array;
+
+        zipped!(l_col, w0).for_each(|mut l, mut w0| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+
+            local_w0 = E::mul_adde(&p0, &local_l, &local_w0);
+            local_l = E::mul_adde(&beta0, &local_w0, &local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+        });
+    }
+}
+
+impl<'a, E: ComplexField> RankRUpdate<'a, E> {
     fn run(self) {
         // On the Modification of LDLT Factorizations
         // By R. Fletcher and M. J. D. Powell
@@ -182,92 +573,55 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
         let n = ld.nrows();
         let k = w.ncols();
 
-        fancy_debug_assert!(ld.ncols() == n);
-        fancy_debug_assert!(w.nrows() == n);
-        fancy_debug_assert!(alpha.nrows() == k);
-
-        let l_rs = ld.row_stride();
-        let w_cs = w.col_stride();
-        let w_rs = w.row_stride();
+        debug_assert!(ld.ncols() == n);
+        debug_assert!(w.nrows() == n);
+        debug_assert!(alpha.nrows() == k);
 
         let arch = pulp::Arch::new();
-        unsafe {
-            for j in 0..n {
-                let r = (*r)().min(k);
+        for j in 0..n {
+            let r = <usize as Ord>::min((*r)(), k);
 
-                let mut r_idx = 0;
-                while r_idx < r {
-                    let r_chunk = (r - r_idx).min(4);
-                    let mut p_array = [T::zero(), T::zero(), T::zero(), T::zero()];
-                    let mut beta_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+            let mut r_idx = 0;
+            while r_idx < r {
+                let r_chunk = <usize as Ord>::min(r - r_idx, 4);
+                let mut p_array = [E::zero(), E::zero(), E::zero(), E::zero()];
+                let mut beta_array = [E::zero(), E::zero(), E::zero(), E::zero()];
 
-                    let mut dj = ld.rb().get_unchecked(j, j).clone();
-                    for k in 0..r_chunk {
-                        let p = p_array.get_unchecked_mut(k);
-                        let beta = beta_array.get_unchecked_mut(k);
-                        let alpha = alpha.rb_mut().get_unchecked(r_idx + k);
+                let mut dj = ld.rb().read(j, j);
+                for k in 0..r_chunk {
+                    let p = &mut p_array[k];
+                    let beta = &mut beta_array[k];
+                    let local_alpha = alpha.read(r_idx + k, 0);
 
-                        *p = w.rb().get_unchecked(j, r_idx + k).clone();
-                        let alpha_conj_p = (*alpha).mul(&p.conj());
-                        let new_dj = dj.add(&alpha_conj_p.mul(p));
-                        *beta = alpha_conj_p.mul(&new_dj.inv());
-                        *alpha = (*alpha).sub(&new_dj.mul(&beta.mul(&beta.conj())));
+                    *p = w.rb().read(j, r_idx + k);
+                    let alpha_conj_p = local_alpha.mul(&p.conj());
+                    let new_dj = dj.add(&alpha_conj_p.mul(p));
+                    *beta = alpha_conj_p.mul(&new_dj.inv());
+                    alpha.write(
+                        r_idx + k,
+                        0,
+                        local_alpha.sub(&new_dj.mul(&beta.mul(&beta.conj()))),
+                    );
 
-                        dj = new_dj;
-                    }
-                    *ld.rb_mut().get_unchecked(j, j) = dj;
-
-                    let rem = n - j - 1;
-
-                    let l_ptr = ld.rb_mut().ptr_at(j + 1, j);
-                    let w_ptr = w.rb_mut().ptr_at(j + 1, r_idx);
-                    let p = p_array.as_ptr();
-                    let beta = beta_array.as_ptr();
-
-                    if TypeId::of::<T>() == TypeId::of::<f64>() && l_rs == 1 && w_rs == 1 {
-                        match r_chunk {
-                            1 => rank_1_f64(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            2 => rank_2_f64(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            3 => rank_3_f64(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            4 => rank_4_f64(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            _ => unreachable!(),
-                        };
-                    } else if TypeId::of::<T>() == TypeId::of::<f32>() && l_rs == 1 && w_rs == 1 {
-                        match r_chunk {
-                            1 => rank_1_f32(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            2 => rank_2_f32(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            3 => rank_3_f32(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            4 => rank_4_f32(
-                                arch, rem, l_ptr as _, w_ptr as _, w_cs, p as _, beta as _,
-                            ),
-                            _ => unreachable!(),
-                        };
-                    } else {
-                        match r_chunk {
-                            1 => r1(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
-                            2 => r2(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
-                            3 => r3(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
-                            4 => r4(rem, l_ptr, l_rs, w_ptr, w_rs, w_cs, p, beta),
-                            _ => unreachable!(),
-                        };
-                    }
-
-                    r_idx += r_chunk;
+                    dj = new_dj;
+                    *p = (*p).neg();
                 }
+                ld.write(j, j, dj);
+
+                let rem = n - j - 1;
+
+                let l_col = ld.rb_mut().col(j).subrows(j + 1, rem);
+                let w = w.rb_mut().subcols(r_idx, r_chunk).subrows(j + 1, rem);
+
+                match r_chunk {
+                    1 => rank_update_step_impl1(arch, l_col, w, p_array, beta_array),
+                    2 => rank_update_step_impl2(arch, l_col, w, p_array, beta_array),
+                    3 => rank_update_step_impl3(arch, l_col, w, p_array, beta_array),
+                    4 => rank_update_step_impl4(arch, l_col, w, p_array, beta_array),
+                    _ => unreachable!(),
+                }
+
+                r_idx += r_chunk;
             }
         }
     }
@@ -284,17 +638,17 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
 /// the function is called are unspecified.
 #[track_caller]
-pub fn rank_r_update_clobber<T: ComplexField>(
-    cholesky_factors: MatMut<'_, T>,
-    w: MatMut<'_, T>,
-    alpha: ColMut<'_, T>,
+pub fn rank_r_update_clobber<E: ComplexField>(
+    cholesky_factors: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    alpha: MatMut<'_, E>,
 ) {
     let n = cholesky_factors.nrows();
     let k = w.ncols();
 
-    fancy_assert!(cholesky_factors.ncols() == n);
-    fancy_assert!(w.nrows() == n);
-    fancy_assert!(alpha.nrows() == k);
+    assert!(cholesky_factors.ncols() == n);
+    assert!(w.nrows() == n);
+    assert!(alpha.nrows() == k);
 
     RankRUpdate {
         ld: cholesky_factors,
@@ -305,12 +659,12 @@ pub fn rank_r_update_clobber<T: ComplexField>(
     .run();
 }
 
-pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<E: Entity>(mat: MatMut<'_, E>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
-    fancy_debug_assert!(mat.ncols() == n);
-    fancy_debug_assert!(r <= n);
+    debug_assert!(mat.ncols() == n);
+    debug_assert!(r <= n);
 
     Arch::new().dispatch(|| {
         (0..=r).for_each(|chunk_j| {
@@ -327,8 +681,9 @@ pub(crate) fn delete_rows_and_cols_triangular<T: Clone>(mat: MatMut<'_, T>, idx:
                     if chunk_i != 0 || chunk_j != 0 {
                         for i in i_start..i_finish {
                             unsafe {
-                                *mat.rb_mut().get_unchecked(i - chunk_i, j - chunk_j) =
-                                    mat.rb().get_unchecked(i, j).clone();
+                                let value = mat.rb().read_unchecked(i, j);
+                                mat.rb_mut()
+                                    .write_unchecked(i - chunk_i, j - chunk_j, value)
                             }
                         }
                     }
@@ -364,12 +719,12 @@ pub(crate) fn rank_update_indices(
 /// Computes the size and alignment of required workspace for deleting the rows and columns from a
 /// matrix, given its Cholesky decomposition.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber_req<T: 'static>(
+pub fn delete_rows_and_cols_clobber_req<E: Entity>(
     dim: usize,
     number_of_rows_to_remove: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let r = number_of_rows_to_remove;
-    StackReq::try_all_of([temp_mat_req::<T>(dim, r)?, temp_mat_req::<T>(r, 1)?])
+    StackReq::try_all_of([temp_mat_req::<E>(dim, r)?, temp_mat_req::<E>(r, 1)?])
 }
 
 /// Deletes `r` rows and columns at the provided indices from the Cholesky factor.
@@ -382,15 +737,15 @@ pub fn delete_rows_and_cols_clobber_req<T: 'static>(
 /// The indices are clobbered, meaning that the values that the slice contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factors: MatMut<'_, T>,
+pub fn delete_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factors: MatMut<'_, E>,
     indices: &mut [usize],
     stack: DynStack<'_>,
 ) {
     let n = cholesky_factors.nrows();
     let r = indices.len();
-    fancy_assert!(cholesky_factors.ncols() == n);
-    fancy_assert!(indices.len() < n);
+    assert!(cholesky_factors.ncols() == n);
+    assert!(indices.len() < n);
 
     if r == 0 {
         return;
@@ -398,14 +753,14 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
     indices.sort_unstable();
     for i in 0..r - 1 {
-        fancy_assert!(indices[i + 1] > indices[i]);
+        assert!(indices[i + 1] > indices[i]);
     }
-    fancy_assert!(indices[r - 1] < n);
+    assert!(indices[r - 1] < n);
 
     let first = indices[0];
 
-    let (mut w, stack) = unsafe { temp_mat_uninit::<T>(n - first - r, r, stack) };
-    let (mut alpha, _) = unsafe { temp_mat_uninit::<T>(r, 1, stack) };
+    let (mut w, stack) = unsafe { temp_mat_uninit::<E>(n - first - r, r, stack) };
+    let (mut alpha, _) = unsafe { temp_mat_uninit::<E>(r, 1, stack) };
     let mut w = w.as_mut();
     let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
@@ -414,8 +769,7 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                *alpha.rb_mut().ptr_in_bounds_at_unchecked(k) =
-                    cholesky_factors.rb().get_unchecked(j, j).clone();
+                alpha.write_unchecked(k, 0, cholesky_factors.read_unchecked(j, j));
             }
 
             for chunk_i in k..r {
@@ -426,9 +780,11 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
                 for i in i_start..i_finish {
                     unsafe {
-                        *w.rb_mut()
-                            .ptr_in_bounds_at_unchecked(i - chunk_i - first, k) =
-                            cholesky_factors.rb().get_unchecked(i, j).clone();
+                        w.write_unchecked(
+                            i - chunk_i - first,
+                            k,
+                            cholesky_factors.read_unchecked(i, j),
+                        );
                     }
                 }
             }
@@ -438,9 +794,7 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
     delete_rows_and_cols_triangular(cholesky_factors.rb_mut(), indices);
 
     RankRUpdate {
-        ld: unsafe {
-            cholesky_factors.submatrix_unchecked(first, first, n - first - r, n - first - r)
-        },
+        ld: cholesky_factors.submatrix(first, first, n - first - r, n - first - r),
         w,
         alpha,
         r: &mut rank_update_indices(first, indices),
@@ -450,11 +804,11 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
 /// Computes the size and alignment of the required workspace for inserting the rows and columns at
 /// the index in the Cholesky factor..
-pub fn insert_rows_and_cols_clobber_req<T: 'static>(
+pub fn insert_rows_and_cols_clobber_req<E: Entity>(
     inserted_matrix_ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism, Default::default())
+    raw_cholesky_in_place_req::<E>(inserted_matrix_ncols, parallelism, Default::default())
 }
 
 /// Inserts `r` rows and columns at the provided index in the Cholesky factor.
@@ -467,21 +821,21 @@ pub fn insert_rows_and_cols_clobber_req<T: 'static>(
 /// The inserted matrix is clobbered, meaning that the values it contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn insert_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factors_extended: MatMut<'_, T>,
+pub fn insert_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factors_extended: MatMut<'_, E>,
     insertion_index: usize,
-    inserted_matrix: MatMut<'_, T>,
+    inserted_matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let new_n = cholesky_factors_extended.nrows();
     let r = inserted_matrix.ncols();
 
-    fancy_assert!(cholesky_factors_extended.ncols() == new_n);
-    fancy_assert!(r < new_n);
+    assert!(cholesky_factors_extended.ncols() == new_n);
+    assert!(r < new_n);
     let old_n = new_n - r;
 
-    fancy_assert!(insertion_index <= old_n);
+    assert!(insertion_index <= old_n);
 
     if r == 0 {
         return;
@@ -496,9 +850,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
         unsafe {
             for i in (current_col..old_n).rev() {
-                *ld.rb_mut()
-                    .ptr_in_bounds_at_unchecked(i + r, current_col + r) =
-                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+                ld.write_unchecked(i + r, current_col + r, ld.read_unchecked(i, current_col));
             }
         }
     }
@@ -507,42 +859,32 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         current_col -= 1;
         unsafe {
             for i in (insertion_index..old_n).rev() {
-                *ld.rb_mut().ptr_in_bounds_at_unchecked(i + r, current_col) =
-                    (*ld.rb().ptr_in_bounds_at_unchecked(i, current_col)).clone();
+                ld.write_unchecked(i + r, current_col, ld.read_unchecked(i, current_col));
             }
         }
     }
 
-    let (ld00, _, l_bot_left, ld_bot_right) =
-        unsafe { ld.split_at_unchecked(insertion_index, insertion_index) };
+    let [ld00, _, l_bot_left, ld_bot_right] = ld.split_at(insertion_index, insertion_index);
     let ld00 = ld00.into_const();
-    let d0 = unsafe { ld00.diagonal_unchecked() };
+    let d0 = ld00.diagonal();
 
-    let (_, mut l10, _, l20) = unsafe { l_bot_left.split_at_unchecked(r, 0) };
-    let (mut ld11, _, mut l21, ld22) = unsafe { ld_bot_right.split_at_unchecked(r, r) };
+    let [_, mut l10, _, l20] = l_bot_left.split_at(r, 0);
+    let [mut ld11, _, mut l21, ld22] = ld_bot_right.split_at(r, r);
 
-    let (_, mut a01, _, a_bottom) =
-        unsafe { inserted_matrix.split_at_unchecked(insertion_index, 0) };
-    let (_, a11, _, a21) = unsafe { a_bottom.split_at_unchecked(r, 0) };
+    let [_, mut a01, _, a_bottom] = inserted_matrix.split_at(insertion_index, 0);
+    let [_, a11, _, a21] = a_bottom.split_at(r, 0);
 
     let mut stack = stack;
 
-    solve::solve_unit_lower_triangular_in_place(
-        ld00.rb(),
-        Conj::No,
-        a01.rb_mut(),
-        Conj::No,
-        parallelism,
-    );
+    solve::solve_unit_lower_triangular_in_place(ld00, a01.rb_mut(), parallelism);
 
     let a01 = a01.rb();
 
     for j in 0..insertion_index {
-        let d0_inv = unsafe { d0.get_unchecked(j) }.inv();
+        let d0_inv = unsafe { d0.read_unchecked(j, 0) }.inv();
         for i in 0..r {
             unsafe {
-                *l10.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a01.get_unchecked(j, i).conj().mul(&d0_inv);
+                l10.write_unchecked(i, j, a01.read_unchecked(j, i).conj().mul(&d0_inv));
             }
         }
     }
@@ -550,8 +892,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     for j in 0..r {
         for i in j..r {
             unsafe {
-                *ld11.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a11.rb().get_unchecked(i, j).clone();
+                ld11.write_unchecked(i, j, a11.read_unchecked(i, j));
             }
         }
     }
@@ -559,15 +900,12 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
     mul::triangular::matmul(
         ld11.rb_mut(),
         BlockStructure::TriangularLower,
-        Conj::No,
         l10.rb(),
         BlockStructure::Rectangular,
-        Conj::No,
-        a01.rb(),
+        a01,
         BlockStructure::Rectangular,
-        Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
@@ -583,30 +921,22 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     for j in 0..r {
         for i in 0..rem {
-            unsafe {
-                *l21.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    a21.rb().get_unchecked(i, j).clone();
-            }
+            unsafe { l21.write_unchecked(i, j, a21.read_unchecked(i, j)) }
         }
     }
 
     mul::matmul(
         l21.rb_mut(),
-        Conj::No,
         l20.rb(),
-        Conj::No,
-        a01.rb(),
-        Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        a01,
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
     solve::solve_unit_lower_triangular_in_place(
-        ld11,
-        Conj::Yes,
+        ld11.conjugate(),
         l21.rb_mut().transpose(),
-        Conj::No,
         parallelism,
     );
 
@@ -614,23 +944,26 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            let d1_inv = (*d1.get_unchecked(j)).inv();
+            let d1_inv = d1.read_unchecked(j, 0).inv();
             for i in 0..rem {
-                let dst = l21.rb_mut().get_unchecked(i, j);
-                *dst = dst.mul(&d1_inv);
+                let value = l21.rb_mut().read_unchecked(i, j).mul(&d1_inv);
+                l21.write_unchecked(i, j, value);
             }
         }
     }
 
-    let mut alpha = unsafe { a11.col_unchecked(0) };
+    let mut alpha = a11.col(0);
     let mut w = a21;
 
     for j in 0..r {
         unsafe {
-            *alpha.rb_mut().ptr_in_bounds_at_unchecked(j) = ld11.rb().get_unchecked(j, j).neg();
+            alpha
+                .rb_mut()
+                .write_unchecked(j, 0, ld11.read_unchecked(j, j).neg());
 
             for i in 0..rem {
-                *w.rb_mut().ptr_in_bounds_at_unchecked(i, j) = l21.rb().get_unchecked(i, j).neg();
+                w.rb_mut()
+                    .write_unchecked(i, j, l21.read_unchecked(i, j).neg());
             }
         }
     }

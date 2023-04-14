@@ -8,8 +8,8 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use assert2::assert as fancy_assert;
-use faer_core::{permutation::swap_cols, ColMut, MatMut, RealField, RowMut};
+use assert2::assert;
+use faer_core::{permutation::swap_cols, zipped, MatMut, RealField};
 use reborrow::*;
 
 #[derive(Copy, Clone, Debug)]
@@ -18,30 +18,30 @@ pub struct JacobiRotation<T> {
     pub s: T,
 }
 
-impl<T: RealField> JacobiRotation<T> {
-    pub fn from_triplet(x: T, y: T, z: T) -> Self {
+impl<E: RealField> JacobiRotation<E> {
+    pub fn from_triplet(x: E, y: E, z: E) -> Self {
         let abs_y = y.abs();
         let two_abs_y = abs_y.add(&abs_y);
-        if two_abs_y == T::zero() {
+        if two_abs_y == E::zero() {
             Self {
-                c: T::one(),
-                s: T::zero(),
+                c: E::one(),
+                s: E::zero(),
             }
         } else {
             let tau = (x.sub(&z)).mul(&two_abs_y.inv());
-            let w = ((tau.mul(&tau)).add(&T::one())).sqrt();
-            let t = if tau > T::zero() {
+            let w = ((tau.mul(&tau)).add(&E::one())).sqrt();
+            let t = if tau > E::zero() {
                 (tau.add(&w)).inv()
             } else {
                 (tau.sub(&w)).inv()
             };
 
-            let neg_sign_y = if y > T::zero() {
-                T::one().neg()
+            let neg_sign_y = if y > E::zero() {
+                E::one().neg()
             } else {
-                T::one()
+                E::one()
             };
-            let n = (t.mul(&t).add(&T::one())).sqrt().inv();
+            let n = (t.mul(&t).add(&E::one())).sqrt().inv();
 
             Self {
                 c: n.clone(),
@@ -50,7 +50,7 @@ impl<T: RealField> JacobiRotation<T> {
         }
     }
 
-    pub fn apply_on_the_left_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
+    pub fn apply_on_the_left_2x2(&self, m00: E, m01: E, m10: E, m11: E) -> (E, E, E, E) {
         let Self { c, s } = self;
         (
             m00.mul(c).add(&m10.mul(s)),
@@ -60,31 +60,33 @@ impl<T: RealField> JacobiRotation<T> {
         )
     }
 
-    pub fn apply_on_the_right_2x2(&self, m00: T, m01: T, m10: T, m11: T) -> (T, T, T, T) {
+    pub fn apply_on_the_right_2x2(&self, m00: E, m01: E, m10: E, m11: E) -> (E, E, E, E) {
         let (r00, r01, r10, r11) = self.transpose().apply_on_the_left_2x2(m00, m10, m01, m11);
         (r00, r10, r01, r11)
     }
 
-    pub fn apply_on_the_left_in_place(&self, x: RowMut<'_, T>, y: RowMut<'_, T>) {
+    pub fn apply_on_the_left_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
         pulp::Arch::new().dispatch(
             #[inline(always)]
             move || {
+                assert!(x.nrows() == 1);
+
                 let Self { c, s } = self;
-                if *c == T::one() && *s == T::zero() {
+                if *c == E::one() && *s == E::zero() {
                     return;
                 }
 
-                x.cwise().zip(y).for_each(move |x, y| {
-                    let x_ = x.clone();
-                    let y_ = y.clone();
-                    *x = c.mul(&x_).add(&s.mul(&y_));
-                    *y = s.neg().mul(&x_).add(&c.mul(&y_));
+                zipped!(x, y).for_each(move |mut x, mut y| {
+                    let x_ = x.read();
+                    let y_ = y.read();
+                    x.write(c.mul(&x_).add(&s.mul(&y_)));
+                    y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
                 });
             },
         )
     }
 
-    pub fn apply_on_the_right_in_place(&self, x: ColMut<'_, T>, y: ColMut<'_, T>) {
+    pub fn apply_on_the_right_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
         self.transpose()
             .apply_on_the_left_in_place(x.transpose(), y.transpose());
     }
@@ -97,7 +99,7 @@ impl<T: RealField> JacobiRotation<T> {
     }
 }
 
-impl<T: RealField> core::ops::Mul for JacobiRotation<T> {
+impl<E: RealField> core::ops::Mul for JacobiRotation<E> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -108,24 +110,24 @@ impl<T: RealField> core::ops::Mul for JacobiRotation<T> {
     }
 }
 
-fn compute_2x2<T: RealField>(
-    m00: T,
-    m01: T,
-    m10: T,
-    m11: T,
-) -> (JacobiRotation<T>, JacobiRotation<T>) {
+fn compute_2x2<E: RealField>(
+    m00: E,
+    m01: E,
+    m10: E,
+    m11: E,
+) -> (JacobiRotation<E>, JacobiRotation<E>) {
     let t = m00.add(&m11);
     let d = m10.sub(&m01);
 
-    let rot1 = if d == T::zero() {
+    let rot1 = if d == E::zero() {
         JacobiRotation {
-            c: T::one(),
-            s: T::zero(),
+            c: E::one(),
+            s: E::zero(),
         }
     } else {
         let u = t.mul(&d.inv());
-        let tmp = (T::one().add(&u.mul(&u))).sqrt().inv();
-        let tmp = if tmp == T::zero() { u.abs().inv() } else { tmp };
+        let tmp = (E::one().add(&u.mul(&u))).sqrt().inv();
+        let tmp = if tmp == E::zero() { u.abs().inv() } else { tmp };
         JacobiRotation {
             c: u.mul(&tmp),
             s: tmp,
@@ -146,23 +148,23 @@ pub enum Skip {
     Last,
 }
 
-pub fn jacobi_svd<T: RealField>(
-    matrix: MatMut<'_, T>,
-    u: Option<MatMut<'_, T>>,
-    v: Option<MatMut<'_, T>>,
+pub fn jacobi_svd<E: RealField>(
+    matrix: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    v: Option<MatMut<'_, E>>,
     skip: Skip,
-    epsilon: T,
-    consider_zero_threshold: T,
+    epsilon: E,
+    consider_zero_threshold: E,
 ) -> usize {
-    fancy_assert!(matrix.nrows() == matrix.ncols());
+    assert!(matrix.nrows() == matrix.ncols());
     let n = matrix.nrows();
 
     if let Some(u) = u.rb() {
-        fancy_assert!(n == u.nrows());
-        fancy_assert!(n == u.ncols());
+        assert!(n == u.nrows());
+        assert!(n == u.ncols());
     };
     if let Some(v) = v.rb() {
-        fancy_assert!(n == v.ncols());
+        assert!(n == v.ncols());
     }
 
     let mut matrix = matrix;
@@ -172,11 +174,11 @@ pub fn jacobi_svd<T: RealField>(
     if let Some(mut u) = u.rb_mut() {
         for j in 0..n {
             for i in 0..j {
-                u.rb_mut().write_at(i, j, T::zero());
+                u.rb_mut().write(i, j, E::zero());
             }
-            u.rb_mut().write_at(j, j, T::one());
+            u.rb_mut().write(j, j, E::one());
             for i in j + 1..n {
-                u.rb_mut().write_at(i, j, T::zero());
+                u.rb_mut().write(i, j, E::zero());
             }
         }
     }
@@ -184,7 +186,7 @@ pub fn jacobi_svd<T: RealField>(
     if let Some(mut v) = v.rb_mut() {
         if matches!(skip, Skip::First) {
             for i in 0..n - 1 {
-                v.rb_mut().write_at(i, 0, T::zero());
+                v.rb_mut().write(i, 0, E::zero());
             }
             v = v.submatrix(0, 1, n - 1, n - 1);
         }
@@ -193,25 +195,28 @@ pub fn jacobi_svd<T: RealField>(
         let n = v.ncols();
         for j in 0..n {
             for i in 0..j {
-                v.rb_mut().write_at(i, j, T::zero());
+                v.rb_mut().write(i, j, E::zero());
             }
             if j == m {
                 break;
             }
-            v.rb_mut().write_at(j, j, T::one());
+            v.rb_mut().write(j, j, E::one());
             for i in j + 1..m {
-                v.rb_mut().write_at(i, j, T::zero());
+                v.rb_mut().write(i, j, E::zero());
             }
         }
     }
 
-    let mut max_diag = T::zero();
-    for d in matrix.rb().diagonal() {
-        let d = d.abs();
-        max_diag = if d > max_diag { d } else { max_diag };
+    let mut max_diag = E::zero();
+    {
+        let diag = matrix.rb().diagonal();
+        for idx in 0..diag.nrows() {
+            let d = diag.read(idx, 0).abs();
+            max_diag = if d > max_diag { d } else { max_diag };
+        }
     }
 
-    let precision = epsilon.scale_power_of_two(&T::one().add(&T::one()));
+    let precision = epsilon.scale_power_of_two(&E::one().add(&E::one()));
     loop {
         let mut failed = false;
         for p in 1..n {
@@ -223,33 +228,33 @@ pub fn jacobi_svd<T: RealField>(
                     consider_zero_threshold.clone()
                 };
 
-                if (matrix[(p, q)].abs() > threshold) || (matrix[(q, p)].abs() > threshold) {
+                if (matrix.read(p, q).abs() > threshold) || (matrix.read(q, p).abs() > threshold) {
                     failed = true;
                     let (j_left, j_right) = compute_2x2(
-                        matrix[(p, p)].clone(),
-                        matrix[(p, q)].clone(),
-                        matrix[(q, p)].clone(),
-                        matrix[(q, q)].clone(),
+                        matrix.read(p, p),
+                        matrix.read(p, q),
+                        matrix.read(q, p),
+                        matrix.read(q, q),
                     );
 
-                    let (top, bottom) = matrix.rb_mut().split_at_row(p);
+                    let [top, bottom] = matrix.rb_mut().split_at_row(p);
                     j_left.apply_on_the_left_in_place(bottom.row(0), top.row(q));
-                    let (left, right) = matrix.rb_mut().split_at_col(p);
+                    let [left, right] = matrix.rb_mut().split_at_col(p);
                     j_right.apply_on_the_right_in_place(right.col(0), left.col(q));
 
                     if let Some(u) = u.rb_mut() {
-                        let (left, right) = u.split_at_col(p);
+                        let [left, right] = u.split_at_col(p);
                         j_left
                             .transpose()
                             .apply_on_the_right_in_place(right.col(0), left.col(q))
                     }
                     if let Some(v) = v.rb_mut() {
-                        let (left, right) = v.split_at_col(p);
+                        let [left, right] = v.split_at_col(p);
                         j_right.apply_on_the_right_in_place(right.col(0), left.col(q))
                     }
 
                     for idx in [p, q] {
-                        let d = matrix[(idx, idx)].abs();
+                        let d = matrix.read(idx, idx).abs();
                         max_diag = if d > max_diag { d } else { max_diag };
                     }
                 }
@@ -262,12 +267,12 @@ pub fn jacobi_svd<T: RealField>(
 
     // make diagonal elements positive
     for j in 0..n {
-        let d = matrix[(j, j)].clone();
-        if d < T::zero() {
-            matrix[(j, j)] = d.neg();
+        let d = matrix.read(j, j);
+        if d < E::zero() {
+            matrix.write(j, j, d.neg());
             if let Some(mut u) = u.rb_mut() {
                 for i in 0..n {
-                    u[(i, j)] = u[(i, j)].neg();
+                    u.write(i, j, u.read(i, j).neg());
                 }
             }
         }
@@ -290,11 +295,11 @@ pub fn jacobi_svd<T: RealField>(
     let n = new_n;
     let mut nnz_count = n;
     for i in 0..n {
-        let mut largest_elem = T::zero();
+        let mut largest_elem = E::zero();
         let mut largest_pos = i;
 
         for j in i..n {
-            let mjj = matrix[(j, j)].clone();
+            let mjj = matrix.read(j, j);
             (largest_elem, largest_pos) = if mjj > largest_elem {
                 (mjj, j)
             } else {
@@ -302,14 +307,14 @@ pub fn jacobi_svd<T: RealField>(
             };
         }
 
-        if largest_elem == T::zero() {
+        if largest_elem == E::zero() {
             nnz_count = i;
         }
 
         if largest_pos > i {
-            let mii = matrix[(i, i)].clone();
-            matrix[(i, i)] = largest_elem;
-            matrix[(largest_pos, largest_pos)] = mii;
+            let mii = matrix.read(i, i);
+            matrix.write(i, i, largest_elem);
+            matrix.write(largest_pos, largest_pos, mii);
             if let Some(u) = u.rb_mut() {
                 swap_cols(u, i, largest_pos);
             }
@@ -324,6 +329,7 @@ pub fn jacobi_svd<T: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{Mat, MatRef};
 
@@ -336,9 +342,9 @@ mod tests {
         for i in 0..m {
             for j in 0..n {
                 if i == j {
-                    fancy_assert!(s[(i, j)] >= 0.0);
+                    assert!(s.read(i, j) >= 0.0);
                 } else {
-                    assert_approx_eq!(s[(i, j)], 0.0);
+                    assert_approx_eq!(s.read(i, j), 0.0);
                 }
             }
         }
@@ -348,20 +354,20 @@ mod tests {
             for i in 0..m {
                 for j in 0..m {
                     let target = if i == j { 1.0 } else { 0.0 };
-                    assert_approx_eq!(o[(i, j)], target);
+                    assert_approx_eq!(o.read(i, j), target);
                 }
             }
         }
         for i in 0..m {
             for j in 0..n {
-                assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)]);
+                assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j));
             }
         }
 
         let size = m.min(n);
         if size > 1 {
             for i in 0..size - 1 {
-                fancy_assert!(s[(i, i)] >= s[(i + 1, i + 1)]);
+                assert!(s.read(i, i) >= s.read(i + 1, i + 1));
             }
         }
     }
@@ -369,7 +375,7 @@ mod tests {
     #[test]
     fn test_jacobi() {
         for n in [0, 1, 2, 4, 8, 15, 16, 31, 32] {
-            let mat = Mat::<f64>::with_dims(|_, _| rand::random::<f64>(), n, n);
+            let mat = Mat::<f64>::with_dims(n, n, |_, _| rand::random::<f64>());
 
             let mut s = mat.clone();
             let mut u = Mat::<f64>::zeros(n, n);
@@ -391,9 +397,9 @@ mod tests {
     fn test_skip_first() {
         for n in [2, 4, 8, 15, 16, 31, 32] {
             let mat = Mat::<f64>::with_dims(
+                n,
+                n,
                 |_, j| if j == 0 { 0.0 } else { rand::random::<f64>() },
-                n,
-                n,
             );
 
             let mut s = mat.clone();
@@ -411,14 +417,14 @@ mod tests {
             let mut u_shifted = Mat::<f64>::zeros(n, n);
             for j in 1..n {
                 for i in 0..n {
-                    u_shifted[(i, j - 1)] = u[(i, j)];
+                    u_shifted.write(i, j - 1, u.read(i, j));
                 }
 
-                s[(j - 1, j)] = s[(j, j)];
-                s[(j, j)] = 0.0;
+                s.write(j - 1, j, s.read(j, j));
+                s.write(j, j, 0.0);
             }
             for i in 0..n {
-                u_shifted[(i, n - 1)] = u[(i, 0)];
+                u_shifted.write(i, n - 1, u.read(i, 0));
             }
             check_svd(
                 mat.as_ref().submatrix(0, 1, n, n - 1),
@@ -432,17 +438,13 @@ mod tests {
     #[test]
     fn test_skip_last() {
         for n in [2, 4, 8, 15, 16, 31, 32] {
-            let mat = Mat::<f64>::with_dims(
-                |_, j| {
-                    if j == n - 1 {
-                        0.0
-                    } else {
-                        rand::random::<f64>()
-                    }
-                },
-                n,
-                n,
-            );
+            let mat = Mat::<f64>::with_dims(n, n, |_, j| {
+                if j == n - 1 {
+                    0.0
+                } else {
+                    rand::random::<f64>()
+                }
+            });
 
             let mut s = mat.clone();
             let mut u = Mat::<f64>::zeros(n, n);
@@ -456,10 +458,10 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
             );
-            fancy_assert!(v[(n - 1, n - 1)] == 1.0);
+            assert!(v.read(n - 1, n - 1) == 1.0);
             for j in 0..n - 1 {
-                assert_approx_eq!(v[(n - 1, j)], 0.0);
-                assert_approx_eq!(v[(j, n - 1)], 0.0);
+                assert_approx_eq!(v.read(n - 1, j), 0.0);
+                assert_approx_eq!(v.read(j, n - 1), 0.0);
             }
             check_svd(
                 mat.as_ref().submatrix(0, 0, n, n - 1),

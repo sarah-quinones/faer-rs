@@ -1,62 +1,71 @@
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
-        apply_block_householder_transpose_on_the_left_in_place, make_householder_in_place,
-        upgrade_householder_factor,
+        apply_block_householder_transpose_on_the_left_in_place_with_conj,
+        make_householder_in_place, upgrade_householder_factor,
     },
-    mul::dot,
-    temp_mat_req, ColMut, ComplexField, Conj, MatMut, Parallelism,
+    mul::inner_prod::inner_prod_with_conj,
+    temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, Parallelism,
 };
 use reborrow::*;
 
-fn qr_in_place_unblocked<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
-    mut householder_factor: ColMut<'_, T>,
+fn qr_in_place_unblocked<E: ComplexField>(
+    mut matrix: MatMut<'_, E>,
+    mut householder_factor: MatMut<'_, E>,
     _stack: DynStack<'_>,
 ) {
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = n.min(m);
+    let size = <usize as Ord>::min(m, n);
 
-    fancy_assert!(householder_factor.nrows() == size);
+    assert!(householder_factor.nrows() == size);
 
-    let arch = pulp::Arch::new();
     for k in 0..size {
         let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
-        let (_, _, first_col, last_cols) = mat_rem.split_at(0, 1);
-        let (mut first_col_head, mut first_col_tail) = first_col.col(0).split_at(1);
+        let [_, _, first_col, mut last_cols] = mat_rem.split_at(0, 1);
+        let [mut first_col_head, mut first_col_tail] = first_col.col(0).split_at_row(1);
 
-        let tail_squared_norm =
-            faer_core::mul::dot(arch, first_col_tail.rb(), first_col_tail.rb()).real();
+        let tail_squared_norm = inner_prod_with_conj(
+            first_col_tail.rb(),
+            Conj::Yes,
+            first_col_tail.rb(),
+            Conj::No,
+        )
+        .real();
 
         let (tau, beta) = make_householder_in_place(
             Some(first_col_tail.rb_mut()),
-            first_col_head[0].clone(),
+            first_col_head.read(0, 0),
             tail_squared_norm,
         );
-        unsafe { *householder_factor.rb_mut().ptr_in_bounds_at(k) = tau.clone() };
+        householder_factor.write(k, 0, tau.clone());
         let tau_inv = tau.inv();
 
-        *first_col_head.rb_mut().get(0) = beta;
+        first_col_head.write(0, 0, beta);
 
-        for col in last_cols.into_col_iter() {
-            let (col_head, col_tail) = col.split_at(1);
-            let col_head = col_head.get(0);
+        for idx in 0..last_cols.ncols() {
+            let col = last_cols.rb_mut().col(idx);
+            let [mut col_head, col_tail] = col.split_at_row(1);
+            let col_head_ = col_head.read(0, 0);
 
-            let dot = (*col_head).add(&dot(arch, first_col_tail.rb(), col_tail.rb()));
+            let dot = col_head_.add(&inner_prod_with_conj(
+                first_col_tail.rb(),
+                Conj::Yes,
+                col_tail.rb(),
+                Conj::No,
+            ));
             let k = (dot.mul(&tau_inv)).neg();
-            *col_head = col_head.add(&k);
-            col_tail.cwise().zip(first_col_tail.rb()).for_each(|a, b| {
-                *a = a.add(&k.mul(b));
-            });
+            col_head.write(0, 0, col_head_.add(&k));
+            zipped!(col_tail, first_col_tail.rb())
+                .for_each(|mut a, b| a.write(a.read().add(&k.mul(&b.read()))));
         }
     }
 }
 
 /// The recommended block size to use for a QR decomposition of a matrix with the given shape.
 #[inline]
-pub fn recommended_blocksize<T: 'static>(nrows: usize, ncols: usize) -> usize {
+pub fn recommended_blocksize<E: Entity>(nrows: usize, ncols: usize) -> usize {
     let prod = nrows * ncols;
     let size = nrows.min(ncols);
 
@@ -106,9 +115,9 @@ impl QrComputeParams {
     }
 }
 
-fn qr_in_place_blocked<T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    householder_factor: MatMut<'_, T>,
+fn qr_in_place_blocked<E: ComplexField>(
+    matrix: MatMut<'_, E>,
+    householder_factor: MatMut<'_, E>,
     blocksize: usize,
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -124,7 +133,7 @@ fn qr_in_place_blocked<T: ComplexField>(
     let mut parallelism = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = m.min(n);
+    let size = <usize as Ord>::min(m, n);
 
     let (disable_blocking, disable_parallelism) = params.normalize();
 
@@ -132,7 +141,7 @@ fn qr_in_place_blocked<T: ComplexField>(
 
     let mut j = 0;
     while j < size {
-        let bs = blocksize.min(size - j);
+        let bs = <usize as Ord>::min(blocksize, size - j);
         let mut householder_factor = if householder_is_full_matrix {
             householder_factor.rb_mut().submatrix(j, j, bs, bs)
         } else {
@@ -142,7 +151,7 @@ fn qr_in_place_blocked<T: ComplexField>(
         let m = m - j;
         let n = n - j;
 
-        let (mut current_block, mut trailing_cols) = matrix.rb_mut().split_at_col(bs);
+        let [mut current_block, mut trailing_cols] = matrix.rb_mut().split_at_col(bs);
 
         let prev_blocksize = if disable_blocking(m, n) || blocksize <= 4 || blocksize % 2 != 0 {
             1
@@ -172,12 +181,11 @@ fn qr_in_place_blocked<T: ComplexField>(
         );
 
         if trailing_cols.ncols() > 0 {
-            apply_block_householder_transpose_on_the_left_in_place(
+            apply_block_householder_transpose_on_the_left_in_place_with_conj(
                 current_block.rb(),
                 householder_factor.rb(),
                 Conj::Yes,
                 trailing_cols.rb_mut(),
-                Conj::No,
                 parallelism,
                 stack.rb_mut(),
             );
@@ -204,17 +212,17 @@ fn qr_in_place_blocked<T: ComplexField>(
 /// - Panics if the block size is zero.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn qr_in_place<T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    householder_factor: MatMut<'_, T>,
+pub fn qr_in_place<E: ComplexField>(
+    matrix: MatMut<'_, E>,
+    householder_factor: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: QrComputeParams,
 ) {
     let blocksize = householder_factor.nrows();
-    let size = matrix.nrows().min(matrix.ncols());
-    fancy_assert!(blocksize > 0);
-    fancy_assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
+    let size = <usize as Ord>::min(matrix.nrows(), matrix.ncols());
+    assert!(blocksize > 0);
+    assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     qr_in_place_blocked(
         matrix,
         householder_factor,
@@ -228,7 +236,7 @@ pub fn qr_in_place<T: ComplexField>(
 /// Computes the size and alignment of required workspace for performing a QR
 /// decomposition with no pivoting.
 #[inline]
-pub fn qr_in_place_req<T: 'static>(
+pub fn qr_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
@@ -238,24 +246,25 @@ pub fn qr_in_place_req<T: 'static>(
     let _ = parallelism;
     let _ = nrows;
     let _ = &params;
-    temp_mat_req::<T>(blocksize, ncols)
+    temp_mat_req::<E>(blocksize, ncols)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use assert2::assert;
+    use assert_approx_eq::assert_approx_eq;
     use faer_core::{
+        c64,
         householder::{
-            apply_block_householder_sequence_on_the_left_in_place,
             apply_block_householder_sequence_on_the_left_in_place_req,
+            apply_block_householder_sequence_on_the_left_in_place_with_conj,
         },
-        Conj, Parallelism,
+        mul::matmul,
+        zip::Diag,
+        Conj, Mat, MatRef, Parallelism,
     };
     use std::cell::RefCell;
-
-    use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, mul::matmul, zip::Diag, Mat, MatRef};
-
-    use super::*;
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
@@ -268,20 +277,23 @@ mod tests {
         static RNG: RefCell<StdRng> = RefCell::new(StdRng::seed_from_u64(0));
     }
 
-    type T = c64;
+    type E = c64;
 
-    fn random_value() -> T {
+    fn random_value() -> E {
         RNG.with(|rng| {
             let mut rng = rng.borrow_mut();
             let rng = &mut *rng;
-            T::new(rng.gen(), rng.gen())
+            E {
+                re: rng.gen(),
+                im: rng.gen(),
+            }
         })
     }
 
     fn reconstruct_factors(
-        qr_factors: MatRef<'_, T>,
-        householder: MatRef<'_, T>,
-    ) -> (Mat<T>, Mat<T>) {
+        qr_factors: MatRef<'_, E>,
+        householder: MatRef<'_, E>,
+    ) -> (Mat<E>, Mat<E>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
 
@@ -291,19 +303,21 @@ mod tests {
         r.as_mut()
             .cwise()
             .zip(qr_factors)
-            .for_each_triangular_upper(Diag::Include, |a, b| *a = *b);
+            .for_each_triangular_upper(Diag::Include, |mut a, b| a.write(b.read()));
 
-        q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
+        q.as_mut()
+            .diagonal()
+            .cwise()
+            .for_each(|mut a| a.write(E::one()));
 
-        apply_block_householder_sequence_on_the_left_in_place(
+        apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr_factors,
             householder,
             Conj::No,
             q.as_mut(),
-            Conj::No,
             Parallelism::Rayon(0),
             make_stack!(
-                apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+                apply_block_householder_sequence_on_the_left_in_place_req::<E>(
                     m,
                     householder.nrows(),
                     m,
@@ -317,7 +331,7 @@ mod tests {
     #[test]
     fn test_unblocked() {
         for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4)] {
-            let mut mat = Mat::with_dims(|_, _| random_value(), m, n);
+            let mut mat = Mat::with_dims(m, n, |_, _| random_value());
             let mat_orig = mat.clone();
             let size = m.min(n);
             let mut householder = Mat::zeros(1, size);
@@ -334,35 +348,29 @@ mod tests {
 
             matmul(
                 reconstructed.as_mut(),
-                Conj::No,
                 q.as_ref(),
-                Conj::No,
                 r.as_ref(),
-                Conj::No,
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(8),
             );
             matmul(
                 qhq.as_mut(),
-                Conj::No,
-                q.as_ref().transpose(),
-                Conj::Yes,
+                q.as_ref().adjoint(),
                 q.as_ref(),
-                Conj::No,
                 None,
-                T::one(),
+                E::one(),
                 Parallelism::Rayon(8),
             );
 
             for i in 0..m {
                 for j in 0..m {
-                    assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                    assert_approx_eq!(qhq.read(i, j), if i == j { E::one() } else { E::zero() });
                 }
             }
             for i in 0..m {
                 for j in 0..n {
-                    assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                    assert_approx_eq!(reconstructed.read(i, j), mat_orig.read(i, j));
                 }
             }
         }
@@ -372,7 +380,7 @@ mod tests {
     fn test_blocked() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
             for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
-                let mat_orig = Mat::with_dims(|_, _| random_value(), m, n);
+                let mat_orig = Mat::with_dims(m, n, |_, _| random_value());
                 let mut mat = mat_orig.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -382,7 +390,7 @@ mod tests {
                     mat.as_mut(),
                     householder.as_mut(),
                     parallelism,
-                    make_stack!(qr_in_place_req::<T>(
+                    make_stack!(qr_in_place_req::<E>(
                         m,
                         n,
                         blocksize,
@@ -398,35 +406,32 @@ mod tests {
 
                 matmul(
                     reconstructed.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
-                    T::one(),
+                    E::one(),
                     Parallelism::Rayon(8),
                 );
                 matmul(
                     qhq.as_mut(),
-                    Conj::No,
-                    q.as_ref().transpose(),
-                    Conj::Yes,
+                    q.as_ref().adjoint(),
                     q.as_ref(),
-                    Conj::No,
                     None,
-                    T::one(),
+                    E::one(),
                     Parallelism::Rayon(8),
                 );
 
                 for i in 0..m {
                     for j in 0..m {
-                        assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                        assert_approx_eq!(
+                            qhq.read(i, j),
+                            if i == j { E::one() } else { E::zero() }
+                        );
                     }
                 }
                 for i in 0..m {
                     for j in 0..n {
-                        assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                        assert_approx_eq!(reconstructed.read(i, j), mat_orig.read(i, j));
                     }
                 }
             }
@@ -437,7 +442,7 @@ mod tests {
     fn test_zero() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
             for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
-                let mat_orig = Mat::<T>::zeros(m, n);
+                let mat_orig = Mat::<E>::zeros(m, n);
 
                 let mut mat = mat_orig.clone();
                 let size = m.min(n);
@@ -448,7 +453,7 @@ mod tests {
                     mat.as_mut(),
                     householder.as_mut(),
                     parallelism,
-                    make_stack!(qr_in_place_req::<T>(
+                    make_stack!(qr_in_place_req::<E>(
                         m,
                         n,
                         blocksize,
@@ -464,35 +469,32 @@ mod tests {
 
                 matmul(
                     reconstructed.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
-                    T::one(),
+                    E::one(),
                     Parallelism::Rayon(8),
                 );
                 matmul(
                     qhq.as_mut(),
-                    Conj::No,
-                    q.as_ref().transpose(),
-                    Conj::Yes,
+                    q.as_ref().adjoint(),
                     q.as_ref(),
-                    Conj::No,
                     None,
-                    T::one(),
+                    E::one(),
                     Parallelism::Rayon(8),
                 );
 
                 for i in 0..m {
                     for j in 0..m {
-                        assert_approx_eq!(qhq[(i, j)], if i == j { T::one() } else { T::zero() });
+                        assert_approx_eq!(
+                            qhq.read(i, j),
+                            if i == j { E::one() } else { E::zero() }
+                        );
                     }
                 }
                 for i in 0..m {
                     for j in 0..n {
-                        assert_approx_eq!(reconstructed[(i, j)], mat_orig[(i, j)]);
+                        assert_approx_eq!(reconstructed.read(i, j), mat_orig.read(i, j));
                     }
                 }
             }

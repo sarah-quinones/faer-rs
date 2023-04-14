@@ -1,16 +1,15 @@
+use crate::no_pivoting;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     permutation::{permute_rows, permute_rows_in_place, permute_rows_in_place_req, PermutationRef},
-    ComplexField, Conj, MatMut, MatRef, Parallelism,
+    ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
-
-use crate::no_pivoting;
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_in_place_req<T: 'static>(
+pub fn solve_in_place_req<T: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
@@ -24,7 +23,7 @@ pub fn solve_in_place_req<T: 'static>(
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_in_place_req<T: 'static>(
+pub fn solve_transpose_in_place_req<T: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
@@ -38,7 +37,7 @@ pub fn solve_transpose_in_place_req<T: 'static>(
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_req<T: 'static>(
+pub fn solve_req<T: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
@@ -52,7 +51,7 @@ pub fn solve_req<T: 'static>(
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix ouf of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_req<T: 'static>(
+pub fn solve_transpose_req<T: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
@@ -65,10 +64,9 @@ pub fn solve_transpose_req<T: 'static>(
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
 /// this function computes the solution of the linear system:
-/// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
+/// $$\text{Op}_A(A)X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
-/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
 ///
 /// The solution of the linear system is stored in `rhs`.
 ///
@@ -88,7 +86,6 @@ pub fn solve_in_place<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -99,7 +96,6 @@ pub fn solve_in_place<T: ComplexField>(
         householder_factor,
         conj_lhs,
         rhs.rb_mut(),
-        conj_rhs,
         parallelism,
         stack.rb_mut(),
     );
@@ -108,10 +104,9 @@ pub fn solve_in_place<T: ComplexField>(
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
 /// this function computes the solution of the linear system:
-/// $$\text{Op}_A(A)\top X = \text{Op}_B(B).$$
+/// $$\text{Op}_A(A)\top X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
-/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
 ///
 /// The solution of the linear system is stored in `rhs`.
 ///
@@ -131,7 +126,6 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
-    conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -143,7 +137,6 @@ pub fn solve_transpose_in_place<T: ComplexField>(
         householder_factor,
         conj_lhs,
         rhs.rb_mut(),
-        conj_rhs,
         parallelism,
         stack.rb_mut(),
     );
@@ -151,10 +144,9 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
 /// this function computes the solution of the linear system:
-/// $$\text{Op}_A(A)X = \text{Op}_B(B).$$
+/// $$\text{Op}_A(A)X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
-/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
 ///
 /// The solution of the linear system is stored in `dst`.
 ///
@@ -176,7 +168,6 @@ pub fn solve<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
-    conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -188,7 +179,6 @@ pub fn solve<T: ComplexField>(
         householder_factor,
         conj_lhs,
         rhs,
-        conj_rhs,
         parallelism,
         stack.rb_mut(),
     );
@@ -197,10 +187,9 @@ pub fn solve<T: ComplexField>(
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
 /// this function computes the solution of the linear system:
-/// $$\text{Op}_A(A)^\top X = \text{Op}_B(B).$$
+/// $$\text{Op}_A(A)^\top X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
-/// $\text{Op}_B$ is either the identity or the conjugation depending on the value of `conj_rhs`.  
 ///
 /// The solution of the linear system is stored in `dst`.
 ///
@@ -222,7 +211,6 @@ pub fn solve_transpose<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
-    conj_rhs: Conj,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -234,7 +222,6 @@ pub fn solve_transpose<T: ComplexField>(
         householder_factor,
         conj_lhs,
         dst.rb_mut(),
-        conj_rhs,
         parallelism,
         stack.rb_mut(),
     );
@@ -245,7 +232,7 @@ mod tests {
     use super::*;
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
     use assert2::assert as fancy_assert;
-    use faer_core::{c32, c64, mul::matmul, Mat};
+    use faer_core::{c32, c64, mul::matmul_with_conj, Mat};
     use rand::random;
 
     macro_rules! make_stack {
@@ -258,12 +245,12 @@ mod tests {
         let n = 32;
         let k = 6;
 
-        let a = Mat::with_dims(|_, _| random(), n, n);
-        let rhs = Mat::with_dims(|_, _| random(), n, k);
+        let a = Mat::with_dims(n, n, |_, _| random());
+        let rhs = Mat::with_dims(n, k, |_, _| random());
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
+        let mut householder = Mat::with_dims(blocksize, n, |_, _| T::zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 
@@ -286,41 +273,34 @@ mod tests {
         let qr = qr.as_ref();
 
         for conj_lhs in [Conj::No, Conj::Yes] {
-            for conj_rhs in [Conj::No, Conj::Yes] {
-                let mut sol = rhs.clone();
-                solve_in_place(
-                    qr,
-                    householder.as_ref(),
-                    perm.rb(),
-                    conj_lhs,
-                    sol.as_mut(),
-                    conj_rhs,
-                    Parallelism::None,
-                    make_stack!(solve_in_place_req::<T>(n, blocksize, k)),
-                );
+            let mut sol = rhs.clone();
+            solve_in_place(
+                qr,
+                householder.as_ref(),
+                perm.rb(),
+                conj_lhs,
+                sol.as_mut(),
+                Parallelism::None,
+                make_stack!(solve_in_place_req::<T>(n, blocksize, k)),
+            );
 
-                let mut rhs_reconstructed = rhs.clone();
-                matmul(
-                    rhs_reconstructed.as_mut(),
-                    Conj::No,
-                    a.as_ref(),
-                    conj_lhs,
-                    sol.as_ref(),
-                    Conj::No,
-                    None,
-                    T::one(),
-                    Parallelism::None,
-                );
+            let mut rhs_reconstructed = rhs.clone();
+            matmul_with_conj(
+                rhs_reconstructed.as_mut(),
+                a.as_ref(),
+                conj_lhs,
+                sol.as_ref(),
+                Conj::No,
+                None,
+                T::one(),
+                Parallelism::None,
+            );
 
-                for j in 0..k {
-                    for i in 0..n {
-                        let target = match conj_rhs {
-                            Conj::No => rhs[(i, j)].clone(),
-                            Conj::Yes => rhs[(i, j)].conj(),
-                        };
-
-                        fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
-                    }
+            for j in 0..k {
+                for i in 0..n {
+                    fancy_assert!(
+                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                    )
                 }
             }
         }
@@ -333,12 +313,12 @@ mod tests {
         let n = 32;
         let k = 6;
 
-        let a = Mat::with_dims(|_, _| random(), n, n);
-        let rhs = Mat::with_dims(|_, _| random(), n, k);
+        let a = Mat::with_dims(n, n, |_, _| random());
+        let rhs = Mat::with_dims(n, k, |_, _| random());
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::with_dims(|_, _| T::zero(), blocksize, n);
+        let mut householder = Mat::with_dims(blocksize, n, |_, _| T::zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 
@@ -361,41 +341,34 @@ mod tests {
         let qr = qr.as_ref();
 
         for conj_lhs in [Conj::No, Conj::Yes] {
-            for conj_rhs in [Conj::No, Conj::Yes] {
-                let mut sol = rhs.clone();
-                solve_transpose_in_place(
-                    qr,
-                    householder.as_ref(),
-                    perm.rb(),
-                    conj_lhs,
-                    sol.as_mut(),
-                    conj_rhs,
-                    Parallelism::None,
-                    make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k)),
-                );
+            let mut sol = rhs.clone();
+            solve_transpose_in_place(
+                qr,
+                householder.as_ref(),
+                perm.rb(),
+                conj_lhs,
+                sol.as_mut(),
+                Parallelism::None,
+                make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k)),
+            );
 
-                let mut rhs_reconstructed = rhs.clone();
-                matmul(
-                    rhs_reconstructed.as_mut(),
-                    Conj::No,
-                    a.as_ref().transpose(),
-                    conj_lhs,
-                    sol.as_ref(),
-                    Conj::No,
-                    None,
-                    T::one(),
-                    Parallelism::None,
-                );
+            let mut rhs_reconstructed = rhs.clone();
+            matmul_with_conj(
+                rhs_reconstructed.as_mut(),
+                a.as_ref().transpose(),
+                conj_lhs,
+                sol.as_ref(),
+                Conj::No,
+                None,
+                T::one(),
+                Parallelism::None,
+            );
 
-                for j in 0..k {
-                    for i in 0..n {
-                        let target = match conj_rhs {
-                            Conj::No => rhs[(i, j)].clone(),
-                            Conj::Yes => rhs[(i, j)].conj(),
-                        };
-
-                        fancy_assert!((rhs_reconstructed[(i, j)].sub(&target)).abs() < epsilon)
-                    }
+            for j in 0..k {
+                for i in 0..n {
+                    fancy_assert!(
+                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                    )
                 }
             }
         }

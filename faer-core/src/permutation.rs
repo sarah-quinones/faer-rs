@@ -1,11 +1,10 @@
 //! Permutation matrices.
 #![allow(clippy::len_without_is_empty)]
 
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use crate::{temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef};
+use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use reborrow::*;
-
-use crate::{temp_mat_req, temp_mat_uninit, zip, ComplexField, MatMut, MatRef};
 
 /// Swaps the two columns at indices `a` and `b` in the given matrix.
 ///
@@ -38,38 +37,24 @@ use crate::{temp_mat_req, temp_mat_uninit, zip, ComplexField, MatMut, MatRef};
 /// ```
 #[track_caller]
 #[inline]
-pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
-    let m = mat.nrows();
-    let n = mat.ncols();
-    fancy_assert!(a < n);
-    fancy_assert!(b < n);
+pub fn swap_cols<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
+    assert!(a < mat.ncols());
+    assert!(b < mat.ncols());
 
     if a == b {
         return;
     }
 
-    let rs = mat.row_stride();
-    let cs = mat.col_stride();
-    let ptr = mat.as_ptr();
+    let mat = mat.into_const();
+    let mat_a = mat.subcols(a, 1);
+    let mat_b = mat.subcols(b, 1);
 
-    let ptr_a = ptr.wrapping_offset(cs * a as isize);
-    let ptr_b = ptr.wrapping_offset(cs * b as isize);
-
-    if rs == 1 {
-        unsafe {
-            core::ptr::swap_nonoverlapping(ptr_a, ptr_b, m);
-        }
-    } else {
-        for i in 0..m {
-            let offset = rs * i as isize;
-            unsafe {
-                core::ptr::swap_nonoverlapping(
-                    ptr_a.wrapping_offset(offset),
-                    ptr_b.wrapping_offset(offset),
-                    1,
-                );
-            }
-        }
+    unsafe {
+        zipped!(mat_a.const_cast(), mat_b.const_cast()).for_each(|mut a, mut b| {
+            let (a_read, b_read) = (a.read(), b.read());
+            a.write(b_read);
+            b.write(a_read);
+        });
     }
 }
 
@@ -104,7 +89,7 @@ pub fn swap_cols<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
 /// ```
 #[track_caller]
 #[inline]
-pub fn swap_rows<T>(mat: MatMut<'_, T>, a: usize, b: usize) {
+pub fn swap_rows<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     swap_cols(mat.transpose(), a, b)
 }
 
@@ -123,7 +108,7 @@ impl<'a> PermutationRef<'a> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        fancy_debug_assert!(self.inverse.len() == self.forward.len());
+        debug_assert!(self.inverse.len() == self.forward.len());
         self.forward.len()
     }
 
@@ -157,7 +142,7 @@ impl<'a> PermutationMut<'a> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        fancy_debug_assert!(self.inverse.len() == self.forward.len());
+        debug_assert!(self.inverse.len() == self.forward.len());
         self.forward.len()
     }
 
@@ -230,47 +215,6 @@ impl<'short, 'a> ReborrowMut<'short> for PermutationMut<'a> {
     }
 }
 
-/// Computes a symmetric permutation of the rows and columns of the source matrix using the given
-/// permutation, and stores the result in the destination matrix.
-///
-/// Both the source and the destination are interpreted as symmetric matrices, and only their lower
-/// triangular part is accessed.
-///
-/// # Panics
-///
-/// - Panics if the matrices are not square or if they do not have the same shape.
-/// - Panics if the size of the permutation doesn't match the dimension of the matrices.
-#[track_caller]
-// TODO: make this hermitian?
-pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
-    perm_indices: PermutationRef<'_>,
-) {
-    let mut dst = dst;
-    let n = src.nrows();
-    fancy_assert!(src.nrows() == src.ncols());
-    fancy_assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
-    fancy_assert!(perm_indices.into_arrays().0.len() == n);
-
-    let perm = perm_indices.into_arrays().0;
-    let src_tril = |i, j| unsafe {
-        if i > j {
-            src.get_unchecked(i, j)
-        } else {
-            src.get_unchecked(j, i)
-        }
-    };
-    for j in 0..n {
-        for i in j..n {
-            unsafe {
-                *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                    src_tril(*perm.get_unchecked(i), *perm.get_unchecked(j)).clone();
-            }
-        }
-    }
-}
-
 /// Computes a permutation of the columns of the source matrix using the given permutation, and
 /// stores the result in the destination matrix.
 ///
@@ -280,13 +224,13 @@ pub fn permute_rows_and_cols_symmetric_lower<T: Clone>(
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_cols<T: Clone>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn permute_cols<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     perm_indices: PermutationRef<'_>,
 ) {
-    fancy_assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
-    fancy_assert!(perm_indices.into_arrays().0.len() == src.ncols());
+    assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
+    assert!(perm_indices.into_arrays().0.len() == src.ncols());
 
     permute_rows(dst.transpose(), src.transpose(), perm_indices);
 }
@@ -300,13 +244,13 @@ pub fn permute_cols<T: Clone>(
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_rows<T: Clone>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn permute_rows<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     perm_indices: PermutationRef<'_>,
 ) {
-    fancy_assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
-    fancy_assert!(perm_indices.into_arrays().0.len() == src.nrows());
+    assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
+    assert!(perm_indices.into_arrays().0.len() == src.nrows());
 
     let src = src;
     let perm_indices = perm_indices;
@@ -320,20 +264,21 @@ pub fn permute_rows<T: Clone>(
         for j in 0..n {
             for i in 0..m {
                 unsafe {
-                    *dst.rb_mut().ptr_in_bounds_at_unchecked(i, j) =
-                        src.get_unchecked(*perm.get_unchecked(i), j).clone();
+                    dst.rb_mut().write_unchecked(
+                        i,
+                        j,
+                        src.read_unchecked(*perm.get_unchecked(i), j),
+                    );
                 }
             }
         }
     } else {
         for i in 0..m {
             unsafe {
-                let src_i = src.row_unchecked(*perm.get_unchecked(i));
-                let dst_i = dst.rb_mut().row_unchecked(i);
+                let src_i = src.subrows(*perm.get_unchecked(i), 1);
+                let dst_i = dst.rb_mut().subrows(i, 1);
 
-                dst_i.cwise().zip_unchecked(src_i).for_each(|dst, src| {
-                    *dst = src.clone();
-                });
+                zipped!(dst_i, src_i).for_each(|mut dst, src| dst.write(src.read()));
             }
         }
     }
@@ -341,20 +286,20 @@ pub fn permute_rows<T: Clone>(
 
 /// Computes the size and alignment of required workspace for applying a row permutation to a
 /// matrix in place.
-pub fn permute_rows_in_place_req<T: 'static>(
+pub fn permute_rows_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    temp_mat_req::<T>(nrows, ncols)
+    temp_mat_req::<E>(nrows, ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a column permutation to a
 /// matrix in place.
-pub fn permute_cols_in_place_req<T: 'static>(
+pub fn permute_cols_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    temp_mat_req::<T>(nrows, ncols)
+    temp_mat_req::<E>(nrows, ncols)
 }
 
 /// Computes a permutation of the rows of the matrix using the given permutation, and
@@ -365,15 +310,15 @@ pub fn permute_cols_in_place_req<T: 'static>(
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_rows_in_place<T: ComplexField>(
-    matrix: MatMut<'_, T>,
+pub fn permute_rows_in_place<E: ComplexField>(
+    matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_>,
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack) };
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack) };
     let mut tmp = tmp.as_mut();
-    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
+    zipped!(tmp.rb_mut(), matrix.rb()).for_each(|mut dst, src| dst.write(src.read()));
     permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
 }
 
@@ -385,14 +330,14 @@ pub fn permute_rows_in_place<T: ComplexField>(
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_cols_in_place<T: ComplexField>(
-    matrix: MatMut<'_, T>,
+pub fn permute_cols_in_place<E: ComplexField>(
+    matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_>,
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack) };
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack) };
     let mut tmp = tmp.as_mut();
-    zip!(tmp.rb_mut(), matrix.rb()).for_each(|dst, src| *dst = src.clone());
+    zipped!(tmp.rb_mut(), matrix.rb()).for_each(|mut dst, src| dst.write(src.read()));
     permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);
 }

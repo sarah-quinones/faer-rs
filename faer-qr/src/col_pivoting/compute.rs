@@ -1,13 +1,14 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    c32, c64,
+    c32, c64, for_each_raw,
     householder::upgrade_householder_factor,
-    mul::dot,
+    mul::inner_prod::inner_prod_with_conj,
+    par_split_indices, parallelism_degree,
     permutation::{swap_cols, PermutationMut},
-    ColMut, ColRef, ComplexField, MatMut, Parallelism,
+    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, Ptr,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
@@ -112,6 +113,7 @@ fn update_and_norm2_c64(arch: pulp::Arch, a: &mut [c64], b: &[c64], k: c64) -> f
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self { a, b, k } = self;
+            let k = k.into();
             let mut acc0 = simd.f64s_splat(0.0);
             let mut acc1 = simd.f64s_splat(0.0);
             let mut acc2 = simd.f64s_splat(0.0);
@@ -121,8 +123,8 @@ fn update_and_norm2_c64(arch: pulp::Arch, a: &mut [c64], b: &[c64], k: c64) -> f
             let mut acc6 = simd.f64s_splat(0.0);
             let mut acc7 = simd.f64s_splat(0.0);
 
-            let (a, a_rem) = S::c64s_as_mut_simd(a);
-            let (b, b_rem) = S::c64s_as_simd(b);
+            let (a, a_rem) = S::c64s_as_mut_simd(bytemuck::cast_slice_mut(a));
+            let (b, b_rem) = S::c64s_as_simd(bytemuck::cast_slice(b));
 
             let (a, a_remv) = as_arrays_mut::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
@@ -291,6 +293,7 @@ fn update_and_norm2_c32(arch: pulp::Arch, a: &mut [c32], b: &[c32], k: c32) -> f
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self { a, b, k } = self;
+            let k = k.into();
             let mut acc0 = simd.f32s_splat(0.0);
             let mut acc1 = simd.f32s_splat(0.0);
             let mut acc2 = simd.f32s_splat(0.0);
@@ -300,8 +303,8 @@ fn update_and_norm2_c32(arch: pulp::Arch, a: &mut [c32], b: &[c32], k: c32) -> f
             let mut acc6 = simd.f32s_splat(0.0);
             let mut acc7 = simd.f32s_splat(0.0);
 
-            let (a, a_rem) = S::c32s_as_mut_simd(a);
-            let (b, b_rem) = S::c32s_as_simd(b);
+            let (a, a_rem) = S::c32s_as_mut_simd(bytemuck::cast_slice_mut(a));
+            let (b, b_rem) = S::c32s_as_simd(bytemuck::cast_slice(b));
 
             let (a, a_remv) = as_arrays_mut::<8, _>(a);
             let (b, b_remv) = as_arrays::<8, _>(b);
@@ -373,80 +376,76 @@ fn update_and_norm2_c32(arch: pulp::Arch, a: &mut [c32], b: &[c32], k: c32) -> f
 }
 
 #[inline(always)]
-fn norm2<T: ComplexField>(arch: pulp::Arch, a: ColRef<'_, T>) -> T::Real {
-    dot(arch, a, a).real()
+fn norm2<E: ComplexField>(a: MatRef<'_, E>) -> E::Real {
+    inner_prod_with_conj(a, Conj::Yes, a, Conj::No).real()
 }
 
 #[inline(always)]
-fn update_and_norm2<T: ComplexField>(
+fn update_and_norm2<E: ComplexField>(
     arch: pulp::Arch,
-    mut a: ColMut<'_, T>,
-    b: ColRef<'_, T>,
-    k: T,
-) -> T::Real {
+    a: MatMut<'_, E>,
+    b: MatRef<'_, E>,
+    k: E,
+) -> E::Real {
     let colmajor = a.row_stride() == 1 && b.row_stride() == 1;
     if colmajor {
         let a_len = a.nrows();
         let b_len = b.nrows();
-        let a = unsafe { slice::from_raw_parts_mut(a.rb_mut().as_ptr(), a_len) };
-        let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
 
-        if coe::is_same::<f64, T>() {
-            return coe::coerce_static(update_and_norm2_f64(
-                arch,
-                a.coerce(),
-                b.coerce(),
-                coe::coerce_static(k),
-            ));
+        if coe::is_same::<f64, E>() {
+            let a: MatMut<'_, f64> = a.coerce();
+            let b: MatRef<'_, f64> = b.coerce();
+            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
+            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
+            return coe::coerce_static(update_and_norm2_f64(arch, a, b, coe::coerce_static(k)));
         }
-        if coe::is_same::<c64, T>() {
-            return coe::coerce_static(update_and_norm2_c64(
-                arch,
-                a.coerce(),
-                b.coerce(),
-                coe::coerce_static(k),
-            ));
+        if coe::is_same::<c64, E>() {
+            let a: MatMut<'_, c64> = a.coerce();
+            let b: MatRef<'_, c64> = b.coerce();
+            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
+            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
+            return coe::coerce_static(update_and_norm2_c64(arch, a, b, coe::coerce_static(k)));
         }
-        if coe::is_same::<f32, T>() {
-            return coe::coerce_static(update_and_norm2_f32(
-                arch,
-                a.coerce(),
-                b.coerce(),
-                coe::coerce_static(k),
-            ));
+        if coe::is_same::<f32, E>() {
+            let a: MatMut<'_, f32> = a.coerce();
+            let b: MatRef<'_, f32> = b.coerce();
+            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
+            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
+            return coe::coerce_static(update_and_norm2_f32(arch, a, b, coe::coerce_static(k)));
         }
-        if coe::is_same::<c32, T>() {
-            return coe::coerce_static(update_and_norm2_c32(
-                arch,
-                a.coerce(),
-                b.coerce(),
-                coe::coerce_static(k),
-            ));
+        if coe::is_same::<c32, E>() {
+            let a: MatMut<'_, c32> = a.coerce();
+            let b: MatRef<'_, c32> = b.coerce();
+            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
+            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
+            return coe::coerce_static(update_and_norm2_c32(arch, a, b, coe::coerce_static(k)));
         }
     }
 
-    let mut acc = T::Real::zero();
-    for (a, b) in a.into_iter().zip(b.into_iter()) {
-        *a = a.add(&k.mul(b));
-        acc = acc.add(&((*a).conj().mul(a)).real());
-    }
+    let mut acc = E::Real::zero();
+    zipped!(a, b).for_each(|mut a_, b| {
+        let a = a_.read();
+        let b = b.read();
+
+        a_.write(a.add(&k.mul(&b)));
+        acc = acc.add(&(a.conj().mul(&a)).real());
+    });
 
     acc
 }
 
-fn qr_in_place_colmajor<T: ComplexField>(
-    arch: pulp::Arch,
-    mut matrix: MatMut<'_, T>,
-    mut householder_coeffs: ColMut<'_, T>,
+fn qr_in_place_colmajor<E: ComplexField>(
+    mut matrix: MatMut<'_, E>,
+    mut householder_coeffs: MatMut<'_, E>,
     col_perm: &mut [usize],
     parallelism: Parallelism,
     disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = m.min(n);
+    let size = <usize as Ord>::min(m, n);
 
-    fancy_debug_assert!(householder_coeffs.nrows() == size);
+    debug_assert!(householder_coeffs.nrows() == size);
 
     let mut n_transpositions = 0;
 
@@ -455,14 +454,16 @@ fn qr_in_place_colmajor<T: ComplexField>(
     }
 
     let mut biggest_col_idx = 0;
-    let mut biggest_col_value = T::Real::zero();
+    let mut biggest_col_value = E::Real::zero();
     for j in 0..n {
-        let col_value = norm2(arch, matrix.rb().col(j));
+        let col_value = norm2(matrix.rb().col(j));
         if col_value > biggest_col_value {
             biggest_col_value = col_value;
             biggest_col_idx = j;
         }
     }
+
+    let arch = pulp::Arch::new();
 
     for k in 0..size {
         let mut matrix_right = matrix.rb_mut().submatrix(0, k, m, n - k);
@@ -477,19 +478,19 @@ fn qr_in_place_colmajor<T: ComplexField>(
         let m = matrix.nrows();
         let n = matrix.ncols();
 
-        let (_, _, first_col, last_cols) = matrix.rb_mut().split_at(0, 1);
+        let [_, _, first_col, last_cols] = matrix.rb_mut().split_at(0, 1);
         let first_col = first_col.col(0);
 
-        let (mut first_head, mut first_tail) = first_col.split_at(1);
-        let tail_squared_norm = norm2(arch, first_tail.rb());
+        let [mut first_head, mut first_tail] = first_col.split_at_row(1);
+        let tail_squared_norm = norm2(first_tail.rb());
         let (tau, beta) = faer_core::householder::make_householder_in_place(
             Some(first_tail.rb_mut()),
-            first_head[0].clone(),
+            first_head.read(0, 0),
             tail_squared_norm,
         );
-        first_head[0] = beta;
-        unsafe { *householder_coeffs.rb_mut().ptr_in_bounds_at(k) = tau.clone() };
+        first_head.write(0, 0, beta);
         let tau_inv = tau.inv();
+        householder_coeffs.write(k, 0, tau);
 
         let first_tail = first_tail.rb();
 
@@ -504,45 +505,8 @@ fn qr_in_place_colmajor<T: ComplexField>(
         };
 
         match extra_parallelism {
-            Parallelism::Rayon(n_threads) => {
-                use rayon::prelude::*;
-                let n_threads = if n_threads > 0 {
-                    n_threads
-                } else {
-                    rayon::current_num_threads()
-                };
-
-                let mut biggest_col = vec![(T::Real::zero(), 0_usize); n_threads];
-
-                last_cols
-                    .into_par_col_chunks(n_threads)
-                    .zip(biggest_col.par_iter_mut())
-                    .for_each(
-                        |((col_start, matrix), (biggest_col_value, biggest_col_idx))| {
-                            process_cols(
-                                arch,
-                                matrix,
-                                col_start,
-                                first_tail,
-                                tau_inv.clone(),
-                                biggest_col_value,
-                                biggest_col_idx,
-                            );
-                        },
-                    );
-
-                biggest_col_value = T::Real::zero();
-                biggest_col_idx = 0;
-
-                for (col_value, col_idx) in biggest_col {
-                    if col_value > biggest_col_value {
-                        biggest_col_value = col_value;
-                        biggest_col_idx = col_idx;
-                    }
-                }
-            }
-            _ => {
-                biggest_col_value = T::Real::zero();
+            Parallelism::None => {
+                biggest_col_value = E::Real::zero();
                 biggest_col_idx = 0;
 
                 process_cols(
@@ -555,28 +519,95 @@ fn qr_in_place_colmajor<T: ComplexField>(
                     &mut biggest_col_idx,
                 );
             }
+            Parallelism::Rayon(_) => {
+                let n_threads = parallelism_degree(parallelism);
+
+                let mut biggest_col = vec![(E::Real::zero(), 0_usize); n_threads];
+                {
+                    let biggest_col = Ptr(biggest_col.as_mut_ptr());
+                    for_each_raw(
+                        n_threads,
+                        |idx| {
+                            let (col_start, ncols) =
+                                par_split_indices(last_cols.ncols(), idx, n_threads);
+                            let matrix =
+                                unsafe { last_cols.rb().subcols(col_start, ncols).const_cast() };
+
+                            let mut local_biggest_col_value = E::Real::zero();
+                            let mut local_biggest_col_idx = 0;
+
+                            process_cols(
+                                arch,
+                                matrix,
+                                col_start,
+                                first_tail,
+                                tau_inv.clone(),
+                                &mut local_biggest_col_value,
+                                &mut local_biggest_col_idx,
+                            );
+                            unsafe {
+                                *{ biggest_col }.0 =
+                                    (local_biggest_col_value, local_biggest_col_idx);
+                            }
+                        },
+                        parallelism,
+                    );
+                }
+
+                // last_cols
+                //     .into_par_col_chunks(n_threads)
+                //     .zip(biggest_col.par_iter_mut())
+                //     .for_each(
+                //         |((col_start, matrix), (biggest_col_value, biggest_col_idx))| {
+                //             process_cols(
+                //                 arch,
+                //                 matrix,
+                //                 col_start,
+                //                 first_tail,
+                //                 tau_inv.clone(),
+                //                 biggest_col_value,
+                //                 biggest_col_idx,
+                //             );
+                //         },
+                //     );
+
+                biggest_col_value = E::Real::zero();
+                biggest_col_idx = 0;
+
+                for (col_value, col_idx) in biggest_col {
+                    if col_value > biggest_col_value {
+                        biggest_col_value = col_value;
+                        biggest_col_idx = col_idx;
+                    }
+                }
+            }
         }
     }
 
     n_transpositions
 }
 
-fn process_cols<T: ComplexField>(
+fn process_cols<E: ComplexField>(
     arch: pulp::Arch,
-    mut matrix: MatMut<'_, T>,
+    mut matrix: MatMut<'_, E>,
     offset: usize,
-    first_tail: ColRef<'_, T>,
-    tau_inv: T,
-    biggest_col_value: &mut T::Real,
+    first_tail: MatRef<'_, E>,
+    tau_inv: E,
+    biggest_col_value: &mut E::Real,
     biggest_col_idx: &mut usize,
 ) {
     for j in 0..matrix.ncols() {
-        let (col_head, col_tail) = matrix.rb_mut().col(j).split_at(1);
-        let col_head = col_head.get(0);
+        let [mut col_head, col_tail] = matrix.rb_mut().col(j).split_at_row(1);
+        let col_head_ = col_head.read(0, 0);
 
-        let dot = (*col_head).add(&dot(arch, first_tail, col_tail.rb()));
+        let dot = col_head_.add(&inner_prod_with_conj(
+            first_tail,
+            Conj::Yes,
+            col_tail.rb(),
+            Conj::No,
+        ));
         let k = (tau_inv.mul(&dot)).neg();
-        *col_head = col_head.add(&k);
+        col_head.write(0, 0, col_head_.add(&k));
 
         let col_value = update_and_norm2(arch, col_tail, first_tail, k);
         if col_value > *biggest_col_value {
@@ -608,7 +639,7 @@ impl ColPivQrComputeParams {
 
 /// Computes the size and alignment of required workspace for performing a QR decomposition
 /// with column pivoting.
-pub fn qr_in_place_req<T: 'static>(
+pub fn qr_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
@@ -646,9 +677,9 @@ pub fn qr_in_place_req<T: 'static>(
 /// - Panics if the length of `col_perm` and `col_perm_inv` is not equal to the number of columns
 /// of `matrix`.
 /// - Panics if the provided memory in `stack` is insufficient.
-pub fn qr_in_place<'out, T: ComplexField>(
-    matrix: MatMut<'_, T>,
-    householder_factor: MatMut<'_, T>,
+pub fn qr_in_place<'out, E: ComplexField>(
+    matrix: MatMut<'_, E>,
+    householder_factor: MatMut<'_, E>,
     col_perm: &'out mut [usize],
     col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
@@ -660,8 +691,8 @@ pub fn qr_in_place<'out, T: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
 
-    fancy_assert!(col_perm.len() == n);
-    fancy_assert!(col_perm_inv.len() == n);
+    assert!(col_perm.len() == n);
+    assert!(col_perm_inv.len() == n);
 
     for (j, p) in col_perm.iter_mut().enumerate() {
         *p = j;
@@ -673,7 +704,6 @@ pub fn qr_in_place<'out, T: ComplexField>(
     let mut matrix = matrix;
 
     let n_transpositions = qr_in_place_colmajor(
-        pulp::Arch::new(),
         matrix.rb_mut(),
         householder_coeffs,
         col_perm,
@@ -698,13 +728,13 @@ pub fn qr_in_place<'out, T: ComplexField>(
 
     let func = |idx: usize| {
         let j = idx * blocksize;
-        let blocksize = blocksize.min(size - j);
+        let blocksize = <usize as Ord>::min(blocksize, size - j);
         let mut householder =
             unsafe { householder_factor.rb().const_cast() }.submatrix(0, j, blocksize, blocksize);
 
         for i in 0..blocksize {
-            let coeff = householder[(0, i)].clone();
-            householder[(i, i)] = coeff;
+            let coeff = householder.read(0, i);
+            householder.write(i, i, coeff);
         }
 
         let qr = qr_factors.submatrix(j, j, m - j, blocksize);
@@ -732,12 +762,13 @@ pub fn qr_in_place<'out, T: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{
         c64,
         householder::{
-            apply_block_householder_sequence_on_the_left_in_place,
             apply_block_householder_sequence_on_the_left_in_place_req,
+            apply_block_householder_sequence_on_the_left_in_place_with_conj,
         },
         mul::matmul,
         zip::Diag,
@@ -751,10 +782,10 @@ mod tests {
         };
     }
 
-    fn reconstruct_factors<T: ComplexField>(
-        qr_factors: MatRef<'_, T>,
-        householder: MatRef<'_, T>,
-    ) -> (Mat<T>, Mat<T>) {
+    fn reconstruct_factors<E: ComplexField>(
+        qr_factors: MatRef<'_, E>,
+        householder: MatRef<'_, E>,
+    ) -> (Mat<E>, Mat<E>) {
         let m = qr_factors.nrows();
         let n = qr_factors.ncols();
 
@@ -764,19 +795,21 @@ mod tests {
         r.as_mut()
             .cwise()
             .zip(qr_factors)
-            .for_each_triangular_upper(Diag::Include, |a, b| *a = b.clone());
+            .for_each_triangular_upper(Diag::Include, |mut a, b| a.write(b.read()));
 
-        q.as_mut().diagonal().cwise().for_each(|a| *a = T::one());
+        q.as_mut()
+            .diagonal()
+            .cwise()
+            .for_each(|mut a| a.write(E::one()));
 
-        apply_block_householder_sequence_on_the_left_in_place(
+        apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr_factors,
             householder,
             Conj::No,
             q.as_mut(),
-            Conj::No,
             Parallelism::Rayon(0),
             make_stack!(
-                apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+                apply_block_householder_sequence_on_the_left_in_place_req::<E>(
                     m,
                     householder.nrows(),
                     m
@@ -791,7 +824,7 @@ mod tests {
     fn test_qr_f64() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63), (1024, 1024)] {
-                let mut mat = Mat::<f64>::with_dims(|_, _| random(), m, n);
+                let mut mat = Mat::<f64>::with_dims(m, n, |_, _| random());
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -819,11 +852,8 @@ mod tests {
                 let mut qr = Mat::zeros(m, n);
                 matmul(
                     qr.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
                     1.0,
                     Parallelism::Rayon(8),
@@ -831,7 +861,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]));
                     }
                 }
             }
@@ -842,7 +872,7 @@ mod tests {
     fn test_qr_c64() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let mut mat = Mat::<c64>::with_dims(|_, _| c64::new(random(), random()), m, n);
+                let mut mat = Mat::<c64>::with_dims(m, n, |_, _| c64::new(random(), random()));
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -871,11 +901,8 @@ mod tests {
                 let mut qhq = Mat::zeros(m, m);
                 matmul(
                     qr.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
                     c64::one(),
                     Parallelism::Rayon(8),
@@ -883,11 +910,8 @@ mod tests {
 
                 matmul(
                     qhq.as_mut(),
-                    Conj::No,
-                    q.as_ref().transpose(),
-                    Conj::Yes,
+                    q.as_ref().adjoint(),
                     q.as_ref(),
-                    Conj::No,
                     None,
                     c64::one(),
                     Parallelism::Rayon(8),
@@ -895,7 +919,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])]);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]));
                     }
                 }
             }
@@ -906,7 +930,7 @@ mod tests {
     fn test_qr_f32() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63), (1024, 1024)] {
-                let mut mat = Mat::<f32>::with_dims(|_, _| random(), m, n);
+                let mut mat = Mat::<f32>::with_dims(m, n, |_, _| random());
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -934,11 +958,8 @@ mod tests {
                 let mut qr = Mat::zeros(m, n);
                 matmul(
                     qr.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
                     1.0,
                     Parallelism::Rayon(8),
@@ -946,7 +967,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])], 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
                     }
                 }
             }
@@ -957,7 +978,7 @@ mod tests {
     fn test_qr_c32() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let mut mat = Mat::<c32>::with_dims(|_, _| c32::new(random(), random()), m, n);
+                let mut mat = Mat::<c32>::with_dims(m, n, |_, _| c32::new(random(), random()));
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -986,11 +1007,8 @@ mod tests {
                 let mut qhq = Mat::zeros(m, m);
                 matmul(
                     qr.as_mut(),
-                    Conj::No,
                     q.as_ref(),
-                    Conj::No,
                     r.as_ref(),
-                    Conj::No,
                     None,
                     c32::one(),
                     Parallelism::Rayon(8),
@@ -998,11 +1016,8 @@ mod tests {
 
                 matmul(
                     qhq.as_mut(),
-                    Conj::No,
-                    q.as_ref().transpose(),
-                    Conj::Yes,
+                    q.as_ref().adjoint(),
                     q.as_ref(),
-                    Conj::No,
                     None,
                     c32::one(),
                     Parallelism::Rayon(8),
@@ -1010,7 +1025,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(qr[(i, j)], mat_orig[(i, perm[j])], 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
                     }
                 }
             }

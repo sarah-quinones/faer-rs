@@ -6,251 +6,194 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut code = String::new();
     for count in 1..=16 {
         let generics_decl = (0..count)
-            .map(|i| format!("M{i}: for<'short> CwiseMat<'short>"))
+            .map(|i| format!("M{i}: for<'short> Mat<'short>,"))
             .collect::<Vec<_>>()
-            .join(",");
-        let generics_col_decl = (0..count)
-            .map(|i| format!("M{i}: for<'short> CwiseCol<'short>"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let generics_row_decl = (0..count)
-            .map(|i| format!("M{i}: for<'short> CwiseRow<'short>"))
-            .collect::<Vec<_>>()
-            .join(",");
+            .join("");
 
         let generics_use = (0..count)
-            .map(|i| format!("M{i}"))
+            .map(|i| format!("M{i},"))
             .collect::<Vec<_>>()
-            .join(",");
+            .join("");
 
         let generics_items = (0..count)
-            .map(|i| format!("<M{i} as CwiseMat<'_>>::Item"))
+            .map(|i| format!("<M{i} as Mat<'_>>::Item,"))
             .collect::<Vec<_>>()
-            .join(",");
-        let generics_col_items = (0..count)
-            .map(|i| format!("<M{i} as CwiseCol<'_>>::Item"))
+            .join("");
+
+        let slice_decl = (0..count)
+            .map(|i| format!("mut slice{i}: <M{i} as Mat<'_>>::RawSlice,"))
             .collect::<Vec<_>>()
-            .join(",");
-        let generics_row_items = (0..count)
-            .map(|i| format!("<M{i} as CwiseRow<'_>>::Item"))
+            .join("");
+
+        let slice_def = (0..count)
+            .map(|i| format!("let slice{i} = this.tuple.{i}.get_column_slice(start, j, len);"))
             .collect::<Vec<_>>()
-            .join(",");
+            .join("");
+
+        let slice_use = (0..count)
+            .map(|i| format!("slice{i},"))
+            .collect::<Vec<_>>()
+            .join("");
+
+        let slice_get_elem = (0..count)
+            .map(|i| format!("M{i}::get_slice_elem(&mut slice{i}, i),"))
+            .collect::<Vec<_>>()
+            .join("");
+
+        let do_transpose = (0..count)
+            .map(|i| format!("this.tuple.{i} = this.tuple.{i}.transpose();"))
+            .collect::<Vec<_>>()
+            .join("");
+
+        let do_reverse = (0..count)
+            .map(|i| format!("this.tuple.{i} = this.tuple.{i}.reverse_rows();"))
+            .collect::<Vec<_>>()
+            .join("");
 
         let args_is_col_major = (0..count)
-            .map(|i| format!("this.tuple.{i}.is_col_major()"))
-            .collect::<Vec<_>>()
-            .join("&&");
-        let args_is_row_major = (0..count)
-            .map(|i| format!("this.tuple.{i}.is_row_major()"))
-            .collect::<Vec<_>>()
-            .join("&&");
-        let args_is_contiguous = (0..count)
-            .map(|i| format!("this.tuple.{i}.is_contiguous()"))
+            .map(|i| format!("this.tuple.{i}.row_stride() == 1"))
             .collect::<Vec<_>>()
             .join("&&");
 
-        let args_get_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_unchecked(i, j)"))
+        let get = (0..count)
+            .map(|i| format!("this.tuple.{i}.get(i, j),"))
             .collect::<Vec<_>>()
-            .join(",");
-        let args_get_col_major_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_col_major_unchecked(i, j)"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let args_get_row_major_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_row_major_unchecked(i, j)"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let args_get_contiguous_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_contiguous_unchecked(i)"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let args_get_col_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_unchecked(i)"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let args_get_row_unchecked = (0..count)
-            .map(|i| format!("this.tuple.{i}.get_unchecked(i)"))
-            .collect::<Vec<_>>()
-            .join(",");
+            .join("");
 
         let args = (0..count)
             .map(|i| format!("this.tuple.{i}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let args_transposed = (0..count)
-            .map(|i| format!("this.tuple.{i}.transpose()"))
             .collect::<Vec<_>>()
             .join(",");
 
         write!(
             code,
             r#"
-impl<{generics_decl}> ZipMat<({generics_use},)> {{
-    #[inline]
+#[inline(always)]
+unsafe fn contiguous_impl{count}<{generics_decl}>(
+    len: usize,
+    op: &mut impl FnMut({generics_items}),
+    {slice_decl}
+) {{
+    for i in 0..len {{
+        (*op)({slice_get_elem});
+    }}
+}}
+
+impl <{generics_decl}> Zip<({generics_use})> {{
+    #[inline(always)]
     pub fn for_each(self, op: impl FnMut({generics_items})) {{
         let mut this = self;
         let mut op = op;
 
-        let first = &this.tuple.0;
-        let nrows = first.nrows();
-        let ncols = first.ncols();
+        if this.tuple.0.row_stride().unsigned_abs() > this.tuple.0.col_stride().unsigned_abs() {{
+            {do_transpose}
+        }}
+        if this.tuple.0.row_stride() < 0 {{
+            {do_reverse}
+        }}
+
+        let nrows = this.tuple.0.nrows();
+        let ncols = this.tuple.0.ncols();
 
         unsafe {{
             if {args_is_col_major} {{
+                let start = 0;
+                let len = nrows;
                 for j in 0..ncols {{
-                    for i in 0..nrows {{
-                        op({args_get_col_major_unchecked});
-                    }}
-                }}
-            }} else if {args_is_row_major} {{
-                for i in 0..nrows {{
-                    for j in 0..ncols {{
-                        op({args_get_row_major_unchecked});
-                    }}
+                    {slice_def}
+
+                    contiguous_impl{count}(nrows, &mut op, {slice_use});
                 }}
             }} else {{
                 for j in 0..ncols {{
                     for i in 0..nrows {{
-                        op({args_get_unchecked});
+                        op({get});
                     }}
                 }}
             }}
         }}
     }}
 
-    #[inline]
+    #[inline(always)]
     pub fn for_each_triangular_lower(self, diag: Diag, op: impl FnMut({generics_items})) {{
         let strict = match diag {{
             Diag::Skip => true,
             Diag::Include => false,
         }};
+
         let mut this = self;
         let mut op = op;
 
-        let first = &this.tuple.0;
-        let nrows = first.nrows();
-        let ncols = first.ncols();
+        let mut transpose = false;
+        let mut reverse_rows = false;
+
+        if this.tuple.0.row_stride().unsigned_abs() > this.tuple.0.col_stride().unsigned_abs() {{
+            {do_transpose}
+            transpose = true;
+        }}
+        if this.tuple.0.row_stride() < 0 {{
+            {do_reverse}
+            reverse_rows = true;
+        }}
+
+        let nrows = this.tuple.0.nrows();
+        let ncols = this.tuple.0.ncols();
+
+        let ncols = if transpose {{ ncols }} else {{ ncols.min(nrows) }};
 
         unsafe {{
             if {args_is_col_major} {{
                 for j in 0..ncols {{
-                    for i in j + strict as usize..nrows {{
-                        op({args_get_col_major_unchecked});
-                    }}
-                }}
-            }} else if {args_is_row_major} {{
-                for i in strict as usize..nrows {{
-                    for j in 0..(i + !strict as usize).min(ncols) {{
-                        op({args_get_row_major_unchecked});
-                    }}
+                    let (start, end) = match (transpose, reverse_rows) {{
+                        (false, false) => (j + strict as usize, nrows),
+                        (false, true) => (0, (nrows - (j + strict as usize))),
+                        (true, false) => (0, (j + !strict as usize).min(nrows)),
+                        (true, true) => (nrows - ((j + !strict as usize).min(nrows)), nrows),
+                    }};
+
+                    let len = end - start;
+
+                    {slice_def}
+
+                    contiguous_impl{count}(len, &mut op, {slice_use});
                 }}
             }} else {{
                 for j in 0..ncols {{
-                    for i in j + strict as usize..nrows {{
-                        op({args_get_unchecked});
+                    let (start, end) = match (transpose, reverse_rows) {{
+                        (false, false) => (j + strict as usize, nrows),
+                        (false, true) => (0, (nrows - (j + strict as usize))),
+                        (true, false) => (0, (j + !strict as usize).min(nrows)),
+                        (true, true) => (nrows - ((j + !strict as usize).min(nrows)), nrows),
+                    }};
+
+                    for i in start..end {{
+                        op({get});
                     }}
                 }}
             }}
         }}
     }}
 
-    #[inline]
+    #[inline(always)]
     pub fn for_each_triangular_upper(self, diag: Diag, op: impl FnMut({generics_items})) {{
-        let this = self;
-        let this = Self {{ tuple: ({args_transposed},) }};
+        let mut this = self;
+        {do_transpose}
         this.for_each_triangular_lower(diag, op);
     }}
 
     #[inline]
-    pub fn zip_unchecked<M{count}: for<'short> CwiseMat<'short>>(self, last: M{count}) -> ZipMat<({generics_use}, M{count})> {{
+    #[track_caller]
+    pub fn zip_unchecked<M{count}: for<'short> Mat<'short>>(self, last: M{count}) -> Zip<({generics_use} M{count})> {{
         let this = self;
-        fancy_debug_assert!((last.nrows(), last.ncols()) == (this.tuple.0.nrows(), this.tuple.0.ncols()));
-        ZipMat {{ tuple: ({args}, last) }}
+        debug_assert!((last.nrows(), last.ncols()) == (this.tuple.0.nrows(), this.tuple.0.ncols()));
+        Zip {{ tuple: ({args}, last) }}
     }}
-
     #[inline]
     #[track_caller]
-    pub fn zip<M{count}: for<'short> CwiseMat<'short>>(self, last: M{count}) -> ZipMat<({generics_use}, M{count})> {{
+    pub fn zip<M{count}: for<'short> Mat<'short>>(self, last: M{count}) -> Zip<({generics_use} M{count})> {{
         let this = self;
-        fancy_assert!((last.nrows(), last.ncols()) == (this.tuple.0.nrows(), this.tuple.0.ncols()));
-        ZipMat {{ tuple: ({args}, last) }}
-    }}
-}}
-
-impl<{generics_col_decl}> ZipCol<({generics_use},)> {{
-    #[inline]
-    pub fn for_each(self, op: impl FnMut({generics_col_items})) {{
-        let mut this = self;
-        let mut op = op;
-
-        let first = &this.tuple.0;
-        let nrows = first.nrows();
-
-        unsafe {{
-            if {args_is_contiguous} {{
-                for i in 0..nrows {{
-                    op({args_get_contiguous_unchecked});
-                }}
-            }} else {{
-                for i in 0..nrows {{
-                    op({args_get_col_unchecked});
-                }}
-            }}
-        }}
-    }}
-
-    #[inline]
-    pub fn zip_unchecked<M{count}: for<'short> CwiseCol<'short>>(self, last: M{count}) -> ZipCol<({generics_use}, M{count})> {{
-        let this = self;
-        fancy_debug_assert!(last.nrows() == this.tuple.0.nrows());
-        ZipCol {{ tuple: ({args}, last) }}
-    }}
-
-    #[inline]
-    #[track_caller]
-    pub fn zip<M{count}: for<'short> CwiseCol<'short>>(self, last: M{count}) -> ZipCol<({generics_use}, M{count})> {{
-        let this = self;
-        fancy_assert!(last.nrows() == this.tuple.0.nrows());
-        ZipCol {{ tuple: ({args}, last) }}
-    }}
-}}
-
-impl<{generics_row_decl}> ZipRow<({generics_use},)> {{
-    #[inline]
-    pub fn for_each(self, op: impl FnMut({generics_row_items})) {{
-        let mut this = self;
-        let mut op = op;
-
-        let first = &this.tuple.0;
-        let ncols = first.ncols();
-
-        unsafe {{
-            if {args_is_contiguous} {{
-                for i in 0..ncols {{
-                    op({args_get_contiguous_unchecked});
-                }}
-            }} else {{
-                for i in 0..ncols {{
-                    op({args_get_row_unchecked});
-                }}
-            }}
-        }}
-    }}
-
-    #[inline]
-    pub fn zip_unchecked<M{count}: for<'short> CwiseRow<'short>>(self, last: M{count}) -> ZipRow<({generics_use}, M{count})> {{
-        let this = self;
-        fancy_debug_assert!(last.ncols() == this.tuple.0.ncols());
-        ZipRow {{ tuple: ({args}, last) }}
-    }}
-
-    #[inline]
-    #[track_caller]
-    pub fn zip<M{count}: for<'short> CwiseRow<'short>>(self, last: M{count}) -> ZipRow<({generics_use}, M{count})> {{
-        let this = self;
-        fancy_assert!(last.ncols() == this.tuple.0.ncols());
-        ZipRow {{ tuple: ({args}, last) }}
+        assert!((last.nrows(), last.ncols()) == (this.tuple.0.nrows(), this.tuple.0.ncols()));
+        Zip {{ tuple: ({args}, last) }}
     }}
 }}
 "#

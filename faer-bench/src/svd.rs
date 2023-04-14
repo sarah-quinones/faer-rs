@@ -57,7 +57,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
             let mut c = Mat::<T>::zeros(n, n);
             for i in 0..n {
                 for j in 0..n {
-                    c[(i, j)] = random();
+                    c.write(i, j, random());
                 }
             }
             let mut s = Mat::<T>::zeros(n, n);

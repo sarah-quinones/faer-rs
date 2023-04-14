@@ -15,7 +15,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
             let mut mat = Mat::new();
 
-            mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
+            mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
             let mut mem = GlobalMemBuffer::new(
                 ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     n,
@@ -39,7 +39,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-mt-ldlt-{n}"), |b| {
             let mut mat = Mat::new();
 
-            mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
+            mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
             let mut mem = GlobalMemBuffer::new(
                 ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     n,
@@ -63,7 +63,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-st-llt-{n}"), |b| {
             let mut mat = Mat::new();
 
-            mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
+            mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
             let mut mem = GlobalMemBuffer::new(
                 llt::compute::cholesky_in_place_req::<f64>(
                     n,
@@ -88,7 +88,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-mt-llt-{n}"), |b| {
             let mut mat = Mat::new();
 
-            mat.resize_with(|i, j| if i == j { 1.0 } else { 0.0 }, n, n);
+            mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
             let mut mem = GlobalMemBuffer::new(
                 llt::compute::cholesky_in_place_req::<f64>(
                     n,
@@ -112,7 +112,7 @@ pub fn cholesky(c: &mut Criterion) {
 
         c.bench_function(&format!("faer-st-cplx-llt-{n}"), |b| {
             let mut mat =
-                Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);
+                Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
             let mut mem = GlobalMemBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(
@@ -137,7 +137,7 @@ pub fn cholesky(c: &mut Criterion) {
 
         c.bench_function(&format!("faer-mt-cplx-llt-{n}"), |b| {
             let mut mat =
-                Mat::with_dims(|i, j| if i == j { c64::one() } else { c64::zero() }, n, n);
+                Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
             let mut mem = GlobalMemBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(

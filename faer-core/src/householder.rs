@@ -31,123 +31,48 @@
 use crate::{
     join_raw,
     mul::{
-        matmul,
+        matmul, matmul_with_conj,
         triangular::{self, BlockStructure},
     },
-    solve, temp_mat_req, temp_mat_uninit, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef,
-    Parallelism, RealField,
+    solve, temp_mat_req, temp_mat_uninit, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    RealField,
 };
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use reborrow::*;
 
 #[doc(hidden)]
-pub fn make_householder_in_place<T: ComplexField>(
-    essential: Option<ColMut<'_, T>>,
-    head: T,
-    tail_squared_norm: T::Real,
-) -> (T, T) {
-    let one_half = T::Real::one().add(&T::Real::one()).inv();
+pub fn make_householder_in_place<E: ComplexField>(
+    essential: Option<MatMut<'_, E>>,
+    head: E,
+    tail_squared_norm: E::Real,
+) -> (E, E) {
+    let one_half = E::Real::one().add(&E::Real::one()).inv();
     let head_squared_norm = head.mul(&head.conj()).real();
     let norm = head_squared_norm.add(&tail_squared_norm).sqrt();
 
-    let sign = if head != T::zero() {
+    let sign = if head != E::zero() {
         head.scale_real(&head_squared_norm.sqrt().inv())
     } else {
-        T::one()
+        E::one()
     };
 
-    let signed_norm = sign.mul(&T::from_real(norm));
+    let signed_norm = sign.mul(&E::from_real(norm));
     let head_with_beta = head.add(&signed_norm);
     let inv = head_with_beta.inv();
 
-    if head_with_beta != T::zero() {
+    if head_with_beta != E::zero() {
         if let Some(essential) = essential {
-            essential.cwise().for_each(|e| *e = e.mul(&inv));
+            assert!(essential.ncols() == 1);
+            essential
+                .cwise()
+                .for_each(|mut e| e.write(e.read().mul(&inv)));
         }
         let tau = one_half
-            .mul(&T::Real::one().add(&tail_squared_norm.mul(&(inv.mul(&inv.conj())).real())));
-        (T::from_real(tau), signed_norm.neg())
+            .mul(&E::Real::one().add(&tail_squared_norm.mul(&(inv.mul(&inv.conj())).real())));
+        (E::from_real(tau), signed_norm.neg())
     } else {
-        (T::from_real(T::Real::zero().inv()), T::zero())
-    }
-}
-
-#[doc(hidden)]
-pub fn apply_householder_on_the_left_in_place<T: ComplexField>(
-    essential: ColRef<'_, T>,
-    householder_coeff: T,
-    conj_householder: Conj,
-    matrix: MatMut<'_, T>,
-    conj_mat: Conj,
-    stack: DynStack<'_>,
-) {
-    fancy_assert!(matrix.nrows() == 1 + essential.nrows());
-    let tau_inv = householder_coeff.inv();
-    let m = matrix.nrows();
-    let n = matrix.ncols();
-    if m == 1 {
-        let factor = T::one().sub(&tau_inv);
-        match conj_mat {
-            Conj::No => matrix.cwise().for_each(|e| *e = e.mul(&factor)),
-            Conj::Yes => matrix.cwise().for_each(|e| *e = e.conj().mul(&factor)),
-        };
-    } else {
-        let (first_row, last_rows) = matrix.split_at_row(1);
-        let mut first_row = first_row.row(0);
-        let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(n, 1, stack) };
-        let tmp = tmp.as_mut();
-        let mut tmp = tmp.transpose().row(0);
-
-        match conj_mat {
-            Conj::No => tmp
-                .rb_mut()
-                .cwise()
-                .zip(first_row.rb())
-                .for_each(|a, b| *a = b.clone()),
-            Conj::Yes => tmp
-                .rb_mut()
-                .cwise()
-                .zip(first_row.rb())
-                .for_each(|a, b| *a = b.conj()),
-        }
-
-        matmul(
-            tmp.rb_mut().as_2d(),
-            Conj::No,
-            essential.transpose().as_2d(),
-            Conj::Yes.compose(conj_householder),
-            last_rows.rb(),
-            conj_mat,
-            Some(T::one()),
-            T::one(),
-            Parallelism::None,
-        );
-
-        match conj_mat {
-            Conj::No => first_row
-                .rb_mut()
-                .cwise()
-                .zip(tmp.rb())
-                .for_each(|a, b| *a = a.sub(&tau_inv.mul(b))),
-            Conj::Yes => first_row
-                .rb_mut()
-                .cwise()
-                .zip(tmp.rb())
-                .for_each(|a, b| *a = a.conj().sub(&tau_inv.mul(b))),
-        };
-
-        matmul(
-            last_rows,
-            conj_mat,
-            essential.as_2d(),
-            Conj::No.compose(conj_householder),
-            tmp.rb().as_2d(),
-            Conj::No,
-            Some(T::one()),
-            tau_inv.neg(),
-            Parallelism::None,
-        )
+        (E::from_real(E::Real::zero().inv()), E::zero())
     }
 }
 
@@ -161,9 +86,9 @@ fn div_ceil(a: usize, b: usize) -> usize {
 }
 
 #[doc(hidden)]
-pub fn upgrade_householder_factor<T: ComplexField>(
-    mut householder_factor: MatMut<'_, T>,
-    essentials: MatRef<'_, T>,
+pub fn upgrade_householder_factor<E: ComplexField>(
+    mut householder_factor: MatMut<'_, E>,
+    essentials: MatRef<'_, E>,
     blocksize: usize,
     prev_blocksize: usize,
     parallelism: Parallelism,
@@ -172,16 +97,16 @@ pub fn upgrade_householder_factor<T: ComplexField>(
         return;
     }
 
-    fancy_assert!(householder_factor.nrows() == householder_factor.ncols());
+    assert!(householder_factor.nrows() == householder_factor.ncols());
 
     let block_count = div_ceil(householder_factor.nrows(), blocksize);
 
     if block_count > 1 {
-        fancy_assert!(blocksize > prev_blocksize);
-        fancy_assert!(blocksize % prev_blocksize == 0);
+        assert!(blocksize > prev_blocksize);
+        assert!(blocksize % prev_blocksize == 0);
         let idx = (block_count / 2) * blocksize;
-        let (tau_tl, _, _, tau_br) = householder_factor.split_at(idx, idx);
-        let (basis_left, basis_right) = essentials.split_at_col(idx);
+        let [tau_tl, _, _, tau_br] = householder_factor.split_at(idx, idx);
+        let [basis_left, basis_right] = essentials.split_at_col(idx);
         let basis_right =
             basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
         join_raw(
@@ -211,41 +136,35 @@ pub fn upgrade_householder_factor<T: ComplexField>(
     if prev_blocksize < 8 {
         // pretend that prev_blocksize == 1, recompute whole top half of matrix
 
-        let (basis_top, basis_bot) = essentials.split_at_row(essentials.ncols());
+        let [basis_top, basis_bot] = essentials.split_at_row(essentials.ncols());
         triangular::matmul(
             householder_factor.rb_mut(),
             BlockStructure::UnitTriangularUpper,
-            Conj::No,
-            basis_top.transpose(),
+            basis_top.adjoint(),
             BlockStructure::UnitTriangularUpper,
-            Conj::Yes,
             basis_top,
             BlockStructure::UnitTriangularLower,
-            Conj::No,
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
         triangular::matmul(
             householder_factor.rb_mut(),
             BlockStructure::UnitTriangularUpper,
-            Conj::No,
-            basis_bot.transpose(),
+            basis_bot.adjoint(),
             BlockStructure::Rectangular,
-            Conj::Yes,
             basis_bot,
             BlockStructure::Rectangular,
-            Conj::No,
-            Some(T::one()),
-            T::one(),
+            Some(E::one()),
+            E::one(),
             parallelism,
         );
     } else {
         let prev_block_count = div_ceil(householder_factor.nrows(), prev_blocksize);
 
         let idx = (prev_block_count / 2) * prev_blocksize;
-        let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_at(idx, idx);
-        let (basis_left, basis_right) = essentials.split_at_col(idx);
+        let [tau_tl, mut tau_tr, _, tau_br] = householder_factor.split_at(idx, idx);
+        let [basis_left, basis_right] = essentials.split_at_col(idx);
         let basis_right =
             basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
 
@@ -275,33 +194,27 @@ pub fn upgrade_householder_factor<T: ComplexField>(
             },
             |parallelism| {
                 let basis_left = basis_left.submatrix(idx, 0, basis_left.nrows() - idx, idx);
-                let (basis_left_top, basis_left_bot) = basis_left.split_at_row(basis_right.ncols());
-                let (basis_right_top, basis_right_bot) =
+                let [basis_left_top, basis_left_bot] = basis_left.split_at_row(basis_right.ncols());
+                let [basis_right_top, basis_right_bot] =
                     basis_right.split_at_row(basis_right.ncols());
 
                 triangular::matmul(
                     tau_tr.rb_mut(),
                     BlockStructure::Rectangular,
-                    Conj::No,
-                    basis_left_top.transpose(),
+                    basis_left_top.adjoint(),
                     BlockStructure::Rectangular,
-                    Conj::Yes,
                     basis_right_top,
                     BlockStructure::UnitTriangularLower,
-                    Conj::No,
                     None,
-                    T::one(),
+                    E::one(),
                     parallelism,
                 );
                 matmul(
                     tau_tr.rb_mut(),
-                    Conj::No,
-                    basis_left_bot.transpose(),
-                    Conj::Yes,
+                    basis_left_bot.adjoint(),
                     basis_right_bot,
-                    Conj::No,
-                    Some(T::one()),
-                    T::one(),
+                    Some(E::one()),
+                    E::one(),
                     parallelism,
                 );
             },
@@ -312,187 +225,180 @@ pub fn upgrade_householder_factor<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for applying a block Householder
 /// transformation to a right-hand-side matrix in place.
-pub fn apply_block_householder_on_the_left_in_place_req<T: 'static>(
+pub fn apply_block_householder_on_the_left_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, rhs_ncols)
+    temp_mat_req::<E>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a block
 /// Householder transformation to a right-hand-side matrix in place.
-pub fn apply_block_householder_transpose_on_the_left_in_place_req<T: 'static>(
+pub fn apply_block_householder_transpose_on_the_left_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, rhs_ncols)
+    temp_mat_req::<E>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a block Householder
 /// transformation to a left-hand-side matrix in place.
-pub fn apply_block_householder_on_the_right_in_place_req<T: 'static>(
+pub fn apply_block_householder_on_the_right_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, lhs_nrows)
+    temp_mat_req::<E>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a block
 /// Householder transformation to a left-hand-side matrix in place.
-pub fn apply_block_householder_transpose_on_the_right_in_place_req<T: 'static>(
+pub fn apply_block_householder_transpose_on_the_right_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, lhs_nrows)
+    temp_mat_req::<E>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a sequence
 /// of block Householder transformations to a right-hand-side matrix in place.
-pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_req<T: 'static>(
+pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, rhs_ncols)
+    temp_mat_req::<E>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying a sequence of block
 /// Householder transformations to a right-hand-side matrix in place.
-pub fn apply_block_householder_sequence_on_the_left_in_place_req<T: 'static>(
+pub fn apply_block_householder_sequence_on_the_left_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, rhs_ncols)
+    temp_mat_req::<E>(blocksize, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for applying the transpose of a sequence
 /// of block Householder transformations to a left-hand-side matrix in place.
-pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_req<T: 'static>(
+pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, lhs_nrows)
+    temp_mat_req::<E>(blocksize, lhs_nrows)
 }
 
 /// Computes the size and alignment of required workspace for applying a sequence of block
 /// Householder transformations to a left-hand-side matrix in place.
-pub fn apply_block_householder_sequence_on_the_right_in_place_req<T: 'static>(
+pub fn apply_block_householder_sequence_on_the_right_in_place_req<E: Entity>(
     householder_basis_nrows: usize,
     blocksize: usize,
     lhs_nrows: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = householder_basis_nrows;
-    temp_mat_req::<T>(blocksize, lhs_nrows)
+    temp_mat_req::<E>(blocksize, lhs_nrows)
 }
 
 #[track_caller]
-fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_rhs: Conj,
+    matrix: MatMut<'_, E>,
     forward: bool,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!(householder_factor.nrows() == householder_factor.ncols());
-    fancy_assert!(householder_basis.ncols() == householder_factor.nrows());
-    fancy_assert!(matrix.nrows() == householder_basis.nrows());
+    assert!(householder_factor.nrows() == householder_factor.ncols());
+    assert!(householder_basis.ncols() == householder_factor.nrows());
+    assert!(matrix.nrows() == householder_basis.nrows());
 
-    let (essentials_top, essentials_bot) =
+    let [essentials_top, essentials_bot] =
         householder_basis.split_at_row(householder_basis.ncols());
     let bs = householder_factor.nrows();
     let n = matrix.ncols();
 
-    let (mut matrix_top, mut matrix_bot) = matrix.split_at_row(bs);
+    let [mut matrix_top, mut matrix_bot] = matrix.split_at_row(bs);
 
     // essentials* × mat
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(bs, n, stack) };
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(bs, n, stack) };
     let mut tmp = tmp.as_mut();
 
-    triangular::matmul(
+    triangular::matmul_with_conj(
         tmp.rb_mut(),
         BlockStructure::Rectangular,
-        Conj::No,
         essentials_top.transpose(),
         BlockStructure::UnitTriangularUpper,
         Conj::Yes.compose(conj_lhs),
         matrix_top.rb(),
         BlockStructure::Rectangular,
-        Conj::No.compose(conj_rhs),
+        Conj::No,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
-    matmul(
+    matmul_with_conj(
         tmp.rb_mut(),
-        Conj::No,
         essentials_bot.transpose(),
         Conj::Yes.compose(conj_lhs),
         matrix_bot.rb(),
-        Conj::No.compose(conj_rhs),
-        Some(T::one()),
-        T::one(),
+        Conj::No,
+        Some(E::one()),
+        E::one(),
         parallelism,
     );
 
     // [T^-1|T^-*] × essentials* × tmp
     if forward {
-        solve::solve_lower_triangular_in_place(
+        solve::solve_lower_triangular_in_place_with_conj(
             householder_factor.transpose(),
             Conj::Yes.compose(conj_lhs),
             tmp.rb_mut(),
-            Conj::No,
             parallelism,
         );
     } else {
-        solve::solve_upper_triangular_in_place(
+        solve::solve_upper_triangular_in_place_with_conj(
             householder_factor,
             Conj::No.compose(conj_lhs),
             tmp.rb_mut(),
-            Conj::No,
             parallelism,
         );
     }
 
     // essentials × [T^-1|T^-*] × essentials* × tmp
-    triangular::matmul(
+    triangular::matmul_with_conj(
         matrix_top.rb_mut(),
         BlockStructure::Rectangular,
-        Conj::No.compose(conj_rhs),
         essentials_top,
         BlockStructure::UnitTriangularLower,
         Conj::No.compose(conj_lhs),
         tmp.rb(),
         BlockStructure::Rectangular,
         Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
-    matmul(
+    matmul_with_conj(
         matrix_bot.rb_mut(),
-        Conj::No.compose(conj_rhs),
         essentials_bot,
         Conj::No.compose(conj_lhs),
         tmp.rb(),
         Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 }
@@ -500,21 +406,19 @@ fn apply_block_householder_on_the_left_in_place_generic<T: ComplexField>(
 /// Computes the product of the matrix, multiplied by the given block Householder transformation,
 /// and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_right_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_on_the_right_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_lhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_transpose_on_the_left_in_place(
+    apply_block_householder_transpose_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
         matrix.transpose(),
-        conj_lhs,
         parallelism,
         stack,
     )
@@ -523,21 +427,19 @@ pub fn apply_block_householder_on_the_right_in_place<T: ComplexField>(
 /// Computes the product of the matrix, multiplied by the transpose of the given block Householder
 /// transformation, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_right_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_lhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_on_the_left_in_place(
+    apply_block_householder_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
         matrix.transpose(),
-        conj_lhs,
         parallelism,
         stack,
     )
@@ -546,12 +448,11 @@ pub fn apply_block_householder_transpose_on_the_right_in_place<T: ComplexField>(
 /// Computes the product of the given block Householder transformation, multiplied by `matrix`, and
 /// stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_on_the_left_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_on_the_left_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_rhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -560,7 +461,6 @@ pub fn apply_block_householder_on_the_left_in_place<T: ComplexField>(
         householder_factor,
         conj_lhs,
         matrix,
-        conj_rhs,
         false,
         parallelism,
         stack,
@@ -570,12 +470,11 @@ pub fn apply_block_householder_on_the_left_in_place<T: ComplexField>(
 /// Computes the product of the transpose of the given block Householder transformation, multiplied
 /// by `matrix`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_transpose_on_the_left_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_rhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -584,7 +483,6 @@ pub fn apply_block_householder_transpose_on_the_left_in_place<T: ComplexField>(
         householder_factor,
         conj_lhs.compose(Conj::Yes),
         matrix,
-        conj_rhs,
         true,
         parallelism,
         stack,
@@ -595,12 +493,11 @@ pub fn apply_block_householder_transpose_on_the_left_in_place<T: ComplexField>(
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_left_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_rhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -609,17 +506,11 @@ pub fn apply_block_householder_sequence_on_the_left_in_place<T: ComplexField>(
 
     let blocksize = householder_factor.nrows();
 
-    fancy_assert!(blocksize > 0);
+    assert!(blocksize > 0);
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 
     let size = householder_factor.ncols();
-
-    let mut conj_mat = conj_rhs;
-    if size == 0 && conj_mat == Conj::Yes {
-        matrix.cwise().for_each(|e| *e = (*e).conj());
-        return;
-    }
 
     let mut j = size;
     let mut bs = size % blocksize;
@@ -633,17 +524,15 @@ pub fn apply_block_householder_sequence_on_the_left_in_place<T: ComplexField>(
         let essentials = householder_basis.submatrix(j, j, m - j, bs);
         let householder = householder_factor.submatrix(0, j, bs, bs);
 
-        apply_block_householder_on_the_left_in_place(
+        apply_block_householder_on_the_left_in_place_with_conj(
             essentials,
             householder,
             conj_lhs,
             matrix.rb_mut().submatrix(j, 0, m - j, k),
-            conj_mat,
             parallelism,
             stack.rb_mut(),
         );
 
-        conj_mat = Conj::No;
         bs = blocksize;
     }
 }
@@ -652,47 +541,40 @@ pub fn apply_block_householder_sequence_on_the_left_in_place<T: ComplexField>(
 /// `householder_basis` and `householder_factor`, multiplied by `matrix`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_transpose_on_the_left_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj<
+    E: ComplexField,
+>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_lhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_rhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
     let mut stack = stack;
     let blocksize = householder_factor.nrows();
-    fancy_assert!(blocksize > 0);
+    assert!(blocksize > 0);
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 
     let size = householder_factor.ncols();
 
-    let mut conj_mat = conj_rhs;
-    if size == 0 && conj_mat == Conj::Yes {
-        matrix.cwise().for_each(|e| *e = (*e).conj());
-        return;
-    }
-
     let mut j = 0;
     while j < size {
-        let bs = blocksize.min(size - j);
+        let bs = <usize as Ord>::min(blocksize, size - j);
         let essentials = householder_basis.submatrix(j, j, m - j, bs);
         let householder = householder_factor.submatrix(0, j, bs, bs);
 
-        apply_block_householder_transpose_on_the_left_in_place(
+        apply_block_householder_transpose_on_the_left_in_place_with_conj(
             essentials,
             householder,
             conj_lhs,
             matrix.rb_mut().submatrix(j, 0, m - j, k),
-            conj_mat,
             parallelism,
             stack.rb_mut(),
         );
 
-        conj_mat = Conj::No;
         j += bs;
     }
 }
@@ -700,21 +582,19 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place<T: Comple
 /// Computes the product of `matrix`, multiplied by a sequence of block Householder transformations
 /// given by `householder_basis` and `householder_factor`, and stores the result in `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_on_the_right_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<E: ComplexField>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_lhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_sequence_transpose_on_the_left_in_place(
+    apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
         matrix.transpose(),
-        conj_lhs,
         parallelism,
         stack,
     )
@@ -724,21 +604,21 @@ pub fn apply_block_householder_sequence_on_the_right_in_place<T: ComplexField>(
 /// transformations given by `householder_basis` and `householder_factor`, and stores the result in
 /// `matrix`.
 #[track_caller]
-pub fn apply_block_householder_sequence_transpose_on_the_right_in_place<T: ComplexField>(
-    householder_basis: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
+pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj<
+    E: ComplexField,
+>(
+    householder_basis: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
     conj_rhs: Conj,
-    matrix: MatMut<'_, T>,
-    conj_lhs: Conj,
+    matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    apply_block_householder_sequence_on_the_left_in_place(
+    apply_block_householder_sequence_on_the_left_in_place_with_conj(
         householder_basis,
         householder_factor,
         conj_rhs,
         matrix.transpose(),
-        conj_lhs,
         parallelism,
         stack,
     )

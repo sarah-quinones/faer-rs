@@ -1,24 +1,26 @@
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::{self, BlockStructure},
-    temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit,
+    zip::Diag,
+    zipped, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
 /// Computes the size and alignment of required workspace for reconstructing the lower triangular
 /// part of the a matrix out of place, given its Cholesky decomposition.
-pub fn reconstruct_lower_req<T: 'static>(dimension: usize) -> Result<StackReq, SizeOverflow> {
+pub fn reconstruct_lower_req<E: Entity>(dimension: usize) -> Result<StackReq, SizeOverflow> {
     let _ = dimension;
     Ok(StackReq::default())
 }
 
 /// Computes the size and alignment of required workspace for reconstructing the lower triangular
 /// part of the a matrix in place, given its Cholesky decomposition.
-pub fn reconstruct_lower_in_place_req<T: 'static>(
+pub fn reconstruct_lower_in_place_req<E: Entity>(
     dimension: usize,
 ) -> Result<StackReq, SizeOverflow> {
-    temp_mat_req::<T>(dimension, dimension)
+    temp_mat_req::<E>(dimension, dimension)
 }
 
 /// Computes the lower triangular part of the reconstructed matrix, given its Cholesky
@@ -29,28 +31,25 @@ pub fn reconstruct_lower_in_place_req<T: 'static>(
 /// - Panics if `cholesky_factor` is not a square matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 #[track_caller]
-pub fn reconstruct_lower<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    cholesky_factor: MatRef<'_, T>,
+pub fn reconstruct_lower<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    cholesky_factor: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
-    fancy_assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
-    fancy_assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
+    assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
+    assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
 
     let _ = &stack;
     triangular::matmul(
         dst,
         BlockStructure::TriangularLower,
-        Conj::No,
         cholesky_factor,
         BlockStructure::TriangularLower,
-        Conj::No,
-        cholesky_factor.transpose(),
+        cholesky_factor.adjoint(),
         BlockStructure::TriangularUpper,
-        Conj::Yes,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
 }
@@ -62,17 +61,15 @@ pub fn reconstruct_lower<T: ComplexField>(
 ///
 /// - Panics if `cholesky_factor` is not a square matrix.
 #[track_caller]
-pub fn reconstruct_lower_in_place<T: ComplexField>(
-    cholesky_factor: MatMut<'_, T>,
+pub fn reconstruct_lower_in_place<E: ComplexField>(
+    cholesky_factor: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let n = cholesky_factor.nrows();
-    let (mut tmp, stack) = unsafe { temp_mat_uninit::<T>(n, n, stack) };
+    let (mut tmp, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
     let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
-    cholesky_factor
-        .cwise()
-        .zip(tmp.rb())
-        .for_each_triangular_lower(faer_core::zip::Diag::Include, |dst, src| *dst = src.clone());
+    zipped!(cholesky_factor, tmp.rb())
+        .for_each_triangular_lower(Diag::Include, |mut dst, src| dst.write(src.read()));
 }

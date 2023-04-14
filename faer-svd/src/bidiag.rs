@@ -1,24 +1,24 @@
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use coe::Coerce;
 use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    c32, c64, householder::make_householder_in_place, mul::matmul, temp_mat_req, temp_mat_uninit,
-    temp_mat_zeroed, zip, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RowMut,
-    RowRef,
+    c32, c64, for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
+    parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField, Conj,
+    Entity, MatMut, MatRef, Parallelism,
 };
 use pulp::Simd;
 use reborrow::*;
 
-pub fn bidiagonalize_in_place_req<T: 'static>(
+pub fn bidiagonalize_in_place_req<E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
-        temp_mat_req::<T>(n, 1)?,
-        temp_mat_req::<T>(m, 1)?,
-        temp_mat_req::<T>(
+        temp_mat_req::<E>(n, 1)?,
+        temp_mat_req::<E>(m, 1)?,
+        temp_mat_req::<E>(
             m,
             match parallelism {
                 Parallelism::None => 1,
@@ -34,17 +34,17 @@ pub fn bidiagonalize_in_place_req<T: 'static>(
     ])
 }
 
-pub fn bidiagonalize_in_place<T: ComplexField>(
-    mut a: MatMut<'_, T>,
-    mut householder_left: ColMut<'_, T>,
-    mut householder_right: ColMut<'_, T>,
+pub fn bidiagonalize_in_place<E: ComplexField>(
+    mut a: MatMut<'_, E>,
+    mut householder_left: MatMut<'_, E>,
+    mut householder_right: MatMut<'_, E>,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
 ) {
     let m = a.nrows();
     let n = a.ncols();
 
-    fancy_assert!(m >= n);
+    assert!(m >= n);
 
     let n_threads = match parallelism {
         Parallelism::None => 1,
@@ -57,28 +57,27 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
         }
     };
 
-    let (mut y, mut stack) = unsafe { temp_mat_uninit::<T>(n, 1, stack.rb_mut()) };
+    let (mut y, mut stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack.rb_mut()) };
     let mut y = y.as_mut();
-    let (mut z, mut stack) = unsafe { temp_mat_uninit::<T>(m, 1, stack.rb_mut()) };
+    let (mut z, mut stack) = unsafe { temp_mat_uninit::<E>(m, 1, stack.rb_mut()) };
     let mut z = z.as_mut();
 
-    let (mut z_tmp, _) = temp_mat_zeroed::<T>(m, n_threads, stack.rb_mut());
+    let (mut z_tmp, _) = temp_mat_zeroed::<E>(m, n_threads, stack.rb_mut());
     let mut z_tmp = z_tmp.as_mut();
 
-    let mut tl = T::zero();
-    let mut tr = T::zero();
-    let mut a01 = T::zero();
+    let mut tl = E::zero();
+    let mut tr = E::zero();
+    let mut a01 = E::zero();
 
-    let arch = pulp::Arch::new();
     for k in 0..n {
-        let (a_left, a_right) = a.rb_mut().split_at_col(k);
-        let (mut a_top, mut a_cur) = a_right.split_at_row(k);
+        let [a_left, a_right] = a.rb_mut().split_at_col(k);
+        let [mut a_top, mut a_cur] = a_right.split_at_row(k);
 
         let m = a_cur.nrows();
         let n = a_cur.ncols();
 
-        let (mut a_col, a_right) = a_cur.rb_mut().split_at_col(1);
-        let (mut a_row, mut a_next) = a_right.split_at_row(1);
+        let [mut a_col, a_right] = a_cur.rb_mut().split_at_col(1);
+        let [mut a_row, mut a_next] = a_right.split_at_row(1);
 
         if k > 0 {
             let u = a_left.rb().submatrix(k, k - 1, m, 1);
@@ -86,21 +85,29 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
             let y = y.rb().submatrix(k - 1, 0, n, 1);
             let z = z.rb().submatrix(k - 1, 0, m, 1);
 
-            let f0 = y[(0, 0)].conj().mul(&tl.inv());
-            let f1 = v[(0, 0)].conj().mul(&tr.inv());
+            let f0 = y.read(0, 0).conj().mul(&tl.inv());
+            let f1 = v.read(0, 0).conj().mul(&tr.inv());
 
-            zip!(a_col.rb_mut(), u, z).for_each(|a, b, c| *a = a.sub(&f0.mul(b)).sub(&f1.mul(c)));
+            zipped!(a_col.rb_mut(), u, z).for_each(|mut a, b, c| {
+                a.write(a.read().sub(&f0.mul(&b.read())).sub(&f1.mul(&c.read())))
+            });
 
-            let f0 = u[(0, 0)].mul(&tl.inv());
-            let f1 = z[(0, 0)].mul(&tr.inv());
-            zip!(
+            let f0 = u.read(0, 0).mul(&tl.inv());
+            let f1 = z.read(0, 0).mul(&tr.inv());
+            zipped!(
                 a_row.rb_mut(),
                 y.submatrix(1, 0, n - 1, 1).transpose(),
                 v.rb().submatrix(0, 1, 1, n - 1),
             )
-            .for_each(|a, b, c| *a = a.sub(&f0.mul(&(*b).conj())).sub(&f1.mul(&(*c).conj())));
+            .for_each(|mut a, b, c| {
+                a.write(
+                    a.read()
+                        .sub(&f0.mul(&b.read().conj()))
+                        .sub(&f1.mul(&c.read().conj())),
+                )
+            });
 
-            v[(0, 0)] = a01;
+            v.write(0, 0, a01);
         }
 
         let mut y = y.rb_mut().submatrix(k, 0, n - 1, 1);
@@ -110,16 +117,17 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
         let tl_prev = tl.clone();
         let a00;
         (tl, a00) = {
-            let head = a_col[(0, 0)].clone();
+            let head = a_col.read(0, 0);
             let essential = a_col.rb_mut().col(0).subrows(1, m - 1);
-            let mut tail_squared_norm = T::Real::zero();
-            for x in essential.rb() {
+            let mut tail_squared_norm = E::Real::zero();
+            for idx in 0..m - 1 {
+                let x = essential.read(idx, 0);
                 tail_squared_norm = tail_squared_norm.add(&x.mul(&x.conj()).real());
             }
             make_householder_in_place(Some(essential), head, tail_squared_norm)
         };
-        a_col[(0, 0)] = a00;
-        householder_left.rb_mut().write_at(k, tl.clone());
+        a_col.write(0, 0, a00);
+        householder_left.write(k, 0, tl.clone());
 
         if n == 1 {
             break;
@@ -146,136 +154,120 @@ pub fn bidiagonalize_in_place<T: ComplexField>(
         );
 
         (tr, a01) = {
-            let head = a_row[(0, 0)].clone();
+            let head = a_row.read(0, 0);
             let essential = a_row.rb().row(0).subcols(1, n - 2).transpose();
-            let mut tail_squared_norm = T::Real::zero();
-            for x in essential {
+            let mut tail_squared_norm = E::Real::zero();
+            for idx in 0..n - 2 {
+                let x = essential.read(idx, 0);
                 tail_squared_norm = tail_squared_norm.add(&x.mul(&x.conj()).real());
             }
             make_householder_in_place(None, head, tail_squared_norm)
         };
-        householder_right.rb_mut().write_at(k, tr.clone());
+        householder_right.write(k, 0, tr.clone());
 
-        let diff = a_row[(0, 0)].sub(&a01);
+        let diff = a_row.read(0, 0).sub(&a01);
 
-        if diff != T::zero() {
+        if diff != E::zero() {
             let f = diff.inv().conj();
-            a_row
-                .rb_mut()
-                .row(0)
-                .subcols(1, n - 2)
-                .transpose()
-                .cwise()
-                .for_each(|x| *x = (*x).conj().mul(&f));
+            zipped!(a_row.rb_mut().row(0).subcols(1, n - 2).transpose())
+                .for_each(|mut x| x.write(x.read().conj().mul(&f)));
 
-            zip!(z.rb_mut().col(0), a_next.rb().col(0))
-                .for_each(|z, a| *z = f.mul(&z.sub(&a01.conj().mul(a))));
+            zipped!(z.rb_mut().col(0), a_next.rb().col(0))
+                .for_each(|mut z, a| z.write(f.mul(&z.read().sub(&a01.conj().mul(&a.read())))));
         }
 
-        a_row[(0, 0)] = T::one();
-        let b = faer_core::mul::dot(arch, y.rb().col(0), a_row.rb().row(0).transpose());
+        a_row.write(0, 0, E::one());
+        let b = faer_core::mul::inner_prod::inner_prod_with_conj(
+            y.rb().col(0),
+            Conj::Yes,
+            a_row.rb().row(0).transpose(),
+            Conj::No,
+        );
 
         let factor = b.mul(&tl.inv()).neg();
-        zip!(z.rb_mut(), u).for_each(|z, u| *z = z.add(&(*u).mul(&factor)));
+        zipped!(z.rb_mut(), u).for_each(|mut z, u| z.write(z.read().add(&u.read().mul(&factor))));
     }
 }
 
 #[allow(dead_code)]
-fn bidiag_fused_op_reference<T: ComplexField>(
+fn bidiag_fused_op_reference<E: ComplexField>(
     k: usize,
     m: usize,
     n: usize,
-    tl_prev: T,
-    tl: T,
-    tr: T,
-    _z_tmp: MatMut<'_, T>,
-    a_left: MatMut<'_, T>,
-    a_top: MatMut<'_, T>,
-    mut a_next: MatMut<'_, T>,
-    mut y: MatMut<'_, T>,
+    tl_prev: E,
+    tl: E,
+    tr: E,
+    _z_tmp: MatMut<'_, E>,
+    a_left: MatMut<'_, E>,
+    a_top: MatMut<'_, E>,
+    mut a_next: MatMut<'_, E>,
+    mut y: MatMut<'_, E>,
     parallelism: Parallelism,
-    mut z: MatMut<'_, T>,
-    u: MatRef<'_, T>,
-    mut a_row: MatMut<'_, T>,
+    mut z: MatMut<'_, E>,
+    u: MatRef<'_, E>,
+    mut a_row: MatMut<'_, E>,
 ) {
     if k > 0 {
         let u_prev = a_left.rb().submatrix(k + 1, k - 1, m - 1, 1);
         let v_prev = a_top.rb().submatrix(k - 1, 1, 1, n - 1);
         matmul(
             a_next.rb_mut(),
-            Conj::No,
             u_prev,
-            Conj::No,
-            y.rb().transpose(),
-            Conj::Yes,
-            Some(T::one()),
+            y.rb().adjoint(),
+            Some(E::one()),
             tl_prev.inv().neg(),
             parallelism,
         );
         matmul(
             a_next.rb_mut(),
-            Conj::No,
             z.rb(),
-            Conj::No,
-            v_prev,
-            Conj::Yes,
-            Some(T::one()),
+            v_prev.conjugate(),
+            Some(E::one()),
             tr.inv().neg(),
             parallelism,
         );
 
         matmul(
             y.rb_mut(),
-            Conj::No,
-            a_next.rb().transpose(),
-            Conj::Yes,
+            a_next.rb().adjoint(),
             u,
-            Conj::No,
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
-        zip!(y.rb_mut(), a_row.rb().transpose())
-            .for_each(|dst, src| *dst = (*dst).add(&src.conj()));
+        zipped!(y.rb_mut(), a_row.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().add(&src.read().conj())));
         let tl_inv = tl.inv();
-        zip!(a_row.rb_mut(), y.rb().transpose())
-            .for_each(|dst, src| *dst = dst.sub(&src.conj().mul(&tl_inv)));
+        zipped!(a_row.rb_mut(), y.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().conj().mul(&tl_inv))));
         matmul(
             z.rb_mut(),
-            Conj::No,
             a_next.rb(),
-            Conj::No,
-            a_row.rb().transpose(),
-            Conj::Yes,
+            a_row.rb().adjoint(),
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
     } else {
         matmul(
             y.rb_mut(),
-            Conj::No,
-            a_next.rb().transpose(),
-            Conj::Yes,
+            a_next.rb().adjoint(),
             u,
-            Conj::No,
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
-        zip!(y.rb_mut(), a_row.rb().transpose()).for_each(|dst, src| *dst = dst.add(&src.conj()));
+        zipped!(y.rb_mut(), a_row.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().add(&src.read().conj())));
         let tl_inv = tl.inv();
-        zip!(a_row.rb_mut(), y.rb().transpose())
-            .for_each(|dst, src| *dst = dst.sub(&src.conj().mul(&tl_inv)));
+        zipped!(a_row.rb_mut(), y.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().conj().mul(&tl_inv))));
         matmul(
             z.rb_mut(),
-            Conj::No,
             a_next.rb(),
-            Conj::No,
-            a_row.rb().transpose(),
-            Conj::Yes,
+            a_row.rb().adjoint(),
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
     }
@@ -482,20 +474,23 @@ fn bidiag_fused_op_step0_c64(
                 z_rhs,
                 u,
             } = self;
-            let (a_j_head, a_j_tail) = S::c64s_as_mut_simd(a_j);
-            let (z_head, z_tail) = S::c64s_as_simd(z);
-            let (u_prev_head, u_prev_tail) = S::c64s_as_simd(u_prev);
-            let (u_head, u_tail) = S::c64s_as_simd(u);
+            let u_rhs = u_rhs.into();
+            let z_rhs = z_rhs.into();
+
+            let (a_j_head, a_j_tail) = S::c64s_as_mut_simd(bytemuck::cast_slice_mut(a_j));
+            let (z_head, z_tail) = S::c64s_as_simd(bytemuck::cast_slice(z));
+            let (u_prev_head, u_prev_tail) = S::c64s_as_simd(bytemuck::cast_slice(u_prev));
+            let (u_head, u_tail) = S::c64s_as_simd(bytemuck::cast_slice(u));
 
             let (a_j_head4, a_j_head1) = pulp::as_arrays_mut::<4, _>(a_j_head);
             let (z_head4, z_head1) = pulp::as_arrays::<4, _>(z_head);
             let (u_prev_head4, u_prev_head1) = pulp::as_arrays::<4, _>(u_prev_head);
             let (u_head4, u_head1) = pulp::as_arrays::<4, _>(u_head);
 
-            let mut sum_v0 = simd.c64s_splat(c64::zero());
-            let mut sum_v1 = simd.c64s_splat(c64::zero());
-            let mut sum_v2 = simd.c64s_splat(c64::zero());
-            let mut sum_v3 = simd.c64s_splat(c64::zero());
+            let mut sum_v0 = simd.c64s_splat(c64::zero().into());
+            let mut sum_v1 = simd.c64s_splat(c64::zero().into());
+            let mut sum_v2 = simd.c64s_splat(c64::zero().into());
+            let mut sum_v3 = simd.c64s_splat(c64::zero().into());
 
             let u_rhs_v = simd.c64s_neg(simd.c64s_splat(u_rhs));
             let z_rhs_v = simd.c64s_neg(simd.c64s_splat(z_rhs));
@@ -562,7 +557,7 @@ fn bidiag_fused_op_step0_c64(
                 *aij = aij_new;
             }
 
-            sum
+            sum.into()
         }
     }
 
@@ -595,8 +590,9 @@ fn bidiag_fused_op_step1_c64(
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self { z, a_j, rhs } = self;
-            let (z_head, z_tail) = S::c64s_as_mut_simd(z);
-            let (a_j_head, a_j_tail) = S::c64s_as_simd(a_j);
+            let rhs = rhs.into();
+            let (z_head, z_tail) = S::c64s_as_mut_simd(bytemuck::cast_slice_mut(z));
+            let (a_j_head, a_j_tail) = S::c64s_as_simd(bytemuck::cast_slice(a_j));
             let rhs_v = simd.c64s_splat(rhs);
 
             for (zi, aij) in z_head.iter_mut().zip(a_j_head) {
@@ -811,20 +807,23 @@ fn bidiag_fused_op_step0_c32(
                 z_rhs,
                 u,
             } = self;
-            let (a_j_head, a_j_tail) = S::c32s_as_mut_simd(a_j);
-            let (z_head, z_tail) = S::c32s_as_simd(z);
-            let (u_prev_head, u_prev_tail) = S::c32s_as_simd(u_prev);
-            let (u_head, u_tail) = S::c32s_as_simd(u);
+            let u_rhs = u_rhs.into();
+            let z_rhs = z_rhs.into();
+
+            let (a_j_head, a_j_tail) = S::c32s_as_mut_simd(bytemuck::cast_slice_mut(a_j));
+            let (z_head, z_tail) = S::c32s_as_simd(bytemuck::cast_slice(z));
+            let (u_prev_head, u_prev_tail) = S::c32s_as_simd(bytemuck::cast_slice(u_prev));
+            let (u_head, u_tail) = S::c32s_as_simd(bytemuck::cast_slice(u));
 
             let (a_j_head4, a_j_head1) = pulp::as_arrays_mut::<4, _>(a_j_head);
             let (z_head4, z_head1) = pulp::as_arrays::<4, _>(z_head);
             let (u_prev_head4, u_prev_head1) = pulp::as_arrays::<4, _>(u_prev_head);
             let (u_head4, u_head1) = pulp::as_arrays::<4, _>(u_head);
 
-            let mut sum_v0 = simd.c32s_splat(c32::zero());
-            let mut sum_v1 = simd.c32s_splat(c32::zero());
-            let mut sum_v2 = simd.c32s_splat(c32::zero());
-            let mut sum_v3 = simd.c32s_splat(c32::zero());
+            let mut sum_v0 = simd.c32s_splat(c32::zero().into());
+            let mut sum_v1 = simd.c32s_splat(c32::zero().into());
+            let mut sum_v2 = simd.c32s_splat(c32::zero().into());
+            let mut sum_v3 = simd.c32s_splat(c32::zero().into());
 
             let u_rhs_v = simd.c32s_neg(simd.c32s_splat(u_rhs));
             let z_rhs_v = simd.c32s_neg(simd.c32s_splat(z_rhs));
@@ -891,7 +890,7 @@ fn bidiag_fused_op_step0_c32(
                 *aij = aij_new;
             }
 
-            sum
+            sum.into()
         }
     }
 
@@ -924,8 +923,9 @@ fn bidiag_fused_op_step1_c32(
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self { z, a_j, rhs } = self;
-            let (z_head, z_tail) = S::c32s_as_mut_simd(z);
-            let (a_j_head, a_j_tail) = S::c32s_as_simd(a_j);
+            let rhs = rhs.into();
+            let (z_head, z_tail) = S::c32s_as_mut_simd(bytemuck::cast_slice_mut(z));
+            let (a_j_head, a_j_tail) = S::c32s_as_simd(bytemuck::cast_slice(a_j));
             let rhs_v = simd.c32s_splat(rhs);
 
             for (zi, aij) in z_head.iter_mut().zip(a_j_head) {
@@ -939,158 +939,194 @@ fn bidiag_fused_op_step1_c32(
     arch.dispatch(Impl { z, a_j, rhs })
 }
 
-fn bidiag_fused_op_process_batch<T: ComplexField>(
+fn bidiag_fused_op_process_batch<E: ComplexField>(
     arch: pulp::Arch,
-    mut z_tmp: ColMut<'_, T>,
-    mut a_next: MatMut<'_, T>,
-    mut a_row: RowMut<'_, T>,
-    u: ColRef<'_, T>,
-    u_prev: ColRef<'_, T>,
-    v_prev: RowRef<'_, T>,
-    mut y: ColMut<'_, T>,
-    z: ColRef<'_, T>,
-    tl_prev_inv: T,
-    tr_prev_inv: T,
-    tl_inv: T,
+    mut z_tmp: MatMut<'_, E>,
+    mut a_next: MatMut<'_, E>,
+    mut a_row: MatMut<'_, E>,
+    u: MatRef<'_, E>,
+    u_prev: MatRef<'_, E>,
+    v_prev: MatRef<'_, E>,
+    mut y: MatMut<'_, E>,
+    z: MatRef<'_, E>,
+    tl_prev_inv: E,
+    tr_prev_inv: E,
+    tl_inv: E,
 ) {
     let ncols = a_next.ncols();
     let nrows = a_next.nrows();
     for j in 0..ncols {
-        let u_rhs = y[j].conj().mul(&tl_prev_inv);
-        let z_rhs = v_prev[j].conj().mul(&tr_prev_inv);
+        let u_rhs = y.read(j, 0).conj().mul(&tl_prev_inv);
+        let z_rhs = v_prev.read(0, j).conj().mul(&tr_prev_inv);
 
-        let yj = if coe::is_same::<f64, T>() {
+        let yj = if coe::is_same::<f64, E>() {
+            let a_next: MatMut<'_, f64> = a_next.rb_mut().coerce();
+            let z: MatRef<'_, f64> = z.coerce();
+            let u_prev: MatRef<'_, f64> = u_prev.coerce();
+            let u: MatRef<'_, f64> = u.coerce();
             unsafe {
                 coe::coerce_static(bidiag_fused_op_step0_f64(
                     arch,
-                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
-                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts_mut(a_next.ptr_at(0, j), nrows),
+                    slice::from_raw_parts(z.as_ptr(), nrows),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows),
                     coe::coerce_static(u_rhs),
                     coe::coerce_static(z_rhs),
-                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u.as_ptr(), nrows),
                 ))
             }
-        } else if coe::is_same::<c64, T>() {
+        } else if coe::is_same::<c64, E>() {
+            let a_next: MatMut<'_, c64> = a_next.rb_mut().coerce();
+            let z: MatRef<'_, c64> = z.coerce();
+            let u_prev: MatRef<'_, c64> = u_prev.coerce();
+            let u: MatRef<'_, c64> = u.coerce();
             unsafe {
                 coe::coerce_static(bidiag_fused_op_step0_c64(
                     arch,
-                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
-                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts_mut(a_next.ptr_at(0, j), nrows),
+                    slice::from_raw_parts(z.as_ptr(), nrows),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows),
                     coe::coerce_static(u_rhs),
                     coe::coerce_static(z_rhs),
-                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u.as_ptr(), nrows),
                 ))
             }
-        } else if coe::is_same::<f32, T>() {
+        } else if coe::is_same::<f32, E>() {
+            let a_next: MatMut<'_, f32> = a_next.rb_mut().coerce();
+            let z: MatRef<'_, f32> = z.coerce();
+            let u_prev: MatRef<'_, f32> = u_prev.coerce();
+            let u: MatRef<'_, f32> = u.coerce();
             unsafe {
                 coe::coerce_static(bidiag_fused_op_step0_f32(
                     arch,
-                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
-                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts_mut(a_next.ptr_at(0, j), nrows),
+                    slice::from_raw_parts(z.as_ptr(), nrows),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows),
                     coe::coerce_static(u_rhs),
                     coe::coerce_static(z_rhs),
-                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u.as_ptr(), nrows),
                 ))
             }
-        } else if coe::is_same::<c32, T>() {
+        } else if coe::is_same::<c32, E>() {
+            let a_next: MatMut<'_, c32> = a_next.rb_mut().coerce();
+            let z: MatRef<'_, c32> = z.coerce();
+            let u_prev: MatRef<'_, c32> = u_prev.coerce();
+            let u: MatRef<'_, c32> = u.coerce();
             unsafe {
                 coe::coerce_static(bidiag_fused_op_step0_c32(
                     arch,
-                    slice::from_raw_parts_mut(a_next.rb_mut().ptr_at(0, j), nrows).coerce(),
-                    slice::from_raw_parts(z.as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(u_prev.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts_mut(a_next.ptr_at(0, j), nrows),
+                    slice::from_raw_parts(z.as_ptr(), nrows),
+                    slice::from_raw_parts(u_prev.as_ptr(), nrows),
                     coe::coerce_static(u_rhs),
                     coe::coerce_static(z_rhs),
-                    slice::from_raw_parts(u.as_ptr(), nrows).coerce(),
+                    slice::from_raw_parts(u.as_ptr(), nrows),
                 ))
             }
         } else {
-            let mut yj = T::zero();
+            let mut yj = E::zero();
             for i in 0..nrows {
                 unsafe {
-                    let aij = a_next.rb_mut().get_unchecked(i, j);
-                    *aij = aij
-                        .sub(&u_prev.get_unchecked(i).mul(&u_rhs))
-                        .sub(&z.get_unchecked(i).mul(&z_rhs));
+                    a_next.write_unchecked(
+                        i,
+                        j,
+                        a_next
+                            .read_unchecked(i, j)
+                            .sub(&u_prev.read_unchecked(i, 0).mul(&u_rhs))
+                            .sub(&z.read_unchecked(i, 0).mul(&z_rhs)),
+                    );
 
-                    yj = yj.add(&(*aij).conj().mul(u.get_unchecked(i)));
+                    yj = yj.add(
+                        &(a_next.read_unchecked(i, j))
+                            .conj()
+                            .mul(&u.read_unchecked(i, 0)),
+                    );
                 }
             }
 
             yj
         };
-        y[j] = yj.add(&a_row[j].conj());
-        a_row[j] = a_row[j].sub(&y[j].conj().mul(&tl_inv));
+        y.write(j, 0, yj.add(&a_row.read(0, j).conj()));
+        a_row.write(
+            0,
+            j,
+            a_row.read(0, j).sub(&y.read(j, 0).conj().mul(&tl_inv)),
+        );
 
-        let rhs = a_row[j].conj();
+        let rhs = a_row.read(0, j).conj();
 
-        if coe::is_same::<f64, T>() {
+        if coe::is_same::<f64, E>() {
+            let a_next: MatMut<'_, f64> = a_next.rb_mut().coerce();
+            let mut z_tmp: MatMut<'_, f64> = z_tmp.rb_mut().coerce();
             unsafe {
                 bidiag_fused_op_step1_f64(
                     arch,
-                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows),
                     coe::coerce_static(rhs),
                 );
             }
-        } else if coe::is_same::<c64, T>() {
+        } else if coe::is_same::<c64, E>() {
+            let a_next: MatMut<'_, c64> = a_next.rb_mut().coerce();
+            let mut z_tmp: MatMut<'_, c64> = z_tmp.rb_mut().coerce();
             unsafe {
                 bidiag_fused_op_step1_c64(
                     arch,
-                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows),
                     coe::coerce_static(rhs),
                 );
             }
-        } else if coe::is_same::<f32, T>() {
+        } else if coe::is_same::<f32, E>() {
+            let a_next: MatMut<'_, f32> = a_next.rb_mut().coerce();
+            let mut z_tmp: MatMut<'_, f32> = z_tmp.rb_mut().coerce();
             unsafe {
                 bidiag_fused_op_step1_f32(
                     arch,
-                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows),
                     coe::coerce_static(rhs),
                 );
             }
-        } else if coe::is_same::<c32, T>() {
+        } else if coe::is_same::<c32, E>() {
+            let a_next: MatMut<'_, c32> = a_next.rb_mut().coerce();
+            let mut z_tmp: MatMut<'_, c32> = z_tmp.rb_mut().coerce();
             unsafe {
                 bidiag_fused_op_step1_c32(
                     arch,
-                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows).coerce(),
-                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows).coerce(),
+                    slice::from_raw_parts_mut(z_tmp.rb_mut().as_ptr(), nrows),
+                    slice::from_raw_parts(a_next.rb().ptr_at(0, j), nrows),
                     coe::coerce_static(rhs),
                 );
             }
         } else {
             for i in 0..nrows {
                 unsafe {
-                    let zi = z_tmp.rb_mut().ptr_in_bounds_at_unchecked(i);
-                    let aij = a_next.rb().get_unchecked(i, j).clone();
-                    *zi = (*zi).add(&aij.mul(&rhs));
+                    let zi = z_tmp.read_unchecked(i, 0);
+                    let aij = a_next.read_unchecked(i, j);
+                    z_tmp.write_unchecked(i, 0, zi.add(&aij.mul(&rhs)));
                 }
             }
         }
     }
 }
 
-fn bidiag_fused_op<T: ComplexField>(
+fn bidiag_fused_op<E: ComplexField>(
     k: usize,
     m: usize,
     n: usize,
-    tl_prev: T,
-    tl: T,
-    tr: T,
-    mut z_tmp: MatMut<'_, T>,
-    a_left: MatMut<'_, T>,
-    a_top: MatMut<'_, T>,
-    mut a_next: MatMut<'_, T>,
-    mut y: MatMut<'_, T>,
+    tl_prev: E,
+    tl: E,
+    tr: E,
+    mut z_tmp: MatMut<'_, E>,
+    a_left: MatMut<'_, E>,
+    a_top: MatMut<'_, E>,
+    mut a_next: MatMut<'_, E>,
+    mut y: MatMut<'_, E>,
     parallelism: Parallelism,
-    mut z: MatMut<'_, T>,
-    u: MatRef<'_, T>,
-    mut a_row: MatMut<'_, T>,
+    mut z: MatMut<'_, E>,
+    u: MatRef<'_, E>,
+    mut a_row: MatMut<'_, E>,
 ) {
     let parallelism = if m * n < 128 * 128 {
         Parallelism::None
@@ -1101,16 +1137,7 @@ fn bidiag_fused_op<T: ComplexField>(
         if a_next.row_stride() == 1 {
             let arch = pulp::Arch::new();
 
-            let n_threads = match parallelism {
-                Parallelism::None => 1,
-                Parallelism::Rayon(n_threads) => {
-                    if n_threads == 0 {
-                        rayon::current_num_threads()
-                    } else {
-                        n_threads
-                    }
-                }
-            };
+            let n_threads = parallelism_degree(parallelism);
 
             let u_prev = a_left.rb().submatrix(k + 1, k - 1, m - 1, 1).col(0);
             let v_prev = a_top.rb().submatrix(k - 1, 1, 1, n - 1).row(0);
@@ -1119,10 +1146,10 @@ fn bidiag_fused_op<T: ComplexField>(
             let tr_prev_inv = tr.inv();
             let tl_inv = tl.inv();
 
-            fancy_assert!(a_next.row_stride() == 1);
-            fancy_assert!(u_prev.row_stride() == 1);
-            fancy_assert!(u.row_stride() == 1);
-            fancy_assert!(z.row_stride() == 1);
+            assert!(a_next.row_stride() == 1);
+            assert!(u_prev.row_stride() == 1);
+            assert!(u.row_stride() == 1);
+            assert!(z.row_stride() == 1);
 
             match n_threads {
                 1 => {
@@ -1142,119 +1169,75 @@ fn bidiag_fused_op<T: ComplexField>(
                     );
                 }
                 n_threads => {
-                    use rayon::prelude::*;
+                    for_each_raw(
+                        n_threads,
+                        |idx| {
+                            let (col_start, ncols) =
+                                par_split_indices(a_next.ncols(), idx, n_threads);
+                            let z_tmp = unsafe { z_tmp.rb().col(idx).const_cast() };
+                            let a_next =
+                                unsafe { a_next.rb().subcols(col_start, ncols).const_cast() };
+                            let a_row =
+                                unsafe { a_row.rb().subcols(col_start, ncols).const_cast() };
+                            let y = unsafe { y.rb().subrows(col_start, ncols).const_cast() };
+                            let v_prev = v_prev.subcols(col_start, ncols);
 
-                    z_tmp
-                        .rb_mut()
-                        .into_par_col_chunks(n_threads)
-                        .zip_eq(a_next.into_par_col_chunks(n_threads))
-                        .zip_eq(a_row.into_par_col_chunks(n_threads))
-                        .zip_eq(y.into_par_row_chunks(n_threads))
-                        .zip_eq(v_prev.as_2d().into_par_col_chunks(n_threads))
-                        .for_each(
-                            |(((((_, z_tmp), (_, a_next)), (_, a_row)), (_, y)), (_, v_prev))| {
-                                bidiag_fused_op_process_batch(
-                                    arch,
-                                    z_tmp.col(0),
-                                    a_next,
-                                    a_row.row(0),
-                                    u.col(0),
-                                    u_prev,
-                                    v_prev.row(0),
-                                    y.col(0),
-                                    z.rb().col(0),
-                                    tl_prev_inv.clone(),
-                                    tr_prev_inv.clone(),
-                                    tl_inv.clone(),
-                                );
-                            },
-                        );
+                            bidiag_fused_op_process_batch(
+                                arch,
+                                z_tmp,
+                                a_next,
+                                a_row,
+                                u,
+                                u_prev,
+                                v_prev,
+                                y,
+                                z.rb(),
+                                tl_prev_inv.clone(),
+                                tr_prev_inv.clone(),
+                                tl_inv.clone(),
+                            );
+                        },
+                        parallelism,
+                    );
                 }
             }
 
             let mut idx = 0;
             let mut first_init = true;
             while idx < n_threads {
-                let bs = 4.min(n_threads - idx);
-                let mut z_block = z_tmp.rb_mut().submatrix(0, idx, m - 1, bs).into_col_iter();
+                let bs = <usize as Ord>::min(2, n_threads - idx);
+                let z_block = z_tmp.rb_mut().submatrix(0, idx, m - 1, bs);
 
                 match bs {
                     1 => {
-                        let z0 = z_block.next().unwrap();
+                        let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         if first_init {
-                            zip!(z.rb_mut().col(0), z0).for_each(|z, z0| {
-                                *z = z0.clone();
-                                *z0 = T::zero();
+                            zipped!(z.rb_mut().col(0), z0).for_each(|mut z, mut z0| {
+                                z.write(z0.read());
+                                z0.write(E::zero());
                             });
                         } else {
-                            zip!(z.rb_mut().col(0), z0).for_each(|z, z0| {
-                                *z = (*z).add(z0);
-                                *z0 = T::zero();
+                            zipped!(z.rb_mut().col(0), z0).for_each(|mut z, mut z0| {
+                                z.write(z.read().add(&z0.read()));
+                                z0.write(E::zero());
                             });
                         }
                     }
                     2 => {
-                        let z0 = z_block.next().unwrap();
-                        let z1 = z_block.next().unwrap();
+                        let z0 = unsafe { z_block.rb().col(0).const_cast() };
+                        let z1 = unsafe { z_block.rb().col(1).const_cast() };
                         if first_init {
-                            zip!(z.rb_mut().col(0), z0, z1).for_each(|z, z0, z1| {
-                                *z = (*z0).add(z1);
-                                *z0 = T::zero();
-                                *z1 = T::zero();
+                            zipped!(z.rb_mut().col(0), z0, z1).for_each(|mut z, mut z0, mut z1| {
+                                z.write(z0.read().add(&z1.read()));
+                                z0.write(E::zero());
+                                z1.write(E::zero());
                             });
                         } else {
-                            zip!(z.rb_mut().col(0), z0, z1).for_each(|z, z0, z1| {
-                                *z = (*z).add(z0).add(z1);
-                                *z0 = T::zero();
-                                *z1 = T::zero();
+                            zipped!(z.rb_mut().col(0), z0, z1).for_each(|mut z, mut z0, mut z1| {
+                                z.write(z.read().add(&z0.read().add(&z1.read())));
+                                z0.write(E::zero());
+                                z1.write(E::zero());
                             });
-                        }
-                    }
-                    3 => {
-                        let z0 = z_block.next().unwrap();
-                        let z1 = z_block.next().unwrap();
-                        let z2 = z_block.next().unwrap();
-                        if first_init {
-                            zip!(z.rb_mut().col(0), z0, z1, z2).for_each(|z, z0, z1, z2| {
-                                *z = (*z0).add(z1).add(z2);
-                                *z0 = T::zero();
-                                *z1 = T::zero();
-                                *z2 = T::zero();
-                            });
-                        } else {
-                            zip!(z.rb_mut().col(0), z0, z1, z2).for_each(|z, z0, z1, z2| {
-                                *z = ((*z).add(z0)).add(&(*z1).add(z2));
-                                *z0 = T::zero();
-                                *z1 = T::zero();
-                                *z2 = T::zero();
-                            });
-                        }
-                    }
-                    4 => {
-                        let z0 = z_block.next().unwrap();
-                        let z1 = z_block.next().unwrap();
-                        let z2 = z_block.next().unwrap();
-                        let z3 = z_block.next().unwrap();
-                        if first_init {
-                            zip!(z.rb_mut().col(0), z0, z1, z2, z3).for_each(
-                                |z, z0, z1, z2, z3| {
-                                    *z = ((*z0).add(z1)).add(&(*z2).add(z3));
-                                    *z0 = T::zero();
-                                    *z1 = T::zero();
-                                    *z2 = T::zero();
-                                    *z3 = T::zero();
-                                },
-                            );
-                        } else {
-                            zip!(z.rb_mut().col(0), z0, z1, z2, z3).for_each(
-                                |z, z0, z1, z2, z3| {
-                                    *z = (*z).add(&((*z0).add(z1)).add(&(*z2).add(z3)));
-                                    *z0 = T::zero();
-                                    *z1 = T::zero();
-                                    *z2 = T::zero();
-                                    *z3 = T::zero();
-                                },
-                            );
                         }
                     }
                     _ => unreachable!(),
@@ -1267,82 +1250,65 @@ fn bidiag_fused_op<T: ComplexField>(
             let v_prev = a_top.rb().submatrix(k - 1, 1, 1, n - 1);
             matmul(
                 a_next.rb_mut(),
-                Conj::No,
                 u_prev,
-                Conj::No,
-                y.rb().transpose(),
-                Conj::Yes,
-                Some(T::one()),
+                y.rb().adjoint(),
+                Some(E::one()),
                 tl_prev.inv().neg(),
                 parallelism,
             );
             matmul(
                 a_next.rb_mut(),
-                Conj::No,
                 z.rb(),
-                Conj::No,
-                v_prev,
-                Conj::Yes,
-                Some(T::one()),
+                v_prev.conjugate(),
+                Some(E::one()),
                 tr.inv().neg(),
                 parallelism,
             );
 
             matmul(
                 y.rb_mut(),
-                Conj::No,
-                a_next.rb().transpose(),
-                Conj::Yes,
+                a_next.rb().adjoint(),
                 u,
-                Conj::No,
                 None,
-                T::one(),
+                E::one(),
                 parallelism,
             );
-            zip!(y.rb_mut(), a_row.rb().transpose())
-                .for_each(|dst, src| *dst = (*dst).add(&(*src).conj()));
+            zipped!(y.rb_mut(), a_row.rb().transpose())
+                .for_each(|mut dst, src| dst.write(dst.read().add(&src.read().conj())));
             let tl_inv = tl.inv();
-            zip!(a_row.rb_mut(), y.rb().transpose())
-                .for_each(|dst, src| *dst = (*dst).sub(&(*src).conj().mul(&tl_inv)));
+            zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|mut dst, src| {
+                dst.write(dst.read().sub(&src.read().conj().mul(&tl_inv)))
+            });
             matmul(
                 z.rb_mut(),
-                Conj::No,
                 a_next.rb(),
-                Conj::No,
-                a_row.rb().transpose(),
-                Conj::Yes,
+                a_row.rb().adjoint(),
                 None,
-                T::one(),
+                E::one(),
                 parallelism,
             );
         }
     } else {
         matmul(
             y.rb_mut(),
-            Conj::No,
-            a_next.rb().transpose(),
-            Conj::Yes,
+            a_next.rb().adjoint(),
             u,
-            Conj::No,
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
-        zip!(y.rb_mut(), a_row.rb().transpose())
-            .for_each(|dst, src| *dst = (*dst).add(&(*src).conj()));
+        zipped!(y.rb_mut(), a_row.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().add(&src.read().conj())));
         let tl_inv = tl.inv();
-        zip!(a_row.rb_mut(), y.rb().transpose())
-            .for_each(|dst, src| *dst = (*dst).sub(&(*src).conj().mul(&tl_inv)));
+        zipped!(a_row.rb_mut(), y.rb().transpose())
+            .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().conj().mul(&tl_inv))));
 
         matmul(
             z.rb_mut(),
-            Conj::No,
             a_next.rb(),
-            Conj::No,
-            a_row.rb().transpose(),
-            Conj::Yes,
+            a_row.rb().adjoint(),
             None,
-            T::one(),
+            E::one(),
             parallelism,
         );
     }
@@ -1351,13 +1317,14 @@ fn bidiag_fused_op<T: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{
         c64,
         householder::{
-            apply_block_householder_sequence_on_the_right_in_place,
-            apply_block_householder_sequence_transpose_on_the_left_in_place,
+            apply_block_householder_sequence_on_the_right_in_place_with_conj,
             apply_block_householder_sequence_transpose_on_the_left_in_place_req,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
             apply_block_householder_sequence_transpose_on_the_right_in_place_req,
         },
         Mat,
@@ -1371,7 +1338,7 @@ mod tests {
 
     #[test]
     fn bidiag_f64() {
-        let mat = Mat::with_dims(|_, _| rand::random::<f64>(), 15, 10);
+        let mat = Mat::with_dims(15, 10, |_, _| rand::random::<f64>());
 
         let m = mat.nrows();
         let n = mat.ncols();
@@ -1389,24 +1356,22 @@ mod tests {
         );
 
         let mut copy = mat.clone();
-        apply_block_householder_sequence_transpose_on_the_left_in_place(
+        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
             bid.as_ref(),
             tau_left.as_ref().transpose(),
             Conj::No,
             copy.as_mut(),
-            Conj::No,
             Parallelism::None,
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_left_in_place_req::<f64>(m, 1, n),
             ),
         );
 
-        apply_block_householder_sequence_on_the_right_in_place(
+        apply_block_householder_sequence_on_the_right_in_place_with_conj(
             bid.as_ref().submatrix(0, 1, m, n - 1).transpose(),
             tau_right.as_ref().transpose(),
             Conj::No,
             copy.as_mut().submatrix(0, 1, m, n - 1),
-            Conj::No,
             Parallelism::None,
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_right_in_place_req::<f64>(
@@ -1419,14 +1384,14 @@ mod tests {
 
         for j in 0..n {
             for i in (0..j.saturating_sub(1)).chain(j + 1..m) {
-                assert_approx_eq!(copy[(i, j)], 0.0);
+                assert_approx_eq!(copy.read(i, j), 0.0);
             }
         }
     }
 
     #[test]
     fn bidiag_c64() {
-        let mat = Mat::with_dims(|_, _| c64::new(rand::random(), rand::random()), 15, 10);
+        let mat = Mat::with_dims(15, 10, |_, _| c64::new(rand::random(), rand::random()));
 
         let m = mat.nrows();
         let n = mat.ncols();
@@ -1448,24 +1413,22 @@ mod tests {
         );
 
         let mut copy = mat.clone();
-        apply_block_householder_sequence_transpose_on_the_left_in_place(
+        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
             bid.as_ref(),
             tau_left.as_ref().transpose(),
             Conj::Yes,
             copy.as_mut(),
-            Conj::No,
             Parallelism::Rayon(0),
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_left_in_place_req::<c64>(m, 1, n),
             ),
         );
 
-        apply_block_householder_sequence_on_the_right_in_place(
+        apply_block_householder_sequence_on_the_right_in_place_with_conj(
             bid.as_ref().submatrix(0, 1, m, n - 1).transpose(),
             tau_right.as_ref().transpose(),
             Conj::No,
             copy.as_mut().submatrix(0, 1, m, n - 1),
-            Conj::No,
             Parallelism::Rayon(0),
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_right_in_place_req::<c64>(
@@ -1478,7 +1441,7 @@ mod tests {
 
         for j in 0..n {
             for i in (0..j.saturating_sub(1)).chain(j + 1..m) {
-                assert_approx_eq!(copy[(i, j)], c64::zero());
+                assert_approx_eq!(copy.read(i, j), c64::zero());
             }
         }
     }

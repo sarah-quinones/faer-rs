@@ -8,19 +8,20 @@
 //!
 //! $$M = U S V^H.$$
 
-use assert2::assert as fancy_assert;
+use assert2::assert;
 use bidiag_real_svd::bidiag_real_svd_req;
 use coe::Coerce;
-use core::{iter::zip, mem::swap};
+use core::mem::swap;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
-        apply_block_householder_sequence_on_the_left_in_place,
-        apply_block_householder_sequence_on_the_left_in_place_req, upgrade_householder_factor,
+        apply_block_householder_sequence_on_the_left_in_place_req,
+        apply_block_householder_sequence_on_the_left_in_place_with_conj,
+        upgrade_householder_factor,
     },
-    temp_mat_req, temp_mat_uninit, zip,
-    zip::RowUninit,
-    ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    temp_mat_req, temp_mat_uninit,
+    zip::Diag,
+    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use num_complex::Complex;
 use reborrow::*;
@@ -44,27 +45,27 @@ pub enum ComputeVectors {
     Full,
 }
 
-fn compute_real_svd_small_req<T: 'static>(
+fn compute_real_svd_small_req<E: Entity>(
     m: usize,
     n: usize,
     compute_u: ComputeVectors,
     compute_v: ComputeVectors,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    fancy_assert!(m >= n);
+    assert!(m >= n);
 
     if m == n {
-        return temp_mat_req::<T>(m, n);
+        return temp_mat_req::<E>(m, n);
     }
 
     let _ = compute_v;
-    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let qr = temp_mat_req::<T>(m, n)?;
-    let householder = temp_mat_req::<T>(householder_blocksize, n)?;
-    let r = temp_mat_req::<T>(n, n)?;
+    let qr = temp_mat_req::<E>(m, n)?;
+    let householder = temp_mat_req::<E>(householder_blocksize, n)?;
+    let r = temp_mat_req::<E>(n, n)?;
 
-    let compute_qr = faer_qr::no_pivoting::compute::qr_in_place_req::<T>(
+    let compute_qr = faer_qr::no_pivoting::compute::qr_in_place_req::<E>(
         m,
         n,
         householder_blocksize,
@@ -72,7 +73,7 @@ fn compute_real_svd_small_req<T: 'static>(
         Default::default(),
     )?;
 
-    let apply_householder = apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+    let apply_householder = apply_block_householder_sequence_on_the_left_in_place_req::<E>(
         m,
         householder_blocksize,
         match compute_u {
@@ -89,7 +90,7 @@ fn compute_real_svd_small_req<T: 'static>(
     ])
 }
 
-fn compute_svd_big_req<T: 'static>(
+fn compute_svd_big_req<E: Entity>(
     m: usize,
     n: usize,
     compute_u: ComputeVectors,
@@ -103,21 +104,21 @@ fn compute_svd_big_req<T: 'static>(
     ) -> Result<StackReq, SizeOverflow>,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    fancy_assert!(m >= n);
-    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+    assert!(m >= n);
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let bid = temp_mat_req::<T>(m, n)?;
-    let householder_left = temp_mat_req::<T>(householder_blocksize, n)?;
-    let householder_right = temp_mat_req::<T>(householder_blocksize, n - 1)?;
+    let bid = temp_mat_req::<E>(m, n)?;
+    let householder_left = temp_mat_req::<E>(householder_blocksize, n)?;
+    let householder_right = temp_mat_req::<E>(householder_blocksize, n - 1)?;
 
-    let compute_bidiag = bidiag::bidiagonalize_in_place_req::<T>(m, n, parallelism)?;
+    let compute_bidiag = bidiag::bidiagonalize_in_place_req::<E>(m, n, parallelism)?;
 
-    let diag = StackReq::try_new::<T>(n)?;
+    let diag = StackReq::try_new::<E>(n)?;
     let subdiag = diag;
     let compute_ub = compute_v != ComputeVectors::No;
     let compute_vb = compute_u != ComputeVectors::No;
-    let u_b = temp_mat_req::<T>(if compute_ub { n + 1 } else { 2 }, n + 1)?;
-    let v_b = temp_mat_req::<T>(n, if compute_vb { n } else { 0 })?;
+    let u_b = temp_mat_req::<E>(if compute_ub { n + 1 } else { 2 }, n + 1)?;
+    let v_b = temp_mat_req::<E>(n, if compute_vb { n } else { 0 })?;
 
     let compute_bidiag_svd = bidiag_svd_req(
         n,
@@ -126,7 +127,7 @@ fn compute_svd_big_req<T: 'static>(
         compute_vb,
         parallelism,
     )?;
-    let apply_householder_u = apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+    let apply_householder_u = apply_block_householder_sequence_on_the_left_in_place_req::<E>(
         m,
         householder_blocksize,
         match compute_u {
@@ -135,7 +136,7 @@ fn compute_svd_big_req<T: 'static>(
             ComputeVectors::Full => m,
         },
     )?;
-    let apply_householder_v = apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+    let apply_householder_v = apply_block_householder_sequence_on_the_left_in_place_req::<E>(
         n - 1,
         householder_blocksize,
         match compute_u {
@@ -165,13 +166,13 @@ fn compute_svd_big_req<T: 'static>(
 }
 
 /// does qr -> jacobi svd
-fn compute_real_svd_small<T: RealField>(
-    matrix: MatRef<'_, T>,
-    s: ColMut<'_, T>,
-    u: Option<MatMut<'_, T>>,
-    v: Option<MatMut<'_, T>>,
-    epsilon: T,
-    zero_threshold: T,
+fn compute_real_svd_small<E: RealField>(
+    matrix: MatRef<'_, E>,
+    s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    v: Option<MatMut<'_, E>>,
+    epsilon: E,
+    zero_threshold: E,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -185,9 +186,9 @@ fn compute_real_svd_small<T: RealField>(
 
     // if the matrix is square, skip the QR
     if m == n {
-        let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+        let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
         let mut jacobi_mat = jacobi_mat.as_mut();
-        zip!(jacobi_mat.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
+        zipped!(jacobi_mat.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
 
         jacobi::jacobi_svd(
             jacobi_mat.rb_mut(),
@@ -197,23 +198,23 @@ fn compute_real_svd_small<T: RealField>(
             epsilon,
             zero_threshold,
         );
-        zip!(s, jacobi_mat.rb().diagonal()).for_each(|dst, src| *dst = src.clone());
+        zipped!(s, jacobi_mat.rb().diagonal()).for_each(|mut dst, src| dst.write(src.read()));
         return;
     }
 
-    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut qr, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
     let (mut householder, mut stack) =
-        unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+        unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
     let mut qr = qr.as_mut();
     let mut householder = householder.as_mut();
 
     {
-        let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
+        let (mut r, mut stack) = unsafe { temp_mat_uninit::<E>(n, n, stack.rb_mut()) };
         let mut r = r.as_mut();
 
-        zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
+        zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
 
         // matrix = q * r
         faer_qr::no_pivoting::compute::qr_in_place(
@@ -223,9 +224,9 @@ fn compute_real_svd_small<T: RealField>(
             stack.rb_mut(),
             Default::default(),
         );
-        zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
-        zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-            .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = src.clone());
+        zipped!(r.rb_mut()).for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::zero()));
+        zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+            .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
 
         // r = u s v
         jacobi::jacobi_svd(
@@ -236,58 +237,57 @@ fn compute_real_svd_small<T: RealField>(
             epsilon,
             zero_threshold,
         );
-        zip!(s, r.rb().diagonal()).for_each(|dst, src| *dst = src.clone());
+        zipped!(s, r.rb().diagonal()).for_each(|mut dst, src| dst.write(src.read()));
     }
 
     // matrix = q u s v
     if let Some(mut u) = u.rb_mut() {
         let ncols = u.ncols();
-        zip!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|dst| *dst = T::zero());
-        zip!(u.rb_mut().submatrix(0, n, m, ncols - n)).for_each(|dst| *dst = T::zero());
+        zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::zero()));
+        zipped!(u.rb_mut().submatrix(0, n, m, ncols - n)).for_each(|mut dst| dst.write(E::zero()));
         if ncols == m {
-            zip!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
-                .for_each(|dst| *dst = T::one());
+            zipped!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
+                .for_each(|mut dst| dst.write(E::one()));
         }
 
-        faer_core::householder::apply_block_householder_sequence_on_the_left_in_place(
+        faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr.rb(),
             householder.rb(),
             Conj::No,
             u,
-            Conj::No,
             parallelism,
             stack.rb_mut(),
         );
     }
 }
 
-fn compute_bidiag_cplx_svd<T: RealField>(
-    diag: &mut [Complex<T>],
-    subdiag: &mut [Complex<T>],
-    mut u: Option<MatMut<'_, Complex<T>>>,
-    mut v: Option<MatMut<'_, Complex<T>>>,
+fn compute_bidiag_cplx_svd<E: ComplexField>(
+    diag: &mut [E],
+    subdiag: &mut [E],
+    mut u: Option<MatMut<'_, E>>,
+    mut v: Option<MatMut<'_, E>>,
     jacobi_fallback_threshold: usize,
-    epsilon: T,
-    consider_zero_threshold: T,
+    epsilon: E::Real,
+    consider_zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let n = diag.len();
     let (mut u_real, stack) =
-        unsafe { temp_mat_uninit::<T>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
+        unsafe { temp_mat_uninit::<E::Real>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
     let mut u_real = u_real.as_mut();
     let (mut v_real, stack) =
-        unsafe { temp_mat_uninit::<T>(n, if v.is_some() { n } else { 0 }, stack) };
+        unsafe { temp_mat_uninit::<E::Real>(n, if v.is_some() { n } else { 0 }, stack) };
     let mut v_real = v_real.as_mut();
     let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.abs()));
     let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.abs()));
 
-    let (mut col_mul, stack) = stack.make_with(n, |_| Complex::<T>::zero());
-    let (mut row_mul, stack) = stack.make_with(n - 1, |_| Complex::<T>::zero());
+    let (mut col_mul, stack) = stack.make_with(n, |_| E::zero());
+    let (mut row_mul, stack) = stack.make_with(n - 1, |_| E::zero());
 
-    let normalized = |x: Complex<T>| {
-        if x == Complex::<T>::zero() {
-            Complex::<T>::one()
+    let normalized = |x: E| {
+        if x == E::zero() {
+            E::one()
         } else {
             x.scale_real(&x.abs().inv())
         }
@@ -315,36 +315,46 @@ fn compute_bidiag_cplx_svd<T: RealField>(
     );
 
     for i in 0..n {
-        diag[i] = Complex::<T>::from_real(diag_real[i].clone());
+        diag[i] = E::from_real(diag_real[i].clone());
     }
 
     let u_real = u_real.rb();
     let v_real = v_real.rb();
 
     if let Some(mut u) = u.rb_mut() {
-        zip!(RowUninit(u.rb_mut().row(0)), u_real.row(0))
-            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(u_real.clone()) });
-        zip!(RowUninit(u.rb_mut().row(n)), u_real.row(n))
-            .for_each(|u, u_real| unsafe { *u = Complex::<T>::from_real(u_real.clone()) });
+        zipped!(u.rb_mut().row(0), u_real.row(0))
+            .for_each(|mut u, u_real| u.write(E::from_real(u_real.read())));
+        zipped!(u.rb_mut().row(n), u_real.row(n))
+            .for_each(|mut u, u_real| u.write(E::from_real(u_real.read())));
 
-        for (u, u_real) in zip(u.into_col_iter(), u_real.into_col_iter()) {
-            let u = u.subrows(1, n - 1);
-            let u_real = u_real.subrows(1, n - 1);
-            for ((u, u_real), k) in zip(zip(u, u_real), &*row_mul) {
-                *u = k.scale_real(u_real);
+        for col_idx in 0..u.ncols() {
+            let mut u = u.rb_mut().col(col_idx).subrows(1, n - 1);
+            let u_real = u_real.col(col_idx).subrows(1, n - 1);
+
+            assert!(row_mul.len() == n - 1);
+            unsafe {
+                for i in 0..n - 1 {
+                    u.write_unchecked(i, 0, row_mul[i].scale_real(&u_real.read_unchecked(i, 0)));
+                }
             }
         }
     }
-    if let Some(v) = v.rb_mut() {
-        for (v, v_real) in zip(v.into_col_iter(), v_real.into_col_iter()) {
-            for ((v, v_real), k) in zip(zip(v, v_real), &*col_mul) {
-                *v = k.scale_real(v_real);
+    if let Some(mut v) = v.rb_mut() {
+        for col_idx in 0..v.ncols() {
+            let mut v = v.rb_mut().col(col_idx);
+            let v_real = v_real.col(col_idx);
+
+            assert!(col_mul.len() == n);
+            unsafe {
+                for i in 0..n {
+                    v.write_unchecked(i, 0, col_mul[i].scale_real(&v_real.read_unchecked(i, 0)));
+                }
             }
         }
     }
 }
 
-pub fn bidiag_cplx_svd_req<T: 'static>(
+pub fn bidiag_cplx_svd_req<E: Entity>(
     n: usize,
     jacobi_fallback_threshold: usize,
     compute_u: bool,
@@ -352,13 +362,13 @@ pub fn bidiag_cplx_svd_req<T: 'static>(
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
-        temp_mat_req::<T>(n + 1, if compute_u { n + 1 } else { 0 })?,
-        temp_mat_req::<T>(n, if compute_u { n } else { 0 })?,
-        StackReq::try_new::<T>(n)?,
-        StackReq::try_new::<T>(n)?,
-        StackReq::try_new::<Complex<T>>(n)?,
-        StackReq::try_new::<Complex<T>>(n - 1)?,
-        bidiag_real_svd_req::<T>(
+        temp_mat_req::<E>(n + 1, if compute_u { n + 1 } else { 0 })?,
+        temp_mat_req::<E>(n, if compute_u { n } else { 0 })?,
+        StackReq::try_new::<E>(n)?,
+        StackReq::try_new::<E>(n)?,
+        StackReq::try_new::<Complex<E>>(n)?,
+        StackReq::try_new::<Complex<E>>(n - 1)?,
+        bidiag_real_svd_req::<E>(
             n,
             jacobi_fallback_threshold,
             compute_u,
@@ -369,24 +379,24 @@ pub fn bidiag_cplx_svd_req<T: 'static>(
 }
 
 /// does bidiagonilization -> divide conquer svd
-fn compute_svd_big<T: ComplexField>(
-    matrix: MatRef<'_, T>,
-    s: ColMut<'_, T>,
-    u: Option<MatMut<'_, T>>,
-    v: Option<MatMut<'_, T>>,
+fn compute_svd_big<E: ComplexField>(
+    matrix: MatRef<'_, E>,
+    mut s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    v: Option<MatMut<'_, E>>,
     bidiag_svd: fn(
-        diag: &mut [T],
-        subdiag: &mut [T],
-        u: Option<MatMut<'_, T>>,
-        v: Option<MatMut<'_, T>>,
+        diag: &mut [E],
+        subdiag: &mut [E],
+        u: Option<MatMut<'_, E>>,
+        v: Option<MatMut<'_, E>>,
         jacobi_fallback_threshold: usize,
-        epsilon: T::Real,
-        consider_zero_threshold: T::Real,
+        epsilon: E::Real,
+        consider_zero_threshold: E::Real,
         parallelism: Parallelism,
         stack: DynStack<'_>,
     ),
-    epsilon: T::Real,
-    zero_threshold: T::Real,
+    epsilon: E::Real,
+    zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -396,18 +406,18 @@ fn compute_svd_big<T: ComplexField>(
 
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+    let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let (mut bid, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack.rb_mut()) };
+    let (mut bid, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack.rb_mut()) };
     let mut bid = bid.as_mut();
     let (mut householder_left, stack) =
-        unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+        unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
     let mut householder_left = householder_left.as_mut();
     let (mut householder_right, mut stack) =
-        unsafe { temp_mat_uninit::<T>(householder_blocksize, n - 1, stack) };
+        unsafe { temp_mat_uninit::<E>(householder_blocksize, n - 1, stack) };
     let mut householder_right = householder_right.as_mut();
 
-    zip!(bid.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
+    zipped!(bid.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
 
     bidiag::bidiagonalize_in_place(
         bid.rb_mut(),
@@ -419,12 +429,12 @@ fn compute_svd_big<T: ComplexField>(
 
     let bid = bid.into_const();
 
-    let (mut diag, stack) = stack.make_with(n, |i| bid[(i, i)].conj());
+    let (mut diag, stack) = stack.make_with(n, |i| bid.read(i, i).conj());
     let (mut subdiag, stack) = stack.make_with(n, |i| {
         if i < n - 1 {
-            bid[(i, i + 1)].conj()
+            bid.read(i, i + 1).conj()
         } else {
-            T::zero()
+            E::zero()
         }
     });
 
@@ -434,7 +444,7 @@ fn compute_svd_big<T: ComplexField>(
         let mut householder = householder_left.rb_mut().submatrix(0, j_base, bs, bs);
         let essentials = bid.submatrix(j_base, j_base, m - j_base, bs);
         for j in 0..bs {
-            householder[(j, j)] = householder[(0, j)].clone();
+            householder.write(j, j, householder.read(0, j));
         }
         upgrade_householder_factor(householder, essentials, bs, 1, parallelism);
         j_base += bs;
@@ -446,17 +456,17 @@ fn compute_svd_big<T: ComplexField>(
         let full_essentials = bid.submatrix(0, 1, m, n - 1).transpose();
         let essentials = full_essentials.submatrix(j_base, j_base, n - 1 - j_base, bs);
         for j in 0..bs {
-            householder[(j, j)] = householder[(0, j)].clone();
+            householder.write(j, j, householder.read(0, j));
         }
         upgrade_householder_factor(householder, essentials, bs, 1, parallelism);
         j_base += bs;
     }
 
     let (mut u_b, stack) =
-        unsafe { temp_mat_uninit::<T>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack) };
+        unsafe { temp_mat_uninit::<E>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack) };
     let mut u_b = u_b.as_mut();
     let (mut v_b, mut stack) =
-        unsafe { temp_mat_uninit::<T>(n, if u.is_some() { n } else { 0 }, stack) };
+        unsafe { temp_mat_uninit::<E>(n, if u.is_some() { n } else { 0 }, stack) };
     let mut v_b = v_b.as_mut();
 
     bidiag_svd(
@@ -471,46 +481,44 @@ fn compute_svd_big<T: ComplexField>(
         stack.rb_mut(),
     );
 
-    for (s, val) in s.into_iter().zip(&*diag) {
-        *s = val.clone();
+    for idx in 0..s.nrows() {
+        s.write(idx, 0, diag[idx].clone());
     }
 
     if let Some(mut u) = u {
         let ncols = u.ncols();
-        zip!(
+        zipped!(
             u.rb_mut().submatrix(0, 0, n, n),
             v_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|dst, src| *dst = src.clone());
+        .for_each(|mut dst, src| dst.write(src.read()));
 
-        zip!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|x| *x = T::zero());
-        zip!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|x| *x = T::zero());
-        zip!(u.rb_mut().submatrix(n, n, ncols - n, ncols - n).diagonal())
-            .for_each(|x| *x = T::one());
+        zipped!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|mut x| x.write(E::zero()));
+        zipped!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|mut x| x.write(E::zero()));
+        zipped!(u.rb_mut().submatrix(n, n, ncols - n, ncols - n).diagonal())
+            .for_each(|mut x| x.write(E::one()));
 
-        apply_block_householder_sequence_on_the_left_in_place(
+        apply_block_householder_sequence_on_the_left_in_place_with_conj(
             bid,
             householder_left.rb(),
             Conj::No,
             u,
-            Conj::No,
             parallelism,
             stack.rb_mut(),
         );
     };
     if let Some(mut v) = v {
-        zip!(
+        zipped!(
             v.rb_mut().submatrix(0, 0, n, n),
             u_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|dst, src| *dst = src.clone());
+        .for_each(|mut dst, src| dst.write(src.read()));
 
-        apply_block_householder_sequence_on_the_left_in_place(
+        apply_block_householder_sequence_on_the_left_in_place_with_conj(
             bid.submatrix(0, 1, m, n - 1).transpose(),
             householder_right.rb(),
             Conj::No,
             v.submatrix(1, 0, n - 1, n),
-            Conj::No,
             parallelism,
             stack.rb_mut(),
         );
@@ -523,7 +531,7 @@ pub struct SvdParams {}
 
 /// Computes the size and alignment of required workspace for performing a singular value
 /// decomposition. $U$ and $V$ may be computed fully, partially, or not computed at all.
-pub fn compute_svd_req<T: ComplexField>(
+pub fn compute_svd_req<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     compute_u: ComputeVectors,
@@ -554,46 +562,44 @@ pub fn compute_svd_req<T: ComplexField>(
     };
 
     let _ = params;
-    let squareish_svd = if coe::is_same::<T, T::Real>() {
+    let squareish_svd = if coe::is_same::<E, E::Real>() {
         if size <= JACOBI_FALLBACK_THRESHOLD {
-            compute_real_svd_small_req::<T>(svd_nrows, svd_ncols, compute_u, compute_v, parallelism)
+            compute_real_svd_small_req::<E>(svd_nrows, svd_ncols, compute_u, compute_v, parallelism)
         } else {
-            compute_svd_big_req::<T::Real>(
+            compute_svd_big_req::<E::Real>(
                 svd_nrows,
                 svd_ncols,
                 compute_u,
                 compute_v,
-                bidiag_real_svd_req::<T::Real>,
+                bidiag_real_svd_req::<E::Real>,
                 parallelism,
             )
         }
-    } else if coe::is_same::<T, Complex<T::Real>>() {
-        compute_svd_big_req::<Complex<T::Real>>(
+    } else {
+        compute_svd_big_req::<E>(
             svd_nrows,
             svd_ncols,
             compute_u,
             compute_v,
-            bidiag_cplx_svd_req::<T::Real>,
+            bidiag_cplx_svd_req::<E>,
             parallelism,
         )
-    } else {
-        unimplemented!("only real and complex values are supported in the svd")
     }?;
 
     if skip_qr {
         Ok(squareish_svd)
     } else {
         let householder_blocksize =
-            faer_qr::no_pivoting::compute::recommended_blocksize::<T>(nrows, ncols);
+            faer_qr::no_pivoting::compute::recommended_blocksize::<E>(nrows, ncols);
 
         StackReq::try_all_of([
-            temp_mat_req::<T>(nrows, ncols)?,
-            temp_mat_req::<T>(householder_blocksize, ncols)?,
+            temp_mat_req::<E>(nrows, ncols)?,
+            temp_mat_req::<E>(householder_blocksize, ncols)?,
             StackReq::try_any_of([
                 StackReq::try_all_of([
-                    temp_mat_req::<T>(size, size)?,
+                    temp_mat_req::<E>(size, size)?,
                     StackReq::try_any_of([
-                        faer_qr::no_pivoting::compute::qr_in_place_req::<T>(
+                        faer_qr::no_pivoting::compute::qr_in_place_req::<E>(
                             nrows,
                             ncols,
                             householder_blocksize,
@@ -603,7 +609,7 @@ pub fn compute_svd_req<T: ComplexField>(
                         squareish_svd,
                     ])?,
                 ])?,
-                apply_block_householder_sequence_on_the_left_in_place_req::<T>(
+                apply_block_householder_sequence_on_the_left_in_place_req::<E>(
                     nrows,
                     householder_blocksize,
                     nrows,
@@ -625,26 +631,27 @@ pub fn compute_svd_req<T: ComplexField>(
 /// - The number of columns may be either equal to the number of rows, or it may be equal to the
 /// minimum of `matrix.nrows()` and `matrix.ncols()`, in which case only the singular vectors
 /// corresponding to the provided column storage are computed.
-pub fn compute_svd<T: ComplexField>(
-    matrix: MatRef<'_, T>,
-    s: ColMut<'_, T>,
-    u: Option<MatMut<'_, T>>,
-    v: Option<MatMut<'_, T>>,
-    epsilon: T::Real,
-    zero_threshold: T::Real,
+pub fn compute_svd<E: ComplexField>(
+    matrix: MatRef<'_, E>,
+    s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    v: Option<MatMut<'_, E>>,
+    epsilon: E::Real,
+    zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: SvdParams,
 ) {
     let size = usize::min(matrix.nrows(), matrix.ncols());
-    fancy_assert!(s.nrows() == size);
+    assert!(s.nrows() == size);
+    assert!(s.ncols() == 1);
     if let Some(u) = u.rb() {
-        fancy_assert!(u.nrows() == matrix.nrows());
-        fancy_assert!(u.ncols() == matrix.nrows() || u.ncols() == size);
+        assert!(u.nrows() == matrix.nrows());
+        assert!(u.ncols() == matrix.nrows() || u.ncols() == size);
     }
     if let Some(v) = v.rb() {
-        fancy_assert!(v.nrows() == matrix.ncols());
-        fancy_assert!(v.ncols() == matrix.ncols() || v.ncols() == size);
+        assert!(v.nrows() == matrix.ncols());
+        assert!(v.ncols() == matrix.ncols() || v.ncols() == size);
     }
 
     let mut u = u;
@@ -661,8 +668,8 @@ pub fn compute_svd<T: ComplexField>(
 
     if n == 0 {
         if let Some(mut u) = u {
-            zip!(u.rb_mut()).for_each(|dst| *dst = T::zero());
-            zip!(u.submatrix(0, 0, n, n).diagonal()).for_each(|dst| *dst = T::one());
+            zipped!(u.rb_mut()).for_each(|mut dst| dst.write(E::zero()));
+            zipped!(u.submatrix(0, 0, n, n).diagonal()).for_each(|mut dst| dst.write(E::one()));
         }
 
         return;
@@ -683,19 +690,19 @@ pub fn compute_svd<T: ComplexField>(
         );
     } else {
         // do a qr first, then do the svd
-        let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(m, n);
+        let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-        let (mut qr, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+        let (mut qr, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
         let mut qr = qr.as_mut();
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit::<T>(householder_blocksize, n, stack) };
+            unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
         let mut householder = householder.as_mut();
 
         {
-            let (mut r, mut stack) = unsafe { temp_mat_uninit::<T>(n, n, stack.rb_mut()) };
+            let (mut r, mut stack) = unsafe { temp_mat_uninit::<E>(n, n, stack.rb_mut()) };
             let mut r = r.as_mut();
 
-            zip!(qr.rb_mut(), matrix).for_each(|dst, src| *dst = src.clone());
+            zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
 
             // matrix = q * r
             faer_qr::no_pivoting::compute::qr_in_place(
@@ -705,9 +712,10 @@ pub fn compute_svd<T: ComplexField>(
                 stack.rb_mut(),
                 Default::default(),
             );
-            zip!(r.rb_mut()).for_each_triangular_lower(zip::Diag::Skip, |dst| *dst = T::zero());
-            zip!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-                .for_each_triangular_upper(zip::Diag::Include, |dst, src| *dst = src.clone());
+            zipped!(r.rb_mut())
+                .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::zero()));
+            zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
+                .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
 
             // r = u s v
             squareish_svd(
@@ -725,19 +733,19 @@ pub fn compute_svd<T: ComplexField>(
         // matrix = q u s v
         if let Some(mut u) = u.rb_mut() {
             let ncols = u.ncols();
-            zip!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|dst| *dst = T::zero());
-            zip!(u.rb_mut().submatrix(0, n, m, ncols - n)).for_each(|dst| *dst = T::zero());
+            zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::zero()));
+            zipped!(u.rb_mut().submatrix(0, n, m, ncols - n))
+                .for_each(|mut dst| dst.write(E::zero()));
             if ncols == m {
-                zip!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
-                    .for_each(|dst| *dst = T::one());
+                zipped!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
+                    .for_each(|mut dst| dst.write(E::one()));
             }
 
-            faer_core::householder::apply_block_householder_sequence_on_the_left_in_place(
+            faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                 qr.rb(),
                 householder.rb(),
                 Conj::No,
                 u,
-                Conj::No,
                 parallelism,
                 stack.rb_mut(),
             );
@@ -747,28 +755,28 @@ pub fn compute_svd<T: ComplexField>(
     if do_transpose {
         // conjugate u and v
         if let Some(u) = u {
-            zip!(u).for_each(|x| *x = (*x).conj())
+            zipped!(u).for_each(|mut x| x.write(x.read().conj()))
         }
         if let Some(v) = v {
-            zip!(v).for_each(|x| *x = (*x).conj())
+            zipped!(v).for_each(|mut x| x.write(x.read().conj()))
         }
     }
 }
 
-fn squareish_svd<T: ComplexField>(
-    matrix: MatRef<T>,
-    s: ColMut<T>,
-    mut u: Option<MatMut<T>>,
-    mut v: Option<MatMut<T>>,
-    epsilon: T::Real,
-    zero_threshold: T::Real,
+fn squareish_svd<E: ComplexField>(
+    matrix: MatRef<E>,
+    s: MatMut<E>,
+    mut u: Option<MatMut<E>>,
+    mut v: Option<MatMut<E>>,
+    epsilon: E::Real,
+    zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack,
 ) {
     let size = matrix.ncols();
-    if coe::is_same::<T, T::Real>() {
+    if coe::is_same::<E, E::Real>() {
         if size <= JACOBI_FALLBACK_THRESHOLD {
-            compute_real_svd_small::<T::Real>(
+            compute_real_svd_small::<E::Real>(
                 matrix.coerce(),
                 s.coerce(),
                 u.rb_mut().map(coe::Coerce::coerce),
@@ -779,38 +787,37 @@ fn squareish_svd<T: ComplexField>(
                 stack,
             );
         } else {
-            compute_svd_big::<T::Real>(
+            compute_svd_big::<E::Real>(
                 matrix.coerce(),
                 s.coerce(),
                 u.rb_mut().map(coe::Coerce::coerce),
                 v.rb_mut().map(coe::Coerce::coerce),
-                compute_bidiag_real_svd::<T::Real>,
+                compute_bidiag_real_svd::<E::Real>,
                 coe::coerce_static(epsilon),
                 coe::coerce_static(zero_threshold),
                 parallelism,
                 stack,
             );
         }
-    } else if coe::is_same::<T, Complex<T::Real>>() {
-        compute_svd_big::<Complex<T::Real>>(
+    } else {
+        compute_svd_big::<E>(
             matrix.coerce(),
-            s.coerce(),
-            u.rb_mut().map(coe::Coerce::coerce),
-            v.rb_mut().map(coe::Coerce::coerce),
-            compute_bidiag_cplx_svd::<T::Real>,
+            s,
+            u,
+            v,
+            compute_bidiag_cplx_svd::<E>,
             coe::coerce_static(epsilon),
             coe::coerce_static(zero_threshold),
             parallelism,
             stack,
         );
-    } else {
-        unimplemented!("only real and complex values are supported in the svd")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c32, c64, Mat};
 
@@ -823,7 +830,7 @@ mod tests {
     #[test]
     fn test_real_big() {
         for (m, n) in [(3, 2), (2, 2), (4, 4), (15, 10), (10, 10), (15, 15)] {
-            let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
+            let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
             let size = m.min(n);
 
             let mut s = Mat::zeros(m, n);
@@ -853,7 +860,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }
@@ -865,7 +872,7 @@ mod tests {
             let mut mat = Mat::zeros(m, n);
             let size = m.min(n);
             for i in 0..size {
-                mat[(i, i)] = 1.0;
+                mat.write(i, i, 1.0);
             }
 
             let mut s = Mat::zeros(m, n);
@@ -895,7 +902,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }
@@ -934,7 +941,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }
@@ -943,7 +950,7 @@ mod tests {
     #[test]
     fn test_real_small() {
         for (m, n) in [(4, 4), (5, 5), (15, 10), (10, 10), (15, 15)] {
-            let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
+            let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
             let size = m.min(n);
 
             let mut s = Mat::zeros(m, n);
@@ -971,7 +978,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }
@@ -981,7 +988,7 @@ mod tests {
     fn test_real() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
+                let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1011,7 +1018,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                     }
                 }
             }
@@ -1022,7 +1029,7 @@ mod tests {
     fn test_real_f32() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(|_, _| rand::random::<f32>(), m, n);
+                let mat = Mat::with_dims(m, n, |_, _| rand::random::<f32>());
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1052,7 +1059,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-5);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
                     }
                 }
             }
@@ -1067,7 +1074,7 @@ mod tests {
                 for compute_u in [No, Thin, Full] {
                     for compute_v in [No, Thin, Full] {
                         dbg!(m, n, compute_u, compute_v);
-                        let mat = Mat::with_dims(|_, _| rand::random::<f64>(), m, n);
+                        let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
                         let size = m.min(n);
 
                         let mut s = Mat::zeros(m, n);
@@ -1140,17 +1147,17 @@ mod tests {
 
                         for j in 0..u.ncols() {
                             for i in 0..u.nrows() {
-                                assert_approx_eq!(u[(i, j)], u_target[(i, j)], 1e-10);
+                                assert_approx_eq!(u.read(i, j), u_target.read(i, j), 1e-10);
                             }
                         }
                         for j in 0..v.ncols() {
                             for i in 0..v.nrows() {
-                                assert_approx_eq!(v[(i, j)], v_target[(i, j)], 1e-10);
+                                assert_approx_eq!(v.read(i, j), v_target.read(i, j), 1e-10);
                             }
                         }
                         for j in 0..s.ncols() {
                             for i in 0..s.nrows() {
-                                assert_approx_eq!(s[(i, j)], s_target[(i, j)], 1e-10);
+                                assert_approx_eq!(s.read(i, j), s_target.read(i, j), 1e-10);
                             }
                         }
                     }
@@ -1163,7 +1170,7 @@ mod tests {
     fn test_cplx() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(|_, _| c64::new(rand::random(), rand::random()), m, n);
+                let mat = Mat::with_dims(m, n, |_, _| c64::new(rand::random(), rand::random()));
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1193,7 +1200,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                     }
                 }
             }
@@ -1204,7 +1211,7 @@ mod tests {
     fn test_cplx_f32() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(|_, _| c32::new(rand::random(), rand::random()), m, n);
+                let mat = Mat::with_dims(m, n, |_, _| c32::new(rand::random(), rand::random()));
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1234,7 +1241,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-5);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
                     }
                 }
             }
@@ -1250,7 +1257,7 @@ mod tests {
                     for compute_v in [No, Thin, Full] {
                         dbg!(m, n, compute_u, compute_v);
                         let mat =
-                            Mat::with_dims(|_, _| c64::new(rand::random(), rand::random()), m, n);
+                            Mat::with_dims(m, n, |_, _| c64::new(rand::random(), rand::random()));
                         let size = m.min(n);
 
                         let mut s = Mat::zeros(m, n);
@@ -1323,17 +1330,17 @@ mod tests {
 
                         for j in 0..u.ncols() {
                             for i in 0..u.nrows() {
-                                assert_approx_eq!(u[(i, j)], u_target[(i, j)], 1e-10);
+                                assert_approx_eq!(u.read(i, j), u_target.read(i, j), 1e-10);
                             }
                         }
                         for j in 0..v.ncols() {
                             for i in 0..v.nrows() {
-                                assert_approx_eq!(v[(i, j)], v_target[(i, j)], 1e-10);
+                                assert_approx_eq!(v.read(i, j), v_target.read(i, j), 1e-10);
                             }
                         }
                         for j in 0..s.ncols() {
                             for i in 0..s.nrows() {
-                                assert_approx_eq!(s[(i, j)], s_target[(i, j)], 1e-10);
+                                assert_approx_eq!(s.read(i, j), s_target.read(i, j), 1e-10);
                             }
                         }
                     }
@@ -1348,7 +1355,7 @@ mod tests {
             let mut mat = Mat::zeros(m, n);
             let size = m.min(n);
             for i in 0..size {
-                mat[(i, i)] = c64::one();
+                mat.write(i, i, c64::one());
             }
 
             let mut s = Mat::zeros(m, n);
@@ -1360,7 +1367,7 @@ mod tests {
                 s.as_mut().submatrix(0, 0, size, size).diagonal(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
-                compute_bidiag_cplx_svd::<f64>,
+                compute_bidiag_cplx_svd::<c64>,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -1378,7 +1385,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }
@@ -1417,7 +1424,7 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..m {
-                    assert_approx_eq!(reconstructed[(i, j)], mat[(i, j)], 1e-10);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
                 }
             }
         }

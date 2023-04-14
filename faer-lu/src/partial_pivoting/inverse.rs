@@ -1,17 +1,17 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    join_raw,
+    inverse, join_raw,
     mul::triangular,
     permutation::{permute_cols, PermutationRef},
-    temp_mat_req, temp_mat_uninit, ComplexField, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
 
-fn invert_impl<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: Option<MatRef<'_, T>>,
+fn invert_impl<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
@@ -23,36 +23,23 @@ fn invert_impl<T: ComplexField>(
 
     let m = lu_factors.nrows();
     let n = lu_factors.ncols();
-    fancy_debug_assert!(m == n);
-    fancy_debug_assert!(dst.nrows() == n);
-    fancy_debug_assert!(dst.ncols() == n);
+    debug_assert!(m == n);
+    debug_assert!(dst.nrows() == n);
+    debug_assert!(dst.ncols() == n);
 
-    let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-    let mut inv_lu = inv_lu.as_mut();
-    let (mut inv, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+    let inv_lu = inv_lu.as_mut();
+    let (mut inv, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
     let mut inv = inv.as_mut();
-
-    let rs = inv_lu.row_stride();
-    let cs = inv_lu.col_stride();
-    let ptr = inv_lu.rb_mut().as_ptr();
 
     // SAFETY: even though the matrices alias, only the strictly lower triangular part of l_inv is
     // accessed and only the upper triangular part of u_inv is accessed.
-    let l_inv = unsafe { MatMut::from_raw_parts(ptr, n, n, rs, cs) };
-    let u_inv = unsafe { MatMut::from_raw_parts(ptr, n, n, rs, cs) };
+    let l_inv = unsafe { inv_lu.rb().const_cast() };
+    let u_inv = unsafe { inv_lu.rb().const_cast() };
 
     join_raw(
-        |parallelism| {
-            faer_core::inverse::invert_unit_lower_triangular(
-                l_inv,
-                lu_factors,
-                Conj::No,
-                parallelism,
-            )
-        },
-        |parallelism| {
-            faer_core::inverse::invert_upper_triangular(u_inv, lu_factors, Conj::No, parallelism)
-        },
+        |parallelism| inverse::invert_unit_lower_triangular(l_inv, lu_factors, parallelism),
+        |parallelism| inverse::invert_upper_triangular(u_inv, lu_factors, parallelism),
         parallelism,
     );
 
@@ -62,15 +49,12 @@ fn invert_impl<T: ComplexField>(
     triangular::matmul(
         inv.rb_mut(),
         BlockStructure::Rectangular,
-        Conj::No,
         u_inv,
         BlockStructure::TriangularUpper,
-        Conj::No,
         l_inv,
         BlockStructure::UnitTriangularLower,
-        Conj::No,
         None,
-        T::one(),
+        E::one(),
         parallelism,
     );
 
@@ -79,24 +63,24 @@ fn invert_impl<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix in place, given its partial pivoting LU decomposition.
-pub fn invert_in_place_req<T: 'static>(
+pub fn invert_in_place_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+    temp_mat_req::<E>(nrows, ncols)?.try_and(temp_mat_req::<E>(nrows, ncols)?)
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its partial pivoting LU decomposition.
-pub fn invert_req<T: 'static>(
+pub fn invert_req<E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+    temp_mat_req::<E>(nrows, ncols)?.try_and(temp_mat_req::<E>(nrows, ncols)?)
 }
 
 /// Computes the inverse of a matrix, given its partial pivoting LU decomposition,
@@ -109,17 +93,17 @@ pub fn invert_req<T: 'static>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn invert<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
+pub fn invert<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    fancy_assert!(lu_factors.ncols() == lu_factors.nrows());
-    fancy_assert!(row_perm.len() == n);
-    fancy_assert!((dst.nrows(), dst.ncols()) == (n, n));
+    assert!(lu_factors.ncols() == lu_factors.nrows());
+    assert!(row_perm.len() == n);
+    assert!((dst.nrows(), dst.ncols()) == (n, n));
     invert_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
@@ -133,15 +117,15 @@ pub fn invert<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient.
 #[track_caller]
-pub fn invert_in_place<T: ComplexField>(
-    lu_factors: MatMut<'_, T>,
+pub fn invert_in_place<E: ComplexField>(
+    lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    fancy_assert!(lu_factors.ncols() == n);
-    fancy_assert!(row_perm.len() == n);
+    assert!(lu_factors.ncols() == n);
+    assert!(row_perm.len() == n);
     invert_impl(lu_factors, None, row_perm, parallelism, stack)
 }
 
@@ -149,6 +133,7 @@ pub fn invert_in_place<T: ComplexField>(
 mod tests {
     use super::*;
     use crate::partial_pivoting::compute::{lu_in_place, lu_in_place_req};
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{mul::matmul, Mat, Parallelism};
     use rand::random;
@@ -162,7 +147,7 @@ mod tests {
     #[test]
     fn test_inverse() {
         (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
-            let mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut lu = mat.clone();
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
@@ -191,11 +176,8 @@ mod tests {
             let mut prod = Mat::zeros(n, n);
             matmul(
                 prod.as_mut(),
-                Conj::No,
                 mat.as_ref(),
-                Conj::No,
                 inv.as_ref(),
-                Conj::No,
                 None,
                 1.0,
                 Parallelism::Rayon(0),
@@ -204,7 +186,7 @@ mod tests {
             for j in 0..n {
                 for i in 0..n {
                     let target = if i == j { 1.0 } else { 0.0 };
-                    assert_approx_eq!(prod[(i, j)], target);
+                    assert_approx_eq!(prod.read(i, j), target);
                 }
             }
         });

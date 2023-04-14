@@ -44,14 +44,17 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer<T: faer_core::ComplexField>(
+    sizes: &[usize],
+    parallelism: Parallelism,
+) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
         .map(|n| {
             let mut c = Mat::<T>::zeros(n, n);
             for i in 0..n {
-                c[(i, i)] = T::one();
+                c.write(i, i, T::one());
             }
             let mut chol = Mat::<T>::zeros(n, n);
 
@@ -69,7 +72,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
                 chol.as_mut()
                     .cwise()
                     .zip(c.as_ref())
-                    .for_each(|dst, src| *dst = src.clone());
+                    .for_each(|mut dst, src| dst.write(src.read()));
                 faer_cholesky::llt::compute::cholesky_in_place(
                     chol.as_mut(),
                     parallelism,

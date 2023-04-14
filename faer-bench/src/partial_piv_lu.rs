@@ -1,8 +1,8 @@
 use super::timeit;
+use crate::random;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::solve::Factorize;
-use crate::random;
 use std::time::Duration;
 
 pub fn ndarray<T: ndarray_linalg::Lapack>(sizes: &[usize]) -> Vec<Duration> {
@@ -49,7 +49,10 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer<T: faer_core::ComplexField>(
+    sizes: &[usize],
+    parallelism: Parallelism,
+) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -57,7 +60,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
             let mut c = Mat::<T>::zeros(n, n);
             for i in 0..n {
                 for j in 0..n {
-                    c[(i, j)] = random();
+                    c.write(i, j, random());
                 }
             }
             let mut lu = Mat::<T>::zeros(n, n);
@@ -79,7 +82,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
                 lu.as_mut()
                     .cwise()
                     .zip(c.as_ref())
-                    .for_each(|dst, src| *dst = src.clone());
+                    .for_each(|mut dst, src| dst.write(src.read()));
                 faer_lu::partial_pivoting::compute::lu_in_place(
                     lu.as_mut(),
                     &mut row_fwd,

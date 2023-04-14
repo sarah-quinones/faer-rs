@@ -16,7 +16,7 @@ pub fn lu(c: &mut Criterion) {
         let partial_params = PartialPivLuComputeParams::default();
         let full_params = FullPivLuComputeParams::default();
         c.bench_function(&format!("faer-st-plu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
@@ -43,7 +43,7 @@ pub fn lu(c: &mut Criterion) {
             })
         });
         c.bench_function(&format!("faer-mt-plu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
@@ -71,7 +71,7 @@ pub fn lu(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-r-mt-plu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
@@ -99,7 +99,7 @@ pub fn lu(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-st-flu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
             let mut col_perm = vec![0; n];
@@ -131,7 +131,7 @@ pub fn lu(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-mt-flu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
             let mut col_perm = vec![0; n];
@@ -163,7 +163,7 @@ pub fn lu(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-r-mt-flu-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f64>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
             let mut col_perm = vec![0; n];
@@ -195,7 +195,7 @@ pub fn lu(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-mt-flu-f32-{n}"), |b| {
-            let mut mat = Mat::with_dims(|_, _| random::<f32>(), n, n);
+            let mut mat = Mat::with_dims(n, n, |_, _| random::<f32>());
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];
             let mut col_perm = vec![0; n];

@@ -1,5 +1,5 @@
 use super::timeit;
-use faer_core::{Conj, Mat, Parallelism};
+use faer_core::{Mat, Parallelism};
 use num_traits::Zero;
 use std::time::Duration;
 
@@ -60,11 +60,8 @@ pub fn faer<T: faer_core::ComplexField>(
             let time = timeit(|| {
                 faer_core::mul::matmul(
                     c.as_mut(),
-                    Conj::No,
                     a.as_ref(),
-                    Conj::No,
                     b.as_ref(),
-                    Conj::No,
                     None,
                     T::one(),
                     parallelism,

@@ -1,8 +1,8 @@
 use super::timeit;
+use crate::random;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::QR;
-use crate::random;
 use std::time::Duration;
 
 pub fn ndarray<T: ndarray_linalg::Lapack>(sizes: &[usize]) -> Vec<Duration> {
@@ -49,7 +49,10 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer<T: faer_core::ComplexField>(
+    sizes: &[usize],
+    parallelism: Parallelism,
+) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -57,7 +60,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
             let mut c = Mat::<T>::zeros(n, n);
             for i in 0..n {
                 for j in 0..n {
-                    c[(i, j)] = random();
+                    c.write(i, j, random());
                 }
             }
             let mut qr = Mat::<T>::zeros(n, n);
@@ -80,7 +83,7 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
                 qr.as_mut()
                     .cwise()
                     .zip(c.as_ref())
-                    .for_each(|dst, src| *dst = src.clone());
+                    .for_each(|mut dst, src| dst.write(src.read()));
                 faer_qr::no_pivoting::compute::qr_in_place(
                     qr.as_mut(),
                     householder.as_mut(),

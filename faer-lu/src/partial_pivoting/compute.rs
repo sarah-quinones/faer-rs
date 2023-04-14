@@ -1,27 +1,25 @@
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::matmul,
     permutation::{swap_rows, PermutationMut},
     solve::solve_unit_lower_triangular_in_place,
-    temp_mat_req, temp_mat_uninit, zip,
-    zip::ColUninit,
-    ColMut, ComplexField, Conj, MatMut, Parallelism,
+    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use reborrow::*;
 
 #[inline]
-fn swap_two_elems<T>(m: ColMut<'_, T>, i: usize, j: usize) {
-    swap_rows(m.as_2d(), i, j);
+fn swap_two_elems<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usize) {
+    swap_rows(m, i, j);
 }
 
-fn lu_unblocked_req<T: 'static>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
+fn lu_unblocked_req<E: Entity>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
     Ok(StackReq::default())
 }
 
 #[inline(never)]
-fn lu_in_place_unblocked<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
+fn lu_in_place_unblocked<E: ComplexField>(
+    mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
     perm: &mut [usize],
@@ -29,8 +27,8 @@ fn lu_in_place_unblocked<T: ComplexField>(
     mut stack: DynStack<'_>,
 ) -> usize {
     let m = matrix.nrows();
-    fancy_debug_assert!(m >= n);
-    fancy_debug_assert!(perm.len() == m);
+    debug_assert!(m >= n);
+    debug_assert!(perm.len() == m);
 
     if n == 0 {
         return 0;
@@ -39,11 +37,11 @@ fn lu_in_place_unblocked<T: ComplexField>(
     let mut n_transpositions = 0;
 
     for (j, t) in transpositions.iter_mut().enumerate() {
-        let mut max = T::Real::zero();
+        let mut max = E::Real::zero();
         let mut imax = j;
 
         for i in j..m {
-            let abs = (*matrix.rb().get(i, j + col_start)).score();
+            let abs = matrix.read(i, j + col_start).score();
             if abs > max {
                 imax = i;
                 max = abs;
@@ -59,38 +57,39 @@ fn lu_in_place_unblocked<T: ComplexField>(
 
         swap_rows(matrix.rb_mut(), j, imax);
 
-        let (_, _, _, middle_right) = matrix.rb_mut().split_at(0, col_start);
-        let (_, _, middle, _) = middle_right.split_at(0, n);
+        let [_, _, _, middle_right] = matrix.rb_mut().split_at(0, col_start);
+        let [_, _, middle, _] = middle_right.split_at(0, n);
         update(middle, j, stack.rb_mut());
     }
 
     n_transpositions
 }
 
-fn update<T: ComplexField>(mut matrix: MatMut<T>, j: usize, _stack: DynStack<'_>) {
+fn update<E: ComplexField>(mut matrix: MatMut<E>, j: usize, _stack: DynStack<'_>) {
     let m = matrix.nrows();
-    let inv = matrix.rb().get(j, j).inv();
+    let inv = matrix.read(j, j).inv();
     for i in j + 1..m {
-        let elem = matrix.rb_mut().get(i, j);
-        *elem = elem.mul(&inv);
+        matrix.write(i, j, matrix.read(i, j).mul(&inv));
     }
-    let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at(j + 1, j + 1);
+    let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
     let lhs = bottom_left.rb().col(j);
     let rhs = top_right.rb().row(j);
-    let mat = bottom_right;
+    let mut mat = bottom_right;
 
-    for (col, rhs) in mat.into_col_iter().zip(rhs) {
-        zip!(col, lhs).for_each(|x, lhs| *x = (*x).sub(&lhs.mul(rhs)));
+    for k in 0..mat.ncols() {
+        let col = mat.rb_mut().col(k);
+        let rhs = rhs.read(0, k);
+        zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(&lhs.read().mul(&rhs))));
     }
 }
 
-fn recursion_threshold<T: 'static>(_m: usize) -> usize {
+fn recursion_threshold<E: Entity>(_m: usize) -> usize {
     16
 }
 
 #[inline]
 // we want remainder to be a multiple of register size
-fn blocksize<T: 'static>(n: usize) -> usize {
+fn blocksize<E: Entity>(n: usize) -> usize {
     let base_rem = n / 2;
     n - if n >= 32 {
         (base_rem + 15) / 16 * 16
@@ -103,29 +102,29 @@ fn blocksize<T: 'static>(n: usize) -> usize {
     }
 }
 
-fn lu_recursive_req<T: 'static>(
+fn lu_recursive_req<E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    if n <= recursion_threshold::<T>(m) {
-        return lu_unblocked_req::<T>(m, n);
+    if n <= recursion_threshold::<E>(m) {
+        return lu_unblocked_req::<E>(m, n);
     }
 
-    let bs = blocksize::<T>(n);
+    let bs = blocksize::<E>(n);
 
     StackReq::try_any_of([
-        lu_recursive_req::<T>(m, bs, parallelism)?,
+        lu_recursive_req::<E>(m, bs, parallelism)?,
         StackReq::try_all_of([
             StackReq::try_new::<usize>(m - bs)?,
-            lu_recursive_req::<T>(m - bs, n - bs, parallelism)?,
+            lu_recursive_req::<E>(m - bs, n - bs, parallelism)?,
         ])?,
-        temp_mat_req::<T>(m, 1)?,
+        temp_mat_req::<E>(m, 1)?,
     ])
 }
 
-fn lu_in_place_impl<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
+fn lu_in_place_impl<E: ComplexField>(
+    mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
     perm: &mut [usize],
@@ -136,14 +135,14 @@ fn lu_in_place_impl<T: ComplexField>(
     let m = matrix.nrows();
     let full_n = matrix.ncols();
 
-    fancy_debug_assert!(m >= n);
-    fancy_debug_assert!(perm.len() == m);
+    debug_assert!(m >= n);
+    debug_assert!(perm.len() == m);
 
-    if n <= recursion_threshold::<T>(m) {
+    if n <= recursion_threshold::<E>(m) {
         return lu_in_place_unblocked(matrix, col_start, n, perm, transpositions, stack);
     }
 
-    let bs = blocksize::<T>(n);
+    let bs = blocksize::<E>(n);
 
     let mut n_transpositions = 0;
 
@@ -157,27 +156,18 @@ fn lu_in_place_impl<T: ComplexField>(
         stack.rb_mut(),
     );
 
-    let (mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right) = matrix
+    let [mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right] = matrix
         .rb_mut()
         .submatrix(0, col_start, m, n)
         .split_at(bs, bs);
 
-    solve_unit_lower_triangular_in_place(
-        mat_top_left.rb(),
-        Conj::No,
-        mat_top_right.rb_mut(),
-        Conj::No,
-        parallelism,
-    );
+    solve_unit_lower_triangular_in_place(mat_top_left.rb(), mat_top_right.rb_mut(), parallelism);
     matmul(
         mat_bot_right.rb_mut(),
-        Conj::No,
         mat_bot_left.rb(),
-        Conj::No,
         mat_top_right.rb(),
-        Conj::No,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
@@ -202,19 +192,16 @@ fn lu_in_place_impl<T: ComplexField>(
 
     if n_transpositions >= m - m / 2 {
         // use permutations
-        let (mut tmp_col, _) = unsafe { temp_mat_uninit::<T>(m, 1, stack.rb_mut()) };
+        let (mut tmp_col, _) = unsafe { temp_mat_uninit::<E>(m, 1, stack.rb_mut()) };
         let tmp_col = tmp_col.as_mut();
 
         let mut tmp_col = tmp_col.col(0);
         let mut func = |j| {
             let mut col = matrix.rb_mut().col(j);
-            ColUninit(tmp_col.rb_mut())
-                .cwise()
-                .zip(col.rb())
-                .for_each(|a, b| unsafe { *a = b.clone() });
+            zipped!(tmp_col.rb_mut(), col.rb()).for_each(|mut a, b| a.write(b.read()));
 
             for i in 0..m {
-                *col.rb_mut().get(i) = tmp_col.rb().get(perm[i]).clone();
+                col.write(i, 0, tmp_col.read(perm[i], 0));
             }
         };
 
@@ -261,7 +248,7 @@ fn lu_in_place_impl<T: ComplexField>(
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
-                let mut col = col.split_at(bs).1;
+                let [_, mut col] = col.split_at_row(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
@@ -272,7 +259,7 @@ fn lu_in_place_impl<T: ComplexField>(
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
-                let mut col = col.split_at(bs).1;
+                let [_, mut col] = col.split_at_row(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems(col.rb_mut(), i, t + i);
                 }
@@ -289,16 +276,18 @@ pub struct PartialPivLuComputeParams {}
 
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with partial pivoting.
-pub fn lu_in_place_req<T: 'static>(
+pub fn lu_in_place_req<E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
     params: PartialPivLuComputeParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = &params;
+
+    let size = <usize as Ord>::min(n, m);
     StackReq::try_any_of([
-        StackReq::try_new::<usize>(n.min(m))?,
-        lu_recursive_req::<T>(m, n.min(m), parallelism)?,
+        StackReq::try_new::<usize>(size)?,
+        lu_recursive_req::<E>(m, size, parallelism)?,
     ])
 }
 
@@ -324,8 +313,8 @@ pub fn lu_in_place_req<T: 'static>(
 /// - Panics if the length of the permutation slices is not equal to the number of rows of the
 /// matrix, or if the provided memory in `stack` is insufficient.
 /// - Panics if the provided memory in `stack` is insufficient.
-pub fn lu_in_place<'out, T: ComplexField>(
-    matrix: MatMut<'_, T>,
+pub fn lu_in_place<'out, E: ComplexField>(
+    matrix: MatMut<'_, E>,
     perm: &'out mut [usize],
     perm_inv: &'out mut [usize],
     parallelism: Parallelism,
@@ -334,24 +323,25 @@ pub fn lu_in_place<'out, T: ComplexField>(
 ) -> (usize, PermutationMut<'out>) {
     let _ = &params;
 
-    fancy_assert!(perm.len() == matrix.nrows());
-    fancy_assert!(perm_inv.len() == matrix.nrows());
+    assert!(perm.len() == matrix.nrows());
+    assert!(perm_inv.len() == matrix.nrows());
     let mut matrix = matrix;
     let mut stack = stack;
     let m = matrix.nrows();
     let n = matrix.ncols();
+    let size = <usize as Ord>::min(n, m);
 
     for i in 0..m {
         perm[i] = i;
     }
 
     let n_transpositions = {
-        let (mut transpositions, mut stack) = stack.rb_mut().make_with(n.min(m), |_| 0);
+        let (mut transpositions, mut stack) = stack.rb_mut().make_with(size, |_| 0);
 
         lu_in_place_impl(
             matrix.rb_mut(),
             0,
-            n.min(m),
+            size,
             perm,
             &mut transpositions,
             parallelism,
@@ -359,10 +349,10 @@ pub fn lu_in_place<'out, T: ComplexField>(
         )
     };
 
-    let (_, _, left, right) = matrix.split_at(0, n.min(m));
+    let [_, _, left, right] = matrix.split_at(0, size);
 
     if m < n {
-        solve_unit_lower_triangular_in_place(left.rb(), Conj::No, right, Conj::No, parallelism);
+        solve_unit_lower_triangular_in_place(left.rb(), right, parallelism);
     }
 
     for i in 0..m {
@@ -376,14 +366,13 @@ pub fn lu_in_place<'out, T: ComplexField>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::partial_pivoting::reconstruct;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::GlobalMemBuffer;
     use faer_core::{permutation::PermutationRef, Mat, MatRef};
     use rand::random;
-
-    use crate::partial_pivoting::reconstruct;
-
-    use super::*;
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -391,10 +380,10 @@ mod tests {
         };
     }
 
-    fn reconstruct_matrix<T: ComplexField>(
-        lu_factors: MatRef<'_, T>,
+    fn reconstruct_matrix<E: ComplexField>(
+        lu_factors: MatRef<'_, E>,
         row_perm: PermutationRef<'_>,
-    ) -> Mat<T> {
+    ) -> Mat<E> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
         let mut dst = Mat::zeros(m, n);
@@ -403,7 +392,7 @@ mod tests {
             lu_factors,
             row_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<T>(
+            make_stack!(reconstruct::reconstruct_req::<E>(
                 m,
                 n,
                 Parallelism::Rayon(0)
@@ -431,7 +420,7 @@ mod tests {
             (100, 200),
             (200, 200),
         ] {
-            let mut mat = Mat::with_dims(|_i, _j| random::<f64>(), m, n);
+            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
             let mat_orig = mat.clone();
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
@@ -453,7 +442,7 @@ mod tests {
 
             for i in 0..m {
                 for j in 0..n {
-                    assert_approx_eq!(mat_orig[(i, j)], reconstructed[(i, j)]);
+                    assert_approx_eq!(mat_orig.read(i, j), reconstructed.read(i, j));
                 }
             }
         }

@@ -1,6 +1,12 @@
-use crate::{seal::Seal, ColMut, ColRef, MatMut, MatRef, RowMut, RowRef};
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use crate::{Entity, MatMut, MatRef};
+use assert2::{assert, debug_assert};
+use core::mem::MaybeUninit;
 use reborrow::*;
+use seal::Seal;
+
+mod seal {
+    pub trait Seal {}
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Diag {
@@ -10,310 +16,276 @@ pub enum Diag {
     Include,
 }
 
-pub trait CwiseMat<'short, Outlives = &'short Self>: Seal {
+pub struct Read<'a, E: Entity> {
+    ptr: E::Group<&'a MaybeUninit<E::Unit>>,
+}
+pub struct ReadWrite<'a, E: Entity> {
+    ptr: E::Group<&'a mut MaybeUninit<E::Unit>>,
+}
+
+impl<E: Entity> Read<'_, E> {
+    #[inline(always)]
+    pub fn read(&self) -> E {
+        E::from_units(E::map(
+            E::as_ref(&self.ptr),
+            #[inline(always)]
+            |ptr| unsafe { ptr.assume_init_read() },
+        ))
+    }
+}
+
+impl<E: Entity> ReadWrite<'_, E> {
+    #[inline(always)]
+    pub fn read(&self) -> E {
+        E::from_units(E::map(
+            E::as_ref(&self.ptr),
+            #[inline(always)]
+            |ptr| unsafe { ptr.assume_init_ref().clone() },
+        ))
+    }
+
+    #[inline(always)]
+    pub fn write(&mut self, value: E) {
+        let value = E::into_units(value);
+        E::map(
+            E::zip(E::as_mut(&mut self.ptr), value),
+            #[inline(always)]
+            |(ptr, value)| unsafe { *ptr.assume_init_mut() = value },
+        );
+    }
+}
+
+pub trait Mat<'short, Outlives = &'short Self>: Seal {
     type Item;
+    type RawSlice;
 
     fn transpose(self) -> Self;
+    fn reverse_rows(self) -> Self;
+    fn reverse_cols(self) -> Self;
     fn nrows(&self) -> usize;
     fn ncols(&self) -> usize;
-    fn is_col_major(&self) -> bool;
-    fn is_row_major(&self) -> bool;
-    unsafe fn get_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item;
-    unsafe fn get_col_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item;
-    unsafe fn get_row_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item;
+    fn row_stride(&self) -> isize;
+    fn col_stride(&self) -> isize;
+    unsafe fn get(&'short mut self, i: usize, j: usize) -> Self::Item;
+    unsafe fn get_column_slice(
+        &'short mut self,
+        i: usize,
+        j: usize,
+        n_elems: usize,
+    ) -> Self::RawSlice;
+
+    // this is a bad api since it needs to extend the lifetime of slice, but this is somewhat fine
+    // since we only use it internally in this module
+    unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item;
 }
 
-pub trait CwiseCol<'short, Outlives = &'short Self>: Seal {
-    type Item;
+impl<'a, E: Entity> Seal for MatRef<'a, E> {}
+impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
+    type Item = Read<'short, E>;
+    type RawSlice = E::Group<&'a [MaybeUninit<E::Unit>]>;
 
-    fn nrows(&self) -> usize;
-    fn is_contiguous(&self) -> bool;
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item;
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item;
-}
-
-pub trait CwiseRow<'short, Outlives = &'short Self>: Seal {
-    type Item;
-
-    fn ncols(&self) -> usize;
-    fn is_contiguous(&self) -> bool;
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item;
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item;
-}
-
-/// Simple wrapper indicating that values contained in this matrix may be uninitialized, and thus
-/// references to them shouldn't be created.
-pub struct MatUninit<'a, T>(pub MatMut<'a, T>);
-
-/// Simple wrapper indicating that values contained in this column may be uninitialized, and thus
-/// references to them shouldn't be created.
-pub struct ColUninit<'a, T>(pub ColMut<'a, T>);
-
-/// Simple wrapper indicating that values contained in this row may be uninitialized, and thus
-/// references to them shouldn't be created.
-pub struct RowUninit<'a, T>(pub RowMut<'a, T>);
-
-impl<'a, T> MatUninit<'a, T> {
-    #[inline]
-    pub fn cwise(self) -> ZipMat<(Self,)> {
-        ZipMat { tuple: (self,) }
-    }
-}
-impl<'a, T> ColUninit<'a, T> {
-    #[inline]
-    pub fn cwise(self) -> ZipCol<(Self,)> {
-        ZipCol { tuple: (self,) }
-    }
-}
-impl<'a, T> RowUninit<'a, T> {
-    #[inline]
-    pub fn cwise(self) -> ZipRow<(Self,)> {
-        ZipRow { tuple: (self,) }
-    }
-}
-
-impl<'a, T> crate::seal::Seal for MatUninit<'a, T> {}
-impl<'a, T> crate::seal::Seal for ColUninit<'a, T> {}
-impl<'a, T> crate::seal::Seal for RowUninit<'a, T> {}
-
-impl<'short, 'a, T> CwiseMat<'short> for MatRef<'a, T> {
-    type Item = &'short T;
-    #[inline]
-    fn nrows(&self) -> usize {
-        self.nrows()
-    }
-    #[inline]
-    fn ncols(&self) -> usize {
-        self.ncols()
-    }
-    #[inline]
-    fn is_col_major(&self) -> bool {
-        self.row_stride() == 1
-    }
-    #[inline]
-    fn is_row_major(&self) -> bool {
-        self.col_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        (*self).rb().get_unchecked(i, j)
-    }
-    #[inline]
-    unsafe fn get_col_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        &*(*self).rb().ptr_in_bounds_at_unchecked(0, j).add(i)
-    }
-    #[inline]
-    unsafe fn get_row_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        &*(*self).rb().ptr_in_bounds_at_unchecked(i, 0).add(j)
-    }
-    #[inline]
+    #[inline(always)]
     fn transpose(self) -> Self {
         self.transpose()
     }
+    #[inline(always)]
+    fn reverse_rows(self) -> Self {
+        self.reverse_rows()
+    }
+    #[inline(always)]
+    fn reverse_cols(self) -> Self {
+        self.reverse_cols()
+    }
+
+    #[inline(always)]
+    fn nrows(&self) -> usize {
+        (*self).nrows()
+    }
+
+    #[inline(always)]
+    fn ncols(&self) -> usize {
+        (*self).ncols()
+    }
+
+    #[inline(always)]
+    fn row_stride(&self) -> isize {
+        (*self).row_stride()
+    }
+
+    #[inline(always)]
+    fn col_stride(&self) -> isize {
+        (*self).col_stride()
+    }
+
+    #[inline(always)]
+    unsafe fn get(&mut self, i: usize, j: usize) -> Self::Item {
+        Read {
+            ptr: E::map(
+                self.ptr_inbounds_at(i, j),
+                #[inline(always)]
+                |ptr| &*(ptr as *const MaybeUninit<E::Unit>),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn get_column_slice(&mut self, i: usize, j: usize, n_elems: usize) -> Self::RawSlice {
+        E::map(
+            self.ptr_at(i, j),
+            #[inline(always)]
+            |ptr| core::slice::from_raw_parts(ptr as *const MaybeUninit<E::Unit>, n_elems),
+        )
+    }
+
+    #[inline(always)]
+    unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item {
+        Read {
+            ptr: E::map(
+                E::as_mut(slice),
+                #[inline(always)]
+                |slice| slice.get_unchecked(idx),
+            ),
+        }
+    }
 }
 
-impl<'short, 'a, T> CwiseMat<'short> for MatMut<'a, T> {
-    type Item = &'short mut T;
-    #[inline]
-    fn nrows(&self) -> usize {
-        self.nrows()
-    }
-    #[inline]
-    fn ncols(&self) -> usize {
-        self.ncols()
-    }
-    #[inline]
-    fn is_col_major(&self) -> bool {
-        self.row_stride() == 1
-    }
-    #[inline]
-    fn is_row_major(&self) -> bool {
-        self.col_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        (*self).rb_mut().get_unchecked(i, j)
-    }
-    #[inline]
-    unsafe fn get_col_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        &mut *(*self).rb_mut().ptr_in_bounds_at_unchecked(0, j).add(i)
-    }
-    #[inline]
-    unsafe fn get_row_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        &mut *(*self).rb_mut().ptr_in_bounds_at_unchecked(i, 0).add(j)
-    }
-    #[inline]
+impl<'a, E: Entity> Seal for MatMut<'a, E> {}
+impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
+    type Item = ReadWrite<'short, E>;
+    type RawSlice = E::Group<&'a mut [MaybeUninit<E::Unit>]>;
+
+    #[inline(always)]
     fn transpose(self) -> Self {
         self.transpose()
     }
-}
+    #[inline(always)]
+    fn reverse_rows(self) -> Self {
+        self.reverse_rows()
+    }
+    #[inline(always)]
+    fn reverse_cols(self) -> Self {
+        self.reverse_cols()
+    }
 
-impl<'short, 'a, T> CwiseMat<'short> for MatUninit<'a, T> {
-    type Item = *mut T;
-    #[inline]
+    #[inline(always)]
     fn nrows(&self) -> usize {
-        self.0.nrows()
+        (*self).nrows()
     }
-    #[inline]
+
+    #[inline(always)]
     fn ncols(&self) -> usize {
-        self.0.ncols()
+        (*self).ncols()
     }
-    #[inline]
-    fn is_col_major(&self) -> bool {
-        self.0.row_stride() == 1
+
+    #[inline(always)]
+    fn row_stride(&self) -> isize {
+        (*self).row_stride()
     }
-    #[inline]
-    fn is_row_major(&self) -> bool {
-        self.0.col_stride() == 1
+
+    #[inline(always)]
+    fn col_stride(&self) -> isize {
+        (*self).col_stride()
     }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        self.0.rb_mut().ptr_in_bounds_at_unchecked(i, j)
+
+    #[inline(always)]
+    unsafe fn get(&mut self, i: usize, j: usize) -> Self::Item {
+        ReadWrite {
+            ptr: E::map(
+                self.rb_mut().ptr_inbounds_at(i, j),
+                #[inline(always)]
+                |ptr| &mut *(ptr as *mut MaybeUninit<E::Unit>),
+            ),
+        }
     }
-    #[inline]
-    unsafe fn get_col_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        self.0.rb_mut().ptr_in_bounds_at_unchecked(0, j).add(i)
+
+    #[inline(always)]
+    unsafe fn get_column_slice(&mut self, i: usize, j: usize, n_elems: usize) -> Self::RawSlice {
+        E::map(
+            self.rb_mut().ptr_at(i, j),
+            #[inline(always)]
+            |ptr| core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<E::Unit>, n_elems),
+        )
     }
-    #[inline]
-    unsafe fn get_row_major_unchecked(&'short mut self, i: usize, j: usize) -> Self::Item {
-        self.0.rb_mut().ptr_in_bounds_at_unchecked(i, 0).add(j)
-    }
-    #[inline]
-    fn transpose(self) -> Self {
-        MatUninit(self.0.transpose())
+
+    #[inline(always)]
+    unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item {
+        ReadWrite {
+            ptr: E::map(
+                E::as_mut(slice),
+                #[inline(always)]
+                |slice| &mut *(slice.get_unchecked_mut(idx) as *mut _),
+            ),
+        }
     }
 }
 
-impl<'short, 'a, T> CwiseCol<'short> for ColRef<'a, T> {
-    type Item = &'short T;
-    #[inline]
-    fn nrows(&self) -> usize {
-        self.nrows()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.row_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).rb().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        &*(*self).rb().as_ptr().add(i)
-    }
-}
-
-impl<'short, 'a, T> CwiseCol<'short> for ColMut<'a, T> {
-    type Item = &'short mut T;
-    #[inline]
-    fn nrows(&self) -> usize {
-        self.nrows()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.row_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).rb_mut().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        &mut *(*self).rb_mut().as_ptr().add(i)
-    }
-}
-
-impl<'short, 'a, T> CwiseCol<'short> for ColUninit<'a, T> {
-    type Item = *mut T;
-    #[inline]
-    fn nrows(&self) -> usize {
-        self.0.nrows()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.0.row_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        self.0.rb_mut().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        self.0.rb_mut().as_ptr().add(i)
-    }
-}
-
-impl<'short, 'a, T> CwiseRow<'short> for RowRef<'a, T> {
-    type Item = &'short T;
-    #[inline]
-    fn ncols(&self) -> usize {
-        self.ncols()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.col_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).rb().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        &*(*self).rb().as_ptr().add(i)
-    }
-}
-
-impl<'short, 'a, T> CwiseRow<'short> for RowMut<'a, T> {
-    type Item = &'short mut T;
-    #[inline]
-    fn ncols(&self) -> usize {
-        self.ncols()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.col_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        (*self).rb_mut().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        &mut *(*self).rb_mut().as_ptr().add(i)
-    }
-}
-
-impl<'short, 'a, T> CwiseRow<'short> for RowUninit<'a, T> {
-    type Item = *mut T;
-    #[inline]
-    fn ncols(&self) -> usize {
-        self.0.ncols()
-    }
-    #[inline]
-    fn is_contiguous(&self) -> bool {
-        self.0.col_stride() == 1
-    }
-    #[inline]
-    unsafe fn get_unchecked(&'short mut self, i: usize) -> Self::Item {
-        self.0.rb_mut().get_unchecked(i)
-    }
-    #[inline]
-    unsafe fn get_contiguous_unchecked(&'short mut self, i: usize) -> Self::Item {
-        self.0.rb_mut().as_ptr().add(i)
-    }
-}
-
-pub struct ZipMat<Tuple> {
-    pub(crate) tuple: Tuple,
-}
-
-pub struct ZipRow<Tuple> {
-    pub(crate) tuple: Tuple,
-}
-
-pub struct ZipCol<Tuple> {
+pub struct Zip<Tuple> {
     pub(crate) tuple: Tuple,
 }
 
 include!(concat!(env!("OUT_DIR"), "/zip.rs"));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{zipped, ComplexField, Mat};
+    use assert2::assert;
+
+    #[test]
+    fn test_zip() {
+        for (m, n) in [(2, 2), (4, 2), (2, 4)] {
+            for rev_dst in [false, true] {
+                for rev_src in [false, true] {
+                    for transpose_dst in [false, true] {
+                        for transpose_src in [false, true] {
+                            for diag in [Diag::Include, Diag::Skip] {
+                                let mut dst = Mat::with_dims(
+                                    if transpose_dst { n } else { m },
+                                    if transpose_dst { m } else { n },
+                                    |_, _| f64::zero(),
+                                );
+                                let src = Mat::with_dims(
+                                    if transpose_src { n } else { m },
+                                    if transpose_src { m } else { n },
+                                    |_, _| f64::one(),
+                                );
+
+                                let mut target = Mat::with_dims(m, n, |_, _| f64::zero());
+                                let target_src = Mat::with_dims(m, n, |_, _| f64::one());
+
+                                zipped!(target.as_mut(), target_src.as_ref())
+                                    .for_each_triangular_lower(diag, |mut dst, src| {
+                                        dst.write(src.read())
+                                    });
+
+                                let mut dst = dst.as_mut();
+                                let mut src = src.as_ref();
+
+                                if transpose_dst {
+                                    dst = dst.transpose();
+                                }
+                                if rev_dst {
+                                    dst = dst.reverse_rows();
+                                }
+
+                                if transpose_src {
+                                    src = src.transpose();
+                                }
+                                if rev_src {
+                                    src = src.reverse_rows();
+                                }
+
+                                zipped!(dst.rb_mut(), src)
+                                    .for_each_triangular_lower(diag, |mut dst, src| {
+                                        dst.write(src.read())
+                                    });
+
+                                assert!(dst.rb() == target.as_ref());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
