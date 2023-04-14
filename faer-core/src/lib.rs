@@ -520,7 +520,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
     fn sqrt(&self) -> Self;
-    fn div(&self, rhs: Self) -> Self;
+    fn div(&self, rhs: &Self) -> Self;
 }
 
 impl ComplexField for f32 {
@@ -910,7 +910,7 @@ impl RealField for f32 {
     }
 
     #[inline(always)]
-    fn div(&self, rhs: Self) -> Self {
+    fn div(&self, rhs: &Self) -> Self {
         self / rhs
     }
 }
@@ -921,7 +921,7 @@ impl RealField for f64 {
     }
 
     #[inline(always)]
-    fn div(&self, rhs: Self) -> Self {
+    fn div(&self, rhs: &Self) -> Self {
         self / rhs
     }
 }
@@ -4388,6 +4388,99 @@ impl<'a, E: Entity> Debug for MatMut<'a, E> {
 impl<E: Entity> Debug for Mat<E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_ref().fmt(f)
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<MatRef<'_, RhsE>>
+    for MatRef<'_, LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
+        let mut out = Mat::zeros(self.nrows(), rhs.ncols());
+        mul::matmul(
+            out.as_mut(),
+            self,
+            rhs,
+            None,
+            LhsE::Canonical::one(),
+            Parallelism::Rayon(0),
+        );
+        out
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<Mat<RhsE>>
+    for MatRef<'_, LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: Mat<RhsE>) -> Self::Output {
+        self.mul(rhs.as_ref())
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<MatRef<'_, RhsE>>
+    for Mat<LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
+        self.as_ref().mul(rhs)
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<Mat<RhsE>>
+    for Mat<LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: Mat<RhsE>) -> Self::Output {
+        self.as_ref().mul(rhs.as_ref())
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<&Mat<RhsE>>
+    for Mat<LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: &Mat<RhsE>) -> Self::Output {
+        self.as_ref().mul(rhs.as_ref())
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<Mat<RhsE>>
+    for &Mat<LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: Mat<RhsE>) -> Self::Output {
+        self.as_ref().mul(rhs.as_ref())
+    }
+}
+
+impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<&Mat<RhsE>>
+    for &Mat<LhsE>
+where
+    LhsE::Canonical: ComplexField,
+{
+    type Output = Mat<LhsE::Canonical>;
+
+    fn mul(self, rhs: &Mat<RhsE>) -> Self::Output {
+        self.as_ref().mul(rhs.as_ref())
     }
 }
 

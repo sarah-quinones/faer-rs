@@ -4,7 +4,9 @@ members = [
   "faer-cholesky",
   "faer-lu",
   "faer-qr",
+  "faer-svd",
 ]
+exclude = ["faer-bench"]
 
 [workspace.dependencies]
 coe-rs = "0.1"
