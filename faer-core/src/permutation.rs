@@ -330,13 +330,13 @@ pub fn permute_rows_in_place<E: ComplexField>(
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_cols_in_place<T: ComplexField>(
-    matrix: MatMut<'_, T>,
+pub fn permute_cols_in_place<E: ComplexField>(
+    matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_>,
     stack: DynStack<'_>,
 ) {
     let mut matrix = matrix;
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<T>(matrix.nrows(), matrix.ncols(), stack) };
+    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack) };
     let mut tmp = tmp.as_mut();
     zipped!(tmp.rb_mut(), matrix.rb()).for_each(|mut dst, src| dst.write(src.read()));
     permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);

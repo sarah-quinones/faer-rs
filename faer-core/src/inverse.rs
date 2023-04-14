@@ -8,9 +8,9 @@ use crate::{
 use assert2::assert;
 use reborrow::*;
 
-unsafe fn invert_lower_triangular_impl_small<T: ComplexField>(
-    mut dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+unsafe fn invert_lower_triangular_impl_small<E: ComplexField>(
+    mut dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
 ) {
     let m = dst.nrows();
     let src = {
@@ -33,9 +33,9 @@ unsafe fn invert_lower_triangular_impl_small<T: ComplexField>(
     }
 }
 
-unsafe fn invert_unit_lower_triangular_impl_small<T: ComplexField>(
-    mut dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+unsafe fn invert_unit_lower_triangular_impl_small<E: ComplexField>(
+    mut dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
 ) {
     let m = dst.nrows();
     let src = |i: usize, j: usize| src.read_unchecked(i, j);
@@ -48,9 +48,9 @@ unsafe fn invert_unit_lower_triangular_impl_small<T: ComplexField>(
     }
 }
 
-unsafe fn invert_lower_triangular_impl<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+unsafe fn invert_lower_triangular_impl<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     // m must be equal to n
@@ -82,15 +82,15 @@ unsafe fn invert_lower_triangular_impl<T: ComplexField>(
         dst_tl.rb(),
         BlockStructure::TriangularLower,
         None,
-        T::one().neg(),
+        E::one().neg(),
         parallelism,
     );
     solve::solve_lower_triangular_in_place(src_br, dst_bl, parallelism);
 }
 
-unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+unsafe fn invert_unit_lower_triangular_impl<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     // m must be equal to n
@@ -122,7 +122,7 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
         dst_tl.rb(),
         BlockStructure::UnitTriangularLower,
         None,
-        T::one().neg(),
+        E::one().neg(),
         parallelism,
     );
     solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, parallelism);
@@ -135,9 +135,9 @@ unsafe fn invert_unit_lower_triangular_impl<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_lower_triangular<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn invert_unit_lower_triangular<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     assert!(dst.nrows() == src.nrows());
@@ -154,9 +154,9 @@ pub fn invert_unit_lower_triangular<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_lower_triangular<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn invert_lower_triangular<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     assert!(dst.nrows() == src.nrows());
@@ -173,9 +173,9 @@ pub fn invert_lower_triangular<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_unit_upper_triangular<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn invert_unit_upper_triangular<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     invert_unit_lower_triangular(
@@ -192,9 +192,9 @@ pub fn invert_unit_upper_triangular<T: ComplexField>(
 ///
 /// Panics if `src` and `dst` have mismatching dimensions, or if they are not square.
 #[track_caller]
-pub fn invert_upper_triangular<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    src: MatRef<'_, T>,
+pub fn invert_upper_triangular<E: ComplexField>(
+    dst: MatMut<'_, E>,
+    src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
     invert_lower_triangular(

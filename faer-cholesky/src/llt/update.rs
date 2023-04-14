@@ -3,7 +3,7 @@ use crate::{
     ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
     llt::compute::{cholesky_in_place, cholesky_in_place_req},
 };
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use core::{iter::zip, slice};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
@@ -13,12 +13,12 @@ use faer_core::{
 use pulp::Arch;
 use reborrow::*;
 
-struct RankUpdateStepImpl<'a, T: Entity, const R: usize> {
-    l_col: T::Group<&'a mut [T::Unit]>,
-    w: [T::Group<&'a mut [T::Unit]>; R],
-    neg_wj_over_ljj_array: [T; R],
-    alpha_wj_over_nljj_array: [T; R],
-    nljj_over_ljj_array: [T; R],
+struct RankUpdateStepImpl<'a, E: Entity, const R: usize> {
+    l_col: E::Group<&'a mut [E::Unit]>,
+    w: [E::Group<&'a mut [E::Unit]>; R],
+    neg_wj_over_ljj_array: [E; R],
+    alpha_wj_over_nljj_array: [E; R],
+    nljj_over_ljj_array: [E; R],
 }
 
 impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
@@ -775,14 +775,14 @@ fn rank_update_step_impl1<E: ComplexField>(
     }
 }
 
-struct RankRUpdate<'a, T: Entity> {
-    l: MatMut<'a, T>,
-    w: MatMut<'a, T>,
-    alpha: MatMut<'a, T>,
+struct RankRUpdate<'a, E: Entity> {
+    l: MatMut<'a, E>,
+    w: MatMut<'a, E>,
+    alpha: MatMut<'a, E>,
     r: &'a mut dyn FnMut() -> usize,
 }
 
-impl<'a, T: ComplexField> RankRUpdate<'a, T> {
+impl<'a, E: ComplexField> RankRUpdate<'a, E> {
     fn run(self) -> Result<(), CholeskyError> {
         // On the Modification of LDLT Factorizations
         // By R. Fletcher and M. J. D. Powell
@@ -797,9 +797,9 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
         let n = l.nrows();
         let k = w.ncols();
 
-        fancy_debug_assert!(l.ncols() == n);
-        fancy_debug_assert!(w.nrows() == n);
-        fancy_debug_assert!(alpha.nrows() == k);
+        debug_assert!(l.ncols() == n);
+        debug_assert!(w.nrows() == n);
+        debug_assert!(alpha.nrows() == k);
 
         let arch = Arch::new();
         unsafe {
@@ -809,9 +809,9 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                 let mut r_idx = 0;
                 while r_idx < r {
                     let r_chunk = <usize as Ord>::min(r - r_idx, 4);
-                    let mut neg_wj_over_ljj_array = [T::zero(), T::zero(), T::zero(), T::zero()];
-                    let mut alpha_wj_over_nljj_array = [T::zero(), T::zero(), T::zero(), T::zero()];
-                    let mut nljj_over_ljj_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+                    let mut neg_wj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
+                    let mut alpha_wj_over_nljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
+                    let mut nljj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
 
                     let mut ljj = l.read_unchecked(j, j);
                     for k in 0..r_chunk {
@@ -824,10 +824,10 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
                         let alpha_conj_wj = local_alpha.mul(&wj.conj());
 
                         let sqr_nljj = ljj.mul(&ljj).add(&alpha_conj_wj.mul(&wj));
-                        if !(sqr_nljj.real() > T::Real::zero()) {
+                        if !(sqr_nljj.real() > E::Real::zero()) {
                             return Err(CholeskyError);
                         }
-                        let nljj = T::from_real(sqr_nljj.real().sqrt());
+                        let nljj = E::from_real(sqr_nljj.real().sqrt());
                         let inv_ljj = ljj.inv();
                         let inv_nljj = nljj.inv();
 
@@ -906,17 +906,17 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
 /// the function is called are unspecified.
 #[track_caller]
-pub fn rank_r_update_clobber<T: ComplexField>(
-    cholesky_factor: MatMut<'_, T>,
-    w: MatMut<'_, T>,
-    alpha: MatMut<'_, T>,
+pub fn rank_r_update_clobber<E: ComplexField>(
+    cholesky_factor: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    alpha: MatMut<'_, E>,
 ) -> Result<(), CholeskyError> {
     let n = cholesky_factor.nrows();
     let k = w.ncols();
 
-    fancy_assert!(cholesky_factor.ncols() == n);
-    fancy_assert!(w.nrows() == n);
-    fancy_assert!(alpha.nrows() == k);
+    assert!(cholesky_factor.ncols() == n);
+    assert!(w.nrows() == n);
+    assert!(alpha.nrows() == k);
 
     RankRUpdate {
         l: cholesky_factor,
@@ -930,12 +930,12 @@ pub fn rank_r_update_clobber<T: ComplexField>(
 /// Computes the size and alignment of required workspace for deleting the rows and columns from a
 /// matrix, given its Cholesky decomposition.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber_req<T: Entity>(
+pub fn delete_rows_and_cols_clobber_req<E: Entity>(
     dim: usize,
     number_of_rows_to_remove: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let r = number_of_rows_to_remove;
-    StackReq::try_all_of([temp_mat_req::<T>(dim, r)?, temp_mat_req::<T>(r, 1)?])
+    StackReq::try_all_of([temp_mat_req::<E>(dim, r)?, temp_mat_req::<E>(r, 1)?])
 }
 
 /// Deletes `r` rows and columns at the provided indices from the Cholesky factor.
@@ -948,15 +948,15 @@ pub fn delete_rows_and_cols_clobber_req<T: Entity>(
 /// The indices are clobbered, meaning that the values that the slice contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factor: MatMut<'_, T>,
+pub fn delete_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factor: MatMut<'_, E>,
     indices: &mut [usize],
     stack: DynStack<'_>,
 ) {
     let n = cholesky_factor.nrows();
     let r = indices.len();
-    fancy_assert!(cholesky_factor.ncols() == n);
-    fancy_assert!(indices.len() < n);
+    assert!(cholesky_factor.ncols() == n);
+    assert!(indices.len() < n);
 
     if r == 0 {
         return;
@@ -964,15 +964,15 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
     indices.sort_unstable();
     for i in 0..r - 1 {
-        fancy_assert!(indices[i + 1] > indices[i]);
+        assert!(indices[i + 1] > indices[i]);
     }
-    fancy_assert!(indices[r - 1] < n);
+    assert!(indices[r - 1] < n);
 
     let first = indices[0];
 
-    let (mut w, stack) = unsafe { temp_mat_uninit::<T>(n - first - r, r, stack) };
+    let (mut w, stack) = unsafe { temp_mat_uninit::<E>(n - first - r, r, stack) };
     let mut w = w.as_mut();
-    let (mut alpha, _) = unsafe { temp_mat_uninit::<T>(r, 1, stack) };
+    let (mut alpha, _) = unsafe { temp_mat_uninit::<E>(r, 1, stack) };
     let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
 
@@ -980,7 +980,7 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                alpha.write_unchecked(k, 0, T::one());
+                alpha.write_unchecked(k, 0, E::one());
             }
 
             for chunk_i in k..r {
@@ -1016,11 +1016,11 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
 /// Computes the size and alignment of the required workspace for inserting the rows and columns at
 /// the index in the Cholesky factor..
-pub fn insert_rows_and_cols_clobber_req<T: Entity>(
+pub fn insert_rows_and_cols_clobber_req<E: Entity>(
     inserted_matrix_ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism, Default::default())
+    cholesky_in_place_req::<E>(inserted_matrix_ncols, parallelism, Default::default())
 }
 
 /// Inserts `r` rows and columns at the provided index in the Cholesky factor.
@@ -1033,22 +1033,22 @@ pub fn insert_rows_and_cols_clobber_req<T: Entity>(
 /// The inserted matrix is clobbered, meaning that the values it contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn insert_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factor_extended: MatMut<'_, T>,
+pub fn insert_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factor_extended: MatMut<'_, E>,
     insertion_index: usize,
-    inserted_matrix: MatMut<'_, T>,
+    inserted_matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) -> Result<(), CholeskyError> {
     let new_n = cholesky_factor_extended.nrows();
     let r = inserted_matrix.ncols();
 
-    fancy_assert!(cholesky_factor_extended.nrows() == cholesky_factor_extended.ncols());
-    fancy_assert!(cholesky_factor_extended.ncols() == new_n);
-    fancy_assert!(r < new_n);
+    assert!(cholesky_factor_extended.nrows() == cholesky_factor_extended.ncols());
+    assert!(cholesky_factor_extended.ncols() == new_n);
+    assert!(r < new_n);
     let old_n = new_n - r;
 
-    fancy_assert!(insertion_index <= old_n);
+    assert!(insertion_index <= old_n);
 
     if r == 0 {
         return Ok(());
@@ -1115,8 +1115,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         BlockStructure::Rectangular,
         a01.rb(),
         BlockStructure::Rectangular,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
@@ -1142,8 +1142,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         l21.rb_mut(),
         l20.rb(),
         a01.rb(),
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
@@ -1154,7 +1154,7 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            alpha.write_unchecked(j, 0, T::one().neg());
+            alpha.write_unchecked(j, 0, E::one().neg());
 
             for i in 0..rem {
                 w.write_unchecked(i, j, l21.read_unchecked(i, j));

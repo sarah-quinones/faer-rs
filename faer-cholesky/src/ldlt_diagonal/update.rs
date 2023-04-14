@@ -9,18 +9,18 @@ use faer_core::{
 use pulp::Arch;
 use reborrow::*;
 
-struct RankRUpdate<'a, T: Entity> {
-    ld: MatMut<'a, T>,
-    w: MatMut<'a, T>,
-    alpha: MatMut<'a, T>,
+struct RankRUpdate<'a, E: Entity> {
+    ld: MatMut<'a, E>,
+    w: MatMut<'a, E>,
+    alpha: MatMut<'a, E>,
     r: &'a mut dyn FnMut() -> usize,
 }
 
-struct RankUpdateStepImpl<'a, T: Entity, const R: usize> {
-    l_col: T::Group<&'a mut [T::Unit]>,
-    w: [T::Group<&'a mut [T::Unit]>; R],
-    p_array: [T; R],
-    beta_array: [T; R],
+struct RankUpdateStepImpl<'a, E: Entity, const R: usize> {
+    l_col: E::Group<&'a mut [E::Unit]>,
+    w: [E::Group<&'a mut [E::Unit]>; R],
+    p_array: [E; R],
+    beta_array: [E; R],
 }
 
 impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
@@ -558,7 +558,7 @@ fn rank_update_step_impl1<E: ComplexField>(
     }
 }
 
-impl<'a, T: ComplexField> RankRUpdate<'a, T> {
+impl<'a, E: ComplexField> RankRUpdate<'a, E> {
     fn run(self) {
         // On the Modification of LDLT Factorizations
         // By R. Fletcher and M. J. D. Powell
@@ -584,8 +584,8 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
             let mut r_idx = 0;
             while r_idx < r {
                 let r_chunk = <usize as Ord>::min(r - r_idx, 4);
-                let mut p_array = [T::zero(), T::zero(), T::zero(), T::zero()];
-                let mut beta_array = [T::zero(), T::zero(), T::zero(), T::zero()];
+                let mut p_array = [E::zero(), E::zero(), E::zero(), E::zero()];
+                let mut beta_array = [E::zero(), E::zero(), E::zero(), E::zero()];
 
                 let mut dj = ld.rb().read(j, j);
                 for k in 0..r_chunk {
@@ -638,10 +638,10 @@ impl<'a, T: ComplexField> RankRUpdate<'a, T> {
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
 /// the function is called are unspecified.
 #[track_caller]
-pub fn rank_r_update_clobber<T: ComplexField>(
-    cholesky_factors: MatMut<'_, T>,
-    w: MatMut<'_, T>,
-    alpha: MatMut<'_, T>,
+pub fn rank_r_update_clobber<E: ComplexField>(
+    cholesky_factors: MatMut<'_, E>,
+    w: MatMut<'_, E>,
+    alpha: MatMut<'_, E>,
 ) {
     let n = cholesky_factors.nrows();
     let k = w.ncols();
@@ -659,7 +659,7 @@ pub fn rank_r_update_clobber<T: ComplexField>(
     .run();
 }
 
-pub(crate) fn delete_rows_and_cols_triangular<T: Entity>(mat: MatMut<'_, T>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<E: Entity>(mat: MatMut<'_, E>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
@@ -719,12 +719,12 @@ pub(crate) fn rank_update_indices(
 /// Computes the size and alignment of required workspace for deleting the rows and columns from a
 /// matrix, given its Cholesky decomposition.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber_req<T: Entity>(
+pub fn delete_rows_and_cols_clobber_req<E: Entity>(
     dim: usize,
     number_of_rows_to_remove: usize,
 ) -> Result<StackReq, SizeOverflow> {
     let r = number_of_rows_to_remove;
-    StackReq::try_all_of([temp_mat_req::<T>(dim, r)?, temp_mat_req::<T>(r, 1)?])
+    StackReq::try_all_of([temp_mat_req::<E>(dim, r)?, temp_mat_req::<E>(r, 1)?])
 }
 
 /// Deletes `r` rows and columns at the provided indices from the Cholesky factor.
@@ -737,8 +737,8 @@ pub fn delete_rows_and_cols_clobber_req<T: Entity>(
 /// The indices are clobbered, meaning that the values that the slice contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn delete_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factors: MatMut<'_, T>,
+pub fn delete_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factors: MatMut<'_, E>,
     indices: &mut [usize],
     stack: DynStack<'_>,
 ) {
@@ -759,8 +759,8 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
     let first = indices[0];
 
-    let (mut w, stack) = unsafe { temp_mat_uninit::<T>(n - first - r, r, stack) };
-    let (mut alpha, _) = unsafe { temp_mat_uninit::<T>(r, 1, stack) };
+    let (mut w, stack) = unsafe { temp_mat_uninit::<E>(n - first - r, r, stack) };
+    let (mut alpha, _) = unsafe { temp_mat_uninit::<E>(r, 1, stack) };
     let mut w = w.as_mut();
     let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
@@ -804,11 +804,11 @@ pub fn delete_rows_and_cols_clobber<T: ComplexField>(
 
 /// Computes the size and alignment of the required workspace for inserting the rows and columns at
 /// the index in the Cholesky factor..
-pub fn insert_rows_and_cols_clobber_req<T: Entity>(
+pub fn insert_rows_and_cols_clobber_req<E: Entity>(
     inserted_matrix_ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    raw_cholesky_in_place_req::<T>(inserted_matrix_ncols, parallelism, Default::default())
+    raw_cholesky_in_place_req::<E>(inserted_matrix_ncols, parallelism, Default::default())
 }
 
 /// Inserts `r` rows and columns at the provided index in the Cholesky factor.
@@ -821,10 +821,10 @@ pub fn insert_rows_and_cols_clobber_req<T: Entity>(
 /// The inserted matrix is clobbered, meaning that the values it contains after the function
 /// is called are unspecified.
 #[track_caller]
-pub fn insert_rows_and_cols_clobber<T: ComplexField>(
-    cholesky_factors_extended: MatMut<'_, T>,
+pub fn insert_rows_and_cols_clobber<E: ComplexField>(
+    cholesky_factors_extended: MatMut<'_, E>,
     insertion_index: usize,
-    inserted_matrix: MatMut<'_, T>,
+    inserted_matrix: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
@@ -904,8 +904,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         BlockStructure::Rectangular,
         a01,
         BlockStructure::Rectangular,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 
@@ -929,8 +929,8 @@ pub fn insert_rows_and_cols_clobber<T: ComplexField>(
         l21.rb_mut(),
         l20.rb(),
         a01,
-        Some(T::one()),
-        T::one().neg(),
+        Some(E::one()),
+        E::one().neg(),
         parallelism,
     );
 

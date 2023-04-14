@@ -1,0 +1,43 @@
+[package]
+name = "faer-lu"
+version = "0.7.0"
+edition = "2021"
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
+
+[dependencies]
+faer-core = { version = "0.7.0", default-features = false, path = "../faer-core" }
+
+pulp = { workspace = true, default-features = false }
+coe-rs = { workspace = true }
+reborrow = { workspace = true }
+dyn-stack = { workspace = true }
+assert2 = { workspace = true }
+num-traits = { workspace = true }
+num-complex = { workspace = true }
+rayon = { workspace = true }
+bytemuck = { workspace = true }
+paste = "1.0.12"
+
+[features]
+default = ["std"]
+std = ["faer-core/std", "pulp/std"]
+nightly = ["faer-core/nightly", "pulp/nightly"]
+
+[dev-dependencies]
+criterion = "0.4"
+rand = "0.8.5"
+nalgebra = "0.32.2"
+assert_approx_eq = "1.1.0"
+rayon = "1.7"
+
+[[bench]]
+name = "bench"
+harness = false
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]

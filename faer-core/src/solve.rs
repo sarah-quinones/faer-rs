@@ -1,7 +1,7 @@
 //! Triangular solve module.
 
 use crate::{join_raw, ComplexField, Conj, Conjugate, MatMut, MatRef, Parallelism};
-use assert2::{assert as fancy_assert, debug_assert as fancy_debug_assert};
+use assert2::{assert, debug_assert};
 use reborrow::*;
 
 #[inline(always)]
@@ -245,7 +245,7 @@ fn recursion_threshold<E: 'static>() -> usize {
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_lower_triangular_in_place,
+///     solve::solve_lower_triangular_in_place_with_conj,
 ///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
@@ -284,8 +284,8 @@ pub fn solve_lower_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    assert!(rhs.nrows() == triangular_lower.ncols());
 
     unsafe {
         solve_lower_triangular_in_place_unchecked(triangular_lower, conj_lhs, rhs, parallelism);
@@ -323,7 +323,7 @@ pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_upper_triangular_in_place,
+///     solve::solve_upper_triangular_in_place_with_conj,
 ///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
@@ -362,8 +362,8 @@ pub fn solve_upper_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    assert!(rhs.nrows() == triangular_upper.ncols());
 
     unsafe {
         solve_upper_triangular_in_place_unchecked(triangular_upper, conj_lhs, rhs, parallelism);
@@ -401,7 +401,7 @@ pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_unit_lower_triangular_in_place,
+///     solve::solve_unit_lower_triangular_in_place_with_conj,
 ///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
@@ -440,8 +440,8 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    fancy_assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(triangular_lower.nrows() == triangular_lower.ncols());
+    assert!(rhs.nrows() == triangular_lower.ncols());
 
     unsafe {
         solve_unit_lower_triangular_in_place_unchecked(
@@ -482,7 +482,7 @@ pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Can
 /// use faer_core::{
 ///     mat,
 ///     mul::triangular::{matmul, BlockStructure},
-///     solve::solve_unit_upper_triangular_in_place,
+///     solve::solve_unit_upper_triangular_in_place_with_conj,
 ///     zipped, Conj, Mat, Parallelism,
 /// };
 ///
@@ -521,8 +521,8 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    fancy_assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    fancy_assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(triangular_upper.nrows() == triangular_upper.ncols());
+    assert!(rhs.nrows() == triangular_upper.ncols());
 
     unsafe {
         solve_unit_upper_triangular_in_place_unchecked(
@@ -585,8 +585,8 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    fancy_debug_assert!(tril.nrows() == tril.ncols());
-    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(tril.nrows() == tril.ncols());
+    debug_assert!(rhs.nrows() == tril.ncols());
 
     if n <= recursion_threshold::<E>() {
         pulp::Arch::new().dispatch(
@@ -686,8 +686,8 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    fancy_debug_assert!(tril.nrows() == tril.ncols());
-    fancy_debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(tril.nrows() == tril.ncols());
+    debug_assert!(rhs.nrows() == tril.ncols());
 
     let n = tril.nrows();
 

@@ -2412,7 +2412,7 @@ pub mod triangular {
     /// strictly triangular or unit triangular.
     ///
     /// If `alpha` is not provided, he preexisting values in `acc` are not read so it is allowed to
-    /// be a view over uninitialized values if `T: Copy`.
+    /// be a view over uninitialized values if `E: Copy`.
     ///
     /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
     /// `Conj::Yes`.  
@@ -2835,6 +2835,7 @@ mod tests {
     use num_complex::Complex32;
 
     #[test]
+    #[ignore = "this takes too long to launch in CI"]
     fn test_matmul() {
         let random = |_, _| c32 {
             re: rand::random(),

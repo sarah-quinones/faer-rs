@@ -47,6 +47,14 @@ pub struct c64 {
     pub im: f64,
 }
 
+impl core::ops::Neg for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        <Self as ComplexField>::neg(&self)
+    }
+}
 impl core::ops::Sub for c32 {
     type Output = c32;
 
@@ -64,6 +72,14 @@ impl core::ops::Add for c32 {
     }
 }
 
+impl core::ops::Neg for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        <Self as ComplexField>::neg(&self)
+    }
+}
 impl core::ops::Sub for c64 {
     type Output = c64;
 
@@ -2464,6 +2480,25 @@ unsafe impl<E: Entity> Sync for MatRef<'_, E> {}
 unsafe impl<E: Entity> Send for MatMut<'_, E> {}
 unsafe impl<E: Entity> Sync for MatMut<'_, E> {}
 
+#[doc(hidden)]
+#[inline]
+pub fn par_split_indices(n: usize, idx: usize, chunk_count: usize) -> (usize, usize) {
+    let chunk_size = n / chunk_count;
+    let rem = n % chunk_count;
+
+    let idx_to_col_start = move |idx| {
+        if idx < rem {
+            idx * (chunk_size + 1)
+        } else {
+            rem + idx * chunk_size
+        }
+    };
+
+    let start = idx_to_col_start(idx);
+    let end = idx_to_col_start(idx + 1);
+    (start, end - start)
+}
+
 impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[track_caller]
@@ -4019,6 +4054,18 @@ pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelis
         }
     }
     implementation(n_tasks, &op, parallelism);
+}
+
+#[doc(hidden)]
+pub struct Ptr<T>(pub *mut T);
+unsafe impl<T> Send for Ptr<T> {}
+unsafe impl<T> Sync for Ptr<T> {}
+impl<T> Copy for Ptr<T> {}
+impl<T> Clone for Ptr<T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 #[inline]
