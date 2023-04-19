@@ -20,11 +20,13 @@ pub fn tridiagonalize_in_place_req<E: Entity>(
         temp_mat_req::<E>(n, 1)?,
         temp_mat_req::<E>(n, 1)?,
         temp_mat_req::<E>(n, 1)?,
+        temp_mat_req::<E>(n, 1)?,
     ])
 }
 
 struct SymMatVecWithLhsUpdate<'a, E: Entity> {
     acc: MatMut<'a, E>,
+    acct: MatMut<'a, E>,
     lhs: MatMut<'a, E>,
     rhs: MatRef<'a, E>,
     u: MatRef<'a, E>,
@@ -48,6 +50,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
     fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
         let Self {
             acc,
+            acct,
             mut lhs,
             rhs,
             first_col,
@@ -60,6 +63,8 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
         let n = lhs.nrows();
         debug_assert!(acc.nrows() == n);
         debug_assert!(acc.ncols() == 1);
+        debug_assert!(acct.nrows() == n);
+        debug_assert!(acct.ncols() == 1);
         debug_assert!(rhs.nrows() == n);
         debug_assert!(rhs.ncols() == 1);
         debug_assert!(u.nrows() == n);
@@ -71,6 +76,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
         debug_assert!(lhs.row_stride() == 1);
         debug_assert!(rhs.row_stride() == 1);
         debug_assert!(acc.row_stride() == 1);
+        debug_assert!(acct.row_stride() == 1);
         debug_assert!(u.row_stride() == 1);
         debug_assert!(y.row_stride() == 1);
 
@@ -78,6 +84,8 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
 
         let mut acc =
             unsafe { E::map(acc.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
+        let mut acct =
+            unsafe { E::map(acct.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
         let rhs = unsafe { E::map(rhs.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
         let u = unsafe { E::map(u.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
         let y = unsafe { E::map(y.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
@@ -317,18 +325,11 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 sum0 = E::simd_conj_mul_adde(simd, E::copy(&lhs0), rhs0, sum0);
             }
 
-            let mut sum = E::simd_reduce_add(simd, sum0);
-            let acc_ = E::from_units(E::map(
-                E::rb(E::as_ref(&acc)),
-                #[inline(always)]
-                |slice| slice[j].clone(),
-            ));
-
-            sum = sum.add(&acc_);
+            let sum = E::simd_reduce_add(simd, sum0);
             let sum = E::into_units(sum);
 
             E::map(
-                E::zip(E::rb_mut(E::as_mut(&mut acc)), sum),
+                E::zip(E::rb_mut(E::as_mut(&mut acct)), sum),
                 #[inline(always)]
                 |(slice, sum)| slice[j] = sum,
             );
@@ -599,35 +600,21 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             }
 
             {
-                let mut sum = E::simd_reduce_add(simd, sum0).add(&sum0_scalar);
-                let acc_ = E::from_units(E::map(
-                    E::rb(E::as_ref(&acc)),
-                    #[inline(always)]
-                    |slice| slice[j].clone(),
-                ));
-
-                sum = sum.add(&acc_);
+                let sum = E::simd_reduce_add(simd, sum0).add(&sum0_scalar);
                 let sum = E::into_units(sum);
 
                 E::map(
-                    E::zip(E::rb_mut(E::as_mut(&mut acc)), sum),
+                    E::zip(E::rb_mut(E::as_mut(&mut acct)), sum),
                     #[inline(always)]
                     |(slice, sum)| slice[j] = sum,
                 );
             }
             {
-                let mut sum = E::simd_reduce_add(simd, sum1);
-                let acc_ = E::from_units(E::map(
-                    E::rb(E::as_ref(&acc)),
-                    #[inline(always)]
-                    |slice| slice[j + 1].clone(),
-                ));
-
-                sum = sum.add(&acc_);
+                let sum = E::simd_reduce_add(simd, sum1);
                 let sum = E::into_units(sum);
 
                 E::map(
-                    E::zip(E::rb_mut(E::as_mut(&mut acc)), sum),
+                    E::zip(E::rb_mut(E::as_mut(&mut acct)), sum),
                     #[inline(always)]
                     |(slice, sum)| slice[j + 1] = sum,
                 );
@@ -825,11 +812,13 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
     let (mut u, stack) = temp_mat_zeroed::<E>(n, 1, stack);
     let (mut y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
-    let (mut v, _) = temp_mat_zeroed::<E>(n, 1, stack);
+    let (mut v, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+    let (mut w, _) = temp_mat_zeroed::<E>(n, 1, stack);
 
     let mut u = u.as_mut();
     let mut y = y.as_mut();
     let mut v = v.as_mut();
+    let mut w = w.as_mut();
 
     let arch = pulp::Arch::new();
     for k in 0..n - 1 {
@@ -842,6 +831,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         let [psi, mut y21] = y.split_at_row(1);
         let [_, v] = v.rb_mut().split_at_row(k);
         let [_, mut v21] = v.split_at_row(1);
+        let [_, w] = w.rb_mut().split_at_row(k);
+        let [_, mut w21] = w.split_at_row(1);
 
         if k > 0 {
             let nu = nu.read(0, 0);
@@ -872,7 +863,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         if k > 0 {
             if E::HAS_SIMD {
                 zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::zero()));
-                let acc = v21.rb_mut().col(0);
+                let acc = v21.rb_mut();
+                let acct = w21.rb_mut();
                 let lhs = a22.rb_mut();
                 let rhs = a21.rb();
 
@@ -884,6 +876,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
                 arch.dispatch(SymMatVecWithLhsUpdate {
                     acc,
+                    acct,
                     lhs,
                     rhs,
                     first_col,
@@ -892,7 +885,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     y,
                 });
 
-                zipped!(y21.rb_mut(), v21.rb()).for_each(|mut y, v| y.write(v.read()));
+                zipped!(y21.rb_mut(), v21.rb(), w21.rb())
+                    .for_each(|mut y, v, w| y.write(v.read().add(&w.read())));
             } else {
                 triangular::matmul(
                     a22.rb_mut(),
@@ -1100,6 +1094,8 @@ mod tests {
                 parallelism,
                 make_stack!(tridiagonalize_in_place_req::<c64>(n, parallelism)),
             );
+
+            dbgf::dbgf!("6.2?", &trid);
 
             let mut copy = mat.clone();
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
