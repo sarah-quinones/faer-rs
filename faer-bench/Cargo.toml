@@ -27,3 +27,11 @@ num-complex = "0.4.3"
 
 [build-dependencies]
 cc = "1.0.79"
+
+[features]
+default = ["faer", "eigen", "ndarray", "nalgebra"]
+
+faer = []
+eigen = []
+ndarray = []
+nalgebra = []

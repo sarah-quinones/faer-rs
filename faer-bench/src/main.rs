@@ -107,6 +107,19 @@ macro_rules! printwriteln {
     };
 }
 
+#[cfg(feature = "eigen")]
+macro_rules! ifeigen {
+    ($arg: expr) => {{
+        &$arg
+    }};
+}
+#[cfg(not(feature = "eigen"))]
+macro_rules! ifeigen {
+    ($arg: expr) => {{
+        &vec![Duration::ZERO; N]
+    }};
+}
+
 fn print_results(
     output: &mut dyn Write,
     input_sizes: &[usize],
@@ -149,6 +162,7 @@ fn print_results(
     Ok(())
 }
 
+#[cfg(feature = "eigen")]
 mod eigen {
     extern "C" {
         pub fn gemm_f32(out: *mut f64, inputs: *const usize, count: usize);
@@ -216,8 +230,10 @@ fn eigen(
     v.into_iter().map(Duration::from_secs_f64).collect()
 }
 
+const N: usize = 12;
 fn main() -> Result<()> {
     let input_sizes = vec![32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
+    assert!(N == input_sizes.len());
 
     {
         println!("f32");
@@ -238,7 +254,7 @@ fn main() -> Result<()> {
             &gemm::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &gemm::ndarray::<f32>(&input_sizes),
             &gemm::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::gemm_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::gemm_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -259,7 +275,7 @@ fn main() -> Result<()> {
             &trsm::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &trsm::ndarray::<f32>(&input_sizes),
             &trsm::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::trsm_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::trsm_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -279,7 +295,7 @@ fn main() -> Result<()> {
             &tr_inverse::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &tr_inverse::ndarray::<f32>(&input_sizes),
             &tr_inverse::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::trinv_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::trinv_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -299,7 +315,7 @@ fn main() -> Result<()> {
             &cholesky::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &cholesky::ndarray::<f32>(&input_sizes),
             &cholesky::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::chol_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::chol_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -320,7 +336,7 @@ fn main() -> Result<()> {
             &partial_piv_lu::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &partial_piv_lu::ndarray::<f32>(&input_sizes),
             &partial_piv_lu::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::plu_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::plu_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -341,7 +357,7 @@ fn main() -> Result<()> {
             &full_piv_lu::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &full_piv_lu::ndarray::<f32>(&input_sizes),
             &full_piv_lu::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::flu_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::flu_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -362,7 +378,7 @@ fn main() -> Result<()> {
             &no_piv_qr::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &no_piv_qr::ndarray::<f32>(&input_sizes),
             &no_piv_qr::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::qr_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::qr_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -383,7 +399,7 @@ fn main() -> Result<()> {
             &col_piv_qr::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &col_piv_qr::ndarray::<f32>(&input_sizes),
             &col_piv_qr::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::colqr_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::colqr_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -403,7 +419,7 @@ fn main() -> Result<()> {
             &inverse::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &inverse::ndarray::<f32>(&input_sizes),
             &inverse::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::inverse_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::inverse_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -423,7 +439,7 @@ Computing the SVD of a square matrix with dimension `n`.
             &svd::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &svd::ndarray::<f32>(&input_sizes),
             &svd::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::svd_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::svd_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -443,7 +459,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
             &rectangular_svd::ndarray::<f32>(&input_sizes),
             &rectangular_svd::nalgebra::<f32>(&input_sizes),
-            &eigen(eigen::rectangular_svd_f32, &input_sizes),
+            ifeigen!(&eigen(eigen::rectangular_svd_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -466,7 +482,7 @@ Multiplication of two square matrices of dimension `n`.
             &gemm::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &gemm::ndarray::<f64>(&input_sizes),
             &gemm::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::gemm_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::gemm_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -483,7 +499,7 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of dimension
             &trsm::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &trsm::ndarray::<f64>(&input_sizes),
             &trsm::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::trsm_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::trsm_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -503,7 +519,7 @@ Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
             &tr_inverse::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &tr_inverse::ndarray::<f64>(&input_sizes),
             &tr_inverse::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::trinv_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::trinv_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -523,7 +539,7 @@ Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower t
             &cholesky::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &cholesky::ndarray::<f64>(&input_sizes),
             &cholesky::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::chol_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::chol_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -540,7 +556,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a perm
             &partial_piv_lu::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &partial_piv_lu::ndarray::<f64>(&input_sizes),
             &partial_piv_lu::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::plu_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::plu_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -557,7 +573,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and 
             &full_piv_lu::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &full_piv_lu::ndarray::<f64>(&input_sizes),
             &full_piv_lu::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::flu_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::flu_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -574,7 +590,7 @@ Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and
             &no_piv_qr::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &no_piv_qr::ndarray::<f64>(&input_sizes),
             &no_piv_qr::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::qr_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::qr_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -591,7 +607,7 @@ Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutat
             &col_piv_qr::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &col_piv_qr::ndarray::<f64>(&input_sizes),
             &col_piv_qr::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::colqr_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::colqr_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -611,7 +627,7 @@ Computing the inverse of a square matrix with dimension `n`.
             &inverse::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &inverse::ndarray::<f64>(&input_sizes),
             &inverse::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::inverse_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::inverse_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -631,7 +647,7 @@ Computing the SVD of a square matrix with dimension `n`.
             &svd::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &svd::ndarray::<f64>(&input_sizes),
             &svd::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::svd_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::svd_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -651,7 +667,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
             &rectangular_svd::ndarray::<f64>(&input_sizes),
             &rectangular_svd::nalgebra::<f64>(&input_sizes),
-            &eigen(eigen::rectangular_svd_f64, &input_sizes),
+            ifeigen!(&eigen(eigen::rectangular_svd_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -674,7 +690,7 @@ Multiplication of two square matrices of dimension `n`.
             &gemm::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &gemm::ndarray::<Cplx32>(&input_sizes),
             &gemm::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::gemm_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::gemm_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -691,7 +707,7 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of dimension
             &trsm::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &trsm::ndarray::<Cplx32>(&input_sizes),
             &trsm::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::trsm_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::trsm_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -711,7 +727,7 @@ Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
             &tr_inverse::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &tr_inverse::ndarray::<Cplx32>(&input_sizes),
             &tr_inverse::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::trinv_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::trinv_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -731,7 +747,7 @@ Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower t
             &cholesky::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &cholesky::ndarray::<Cplx32>(&input_sizes),
             &cholesky::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::chol_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::chol_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -748,7 +764,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a perm
             &partial_piv_lu::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &partial_piv_lu::ndarray::<Cplx32>(&input_sizes),
             &partial_piv_lu::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::plu_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::plu_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -765,7 +781,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and 
             &full_piv_lu::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &full_piv_lu::ndarray::<Cplx32>(&input_sizes),
             &full_piv_lu::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::flu_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::flu_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -782,7 +798,7 @@ Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and
             &no_piv_qr::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &no_piv_qr::ndarray::<Cplx32>(&input_sizes),
             &no_piv_qr::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::qr_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::qr_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -799,7 +815,7 @@ Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutat
             &col_piv_qr::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &col_piv_qr::ndarray::<Cplx32>(&input_sizes),
             &col_piv_qr::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::colqr_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::colqr_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -819,7 +835,7 @@ Computing the inverse of a square matrix with dimension `n`.
             &inverse::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &inverse::ndarray::<Cplx32>(&input_sizes),
             &inverse::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::inverse_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::inverse_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -839,7 +855,7 @@ Computing the SVD of a square matrix with dimension `n`.
             &svd::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &svd::ndarray::<Cplx32>(&input_sizes),
             &svd::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::svd_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::svd_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -859,7 +875,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
             &rectangular_svd::ndarray::<Cplx32>(&input_sizes),
             &rectangular_svd::nalgebra::<Cplx32>(&input_sizes),
-            &eigen(eigen::rectangular_svd_c32, &input_sizes),
+            ifeigen!(&eigen(eigen::rectangular_svd_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -882,7 +898,7 @@ Multiplication of two square matrices of dimension `n`.
             &gemm::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &gemm::ndarray::<Cplx64>(&input_sizes),
             &gemm::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::gemm_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::gemm_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -899,7 +915,7 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of dimension
             &trsm::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &trsm::ndarray::<Cplx64>(&input_sizes),
             &trsm::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::trsm_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::trsm_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -919,7 +935,7 @@ Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
             &tr_inverse::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &tr_inverse::ndarray::<Cplx64>(&input_sizes),
             &tr_inverse::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::trinv_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::trinv_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -939,7 +955,7 @@ Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower t
             &cholesky::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &cholesky::ndarray::<Cplx64>(&input_sizes),
             &cholesky::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::chol_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::chol_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -956,7 +972,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a perm
             &partial_piv_lu::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &partial_piv_lu::ndarray::<Cplx64>(&input_sizes),
             &partial_piv_lu::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::plu_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::plu_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -973,7 +989,7 @@ Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and 
             &full_piv_lu::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &full_piv_lu::ndarray::<Cplx64>(&input_sizes),
             &full_piv_lu::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::flu_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::flu_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -990,7 +1006,7 @@ Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and
             &no_piv_qr::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &no_piv_qr::ndarray::<Cplx64>(&input_sizes),
             &no_piv_qr::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::qr_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::qr_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -1007,7 +1023,7 @@ Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutat
             &col_piv_qr::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &col_piv_qr::ndarray::<Cplx64>(&input_sizes),
             &col_piv_qr::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::colqr_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::colqr_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -1027,7 +1043,7 @@ Computing the inverse of a square matrix with dimension `n`.
             &inverse::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &inverse::ndarray::<Cplx64>(&input_sizes),
             &inverse::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::inverse_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::inverse_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -1047,7 +1063,7 @@ Computing the SVD of a square matrix with dimension `n`.
             &svd::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &svd::ndarray::<Cplx64>(&input_sizes),
             &svd::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::svd_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::svd_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
 
@@ -1067,7 +1083,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
             &rectangular_svd::ndarray::<Cplx64>(&input_sizes),
             &rectangular_svd::nalgebra::<Cplx64>(&input_sizes),
-            &eigen(eigen::rectangular_svd_c64, &input_sizes),
+            ifeigen!(&eigen(eigen::rectangular_svd_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
