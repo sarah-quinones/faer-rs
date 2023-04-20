@@ -29,9 +29,7 @@ num-complex = "0.4.3"
 cc = "1.0.79"
 
 [features]
-default = ["faer", "eigen", "ndarray", "nalgebra"]
+default = ["eigen", "nalgebra"]
 
-faer = []
 eigen = []
-ndarray = []
 nalgebra = []
