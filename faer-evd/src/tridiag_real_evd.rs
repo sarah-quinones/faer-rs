@@ -2,7 +2,8 @@ use assert2::debug_assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::{inner_prod::inner_prod_with_conj, matmul},
-    temp_mat_req, temp_mat_uninit, zipped, Conj, Entity, MatMut, MatRef, Parallelism, RealField, ComplexField,
+    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    RealField,
 };
 use reborrow::*;
 
@@ -28,25 +29,70 @@ fn secular_eq<E: RealField>(
     shift: &E,
     n: usize,
 ) -> E {
-    debug_assert!(d.row_stride() == 1);
-    debug_assert!(z.row_stride() == 1);
+    assert!(d.row_stride() == 1);
+    assert!(z.row_stride() == 1);
     debug_assert!(d.nrows() == z.nrows());
     debug_assert!(d.nrows() >= n);
     debug_assert!(z.nrows() >= n);
 
-    let mut res = rho.inv();
+    let mut res0 = rho.inv();
+    let mut res1 = E::zero();
+    let mut res2 = E::zero();
+    let mut res3 = E::zero();
+    let mut res4 = E::zero();
+    let mut res5 = E::zero();
+    let mut res6 = E::zero();
+    let mut res7 = E::zero();
 
     unsafe {
-        for i in 0..n {
-            let z = z.read_unchecked(i, 0);
-            let d = d.read_unchecked(i, 0);
+        let mut i = 0;
+
+        while i < n / 8 * 8 {
+            let z0 = z.read_unchecked(i + 0, 0);
+            let d0 = d.read_unchecked(i + 0, 0);
+            let z1 = z.read_unchecked(i + 1, 0);
+            let d1 = d.read_unchecked(i + 1, 0);
+            let z2 = z.read_unchecked(i + 2, 0);
+            let d2 = d.read_unchecked(i + 2, 0);
+            let z3 = z.read_unchecked(i + 3, 0);
+            let d3 = d.read_unchecked(i + 3, 0);
+            let z4 = z.read_unchecked(i + 4, 0);
+            let d4 = d.read_unchecked(i + 4, 0);
+            let z5 = z.read_unchecked(i + 5, 0);
+            let d5 = d.read_unchecked(i + 5, 0);
+            let z6 = z.read_unchecked(i + 6, 0);
+            let d6 = d.read_unchecked(i + 6, 0);
+            let z7 = z.read_unchecked(i + 7, 0);
+            let d7 = d.read_unchecked(i + 7, 0);
 
             // res = res + z * (z / (d - arg))
-            res = res.add(&z.mul(&z.div(&d.sub(shift).sub(mu))));
+            res0 = res0.add(&z0.mul(&z0.div(&d0.sub(shift).sub(mu))));
+            res1 = res1.add(&z1.mul(&z1.div(&d1.sub(shift).sub(mu))));
+            res2 = res2.add(&z2.mul(&z2.div(&d2.sub(shift).sub(mu))));
+            res3 = res3.add(&z3.mul(&z3.div(&d3.sub(shift).sub(mu))));
+            res4 = res4.add(&z4.mul(&z4.div(&d4.sub(shift).sub(mu))));
+            res5 = res5.add(&z5.mul(&z5.div(&d5.sub(shift).sub(mu))));
+            res6 = res6.add(&z6.mul(&z6.div(&d6.sub(shift).sub(mu))));
+            res7 = res7.add(&z7.mul(&z7.div(&d7.sub(shift).sub(mu))));
+
+            i += 8;
+        }
+
+        while i < n {
+            let z0 = z.read_unchecked(i, 0);
+            let d0 = d.read_unchecked(i, 0);
+
+            // res = res + z * (z / (d - arg))
+            res0 = res0.add(&z0.mul(&z0.div(&d0.sub(shift).sub(mu))));
+
+            i += 1;
         }
     }
 
-    res
+    E::add(
+        &E::add(&E::add(&res0, &res1), &E::add(&res2, &res3)),
+        &E::add(&E::add(&res4, &res5), &E::add(&res6, &res7)),
+    )
 }
 
 fn compute_eigenvalues<E: RealField>(
@@ -68,8 +114,9 @@ fn compute_eigenvalues<E: RealField>(
 
     let one_half = E::from_f64(0.5);
     let two = E::from_f64(2.0);
+    let eight = E::from_f64(8.0);
 
-    for i in 0..n {
+    'kth_iter: for i in 0..n {
         // left = d_i
         let left = d.read(i, 0);
 
@@ -92,41 +139,310 @@ fn compute_eigenvalues<E: RealField>(
             right.clone()
         };
 
-        // for now we just use bisection
-        // PERF: converge faster by using rational interpolation
+        enum SecantError {
+            OutOfBounds,
+            PrecisionLimitReached,
+        }
 
-        let (mut left_shifted, mut right_shifted) = if shift == left {
-            (E::zero(), right.sub(&left))
-        } else {
-            (right.sub(&left).neg(), E::zero())
+        let secant = {
+            #[inline(always)]
+            |mut mu_cur: E, mut mu_prev: E, mut f_cur: E, mut f_prev: E| {
+                if f_prev.abs() < f_cur.abs() {
+                    core::mem::swap(&mut f_prev, &mut f_cur);
+                    core::mem::swap(&mut mu_prev, &mut mu_cur);
+                }
+
+                let mut left_candidate = None;
+                let mut right_candidate = None;
+
+                let mut use_bisection = false;
+                let same_sign = f_prev.mul(&f_cur) > E::zero();
+                if !same_sign {
+                    let (min, max) = if mu_cur < mu_prev {
+                        (mu_cur.clone(), mu_prev.clone())
+                    } else {
+                        (mu_prev.clone(), mu_cur.clone())
+                    };
+                    left_candidate = Some(min);
+                    right_candidate = Some(max);
+                }
+
+                let mut err = SecantError::PrecisionLimitReached;
+
+                while f_cur != E::zero()
+                    && ((mu_cur.sub(&mu_prev)).abs()
+                        > eight.mul(&epsilon).mul(&if mu_cur.abs() > mu_prev.abs() {
+                            mu_cur.abs()
+                        } else {
+                            mu_prev.abs()
+                        }))
+                    && ((f_cur.sub(&f_prev)).abs() > epsilon)
+                    && !use_bisection
+                {
+                    // rational interpolation: fit a function of the form a / mu + b through
+                    // the two previous iterates and use its
+                    // zero to compute the next iterate
+                    let a = (f_cur.sub(&f_prev))
+                        .mul(&mu_prev.mul(&mu_cur))
+                        .div(&mu_prev.sub(&mu_cur));
+                    let b = f_cur.sub(&a.div(&mu_cur));
+                    let mu_zero = a.div(&b).neg();
+                    let f_zero = secular_eq(d, z, &rho, &mu_zero, &shift, n);
+
+                    if f_zero < E::zero() {
+                        left_candidate = Some(mu_zero.clone());
+                    } else {
+                        right_candidate = Some(mu_zero.clone());
+                    }
+
+                    mu_prev = mu_cur;
+                    f_prev = f_cur;
+                    mu_cur = mu_zero;
+                    f_cur = f_zero.clone();
+
+                    if shift == left && (mu_cur < E::zero() || mu_cur > (right.sub(&left))) {
+                        err = SecantError::OutOfBounds;
+                        use_bisection = true;
+                    }
+                    if shift == right && (mu_cur < (right.sub(&left)).neg() || mu_cur > E::zero()) {
+                        err = SecantError::OutOfBounds;
+                        use_bisection = true;
+                    }
+                    if f_cur.abs() > f_prev.abs() {
+                        // find mu such that a / mu + b = -k * f_zero
+                        // a / mu = -f_zero - b
+                        // mu = -a / (f_zero + b)
+                        let mut k = E::one();
+                        for _ in 0..4 {
+                            let mu_opposite = a.neg().div(&k.mul(&f_zero).add(&b));
+                            let f_opposite = secular_eq(d, z, &rho, &mu_opposite, &shift, n);
+                            if f_zero < E::zero() && f_opposite >= E::zero() {
+                                // this will be our right candidate
+                                right_candidate = Some(mu_opposite);
+                                break;
+                            } else if f_zero > E::zero() && f_opposite <= E::zero() {
+                                // this will be our left candidate
+                                left_candidate = Some(mu_opposite);
+                                break;
+                            }
+                            k = k.scale_power_of_two(&two);
+                        }
+                        use_bisection = true;
+                    }
+                }
+                (use_bisection, mu_cur, left_candidate, right_candidate, err)
+            }
         };
 
-        while right_shifted.sub(&left_shifted)
-            > *max(
-                &two.mul(&epsilon)
-                    .mul(&max(left_shifted.abs(), right_shifted.abs())),
-                &consider_zero_threshold,
-            )
-        {
-            assert!(right_shifted > left_shifted);
-            let mid_shifted = left_shifted.add(
-                &right_shifted
-                    .sub(&left_shifted)
-                    .scale_power_of_two(&one_half),
-            );
-            let f_mid = secular_eq(d, z, &rho, &mid_shifted, &shift, n);
-            if f_mid == E::zero() {
-                break;
-            } else if f_mid > E::zero() {
-                right_shifted = mid_shifted;
+        let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) = if shift == left {
+            let (right_shifted, f_right) = if last_i {
+                (
+                    right.sub(&left),
+                    secular_eq(d, z, &rho, &right.sub(&left), &shift, n),
+                )
             } else {
-                left_shifted = mid_shifted;
+                (
+                    right.sub(&left).scale_power_of_two(&one_half),
+                    f_mid_left_shift.clone(),
+                )
+            };
+            (E::zero(), E::zero().inv().neg(), right_shifted, f_right)
+        } else {
+            (
+                right.sub(&left).neg().scale_power_of_two(&one_half),
+                f_mid_left_shift.clone(),
+                E::zero(),
+                E::zero().inv(),
+            )
+        };
+
+        let mut iteration_count = 0;
+        let mut f_prev = f_mid_left_shift;
+
+        let half0 = one_half.clone();
+        let half1 = half0.scale_power_of_two(&half0);
+        let half2 = half1.scale_power_of_two(&half1);
+        let half3 = half2.scale_power_of_two(&half2);
+        let half4 = half3.scale_power_of_two(&half3);
+        let half5 = half4.scale_power_of_two(&half4);
+        let half6 = half5.scale_power_of_two(&half5);
+        let half7 = half6.scale_power_of_two(&half6);
+
+        let mu_values = if shift == left {
+            [
+                right_shifted.scale_power_of_two(&half7),
+                right_shifted.scale_power_of_two(&half6),
+                right_shifted.scale_power_of_two(&half5),
+                right_shifted.scale_power_of_two(&half4),
+                right_shifted.scale_power_of_two(&half3),
+                right_shifted.scale_power_of_two(&half2),
+                right_shifted.scale_power_of_two(&half1),
+                right_shifted.scale_power_of_two(&half0),
+            ]
+        } else {
+            [
+                left_shifted.scale_power_of_two(&half7),
+                left_shifted.scale_power_of_two(&half6),
+                left_shifted.scale_power_of_two(&half5),
+                left_shifted.scale_power_of_two(&half4),
+                left_shifted.scale_power_of_two(&half3),
+                left_shifted.scale_power_of_two(&half2),
+                left_shifted.scale_power_of_two(&half1),
+                left_shifted.scale_power_of_two(&half0),
+            ]
+        };
+
+        let f_values = [
+            secular_eq(d, z, &rho, &mu_values[0], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[1], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[2], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[3], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[4], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[5], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[6], &shift, n),
+            secular_eq(d, z, &rho, &mu_values[7], &shift, n),
+        ];
+
+        if shift == left {
+            let mut i = 0;
+            for (mu, f) in core::iter::zip(mu_values.clone(), f_values.clone()) {
+                if f < E::zero() {
+                    left_shifted = mu;
+                    f_left = f;
+                    i += 1;
+                }
+            }
+            if i < f_values.len() {
+                right_shifted = mu_values[i].clone();
+                f_right = f_values[i].clone();
+            }
+        } else {
+            let mut i = 0;
+            for (mu, f) in core::iter::zip(mu_values.clone(), f_values.clone()) {
+                if f > E::zero() {
+                    right_shifted = mu;
+                    f_right = f;
+                    i += 1;
+                }
+            }
+            if i < f_values.len() {
+                left_shifted = mu_values[i].clone();
+                f_left = f_values[i].clone();
             }
         }
 
-        let mu = left_shifted.add(&right_shifted).mul(&one_half);
+        assert!(!(f_left > E::zero()));
+        assert!(!(f_right < E::zero()));
 
-        mus.write(i, 0, mu);
+        // try bisection just to get a good guess for secant
+        while right_shifted.sub(&left_shifted)
+            > two
+                .mul(&epsilon)
+                .mul(&if left_shifted.abs() > right_shifted.abs() {
+                    left_shifted.abs()
+                } else {
+                    right_shifted.abs()
+                })
+        {
+            let mid_shifted_arithmetic =
+                (left_shifted.add(&right_shifted)).scale_power_of_two(&one_half);
+            let mut mid_shifted_geometric =
+                left_shifted.abs().sqrt().mul(&right_shifted.abs().sqrt());
+            if left_shifted < E::zero() {
+                mid_shifted_geometric = mid_shifted_geometric.neg();
+            }
+            let mid_shifted = if mid_shifted_geometric == E::zero() {
+                mid_shifted_arithmetic
+            } else {
+                mid_shifted_geometric
+            };
+            let f_mid = secular_eq(d, z, &rho, &mid_shifted, &shift, n);
+
+            if f_mid == E::zero() {
+                shifts.write(i, 0, shift.clone());
+                mus.write(i, 0, mid_shifted);
+                continue 'kth_iter;
+            } else if f_mid > E::zero() {
+                right_shifted = mid_shifted;
+                f_prev = f_right;
+                f_right = f_mid;
+            } else {
+                left_shifted = mid_shifted;
+                f_prev = f_left;
+                f_left = f_mid;
+            }
+
+            if iteration_count == 4 {
+                break;
+            }
+
+            iteration_count += 1;
+        }
+
+        // try secant with the guess from bisection
+        let args = if left_shifted == E::zero() {
+            (
+                right_shifted.add(&right_shifted),
+                right_shifted.clone(),
+                f_prev,
+                f_right,
+            )
+        } else if right_shifted == E::zero() {
+            (
+                left_shifted.add(&left_shifted),
+                left_shifted.clone(),
+                f_prev,
+                f_left,
+            )
+        } else {
+            (left_shifted.clone(), right_shifted.clone(), f_left, f_right)
+        };
+
+        let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
+            secant(args.0, args.1, args.2, args.3);
+
+        match (left_candidate, right_candidate) {
+            (Some(left), Some(right)) if left < right => {
+                if left > left_shifted {
+                    left_shifted = left;
+                }
+                if right < right_shifted {
+                    right_shifted = right;
+                }
+            }
+            _ => (),
+        }
+
+        // secant failed, use bisection again
+
+        if use_bisection {
+            while right_shifted.sub(&left_shifted)
+                > *max(
+                    &two.mul(&epsilon)
+                        .mul(&max(left_shifted.abs(), right_shifted.abs())),
+                    &consider_zero_threshold,
+                )
+            {
+                assert!(right_shifted > left_shifted);
+                let mid_shifted = left_shifted.add(
+                    &right_shifted
+                        .sub(&left_shifted)
+                        .scale_power_of_two(&one_half),
+                );
+                let f_mid = secular_eq(d, z, &rho, &mid_shifted, &shift, n);
+                if f_mid == E::zero() {
+                    break;
+                } else if f_mid > E::zero() {
+                    right_shifted = mid_shifted;
+                } else {
+                    left_shifted = mid_shifted;
+                }
+
+                mu_cur = left_shifted.add(&right_shifted).mul(&one_half);
+            }
+        }
+
+        mus.write(i, 0, mu_cur);
         shifts.write(i, 0, shift);
     }
     for i in n..full_n {
@@ -203,7 +519,76 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let n = diag.len();
 
     if n <= 1 {
-        zipped!(u).for_each(|mut x| x.write(E::one()));
+        zipped!(u.rb_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+        return;
+    }
+
+    if n == 2 {
+        let a = diag[0].clone();
+        let d = diag[1].clone();
+        let b = offdiag[0].clone();
+
+        let half = E::Real::from_f64(0.5);
+
+        let t0 = ((a.sub(&d))
+            .abs2()
+            .add(&b.abs2().scale_power_of_two(&E::Real::from_f64(4.0))))
+        .sqrt()
+        .scale_power_of_two(&half);
+        let t1 = (a.add(&d)).scale_power_of_two(&half);
+
+        let r0 = t1.sub(&t0);
+        let r1 = t1.add(&t0);
+
+        let tol = max(r1.abs(), r0.abs()).mul(&epsilon);
+
+        if r1.sub(&r0) <= tol {
+            u.write(0, 0, E::one());
+            u.write(1, 0, E::zero());
+            u.write(0, 1, E::zero());
+            u.write(1, 1, E::one());
+        } else if b.abs() <= tol {
+            if diag[0] < diag[1] {
+                u.write(0, 0, E::one());
+                u.write(1, 0, E::zero());
+                u.write(0, 1, E::zero());
+                u.write(1, 1, E::one());
+            } else {
+                u.write(0, 0, E::zero());
+                u.write(1, 0, E::one());
+                u.write(0, 1, E::one());
+                u.write(1, 1, E::zero());
+            }
+        } else {
+            let tau = (d.sub(&a)).div(&b).scale_power_of_two(&half);
+            let mut t = tau.abs().add(&(E::one().add(&tau.abs2())).sqrt()).inv();
+            if tau < E::zero() {
+                t = t.neg();
+            }
+
+            let c = (E::one().add(&t.abs2())).sqrt();
+            let s = c.mul(&t);
+
+            let r = c.abs2().add(&s.abs2()).sqrt();
+            let c = c.div(&r);
+            let s = s.div(&r);
+
+            let r0_reconstructed = c.mul(&a).sub(&s.mul(&b)).div(&c);
+            if r0.sub(&r0_reconstructed).abs() < r1.sub(&r0_reconstructed) {
+                u.write(0, 0, c.clone());
+                u.write(1, 0, s.neg());
+                u.write(0, 1, s);
+                u.write(1, 1, c);
+            } else {
+                u.write(0, 1, c.clone());
+                u.write(1, 1, s.neg());
+                u.write(0, 0, s);
+                u.write(1, 0, c);
+            }
+        }
+
+        diag[0] = r0;
+        diag[1] = r1;
         return;
     }
 
@@ -292,7 +677,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // we compute the permutation Pl_after that places the deflated eigenvalues at the end
     //
     // we compute the EVD of:
-    // Pl_after × H × Pl_before × (diag([D0 D1]) + rho×z×z.T) × Pl_before.T × H.T × Pl_after.T = Q×W×Q.T
+    // Pl_after × H × Pl_before × (diag([D0 D1]) + rho×z×z.T) × Pl_before.T × H.T × Pl_after.T =
+    // Q×W×Q.T
     //
     // we sort the eigenvalues in W
     // Pr × W × Pr.T = E
@@ -586,7 +972,6 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                     zipped!(col.rb_mut(), householder)
                         .for_each(|mut u, h| u.write(u.read().sub(&dot.mul(&h.read()))));
                 }
-
             }
             idx += run_len;
         }

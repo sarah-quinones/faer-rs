@@ -23,7 +23,7 @@ reborrow = "0.5"
 openmp-sys = "1.2.3"
 num-traits = "0.2.15"
 coe-rs = "0.1.2"
-num-complex = "0.4.3" 
+num-complex = "0.4.3"
 
 [build-dependencies]
 cc = "1.0.79"

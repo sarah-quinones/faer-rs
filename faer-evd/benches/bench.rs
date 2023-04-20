@@ -1,7 +1,10 @@
 use criterion::*;
 use dyn_stack::{DynStack, GlobalMemBuffer};
-use faer_core::{c32, c64, zipped, ComplexField, Mat, Parallelism};
-use faer_evd::tridiag::{tridiagonalize_in_place, tridiagonalize_in_place_req};
+use faer_core::{c32, c64, zipped, ComplexField, Mat, Parallelism, RealField};
+use faer_evd::{
+    tridiag::{tridiagonalize_in_place, tridiagonalize_in_place_req},
+    tridiag_real_evd::{compute_tridiag_real_evd, compute_tridiag_real_evd_req},
+};
 use reborrow::*;
 use std::any::type_name;
 
@@ -14,6 +17,26 @@ fn random<E: 'static>() -> E {
         coe::coerce_static(c32::new(rand::random(), rand::random()))
     } else if coe::is_same::<c64, E>() {
         coe::coerce_static(c64::new(rand::random(), rand::random()))
+    } else {
+        panic!()
+    }
+}
+
+fn epsilon<E: 'static>() -> E {
+    if coe::is_same::<f32, E>() {
+        coe::coerce_static(f32::EPSILON)
+    } else if coe::is_same::<f64, E>() {
+        coe::coerce_static(f64::EPSILON)
+    } else {
+        panic!()
+    }
+}
+
+fn min_positive<E: 'static>() -> E {
+    if coe::is_same::<f32, E>() {
+        coe::coerce_static(f32::MIN_POSITIVE)
+    } else if coe::is_same::<f64, E>() {
+        coe::coerce_static(f64::MIN_POSITIVE)
     } else {
         panic!()
     }
@@ -53,10 +76,144 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
     }
 }
 
+fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
+    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+        let diag = (0..n).map(|_| random::<E>()).collect::<Vec<_>>();
+        let offdiag = (0..n - 1).map(|_| random::<E>()).collect::<Vec<_>>();
+        let mut u = Mat::<E>::zeros(n, n);
+
+        let parallelism = Parallelism::None;
+        let mut mem =
+            GlobalMemBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
+        let mut stack = DynStack::new(&mut mem);
+
+        criterion.bench_function(
+            &format!("tridiag-evd-st-{}-{}", type_name::<E>(), n),
+            |bencher| {
+                bencher.iter(|| {
+                    let mut diag = diag.clone();
+                    let mut offdiag = offdiag.clone();
+                    compute_tridiag_real_evd(
+                        &mut diag,
+                        &mut offdiag,
+                        u.as_mut(),
+                        epsilon(),
+                        min_positive(),
+                        parallelism,
+                        stack.rb_mut(),
+                    );
+                });
+            },
+        );
+        let parallelism = Parallelism::Rayon(0);
+        let mut mem =
+            GlobalMemBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
+        let mut stack = DynStack::new(&mut mem);
+        criterion.bench_function(
+            &format!("tridiag-evd-mt-{}-{}", type_name::<E>(), n),
+            |bencher| {
+                bencher.iter(|| {
+                    let mut diag = diag.clone();
+                    let mut offdiag = offdiag.clone();
+                    compute_tridiag_real_evd(
+                        &mut diag,
+                        &mut offdiag,
+                        u.as_mut(),
+                        epsilon(),
+                        min_positive(),
+                        parallelism,
+                        stack.rb_mut(),
+                    );
+                });
+            },
+        );
+    }
+}
+
+fn evd<E: RealField>(criterion: &mut Criterion) {
+    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+        let mut mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let adjoint = mat.adjoint().to_owned();
+
+        zipped!(mat.as_mut(), adjoint.as_ref())
+            .for_each(|mut x, y| x.write(x.read().add(&y.read())));
+
+        let mut s = Mat::zeros(n, n);
+        let mut u = Mat::zeros(n, n);
+
+        {
+            let parallelism = Parallelism::None;
+            let mut mem = GlobalMemBuffer::new(
+                faer_evd::compute_symmetric_evd_req::<E>(
+                    n,
+                    faer_evd::ComputeVectors::Yes,
+                    parallelism,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            criterion.bench_function(
+                &format!("sym-evd-st-{}-{}", type_name::<E>(), n),
+                |bencher| {
+                    bencher.iter(|| {
+                        faer_evd::compute_symmetric_evd(
+                            mat.as_ref(),
+                            s.as_mut().diagonal(),
+                            Some(u.as_mut()),
+                            epsilon(),
+                            min_positive(),
+                            parallelism,
+                            stack.rb_mut(),
+                            Default::default(),
+                        );
+                    });
+                },
+            );
+        }
+        {
+            let parallelism = Parallelism::Rayon(0);
+            let mut mem = GlobalMemBuffer::new(
+                faer_evd::compute_symmetric_evd_req::<E>(
+                    n,
+                    faer_evd::ComputeVectors::Yes,
+                    parallelism,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            criterion.bench_function(
+                &format!("sym-evd-mt-{}-{}", type_name::<E>(), n),
+                |bencher| {
+                    bencher.iter(|| {
+                        faer_evd::compute_symmetric_evd(
+                            mat.as_ref(),
+                            s.as_mut().diagonal(),
+                            Some(u.as_mut()),
+                            epsilon(),
+                            min_positive(),
+                            parallelism,
+                            stack.rb_mut(),
+                            Default::default(),
+                        );
+                    });
+                },
+            );
+        }
+    }
+}
+
 criterion_group!(
     benches,
     tridiagonalization::<f32>,
     tridiagonalization::<f64>,
     tridiagonalization::<c64>,
+    tridiagonal_evd::<f32>,
+    tridiagonal_evd::<f64>,
+    evd::<f32>,
+    evd::<f64>,
 );
 criterion_main!(benches);

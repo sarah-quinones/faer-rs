@@ -1289,6 +1289,10 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let n = acc.ncols();
     let k = lhs.ncols();
 
+    if m == 0 || n == 0 {
+        return;
+    }
+
     if m == 1 && n == 1 {
         let mut acc = acc;
         let ab = inner_prod::inner_prod_with_conj(lhs.transpose(), conj_lhs, rhs, conj_rhs);

@@ -806,7 +806,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
     assert!(a.row_stride() == 1);
 
     let n = a.nrows();
-    if n <= 2 {
+    if n < 2 {
         return;
     }
 
