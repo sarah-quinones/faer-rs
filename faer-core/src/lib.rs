@@ -15,6 +15,9 @@ use zip::Zip;
 extern crate alloc;
 
 pub mod householder;
+#[doc(hidden)]
+pub mod jacobi;
+
 pub mod inverse;
 pub mod mul;
 pub mod permutation;

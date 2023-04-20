@@ -7,7 +7,8 @@ use faer_core::{
         inner_prod::inner_prod_with_conj,
         triangular::{self, BlockStructure},
     },
-    temp_mat_req, temp_mat_zeroed, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    parallelism_degree, temp_mat_req, temp_mat_zeroed, zipped, ComplexField, Conj, Entity, MatMut,
+    MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -19,8 +20,8 @@ pub fn tridiagonalize_in_place_req<E: Entity>(
     StackReq::try_all_of([
         temp_mat_req::<E>(n, 1)?,
         temp_mat_req::<E>(n, 1)?,
-        temp_mat_req::<E>(n, 1)?,
-        temp_mat_req::<E>(n, 1)?,
+        temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
+        temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
     ])
 }
 
@@ -812,8 +813,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
     let (mut u, stack) = temp_mat_zeroed::<E>(n, 1, stack);
     let (mut y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
-    let (mut v, stack) = temp_mat_zeroed::<E>(n, 1, stack);
-    let (mut w, _) = temp_mat_zeroed::<E>(n, 1, stack);
+    let (mut v, stack) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
+    let (mut w, _) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
 
     let mut u = u.as_mut();
     let mut y = y.as_mut();
@@ -825,14 +826,24 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         let a_cur = a.rb_mut().submatrix(k, k, n - k, n - k);
         let [mut a11, _, mut a21, mut a22] = a_cur.split_at(1, 1);
 
+        let parallelism = if n - k <= 256 {
+            Parallelism::None
+        } else {
+            parallelism
+        };
+
         let [_, u] = u.rb_mut().split_at_row(k);
         let [nu, mut u21] = u.split_at_row(1);
         let [_, y] = y.rb_mut().split_at_row(k);
         let [psi, mut y21] = y.split_at_row(1);
+
         let [_, v] = v.rb_mut().split_at_row(k);
-        let [_, mut v21] = v.split_at_row(1);
+        let [_, v21] = v.split_at_row(1);
+        let mut v21 = v21.subcols(0, parallelism_degree(parallelism));
+
         let [_, w] = w.rb_mut().split_at_row(k);
-        let [_, mut w21] = w.split_at_row(1);
+        let [_, w21] = w.split_at_row(1);
+        let w21 = w21.subcols(0, parallelism_degree(parallelism));
 
         if k > 0 {
             let nu = nu.read(0, 0);
@@ -862,31 +873,85 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
         if k > 0 {
             if E::HAS_SIMD {
-                zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::zero()));
-                let acc = v21.rb_mut();
-                let acct = w21.rb_mut();
-                let lhs = a22.rb_mut();
-                let rhs = a21.rb();
+                let ncols = (n - k - 1) as f64;
+                let n_threads = parallelism_degree(parallelism) as f64;
 
-                let u = u21.rb();
-                let y = y21.rb();
+                assert!(ncols < 2.0f64.powi(50)); // to check that integers can be
+                                                  // represented exactly as floats
 
-                let first_col = 0;
-                let last_col = n - k - 1;
+                let idx_to_col_start = |idx: usize| {
+                    let ncols = ncols;
+                    let idx_as_percent = idx as f64 / n_threads;
+                    let col_start_percent = 1.0 - (1.0 - idx_as_percent).sqrt();
+                    (col_start_percent * ncols) as usize
+                };
 
-                arch.dispatch(SymMatVecWithLhsUpdate {
-                    acc,
-                    acct,
-                    lhs,
-                    rhs,
-                    first_col,
-                    last_col,
-                    u,
-                    y,
-                });
+                faer_core::for_each_raw(
+                    parallelism_degree(parallelism),
+                    |idx| {
+                        let first_col = idx_to_col_start(idx);
+                        let last_col = idx_to_col_start(idx + 1);
 
-                zipped!(y21.rb_mut(), v21.rb(), w21.rb())
+                        let mut v21 = unsafe { v21.rb().col(idx).const_cast() };
+                        let mut w21 = unsafe { w21.rb().col(idx).const_cast() };
+
+                        zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::zero()));
+                        zipped!(w21.rb_mut()).for_each(|mut z| z.write(E::zero()));
+
+                        let acc = v21.rb_mut();
+                        let acct = w21.rb_mut();
+                        let lhs = unsafe { a22.rb().const_cast() };
+                        let rhs = a21.rb();
+
+                        let u = u21.rb();
+                        let y = y21.rb();
+
+                        // let first_col = 0;
+                        // let last_col = n - k - 1;
+
+                        arch.dispatch(SymMatVecWithLhsUpdate {
+                            acc,
+                            acct,
+                            lhs,
+                            rhs,
+                            first_col,
+                            last_col,
+                            u,
+                            y,
+                        });
+                    },
+                    parallelism,
+                );
+
+                // zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::zero()));
+                // let acc = v21.rb_mut();
+                // let acct = w21.rb_mut();
+                // let lhs = a22.rb_mut();
+                // let rhs = a21.rb();
+
+                // let u = u21.rb();
+                // let y = y21.rb();
+
+                // let first_col = 0;
+                // let last_col = n - k - 1;
+
+                // arch.dispatch(SymMatVecWithLhsUpdate {
+                //     acc,
+                //     acct,
+                //     lhs,
+                //     rhs,
+                //     first_col,
+                //     last_col,
+                //     u,
+                //     y,
+                // });
+
+                zipped!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
                     .for_each(|mut y, v, w| y.write(v.read().add(&w.read())));
+                for i in 1..n_threads as usize {
+                    zipped!(y21.rb_mut(), v21.rb().col(i), w21.rb().col(i))
+                        .for_each(|mut y, v, w| y.write(y.read().add(&v.read().add(&w.read()))));
+                }
             } else {
                 triangular::matmul(
                     a22.rb_mut(),
@@ -939,7 +1004,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             }
         } else {
             if E::HAS_SIMD {
-                let mut acc = v21.rb_mut();
+                let mut acc = v21.rb_mut().col(0);
                 let lhs = a22.rb();
                 let rhs = a21.rb();
 
@@ -954,7 +1019,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     last_col,
                 });
 
-                zipped!(y21.rb_mut(), v21.rb(), a22.rb().diagonal(), a21.rb())
+                zipped!(y21.rb_mut(), acc.rb(), a22.rb().diagonal(), a21.rb())
                     .for_each(|mut y, v, a, u| y.write(v.read().add(&a.read().mul(&u.read()))));
             } else {
                 zipped!(y21.rb_mut(), a22.rb().diagonal(), a21.rb())
@@ -1021,7 +1086,7 @@ mod tests {
 
     #[test]
     fn tridiag_f64() {
-        for (n, parallelism) in [(10, Parallelism::None), (64, Parallelism::Rayon(4))] {
+        for (n, parallelism) in [(10, Parallelism::None), (512, Parallelism::Rayon(4))] {
             let mut mat = Mat::with_dims(n, n, |_, _| rand::random::<f64>());
             let transpose = mat.transpose().to_owned();
 

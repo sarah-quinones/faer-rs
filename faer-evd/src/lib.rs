@@ -7,6 +7,9 @@ use faer_core::{
 use reborrow::*;
 
 #[doc(hidden)]
+pub mod tridiag_qr_algorithm;
+
+#[doc(hidden)]
 pub mod tridiag_real_evd;
 
 #[doc(hidden)]

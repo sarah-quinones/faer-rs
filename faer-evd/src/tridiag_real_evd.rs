@@ -591,6 +591,16 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         diag[1] = r1;
         return;
     }
+    if n <= 32 {
+        crate::tridiag_qr_algorithm::compute_tridiag_real_evd_qr_algorithm(
+            diag,
+            offdiag,
+            Some(u),
+            epsilon,
+            consider_zero_threshold,
+        );
+        return;
+    }
 
     let n1 = n / 2;
     let mut rho = offdiag[n1 - 1].clone();

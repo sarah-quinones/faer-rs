@@ -206,6 +206,20 @@ fn evd<E: RealField>(criterion: &mut Criterion) {
     }
 }
 
+fn evd_nalgebra(criterion: &mut Criterion) {
+    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+        let mat = nalgebra::DMatrix::<f64>::from_fn(n, n, |_, _| random::<f64>());
+        criterion.bench_function(
+            &format!("sym-evd-nalgebra-{}-{}", type_name::<f64>(), n),
+            |bencher| {
+                bencher.iter(|| {
+                    mat.clone().symmetric_eigen();
+                });
+            },
+        );
+    }
+}
+
 criterion_group!(
     benches,
     tridiagonalization::<f32>,
@@ -215,5 +229,6 @@ criterion_group!(
     tridiagonal_evd::<f64>,
     evd::<f32>,
     evd::<f64>,
+    evd_nalgebra,
 );
 criterion_main!(benches);
