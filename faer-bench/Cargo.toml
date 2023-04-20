@@ -27,3 +27,9 @@ num-complex = "0.4.3"
 
 [build-dependencies]
 cc = "1.0.79"
+
+[features]
+default = ["eigen", "nalgebra"]
+
+eigen = []
+nalgebra = []
