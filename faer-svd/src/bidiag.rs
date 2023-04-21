@@ -18,19 +18,7 @@ pub fn bidiagonalize_in_place_req<E: Entity>(
     StackReq::try_all_of([
         temp_mat_req::<E>(n, 1)?,
         temp_mat_req::<E>(m, 1)?,
-        temp_mat_req::<E>(
-            m,
-            match parallelism {
-                Parallelism::None => 1,
-                Parallelism::Rayon(n_threads) => {
-                    if n_threads == 0 {
-                        rayon::current_num_threads()
-                    } else {
-                        n_threads
-                    }
-                }
-            },
-        )?,
+        temp_mat_req::<E>(m, parallelism_degree(parallelism))?,
     ])
 }
 
@@ -46,16 +34,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
     assert!(m >= n);
 
-    let n_threads = match parallelism {
-        Parallelism::None => 1,
-        Parallelism::Rayon(n_threads) => {
-            if n_threads == 0 {
-                rayon::current_num_threads()
-            } else {
-                n_threads
-            }
-        }
-    };
+    let n_threads = parallelism_degree(parallelism);
 
     let (mut y, mut stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack.rb_mut()) };
     let mut y = y.as_mut();

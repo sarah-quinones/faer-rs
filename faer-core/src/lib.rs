@@ -15,6 +15,9 @@ use zip::Zip;
 extern crate alloc;
 
 pub mod householder;
+#[doc(hidden)]
+pub mod jacobi;
+
 pub mod inverse;
 pub mod mul;
 pub mod permutation;
@@ -439,24 +442,23 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         slice: &mut [Self::Unit],
     ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]);
 
-    fn partial_load_unit<S: Simd>(
-        simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S>;
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S>;
     fn partial_store_unit<S: Simd>(simd: S, slice: &mut [Self::Unit], values: Self::SimdUnit<S>);
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S>;
+    fn partial_store_last_unit<S: Simd>(
+        simd: S,
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    );
+
     fn simd_splat_unit<S: Simd>(simd: S, unit: Self::Unit) -> Self::SimdUnit<S>;
 
     #[inline(always)]
-    fn partial_load<S: Simd>(
-        simd: S,
-        slice: Self::Group<&[Self::Unit]>,
-        padding: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+    fn partial_load<S: Simd>(simd: S, slice: Self::Group<&[Self::Unit]>) -> SimdGroup<Self, S> {
         Self::map(
-            Self::zip(slice, padding),
+            slice,
             #[inline(always)]
-            |(slice, unit)| Self::partial_load_unit(simd, slice, unit),
+            |slice| Self::partial_load_unit(simd, slice),
         )
     }
     #[inline(always)]
@@ -469,6 +471,29 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
             Self::zip(slice, values),
             #[inline(always)]
             |(slice, unit)| Self::partial_store_unit(simd, slice, unit),
+        );
+    }
+    #[inline(always)]
+    fn partial_load_last<S: Simd>(
+        simd: S,
+        slice: Self::Group<&[Self::Unit]>,
+    ) -> SimdGroup<Self, S> {
+        Self::map(
+            slice,
+            #[inline(always)]
+            |slice| Self::partial_load_last_unit(simd, slice),
+        )
+    }
+    #[inline(always)]
+    fn partial_store_last<S: Simd>(
+        simd: S,
+        slice: Self::Group<&mut [Self::Unit]>,
+        values: SimdGroup<Self, S>,
+    ) {
+        Self::map(
+            Self::zip(slice, values),
+            #[inline(always)]
+            |(slice, unit)| Self::partial_store_last_unit(simd, slice, unit),
         );
     }
     #[inline(always)]
@@ -516,6 +541,24 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S>;
+
+    #[inline(always)]
+    fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+        let _ = simd;
+        let mut acc = Self::zero();
+
+        let slice = simd::simd_as_slice::<Self, S>(Self::map(
+            Self::as_ref(&values),
+            #[inline(always)]
+            |ptr| core::slice::from_ref(ptr),
+        ));
+        for units in Self::into_iter(slice) {
+            let value = Self::from_units(Self::deref(units));
+            acc = acc.add(&value);
+        }
+
+        acc
+    }
 }
 
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
@@ -629,12 +672,22 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
-    fn partial_load_unit<S: Simd>(
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.f32s_partial_load_last(slice)
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: Simd>(
         simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S> {
-        simd.f32s_partial_load(slice, padding)
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    ) {
+        simd.f32s_partial_store_last(slice, values)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.f32s_partial_load(slice)
     }
 
     #[inline(always)]
@@ -711,6 +764,11 @@ impl ComplexField for f32 {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.f32s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+        simd.f32s_reduce_sum(values)
     }
 }
 impl ComplexField for f64 {
@@ -819,12 +877,21 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
-    fn partial_load_unit<S: Simd>(
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.f64s_partial_load_last(slice)
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: Simd>(
         simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S> {
-        simd.f64s_partial_load(slice, padding)
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    ) {
+        simd.f64s_partial_store_last(slice, values)
+    }
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.f64s_partial_load(slice)
     }
 
     #[inline(always)]
@@ -901,6 +968,11 @@ impl ComplexField for f64 {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.f64s_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+        simd.f64s_reduce_sum(values)
     }
 }
 impl RealField for f32 {
@@ -1075,12 +1147,22 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
-    fn partial_load_unit<S: Simd>(
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.c32s_partial_load_last(bytemuck::cast_slice(slice))
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: Simd>(
         simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S> {
-        simd.c32s_partial_load(bytemuck::cast_slice(slice), padding)
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    ) {
+        simd.c32s_partial_store_last(bytemuck::cast_slice_mut(slice), values)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.c32s_partial_load(bytemuck::cast_slice(slice))
     }
 
     #[inline(always)]
@@ -1157,6 +1239,11 @@ impl ComplexField for c32 {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.c32s_conj_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+        pulp::cast(simd.c32s_reduce_sum(values))
     }
 }
 impl ComplexField for c64 {
@@ -1308,12 +1395,22 @@ impl ComplexField for c64 {
     }
 
     #[inline(always)]
-    fn partial_load_unit<S: Simd>(
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.c64s_partial_load_last(bytemuck::cast_slice(slice))
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: Simd>(
         simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S> {
-        simd.c64s_partial_load(bytemuck::cast_slice(slice), padding)
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    ) {
+        simd.c64s_partial_store_last(bytemuck::cast_slice_mut(slice), values)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        simd.c64s_partial_load(bytemuck::cast_slice(slice))
     }
 
     #[inline(always)]
@@ -1390,6 +1487,11 @@ impl ComplexField for c64 {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.c64s_conj_mul_adde(lhs, rhs, acc)
+    }
+
+    #[inline(always)]
+    fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+        pulp::cast(simd.c64s_reduce_sum(values))
     }
 }
 
@@ -1549,12 +1651,22 @@ impl<E: RealField> ComplexField for Complex<E> {
     }
 
     #[inline(always)]
-    fn partial_load_unit<S: Simd>(
+    fn partial_load_last_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        E::partial_load_last_unit(simd, slice)
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: Simd>(
         simd: S,
-        slice: &[Self::Unit],
-        padding: Self::SimdUnit<S>,
-    ) -> Self::SimdUnit<S> {
-        E::partial_load_unit(simd, slice, padding)
+        slice: &mut [Self::Unit],
+        values: Self::SimdUnit<S>,
+    ) {
+        E::partial_store_last_unit(simd, slice, values)
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: Simd>(simd: S, slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        E::partial_load_unit(simd, slice)
     }
 
     #[inline(always)]

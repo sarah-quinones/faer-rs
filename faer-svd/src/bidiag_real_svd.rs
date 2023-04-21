@@ -12,14 +12,14 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::jacobi::{jacobi_svd, JacobiRotation, Skip};
+use crate::jacobi::{jacobi_svd, Skip};
 use assert2::assert;
 use coe::Coerce;
 use core::{iter::zip, mem::swap};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, Conj, Entity, MatMut, MatRef,
-    Parallelism, RealField,
+    jacobi::JacobiRotation, join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, Conj,
+    Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use reborrow::*;
 

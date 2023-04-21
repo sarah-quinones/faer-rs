@@ -207,7 +207,7 @@ macro_rules! best_in_col_simd {
                     simd,
                     best_value0,
                     best_indices0,
-                    simd.[<$scalar s_partial_load>](tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
+                    simd.[<$scalar s_partial_load>](tail),
                     indices0
                 );
 
@@ -288,9 +288,9 @@ macro_rules! best_in_col_simd {
 
                 {
                     let new_dst = simd.[<$scalar s_mul_adde>](
-                        simd.[<$scalar s_partial_load>](lhs_tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
+                        simd.[<$scalar s_partial_load>](lhs_tail),
                         rhs_v,
-                        simd.[<$scalar s_partial_load>](dst_tail, simd.[<$scalar s_splat>](pulp::cast(<$scalar>::zero()))),
+                        simd.[<$scalar s_partial_load>](dst_tail),
                     );
                     simd.[<$scalar s_partial_store>](dst_tail, new_dst);
                     (best_value0, best_indices0) =

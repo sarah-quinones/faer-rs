@@ -42,9 +42,10 @@ The QR module implements the QR decomposition with no pivoting, as well as the v
 
 The SVD module implements the singular value decomposition for real matrices (complex support will be following soon).
 
-## Coming soon
+## faer-evd
 
-- `faer-eigen`
+[![Documentation](https://docs.rs/faer-evd/badge.svg)](https://docs.rs/faer-evd)
+[![Crate](https://img.shields.io/crates/v/faer-evd.svg)](https://crates.io/crates/faer-evd)
 
 # Contributing
 
@@ -281,4 +282,24 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
   768    388.2ms    190.3ms    445.7ms      5.25s    924.7ms
   896    540.4ms    253.5ms    553.1ms      7.41s      1.31s
  1024      735ms    329.6ms    856.1ms     10.83s      1.72s
+```
+
+## Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a hermitian matrix with shape `(n, n)`.
+
+```
+    n       faer  faer(par)    ndarray   nalgebra      eigen
+   32     63.6µs     62.9µs    127.5µs     49.9µs       44µs
+   64    249.3µs      239µs    970.3µs    293.1µs    190.7µs
+   96    597.1µs    574.7µs      2.7ms      862µs    509.6µs
+  128    987.5µs    938.5µs      5.4ms      1.9ms      1.1ms
+  192      2.4ms      2.3ms     15.7ms      5.8ms      2.9ms
+  256      4.3ms      3.8ms     34.2ms     13.2ms      6.3ms
+  384     10.9ms      9.3ms    105.7ms     42.9ms     21.1ms
+  512     22.4ms     16.9ms    180.2ms    102.1ms     52.1ms
+  640       38ms     27.3ms    268.7ms      192ms     98.5ms
+  768     61.1ms     39.7ms    407.6ms    327.4ms    168.9ms
+  896     91.1ms     55.3ms    618.6ms    517.6ms    263.8ms
+ 1024    135.7ms     76.9ms      888ms    794.4ms    406.1ms
 ```

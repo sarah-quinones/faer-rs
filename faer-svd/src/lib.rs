@@ -1,8 +1,8 @@
 //! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
 //!
-//! - $U$ has shape $(m, m)$ and is an orthogonal matrix,
-//! - $V$ has shape $(n, n)$ and is an orthogonal matrix,
+//! - $U$ has shape $(m, m)$ and is a unitary matrix,
+//! - $V$ has shape $(n, n)$ and is a unitary matrix,
 //! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal,
 //! - and finally:
 //!
@@ -354,7 +354,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     }
 }
 
-pub fn bidiag_cplx_svd_req<E: Entity>(
+fn bidiag_cplx_svd_req<E: Entity>(
     n: usize,
     jacobi_fallback_threshold: usize,
     compute_u: bool,
@@ -440,7 +440,7 @@ fn compute_svd_big<E: ComplexField>(
 
     let mut j_base = 0;
     while j_base < n {
-        let bs = householder_blocksize.min(n - j_base);
+        let bs = Ord::min(householder_blocksize, n - j_base);
         let mut householder = householder_left.rb_mut().submatrix(0, j_base, bs, bs);
         let essentials = bid.submatrix(j_base, j_base, m - j_base, bs);
         for j in 0..bs {
@@ -451,7 +451,7 @@ fn compute_svd_big<E: ComplexField>(
     }
     let mut j_base = 0;
     while j_base < n - 1 {
-        let bs = householder_blocksize.min(n - 1 - j_base);
+        let bs = Ord::min(householder_blocksize, n - 1 - j_base);
         let mut householder = householder_right.rb_mut().submatrix(0, j_base, bs, bs);
         let full_essentials = bid.submatrix(0, 1, m, n - 1).transpose();
         let essentials = full_essentials.submatrix(j_base, j_base, n - 1 - j_base, bs);
@@ -553,7 +553,7 @@ pub fn compute_svd_req<E: ComplexField>(
         return Ok(StackReq::default());
     }
 
-    let size = usize::min(nrows, ncols);
+    let size = Ord::min(nrows, ncols);
     let skip_qr = nrows as f64 / ncols as f64 <= 11.0 / 6.0;
     let (svd_nrows, svd_ncols) = if skip_qr {
         (nrows, ncols)
@@ -642,7 +642,7 @@ pub fn compute_svd<E: ComplexField>(
     stack: DynStack<'_>,
     params: SvdParams,
 ) {
-    let size = usize::min(matrix.nrows(), matrix.ncols());
+    let size = Ord::min(matrix.nrows(), matrix.ncols());
     assert!(s.nrows() == size);
     assert!(s.ncols() == 1);
     if let Some(u) = u.rb() {

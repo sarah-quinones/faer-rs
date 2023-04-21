@@ -14,6 +14,7 @@ faer-core = { path = "../faer-core", features = ["nightly"] }
 faer-lu = { path = "../faer-lu", features = ["nightly"] }
 faer-qr = { path = "../faer-qr", features = ["nightly"] }
 faer-svd = { path = "../faer-svd", features = ["nightly"] }
+faer-evd = { path = "../faer-evd", features = ["nightly"] }
 faer-cholesky = { path = "../faer-cholesky", features = ["nightly"] }
 human-repr = "1.0.1"
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"] }
@@ -23,7 +24,7 @@ reborrow = "0.5"
 openmp-sys = "1.2.3"
 num-traits = "0.2.15"
 coe-rs = "0.1.2"
-num-complex = "0.4.3" 
+num-complex = "0.4.3"
 
 [build-dependencies]
 cc = "1.0.79"
