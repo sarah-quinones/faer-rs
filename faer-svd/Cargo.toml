@@ -1,6 +1,6 @@
 [package]
 name = "faer-svd"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -10,8 +10,8 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.7.0", default-features = false, path = "../faer-core" }
-faer-qr = { version = "0.7.0", default-features = false, path = "../faer-qr" }
+faer-core = { version = "0.8.0", default-features = false, path = "../faer-core" }
+faer-qr = { version = "0.8.0", default-features = false, path = "../faer-qr" }
 pulp = { workspace = true, default-features = false }
 reborrow = { workspace = true }
 dyn-stack = { workspace = true }
