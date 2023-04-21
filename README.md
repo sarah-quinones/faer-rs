@@ -40,12 +40,14 @@ The QR module implements the QR decomposition with no pivoting, as well as the v
 [![Documentation](https://docs.rs/faer-svd/badge.svg)](https://docs.rs/faer-svd)
 [![Crate](https://img.shields.io/crates/v/faer-svd.svg)](https://crates.io/crates/faer-svd)
 
-The SVD module implements the singular value decomposition for real matrices (complex support will be following soon).
+The SVD module implements the singular value decomposition.
 
 ## faer-evd
 
 [![Documentation](https://docs.rs/faer-evd/badge.svg)](https://docs.rs/faer-evd)
 [![Crate](https://img.shields.io/crates/v/faer-evd.svg)](https://crates.io/crates/faer-evd)
+
+The EVD module implements the eigenvalue decomposition for symmetric matrices (non symmetric matrix support is WIP).
 
 # Contributing
 
