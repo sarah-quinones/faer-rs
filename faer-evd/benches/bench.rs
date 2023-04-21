@@ -130,7 +130,7 @@ fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
     }
 }
 
-fn evd<E: RealField>(criterion: &mut Criterion) {
+fn evd<E: ComplexField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024, 4096] {
         let mut mat = Mat::with_dims(n, n, |_, _| random::<E>());
         let adjoint = mat.adjoint().to_owned();
@@ -144,7 +144,7 @@ fn evd<E: RealField>(criterion: &mut Criterion) {
         {
             let parallelism = Parallelism::None;
             let mut mem = GlobalMemBuffer::new(
-                faer_evd::compute_symmetric_evd_req::<E>(
+                faer_evd::compute_hermitian_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
                     parallelism,
@@ -158,7 +158,7 @@ fn evd<E: RealField>(criterion: &mut Criterion) {
                 &format!("sym-evd-st-{}-{}", type_name::<E>(), n),
                 |bencher| {
                     bencher.iter(|| {
-                        faer_evd::compute_symmetric_evd(
+                        faer_evd::compute_hermitian_evd(
                             mat.as_ref(),
                             s.as_mut().diagonal(),
                             Some(u.as_mut()),
@@ -175,7 +175,7 @@ fn evd<E: RealField>(criterion: &mut Criterion) {
         {
             let parallelism = Parallelism::Rayon(0);
             let mut mem = GlobalMemBuffer::new(
-                faer_evd::compute_symmetric_evd_req::<E>(
+                faer_evd::compute_hermitian_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
                     parallelism,
@@ -189,7 +189,7 @@ fn evd<E: RealField>(criterion: &mut Criterion) {
                 &format!("sym-evd-mt-{}-{}", type_name::<E>(), n),
                 |bencher| {
                     bencher.iter(|| {
-                        faer_evd::compute_symmetric_evd(
+                        faer_evd::compute_hermitian_evd(
                             mat.as_ref(),
                             s.as_mut().diagonal(),
                             Some(u.as_mut()),
@@ -229,6 +229,7 @@ criterion_group!(
     tridiagonal_evd::<f64>,
     evd::<f32>,
     evd::<f64>,
+    evd::<c64>,
     evd_nalgebra,
 );
 criterion_main!(benches);

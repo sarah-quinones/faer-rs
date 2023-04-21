@@ -92,6 +92,7 @@ mod trsm;
 
 mod cholesky;
 mod col_piv_qr;
+mod symmetric_evd;
 mod full_piv_lu;
 mod inverse;
 mod no_piv_qr;
@@ -190,6 +191,7 @@ mod eigen {
         pub fn inverse_f32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn svd_f32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_f32(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn symmetric_evd_f32(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_f64(out: *mut f64, inputs: *const usize, count: usize);
@@ -202,6 +204,7 @@ mod eigen {
         pub fn inverse_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn svd_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_f64(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn symmetric_evd_f64(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_c32(out: *mut f64, inputs: *const usize, count: usize);
@@ -214,6 +217,7 @@ mod eigen {
         pub fn inverse_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn svd_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_c32(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn symmetric_evd_c32(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_c64(out: *mut f64, inputs: *const usize, count: usize);
@@ -226,6 +230,7 @@ mod eigen {
         pub fn inverse_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn svd_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_c64(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn symmetric_evd_c64(out: *mut f64, inputs: *const usize, count: usize);
     }
 }
 
@@ -248,17 +253,17 @@ const N: usize = 12;
 fn main() -> Result<()> {
     let input_sizes: [usize; N] = [32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
 
-    {
+{
         println!("f32");
         let mut file = File::create("f32.txt")?;
         printwriteln!(
             file,
             "
-        ## Matrix multiplication
+## Matrix multiplication
 
-        Multiplication of two square matrices of dimension `n`.
+Multiplication of two square matrices of dimension `n`.
 
-        ```"
+```"
         )?;
         print_results(
             &mut file,
@@ -271,16 +276,12 @@ fn main() -> Result<()> {
         )?;
         printwriteln!(file, "```")?;
 
-        printwriteln!(
-            file,
-            "
-        ## Triangular solve
+        printwriteln!(file,"
+## Triangular solve
 
-        Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and
-        `A` is a triangular matrix.
+Solving `AX = B` in place where `A` and `B` are two square matrices of dimension `n`, and `A` is a triangular matrix.
 
-        ```"
-        )?;
+```")?;
         print_results(
             &mut file,
             &input_sizes,
@@ -295,11 +296,11 @@ fn main() -> Result<()> {
         printwriteln!(
             file,
             "
-        ## Triangular inverse
+## Triangular inverse
 
-        Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
+Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
 
-        ```"
+```"
         )?;
         print_results(
             &mut file,
@@ -315,11 +316,11 @@ fn main() -> Result<()> {
         printwriteln!(
             file,
             "
-        ## Cholesky decomposition
+## Cholesky decomposition
 
-        Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
+Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower triangular.
 
-        ```"
+```"
         )?;
         print_results(
             &mut file,
@@ -332,16 +333,12 @@ fn main() -> Result<()> {
         )?;
         printwriteln!(file, "```")?;
 
-        printwriteln!(
-            file,
-            "
-        ## LU decomposition with partial pivoting
+        printwriteln!(file,"
+## LU decomposition with partial pivoting
 
-        Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation
-        matrix, `L` is unit lower triangular and `U` is upper triangular.
+Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a permutation matrix, `L` is unit lower triangular and `U` is upper triangular.
 
-        ```"
-        )?;
+```")?;
         print_results(
             &mut file,
             &input_sizes,
@@ -353,16 +350,12 @@ fn main() -> Result<()> {
         )?;
         printwriteln!(file, "```")?;
 
-        printwriteln!(
-            file,
-            "
-        ## LU decomposition with full pivoting
+        printwriteln!(file,"
+## LU decomposition with full pivoting
 
-        Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are
-        permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
+Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and `Q` are permutation matrices, `L` is unit lower triangular and `U` is upper triangular.
 
-        ```"
-        )?;
+```")?;
         print_results(
             &mut file,
             &input_sizes,
@@ -374,16 +367,12 @@ fn main() -> Result<()> {
         )?;
         printwriteln!(file, "```")?;
 
-        printwriteln!(
-            file,
-            "
-        ## QR decomposition with no pivoting
+        printwriteln!(file,"
+## QR decomposition with no pivoting
 
-        Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and `R` is
-        upper triangular.
+Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and `R` is upper triangular.
 
-        ```"
-        )?;
+```")?;
         print_results(
             &mut file,
             &input_sizes,
@@ -395,16 +384,12 @@ fn main() -> Result<()> {
         )?;
         printwriteln!(file, "```")?;
 
-        printwriteln!(
-            file,
-            "
-        ## QR decomposition with column pivoting
+        printwriteln!(file,"
+## QR decomposition with column pivoting
 
-        Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutation
-        matrix, `Q` is unitary and `R` is upper triangular.
+Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutation matrix, `Q` is unitary and `R` is upper triangular.
 
-        ```"
-        )?;
+```")?;
         print_results(
             &mut file,
             &input_sizes,
@@ -419,11 +404,11 @@ fn main() -> Result<()> {
         printwriteln!(
             file,
             "
-        ## Matrix inverse
+## Matrix inverse
 
-        Computing the inverse of a square matrix with dimension `n`.
+Computing the inverse of a square matrix with dimension `n`.
 
-        ```"
+```"
         )?;
         print_results(
             &mut file,
@@ -473,6 +458,26 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::ndarray::<f32>(&input_sizes),
             ifnalgebra!(&rectangular_svd::nalgebra::<f32>(&input_sizes)),
             ifeigen!(&eigen(eigen::rectangular_svd_f32, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a hermitian matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &symmetric_evd::faer::<f32>(&input_sizes, Parallelism::None),
+            &symmetric_evd::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
+            &symmetric_evd::ndarray::<f32>(&input_sizes),
+            ifnalgebra!(&symmetric_evd::nalgebra::<f32>(&input_sizes)),
+            ifeigen!(&eigen(eigen::symmetric_evd_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -683,6 +688,26 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             ifeigen!(&eigen(eigen::rectangular_svd_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a hermitian matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &symmetric_evd::faer::<f64>(&input_sizes, Parallelism::None),
+            &symmetric_evd::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
+            &symmetric_evd::ndarray::<f64>(&input_sizes),
+            ifnalgebra!(&symmetric_evd::nalgebra::<f64>(&input_sizes)),
+            ifeigen!(&eigen(eigen::symmetric_evd_f64, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c32");
@@ -891,6 +916,26 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             ifeigen!(&eigen(eigen::rectangular_svd_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a hermitian matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &symmetric_evd::faer::<c32>(&input_sizes, Parallelism::None),
+            &symmetric_evd::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
+            &symmetric_evd::ndarray::<Cplx32>(&input_sizes),
+            ifnalgebra!(&symmetric_evd::nalgebra::<Cplx32>(&input_sizes)),
+            ifeigen!(&eigen(eigen::symmetric_evd_c32, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c64");
@@ -1097,6 +1142,26 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
             &rectangular_svd::ndarray::<Cplx64>(&input_sizes),
             ifnalgebra!(&rectangular_svd::nalgebra::<Cplx64>(&input_sizes)),
             ifeigen!(&eigen(eigen::rectangular_svd_c64, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a hermitian matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &symmetric_evd::faer::<c64>(&input_sizes, Parallelism::None),
+            &symmetric_evd::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
+            &symmetric_evd::ndarray::<Cplx64>(&input_sizes),
+            ifnalgebra!(&symmetric_evd::nalgebra::<Cplx64>(&input_sizes)),
+            ifeigen!(&eigen(eigen::symmetric_evd_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }

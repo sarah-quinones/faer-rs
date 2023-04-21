@@ -9,7 +9,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use assert2::assert;
-use faer_core::{jacobi::JacobiRotation, permutation::swap_cols, zipped, MatMut, RealField};
+use faer_core::{jacobi::JacobiRotation, permutation::swap_cols, MatMut, RealField};
 use reborrow::*;
 
 fn compute_2x2<E: RealField>(

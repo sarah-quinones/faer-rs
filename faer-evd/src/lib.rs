@@ -1,8 +1,20 @@
+//! The eigenvalue decomposition of a square matrix $M$ of shape $(n, n)$ is a decomposition into
+//! two components $U$, $S$:
+//!
+//! - $U$ has shape $(n, n)$ and is invertible,
+//! - $S$ has shape $(n, n)$ and is a diagonal matrix,
+//! - and finally:
+//!
+//! $$M = U S U^{-1}.$$
+//!
+//! If $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
+
 use assert2::assert;
+use coe::Coerce;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::upgrade_householder_factor, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
-    Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    Conj, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -15,7 +27,7 @@ pub mod tridiag_real_evd;
 #[doc(hidden)]
 pub mod tridiag;
 
-/// Indicates whether the eigen vectors are fully computed, partially computed, or skipped.
+/// Indicates whether the eigenvectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeVectors {
     No,
@@ -26,7 +38,9 @@ pub enum ComputeVectors {
 #[non_exhaustive]
 pub struct SymmetricEvdParams {}
 
-pub fn compute_symmetric_evd_req<E: Entity>(
+/// Computes the size and alignment of required workspace for performing an eigenvalue
+/// decomposition. The eigenvectors may be optionally computed.
+pub fn compute_hermitian_evd_req<E: ComplexField>(
     n: usize,
     compute_eigenvectors: ComputeVectors,
     parallelism: Parallelism,
@@ -35,15 +49,26 @@ pub fn compute_symmetric_evd_req<E: Entity>(
     let _ = params;
     let _ = compute_eigenvectors;
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(n, n);
+
+    let cplx_storage = if coe::is_same::<E::Real, E>() {
+        StackReq::empty()
+    } else {
+        StackReq::try_all_of([
+            temp_mat_req::<E::Real>(n, n)?,
+            StackReq::try_new::<E::Real>(n)?,
+        ])?
+    };
+
     StackReq::try_all_of([
         temp_mat_req::<E>(n, n)?,
         temp_mat_req::<E>(householder_blocksize, n - 1)?,
         StackReq::try_any_of([
             tridiag::tridiagonalize_in_place_req::<E>(n, parallelism)?,
             StackReq::try_all_of([
-                StackReq::try_new::<E>(n)?,
-                StackReq::try_new::<E>(n - 1)?,
+                StackReq::try_new::<E::Real>(n)?,
+                StackReq::try_new::<E::Real>(n - 1)?,
                 tridiag_real_evd::compute_tridiag_real_evd_req::<E>(n, parallelism)?,
+                cplx_storage,
             ])?,
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_req::<E>(
                 n - 1,
@@ -54,7 +79,15 @@ pub fn compute_symmetric_evd_req<E: Entity>(
     ])
 }
 
-pub fn compute_symmetric_evd<E: RealField>(
+/// Computes the eigenvalue decomposition of square hermitian `matrix`. Only the lower triangular
+/// half of the matrix is accessed.
+///
+/// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the
+/// matrix.
+///
+/// If `u` is `None`, then only the eigenvalues are computed. Otherwise, the eigenvectors are
+/// computed and stored in `u`.
+pub fn compute_hermitian_evd<E: ComplexField>(
     matrix: MatRef<'_, E>,
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
@@ -69,11 +102,10 @@ pub fn compute_symmetric_evd<E: RealField>(
     let n = matrix.nrows();
 
     assert!(s.nrows() == n);
-    // TODO: implement this using the tridiagonal qr algorithm
-    let mut u = match u {
-        Some(u) => u,
-        None => panic!("eigenvalue-only EVD not yet implemented"),
-    };
+    if let Some(u) = u.rb() {
+        assert!(u.nrows() == n);
+        assert!(u.ncols() == n);
+    }
 
     let (mut trid, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
     let householder_blocksize =
@@ -98,6 +130,27 @@ pub fn compute_symmetric_evd<E: RealField>(
     );
 
     let trid = trid.into_const();
+    let mut s = s;
+
+    let mut u = match u {
+        Some(u) => u,
+        None => {
+            let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).real());
+            let (mut offdiag, _) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
+            tridiag_qr_algorithm::compute_tridiag_real_evd_qr_algorithm(
+                &mut diag,
+                &mut offdiag,
+                None,
+                epsilon,
+                zero_threshold,
+            );
+            for i in 0..n {
+                s.write(i, 0, E::from_real(diag[i].clone()));
+            }
+
+            return;
+        }
+    };
 
     let mut j_base = 0;
     while j_base < n - 1 {
@@ -112,23 +165,66 @@ pub fn compute_symmetric_evd<E: RealField>(
         j_base += bs;
     }
 
-    let mut s = s;
     {
-        let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i));
-        let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i));
+        let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).real());
 
-        tridiag_real_evd::compute_tridiag_real_evd(
-            &mut diag,
-            &mut offdiag,
-            u.rb_mut(),
-            epsilon,
-            zero_threshold,
-            parallelism,
-            stack,
-        );
+        if coe::is_same::<E::Real, E>() {
+            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).real());
+
+            tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(
+                &mut diag,
+                &mut offdiag,
+                u.rb_mut().coerce(),
+                epsilon,
+                zero_threshold,
+                parallelism,
+                stack,
+            );
+        } else {
+            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
+
+            let (mut u_real, stack) = unsafe { temp_mat_uninit::<E::Real>(n, n, stack) };
+            let (mut mul, stack) = stack.make_with(n, |_| E::zero());
+
+            let normalized = |x: E| {
+                if x == E::zero() {
+                    E::one()
+                } else {
+                    x.scale_real(&x.abs().inv())
+                }
+            };
+
+            mul[0] = E::one();
+
+            let mut x = E::one();
+            for i in 1..n {
+                x = normalized(trid.read(i, i - 1).mul(&x.conj())).conj();
+                mul[i] = x.conj();
+            }
+
+            let mut u_real = u_real.as_mut();
+
+            tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(
+                &mut diag,
+                &mut offdiag,
+                u_real.rb_mut(),
+                epsilon,
+                zero_threshold,
+                parallelism,
+                stack,
+            );
+
+            for j in 0..n {
+                for i in 0..n {
+                    unsafe {
+                        u.write_unchecked(i, j, mul[i].scale_real(&u_real.read_unchecked(i, j)))
+                    };
+                }
+            }
+        }
 
         for i in 0..n {
-            s.write(i, 0, diag[i].clone());
+            s.write(i, 0, E::from_real(diag[i].clone()));
         }
     }
 
@@ -152,7 +248,7 @@ mod tests {
     use super::*;
     use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::Mat;
+    use faer_core::{c64, Mat};
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -168,14 +264,14 @@ mod tests {
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
 
-            compute_symmetric_evd(
+            compute_hermitian_evd(
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_symmetric_evd_req::<f64>(
+                make_stack!(compute_hermitian_evd_req::<f64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,
@@ -185,6 +281,181 @@ mod tests {
             );
 
             let reconstructed = &u * &s * u.transpose();
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cplx() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::with_dims(n, n, |i, j| {
+                c64::new(rand::random(), if i == j { 0.0 } else { rand::random() })
+            });
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal(),
+                Some(u.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<c64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            let reconstructed = &u * &s * u.adjoint();
+            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_real_identity() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal(),
+                Some(u.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<f64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            let reconstructed = &u * &s * u.transpose();
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cplx_identity() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal(),
+                Some(u.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<c64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            let reconstructed = &u * &s * u.adjoint();
+            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_real_zero() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::with_dims(n, n, |_, _| f64::zero());
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal(),
+                Some(u.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<f64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            let reconstructed = &u * &s * u.transpose();
+
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cplx_zero() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::with_dims(n, n, |_, _| c64::zero());
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal(),
+                Some(u.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<c64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            let reconstructed = &u * &s * u.adjoint();
+            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
 
             for j in 0..n {
                 for i in j..n {

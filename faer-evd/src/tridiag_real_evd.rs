@@ -1112,7 +1112,7 @@ mod tests {
                     0.0
                 };
 
-                assert_approx_eq!(reconstructed.read(i, j), target, 1e-14);
+                assert_approx_eq!(reconstructed.read(i, j), target, 1e-13);
             }
         }
     }

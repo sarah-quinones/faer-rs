@@ -2,6 +2,7 @@
 #include <cmath>
 #include <eigen3/Eigen/Cholesky>
 #include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Eigenvalues>
 #include <eigen3/Eigen/LU>
 #include <eigen3/Eigen/QR>
 #include <eigen3/Eigen/SVD>
@@ -183,6 +184,19 @@ using c64 = std::complex<f64>;
       Eigen::BDCSVD<Eigen::Matrix<T, -1, -1>> svd(                             \
           n, n, Eigen::ComputeThinU | Eigen::ComputeThinV);                    \
       out[i] = timeit([&] { svd.compute(a); });                                \
+    }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" void symmetric_evd_##T(double *out, std::size_t const *inputs,    \
+                                    std::size_t count) {                       \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      a = (a + a.adjoint()).eval();                                            \
+      Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, -1, -1>> evd(n);          \
+      out[i] = timeit([&] { evd.compute(a, Eigen::ComputeEigenvectors); });    \
     }                                                                          \
   }                                                                            \
   static_assert(true, "")

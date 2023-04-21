@@ -1,8 +1,8 @@
 //! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
 //!
-//! - $U$ has shape $(m, m)$ and is an orthogonal matrix,
-//! - $V$ has shape $(n, n)$ and is an orthogonal matrix,
+//! - $U$ has shape $(m, m)$ and is a unitary matrix,
+//! - $V$ has shape $(n, n)$ and is a unitary matrix,
 //! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal,
 //! - and finally:
 //!
