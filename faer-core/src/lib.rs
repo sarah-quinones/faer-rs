@@ -1044,7 +1044,7 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn inv(&self) -> Self {
         let inf = Self::Real::zero().inv();
-        if self != self {
+        if self.is_nan() {
             // NAN
             Self::nan()
         } else if *self == Self::zero() {
@@ -1292,7 +1292,7 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn inv(&self) -> Self {
         let inf = Self::Real::zero().inv();
-        if self != self {
+        if self.is_nan() {
             // NAN
             Self::nan()
         } else if *self == Self::zero() {
@@ -1541,7 +1541,7 @@ impl<E: RealField> ComplexField for Complex<E> {
     #[inline(always)]
     fn inv(&self) -> Self {
         let inf = Self::Real::zero().inv();
-        if self != self {
+        if self.is_nan() {
             // NAN
             Self::nan()
         } else if *self == Self::zero() {
