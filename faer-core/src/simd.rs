@@ -1,4 +1,4 @@
-use crate::ComplexField;
+use crate::{ComplexField, RealField};
 use pulp::Simd;
 
 #[inline(always)]
@@ -56,4 +56,15 @@ pub fn one_simd_as_slice<E: ComplexField, S: Simd>(
         #[inline(always)]
         |values| simd_as_slice_unit::<E, S>(core::slice::from_ref(values)),
     )
+}
+
+#[inline(always)]
+pub fn simd_index_as_slice<E: RealField, S: Simd>(indices: &[E::SimdIndex<S>]) -> &[E::Index] {
+    unsafe {
+        core::slice::from_raw_parts(
+            indices.as_ptr() as *const E::Index,
+            indices.len()
+                * (core::mem::size_of::<E::SimdIndex<S>>() / core::mem::size_of::<E::Index>()),
+        )
+    }
 }

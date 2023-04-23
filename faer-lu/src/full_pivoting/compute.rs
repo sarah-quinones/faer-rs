@@ -8,14 +8,14 @@ use faer_core::{
     mul::matmul,
     par_split_indices, parallelism_degree,
     permutation::{swap_cols, swap_rows, PermutationMut},
-    ComplexField, MatMut, MatRef, Parallelism, Ptr,
+    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, Ptr, RealField,
 };
 use paste::paste;
 use pulp::{cast_lossy, Simd};
 use reborrow::*;
 
 #[inline(always)]
-fn best_f64<S: pulp::Simd>(
+fn best_f64<S: Simd>(
     simd: S,
     best_value: S::f64s,
     best_indices: S::u64s,
@@ -31,7 +31,7 @@ fn best_f64<S: pulp::Simd>(
 }
 
 #[inline(always)]
-fn best_f32<S: pulp::Simd>(
+fn best_f32<S: Simd>(
     simd: S,
     best_value: S::f32s,
     best_indices: S::u32s,
@@ -58,7 +58,7 @@ fn best_c64_scalar(best_value: f64, best_indices: u64, data: c64, indices: u64) 
 }
 
 #[inline(always)]
-fn best_c64<S: pulp::Simd>(
+fn best_c64<S: Simd>(
     simd: S,
     best_value: S::f64s,
     best_indices: S::u64s,
@@ -94,7 +94,7 @@ fn best_c32_scalar(best_value: f32, best_indices: u32, data: c32, indices: u32) 
 }
 
 #[inline(always)]
-fn best_c32<S: pulp::Simd>(
+fn best_c32<S: Simd>(
     simd: S,
     best_value: S::f32s,
     best_indices: S::u32s,
@@ -119,7 +119,7 @@ fn best_c32<S: pulp::Simd>(
 }
 
 #[inline(always)]
-fn best2d_f64<S: pulp::Simd>(
+fn best2d_f64<S: Simd>(
     simd: S,
     best_value: S::f64s,
     best_row_indices: S::u64s,
@@ -137,7 +137,7 @@ fn best2d_f64<S: pulp::Simd>(
 }
 
 #[inline(always)]
-fn best2d_f32<S: pulp::Simd>(
+fn best2d_f32<S: Simd>(
     simd: S,
     best_value: S::f32s,
     best_row_indices: S::u32s,
@@ -152,6 +152,218 @@ fn best2d_f32<S: pulp::Simd>(
         simd.m32s_select_u32s(is_better, row_indices, best_row_indices),
         simd.m32s_select_u32s(is_better, col_indices, best_col_indices),
     )
+}
+
+#[inline(always)]
+fn best2d<E: RealField, S: Simd>(
+    simd: S,
+    best_value: E::Group<E::SimdUnit<S>>,
+    best_row_indices: E::SimdIndex<S>,
+    best_col_indices: E::SimdIndex<S>,
+    value: E::Group<E::SimdUnit<S>>,
+    row_indices: E::SimdIndex<S>,
+    col_indices: E::SimdIndex<S>,
+) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>, E::SimdIndex<S>) {
+    let is_better = E::simd_greater_than(simd, E::copy(&value), E::copy(&best_value));
+    (
+        E::simd_select(simd, is_better, value, best_value),
+        E::simd_index_select(simd, is_better, row_indices, best_row_indices),
+        E::simd_index_select(simd, is_better, col_indices, best_col_indices),
+    )
+}
+
+#[inline(always)]
+fn best_value<E: ComplexField, S: Simd>(
+    simd: S,
+    best_value: <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
+    best_indices: <E::Real as Entity>::SimdIndex<S>,
+    data: E::Group<E::SimdUnit<S>>,
+    indices: <E::Real as Entity>::SimdIndex<S>,
+) -> (
+    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
+    <E::Real as Entity>::SimdIndex<S>,
+) {
+    let value = E::simd_score(simd, data);
+    let is_better =
+        E::Real::simd_greater_than(simd, E::Real::copy(&value), E::Real::copy(&best_value));
+    (
+        E::Real::simd_select(simd, is_better, value, best_value),
+        E::Real::simd_index_select(simd, is_better, indices, best_indices),
+    )
+}
+
+#[inline(always)]
+fn best_score<E: RealField, S: Simd>(
+    simd: S,
+    best_value: E::Group<E::SimdUnit<S>>,
+    best_indices: E::SimdIndex<S>,
+    value: E::Group<E::SimdUnit<S>>,
+    indices: E::SimdIndex<S>,
+) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>) {
+    let is_better =
+        E::Real::simd_greater_than(simd, E::Real::copy(&value), E::Real::copy(&best_value));
+    (
+        E::Real::simd_select(simd, is_better, value, best_value),
+        E::Real::simd_index_select(simd, is_better, indices, best_indices),
+    )
+}
+
+#[inline(always)]
+fn best_in_col<E: ComplexField, S: Simd>(
+    simd: S,
+    data: E::Group<&[E::Unit]>,
+) -> (
+    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
+    <E::Real as Entity>::SimdIndex<S>,
+) {
+    let (head, tail) = simd::slice_as_simd::<E, S>(data);
+
+    let iota = E::Real::simd_index_seq(simd);
+    let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+    let increment1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(lane_count));
+    let increment4 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(4 * lane_count));
+
+    let mut best_value0 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value1 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value2 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value3 = E::Real::simd_splat(simd, E::Real::zero());
+
+    let mut best_indices0 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices2 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices3 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+
+    let mut indices0 = iota;
+    let mut indices1 = E::Real::simd_index_add(simd, indices0, increment1);
+    let mut indices2 = E::Real::simd_index_add(simd, indices1, increment1);
+    let mut indices3 = E::Real::simd_index_add(simd, indices2, increment1);
+
+    let (head4, tail4) = E::as_arrays::<4, _>(head);
+    for data in E::into_iter(head4) {
+        let [data0, data1, data2, data3] = E::unzip4(E::deref(data));
+        (best_value0, best_indices0) =
+            best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
+        (best_value1, best_indices1) =
+            best_value::<E, S>(simd, best_value1, best_indices1, data1, indices1);
+        (best_value2, best_indices2) =
+            best_value::<E, S>(simd, best_value2, best_indices2, data2, indices2);
+        (best_value3, best_indices3) =
+            best_value::<E, S>(simd, best_value3, best_indices3, data3, indices3);
+
+        indices0 = E::Real::simd_index_add(simd, indices0, increment4);
+        indices1 = E::Real::simd_index_add(simd, indices1, increment4);
+        indices2 = E::Real::simd_index_add(simd, indices2, increment4);
+        indices3 = E::Real::simd_index_add(simd, indices3, increment4);
+    }
+
+    (best_value0, best_indices0) =
+        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value1, best_indices1);
+    (best_value2, best_indices2) =
+        best_score::<E::Real, S>(simd, best_value2, best_indices2, best_value3, best_indices3);
+
+    (best_value0, best_indices0) =
+        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value2, best_indices2);
+
+    for data in E::into_iter(tail4) {
+        let data0 = E::deref(data);
+        (best_value0, best_indices0) =
+            best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
+        indices0 = E::Real::simd_index_add(simd, indices0, increment1);
+    }
+
+    best_value::<E, S>(
+        simd,
+        best_value0,
+        best_indices0,
+        E::partial_load(simd, tail),
+        indices0,
+    )
+}
+
+#[inline(always)]
+fn update_and_best_in_col<'a, E: ComplexField, S: Simd>(
+    simd: S,
+    data: E::Group<&mut [E::Unit]>,
+    lhs: E::Group<&[E::Unit]>,
+    rhs: E,
+) -> (
+    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
+    <E::Real as Entity>::SimdIndex<S>,
+) {
+    let (dst_head, dst_tail) = simd::slice_as_mut_simd::<E, S>(data);
+    let (lhs_head, lhs_tail) = simd::slice_as_simd::<E, S>(lhs);
+
+    let iota = E::Real::simd_index_seq(simd);
+    let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+    let increment1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(lane_count));
+    let increment2 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(2 * lane_count));
+
+    let mut best_value0 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value1 = E::Real::simd_splat(simd, E::Real::zero());
+
+    let mut best_indices0 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+
+    let mut indices0 = iota;
+    let mut indices1 = E::Real::simd_index_add(simd, indices0, increment1);
+
+    let (dst_head2, dst_tail2) = E::as_arrays_mut::<2, _>(dst_head);
+    let (lhs_head2, lhs_tail2) = E::as_arrays::<2, _>(lhs_head);
+
+    let rhs = E::simd_splat(simd, rhs);
+
+    for (dst, lhs) in E::into_iter(dst_head2).zip(E::into_iter(lhs_head2)) {
+        let [dst0, dst1] = E::unzip2(E::deref(E::rb(E::as_ref(&dst))));
+        let [lhs0, lhs1] = E::unzip2(E::deref(lhs));
+
+        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
+        let dst1 = E::simd_mul_adde(simd, lhs1, E::copy(&rhs), dst1);
+
+        E::map(
+            E::zip(dst, E::zip(E::copy(&dst0), E::copy(&dst1))),
+            #[inline(always)]
+            |(dst, (dst0, dst1))| {
+                dst[0] = dst0;
+                dst[1] = dst1;
+            },
+        );
+
+        (best_value0, best_indices0) =
+            best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0);
+        (best_value1, best_indices1) =
+            best_value::<E, S>(simd, best_value1, best_indices1, dst1, indices1);
+
+        indices0 = E::Real::simd_index_add(simd, indices0, increment2);
+        indices1 = E::Real::simd_index_add(simd, indices1, increment2);
+    }
+
+    (best_value0, best_indices0) =
+        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value1, best_indices1);
+
+    for (dst, lhs) in E::into_iter(dst_tail2).zip(E::into_iter(lhs_tail2)) {
+        let dst0 = E::deref(E::rb(E::as_ref(&dst)));
+        let lhs0 = E::deref(lhs);
+
+        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
+
+        E::map(
+            E::zip(dst, E::copy(&dst0)),
+            #[inline(always)]
+            |(dst, dst0)| *dst = dst0,
+        );
+
+        (best_value0, best_indices0) =
+            best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0);
+
+        indices0 = E::Real::simd_index_add(simd, indices0, increment1);
+    }
+
+    let dst0 = E::partial_load(simd, E::rb(E::as_ref(&dst_tail)));
+    let lhs0 = E::partial_load(simd, lhs_tail);
+    let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
+    E::partial_store(simd, dst_tail, E::copy(&dst0));
+
+    best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0)
 }
 
 macro_rules! best_in_col_simd {
@@ -210,20 +422,6 @@ macro_rules! best_in_col_simd {
                     simd.[<$scalar s_partial_load>](tail),
                     indices0
                 );
-
-                let mut best_value_scalar = 0.0;
-                let mut best_index_scalar = 0;
-                let mut index = (head.len() * lane_count) as $uint;
-                for data in tail.iter().copied() {
-                    (best_value_scalar, best_index_scalar) = [<best_ $scalar>](
-                        pulp::Scalar::new(),
-                        best_value_scalar,
-                        best_index_scalar,
-                        data,
-                        index,
-                    );
-                    index += 1;
-                }
 
                 (
                     best_value0,
@@ -305,10 +503,29 @@ macro_rules! best_in_col_simd {
         }
     };
 }
-best_in_col_simd!(f64, f64, u64);
-best_in_col_simd!(f32, f32, u32);
 best_in_col_simd!(c64, f64, u64);
 best_in_col_simd!(c32, f32, u32);
+
+#[inline(always)]
+fn reduce2d<E: RealField>(
+    best_value: E::Group<&[E::Unit]>,
+    best_row: &[E::Index],
+    best_col: &[E::Index],
+) -> (E, E::Index, E::Index) {
+    let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) =
+        (E::zero(), E::usize_to_index(0), E::usize_to_index(0));
+    for ((value, &row), &col) in E::into_iter(best_value).zip(best_row).zip(best_col) {
+        let value = E::from_units(E::deref(value));
+        (best_value_scalar, best_row_scalar, best_col_scalar) = {
+            if value > best_value_scalar {
+                (value, row, col)
+            } else {
+                (best_value_scalar, best_row_scalar, best_col_scalar)
+            }
+        };
+    }
+    (best_value_scalar, best_row_scalar, best_col_scalar)
+}
 
 #[inline(always)]
 fn reduce2d_f64(best_value: &[f64], best_row: &[u64], best_col: &[u64]) -> (f64, u64, u64) {
@@ -342,52 +559,6 @@ fn reduce2d_f32(best_value: &[f32], best_row: &[u32], best_col: &[u32]) -> (f32,
         );
     }
     (best_value_scalar, best_row_scalar, best_col_scalar)
-}
-
-#[inline(always)]
-fn best_in_col_f64<S: Simd>(simd: S, data: &[f64]) -> (S::f64s, S::u64s) {
-    best_in_col_f64_generic(simd, cast_lossy([0, 1, 2, 3, 4, 5, 6, 7_u64]), data)
-}
-
-#[inline(always)]
-fn update_and_best_in_col_f64<S: Simd>(
-    simd: S,
-    dst: &mut [f64],
-    lhs: &[f64],
-    rhs: f64,
-) -> (S::f64s, S::u64s) {
-    update_and_best_in_col_f64_generic(
-        simd,
-        cast_lossy([0, 1, 2, 3, 4, 5, 6, 7_u64]),
-        dst,
-        lhs,
-        rhs,
-    )
-}
-
-#[inline(always)]
-fn best_in_col_f32<S: Simd>(simd: S, data: &[f32]) -> (S::f32s, S::u32s) {
-    best_in_col_f32_generic(
-        simd,
-        cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u32]),
-        data,
-    )
-}
-
-#[inline(always)]
-fn update_and_best_in_col_f32<S: Simd>(
-    simd: S,
-    dst: &mut [f32],
-    lhs: &[f32],
-    rhs: f32,
-) -> (S::f32s, S::u32s) {
-    update_and_best_in_col_f32_generic(
-        simd,
-        cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u32]),
-        dst,
-        lhs,
-        rhs,
-    )
 }
 
 #[inline(always)]
@@ -436,10 +607,10 @@ fn update_and_best_in_col_c32<S: Simd>(
     )
 }
 
-fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
-    struct BestInMat<'a>(MatRef<'a, f64>);
-    impl pulp::WithSimd for BestInMat<'_> {
-        type Output = (usize, usize, f64);
+fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::Real) {
+    struct BestInMat<'a, E: ComplexField>(MatRef<'a, E>);
+    impl<E: ComplexField> pulp::WithSimd for BestInMat<'_, E> {
+        type Output = (usize, usize, E::Real);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
@@ -448,45 +619,53 @@ fn best_in_matrix_f64(matrix: MatRef<'_, f64>) -> (usize, usize, f64) {
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = simd.u64s_splat(0);
-            let mut best_col = simd.u64s_splat(0);
-            let mut best_value = simd.f64s_splat(0.0);
+            let mut best_row = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+            let mut best_col = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+            let mut best_value = E::Real::simd_splat(simd, E::Real::zero());
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
-                let col = unsafe { slice::from_raw_parts(ptr, m) };
-                let (best_value_in_col, best_index_in_col) = best_in_col_f64(simd, col);
-                (best_value, best_row, best_col) = best2d_f64(
+                let col = E::map(
+                    ptr,
+                    #[inline(always)]
+                    |ptr| unsafe { slice::from_raw_parts(ptr, m) },
+                );
+                let (best_value_in_col, best_index_in_col) = best_in_col::<E, S>(simd, col);
+                (best_value, best_row, best_col) = best2d::<E::Real, S>(
                     simd,
                     best_value,
                     best_row,
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    simd.u64s_splat(j as u64),
+                    E::Real::simd_index_splat(simd, E::Real::usize_to_index(j)),
                 );
             }
 
-            let (best_value, best_row, best_col) = reduce2d_f64(
-                bytemuck::cast_slice(&[best_value]),
-                bytemuck::cast_slice(&[best_row]),
-                bytemuck::cast_slice(&[best_col]),
+            let (best_value, best_row, best_col) = reduce2d::<E::Real>(
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
 
-            (best_row as usize, best_col as usize, best_value)
+            (
+                E::Real::index_to_usize(best_row),
+                E::Real::index_to_usize(best_col),
+                best_value,
+            )
         }
     }
     pulp::Arch::new().dispatch(BestInMat(matrix))
 }
 
-fn update_and_best_in_matrix_f64(
-    matrix: MatMut<'_, f64>,
-    lhs: MatRef<'_, f64>,
-    rhs: MatRef<'_, f64>,
-) -> (usize, usize, f64) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, f64>, MatRef<'a, f64>, MatRef<'a, f64>);
-    impl pulp::WithSimd for UpdateAndBestInMat<'_> {
-        type Output = (usize, usize, f64);
+fn update_and_best_in_matrix_simd<E: ComplexField>(
+    matrix: MatMut<'_, E>,
+    lhs: MatRef<'_, E>,
+    rhs: MatRef<'_, E>,
+) -> (usize, usize, E::Real) {
+    struct UpdateAndBestInMat<'a, E: ComplexField>(MatMut<'a, E>, MatRef<'a, E>, MatRef<'a, E>);
+    impl<E: ComplexField> pulp::WithSimd for UpdateAndBestInMat<'_, E> {
+        type Output = (usize, usize, E::Real);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
@@ -496,137 +675,51 @@ fn update_and_best_in_matrix_f64(
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = simd.u64s_splat(0);
-            let mut best_col = simd.u64s_splat(0);
-            let mut best_value = simd.f64s_splat(0.0);
+            let mut best_row = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+            let mut best_col = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+            let mut best_value = E::Real::simd_splat(simd, E::Real::zero());
 
-            let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
+            let lhs = E::map(
+                lhs.as_ptr(),
+                #[inline(always)]
+                |ptr| unsafe { slice::from_raw_parts(ptr, m) },
+            );
 
             for j in 0..n {
-                let rhs = -rhs.read(0, j);
+                let rhs = rhs.read(0, j).neg();
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
-                let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
+                let dst = E::map(
+                    ptr,
+                    #[inline(always)]
+                    |ptr| unsafe { slice::from_raw_parts_mut(ptr, m) },
+                );
 
                 let (best_value_in_col, best_index_in_col) =
-                    update_and_best_in_col_f64(simd, dst, lhs, rhs);
+                    update_and_best_in_col(simd, dst, E::copy(&lhs), rhs);
 
-                (best_value, best_row, best_col) = best2d_f64(
+                (best_value, best_row, best_col) = best2d::<E::Real, S>(
                     simd,
                     best_value,
                     best_row,
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    simd.u64s_splat(j as u64),
+                    E::Real::simd_index_splat(simd, E::Real::usize_to_index(j)),
                 );
             }
 
-            let (best_value, best_row, best_col) = reduce2d_f64(
-                bytemuck::cast_slice(&[best_value]),
-                bytemuck::cast_slice(&[best_row]),
-                bytemuck::cast_slice(&[best_col]),
+            let (best_value, best_row, best_col) = reduce2d::<E::Real>(
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
 
-            (best_row as usize, best_col as usize, best_value)
-        }
-    }
-    pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
-}
-
-fn best_in_matrix_f32(matrix: MatRef<'_, f32>) -> (usize, usize, f32) {
-    struct BestInMat<'a>(MatRef<'a, f32>);
-    impl pulp::WithSimd for BestInMat<'_> {
-        type Output = (usize, usize, f32);
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let matrix = self.0;
-            debug_assert!(matrix.row_stride() == 1);
-
-            let m = matrix.nrows();
-            let n = matrix.ncols();
-            let mut best_row = simd.u32s_splat(0);
-            let mut best_col = simd.u32s_splat(0);
-            let mut best_value = simd.f32s_splat(0.0);
-
-            for j in 0..n {
-                let ptr = matrix.col(j).as_ptr();
-                let col = unsafe { slice::from_raw_parts(ptr, m) };
-                let (best_value_in_col, best_index_in_col) = best_in_col_f32(simd, col);
-                (best_value, best_row, best_col) = best2d_f32(
-                    simd,
-                    best_value,
-                    best_row,
-                    best_col,
-                    best_value_in_col,
-                    best_index_in_col,
-                    simd.u32s_splat(j as u32),
-                );
-            }
-
-            let (best_value, best_row, best_col) = reduce2d_f32(
-                bytemuck::cast_slice(&[best_value]),
-                bytemuck::cast_slice(&[best_row]),
-                bytemuck::cast_slice(&[best_col]),
-            );
-
-            (best_row as usize, best_col as usize, best_value)
-        }
-    }
-    pulp::Arch::new().dispatch(BestInMat(matrix))
-}
-
-fn update_and_best_in_matrix_f32(
-    matrix: MatMut<'_, f32>,
-    lhs: MatRef<'_, f32>,
-    rhs: MatRef<'_, f32>,
-) -> (usize, usize, f32) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, f32>, MatRef<'a, f32>, MatRef<'a, f32>);
-    impl pulp::WithSimd for UpdateAndBestInMat<'_> {
-        type Output = (usize, usize, f32);
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
-            assert!(matrix.row_stride() == 1);
-            assert!(lhs.row_stride() == 1);
-
-            let m = matrix.nrows();
-            let n = matrix.ncols();
-            let mut best_row = simd.u32s_splat(0);
-            let mut best_col = simd.u32s_splat(0);
-            let mut best_value = simd.f32s_splat(0.0);
-
-            let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
-
-            for j in 0..n {
-                let rhs = -rhs.read(0, j);
-
-                let ptr = matrix.rb_mut().col(j).as_ptr();
-                let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
-
-                let (best_value_in_col, best_index_in_col) =
-                    update_and_best_in_col_f32(simd, dst, lhs, rhs);
-
-                (best_value, best_row, best_col) = best2d_f32(
-                    simd,
-                    best_value,
-                    best_row,
-                    best_col,
-                    best_value_in_col,
-                    best_index_in_col,
-                    simd.u32s_splat(j as u32),
-                );
-            }
-
-            let (best_value, best_row, best_col) = reduce2d_f32(
-                bytemuck::cast_slice(&[best_value]),
-                bytemuck::cast_slice(&[best_row]),
-                bytemuck::cast_slice(&[best_col]),
-            );
-
-            (best_row as usize, best_col as usize, best_value)
+            (
+                E::Real::index_to_usize(best_row),
+                E::Real::index_to_usize(best_col),
+                best_value,
+            )
         }
     }
     pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
@@ -827,27 +920,23 @@ fn update_and_best_in_matrix_c32(
 }
 
 #[inline]
-fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::Real) {
-    let is_f64 = coe::is_same::<f64, T>();
-    let is_f32 = coe::is_same::<f32, T>();
-    let is_c64 = coe::is_same::<c64, T>();
-    let is_c32 = coe::is_same::<c32, T>();
+fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::Real) {
+    let is_c64 = coe::is_same::<c64, E>();
+    let is_c32 = coe::is_same::<c32, E>();
 
     let is_col_major = matrix.row_stride() == 1;
 
-    if is_col_major && is_f64 {
-        coe::coerce_static(best_in_matrix_f64(matrix.coerce()))
-    } else if is_col_major && is_f32 {
-        coe::coerce_static(best_in_matrix_f32(matrix.coerce()))
-    } else if is_col_major && is_c64 {
+    if is_col_major && is_c64 {
         coe::coerce_static(best_in_matrix_c64(matrix.coerce()))
     } else if is_col_major && is_c32 {
         coe::coerce_static(best_in_matrix_c32(matrix.coerce()))
+    } else if is_col_major && E::HAS_SIMD {
+        best_in_matrix_simd(matrix)
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
 
-        let mut max = T::Real::zero();
+        let mut max = E::Real::zero();
         let mut max_row = 0;
         let mut max_col = 0;
 
@@ -867,31 +956,17 @@ fn best_in_matrix<T: ComplexField>(matrix: MatRef<'_, T>) -> (usize, usize, T::R
 }
 
 #[inline]
-fn rank_one_update_and_best_in_matrix<T: ComplexField>(
-    mut dst: MatMut<'_, T>,
-    lhs: MatRef<'_, T>,
-    rhs: MatRef<'_, T>,
-) -> (usize, usize, T::Real) {
-    let is_f64 = coe::is_same::<f64, T>();
-    let is_f32 = coe::is_same::<f32, T>();
-    let is_c64 = coe::is_same::<c64, T>();
-    let is_c32 = coe::is_same::<c32, T>();
+fn rank_one_update_and_best_in_matrix<E: ComplexField>(
+    mut dst: MatMut<'_, E>,
+    lhs: MatRef<'_, E>,
+    rhs: MatRef<'_, E>,
+) -> (usize, usize, E::Real) {
+    let is_c64 = coe::is_same::<c64, E>();
+    let is_c32 = coe::is_same::<c32, E>();
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
 
-    if is_f64 && is_col_major {
-        coe::coerce_static(update_and_best_in_matrix_f64(
-            dst.coerce(),
-            lhs.coerce(),
-            rhs.coerce(),
-        ))
-    } else if is_f32 && is_col_major {
-        coe::coerce_static(update_and_best_in_matrix_f32(
-            dst.coerce(),
-            lhs.coerce(),
-            rhs.coerce(),
-        ))
-    } else if is_c64 && is_col_major {
+    if is_c64 && is_col_major {
         coe::coerce_static(update_and_best_in_matrix_c64(
             dst.coerce(),
             lhs.coerce(),
@@ -903,13 +978,15 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
             lhs.coerce(),
             rhs.coerce(),
         ))
+    } else if E::HAS_SIMD && is_col_major {
+        update_and_best_in_matrix_simd(dst, lhs, rhs)
     } else {
         matmul(
             dst.rb_mut(),
             lhs,
             rhs,
-            Some(T::one()),
-            T::one().neg(),
+            Some(E::one()),
+            E::one().neg(),
             Parallelism::None,
         );
         best_in_matrix(dst.rb())
@@ -917,8 +994,8 @@ fn rank_one_update_and_best_in_matrix<T: ComplexField>(
 }
 
 #[inline]
-fn lu_in_place_unblocked<T: ComplexField>(
-    mut matrix: MatMut<'_, T>,
+fn lu_in_place_unblocked<E: ComplexField>(
+    mut matrix: MatMut<'_, E>,
     row_transpositions: &mut [usize],
     col_transpositions: &mut [usize],
     parallelism: Parallelism,
@@ -991,7 +1068,7 @@ fn lu_in_place_unblocked<T: ComplexField>(
             _ => {
                 let n_threads = parallelism_degree(parallelism);
 
-                let mut biggest = vec![(0_usize, 0_usize, T::Real::zero()); n_threads];
+                let mut biggest = vec![(0_usize, 0_usize, E::Real::zero()); n_threads];
 
                 let lhs = bottom_left.col(k).into_const();
                 let rhs = top_right.row(k).into_const();
@@ -1017,7 +1094,7 @@ fn lu_in_place_unblocked<T: ComplexField>(
 
                 max_row = 0;
                 max_col = 0;
-                let mut biggest_value = T::Real::zero();
+                let mut biggest_value = E::Real::zero();
                 for (row, col, value) in biggest {
                     if value > biggest_value {
                         max_row = row;
@@ -1042,7 +1119,7 @@ pub struct FullPivLuComputeParams {
 
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with full pivoting.
-pub fn lu_in_place_req<T: 'static>(
+pub fn lu_in_place_req<E: 'static>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
@@ -1090,8 +1167,8 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 /// - Panics if the length of the column permutation slices is not equal to the number of columns of
 ///   the matrix
 /// - Panics if the provided memory in `stack` is insufficient.
-pub fn lu_in_place<'out, T: ComplexField>(
-    matrix: MatMut<'_, T>,
+pub fn lu_in_place<'out, E: ComplexField>(
+    matrix: MatMut<'_, E>,
     row_perm: &'out mut [usize],
     row_perm_inv: &'out mut [usize],
     col_perm: &'out mut [usize],
@@ -1175,11 +1252,11 @@ mod tests {
         };
     }
 
-    fn reconstruct_matrix<T: ComplexField>(
-        lu_factors: MatRef<'_, T>,
+    fn reconstruct_matrix<E: ComplexField>(
+        lu_factors: MatRef<'_, E>,
         row_perm: PermutationRef<'_>,
         col_perm: PermutationRef<'_>,
-    ) -> Mat<T> {
+    ) -> Mat<E> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
         let mut dst = Mat::zeros(m, n);
@@ -1189,7 +1266,7 @@ mod tests {
             row_perm,
             col_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<T>(
+            make_stack!(reconstruct::reconstruct_req::<E>(
                 m,
                 n,
                 Parallelism::Rayon(0)
@@ -1198,7 +1275,7 @@ mod tests {
         dst
     }
 
-    fn compute_lu_col_major_generic<T: ComplexField>(random: fn() -> T, epsilon: T::Real) {
+    fn compute_lu_col_major_generic<E: ComplexField>(random: fn() -> E, epsilon: E::Real) {
         for (m, n) in [
             (2, 4),
             (2, 2),
@@ -1250,7 +1327,7 @@ mod tests {
         }
     }
 
-    fn compute_lu_row_major_generic<T: ComplexField>(random: fn() -> T, epsilon: T::Real) {
+    fn compute_lu_row_major_generic<E: ComplexField>(random: fn() -> E, epsilon: E::Real) {
         for (m, n) in [
             (2, 4),
             (2, 2),

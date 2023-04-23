@@ -210,7 +210,10 @@ impl Debug for c64conj {
 
 pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
     type Unit: Clone + Send + Sync + Debug + 'static;
+    type Index: Copy + Send + Sync + Debug + 'static;
     type SimdUnit<S: Simd>: Copy + Send + Sync + Debug + 'static;
+    type SimdMask<S: Simd>: Copy + Send + Sync + Debug + 'static;
+    type SimdIndex<S: Simd>: Copy + Send + Sync + Debug + 'static;
 
     type Group<T>;
     type GroupCopy<T: Copy>: Copy;
@@ -542,6 +545,8 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S>;
 
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S>;
+
     #[inline(always)]
     fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
         let _ = simd;
@@ -564,6 +569,51 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
     fn sqrt(&self) -> Self;
     fn div(&self, rhs: &Self) -> Self;
+
+    fn usize_to_index(a: usize) -> Self::Index;
+    fn index_to_usize(a: Self::Index) -> usize;
+    fn max_index() -> Self::Index;
+
+    fn simd_less_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S>;
+    fn simd_less_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S>;
+    fn simd_greater_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S>;
+    fn simd_greater_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S>;
+
+    fn simd_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: SimdGroup<Self, S>,
+        if_false: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
+    fn simd_index_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: Self::SimdIndex<S>,
+        if_false: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S>;
+    fn simd_index_seq<S: Simd>(simd: S) -> Self::SimdIndex<S>;
+    fn simd_index_splat<S: Simd>(simd: S, value: Self::Index) -> Self::SimdIndex<S>;
+    fn simd_index_add<S: Simd>(
+        simd: S,
+        a: Self::SimdIndex<S>,
+        b: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S>;
 }
 
 impl ComplexField for f32 {
@@ -770,6 +820,11 @@ impl ComplexField for f32 {
     fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
         simd.f32s_reduce_sum(values)
     }
+
+    #[inline(always)]
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        simd.f32s_abs(values)
+    }
 }
 impl ComplexField for f64 {
     type Real = Self;
@@ -974,6 +1029,11 @@ impl ComplexField for f64 {
     fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
         simd.f64s_reduce_sum(values)
     }
+
+    #[inline(always)]
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        simd.f64s_abs(values)
+    }
 }
 impl RealField for f32 {
     #[inline(always)]
@@ -985,6 +1045,95 @@ impl RealField for f32 {
     fn div(&self, rhs: &Self) -> Self {
         self / rhs
     }
+
+    #[inline(always)]
+    fn usize_to_index(a: usize) -> Self::Index {
+        a as _
+    }
+    #[inline(always)]
+    fn index_to_usize(a: Self::Index) -> usize {
+        a as _
+    }
+    #[inline(always)]
+    fn max_index() -> Self::Index {
+        Self::Index::MAX
+    }
+
+    #[inline(always)]
+    fn simd_less_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f32s_less_than(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_less_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f32s_less_than_or_equal(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_greater_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f32s_greater_than(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_greater_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f32s_greater_than_or_equal(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: SimdGroup<Self, S>,
+        if_false: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.m32s_select_f32s(mask, if_true, if_false)
+    }
+
+    #[inline(always)]
+    fn simd_index_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: Self::SimdIndex<S>,
+        if_false: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        simd.m32s_select_u32s(mask, if_true, if_false)
+    }
+
+    #[inline(always)]
+    fn simd_index_seq<S: Simd>(simd: S) -> Self::SimdIndex<S> {
+        let _ = simd;
+        pulp::cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u32])
+    }
+
+    #[inline(always)]
+    fn simd_index_splat<S: Simd>(simd: S, value: Self::Index) -> Self::SimdIndex<S> {
+        simd.u32s_splat(value)
+    }
+
+    #[inline(always)]
+    fn simd_index_add<S: Simd>(
+        simd: S,
+        a: Self::SimdIndex<S>,
+        b: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        simd.u32s_add(a, b)
+    }
 }
 impl RealField for f64 {
     #[inline(always)]
@@ -995,6 +1144,95 @@ impl RealField for f64 {
     #[inline(always)]
     fn div(&self, rhs: &Self) -> Self {
         self / rhs
+    }
+
+    #[inline(always)]
+    fn usize_to_index(a: usize) -> Self::Index {
+        a as _
+    }
+    #[inline(always)]
+    fn index_to_usize(a: Self::Index) -> usize {
+        a as _
+    }
+    #[inline(always)]
+    fn max_index() -> Self::Index {
+        Self::Index::MAX
+    }
+
+    #[inline(always)]
+    fn simd_less_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f64s_less_than(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_less_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f64s_less_than_or_equal(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_greater_than<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f64s_greater_than(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_greater_than_or_equal<S: Simd>(
+        simd: S,
+        a: SimdGroup<Self, S>,
+        b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        simd.f64s_greater_than_or_equal(a, b)
+    }
+
+    #[inline(always)]
+    fn simd_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: SimdGroup<Self, S>,
+        if_false: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        simd.m64s_select_f64s(mask, if_true, if_false)
+    }
+
+    #[inline(always)]
+    fn simd_index_select<S: Simd>(
+        simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: Self::SimdIndex<S>,
+        if_false: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        simd.m64s_select_u64s(mask, if_true, if_false)
+    }
+
+    #[inline(always)]
+    fn simd_index_seq<S: Simd>(simd: S) -> Self::SimdIndex<S> {
+        let _ = simd;
+        pulp::cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u64])
+    }
+
+    #[inline(always)]
+    fn simd_index_splat<S: Simd>(simd: S, value: Self::Index) -> Self::SimdIndex<S> {
+        simd.u64s_splat(value)
+    }
+
+    #[inline(always)]
+    fn simd_index_add<S: Simd>(
+        simd: S,
+        a: Self::SimdIndex<S>,
+        b: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        simd.u64s_add(a, b)
     }
 }
 
@@ -1245,6 +1483,12 @@ impl ComplexField for c32 {
     fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
         pulp::cast(simd.c32s_reduce_sum(values))
     }
+
+    #[inline(always)]
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+    }
 }
 impl ComplexField for c64 {
     type Real = f64;
@@ -1492,6 +1736,12 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
         pulp::cast(simd.c64s_reduce_sum(values))
+    }
+
+    #[inline(always)]
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
 }
 
@@ -1808,6 +2058,16 @@ impl<E: RealField> ComplexField for Complex<E> {
             ),
         }
     }
+
+    #[inline(always)]
+    fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        E::simd_mul_adde(
+            simd,
+            E::copy(&values.re),
+            E::copy(&values.re),
+            E::simd_mul(simd, E::copy(&values.im), E::copy(&values.im)),
+        )
+    }
 }
 
 #[doc(hidden)]
@@ -1815,7 +2075,10 @@ pub use pulp;
 
 unsafe impl Entity for c32 {
     type Unit = Self;
+    type Index = u32;
     type SimdUnit<S: Simd> = S::c32s;
+    type SimdMask<S: Simd> = S::m32s;
+    type SimdIndex<S: Simd> = S::u32s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -1887,7 +2150,10 @@ unsafe impl Entity for c32 {
 }
 unsafe impl Entity for c32conj {
     type Unit = Self;
+    type Index = u32;
     type SimdUnit<S: Simd> = S::c32s;
+    type SimdMask<S: Simd> = S::m32s;
+    type SimdIndex<S: Simd> = S::u32s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -1960,7 +2226,10 @@ unsafe impl Entity for c32conj {
 
 unsafe impl Entity for c64 {
     type Unit = Self;
+    type Index = u64;
     type SimdUnit<S: Simd> = S::c64s;
+    type SimdMask<S: Simd> = S::m64s;
+    type SimdIndex<S: Simd> = S::u64s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -2032,7 +2301,10 @@ unsafe impl Entity for c64 {
 }
 unsafe impl Entity for c64conj {
     type Unit = Self;
+    type Index = u64;
     type SimdUnit<S: Simd> = S::c64s;
+    type SimdMask<S: Simd> = S::m64s;
+    type SimdIndex<S: Simd> = S::u64s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -2105,7 +2377,10 @@ unsafe impl Entity for c64conj {
 
 unsafe impl Entity for f32 {
     type Unit = Self;
+    type Index = u32;
     type SimdUnit<S: Simd> = S::f32s;
+    type SimdMask<S: Simd> = S::m32s;
+    type SimdIndex<S: Simd> = S::u32s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -2177,7 +2452,10 @@ unsafe impl Entity for f32 {
 
 unsafe impl Entity for f64 {
     type Unit = Self;
+    type Index = u64;
     type SimdUnit<S: Simd> = S::f64s;
+    type SimdMask<S: Simd> = S::m64s;
+    type SimdIndex<S: Simd> = S::u64s;
     type Group<T> = T;
     type GroupCopy<T: Copy> = T;
     type GroupThreadSafe<T: Send + Sync> = T;
@@ -2292,7 +2570,10 @@ impl<I: Iterator> Iterator for ComplexConjIter<I> {
 
 unsafe impl<E: Entity> Entity for Complex<E> {
     type Unit = E::Unit;
+    type Index = E::Index;
     type SimdUnit<S: Simd> = E::SimdUnit<S>;
+    type SimdMask<S: Simd> = E::SimdMask<S>;
+    type SimdIndex<S: Simd> = E::SimdIndex<S>;
     type Group<T> = Complex<E::Group<T>>;
     type GroupCopy<T: Copy> = Complex<E::GroupCopy<T>>;
     type GroupThreadSafe<T: Send + Sync> = Complex<E::GroupThreadSafe<T>>;
@@ -2382,7 +2663,10 @@ unsafe impl<E: Entity> Entity for Complex<E> {
 
 unsafe impl<E: Entity> Entity for ComplexConj<E> {
     type Unit = E::Unit;
-    type SimdUnit<S: Simd> = S::f32s;
+    type Index = E::Index;
+    type SimdUnit<S: Simd> = E::SimdUnit<S>;
+    type SimdMask<S: Simd> = E::SimdMask<S>;
+    type SimdIndex<S: Simd> = E::SimdIndex<S>;
     type Group<T> = ComplexConj<E::Group<T>>;
     type GroupCopy<T: Copy> = ComplexConj<E::GroupCopy<T>>;
     type GroupThreadSafe<T: Send + Sync> = ComplexConj<E::GroupThreadSafe<T>>;
@@ -4602,7 +4886,10 @@ mod tests {
         ($ty: ty) => {
             unsafe impl Entity for $ty {
                 type Unit = Self;
+                type Index = ();
                 type SimdUnit<S: $crate::pulp::Simd> = ();
+                type SimdMask<S: $crate::pulp::Simd> = ();
+                type SimdIndex<S: $crate::pulp::Simd> = ();
                 type Group<T> = T;
                 type GroupCopy<T: Copy> = T;
                 type GroupThreadSafe<T: Send + Sync> = T;

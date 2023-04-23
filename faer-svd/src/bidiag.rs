@@ -2,7 +2,7 @@ use assert2::assert;
 use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    c32, c64, for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
+    for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
     parallelism_degree, simd, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField,
     Conj, Entity, MatMut, MatRef, Parallelism,
 };

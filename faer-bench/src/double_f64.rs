@@ -453,8 +453,11 @@ mod faer_impl {
 
     unsafe impl Entity for DoubleF64 {
         type Unit = f64;
+        type Index = u64;
 
-        type SimdUnit<S: faer_core::pulp::Simd> = S::f64s;
+        type SimdUnit<S: Simd> = S::f64s;
+        type SimdMask<S: Simd> = S::m64s;
+        type SimdIndex<S: Simd> = S::u64s;
 
         type Group<T> = Double<T>;
         type GroupCopy<T: Copy> = Double<T>;
@@ -538,6 +541,97 @@ mod faer_impl {
         #[inline(always)]
         fn div(&self, rhs: &Self) -> Self {
             *self / *rhs
+        }
+
+        #[inline(always)]
+        fn usize_to_index(a: usize) -> Self::Index {
+            a as _
+        }
+
+        #[inline(always)]
+        fn index_to_usize(a: Self::Index) -> usize {
+            a as _
+        }
+
+        #[inline(always)]
+        fn max_index() -> Self::Index {
+            Self::Index::MAX
+        }
+
+        #[inline(always)]
+        fn simd_less_than<S: Simd>(
+            simd: S,
+            a: SimdGroup<Self, S>,
+            b: SimdGroup<Self, S>,
+        ) -> Self::SimdMask<S> {
+            simd::simd_less_than(simd, a, b)
+        }
+
+        #[inline(always)]
+        fn simd_less_than_or_equal<S: Simd>(
+            simd: S,
+            a: SimdGroup<Self, S>,
+            b: SimdGroup<Self, S>,
+        ) -> Self::SimdMask<S> {
+            simd::simd_less_than_or_equal(simd, a, b)
+        }
+
+        #[inline(always)]
+        fn simd_greater_than<S: Simd>(
+            simd: S,
+            a: SimdGroup<Self, S>,
+            b: SimdGroup<Self, S>,
+        ) -> Self::SimdMask<S> {
+            simd::simd_greater_than(simd, a, b)
+        }
+
+        #[inline(always)]
+        fn simd_greater_than_or_equal<S: Simd>(
+            simd: S,
+            a: SimdGroup<Self, S>,
+            b: SimdGroup<Self, S>,
+        ) -> Self::SimdMask<S> {
+            simd::simd_greater_than_or_equal(simd, a, b)
+        }
+
+        #[inline(always)]
+        fn simd_select<S: Simd>(
+            simd: S,
+            mask: Self::SimdMask<S>,
+            if_true: SimdGroup<Self, S>,
+            if_false: SimdGroup<Self, S>,
+        ) -> SimdGroup<Self, S> {
+            simd::simd_select(simd, mask, if_true, if_false)
+        }
+
+        #[inline(always)]
+        fn simd_index_select<S: Simd>(
+            simd: S,
+            mask: Self::SimdMask<S>,
+            if_true: Self::SimdIndex<S>,
+            if_false: Self::SimdIndex<S>,
+        ) -> Self::SimdIndex<S> {
+            simd.m64s_select_u64s(mask, if_true, if_false)
+        }
+
+        #[inline(always)]
+        fn simd_index_seq<S: Simd>(simd: S) -> Self::SimdIndex<S> {
+            let _ = simd;
+            pulp::cast_lossy([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15_u64])
+        }
+
+        #[inline(always)]
+        fn simd_index_splat<S: Simd>(simd: S, value: Self::Index) -> Self::SimdIndex<S> {
+            simd.u64s_splat(value)
+        }
+
+        #[inline(always)]
+        fn simd_index_add<S: Simd>(
+            simd: S,
+            a: Self::SimdIndex<S>,
+            b: Self::SimdIndex<S>,
+        ) -> Self::SimdIndex<S> {
+            simd.u64s_add(a, b)
         }
     }
 
@@ -761,6 +855,11 @@ mod faer_impl {
             acc: SimdGroup<Self, S>,
         ) -> SimdGroup<Self, S> {
             simd::simd_add(simd, acc, simd::simd_mul(simd, lhs, rhs))
+        }
+
+        #[inline(always)]
+        fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+            simd::simd_abs(simd, values)
         }
     }
 }
