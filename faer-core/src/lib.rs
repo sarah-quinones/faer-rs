@@ -545,6 +545,12 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S>;
 
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S>;
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S>;
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S>;
 
     #[inline(always)]
@@ -822,6 +828,18 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        simd.f32s_mul(values, values)
+    }
+    #[inline(always)]
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        simd.f32s_mul_adde(values, values, acc)
+    }
+    #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         simd.f32s_abs(values)
     }
@@ -1030,6 +1048,18 @@ impl ComplexField for f64 {
         simd.f64s_reduce_sum(values)
     }
 
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        simd.f64s_mul(values, values)
+    }
+    #[inline(always)]
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        simd.f64s_mul_adde(values, values, acc)
+    }
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         simd.f64s_abs(values)
@@ -1485,6 +1515,20 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values, acc);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+    }
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+    }
+    #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
@@ -1738,6 +1782,20 @@ impl ComplexField for c64 {
         pulp::cast(simd.c64s_reduce_sum(values))
     }
 
+    #[inline(always)]
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values, acc);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+    }
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        let _ = (simd, values);
+        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+    }
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         let _ = (simd, values);
@@ -2059,6 +2117,23 @@ impl<E: RealField> ComplexField for Complex<E> {
         }
     }
 
+    #[inline(always)]
+    fn simd_abs2_adde<S: Simd>(
+        simd: S,
+        values: SimdGroup<Self, S>,
+        acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        E::simd_mul_adde(
+            simd,
+            E::copy(&values.re),
+            E::copy(&values.re),
+            E::simd_mul_adde(simd, E::copy(&values.im), E::copy(&values.im), acc),
+        )
+    }
+    #[inline(always)]
+    fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        Self::simd_score(simd, values)
+    }
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         E::simd_mul_adde(

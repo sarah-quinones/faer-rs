@@ -861,5 +861,19 @@ mod faer_impl {
         fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
             simd::simd_abs(simd, values)
         }
+
+        #[inline(always)]
+        fn simd_abs2_adde<S: Simd>(
+            simd: S,
+            values: SimdGroup<Self, S>,
+            acc: SimdGroup<Self::Real, S>,
+        ) -> SimdGroup<Self::Real, S> {
+            Self::simd_add(simd, acc, Self::simd_mul(simd, values, values))
+        }
+
+        #[inline(always)]
+        fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+            Self::simd_mul(simd, values, values)
+        }
     }
 }

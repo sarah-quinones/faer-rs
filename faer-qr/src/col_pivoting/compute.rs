@@ -8,94 +8,130 @@ use faer_core::{
     mul::inner_prod::inner_prod_with_conj,
     par_split_indices, parallelism_degree,
     permutation::{swap_cols, PermutationMut},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, Ptr,
+    simd, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, Ptr,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
 pub use crate::no_pivoting::compute::recommended_blocksize;
 
-// a += k * b
-//
-// returns ||a||²
-fn update_and_norm2_f64(arch: pulp::Arch, a: &mut [f64], b: &[f64], k: f64) -> f64 {
-    struct Impl<'a> {
-        a: &'a mut [f64],
-        b: &'a [f64],
-        k: f64,
+fn update_and_norm2_simd<'a, E: ComplexField>(
+    arch: pulp::Arch,
+    a: E::Group<&'a mut [E::Unit]>,
+    b: E::Group<&'a [E::Unit]>,
+    k: E,
+) -> E::Real {
+    struct Impl<'a, E: ComplexField> {
+        a: E::Group<&'a mut [E::Unit]>,
+        b: E::Group<&'a [E::Unit]>,
+        k: E,
     }
-    impl pulp::WithSimd for Impl<'_> {
-        type Output = f64;
+    impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {
+        type Output = E::Real;
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let Self { a, b, k } = self;
-            let mut acc0 = simd.f64s_splat(0.0);
-            let mut acc1 = simd.f64s_splat(0.0);
-            let mut acc2 = simd.f64s_splat(0.0);
-            let mut acc3 = simd.f64s_splat(0.0);
-            let mut acc4 = simd.f64s_splat(0.0);
-            let mut acc5 = simd.f64s_splat(0.0);
-            let mut acc6 = simd.f64s_splat(0.0);
-            let mut acc7 = simd.f64s_splat(0.0);
+            let mut acc0 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc1 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc2 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc3 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc4 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc5 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc6 = E::Real::simd_splat(simd, E::Real::zero());
+            let mut acc7 = E::Real::simd_splat(simd, E::Real::zero());
 
-            let (a, a_rem) = S::f64s_as_mut_simd(a);
-            let (b, b_rem) = S::f64s_as_simd(b);
+            let (a, a_rem) = simd::slice_as_mut_simd::<E, S>(a);
+            let (b, b_rem) = simd::slice_as_simd::<E, S>(b);
 
-            let vk = simd.f64s_splat(k);
+            let k = E::simd_splat(simd, k);
 
-            let (a, a_remv) = as_arrays_mut::<8, _>(a);
-            let (b, b_remv) = as_arrays::<8, _>(b);
+            let (a, a_remv) = E::as_arrays_mut::<8, _>(a);
+            let (b, b_remv) = E::as_arrays::<8, _>(b);
 
-            for (a, b) in a.iter_mut().zip(b.iter()) {
-                a[0] = simd.f64s_mul_adde(vk, b[0], a[0]);
-                acc0 = simd.f64s_mul_adde(a[0], a[0], acc0);
+            for (a, b) in E::into_iter(a).zip(E::into_iter(b)) {
+                let [mut a0, mut a1, mut a2, mut a3, mut a4, mut a5, mut a6, mut a7] =
+                    E::unzip8(E::deref(E::rb(E::as_ref(&a))));
+                let [b0, b1, b2, b3, b4, b5, b6, b7] = E::unzip8(E::deref(b));
 
-                a[1] = simd.f64s_mul_adde(vk, b[1], a[1]);
-                acc1 = simd.f64s_mul_adde(a[1], a[1], acc1);
+                a0 = E::simd_mul_adde(simd, E::copy(&k), b0, a0);
+                acc0 = E::simd_abs2_adde(simd, E::copy(&a0), acc0);
 
-                a[2] = simd.f64s_mul_adde(vk, b[2], a[2]);
-                acc2 = simd.f64s_mul_adde(a[2], a[2], acc2);
+                a1 = E::simd_mul_adde(simd, E::copy(&k), b1, a1);
+                acc1 = E::simd_abs2_adde(simd, E::copy(&a1), acc1);
 
-                a[3] = simd.f64s_mul_adde(vk, b[3], a[3]);
-                acc3 = simd.f64s_mul_adde(a[3], a[3], acc3);
+                a2 = E::simd_mul_adde(simd, E::copy(&k), b2, a2);
+                acc2 = E::simd_abs2_adde(simd, E::copy(&a2), acc2);
 
-                a[4] = simd.f64s_mul_adde(vk, b[4], a[4]);
-                acc4 = simd.f64s_mul_adde(a[4], a[4], acc4);
+                a3 = E::simd_mul_adde(simd, E::copy(&k), b3, a3);
+                acc3 = E::simd_abs2_adde(simd, E::copy(&a3), acc3);
 
-                a[5] = simd.f64s_mul_adde(vk, b[5], a[5]);
-                acc5 = simd.f64s_mul_adde(a[5], a[5], acc5);
+                a4 = E::simd_mul_adde(simd, E::copy(&k), b4, a4);
+                acc4 = E::simd_abs2_adde(simd, E::copy(&a4), acc4);
 
-                a[6] = simd.f64s_mul_adde(vk, b[6], a[6]);
-                acc6 = simd.f64s_mul_adde(a[6], a[6], acc6);
+                a5 = E::simd_mul_adde(simd, E::copy(&k), b5, a5);
+                acc5 = E::simd_abs2_adde(simd, E::copy(&a5), acc5);
 
-                a[7] = simd.f64s_mul_adde(vk, b[7], a[7]);
-                acc7 = simd.f64s_mul_adde(a[7], a[7], acc7);
+                a6 = E::simd_mul_adde(simd, E::copy(&k), b6, a6);
+                acc6 = E::simd_abs2_adde(simd, E::copy(&a6), acc6);
+
+                a7 = E::simd_mul_adde(simd, E::copy(&k), b7, a7);
+                acc7 = E::simd_abs2_adde(simd, E::copy(&a7), acc7);
+
+                E::map(
+                    E::zip(
+                        a,
+                        E::zip(
+                            E::zip(E::zip(a0, a1), E::zip(a2, a3)),
+                            E::zip(E::zip(a4, a5), E::zip(a6, a7)),
+                        ),
+                    ),
+                    #[inline(always)]
+                    |(a, (((a0, a1), (a2, a3)), ((a4, a5), (a6, a7))))| {
+                        a[0] = a0;
+                        a[1] = a1;
+                        a[2] = a2;
+                        a[3] = a3;
+                        a[4] = a4;
+                        a[5] = a5;
+                        a[6] = a6;
+                        a[7] = a7;
+                    },
+                );
             }
 
-            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
-                *a = simd.f64s_mul_adde(vk, *b, *a);
-                acc0 = simd.f64s_mul_adde(*a, *a, acc0);
+            acc0 = E::Real::simd_add(simd, acc0, acc1);
+            acc2 = E::Real::simd_add(simd, acc2, acc3);
+            acc4 = E::Real::simd_add(simd, acc4, acc5);
+            acc6 = E::Real::simd_add(simd, acc6, acc7);
+
+            acc0 = E::Real::simd_add(simd, acc0, acc2);
+            acc4 = E::Real::simd_add(simd, acc4, acc6);
+
+            for (a, b) in E::into_iter(a_remv).zip(E::into_iter(b_remv)) {
+                let new_a = E::simd_mul_adde(
+                    simd,
+                    E::copy(&k),
+                    E::deref(b),
+                    E::deref(E::rb(E::as_ref(&a))),
+                );
+                E::map(
+                    E::zip(a, E::copy(&new_a)),
+                    #[inline(always)]
+                    |(a, new_a)| *a = new_a,
+                );
+                acc0 = E::simd_abs2_adde(simd, new_a, acc0);
             }
 
-            acc0 = simd.f64s_add(acc0, acc1);
-            acc2 = simd.f64s_add(acc2, acc3);
-            acc4 = simd.f64s_add(acc4, acc5);
-            acc6 = simd.f64s_add(acc6, acc7);
+            acc0 = E::Real::simd_add(simd, acc0, acc4);
 
-            acc0 = simd.f64s_add(acc0, acc2);
-            acc4 = simd.f64s_add(acc4, acc6);
+            let a_load = E::partial_load(simd, E::rb(E::as_ref(&a_rem)));
+            let b = E::partial_load(simd, b_rem);
+            let new_a = E::simd_mul_adde(simd, E::copy(&k), b, a_load);
+            E::partial_store(simd, a_rem, E::copy(&new_a));
+            acc0 = E::simd_abs2_adde(simd, new_a, acc0);
 
-            acc0 = simd.f64s_add(acc0, acc4);
-
-            let mut acc = simd.f64s_reduce_sum(acc0);
-
-            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
-                *a = f64::mul_add(k, *b, *a);
-                acc = f64::mul_add(*a, *a, acc);
-            }
-
-            acc
+            E::Real::simd_reduce_add(simd, acc0)
         }
     }
     arch.dispatch(Impl { a, b, k })
@@ -187,92 +223,6 @@ fn update_and_norm2_c64(arch: pulp::Arch, a: &mut [c64], b: &[c64], k: c64) -> f
             for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
                 *a = k * *b + *a;
                 acc = a.re * a.re + a.im * a.im;
-            }
-
-            acc
-        }
-    }
-    arch.dispatch(Impl { a, b, k })
-}
-
-// a += k * b
-//
-// returns ||a||²
-fn update_and_norm2_f32(arch: pulp::Arch, a: &mut [f32], b: &[f32], k: f32) -> f32 {
-    struct Impl<'a> {
-        a: &'a mut [f32],
-        b: &'a [f32],
-        k: f32,
-    }
-    impl pulp::WithSimd for Impl<'_> {
-        type Output = f32;
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let Self { a, b, k } = self;
-            let mut acc0 = simd.f32s_splat(0.0);
-            let mut acc1 = simd.f32s_splat(0.0);
-            let mut acc2 = simd.f32s_splat(0.0);
-            let mut acc3 = simd.f32s_splat(0.0);
-            let mut acc4 = simd.f32s_splat(0.0);
-            let mut acc5 = simd.f32s_splat(0.0);
-            let mut acc6 = simd.f32s_splat(0.0);
-            let mut acc7 = simd.f32s_splat(0.0);
-
-            let (a, a_rem) = S::f32s_as_mut_simd(a);
-            let (b, b_rem) = S::f32s_as_simd(b);
-
-            let (a, a_remv) = as_arrays_mut::<8, _>(a);
-            let (b, b_remv) = as_arrays::<8, _>(b);
-
-            let vk = simd.f32s_splat(k);
-
-            for (a, b) in a.iter_mut().zip(b.iter()) {
-                a[0] = simd.f32s_mul_adde(vk, b[0], a[0]);
-                acc0 = simd.f32s_mul_adde(a[0], a[0], acc0);
-
-                a[1] = simd.f32s_mul_adde(vk, b[1], a[1]);
-                acc1 = simd.f32s_mul_adde(a[1], a[1], acc1);
-
-                a[2] = simd.f32s_mul_adde(vk, b[2], a[2]);
-                acc2 = simd.f32s_mul_adde(a[2], a[2], acc2);
-
-                a[3] = simd.f32s_mul_adde(vk, b[3], a[3]);
-                acc3 = simd.f32s_mul_adde(a[3], a[3], acc3);
-
-                a[4] = simd.f32s_mul_adde(vk, b[4], a[4]);
-                acc4 = simd.f32s_mul_adde(a[4], a[4], acc4);
-
-                a[5] = simd.f32s_mul_adde(vk, b[5], a[5]);
-                acc5 = simd.f32s_mul_adde(a[5], a[5], acc5);
-
-                a[6] = simd.f32s_mul_adde(vk, b[6], a[6]);
-                acc6 = simd.f32s_mul_adde(a[6], a[6], acc6);
-
-                a[7] = simd.f32s_mul_adde(vk, b[7], a[7]);
-                acc7 = simd.f32s_mul_adde(a[7], a[7], acc7);
-            }
-
-            for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
-                *a = simd.f32s_mul_adde(vk, *b, *a);
-                acc0 = simd.f32s_mul_adde(*a, *a, acc0);
-            }
-
-            acc0 = simd.f32s_add(acc0, acc1);
-            acc2 = simd.f32s_add(acc2, acc3);
-            acc4 = simd.f32s_add(acc4, acc5);
-            acc6 = simd.f32s_add(acc6, acc7);
-
-            acc0 = simd.f32s_add(acc0, acc2);
-            acc4 = simd.f32s_add(acc4, acc6);
-
-            acc0 = simd.f32s_add(acc0, acc4);
-
-            let mut acc = simd.f32s_reduce_sum(acc0);
-
-            for (a, b) in a_rem.iter_mut().zip(b_rem.iter()) {
-                *a = f32::mul_add(k, *b, *a);
-                acc = f32::mul_add(*a, *a, acc);
             }
 
             acc
@@ -392,13 +342,6 @@ fn update_and_norm2<E: ComplexField>(
         let a_len = a.nrows();
         let b_len = b.nrows();
 
-        if coe::is_same::<f64, E>() {
-            let a: MatMut<'_, f64> = a.coerce();
-            let b: MatRef<'_, f64> = b.coerce();
-            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
-            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
-            return coe::coerce_static(update_and_norm2_f64(arch, a, b, coe::coerce_static(k)));
-        }
         if coe::is_same::<c64, E>() {
             let a: MatMut<'_, c64> = a.coerce();
             let b: MatRef<'_, c64> = b.coerce();
@@ -406,19 +349,25 @@ fn update_and_norm2<E: ComplexField>(
             let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
             return coe::coerce_static(update_and_norm2_c64(arch, a, b, coe::coerce_static(k)));
         }
-        if coe::is_same::<f32, E>() {
-            let a: MatMut<'_, f32> = a.coerce();
-            let b: MatRef<'_, f32> = b.coerce();
-            let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
-            let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
-            return coe::coerce_static(update_and_norm2_f32(arch, a, b, coe::coerce_static(k)));
-        }
         if coe::is_same::<c32, E>() {
             let a: MatMut<'_, c32> = a.coerce();
             let b: MatRef<'_, c32> = b.coerce();
             let a = unsafe { slice::from_raw_parts_mut(a.as_ptr(), a_len) };
             let b = unsafe { slice::from_raw_parts(b.as_ptr(), b_len) };
             return coe::coerce_static(update_and_norm2_c32(arch, a, b, coe::coerce_static(k)));
+        }
+        if E::HAS_SIMD {
+            let a = E::map(
+                a.as_ptr(),
+                #[inline(always)]
+                |ptr| unsafe { slice::from_raw_parts_mut(ptr, a_len) },
+            );
+            let b = E::map(
+                b.as_ptr(),
+                #[inline(always)]
+                |ptr| unsafe { slice::from_raw_parts(ptr, a_len) },
+            );
+            return update_and_norm2_simd(arch, a, b, k);
         }
     }
 
@@ -553,23 +502,6 @@ fn qr_in_place_colmajor<E: ComplexField>(
                         parallelism,
                     );
                 }
-
-                // last_cols
-                //     .into_par_col_chunks(n_threads)
-                //     .zip(biggest_col.par_iter_mut())
-                //     .for_each(
-                //         |((col_start, matrix), (biggest_col_value, biggest_col_idx))| {
-                //             process_cols(
-                //                 arch,
-                //                 matrix,
-                //                 col_start,
-                //                 first_tail,
-                //                 tau_inv.clone(),
-                //                 biggest_col_value,
-                //                 biggest_col_idx,
-                //             );
-                //         },
-                //     );
 
                 biggest_col_value = E::Real::zero();
                 biggest_col_idx = 0;
