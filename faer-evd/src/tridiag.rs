@@ -906,9 +906,6 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                         let u = u21.rb();
                         let y = y21.rb();
 
-                        // let first_col = 0;
-                        // let last_col = n - k - 1;
-
                         arch.dispatch(SymMatVecWithLhsUpdate {
                             acc,
                             acct,
@@ -922,29 +919,6 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     },
                     parallelism,
                 );
-
-                // zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::zero()));
-                // let acc = v21.rb_mut();
-                // let acct = w21.rb_mut();
-                // let lhs = a22.rb_mut();
-                // let rhs = a21.rb();
-
-                // let u = u21.rb();
-                // let y = y21.rb();
-
-                // let first_col = 0;
-                // let last_col = n - k - 1;
-
-                // arch.dispatch(SymMatVecWithLhsUpdate {
-                //     acc,
-                //     acct,
-                //     lhs,
-                //     rhs,
-                //     first_col,
-                //     last_col,
-                //     u,
-                //     y,
-                // });
 
                 zipped!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
                     .for_each(|mut y, v, w| y.write(v.read().add(&w.read())));
@@ -1159,8 +1133,6 @@ mod tests {
                 parallelism,
                 make_stack!(tridiagonalize_in_place_req::<c64>(n, parallelism)),
             );
-
-            dbgf::dbgf!("6.2?", &trid);
 
             let mut copy = mat.clone();
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(

@@ -892,7 +892,7 @@ pub mod outer_prod {
     }
 }
 
-const NC: usize = 256;
+const NC: usize = 2048;
 const MC: usize = 48;
 const KC: usize = 64;
 
