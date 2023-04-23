@@ -53,26 +53,50 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         let mut trid = mat.clone();
         let mut tau_left = Mat::zeros(n - 1, 1);
 
-        let parallelism = Parallelism::None;
-        let mut mem =
-            GlobalMemBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
-        let mut stack = DynStack::new(&mut mem);
+        {
+            let parallelism = Parallelism::None;
+            let mut mem =
+                GlobalMemBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
+            let mut stack = DynStack::new(&mut mem);
 
-        criterion.bench_function(
-            &format!("tridiag-st-{}-{}", type_name::<E>(), n),
-            |bencher| {
-                bencher.iter(|| {
-                    zipped!(trid.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
-                    tridiagonalize_in_place(
-                        trid.as_mut(),
-                        tau_left.as_mut().col(0),
-                        parallelism,
-                        stack.rb_mut(),
-                    );
-                });
-            },
-        );
+            criterion.bench_function(
+                &format!("tridiag-st-{}-{}", type_name::<E>(), n),
+                |bencher| {
+                    bencher.iter(|| {
+                        zipped!(trid.as_mut(), mat.as_ref())
+                            .for_each(|mut dst, src| dst.write(src.read()));
+                        tridiagonalize_in_place(
+                            trid.as_mut(),
+                            tau_left.as_mut().col(0),
+                            parallelism,
+                            stack.rb_mut(),
+                        );
+                    });
+                },
+            );
+        }
+        {
+            let parallelism = Parallelism::Rayon(0);
+            let mut mem =
+                GlobalMemBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
+            let mut stack = DynStack::new(&mut mem);
+
+            criterion.bench_function(
+                &format!("tridiag-mt-{}-{}", type_name::<E>(), n),
+                |bencher| {
+                    bencher.iter(|| {
+                        zipped!(trid.as_mut(), mat.as_ref())
+                            .for_each(|mut dst, src| dst.write(src.read()));
+                        tridiagonalize_in_place(
+                            trid.as_mut(),
+                            tau_left.as_mut().col(0),
+                            parallelism,
+                            stack.rb_mut(),
+                        );
+                    });
+                },
+            );
+        }
     }
 }
 

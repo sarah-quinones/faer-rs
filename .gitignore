@@ -3,5 +3,7 @@ Cargo.lock
 *.out
 f32.txt
 f64.txt
+f128.txt
 c32.txt
 c64.txt
+c128.txt
