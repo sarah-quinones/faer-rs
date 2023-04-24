@@ -8,9 +8,61 @@ use faer_core::{
 };
 use reborrow::*;
 
-#[inline]
-fn swap_two_elems<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usize) {
-    swap_rows(m, i, j);
+#[inline(always)]
+fn swap_two_elems<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j: usize) {
+    debug_assert!(m.ncols() == 1);
+    debug_assert!(i < m.nrows());
+    debug_assert!(j < m.nrows());
+    unsafe {
+        let a = m.read_unchecked(i, 0);
+        let b = m.read_unchecked(j, 0);
+        m.write_unchecked(i, 0, b);
+        m.write_unchecked(j, 0, a);
+    }
+}
+
+#[inline(always)]
+fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j: usize) {
+    debug_assert!(m.ncols() == 1);
+    debug_assert!(m.row_stride() == 1);
+    debug_assert!(i < m.nrows());
+    debug_assert!(j < m.nrows());
+    unsafe {
+        let ptr = m.rb_mut().as_ptr();
+
+        let ptr_a = E::map(
+            E::copy(&ptr),
+            #[inline(always)]
+            |ptr| ptr.add(i),
+        );
+        let ptr_b = E::map(
+            E::copy(&ptr),
+            #[inline(always)]
+            |ptr| ptr.add(j),
+        );
+
+        let a = E::map(
+            E::copy(&ptr_a),
+            #[inline(always)]
+            |ptr| (*ptr).clone(),
+        );
+        let b = E::map(
+            E::copy(&ptr_b),
+            #[inline(always)]
+            |ptr| (*ptr).clone(),
+        );
+
+        E::map(
+            E::zip(ptr_b, a),
+            #[inline(always)]
+            |(ptr, val)| *ptr = val,
+        );
+        E::map(
+            E::zip(ptr_a, b),
+            #[inline(always)]
+            |(ptr, val)| *ptr = val,
+        );
+    }
 }
 
 fn lu_unblocked_req<E: Entity>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
@@ -211,58 +263,78 @@ fn lu_in_place_impl<E: ComplexField>(
         for j in col_start + n..full_n {
             func(j);
         }
-    } else {
+    } else if matrix.col_stride().abs() < matrix.row_stride().abs() {
         // use transpositions
-        if matrix.col_stride().abs() < matrix.row_stride().abs() {
+        for (i, &t) in transpositions[..bs].iter().enumerate() {
+            swap_rows(matrix.rb_mut().submatrix(0, 0, m, col_start), i, t + i);
+        }
+        for (i, &t) in transpositions[bs..].iter().enumerate() {
+            swap_rows(
+                matrix.rb_mut().submatrix(bs, 0, m - bs, col_start),
+                i,
+                t + i,
+            );
+        }
+        for (i, &t) in transpositions[..bs].iter().enumerate() {
+            swap_rows(
+                matrix
+                    .rb_mut()
+                    .submatrix(0, col_start + n, m, full_n - col_start - n),
+                i,
+                t + i,
+            );
+        }
+        for (i, &t) in transpositions[bs..].iter().enumerate() {
+            swap_rows(
+                matrix
+                    .rb_mut()
+                    .submatrix(bs, col_start + n, m - bs, full_n - col_start - n),
+                i,
+                t + i,
+            );
+        }
+    } else if matrix.row_stride() == 1 {
+        for j in 0..col_start {
+            let mut col = matrix.rb_mut().col(j);
             for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_rows(matrix.rb_mut().submatrix(0, 0, m, col_start), i, t + i);
+                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
             }
+            let [_, mut col] = col.split_at_row(bs);
             for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_rows(
-                    matrix.rb_mut().submatrix(bs, 0, m - bs, col_start),
-                    i,
-                    t + i,
-                );
+                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
             }
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_rows(
-                    matrix
-                        .rb_mut()
-                        .submatrix(0, col_start + n, m, full_n - col_start - n),
-                    i,
-                    t + i,
-                );
-            }
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_rows(
-                    matrix
-                        .rb_mut()
-                        .submatrix(bs, col_start + n, m - bs, full_n - col_start - n),
-                    i,
-                    t + i,
-                );
-            }
-        } else {
-            for j in 0..col_start {
-                let mut col = matrix.rb_mut().col(j);
-                for (i, &t) in transpositions[..bs].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t + i);
-                }
-                let [_, mut col] = col.split_at_row(bs);
-                for (i, &t) in transpositions[bs..].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t + i);
-                }
-            }
+        }
 
-            for j in col_start + n..full_n {
-                let mut col = matrix.rb_mut().col(j);
-                for (i, &t) in transpositions[..bs].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t + i);
-                }
-                let [_, mut col] = col.split_at_row(bs);
-                for (i, &t) in transpositions[bs..].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t + i);
-                }
+        for j in col_start + n..full_n {
+            let mut col = matrix.rb_mut().col(j);
+            for (i, &t) in transpositions[..bs].iter().enumerate() {
+                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
+            }
+            let [_, mut col] = col.split_at_row(bs);
+            for (i, &t) in transpositions[bs..].iter().enumerate() {
+                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
+            }
+        }
+    } else {
+        for j in 0..col_start {
+            let mut col = matrix.rb_mut().col(j);
+            for (i, &t) in transpositions[..bs].iter().enumerate() {
+                swap_two_elems(col.rb_mut(), i, t + i);
+            }
+            let [_, mut col] = col.split_at_row(bs);
+            for (i, &t) in transpositions[bs..].iter().enumerate() {
+                swap_two_elems(col.rb_mut(), i, t + i);
+            }
+        }
+
+        for j in col_start + n..full_n {
+            let mut col = matrix.rb_mut().col(j);
+            for (i, &t) in transpositions[..bs].iter().enumerate() {
+                swap_two_elems(col.rb_mut(), i, t + i);
+            }
+            let [_, mut col] = col.split_at_row(bs);
+            for (i, &t) in transpositions[bs..].iter().enumerate() {
+                swap_two_elems(col.rb_mut(), i, t + i);
             }
         }
     }
@@ -439,6 +511,102 @@ mod tests {
                 Default::default(),
             );
             let reconstructed = reconstruct_matrix(mat.as_ref(), row_perm.rb());
+
+            for i in 0..m {
+                for j in 0..n {
+                    assert_approx_eq!(mat_orig.read(i, j), reconstructed.read(i, j));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compute_lu_non_contiguous() {
+        for (m, n) in [
+            (10, 10),
+            (4, 4),
+            (2, 4),
+            (2, 20),
+            (2, 2),
+            (20, 20),
+            (4, 2),
+            (20, 2),
+            (40, 20),
+            (20, 40),
+            (40, 60),
+            (60, 40),
+            (200, 100),
+            (100, 200),
+            (200, 200),
+        ] {
+            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+            let mut mat = mat.as_mut().reverse_rows();
+            let mat_orig = mat.to_owned();
+            let mut perm = vec![0; m];
+            let mut perm_inv = vec![0; m];
+
+            let mut mem = GlobalMemBuffer::new(
+                lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            let (_, row_perm) = lu_in_place(
+                mat.rb_mut(),
+                &mut perm,
+                &mut perm_inv,
+                Parallelism::Rayon(8),
+                stack.rb_mut(),
+                Default::default(),
+            );
+            let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb());
+
+            for i in 0..m {
+                for j in 0..n {
+                    assert_approx_eq!(mat_orig.read(i, j), reconstructed.read(i, j));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compute_lu_row_major() {
+        for (m, n) in [
+            (10, 10),
+            (4, 4),
+            (2, 4),
+            (2, 20),
+            (2, 2),
+            (20, 20),
+            (4, 2),
+            (20, 2),
+            (40, 20),
+            (20, 40),
+            (40, 60),
+            (60, 40),
+            (200, 100),
+            (100, 200),
+            (200, 200),
+        ] {
+            let mut mat = Mat::with_dims(n, m, |_, _| random::<f64>());
+            let mut mat = mat.as_mut().transpose();
+            let mat_orig = mat.to_owned();
+            let mut perm = vec![0; m];
+            let mut perm_inv = vec![0; m];
+
+            let mut mem = GlobalMemBuffer::new(
+                lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            let (_, row_perm) = lu_in_place(
+                mat.rb_mut(),
+                &mut perm,
+                &mut perm_inv,
+                Parallelism::Rayon(8),
+                stack.rb_mut(),
+                Default::default(),
+            );
+            let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb());
 
             for i in 0..m {
                 for j in 0..n {
