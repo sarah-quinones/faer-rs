@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{DynStack, GlobalMemBuffer};
-use faer_core::{Mat, Parallelism};
+use faer_core::{zipped, Mat, Parallelism};
 use faer_lu::{
     full_pivoting::compute::FullPivLuComputeParams,
     partial_pivoting::compute::PartialPivLuComputeParams,
@@ -43,7 +43,8 @@ pub fn lu(c: &mut Criterion) {
             })
         });
         c.bench_function(&format!("faer-mt-plu-{n}"), |b| {
-            let mut mat = Mat::with_dims(n, n, |_, _| random::<f64>());
+            let mat_orig = Mat::with_dims(n, n, |_, _| random::<f64>());
+            let mut mat = mat_orig.clone();
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
@@ -59,6 +60,8 @@ pub fn lu(c: &mut Criterion) {
             let mut stack = DynStack::new(&mut mem);
 
             b.iter(|| {
+                zipped!(mat.as_mut(), mat_orig.as_ref())
+                    .for_each(|mut dst, src| dst.write(src.read()));
                 partial_pivoting::compute::lu_in_place(
                     mat.as_mut(),
                     &mut perm,

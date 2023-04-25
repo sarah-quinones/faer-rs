@@ -4,7 +4,7 @@ use faer_core::{
     mul::matmul,
     permutation::{swap_rows, PermutationMut},
     solve::solve_unit_lower_triangular_in_place,
-    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
+    temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use reborrow::*;
 
@@ -242,29 +242,12 @@ fn lu_in_place_impl<E: ComplexField>(
         perm[bs..].copy_from_slice(tmp_perm);
     }
 
-    if n_transpositions >= m - m / 2 {
-        // use permutations
-        let (mut tmp_col, _) = unsafe { temp_mat_uninit::<E>(m, 1, stack.rb_mut()) };
-        let tmp_col = tmp_col.as_mut();
-
-        let mut tmp_col = tmp_col.col(0);
-        let mut func = |j| {
-            let mut col = matrix.rb_mut().col(j);
-            zipped!(tmp_col.rb_mut(), col.rb()).for_each(|mut a, b| a.write(b.read()));
-
-            for i in 0..m {
-                col.write(i, 0, tmp_col.read(perm[i], 0));
-            }
-        };
-
-        for j in 0..col_start {
-            func(j);
-        }
-        for j in col_start + n..full_n {
-            func(j);
-        }
-    } else if matrix.col_stride().abs() < matrix.row_stride().abs() {
-        // use transpositions
+    let parallelism = if m * (col_start + (full_n - (col_start + n))) > 128 * 128 {
+        parallelism
+    } else {
+        Parallelism::None
+    };
+    if matrix.col_stride().abs() < matrix.row_stride().abs() {
         for (i, &t) in transpositions[..bs].iter().enumerate() {
             swap_rows(matrix.rb_mut().submatrix(0, 0, m, col_start), i, t + i);
         }
@@ -294,49 +277,37 @@ fn lu_in_place_impl<E: ComplexField>(
             );
         }
     } else if matrix.row_stride() == 1 {
-        for j in 0..col_start {
-            let mut col = matrix.rb_mut().col(j);
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
-            }
-            let [_, mut col] = col.split_at_row(bs);
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
-            }
-        }
-
-        for j in col_start + n..full_n {
-            let mut col = matrix.rb_mut().col(j);
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
-            }
-            let [_, mut col] = col.split_at_row(bs);
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_two_elems_contiguous(col.rb_mut(), i, t + i);
-            }
-        }
+        faer_core::for_each_raw(
+            col_start + (full_n - (col_start + n)),
+            |j| {
+                let j = if j >= col_start { col_start + n + j } else { j };
+                let mut col = unsafe { matrix.rb().col(j).const_cast() };
+                for (i, &t) in transpositions[..bs].iter().enumerate() {
+                    swap_two_elems_contiguous(col.rb_mut(), i, t + i);
+                }
+                let [_, mut col] = col.split_at_row(bs);
+                for (i, &t) in transpositions[bs..].iter().enumerate() {
+                    swap_two_elems_contiguous(col.rb_mut(), i, t + i);
+                }
+            },
+            parallelism,
+        );
     } else {
-        for j in 0..col_start {
-            let mut col = matrix.rb_mut().col(j);
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_two_elems(col.rb_mut(), i, t + i);
-            }
-            let [_, mut col] = col.split_at_row(bs);
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_two_elems(col.rb_mut(), i, t + i);
-            }
-        }
-
-        for j in col_start + n..full_n {
-            let mut col = matrix.rb_mut().col(j);
-            for (i, &t) in transpositions[..bs].iter().enumerate() {
-                swap_two_elems(col.rb_mut(), i, t + i);
-            }
-            let [_, mut col] = col.split_at_row(bs);
-            for (i, &t) in transpositions[bs..].iter().enumerate() {
-                swap_two_elems(col.rb_mut(), i, t + i);
-            }
-        }
+        faer_core::for_each_raw(
+            col_start + (full_n - (col_start + n)),
+            |j| {
+                let j = if j >= col_start { col_start + n + j } else { j };
+                let mut col = unsafe { matrix.rb().col(j).const_cast() };
+                for (i, &t) in transpositions[..bs].iter().enumerate() {
+                    swap_two_elems(col.rb_mut(), i, t + i);
+                }
+                let [_, mut col] = col.split_at_row(bs);
+                for (i, &t) in transpositions[bs..].iter().enumerate() {
+                    swap_two_elems(col.rb_mut(), i, t + i);
+                }
+            },
+            parallelism,
+        );
     }
 
     n_transpositions
