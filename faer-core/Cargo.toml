@@ -10,7 +10,7 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-gemm = { version = "0.14", default-features = false }
+gemm = { version = "0.15", default-features = false }
 aligned-vec = "0.5"
 seq-macro = "0.3"
 
