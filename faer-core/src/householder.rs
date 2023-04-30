@@ -35,7 +35,6 @@ use crate::{
         triangular::{self, BlockStructure},
     },
     solve, temp_mat_req, temp_mat_uninit, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
-    RealField,
 };
 use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};

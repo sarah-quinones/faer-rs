@@ -34,6 +34,23 @@ pub unsafe fn transmute_unchecked<From, To>(t: From) -> To {
     core::mem::transmute_copy(&ManuallyDrop::new(t))
 }
 
+fn sqrt_impl<E: RealField>(re: E, im: E) -> (E, E) {
+    let im_sign = if im >= E::zero() {
+        E::one()
+    } else {
+        E::one().neg()
+    };
+    let half = E::from_f64(0.5);
+
+    let abs = (re.abs2().add(&im.abs2())).sqrt();
+    let a = ((re.add(&abs)).scale_power_of_two(&half)).sqrt();
+    let b = ((re.neg().add(&abs)).scale_power_of_two(&half))
+        .sqrt()
+        .scale_power_of_two(&im_sign);
+
+    (a, b)
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
@@ -406,6 +423,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     fn neg(&self) -> Self;
     fn inv(&self) -> Self;
     fn conj(&self) -> Self;
+    fn sqrt(&self) -> Self;
 
     /// Returns the input, scaled by `rhs`.
     fn scale_real(&self, rhs: &Self::Real) -> Self;
@@ -573,7 +591,6 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 }
 
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
-    fn sqrt(&self) -> Self;
     fn div(&self, rhs: &Self) -> Self;
 
     fn usize_to_index(a: usize) -> Self::Index;
@@ -658,6 +675,11 @@ impl ComplexField for f32 {
     #[inline(always)]
     fn conj(&self) -> Self {
         *self
+    }
+
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        (*self).sqrt()
     }
 
     #[inline(always)]
@@ -883,6 +905,11 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
+    fn sqrt(&self) -> Self {
+        (*self).sqrt()
+    }
+
+    #[inline(always)]
     fn scale_real(&self, rhs: &Self::Real) -> Self {
         self * rhs
     }
@@ -1067,11 +1094,6 @@ impl ComplexField for f64 {
 }
 impl RealField for f32 {
     #[inline(always)]
-    fn sqrt(&self) -> Self {
-        (*self).sqrt()
-    }
-
-    #[inline(always)]
     fn div(&self, rhs: &Self) -> Self {
         self / rhs
     }
@@ -1166,11 +1188,6 @@ impl RealField for f32 {
     }
 }
 impl RealField for f64 {
-    #[inline(always)]
-    fn sqrt(&self) -> Self {
-        (*self).sqrt()
-    }
-
     #[inline(always)]
     fn div(&self, rhs: &Self) -> Self {
         self / rhs
@@ -1331,6 +1348,12 @@ impl ComplexField for c32 {
             re: self.re,
             im: -self.im,
         }
+    }
+
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        let this: num_complex::Complex32 = (*self).into();
+        num_complex::ComplexFloat::sqrt(this).into()
     }
 
     #[inline(always)]
@@ -1599,6 +1622,12 @@ impl ComplexField for c64 {
             re: self.re,
             im: -self.im,
         }
+    }
+
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        let this: num_complex::Complex64 = (*self).into();
+        num_complex::ComplexFloat::sqrt(this).into()
     }
 
     #[inline(always)]
@@ -1871,6 +1900,12 @@ impl<E: RealField> ComplexField for Complex<E> {
             re: self.re.clone(),
             im: self.im.neg(),
         }
+    }
+
+    #[inline(always)]
+    fn sqrt(&self) -> Self {
+        let (re, im) = sqrt_impl(self.re.clone(), self.im.clone());
+        Self { re, im }
     }
 
     #[inline(always)]
@@ -5039,6 +5074,7 @@ mod tests {
 
     use super::*;
     use assert2::assert;
+    use assert_approx_eq::assert_approx_eq;
 
     #[test]
     fn basic_slice() {
@@ -5289,5 +5325,19 @@ mod tests {
         assert!(mf64.as_mut().adjoint().to_owned().as_ref() == mf64.adjoint());
         assert!(mf32c.as_mut().adjoint().to_owned().as_ref() == mf32c.adjoint());
         assert!(mf64c.as_mut().adjoint().to_owned().as_ref() == mf64c.adjoint());
+    }
+
+    #[test]
+    fn test_sqrt() {
+        for _ in 0..100 {
+            let a = num_complex::Complex64::new(rand::random(), rand::random());
+            let num_complex::Complex {
+                re: target_re,
+                im: target_im,
+            } = a.sqrt();
+            let (sqrt_re, sqrt_im) = sqrt_impl(a.re, a.im);
+            assert_approx_eq!(target_re, sqrt_re);
+            assert_approx_eq!(target_im, sqrt_im);
+        }
     }
 }
