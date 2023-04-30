@@ -27,6 +27,9 @@ pub mod tridiag_real_evd;
 #[doc(hidden)]
 pub mod tridiag;
 
+#[doc(hidden)]
+pub mod hessenberg_real_evd;
+
 /// Indicates whether the eigenvectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeVectors {
