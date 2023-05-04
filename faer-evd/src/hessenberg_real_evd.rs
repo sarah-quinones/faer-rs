@@ -356,7 +356,7 @@ pub fn lahqr<E: RealField>(
 
     let mut v = faer_core::Mat::<E>::zeros(3, 1);
     let mut v = v.as_mut();
-    for iter in 0..itmax {
+    for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
         }

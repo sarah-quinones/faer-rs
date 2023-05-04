@@ -813,6 +813,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
     let (mut u, stack) = temp_mat_zeroed::<E>(n, 1, stack);
     let (mut y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+
     let (mut v, stack) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
     let (mut w, _) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
 
