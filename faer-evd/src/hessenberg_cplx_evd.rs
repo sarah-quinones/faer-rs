@@ -4,6 +4,7 @@
 // https://github.com/tlapack/tlapack/blob/master/include/tlapack/lapack/lahqr.hpp
 
 use crate::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req};
+use core::slice;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
@@ -16,7 +17,7 @@ use faer_core::{
     mul::matmul,
     temp_mat_req,
     zip::Diag,
-    zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use reborrow::*;
 
@@ -268,6 +269,102 @@ fn rot<E: ComplexField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E::Real, s: E) {
     });
 }
 
+pub struct Rot<'a, E: ComplexField> {
+    ai: MatMut<'a, E>,
+    aj: MatMut<'a, E>,
+    c: E::Real,
+    s: E,
+}
+
+impl<E: ComplexField> pulp::WithSimd for Rot<'_, E> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self { ai, aj, c, s } = self;
+        debug_assert!(ai.nrows() == aj.nrows());
+        debug_assert!(ai.ncols() == 1);
+        debug_assert!(aj.ncols() == 1);
+
+        let n = ai.nrows();
+        let ai = ai.as_ptr();
+        let aj = aj.as_ptr();
+
+        let ai = unsafe {
+            E::map(
+                ai,
+                #[inline(always)]
+                |ptr| slice::from_raw_parts_mut(ptr, n),
+            )
+        };
+        let aj = unsafe {
+            E::map(
+                aj,
+                #[inline(always)]
+                |ptr| slice::from_raw_parts_mut(ptr, n),
+            )
+        };
+
+        let (ai_head, ai_tail) = faer_core::simd::slice_as_mut_simd::<E, S>(ai);
+        let (aj_head, aj_tail) = faer_core::simd::slice_as_mut_simd::<E, S>(aj);
+
+        let c = E::Real::simd_splat(simd, c);
+        let s = E::simd_splat(simd, s);
+
+        for (ai, aj) in E::into_iter(ai_head).zip(E::into_iter(aj_head)) {
+            let mut ai_ = E::deref(E::rb(E::as_ref(&ai)));
+            let mut aj_ = E::deref(E::rb(E::as_ref(&aj)));
+
+            let tmp = E::simd_conj_mul_adde(
+                simd,
+                E::copy(&s),
+                E::copy(&aj_),
+                E::simd_scale_real(simd, E::Real::copy(&c), E::copy(&ai_)),
+            );
+
+            aj_ = E::simd_mul_adde(
+                simd,
+                E::simd_neg(simd, E::copy(&s)),
+                ai_,
+                E::simd_scale_real(simd, E::Real::copy(&c), aj_),
+            );
+            ai_ = tmp;
+
+            E::map(
+                E::zip(ai, ai_),
+                #[inline(always)]
+                |(ai, ai_)| *ai = ai_,
+            );
+            E::map(
+                E::zip(aj, aj_),
+                #[inline(always)]
+                |(aj, aj_)| *aj = aj_,
+            );
+        }
+
+        let mut ai_ = E::partial_load(simd, E::rb(E::as_ref(&ai_tail)));
+        let mut aj_ = E::partial_load(simd, E::rb(E::as_ref(&aj_tail)));
+
+        let tmp = E::simd_conj_mul_adde(
+            simd,
+            E::copy(&s),
+            E::copy(&aj_),
+            E::simd_scale_real(simd, E::Real::copy(&c), E::copy(&ai_)),
+        );
+
+        aj_ = E::simd_mul_adde(
+            simd,
+            E::simd_neg(simd, E::copy(&s)),
+            ai_,
+            E::simd_scale_real(simd, E::Real::copy(&c), aj_),
+        );
+        ai_ = tmp;
+
+        E::partial_store(simd, ai_tail, ai_);
+        E::partial_store(simd, aj_tail, aj_);
+    }
+}
+
 pub fn lahqr<E: ComplexField>(
     want_t: bool,
     a: MatMut<'_, E>,
@@ -329,6 +426,7 @@ pub fn lahqr<E: ComplexField>(
     // that we can treat this subblock separately.
     let mut istart = ilo;
 
+    let arch = pulp::Arch::new();
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
@@ -484,35 +582,58 @@ pub fn lahqr<E: ComplexField>(
             }
 
             // Apply G from the left to A
-            for j in i..istop_m {
-                let tmp = (a.read(i, j).scale_real(&cs)).add(&a.read(i + 1, j).mul(&sn));
-                a.write(
-                    i + 1,
-                    j,
-                    (a.read(i, j).mul(&sn.conj().neg())).add(&a.read(i + 1, j).scale_real(&cs)),
-                );
-                a.write(i, j, tmp);
-            }
+            let ai = unsafe { a.rb().row(i).subcols(i, istop_m - i).const_cast() };
+            let aip1 = unsafe { a.rb().row(i + 1).subcols(i, istop_m - i).const_cast() };
+
+            zipped!(ai, aip1).for_each(|mut ai, mut aip1| {
+                let ai_ = ai.read();
+                let aip1_ = aip1.read();
+                let tmp = (ai_.scale_real(&cs)).add(&aip1_.mul(&sn));
+                aip1.write((ai_.mul(&sn.conj().neg())).add(&aip1_.scale_real(&cs)));
+                ai.write(tmp);
+            });
+
             // Apply G**H from the right to A
-            for j in istart_m..Ord::min(i + 3, istop) {
-                let tmp = (a.read(j, i).scale_real(&cs)).add(&a.read(j, i + 1).mul(&sn.conj()));
-                a.write(
-                    j,
-                    i + 1,
-                    (a.read(j, i).mul(&sn.neg())).add(&a.read(j, i + 1).scale_real(&cs)),
-                );
-                a.write(j, i, tmp);
+            let nrows_ = Ord::min(i + 3, istop) - istart_m;
+            let ai = unsafe { a.rb().col(i).subrows(istart_m, nrows_).const_cast() };
+            let aip1 = unsafe { a.rb().col(i + 1).subrows(istart_m, nrows_).const_cast() };
+
+            if E::HAS_SIMD && a.row_stride() == 1 {
+                arch.dispatch(Rot {
+                    ai,
+                    aj: aip1,
+                    c: cs.clone(),
+                    s: sn.clone(),
+                });
+            } else {
+                zipped!(ai, aip1).for_each(|mut ai, mut aip1| {
+                    let ai_ = ai.read();
+                    let aip1_ = aip1.read();
+                    let tmp = (ai_.scale_real(&cs)).add(&aip1_.mul(&sn.conj()));
+                    aip1.write((ai_.mul(&sn.neg())).add(&aip1_.scale_real(&cs)));
+                    ai.write(tmp);
+                });
             }
-            if let Some(mut z) = z.rb_mut() {
+            if let Some(z) = z.rb_mut() {
                 // Apply G**H to Z from the right
-                for j in 0..n {
-                    let tmp = (z.read(j, i).scale_real(&cs)).add(&z.read(j, i + 1).mul(&sn.conj()));
-                    z.write(
-                        j,
-                        i + 1,
-                        (z.read(j, i).mul(&sn.neg())).add(&z.read(j, i + 1).scale_real(&cs)),
-                    );
-                    z.write(j, i, tmp);
+                let zi = unsafe { z.rb().col(i).const_cast() };
+                let zip1 = unsafe { z.rb().col(i + 1).const_cast() };
+
+                if E::HAS_SIMD && z.row_stride() == 1 {
+                    arch.dispatch(Rot {
+                        ai: zi,
+                        aj: zip1,
+                        c: cs.clone(),
+                        s: sn.clone(),
+                    });
+                } else {
+                    zipped!(zi, zip1).for_each(|mut zi, mut zip1| {
+                        let zi_ = zi.read();
+                        let zip1_ = zip1.read();
+                        let tmp = (zi_.scale_real(&cs)).add(&zip1_.mul(&sn.conj()));
+                        zip1.write((zi_.mul(&sn.neg())).add(&zip1_.scale_real(&cs)));
+                        zi.write(tmp);
+                    });
                 }
             }
         }
@@ -542,9 +663,9 @@ fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usiz
     } else if n < 60 {
         4
     } else if n < 150 {
-        10
+        12
     } else if n < 590 {
-        (n as f64 / (n as f64).log2()) as usize
+        32
     } else if n < 3000 {
         64
     } else if n < 6000 {
@@ -1413,10 +1534,10 @@ fn move_bulge<E: ComplexField>(
 ) {
     // Perform delayed update of row below the bulge
     // Assumes the first two elements of the row are zero
-    let v0 = v.read(0, 0);
+    let v0 = v.read(0, 0).real();
     let v1 = v.read(1, 0);
     let v2 = v.read(2, 0);
-    let refsum = v0.mul(&v2).mul(&h.read(3, 2));
+    let refsum = v2.scale_real(&v0).mul(&h.read(3, 2));
 
     h.write(3, 0, refsum.neg());
     h.write(3, 1, refsum.neg().mul(&v1.conj()));
@@ -1504,7 +1625,7 @@ fn multishift_qr_sweep<E: ComplexField>(
     let small_num = zero_threshold.div(&eps).mul(&E::Real::from_f64(n as f64));
     assert!(n >= 12);
 
-    let (mut v, _) = faer_core::temp_mat_zeroed::<E>(3, s.nrows() / 2, stack);
+    let (mut v, _stack) = faer_core::temp_mat_zeroed::<E>(3, s.nrows() / 2, stack);
     let mut v = v.as_mut();
 
     let n_block_max = (n - 3) / 3;
@@ -1603,7 +1724,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1612,16 +1733,18 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(j, i_pos)
                         .add(&v1.mul(&a.read(j, i_pos + 1)))
                         .add(&v2.mul(&a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, a.read(j, i_pos).sub(&sum.mul(&v0)));
+                    a.write(j, i_pos, a.read(j, i_pos).sub(&sum.scale_real(&v0)));
                     a.write(
                         j,
                         i_pos + 1,
-                        a.read(j, i_pos + 1).sub(&sum.mul(&v0).mul(&v1.conj())),
+                        a.read(j, i_pos + 1)
+                            .sub(&sum.scale_real(&v0).mul(&v1.conj())),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        a.read(j, i_pos + 2).sub(&sum.mul(&v0).mul(&v2.conj())),
+                        a.read(j, i_pos + 2)
+                            .sub(&sum.scale_real(&v0).mul(&v2.conj())),
                     );
                 }
 
@@ -1631,16 +1754,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                     .read(i_pos, i_pos)
                     .add(&v1.conj().mul(&a.read(i_pos + 1, i_pos)))
                     .add(&v2.conj().mul(&a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.mul(&v0)));
+                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.scale_real(&v0)));
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    a.read(i_pos + 1, i_pos).sub(&sum.mul(&v0).mul(&v1)),
+                    a.read(i_pos + 1, i_pos).sub(&sum.scale_real(&v0).mul(&v1)),
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    a.read(i_pos + 2, i_pos).sub(&sum.mul(&v0).mul(&v2)),
+                    a.read(i_pos + 2, i_pos).sub(&sum.scale_real(&v0).mul(&v2)),
                 );
 
                 // Test for deflation.
@@ -1702,7 +1825,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1711,16 +1834,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(i_pos, j)
                         .add(&v1.conj().mul(&a.read(i_pos + 1, j)))
                         .add(&v2.conj().mul(&a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.mul(&v0)));
+                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.scale_real(&v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(&sum.mul(&v0).mul(&v1)),
+                        a.read(i_pos + 1, j).sub(&sum.scale_real(&v0).mul(&v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(&sum.mul(&v0).mul(&v2)),
+                        a.read(i_pos + 2, j).sub(&sum.scale_real(&v0).mul(&v2)),
                     );
                 }
             }
@@ -1730,7 +1853,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1743,18 +1866,22 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .add(&v1.mul(&u2.read(j, i_pos - ilo + 1)))
                         .add(&v2.mul(&u2.read(j, i_pos - ilo + 2)));
 
-                    u2.write(j, i_pos - ilo, u2.read(j, i_pos - ilo).sub(&sum.mul(&v0)));
+                    u2.write(
+                        j,
+                        i_pos - ilo,
+                        u2.read(j, i_pos - ilo).sub(&sum.scale_real(&v0)),
+                    );
                     u2.write(
                         j,
                         i_pos - ilo + 1,
                         u2.read(j, i_pos - ilo + 1)
-                            .sub(&sum.mul(&v0).mul(&v1.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v1.conj())),
                     );
                     u2.write(
                         j,
                         i_pos - ilo + 2,
                         u2.read(j, i_pos - ilo + 2)
-                            .sub(&sum.mul(&v0).mul(&v2.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v2.conj())),
                     );
                 }
             }
@@ -1875,7 +2002,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1884,16 +2011,18 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(j, i_pos)
                         .add(&v1.mul(&a.read(j, i_pos + 1)))
                         .add(&v2.mul(&a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, a.read(j, i_pos).sub(&sum.mul(&v0)));
+                    a.write(j, i_pos, a.read(j, i_pos).sub(&sum.scale_real(&v0)));
                     a.write(
                         j,
                         i_pos + 1,
-                        a.read(j, i_pos + 1).sub(&sum.mul(&v0).mul(&v1.conj())),
+                        a.read(j, i_pos + 1)
+                            .sub(&sum.scale_real(&v0).mul(&v1.conj())),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        a.read(j, i_pos + 2).sub(&sum.mul(&v0).mul(&v2.conj())),
+                        a.read(j, i_pos + 2)
+                            .sub(&sum.scale_real(&v0).mul(&v2.conj())),
                     );
                 }
 
@@ -1903,16 +2032,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                     .read(i_pos, i_pos)
                     .add(&v1.conj().mul(&a.read(i_pos + 1, i_pos)))
                     .add(&v2.conj().mul(&a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.mul(&v0)));
+                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.scale_real(&v0)));
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    a.read(i_pos + 1, i_pos).sub(&sum.mul(&v0).mul(&v1)),
+                    a.read(i_pos + 1, i_pos).sub(&sum.scale_real(&v0).mul(&v1)),
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    a.read(i_pos + 2, i_pos).sub(&sum.mul(&v0).mul(&v2)),
+                    a.read(i_pos + 2, i_pos).sub(&sum.scale_real(&v0).mul(&v2)),
                 );
 
                 // Test for deflation.
@@ -1974,7 +2103,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1983,16 +2112,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(i_pos, j)
                         .add(&v1.conj().mul(&a.read(i_pos + 1, j)))
                         .add(&v2.conj().mul(&a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.mul(&v0)));
+                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.scale_real(&v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(&sum.mul(&v0).mul(&v1)),
+                        a.read(i_pos + 1, j).sub(&sum.scale_real(&v0).mul(&v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(&sum.mul(&v0).mul(&v2)),
+                        a.read(i_pos + 2, j).sub(&sum.scale_real(&v0).mul(&v2)),
                     );
                 }
             }
@@ -2002,7 +2131,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -2021,19 +2150,19 @@ fn multishift_qr_sweep<E: ComplexField>(
                     u2.write(
                         j,
                         i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block).sub(&sum.mul(&v0)),
+                        u2.read(j, i_pos - i_pos_block).sub(&sum.scale_real(&v0)),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 1,
                         u2.read(j, i_pos - i_pos_block + 1)
-                            .sub(&sum.mul(&v0).mul(&v1.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v1.conj())),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 2,
                         u2.read(j, i_pos - i_pos_block + 2)
-                            .sub(&sum.mul(&v0).mul(&v2.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v2.conj())),
                     );
                 }
             }
@@ -2219,7 +2348,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                         }
                     }
 
-                    let v0 = v.read(0, 0);
+                    let v0 = v.read(0, 0).real();
                     let v1 = v.read(1, 0);
                     let v2 = v.read(2, 0);
                     // Apply the reflector we just calculated from the left
@@ -2228,16 +2357,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(i_pos, i_pos)
                         .add(&v1.conj().mul(&a.read(i_pos + 1, i_pos)))
                         .add(&v2.conj().mul(&a.read(i_pos + 2, i_pos)));
-                    a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.mul(&v0)));
+                    a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(&sum.scale_real(&v0)));
                     a.write(
                         i_pos + 1,
                         i_pos,
-                        a.read(i_pos + 1, i_pos).sub(&sum.mul(&v0).mul(&v1)),
+                        a.read(i_pos + 1, i_pos).sub(&sum.scale_real(&v0).mul(&v1)),
                     );
                     a.write(
                         i_pos + 2,
                         i_pos,
-                        a.read(i_pos + 2, i_pos).sub(&sum.mul(&v0).mul(&v2)),
+                        a.read(i_pos + 2, i_pos).sub(&sum.scale_real(&v0).mul(&v2)),
                     );
 
                     // Test for deflation.
@@ -2307,7 +2436,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -2316,16 +2445,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                         .read(i_pos, j)
                         .add(&v1.conj().mul(&a.read(i_pos + 1, j)))
                         .add(&v2.conj().mul(&a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.mul(&v0)));
+                    a.write(i_pos, j, a.read(i_pos, j).sub(&sum.scale_real(&v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(&sum.mul(&v0).mul(&v1)),
+                        a.read(i_pos + 1, j).sub(&sum.scale_real(&v0).mul(&v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(&sum.mul(&v0).mul(&v2)),
+                        a.read(i_pos + 2, j).sub(&sum.scale_real(&v0).mul(&v2)),
                     );
                 }
             }
@@ -2335,7 +2464,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0);
+                let v0 = v.read(0, 0).real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -2354,19 +2483,19 @@ fn multishift_qr_sweep<E: ComplexField>(
                     u2.write(
                         j,
                         i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block).sub(&sum.mul(&v0)),
+                        u2.read(j, i_pos - i_pos_block).sub(&sum.scale_real(&v0)),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 1,
                         u2.read(j, i_pos - i_pos_block + 1)
-                            .sub(&sum.mul(&v0).mul(&v1.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v1.conj())),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 2,
                         u2.read(j, i_pos - i_pos_block + 2)
-                            .sub(&sum.mul(&v0).mul(&v2.conj())),
+                            .sub(&sum.scale_real(&v0).mul(&v2.conj())),
                     );
                 }
             }

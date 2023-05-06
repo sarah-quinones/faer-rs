@@ -17,6 +17,10 @@ fn random<E: 'static>() -> E {
         coe::coerce_static(c32::new(rand::random(), rand::random()))
     } else if coe::is_same::<c64, E>() {
         coe::coerce_static(c64::new(rand::random(), rand::random()))
+    } else if coe::is_same::<num_complex::Complex32, E>() {
+        coe::coerce_static(num_complex::Complex32::new(rand::random(), rand::random()))
+    } else if coe::is_same::<num_complex::Complex64, E>() {
+        coe::coerce_static(num_complex::Complex64::new(rand::random(), rand::random()))
     } else {
         panic!()
     }
@@ -244,6 +248,105 @@ fn evd_nalgebra(criterion: &mut Criterion) {
     }
 }
 
+fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
+    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+        let mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mut t = mat.clone();
+        let mut z = mat.clone();
+        let mut w = Mat::zeros(n, 1);
+
+        {
+            let parallelism = Parallelism::None;
+            let mut mem = GlobalMemBuffer::new(
+                faer_evd::hessenberg_cplx_evd::multishift_qr_req::<E>(
+                    n,
+                    n,
+                    true,
+                    true,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            criterion.bench_function(&format!("schur-st-{}-{}", type_name::<E>(), n), |bencher| {
+                bencher.iter(|| {
+                    zipped!(t.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+
+                    faer_evd::hessenberg_cplx_evd::multishift_qr(
+                        true,
+                        t.as_mut(),
+                        Some(z.as_mut()),
+                        w.as_mut(),
+                        0,
+                        n,
+                        epsilon(),
+                        min_positive(),
+                        parallelism,
+                        stack.rb_mut(),
+                        Default::default(),
+                    );
+                });
+            });
+        }
+        {
+            let parallelism = Parallelism::Rayon(0);
+            let mut mem = GlobalMemBuffer::new(
+                faer_evd::hessenberg_cplx_evd::multishift_qr_req::<E>(
+                    n,
+                    n,
+                    true,
+                    true,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = DynStack::new(&mut mem);
+
+            criterion.bench_function(&format!("schur-mt-{}-{}", type_name::<E>(), n), |bencher| {
+                bencher.iter(|| {
+                    zipped!(t.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+
+                    faer_evd::hessenberg_cplx_evd::multishift_qr(
+                        true,
+                        t.as_mut(),
+                        Some(z.as_mut()),
+                        w.as_mut(),
+                        0,
+                        n,
+                        epsilon(),
+                        min_positive(),
+                        parallelism,
+                        stack.rb_mut(),
+                        Default::default(),
+                    );
+                });
+            });
+        }
+    }
+}
+
+fn cplx_schur_nalgebra<E: ComplexField>(criterion: &mut Criterion) {
+    type Cplx64 = num_complex::Complex64;
+    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+        let mat = nalgebra::DMatrix::<Cplx64>::from_fn(n, n, |_, _| random::<Cplx64>());
+        criterion.bench_function(
+            &format!("schur-nalgebra-{}-{}", type_name::<Cplx64>(), n),
+            |bencher| {
+                bencher.iter(|| mat.clone().schur());
+            },
+        );
+    }
+}
+
 criterion_group!(
     benches,
     tridiagonalization::<f32>,
@@ -254,6 +357,8 @@ criterion_group!(
     evd::<f32>,
     evd::<f64>,
     evd::<c64>,
+    cplx_schur::<c64>,
+    cplx_schur_nalgebra::<c64>,
     evd_nalgebra,
 );
 criterion_main!(benches);
