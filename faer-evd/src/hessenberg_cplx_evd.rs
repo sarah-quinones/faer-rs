@@ -3,20 +3,22 @@
 // https://github.com/tlapack/tlapack
 // https://github.com/tlapack/tlapack/blob/master/include/tlapack/lapack/lahqr.hpp
 
-use dyn_stack::DynStack;
+use crate::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req};
+use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_req,
         apply_block_householder_sequence_on_the_right_in_place_with_conj,
+        apply_block_householder_sequence_transpose_on_the_left_in_place_req,
+        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
         make_householder_in_place,
     },
     mul::matmul,
+    temp_mat_req,
     zip::Diag,
     zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use reborrow::*;
-
-use crate::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req};
 
 #[allow(dead_code)]
 fn dump_sparsity<E: ComplexField>(a: MatRef<'_, E>) {
@@ -687,7 +689,8 @@ fn aggressive_early_deflation<E: ComplexField>(
             parallelism,
             stack.rb_mut(),
             params,
-        );
+        )
+        .0;
         for j in 0..jw {
             for i in j + 2..jw {
                 tw.write(i, j, E::zero());
@@ -861,29 +864,28 @@ fn aggressive_early_deflation<E: ComplexField>(
 
         // Hessenberg reduction
         {
-            let mut householder = wv.rb_mut().col(0).subrows(0, jw - 1);
-            let mut mem = dyn_stack::GlobalMemBuffer::new(
-                make_hessenberg_in_place_req::<E>(jw, parallelism).unwrap(),
-            );
+            let mut householder = wv.rb_mut().col(0).subrows(0, ns - 1);
             make_hessenberg_in_place(
-                tw.rb_mut(),
+                tw.rb_mut().submatrix(0, 0, ns, ns),
                 householder.rb_mut(),
                 parallelism,
-                DynStack::new(&mut mem),
+                stack.rb_mut(),
             );
-            drop(mem);
-
-            let mut mem = dyn_stack::GlobalMemBuffer::new(
-                apply_block_householder_sequence_on_the_right_in_place_req::<E>(jw - 1, 1, n)
-                    .unwrap(),
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+                tw.rb().submatrix(1, 0, ns - 1, ns - 1),
+                householder.rb().transpose(),
+                Conj::Yes,
+                unsafe { tw.rb().submatrix(1, ns, ns - 1, jw - ns).const_cast() },
+                parallelism,
+                stack.rb_mut(),
             );
             apply_block_householder_sequence_on_the_right_in_place_with_conj(
-                tw.rb().submatrix(1, 0, jw - 1, jw - 1),
+                tw.rb().submatrix(1, 0, ns - 1, ns - 1),
                 householder.rb().transpose(),
                 Conj::No,
-                v.rb_mut().submatrix(0, 1, jw, jw - 1),
+                v.rb_mut().submatrix(0, 1, jw, ns - 1),
                 parallelism,
-                DynStack::new(&mut mem),
+                stack.rb_mut(),
             );
         }
     }
@@ -1084,6 +1086,38 @@ fn schur_swap<E: ComplexField>(
     0
 }
 
+pub fn multishift_qr_req<E: ComplexField>(
+    n: usize,
+    nh: usize,
+    want_t: bool,
+    want_z: bool,
+    parallelism: Parallelism,
+    params: MultiShiftQrParams,
+) -> Result<StackReq, SizeOverflow> {
+    let nsr = (params
+        .recommended_shift_count
+        .unwrap_or(default_recommended_shift_count))(n, nh);
+
+    let _ = want_t;
+    let _ = want_z;
+
+    if n <= 3 {
+        return Ok(StackReq::empty());
+    }
+
+    let nw_max = (n - 3) / 3;
+
+    StackReq::try_any_of([
+        make_hessenberg_in_place_req::<E>(nw_max, parallelism)?,
+        apply_block_householder_sequence_transpose_on_the_left_in_place_req::<E>(
+            nw_max, nw_max, nw_max,
+        )?,
+        apply_block_householder_sequence_on_the_right_in_place_req::<E>(nw_max, nw_max, nw_max)?,
+        temp_mat_req::<E>(3, nsr)?,
+    ])
+}
+
+/// returns err code, number of aggressive early deflations, number of qr sweeps
 pub fn multishift_qr<E: ComplexField>(
     want_t: bool,
     a: MatMut<'_, E>,
@@ -1096,7 +1130,7 @@ pub fn multishift_qr<E: ComplexField>(
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: MultiShiftQrParams,
-) -> isize {
+) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
     assert!(ilo <= ihi);
 
@@ -1143,16 +1177,17 @@ pub fn multishift_qr<E: ComplexField>(
     let nwr = (params
         .recommended_deflation_window
         .unwrap_or(default_recommended_deflation_window))(n, nh);
-    let nw_max = (n - 3) / 3;
-
-    if nh == 0 {
-        return 0;
-    }
 
     // Tiny matrices must use lahqr
     if n < nmin {
-        return lahqr(want_t, a, z, w, ilo, ihi, epsilon, zero_threshold);
+        let err = lahqr(want_t, a, z, w, ilo, ihi, epsilon, zero_threshold);
+        return (err, 0, 0);
     }
+    if nh == 0 {
+        return (0, 0, 0);
+    }
+
+    let nw_max = (n - 3) / 3;
 
     // itmax is the total number of QR iterations allowed.
     // For most matrices, 3 shifts per eigenvalue is enough, so
@@ -1169,6 +1204,9 @@ pub fn multishift_qr<E: ComplexField>(
 
     let mut info = 0;
     let mut nw = 0;
+
+    let mut count_aed = 0;
+    let mut count_sweep = 0;
 
     for iter in 0..itmax + 1 {
         if iter == itmax {
@@ -1240,6 +1278,7 @@ pub fn multishift_qr<E: ComplexField>(
             stack.rb_mut(),
             params,
         );
+        count_aed += 1;
 
         istop = istop - ld;
 
@@ -1347,7 +1386,6 @@ pub fn multishift_qr<E: ComplexField>(
         }
 
         let mut shifts = w.rb_mut().subrows(i_shifts, ns);
-        dbgf::dbgf!("6.6?", &shifts);
         multishift_qr_sweep(
             want_t,
             a.rb_mut(),
@@ -1359,11 +1397,11 @@ pub fn multishift_qr<E: ComplexField>(
             zero_threshold.clone(),
             parallelism,
             stack.rb_mut(),
-            params,
         );
+        count_sweep += 1;
     }
 
-    info
+    (info, count_aed, count_sweep)
 }
 
 fn move_bulge<E: ComplexField>(
@@ -1404,8 +1442,11 @@ fn move_bulge<E: ComplexField>(
     } else {
         // The bulge has collapsed, attempt to reintroduce using
         // 2-small-subdiagonals trick
-        let mut vt = faer_core::Mat::<E>::zeros(3, 1);
-        let mut vt = vt.as_mut();
+        let mut vt_storage = E::map(E::zero().into_units(), |zero_unit| {
+            [zero_unit.clone(), zero_unit.clone(), zero_unit]
+        });
+        let vt_ptr = E::map(E::as_mut(&mut vt_storage), |array| array.as_mut_ptr());
+        let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
@@ -1456,7 +1497,6 @@ fn multishift_qr_sweep<E: ComplexField>(
     zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack<'_>,
-    params: MultiShiftQrParams,
 ) {
     let n = a.nrows();
 
@@ -1464,7 +1504,7 @@ fn multishift_qr_sweep<E: ComplexField>(
     let small_num = zero_threshold.div(&eps).mul(&E::Real::from_f64(n as f64));
     assert!(n >= 12);
 
-    let mut v = faer_core::Mat::<E>::zeros(3, s.nrows() / 2);
+    let (mut v, _) = faer_core::temp_mat_zeroed::<E>(3, s.nrows() / 2, stack);
     let mut v = v.as_mut();
 
     let n_block_max = (n - 3) / 3;
@@ -2420,6 +2460,12 @@ mod tests {
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c64, mat, Mat};
 
+    macro_rules! make_stack {
+        ($req: expr $(,)?) => {
+            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+        };
+    }
+
     #[test]
     fn test_3() {
         let n = 3;
@@ -2493,6 +2539,71 @@ mod tests {
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                 );
+                dbgf::dbgf!("6.6?", &t, &h);
+
+                let h_reconstructed = &q * &t * q.adjoint();
+
+                for i in 0..n {
+                    for j in 0..n {
+                        assert_approx_eq!(h_reconstructed.read(i, j), h.read(i, j));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_multi_n() {
+        for n in [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 32, 63, 64, 65, 128, 256,
+        ] {
+            for _ in 0..10 {
+                let mut h = Mat::<c64>::zeros(n, n);
+                for j in 0..n {
+                    for i in 0..n {
+                        if i <= j + 1 {
+                            h.write(i, j, c64::new(rand::random(), rand::random()));
+                        }
+                    }
+                }
+
+                let mut q =
+                    Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+
+                let mut w = Mat::zeros(n, 1);
+
+                let mut t = h.clone();
+                let params = MultiShiftQrParams {
+                    recommended_shift_count: None,
+                    recommended_deflation_window: None,
+                    blocking_threshold: Some(15),
+                    nibble_threshold: Some(14),
+                };
+                multishift_qr(
+                    true,
+                    t.as_mut(),
+                    Some(q.as_mut()),
+                    w.as_mut(),
+                    0,
+                    n,
+                    f64::EPSILON,
+                    f64::MIN_POSITIVE,
+                    Parallelism::None,
+                    make_stack!(multishift_qr_req::<c64>(
+                        n,
+                        n,
+                        true,
+                        true,
+                        Parallelism::None,
+                        params,
+                    )),
+                    params,
+                );
+                for j in 0..n {
+                    for i in j + 1..n {
+                        t.write(i, j, c64::zero());
+                    }
+                }
                 dbgf::dbgf!("6.6?", &t, &h);
 
                 let h_reconstructed = &q * &t * q.adjoint();
@@ -12717,7 +12828,13 @@ mod tests {
         let mut q = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
         let mut w = Mat::zeros(n, 1);
         let mut t = h.clone();
-        multishift_qr(
+        let params = MultiShiftQrParams {
+            recommended_shift_count: None,
+            recommended_deflation_window: None,
+            blocking_threshold: Some(15),
+            nibble_threshold: Some(14),
+        };
+        let (_, n_aed, n_sweep) = multishift_qr(
             true,
             t.as_mut(),
             Some(q.as_mut()),
@@ -12727,14 +12844,19 @@ mod tests {
             f64::EPSILON,
             f64::MIN_POSITIVE,
             Parallelism::None,
-            DynStack::new(&mut []),
-            MultiShiftQrParams {
-                recommended_shift_count: None,
-                recommended_deflation_window: None,
-                blocking_threshold: Some(15),
-                nibble_threshold: Some(14),
-            },
+            make_stack!(multishift_qr_req::<c64>(
+                n,
+                n,
+                true,
+                true,
+                Parallelism::None,
+                params,
+            )),
+            params,
         );
+        // asserts to ensure that we don't mess up the shift computation and slow down convergence
+        assert!(n_aed <= 50);
+        assert!(n_sweep <= 25);
 
         for j in 0..n {
             for i in j + 1..n {

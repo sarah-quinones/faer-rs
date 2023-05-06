@@ -354,8 +354,11 @@ pub fn lahqr<E: RealField>(
     // that we can treat this subblock separately.
     let mut istart = ilo;
 
-    let mut v = faer_core::Mat::<E>::zeros(3, 1);
-    let mut v = v.as_mut();
+    let mut v_storage = E::map(E::zero().into_units(), |zero_unit| {
+        [zero_unit.clone(), zero_unit.clone(), zero_unit]
+    });
+    let v_ptr = E::map(E::as_mut(&mut v_storage), |array| array.as_mut_ptr());
+    let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 3, 1, 1, 3) };
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
