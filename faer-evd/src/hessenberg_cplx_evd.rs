@@ -59,7 +59,7 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-fn sqr_norm<E: ComplexField>(a: MatRef<'_, E>) -> E::Real {
+pub fn sqr_norm<E: ComplexField>(a: MatRef<'_, E>) -> E::Real {
     faer_core::mul::inner_prod::inner_prod_with_conj(
         a,
         faer_core::Conj::Yes,
@@ -249,7 +249,7 @@ fn rotg<E: ComplexField>(a: E, b: E, epsilon: E::Real, zero_threshold: E::Real) 
     (c, s, r)
 }
 
-fn rot<E: ComplexField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E::Real, s: E) {
+pub fn rot<E: ComplexField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E::Real, s: E) {
     let n = x.nrows();
     if n == 0 || (c == E::Real::one() && s == E::zero()) {
         return;
@@ -656,7 +656,7 @@ pub struct MultiShiftQrParams {
     pub nibble_threshold: Option<usize>,
 }
 
-fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
+pub fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
     let n = dim;
     if n < 30 {
         2
@@ -675,7 +675,7 @@ fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usiz
     }
 }
 
-fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
+pub fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) -> usize {
     let n = dim;
     if n < 30 {
         2
@@ -694,11 +694,11 @@ fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize) ->
     }
 }
 
-fn default_blocking_threshold() -> usize {
+pub fn default_blocking_threshold() -> usize {
     75
 }
 
-fn default_nibble_threshold() -> usize {
+pub fn default_nibble_threshold() -> usize {
     14
 }
 
@@ -1189,7 +1189,7 @@ fn schur_swap<E: ComplexField>(
     if j2 < n {
         let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).transpose().const_cast() };
         let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).transpose().const_cast() };
-        rot(row1, row2, cs.clone(), sn.clone());
+        rot(row1.transpose(), row2.transpose(), cs.clone(), sn.clone());
     }
     // Apply transformation from the right
     if j0 > 0 {
@@ -1207,7 +1207,7 @@ fn schur_swap<E: ComplexField>(
     0
 }
 
-pub fn multishift_qr_req<E: ComplexField>(
+pub fn multishift_qr_req<E: Entity>(
     n: usize,
     nh: usize,
     want_t: bool,
