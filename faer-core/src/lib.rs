@@ -545,6 +545,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S>;
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S>;
     fn simd_conj_mul<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
@@ -816,6 +821,14 @@ impl ComplexField for f32 {
         simd.f32s_mul(lhs, rhs)
     }
     #[inline(always)]
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self::simd_mul(simd, lhs, rhs)
+    }
+    #[inline(always)]
     fn simd_conj_mul<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
@@ -1040,6 +1053,14 @@ impl ComplexField for f64 {
         rhs: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.f64s_mul(lhs, rhs)
+    }
+    #[inline(always)]
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self::simd_mul(simd, lhs, rhs)
     }
     #[inline(always)]
     fn simd_conj_mul<S: Simd>(
@@ -1504,6 +1525,20 @@ impl ComplexField for c32 {
         simd.c32s_mul(lhs, rhs)
     }
     #[inline(always)]
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        if coe::is_same::<pulp::Scalar, S>() {
+            let lhs: f32 = bytemuck::cast(lhs);
+            let rhs: num_complex::Complex32 = bytemuck::cast(rhs);
+            bytemuck::cast(lhs * rhs)
+        } else {
+            bytemuck::cast(simd.f32s_mul(lhs, bytemuck::cast(rhs)))
+        }
+    }
+    #[inline(always)]
     fn simd_conj_mul<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
@@ -1776,6 +1811,20 @@ impl ComplexField for c64 {
         rhs: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
         simd.c64s_mul(lhs, rhs)
+    }
+    #[inline(always)]
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        if coe::is_same::<pulp::Scalar, S>() {
+            let lhs: f64 = bytemuck::cast(lhs);
+            let rhs: num_complex::Complex64 = bytemuck::cast(rhs);
+            bytemuck::cast(lhs * rhs)
+        } else {
+            bytemuck::cast(simd.f64s_mul(lhs, bytemuck::cast(rhs)))
+        }
     }
     #[inline(always)]
     fn simd_conj_mul<S: Simd>(
@@ -2076,6 +2125,18 @@ impl<E: RealField> ComplexField for Complex<E> {
                 E::simd_mul(simd, E::simd_neg(simd, E::copy(&lhs.im)), E::copy(&rhs.im)),
             ),
             im: E::simd_mul_adde(simd, lhs.re, rhs.im, E::simd_mul(simd, lhs.im, rhs.re)),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_scale_real<S: Simd>(
+        simd: S,
+        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Complex {
+            re: E::simd_mul(simd, E::copy(&lhs), rhs.re),
+            im: E::simd_mul(simd, lhs, rhs.im),
         }
     }
 
@@ -3535,6 +3596,27 @@ impl<'a, E: Entity> MatMut<'a, E> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
         unsafe { self.write_unchecked(row, col, value) };
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn clone_from(&mut self, other: MatRef<'_, E>) {
+        zipped!(self.rb_mut(), other).for_each(|mut dst, src| dst.write(src.read()));
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn set_zeros(&mut self)
+    where
+        E: ComplexField,
+    {
+        zipped!(self.rb_mut()).for_each(|mut x| x.write(E::zero()));
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn set_constant(&mut self, c: E) {
+        zipped!(self.rb_mut()).for_each(|mut x| x.write(c.clone()));
     }
 
     #[inline(always)]

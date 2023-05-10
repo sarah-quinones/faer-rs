@@ -8,7 +8,7 @@ use core::{iter::zip, slice};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
-    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism, RealField,
+    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use pulp::Arch;
 use reborrow::*;

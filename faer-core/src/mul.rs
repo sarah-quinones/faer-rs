@@ -2,6 +2,7 @@ use crate::{
     c32, c64, simd::*, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
     Parallelism, SimdGroup,
 };
+use assert2::assert;
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use pulp::Simd;
 use reborrow::*;
@@ -1541,6 +1542,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 }
 
 #[inline]
+#[track_caller]
 pub fn matmul_with_conj<E: ComplexField>(
     acc: MatMut<'_, E>,
     lhs: MatRef<'_, E>,
@@ -1567,6 +1569,7 @@ pub fn matmul_with_conj<E: ComplexField>(
     );
 }
 
+#[track_caller]
 pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
     acc: MatMut<'_, E>,
     lhs: MatRef<'_, LhsE>,
