@@ -1428,7 +1428,7 @@ pub fn multishift_qr<E: ComplexField>(
                 w.write(i + 1, 0, s2);
             }
         } else {
-            if ls < nsr / 2 {
+            if ls <= nsr / 2 {
                 // Got nsr/2 or fewer shifts? Then use multi/double shift qr to
                 // get more
                 let mut temp = a.rb_mut().submatrix(n - nsr, 0, nsr, nsr);

@@ -3060,7 +3060,7 @@ pub fn multishift_qr<E: RealField>(
                 w_im.write(i + 1, 0, s2.1);
             }
         } else {
-            if ls < nsr / 2 {
+            if ls <= nsr / 2 {
                 // Got nsr/2 or fewer shifts? Then use multi/double shift qr to
                 // get more
                 let mut temp = a.rb_mut().submatrix(n - nsr, 0, nsr, nsr);
@@ -3139,7 +3139,7 @@ pub fn multishift_qr<E: RealField>(
 
             // Since we shuffled the shifts, we will only drop
             // Real shifts
-            if ns % 2 == 1 {
+            if ns > 1 && ns % 2 == 1 {
                 ns = ns - 1;
             }
             i_shifts = istop - ns;
