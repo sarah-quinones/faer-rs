@@ -1225,7 +1225,7 @@ pub fn multishift_qr_req<E: Entity>(
     let nw_max = (n - 3) / 3;
 
     StackReq::try_any_of([
-        make_hessenberg_in_place_req::<E>(nw_max, parallelism)?,
+        make_hessenberg_in_place_req::<E>(nw_max, 1, parallelism)?,
         apply_block_householder_sequence_transpose_on_the_left_in_place_req::<E>(
             nw_max, nw_max, nw_max,
         )?,

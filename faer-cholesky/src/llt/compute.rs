@@ -3,7 +3,7 @@ use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Conj, Entity,
-    MatMut, Parallelism, RealField,
+    MatMut, Parallelism,
 };
 use reborrow::*;
 

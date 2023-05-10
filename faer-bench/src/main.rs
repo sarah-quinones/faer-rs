@@ -113,6 +113,7 @@ mod trsm;
 
 mod cholesky;
 mod col_piv_qr;
+mod evd;
 mod full_piv_lu;
 mod inverse;
 mod no_piv_qr;
@@ -213,6 +214,7 @@ mod eigen {
         pub fn svd_f32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_f32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_f32(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_f32(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_f64(out: *mut f64, inputs: *const usize, count: usize);
@@ -226,6 +228,7 @@ mod eigen {
         pub fn svd_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_f64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_f64(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_f64(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_f128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_f128(out: *mut f64, inputs: *const usize, count: usize);
@@ -239,6 +242,7 @@ mod eigen {
         pub fn svd_f128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_f128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_f128(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_f128(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_c32(out: *mut f64, inputs: *const usize, count: usize);
@@ -252,6 +256,7 @@ mod eigen {
         pub fn svd_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_c32(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_c32(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_c32(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_c64(out: *mut f64, inputs: *const usize, count: usize);
@@ -265,6 +270,7 @@ mod eigen {
         pub fn svd_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_c64(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_c64(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_c64(out: *mut f64, inputs: *const usize, count: usize);
 
         pub fn gemm_c128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn trsm_c128(out: *mut f64, inputs: *const usize, count: usize);
@@ -278,6 +284,7 @@ mod eigen {
         pub fn svd_c128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn rectangular_svd_c128(out: *mut f64, inputs: *const usize, count: usize);
         pub fn symmetric_evd_c128(out: *mut f64, inputs: *const usize, count: usize);
+        pub fn evd_c128(out: *mut f64, inputs: *const usize, count: usize);
     }
 }
 
@@ -527,6 +534,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             ifeigen!(&eigen(eigen::symmetric_evd_f32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<f32>(&input_sizes, Parallelism::None),
+            &evd::faer::<f32>(&input_sizes, Parallelism::Rayon(0)),
+            &evd::ndarray::<f32>(&input_sizes),
+            ifnalgebra!(&evd::nalgebra::<f32>(&input_sizes)),
+            ifeigen!(&eigen(eigen::evd_f32, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("f64");
@@ -753,6 +780,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             &symmetric_evd::ndarray::<f64>(&input_sizes),
             ifnalgebra!(&symmetric_evd::nalgebra::<f64>(&input_sizes)),
             ifeigen!(&eigen(eigen::symmetric_evd_f64, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<f64>(&input_sizes, Parallelism::None),
+            &evd::faer::<f64>(&input_sizes, Parallelism::Rayon(0)),
+            &evd::ndarray::<f64>(&input_sizes),
+            ifnalgebra!(&evd::nalgebra::<f64>(&input_sizes)),
+            ifeigen!(&eigen(eigen::evd_f64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -1003,6 +1050,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             ifeigen!(&eigen(eigen::symmetric_evd_f128, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<f128>(&input_sizes, Parallelism::None),
+            &evd::faer::<f128>(&input_sizes, Parallelism::Rayon(0)),
+            &[Duration::ZERO; N],
+            &[Duration::ZERO; N],
+            ifeigen!(&eigen(eigen::evd_f128, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c32");
@@ -1229,6 +1296,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             &symmetric_evd::ndarray::<Cplx32>(&input_sizes),
             ifnalgebra!(&symmetric_evd::nalgebra::<Cplx32>(&input_sizes)),
             ifeigen!(&eigen(eigen::symmetric_evd_c32, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<c32>(&input_sizes, Parallelism::None),
+            &evd::faer::<c32>(&input_sizes, Parallelism::Rayon(0)),
+            &evd::ndarray::<Cplx32>(&input_sizes),
+            ifnalgebra!(&evd::nalgebra::<Cplx32>(&input_sizes)),
+            ifeigen!(&eigen(eigen::evd_c32, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }
@@ -1459,6 +1546,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             ifeigen!(&eigen(eigen::symmetric_evd_c64, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<c64>(&input_sizes, Parallelism::None),
+            &evd::faer::<c64>(&input_sizes, Parallelism::Rayon(0)),
+            &evd::ndarray::<Cplx64>(&input_sizes),
+            ifnalgebra!(&evd::nalgebra::<Cplx64>(&input_sizes)),
+            ifeigen!(&eigen(eigen::evd_c64, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
     }
     {
         println!("c128");
@@ -1685,6 +1792,26 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
             &[Duration::ZERO; N],
             &[Duration::ZERO; N],
             ifeigen!(&eigen(eigen::symmetric_evd_c128, &input_sizes)),
+        )?;
+        printwriteln!(file, "```")?;
+
+        printwriteln!(
+            file,
+            "
+## Non Hermitian matrix eigenvalue decomposition
+
+Computing the EVD of a matrix with shape `(n, n)`.
+
+```"
+        )?;
+        print_results(
+            &mut file,
+            &input_sizes,
+            &evd::faer::<c128>(&input_sizes, Parallelism::None),
+            &evd::faer::<c128>(&input_sizes, Parallelism::Rayon(0)),
+            &[Duration::ZERO; N],
+            &[Duration::ZERO; N],
+            ifeigen!(&eigen(eigen::evd_c128, &input_sizes)),
         )?;
         printwriteln!(file, "```")?;
     }

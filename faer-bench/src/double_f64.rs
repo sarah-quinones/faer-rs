@@ -534,11 +534,6 @@ mod faer_impl {
 
     impl RealField for DoubleF64 {
         #[inline(always)]
-        fn sqrt(&self) -> Self {
-            (*self).sqrt()
-        }
-
-        #[inline(always)]
         fn div(&self, rhs: &Self) -> Self {
             *self / *rhs
         }
@@ -637,6 +632,11 @@ mod faer_impl {
 
     impl ComplexField for DoubleF64 {
         type Real = DoubleF64;
+
+        #[inline(always)]
+        fn sqrt(&self) -> Self {
+            (*self).sqrt()
+        }
 
         #[inline(always)]
         fn from_f64(value: f64) -> Self {
@@ -821,6 +821,15 @@ mod faer_impl {
 
         #[inline(always)]
         fn simd_mul<S: faer_core::pulp::Simd>(
+            simd: S,
+            lhs: SimdGroup<Self, S>,
+            rhs: SimdGroup<Self, S>,
+        ) -> SimdGroup<Self, S> {
+            simd::simd_mul(simd, lhs, rhs)
+        }
+
+        #[inline(always)]
+        fn simd_scale_real<S: faer_core::pulp::Simd>(
             simd: S,
             lhs: SimdGroup<Self, S>,
             rhs: SimdGroup<Self, S>,

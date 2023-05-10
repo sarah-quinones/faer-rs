@@ -291,7 +291,6 @@ pub fn compute_evd_real<E: RealField>(
     }
 
     let householder_blocksize = recommended_blocksize::<E>(n - 1, n - 1);
-    let householder_blocksize = 1;
 
     let mut u = u;
     let mut s_re = s_re;
@@ -308,19 +307,19 @@ pub fn compute_evd_real<E: RealField>(
 
     {
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit(n - 1, householder_blocksize, stack.rb_mut()) };
+            unsafe { temp_mat_uninit(householder_blocksize, n - 1, stack.rb_mut()) };
         let mut householder = householder.as_mut();
 
         hessenberg::make_hessenberg_in_place(
             h.rb_mut(),
-            householder.rb_mut(),
+            householder.rb_mut().transpose(),
             parallelism,
             stack.rb_mut(),
         );
         if u.is_some() {
             apply_block_householder_sequence_on_the_right_in_place_with_conj(
                 h.rb().submatrix(1, 0, n - 1, n - 1),
-                householder.rb().transpose(),
+                householder.rb(),
                 Conj::No,
                 z.rb_mut().submatrix(1, 1, n - 1, n - 1),
                 parallelism,
@@ -609,7 +608,7 @@ pub fn compute_evd_real<E: RealField>(
     }
 }
 
-pub fn compute_evd_complex_req<E: ComplexField>(
+pub fn compute_evd_req<E: ComplexField>(
     n: usize,
     compute_eigenvectors: ComputeVectors,
     parallelism: Parallelism,
@@ -629,7 +628,11 @@ pub fn compute_evd_complex_req<E: ComplexField>(
             StackReq::try_all_of([
                 temp_mat_req::<E>(n, householder_blocksize)?,
                 StackReq::try_any_of([
-                    hessenberg::make_hessenberg_in_place_req::<E>(n, parallelism)?,
+                    hessenberg::make_hessenberg_in_place_req::<E>(
+                        n,
+                        householder_blocksize,
+                        parallelism,
+                    )?,
                     apply_block_householder_sequence_on_the_right_in_place_req::<E>(
                         n - 1,
                         householder_blocksize,
@@ -678,7 +681,6 @@ pub fn compute_evd_complex<E: ComplexField>(
     }
 
     let householder_blocksize = recommended_blocksize::<E>(n - 1, n - 1);
-    let householder_blocksize = 1;
 
     let mut u = u;
     let mut s = s;
@@ -1057,7 +1059,7 @@ mod tests {
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                     Parallelism::None,
-                    make_stack!(compute_evd_complex_req::<c64>(
+                    make_stack!(compute_evd_req::<c64>(
                         n,
                         ComputeVectors::Yes,
                         Parallelism::None,
@@ -1121,7 +1123,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_evd_complex_req::<c64>(
+                make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,
@@ -1184,7 +1186,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_evd_complex_req::<c64>(
+                make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,
@@ -1242,7 +1244,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_evd_complex_req::<c64>(
+                make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,
@@ -1279,7 +1281,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_evd_complex_req::<c64>(
+                make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,
@@ -1314,7 +1316,7 @@ mod tests {
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
-                make_stack!(compute_evd_complex_req::<c64>(
+                make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
                     Parallelism::None,

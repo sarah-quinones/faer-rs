@@ -13,6 +13,14 @@ using f64 = double;
 using c32 = std::complex<f32>;
 using c64 = std::complex<f64>;
 
+template <typename T> struct EigenSolver {
+  using Type = Eigen::EigenSolver<T>;
+};
+
+template <typename T> struct EigenSolver<Eigen::Matrix<std::complex<T>, -1, -1>> {
+  using Type = Eigen::ComplexEigenSolver<Eigen::Matrix<std::complex<T>, -1, -1>>;
+};
+
 namespace double_f64 {
 struct DoubleF64 {
   f64 x0;
@@ -399,6 +407,17 @@ template <typename F> auto timeit(F f) -> double {
       a = (a + a.adjoint()).eval();                                            \
       Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T, -1, -1>> evd(n);          \
       out[i] = timeit([&] { evd.compute(a, Eigen::ComputeEigenvectors); });    \
+    }                                                                          \
+  }                                                                            \
+  extern "C" void evd_##T(double *out, std::size_t const *inputs,              \
+                          std::size_t count) {                                 \
+    for (std::size_t i = 0; i < count; ++i) {                                  \
+      auto n = inputs[i];                                                      \
+                                                                               \
+      auto a = Eigen::Matrix<T, -1, -1>(n, n);                                 \
+      a.setRandom();                                                           \
+      typename EigenSolver<Eigen::Matrix<T, -1, -1>>::Type evd(n);             \
+      out[i] = timeit([&] { evd.compute(a, true); });                          \
     }                                                                          \
   }                                                                            \
   static_assert(true, "")
