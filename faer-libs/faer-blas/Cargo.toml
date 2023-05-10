@@ -1,0 +1,12 @@
+[package]
+name = "faer-blas"
+version = "0.16.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+faer-core = { version = "0.16.0", path = "../faer-core" }
+gemm = "0.17"
+num-traits = "0.2.15"
