@@ -2847,6 +2847,8 @@ pub fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> 
         12
     } else if n < 590 {
         32
+    } else if n < 1500 {
+        48
     } else if n < 3000 {
         64
     } else if n < 6000 {

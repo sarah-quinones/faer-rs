@@ -699,7 +699,7 @@ pub fn default_blocking_threshold() -> usize {
 }
 
 pub fn default_nibble_threshold() -> usize {
-    14
+    50
 }
 
 fn aggressive_early_deflation<E: ComplexField>(

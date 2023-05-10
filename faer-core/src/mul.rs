@@ -2838,6 +2838,7 @@ mod tests {
         *,
     };
     use crate::Mat;
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use num_complex::Complex32;
 
