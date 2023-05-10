@@ -3599,6 +3599,27 @@ impl<'a, E: Entity> MatMut<'a, E> {
     }
 
     #[inline(always)]
+    #[track_caller]
+    pub fn clone_from(&mut self, other: MatRef<'_, E>) {
+        zipped!(self.rb_mut(), other).for_each(|mut dst, src| dst.write(src.read()));
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn set_zeros(&mut self)
+    where
+        E: ComplexField,
+    {
+        zipped!(self.rb_mut()).for_each(|mut x| x.write(E::zero()));
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn set_constant(&mut self, c: E) {
+        zipped!(self.rb_mut()).for_each(|mut x| x.write(c.clone()));
+    }
+
+    #[inline(always)]
     #[must_use]
     pub fn transpose(self) -> Self {
         Self {

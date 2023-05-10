@@ -7,7 +7,7 @@ use crate::{
     hessenberg::make_hessenberg_in_place,
     hessenberg_cplx_evd::{
         default_blocking_threshold, default_nibble_threshold, default_recommended_deflation_window,
-        sqr_norm, MultiShiftQrParams,
+        sqr_norm,
     },
 };
 use assert2::{assert, debug_assert};
@@ -24,7 +24,7 @@ use faer_core::{
 };
 use reborrow::*;
 
-pub use crate::hessenberg_cplx_evd::multishift_qr_req;
+pub use crate::hessenberg_cplx_evd::{multishift_qr_req, EvdParams};
 
 fn max<T: PartialOrd>(a: T, b: T) -> T {
     if a > b {
@@ -993,7 +993,7 @@ fn schur_swap<E: RealField>(
         let mut d = unsafe { MatMut::from_raw_parts(d_ptr, 4, 4, 1, 4) };
 
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
-        zipped!(d.rb_mut(), ad_slice).for_each(|mut dst, src| dst.write(src.read()));
+        d.clone_from(ad_slice);
         let mut dnorm = E::zero();
         zipped!(d.rb()).for_each(|d| dnorm = max(dnorm.clone(), d.read().abs()));
 
@@ -1280,7 +1280,7 @@ fn aggressive_early_deflation<E: RealField>(
     zero_threshold: E::Real,
     parallelism: Parallelism,
     mut stack: DynStack<'_>,
-    params: MultiShiftQrParams,
+    params: EvdParams,
 ) -> (usize, usize) {
     let n = a.nrows();
 
@@ -1347,8 +1347,8 @@ fn aggressive_early_deflation<E: RealField>(
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    zipped!(v.rb_mut()).for_each(|mut x| x.write(E::zero()));
-    zipped!(v.rb_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+    v.set_zeros();
+    v.rb_mut().diagonal().set_constant(E::one());
 
     let infqr = if jw
         < params
@@ -1599,10 +1599,6 @@ fn aggressive_early_deflation<E: RealField>(
             vv.write(0, 0, E::one());
             let tau = tau.inv();
 
-            let mut __vv = vv.rb() * vv.rb().adjoint();
-            zipped!(__vv.as_mut()).for_each(|mut x| x.write(x.read().neg().mul(&tau)));
-            zipped!(__vv.as_mut().diagonal()).for_each(|mut x| x.write(x.read().add(&E::one())));
-
             {
                 let mut tw_slice = tw.rb_mut().submatrix(0, 0, ns, jw);
                 let tmp = vv.rb().adjoint() * tw_slice.rb();
@@ -1715,7 +1711,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::one(),
                 parallelism,
             );
-            zipped!(a_slice.rb_mut(), wh_slice.rb()).for_each(|mut dst, src| dst.write(src.read()));
+            a_slice.clone_from(wh_slice.rb());
             i = i + iblock;
         }
     }
@@ -1737,7 +1733,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::one(),
                 parallelism,
             );
-            zipped!(a_slice.rb_mut(), wv_slice.rb()).for_each(|mut dst, src| dst.write(src.read()));
+            a_slice.clone_from(wv_slice.rb());
             i = i + iblock;
         }
     }
@@ -1758,7 +1754,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::one(),
                 parallelism,
             );
-            zipped!(z_slice.rb_mut(), wv_slice.rb()).for_each(|mut dst, src| dst.write(src.read()));
+            z_slice.clone_from(wv_slice.rb());
             i = i + iblock;
         }
     }
@@ -1930,8 +1926,8 @@ fn multishift_qr_sweep<E: RealField>(
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        zipped!(u2.rb_mut()).for_each(|mut x| x.write(E::zero()));
-        zipped!(u2.rb_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+        u2.set_zeros();
+        u2.rb_mut().diagonal().set_constant(E::one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
             // The number of bulges that are in the pencil
@@ -2165,8 +2161,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wh_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wh_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2187,8 +2182,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2209,8 +2203,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(z_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                z_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2229,8 +2222,8 @@ fn multishift_qr_sweep<E: RealField>(
         let n_block = n_shifts + n_pos;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        zipped!(u2.rb_mut()).for_each(|mut x| x.write(E::zero()));
-        zipped!(u2.rb_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+        u2.set_zeros();
+        u2.rb_mut().diagonal().set_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2454,8 +2447,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wh_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wh_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2477,8 +2469,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2499,8 +2490,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(z_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                z_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2515,8 +2505,8 @@ fn multishift_qr_sweep<E: RealField>(
         let n_block = ihi - i_pos_block;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        zipped!(u2.rb_mut()).for_each(|mut x| x.write(E::zero()));
-        zipped!(u2.rb_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+        u2.set_zeros();
+        u2.rb_mut().diagonal().set_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2797,8 +2787,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wh_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wh_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2820,8 +2809,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(a_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                a_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2842,8 +2830,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::one(),
                     parallelism,
                 );
-                zipped!(z_slice.rb_mut(), wv_slice.rb())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                z_slice.clone_from(wv_slice.rb());
                 i = i + iblock;
             }
         }
@@ -2881,7 +2868,7 @@ pub fn multishift_qr<E: RealField>(
     zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: DynStack<'_>,
-    params: MultiShiftQrParams,
+    params: EvdParams,
 ) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
     assert!(ilo <= ihi);
@@ -3308,7 +3295,7 @@ pub fn lahqr<E: RealField>(
                 if i >= ilo + 2 {
                     tst = tst.add(&a.read(i - 1, i - 2).abs());
                 }
-                if i < ihi {
+                if i + 1 < ihi {
                     tst = tst.add(&a.read(i + 1, i).abs());
                 }
             }
@@ -3770,7 +3757,7 @@ mod tests {
                 let mut w_im = Mat::zeros(n, 1);
 
                 let mut t = h.clone();
-                let params = MultiShiftQrParams {
+                let params = EvdParams {
                     recommended_shift_count: None,
                     recommended_deflation_window: None,
                     blocking_threshold: Some(15),
@@ -3893,7 +3880,7 @@ mod tests {
         let mut w_im = Mat::zeros(n, 1);
 
         let mut t = h.clone();
-        let params = MultiShiftQrParams {
+        let params = EvdParams {
             blocking_threshold: Some(15),
             ..Default::default()
         };
@@ -4137,7 +4124,7 @@ mod tests {
         let mut w_im = Mat::zeros(n, 1);
 
         let mut t = h.clone();
-        let params = MultiShiftQrParams {
+        let params = EvdParams {
             blocking_threshold: Some(15),
             ..Default::default()
         };
@@ -4819,7 +4806,7 @@ mod tests {
         let mut w_im = Mat::zeros(n, 1);
 
         let mut t = h.clone();
-        let params = MultiShiftQrParams {
+        let params = EvdParams {
             blocking_threshold: Some(15),
             ..Default::default()
         };
