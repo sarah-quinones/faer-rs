@@ -25,8 +25,8 @@ fn random<T: 'static>() -> T {
         coe::coerce_static(c64::new(rand::random(), rand::random()))
     } else if is_same::<c128, T>() {
         coe::coerce_static(c128::new(
-            double_f64::Double(rand::random(), rand::random()),
-            double_f64::Double(rand::random(), rand::random()),
+            double_f64::Double(rand::random(), 0.0),
+            double_f64::Double(rand::random(), 0.0),
         ))
     } else if is_same::<Cplx32, T>() {
         coe::coerce_static(Cplx32::new(rand::random(), rand::random()))

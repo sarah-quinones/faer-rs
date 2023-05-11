@@ -43,7 +43,10 @@ fn sqrt_impl<E: RealField>(re: E, im: E) -> (E, E) {
     let half = E::from_f64(0.5);
 
     let abs = (re.abs2().add(&im.abs2())).sqrt();
-    let a = ((re.add(&abs)).scale_power_of_two(&half)).sqrt();
+    let sum = re.add(&abs);
+    // to avoid the sum being negative with inexact floating point arithmetic (i.e., double-double)
+    let sum = if sum > E::zero() { sum } else { E::zero() };
+    let a = (sum.scale_power_of_two(&half)).sqrt();
     let b = ((re.neg().add(&abs)).scale_power_of_two(&half))
         .sqrt()
         .scale_power_of_two(&im_sign);
