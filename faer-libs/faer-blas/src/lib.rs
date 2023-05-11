@@ -125,8 +125,7 @@ macro_rules! impl_gemm {
                 false,
                 trans_a.conj() == Conj::Yes,
                 trans_b.conj() == Conj::Yes,
-                // TODO: allow parallelism
-                Parallelism::None,
+                Parallelism::Rayon(0),
             );
         }
     };
