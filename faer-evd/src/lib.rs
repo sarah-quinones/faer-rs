@@ -57,7 +57,7 @@ pub enum ComputeVectors {
 #[non_exhaustive]
 pub struct SymmetricEvdParams {}
 
-/// Computes the size and alignment of required workspace for performing an eigenvalue
+/// Computes the size and alignment of required workspace for performing a hermitian eigenvalue
 /// decomposition. The eigenvectors may be optionally computed.
 pub fn compute_hermitian_evd_req<E: ComplexField>(
     n: usize,
@@ -98,7 +98,7 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
     ])
 }
 
-/// Computes the eigenvalue decomposition of square hermitian `matrix`. Only the lower triangular
+/// Computes the eigenvalue decomposition of a square hermitian `matrix`. Only the lower triangular
 /// half of the matrix is accessed.
 ///
 /// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the
@@ -263,6 +263,21 @@ pub fn compute_hermitian_evd<E: ComplexField>(
     );
 }
 
+/// Computes the eigenvalue decomposition of a square real `matrix`.
+///
+/// `s_re` and `s_im` respectively represent the real and imaginary parts of the diagonal of the
+/// matrix $S$, and must have size equal to the dimension of the matrix.
+///
+/// If `u` is `None`, then only the eigenvalues are computed. Otherwise, the eigenvectors are
+/// computed and stored in `u`.
+///
+/// The eigenvectors are stored as follows, for each real eigenvalue, the corresponding column of
+/// the eigenvector matrix is the corresponding eigenvector.
+///
+/// For each complex eigenvalue pair $a + ib$ and $a - ib$ at indices `k` and `k + 1`, the
+/// eigenvalues are stored consecutively. And the real and imaginary parts of the eigenvector
+/// corresponding to the eigenvalue $a + ib$ are stored at indices `k` and `k+1`. The eigenvector
+/// corresponding to $a - ib$ can be computed as the conjugate of that vector.
 pub fn compute_evd_real<E: RealField>(
     matrix: MatRef<'_, E>,
     s_re: MatMut<'_, E>,
@@ -608,6 +623,8 @@ pub fn compute_evd_real<E: RealField>(
     }
 }
 
+/// Computes the size and alignment of required workspace for performing an eigenvalue
+/// decomposition. The eigenvectors may be optionally computed.
 pub fn compute_evd_req<E: ComplexField>(
     n: usize,
     compute_eigenvectors: ComputeVectors,
@@ -655,6 +672,13 @@ pub fn compute_evd_req<E: ComplexField>(
     ])
 }
 
+/// Computes the eigenvalue decomposition of a square complex `matrix`.
+///
+/// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the
+/// matrix.
+///
+/// If `u` is `None`, then only the eigenvalues are computed. Otherwise, the eigenvectors are
+/// computed and stored in `u`.
 pub fn compute_evd_complex<E: ComplexField>(
     matrix: MatRef<'_, E>,
     s: MatMut<'_, E>,
