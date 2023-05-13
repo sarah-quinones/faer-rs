@@ -1,6 +1,11 @@
+# 0.9.0
+- Implement the non Hermitian eigenvalue decomposition.
+- Improve performance of matrix multiplication.
+- Improve performance of LU decomposition with partial pivoting.
+
 # 0.8.0
 - Refactor the core traits for better SIMD support for non native types, using a structure-of-arrays layout.
-- Implement the hermitian eigenvalue decomposition.
+- Implement the Hermitian eigenvalue decomposition.
 
 # 0.7.0
 - Add `to_owned` function for converting a `MatRef/MatMut` to a `Mat`. Thanks @Tastaturtaste
