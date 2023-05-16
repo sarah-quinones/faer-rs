@@ -72,18 +72,21 @@ Multiplication of two square matrices of dimension `n`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      1.1µs      1.1µs      1.1µs      1.7µs      1.2µs
-   64        8µs        8µs      7.8µs     10.6µs      5.1µs
-   96     27.7µs     10.9µs     26.2µs     34.8µs       10µs
-  128     65.3µs       17µs     35.3µs     78.8µs     32.7µs
-  192    216.4µs     53.8µs     66.6µs    262.3µs     51.8µs
-  256    510.8µs    117.4µs    202.1µs    604.8µs    142.9µs
-  384      1.7ms    339.4µs    437.9µs        2ms      327µs
-  512        4ms    787.8µs      1.3ms      4.7ms      1.2ms
-  640      7.9ms      1.6ms      2.3ms      9.2ms        2ms
+    4       40ns       41ns      139ns       29ns       17ns
+    8       77ns       80ns       63ns      161ns       85ns
+   16      189ns      193ns      201ns      363ns      219ns
+   32      1.1µs      1.1µs      1.1µs      1.5µs      1.2µs
+   64      7.9µs      7.9µs      7.9µs     10.5µs      5.1µs
+   96     27.5µs     11.2µs     26.2µs     34.9µs     10.1µs
+  128     65.5µs     17.1µs     35.7µs     78.3µs     32.9µs
+  192    216.6µs     54.4µs     57.3µs    260.7µs     51.7µs
+  256    510.8µs    117.8µs    183.2µs    602.6µs    142.9µs
+  384      1.7ms    339.1µs    575.8µs        2ms    327.9µs
+  512        4ms    785.6µs      1.3ms      4.7ms        1ms
+  640      7.9ms      1.6ms      2.3ms      9.2ms      1.9ms
   768     13.8ms      2.9ms      3.6ms       16ms      3.2ms
-  896     22.1ms      4.6ms      6.5ms     25.8ms      5.9ms
- 1024     33.9ms      6.6ms      9.7ms       39ms      8.3ms
+  896     22.2ms      4.6ms      6.5ms     25.7ms      5.9ms
+ 1024     33.9ms      6.6ms      9.7ms     39.1ms      8.3ms
 ```
 
 ## Triangular solve
@@ -92,18 +95,21 @@ Solving `AX = B` in place where `A` and `B` are two square matrices of dimension
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      2.3µs      2.3µs      8.5µs      7.1µs      2.9µs
-   64       10µs     10.2µs       26µs     34.4µs     13.4µs
-   96     28.5µs     24.1µs       55µs    101.1µs     36.8µs
-  128     57.8µs       40µs    145.1µs    232.8µs       82µs
-  192      170µs     93.2µs    263.7µs    783.1µs    213.9µs
-  256    371.8µs    166.5µs    650.7µs      1.9ms    494.7µs
-  384      1.1ms    325.1µs      1.4ms      7.2ms      1.3ms
-  512      2.6ms    664.3µs      3.6ms     16.9ms      3.2ms
-  640      4.7ms      1.5ms      5.7ms     33.3ms      5.5ms
-  768        8ms      2.4ms      9.5ms     55.7ms      9.3ms
-  896     12.3ms      3.6ms     13.7ms     88.8ms       14ms
- 1024     18.8ms      5.2ms     20.1ms    130.4ms     22.8ms
+    4       20ns       19ns      755ns       39ns       65ns
+    8      118ns      118ns      1.5µs      308ns      156ns
+   16      498ns      502ns      3.3µs      1.5µs      671ns
+   32      2.1µs      2.1µs      8.6µs      6.6µs      2.9µs
+   64      9.7µs      9.8µs     25.9µs     34.2µs     13.8µs
+   96     27.7µs     24.5µs     55.2µs    101.4µs     36.9µs
+  128     56.4µs     39.9µs    145.2µs      232µs     81.7µs
+  192    167.8µs       92µs    263.6µs    815.5µs    213.6µs
+  256    367.7µs      163µs      660µs      1.9ms    488.1µs
+  384      1.1ms    317.5µs      1.4ms      7.4ms      1.4ms
+  512      2.6ms    662.7µs      3.5ms     17.2ms      3.3ms
+  640      4.7ms      1.2ms      5.7ms     33.6ms      5.5ms
+  768        8ms      2.3ms      9.4ms     56.2ms      9.3ms
+  896     12.3ms      3.6ms     13.6ms     89.3ms       14ms
+ 1024     18.7ms      5.2ms     20.1ms    131.9ms     22.9ms
 ```
 
 ## Triangular inverse
@@ -112,18 +118,21 @@ Computing `A^-1` where `A` is a square triangular matrix with dimension `n`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32        5µs     12.4µs      8.5µs      7.1µs      2.9µs
-   64     13.9µs     19.7µs     25.9µs     34.3µs     13.4µs
-   96     32.6µs     40.3µs     54.8µs    101.1µs     36.9µs
-  128     45.7µs     53.1µs      145µs    232.8µs       82µs
-  192      115µs     97.3µs    262.5µs    782.2µs    213.6µs
-  256    199.1µs    143.9µs      641µs      1.9ms    493.7µs
-  384    544.4µs    279.5µs      1.4ms      6.4ms      1.3ms
-  512      1.1ms    456.9µs      3.5ms     15.6ms      3.2ms
-  640        2ms    653.6µs      5.6ms     30.2ms      5.5ms
-  768      3.2ms    956.5µs      9.3ms     51.7ms      9.3ms
-  896      4.8ms      1.5ms     13.4ms     81.8ms       14ms
- 1024      7.2ms      2.4ms     19.9ms    122.5ms     22.6ms
+    4      162ns      5.2µs      771ns       38ns       65ns
+    8      514ns      5.9µs      1.5µs      308ns      156ns
+   16      1.6µs      7.7µs      3.4µs      1.5µs      672ns
+   32      4.2µs     10.5µs      8.7µs      6.6µs      2.9µs
+   64     12.5µs     18.1µs     25.7µs     34.2µs     13.8µs
+   96     30.6µs     39.8µs       55µs    101.4µs     36.9µs
+  128     42.7µs     51.9µs    144.9µs      232µs     81.6µs
+  192      110µs     89.7µs    262.9µs    815.7µs    213.3µs
+  256    191.7µs    138.3µs    645.5µs      1.9ms    486.9µs
+  384    533.5µs    274.7µs      1.4ms      6.7ms      1.4ms
+  512      1.1ms    449.4µs      3.5ms     15.6ms      3.3ms
+  640        2ms    861.3µs      5.6ms     30.2ms      5.5ms
+  768      3.2ms      1.2ms      9.3ms     51.8ms      9.3ms
+  896      4.8ms      1.7ms     13.4ms     81.9ms       14ms
+ 1024      7.2ms      2.4ms     19.9ms    122.8ms     22.7ms
 ```
 
 ## Cholesky decomposition
@@ -132,18 +141,21 @@ Factorizing a square matrix with dimension `n` as `L×L.T`, where `L` is lower t
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      2.2µs      2.3µs      3.2µs        2µs      2.2µs
-   64      7.7µs        8µs     38.2µs     10.1µs      8.6µs
-   96     20.4µs     20.6µs     95.3µs     29.7µs     19.8µs
-  128       32µs     32.3µs      298µs     74.3µs     36.2µs
-  192     90.8µs     99.9µs    301.1µs    252.5µs     94.7µs
-  256    166.7µs    157.4µs    694.4µs      610µs      197µs
-  384    470.7µs    451.1µs      1.2ms      2.1ms    543.6µs
-  512      1.1ms    640.8µs      3.7ms      5.1ms      1.2ms
-  640      1.9ms      1.3ms      3.2ms       10ms      2.1ms
-  768      3.3ms      1.8ms      5.5ms     17.3ms      3.5ms
-  896      5.1ms      2.7ms      6.9ms     27.4ms      5.4ms
- 1024      7.8ms      3.4ms     14.5ms     40.4ms      8.1ms
+    4       49ns       49ns      149ns       52ns       43ns
+    8      128ns      128ns      329ns       99ns      125ns
+   16      408ns      408ns      950ns      412ns      376ns
+   32      1.8µs      1.8µs      3.3µs      1.8µs      2.3µs
+   64        7µs        7µs     34.6µs     10.5µs        9µs
+   96       18µs     18.2µs     70.5µs     31.3µs       21µs
+  128     30.1µs     30.4µs    202.2µs     77.4µs     40.3µs
+  192     86.4µs     92.7µs    301.3µs    259.8µs    105.2µs
+  256    161.7µs    149.4µs    711.5µs    607.4µs    216.6µs
+  384    462.9µs    423.9µs      1.2ms      2.1ms    596.5µs
+  512      1.1ms    619.5µs      3.8ms      5.4ms      1.3ms
+  640      1.9ms      1.3ms      3.3ms     10.4ms      2.2ms
+  768      3.3ms      1.8ms      5.4ms     17.9ms      3.7ms
+  896        5ms      2.7ms      6.9ms     28.4ms      5.6ms
+ 1024      7.8ms      3.4ms     14.5ms     41.2ms      8.4ms
 ```
 
 ## LU decomposition with partial pivoting
@@ -152,18 +164,21 @@ Factorizing a square matrix with dimension `n` as `P×L×U`, where `P` is a perm
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      4.2µs      4.3µs      5.7µs      4.9µs      3.8µs
-   64     16.7µs     17.4µs     17.5µs     22.4µs     15.6µs
-   96     38.9µs     40.7µs     34.9µs     70.2µs     36.6µs
-  128     74.1µs     75.3µs     99.1µs    172.7µs    128.2µs
-  192    202.6µs    234.3µs      188µs    537.6µs      418µs
-  256    418.9µs    416.5µs    319.2µs      1.3ms    827.9µs
-  384      1.1ms      905µs    880.7µs      4.5ms      1.9ms
-  512      2.4ms      1.7ms      1.5ms     11.2ms      4.3ms
-  640      4.1ms      2.5ms      2.3ms     20.9ms      5.6ms
-  768      6.7ms      3.6ms      3.4ms     36.2ms      8.7ms
-  896     10.2ms      5.2ms      4.8ms     57.1ms     11.3ms
- 1024       15ms      7.3ms      6.8ms     89.3ms     17.2ms
+    4      103ns       99ns      180ns       77ns       98ns
+    8      210ns      217ns      405ns      241ns      278ns
+   16      649ns      625ns      1.4µs      859ns      880ns
+   32      2.7µs      2.6µs      5.6µs      4.4µs      3.9µs
+   64     12.4µs     12.5µs     17.4µs     22.9µs     15.6µs
+   96     30.2µs     31.6µs     34.4µs     67.9µs     36.7µs
+  128     61.3µs     60.7µs     97.4µs    159.4µs      126µs
+  192    163.5µs    187.3µs    182.4µs    527.8µs    425.5µs
+  256      352µs    360.9µs    491.1µs      1.3ms    824.9µs
+  384    968.8µs    781.3µs    909.5µs      4.5ms      1.9ms
+  512      2.1ms      1.5ms      1.5ms     11.1ms      4.3ms
+  640      3.8ms      2.2ms      2.2ms     20.7ms      5.6ms
+  768      6.2ms      3.2ms      3.4ms     35.8ms      8.6ms
+  896      9.5ms      4.6ms      4.7ms     56.1ms     11.4ms
+ 1024     14.4ms      6.5ms      6.7ms       88ms     17.1ms
 ```
 
 ## LU decomposition with full pivoting
@@ -172,18 +187,21 @@ Factorizing a square matrix with dimension `n` as `P×L×U×Q.T`, where `P` and 
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      5.8µs      5.8µs          -     14.8µs     12.2µs
-   64     24.6µs     24.5µs          -    105.1µs     72.1µs
-   96       67µs     67.2µs          -    347.5µs      207µs
-  128    155.7µs    155.9µs          -    836.3µs    460.8µs
-  192    456.6µs    457.2µs          -      2.7ms      1.4ms
-  256      1.2ms      1.2ms          -      6.6ms      3.4ms
-  384      3.8ms      3.8ms          -       22ms     10.9ms
-  512     10.2ms      7.9ms          -     52.6ms     26.6ms
-  640     17.7ms     11.9ms          -    101.4ms       50ms
-  768     31.2ms     17.7ms          -    175.3ms     86.1ms
-  896     47.7ms     25.1ms          -    280.5ms    135.4ms
- 1024     75.4ms     38.8ms          -    431.7ms    204.4ms
+    4      132ns      134ns          -      111ns      164ns
+    8      386ns      415ns          -      418ns      493ns
+   16      1.7µs      1.7µs          -      2.3µs      2.1µs
+   32      5.9µs        6µs          -     14.7µs     12.2µs
+   64     25.8µs     25.4µs          -    106.4µs     72.2µs
+   96     67.7µs     67.9µs          -    347.3µs    206.3µs
+  128    156.4µs    155.2µs          -    819.1µs    460.9µs
+  192    463.4µs    460.6µs          -      2.8ms      1.4ms
+  256      1.1ms      1.1ms          -      6.6ms      3.3ms
+  384      3.8ms      3.8ms          -     22.1ms       11ms
+  512     10.1ms      7.9ms          -     53.4ms     27.4ms
+  640     17.7ms       12ms          -    102.5ms     50.7ms
+  768     31.2ms     17.5ms          -    176.9ms     87.3ms
+  896     47.3ms     25.1ms          -      280ms    136.1ms
+ 1024     76.1ms     33.9ms          -      431ms    207.9ms
 ```
 
 ## QR decomposition with no pivoting
@@ -192,18 +210,21 @@ Factorizing a square matrix with dimension `n` as `QR`, where `Q` is unitary and
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32     11.9µs     11.9µs     15.1µs      7.9µs      7.1µs
-   64     36.6µs     36.6µs     61.1µs     43.1µs     44.7µs
-   96     75.2µs     75.2µs    321.3µs    139.2µs     79.3µs
-  128    132.3µs    132.9µs    828.1µs      323µs    153.8µs
-  192    335.3µs    335.3µs      1.6ms      1.1ms    388.7µs
-  256    672.7µs    732.2µs      3.4ms      2.5ms    796.3µs
-  384      1.9ms      1.7ms      8.1ms      8.1ms      2.1ms
-  512      4.1ms      3.1ms     15.7ms     18.8ms      4.5ms
-  640      7.4ms      4.6ms     22.8ms     36.1ms        8ms
-  768     12.3ms      6.7ms     35.2ms     61.7ms     13.2ms
-  896     18.7ms      9.4ms     46.6ms     98.1ms     20.5ms
- 1024     27.7ms     13.1ms     68.3ms    150.3ms     30.5ms
+    4      132ns      132ns      758ns      138ns      273ns
+    8      345ns      346ns      1.7µs      321ns      777ns
+   16      1.1µs      1.1µs      4.8µs      1.3µs      2.2µs
+   32      4.4µs      4.4µs     15.3µs      6.9µs      7.4µs
+   64     30.5µs     30.1µs     61.7µs     43.4µs     45.2µs
+   96     65.2µs     65.2µs    322.4µs    141.3µs     79.1µs
+  128    118.4µs    118.3µs    842.4µs    320.9µs    154.3µs
+  192    315.3µs    316.1µs      1.6ms      1.1ms    383.7µs
+  256    643.8µs    693.4µs      2.8ms      2.4ms    794.6µs
+  384      1.9ms      1.7ms      7.6ms      8.1ms      2.1ms
+  512      4.1ms        3ms     16.1ms       19ms      4.5ms
+  640      7.4ms      4.5ms     22.5ms     36.2ms        8ms
+  768     12.2ms      6.6ms     34.7ms     62.1ms     13.2ms
+  896     18.6ms      9.2ms     46.3ms     97.7ms     20.4ms
+ 1024     27.7ms     12.9ms     65.9ms      150ms     30.2ms
 ```
 
 ## QR decomposition with column pivoting
@@ -212,18 +233,21 @@ Factorizing a square matrix with dimension `n` as `QRP`, where `P` is a permutat
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32     17.1µs     29.5µs          -     17.9µs      9.6µs
-   64     68.4µs     91.2µs          -      128µs     37.6µs
-   96    163.6µs    187.4µs          -    422.2µs     98.3µs
-  128    319.2µs    372.5µs          -    991.2µs    218.3µs
-  192    841.8µs    894.6µs          -      3.3ms      633µs
-  256      1.8ms      1.7ms          -      7.7ms      1.5ms
-  384      5.7ms      3.9ms          -     25.6ms      5.9ms
-  512     13.3ms      7.4ms          -     60.5ms     16.2ms
-  640     24.8ms     11.3ms          -    117.3ms     28.9ms
-  768       42ms       16ms          -    201.8ms       50ms
-  896     66.4ms     21.5ms          -    323.8ms     78.2ms
- 1024     98.1ms     38.9ms          -    499.7ms    123.2ms
+    4      167ns      185ns          -      172ns      373ns
+    8      430ns      433ns          -      552ns        1µs
+   16      1.7µs      1.7µs          -      2.8µs      2.9µs
+   32      5.9µs        6µs          -     17.6µs      9.5µs
+   64     33.2µs     50.6µs          -    126.9µs     37.9µs
+   96     85.6µs    104.7µs          -    421.8µs    104.7µs
+  128    182.3µs    209.2µs          -    987.7µs    218.1µs
+  192    548.2µs    600.4µs          -      3.3ms    628.1µs
+  256      1.3ms      1.4ms          -      7.6ms      1.6ms
+  384      4.6ms      3.5ms          -     25.4ms      5.6ms
+  512     11.4ms      6.7ms          -       60ms     15.1ms
+  640     22.2ms     10.5ms          -    116.2ms     26.6ms
+  768     37.7ms     14.8ms          -    199.7ms     46.2ms
+  896     60.7ms     20.1ms          -    317.9ms     71.1ms
+ 1024     90.2ms     30.7ms          -    488.3ms      114ms
 ```
 
 ## Matrix inverse
@@ -232,18 +256,21 @@ Computing the inverse of a square matrix with dimension `n`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32     18.1µs     34.2µs     10.7µs     21.1µs     10.7µs
-   64     58.2µs     75.9µs     37.9µs     99.1µs       46µs
-   96    142.4µs    134.6µs      205µs    285.3µs    118.8µs
-  128    219.5µs    190.7µs    355.3µs    657.8µs    344.9µs
-  192    592.3µs      458µs    658.1µs      2.2ms    966.3µs
-  256      1.1ms    740.5µs      1.1ms      5.6ms        2ms
-  384      3.1ms      1.6ms      2.4ms     18.8ms        5ms
-  512      6.5ms      2.9ms      4.5ms     44.7ms     11.9ms
-  640       12ms      4.9ms      7.3ms     84.9ms     19.3ms
-  768     19.9ms      7.7ms     11.3ms    145.2ms     31.3ms
-  896     30.3ms     12.2ms     16.7ms      228ms     44.1ms
- 1024     44.6ms     19.2ms       24ms      356ms     68.8ms
+    4      795ns      7.5µs      534ns       77ns      381ns
+    8      2.2µs      8.9µs      995ns      825ns      794ns
+   16      5.3µs       12µs      2.9µs        4µs      2.7µs
+   32     15.2µs     29.9µs     10.3µs       19µs     10.8µs
+   64     49.8µs     66.2µs     40.5µs    101.2µs     45.9µs
+   96    127.1µs    122.7µs    182.1µs    285.3µs    119.2µs
+  128    199.9µs    172.7µs    314.9µs    661.3µs      341µs
+  192      543µs    419.8µs    587.1µs      2.2ms    963.8µs
+  256        1ms    668.3µs      1.1ms      5.6ms        2ms
+  384      2.9ms      1.4ms      2.4ms     18.7ms      5.1ms
+  512      6.2ms      2.6ms      4.6ms     44.2ms     11.9ms
+  640     11.5ms      5.5ms      7.2ms       83ms     19.2ms
+  768     19.2ms      8.7ms     11.2ms    142.3ms     30.9ms
+  896     29.5ms     12.9ms     16.7ms    223.1ms     44.1ms
+ 1024     43.5ms     18.2ms     23.9ms    347.1ms     68.8ms
 ```
 
 ## Square matrix singular value decomposition
@@ -252,18 +279,21 @@ Computing the SVD of a square matrix with dimension `n`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32    117.7µs    141.8µs     90.3µs    109.8µs    222.7µs
-   64    412.1µs    391.4µs    683.9µs    547.3µs      1.1ms
-   96    923.2µs    920.9µs      1.7ms      1.7ms      2.6ms
-  128      1.7ms      1.6ms      2.9ms      4.7ms      4.6ms
-  192        4ms        4ms      6.7ms     14.9ms      9.9ms
-  256      7.8ms        7ms     11.7ms     46.5ms     17.7ms
-  384     20.8ms       15ms     25.9ms    123.7ms     43.7ms
-  512     45.5ms     27.7ms     51.7ms    466.2ms     84.2ms
-  640     80.3ms     44.2ms     79.3ms    662.8ms      135ms
-  768      131ms     76.1ms    123.4ms      1.48s    209.6ms
-  896    197.6ms    109.9ms    172.4ms      2.13s    293.2ms
- 1024    296.3ms      153ms    254.7ms      4.02s      438ms
+    4        2µs      1.9µs        3µs      1.3µs      1.8µs
+    8      9.7µs     24.4µs      8.2µs      3.9µs      9.1µs
+   16       32µs     57.8µs     25.9µs     16.9µs     49.8µs
+   32      107µs    132.1µs     90.3µs     95.9µs      222µs
+   64    409.1µs    381.5µs    562.5µs      555µs    987.6µs
+   96    903.9µs    913.1µs      1.7ms      1.7ms      2.7ms
+  128      1.6ms      1.5ms      2.9ms      4.6ms      4.3ms
+  192        4ms        4ms      6.7ms     14.8ms      9.9ms
+  256      7.8ms        7ms     11.7ms     47.4ms     17.3ms
+  384     20.9ms     15.1ms     25.8ms    121.1ms     42.9ms
+  512     45.3ms     28.1ms       52ms    472.1ms     83.9ms
+  640       80ms     44.5ms     79.1ms    665.7ms    133.8ms
+  768    130.9ms     78.5ms    123.9ms      1.48s    208.9ms
+  896    198.4ms    110.9ms    182.8ms      2.11s    295.4ms
+ 1024    297.8ms      152ms    253.8ms      3.95s    433.6ms
 ```
 
 ## Thin matrix singular value decomposition
@@ -272,18 +302,21 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32      1.2ms      1.3ms      5.4ms      5.4ms      3.1ms
-   64      3.4ms      3.3ms     15.6ms       20ms      8.3ms
-   96      6.9ms      5.6ms     30.5ms     45.2ms     17.7ms
-  128     11.4ms      8.5ms       48ms     80.4ms     32.4ms
-  192     23.8ms     16.3ms     63.4ms    185.7ms     55.1ms
-  256     41.2ms     25.7ms     83.6ms    357.3ms     91.1ms
-  384     90.7ms     48.8ms      134ms    911.4ms    204.9ms
-  512    164.8ms     80.3ms    303.4ms      2.02s    384.1ms
-  640    259.1ms    119.7ms      291ms      3.23s    626.8ms
-  768    381.5ms    186.1ms    440.1ms      5.17s    922.5ms
-  896    531.1ms    253.3ms    550.9ms      7.27s      1.29s
- 1024    721.6ms      328ms    850.8ms     10.63s      1.71s
+    4     73.4µs     73.5µs      311µs    127.5µs     76.7µs
+    8    170.8µs    180.7µs    813.8µs    364.3µs    302.3µs
+   16    440.4µs      513µs      2.1ms      1.4ms    775.5µs
+   32      1.2ms      1.2ms      5.3ms      5.2ms      3.1ms
+   64      3.4ms      3.2ms     15.7ms     19.9ms        8ms
+   96      6.8ms      5.4ms     30.1ms     44.5ms     17.2ms
+  128     11.2ms      8.3ms     47.4ms     79.4ms     30.9ms
+  192     23.6ms     16.1ms       63ms    182.2ms     60.7ms
+  256     40.7ms     25.5ms       84ms    353.1ms    101.3ms
+  384     90.7ms     48.3ms      133ms    904.4ms    219.7ms
+  512    164.7ms     80.2ms    303.4ms      2.02s    400.7ms
+  640    258.7ms    119.7ms      289ms      3.24s    646.8ms
+  768    381.7ms      187ms    440.1ms      5.15s      952ms
+  896    532.6ms    252.7ms    550.2ms      7.23s      1.33s
+ 1024    724.4ms      327ms    849.6ms     10.64s      1.75s
 ```
 
 ## Hermitian matrix eigenvalue decomposition
@@ -292,18 +325,21 @@ Computing the EVD of a hermitian matrix with shape `(n, n)`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32     65.3µs     56.7µs    121.5µs     49.9µs     51.1µs
-   64    235.5µs      221µs    611.2µs    295.5µs    208.4µs
-   96    560.8µs    531.9µs      2.6ms    882.9µs    521.2µs
-  128    953.2µs    875.3µs      5.2ms      1.9ms      1.1ms
-  192      2.3ms      2.1ms     15.4ms      5.8ms      3.1ms
-  256      4.1ms      3.6ms     33.9ms     13.5ms      6.8ms
-  384     10.5ms      8.9ms      106ms     43.2ms     21.9ms
-  512     21.5ms     16.3ms    179.5ms    101.5ms     54.4ms
-  640     37.1ms     26.3ms    272.1ms    192.9ms    100.8ms
-  768     59.6ms     38.5ms    405.7ms    328.6ms      171ms
-  896     89.2ms     52.6ms    597.7ms    512.2ms    265.7ms
- 1024    130.4ms     71.9ms    901.7ms    777.8ms      406ms
+    4      1.3µs      1.3µs      1.4µs      675ns        1µs
+    8      3.9µs        4µs      6.6µs      2.3µs      3.4µs
+   16     13.2µs     13.6µs     25.9µs     10.3µs     12.5µs
+   32     50.9µs     51.1µs    167.1µs     50.8µs     49.7µs
+   64    223.9µs    217.5µs      1.2ms    293.9µs    211.2µs
+   96      519µs    518.2µs      2.6ms      876µs      518µs
+  128    931.7µs    885.5µs      5.4ms      1.9ms      1.1ms
+  192      2.2ms      2.1ms       16ms      5.8ms      3.1ms
+  256      4.1ms      3.5ms     33.9ms     13.2ms      6.6ms
+  384     10.5ms      8.8ms    105.5ms     42.7ms     21.2ms
+  512     21.9ms     16.5ms      175ms     99.3ms     51.4ms
+  640     37.6ms     26.5ms    266.2ms    187.4ms     94.2ms
+  768     60.4ms     38.1ms    403.3ms    322.6ms    161.9ms
+  896     90.4ms     52.2ms    615.3ms    502.5ms    249.9ms
+ 1024    132.1ms     68.4ms      909ms    764.1ms      392ms
 ```
 
 ## Non Hermitian matrix eigenvalue decomposition
@@ -312,16 +348,19 @@ Computing the EVD of a matrix with shape `(n, n)`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen
-   32    207.4µs    208.6µs    173.4µs          -    224.7µs
-   64        1ms      1.2ms    993.5µs          -      1.1ms
-   96      2.7ms      3.1ms      5.7ms          -      3.2ms
-  128      5.1ms      5.2ms     11.4ms          -      9.3ms
-  192     13.2ms     16.5ms     22.7ms          -     27.2ms
-  256     23.6ms       26ms     49.6ms          -     88.4ms
-  384     57.2ms     62.9ms    103.7ms          -    241.6ms
-  512    128.7ms      133ms    294.8ms          -      906ms
-  640      215ms    201.5ms    418.8ms          -      1.18s
-  768    327.1ms    294.8ms    565.5ms          -      2.89s
-  896    448.8ms    381.8ms    693.6ms          -      3.63s
- 1024    723.6ms    585.2ms    935.1ms          -      7.01s
+    4      4.8µs      5.1µs      3.5µs          -      3.1µs
+    8     15.6µs     16.7µs      9.6µs          -     10.5µs
+   16     54.7µs     54.4µs     35.9µs          -     44.4µs
+   32    270.7µs    235.6µs    172.6µs          -    199.3µs
+   64      1.1ms      1.1ms        1ms          -      1.1ms
+   96      2.7ms      2.9ms      5.5ms          -      3.1ms
+  128      4.9ms      5.6ms     11.6ms          -      9.2ms
+  192     14.4ms     14.3ms     22.4ms          -     26.9ms
+  256     24.4ms     26.2ms     49.9ms          -     86.6ms
+  384     56.4ms     62.6ms      107ms          -    246.1ms
+  512    126.8ms    130.1ms    281.7ms          -    887.6ms
+  640    205.8ms    192.6ms    415.6ms          -       1.2s
+  768    323.5ms    285.6ms    547.2ms          -      2.84s
+  896    438.1ms    375.8ms    704.3ms          -      3.67s
+ 1024    687.8ms    579.3ms    957.1ms          -         7s
 ```
