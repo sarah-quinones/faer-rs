@@ -36,6 +36,8 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         zipped!(u.rb_mut().diagonal()).for_each(|mut u| u.write(E::one()));
     }
 
+    let arch = pulp::Arch::new();
+
     while end > 0 {
         for i in start..end {
             if offdiag[i].abs() < consider_zero_threshold {
@@ -118,7 +120,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
                     unsafe {
                         let x = u.rb().col(k).const_cast();
                         let y = u.rb().col(k + 1).const_cast();
-                        rot.apply_on_the_right_in_place(x, y);
+                        rot.apply_on_the_right_in_place_arch(arch, x, y);
                     }
                 }
                 k += 1;

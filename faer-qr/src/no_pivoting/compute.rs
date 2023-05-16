@@ -5,8 +5,8 @@ use faer_core::{
         apply_block_householder_transpose_on_the_left_in_place_with_conj,
         make_householder_in_place, upgrade_householder_factor,
     },
-    mul::inner_prod::inner_prod_with_conj,
-    temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, Parallelism,
+    mul::inner_prod::{self, inner_prod_with_conj_arch},
+    temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -21,12 +21,16 @@ fn qr_in_place_unblocked<E: ComplexField>(
 
     assert!(householder_factor.nrows() == size);
 
+    let arch = pulp::Arch::new();
+    let row_stride = matrix.row_stride();
+
     for k in 0..size {
         let mat_rem = matrix.rb_mut().submatrix(k, k, m - k, n - k);
         let [_, _, first_col, mut last_cols] = mat_rem.split_at(0, 1);
         let [mut first_col_head, mut first_col_tail] = first_col.col(0).split_at_row(1);
 
-        let tail_squared_norm = inner_prod_with_conj(
+        let tail_squared_norm = inner_prod_with_conj_arch(
+            arch,
             first_col_tail.rb(),
             Conj::Yes,
             first_col_tail.rb(),
@@ -44,21 +48,136 @@ fn qr_in_place_unblocked<E: ComplexField>(
 
         first_col_head.write(0, 0, beta);
 
-        for idx in 0..last_cols.ncols() {
-            let col = last_cols.rb_mut().col(idx);
-            let [mut col_head, col_tail] = col.split_at_row(1);
-            let col_head_ = col_head.read(0, 0);
+        if E::HAS_SIMD && row_stride == 1 {
+            struct TrailingColsUpdate<'a, E: ComplexField> {
+                tau_inv: E,
+                first_col_tail: MatRef<'a, E>,
+                last_cols: MatMut<'a, E>,
+            }
 
-            let dot = col_head_.add(&inner_prod_with_conj(
-                first_col_tail.rb(),
-                Conj::Yes,
-                col_tail.rb(),
-                Conj::No,
-            ));
-            let k = (dot.mul(&tau_inv)).neg();
-            col_head.write(0, 0, col_head_.add(&k));
-            zipped!(col_tail, first_col_tail.rb())
-                .for_each(|mut a, b| a.write(a.read().add(&k.mul(&b.read()))));
+            impl<E: ComplexField> pulp::WithSimd for TrailingColsUpdate<'_, E> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    let Self {
+                        tau_inv,
+                        first_col_tail,
+                        mut last_cols,
+                    } = self;
+                    debug_assert_eq!(first_col_tail.row_stride(), 1);
+                    debug_assert_eq!(last_cols.row_stride(), 1);
+
+                    let n = last_cols.ncols();
+
+                    if last_cols.nrows() == 0 {
+                        return;
+                    }
+
+                    let m = last_cols.nrows() - 1;
+                    let lane_count =
+                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let prefix = m % lane_count;
+
+                    let first_col_tail = E::map(
+                        first_col_tail.as_ptr(),
+                        #[inline(always)]
+                        |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+                    );
+
+                    let (first_col_tail_scalar, first_col_tail_simd) = E::unzip(E::map(
+                        E::copy(&first_col_tail),
+                        #[inline(always)]
+                        |slice| slice.split_at(prefix),
+                    ));
+                    let first_col_tail_simd =
+                        faer_core::simd::slice_as_simd::<E, S>(first_col_tail_simd).0;
+
+                    for idx in 0..n {
+                        let col = last_cols.rb_mut().col(idx);
+                        let [mut col_head, col_tail] = col.split_at_row(1);
+
+                        let col_head_ = col_head.read(0, 0);
+                        let col_tail = E::map(
+                            col_tail.as_ptr(),
+                            #[inline(always)]
+                            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+                        );
+
+                        let dot = col_head_.add(
+                            &inner_prod::AccConjAxB::<'_, E> {
+                                a: E::rb(E::as_ref(&first_col_tail)),
+                                b: E::rb(E::as_ref(&col_tail)),
+                            }
+                            .with_simd(simd),
+                        );
+
+                        let k = (dot.mul(&tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(&k));
+
+                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                            col_tail,
+                            #[inline(always)]
+                            |slice| slice.split_at_mut(prefix),
+                        ));
+                        let col_tail_simd =
+                            faer_core::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
+
+                        for (a, b) in E::into_iter(col_tail_scalar)
+                            .zip(E::into_iter(E::copy(&first_col_tail_scalar)))
+                        {
+                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
+                            let b = E::from_units(E::deref(b));
+                            a_ = a_.add(&k.mul(&b));
+
+                            E::map(
+                                E::zip(a, a_.into_units()),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
+
+                        let k = E::simd_splat(simd, k);
+                        for (a, b) in E::into_iter(col_tail_simd)
+                            .zip(E::into_iter(E::copy(&first_col_tail_simd)))
+                        {
+                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
+                            let b = E::deref(b);
+                            a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+
+                            E::map(
+                                E::zip(a, a_),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
+                    }
+                }
+            }
+
+            arch.dispatch(TrailingColsUpdate {
+                tau_inv,
+                first_col_tail: first_col_tail.rb(),
+                last_cols,
+            });
+        } else {
+            for idx in 0..last_cols.ncols() {
+                let col = last_cols.rb_mut().col(idx);
+                let [mut col_head, col_tail] = col.split_at_row(1);
+                let col_head_ = col_head.read(0, 0);
+
+                let dot = col_head_.add(&inner_prod_with_conj_arch(
+                    arch,
+                    first_col_tail.rb(),
+                    Conj::Yes,
+                    col_tail.rb(),
+                    Conj::No,
+                ));
+                let k = (dot.mul(&tau_inv)).neg();
+                col_head.write(0, 0, col_head_.add(&k));
+                zipped!(col_tail, first_col_tail.rb())
+                    .for_each(|mut a, b| a.write(a.read().add(&k.mul(&b.read()))));
+            }
         }
     }
 }
@@ -77,8 +196,10 @@ pub fn recommended_blocksize<E: Entity>(nrows: usize, ncols: usize) -> usize {
         64
     } else if prod > 512 * 512 {
         32
-    } else {
+    } else if prod > 32 * 32 {
         16
+    } else {
+        1
     })
     .min(size)
     .max(1)
@@ -223,14 +344,18 @@ pub fn qr_in_place<E: ComplexField>(
     let size = <usize as Ord>::min(matrix.nrows(), matrix.ncols());
     assert!(blocksize > 0);
     assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
-    qr_in_place_blocked(
-        matrix,
-        householder_factor,
-        blocksize,
-        parallelism,
-        stack,
-        params,
-    );
+    if blocksize == 1 {
+        qr_in_place_unblocked(matrix, householder_factor.transpose(), stack);
+    } else {
+        qr_in_place_blocked(
+            matrix,
+            householder_factor,
+            blocksize,
+            parallelism,
+            stack,
+            params,
+        );
+    }
 }
 
 /// Computes the size and alignment of required workspace for performing a QR
@@ -379,11 +504,19 @@ mod tests {
     #[test]
     fn test_blocked() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
-            for (m, n) in [(2, 3), (2, 2), (2, 4), (4, 2), (4, 4), (64, 64)] {
+            for (m, n) in [
+                (2, 3),
+                (2, 2),
+                (2, 4),
+                (4, 2),
+                (4, 4),
+                (64, 64),
+                (1024, 1024),
+            ] {
                 let mat_orig = Mat::with_dims(m, n, |_, _| random_value());
                 let mut mat = mat_orig.clone();
                 let size = m.min(n);
-                let blocksize = 8;
+                let blocksize = size.min(512);
                 let mut householder = Mat::zeros(blocksize, size);
 
                 qr_in_place(

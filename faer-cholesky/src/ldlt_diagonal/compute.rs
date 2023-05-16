@@ -2,9 +2,98 @@ use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
-    Conj, Entity, MatMut, Parallelism,
+    Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
+
+pub(crate) struct RankUpdate<'a, E: ComplexField> {
+    pub a21: MatMut<'a, E>,
+    pub l20: MatRef<'a, E>,
+    pub l10: MatRef<'a, E>,
+}
+
+impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self { a21, l20, l10 } = self;
+
+        debug_assert_eq!(a21.row_stride(), 1);
+        debug_assert_eq!(l20.row_stride(), 1);
+        debug_assert_eq!(l20.nrows(), a21.nrows());
+        debug_assert_eq!(l20.ncols(), l10.ncols());
+        debug_assert_eq!(a21.ncols(), 1);
+        debug_assert_eq!(l10.nrows(), 1);
+
+        let m = l20.nrows();
+        let n = l20.ncols();
+
+        if m == 0 {
+            return;
+        }
+
+        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let prefix = m % lane_count;
+
+        let acc = a21.as_ptr();
+        let acc = E::map(
+            acc,
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+        );
+
+        let (mut acc_head, acc_tail) = E::unzip(E::map(
+            acc,
+            #[inline(always)]
+            |slice| slice.split_at_mut(prefix),
+        ));
+        let mut acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
+
+        for j in 0..n {
+            let l10_ = unsafe { l10.read_unchecked(0, j).neg().conj() };
+            let l10 = E::simd_splat(simd, l10_.clone());
+
+            let l20 = E::map(
+                l20.ptr_at(0, j),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+            );
+            let (l20_head, l20_tail) = E::unzip(E::map(
+                l20,
+                #[inline(always)]
+                |slice| slice.split_at(prefix),
+            ));
+            let l20_tail = faer_core::simd::slice_as_simd::<E, S>(l20_tail).0;
+
+            for (acc, l20) in
+                E::into_iter(E::rb_mut(E::as_mut(&mut acc_head))).zip(E::into_iter(l20_head))
+            {
+                let mut acc_ = E::from_units(E::deref(E::rb(E::as_ref(&acc))));
+                let l20 = E::from_units(E::deref(l20));
+                acc_ = E::mul_adde(&l10_, &l20, &acc_);
+                E::map(
+                    E::zip(acc, acc_.into_units()),
+                    #[inline(always)]
+                    |(acc, acc_)| *acc = acc_,
+                );
+            }
+
+            for (acc, l20) in
+                E::into_iter(E::rb_mut(E::as_mut(&mut acc_tail))).zip(E::into_iter(l20_tail))
+            {
+                let mut acc_ = E::deref(E::rb(E::as_ref(&acc)));
+                let l20 = E::deref(l20);
+                acc_ = E::simd_mul_adde(simd, E::copy(&l10), E::copy(&l20), acc_);
+                E::map(
+                    E::zip(acc, acc_),
+                    #[inline(always)]
+                    |(acc, acc_)| *acc = acc_,
+                );
+            }
+        }
+    }
+}
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
@@ -26,6 +115,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     };
 
     let mut idx = 0;
+    let arch = pulp::Arch::new();
     loop {
         let block_size = 1;
 
@@ -78,11 +168,21 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
         let mut a21 = a21.col(0);
 
-        for j in 0..idx {
-            let l20_col = l20.col(j);
-            let l10_conj = l10xd0.read(0, j).conj();
-            zipped!(a21.rb_mut(), l20_col)
-                .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+        // A21 -= L20 × L10^H
+        if E::HAS_SIMD && a21.row_stride() == 1 {
+            arch.dispatch(RankUpdate {
+                a21: a21.rb_mut(),
+                l20,
+                l10: l10xd0,
+            });
+        } else {
+            for j in 0..idx {
+                let l20_col = l20.col(j);
+                let l10_conj = l10xd0.read(0, j).conj();
+
+                zipped!(a21.rb_mut(), l20_col)
+                    .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+            }
         }
 
         let r = l11.read(0, 0).real().inv();

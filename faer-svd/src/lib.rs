@@ -514,8 +514,19 @@ fn compute_svd_big<E: ComplexField>(
         )
         .for_each(|mut dst, src| dst.write(src.read()));
 
+        let (mut bid_col_major, mut stack) =
+            unsafe { faer_core::temp_mat_uninit::<E>(n - 1, m, stack.rb_mut()) };
+        let mut bid_col_major = bid_col_major.as_mut();
+        zipped!(
+            bid_col_major.rb_mut(),
+            bid.submatrix(0, 1, m, n - 1).transpose()
+        )
+        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst, src| {
+            dst.write(src.read())
+        });
+
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
-            bid.submatrix(0, 1, m, n - 1).transpose(),
+            bid_col_major.rb(),
             householder_right.rb(),
             Conj::No,
             v.submatrix(1, 0, n - 1, n),

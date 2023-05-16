@@ -3,12 +3,16 @@ use dyn_stack::*;
 use faer_core::{c64, Mat, Parallelism};
 use faer_qr::no_pivoting::compute::recommended_blocksize;
 use rand::random;
-use std::time::Duration;
 
 pub fn qr(c: &mut Criterion) {
     use faer_qr::*;
 
     for (m, n) in [
+        (6, 6),
+        (8, 8),
+        (10, 10),
+        (12, 12),
+        (24, 24),
         (32, 32),
         (64, 64),
         (128, 128),
@@ -21,126 +25,157 @@ pub fn qr(c: &mut Criterion) {
         (4096, 4096),
         (8192, 8192),
     ] {
-        c.bench_function(&format!("faer-st-qr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+        let mat = nalgebra::DMatrix::<f64>::from_fn(m, n, |_, _| random::<f64>());
+        {
+            c.bench_function(&format!("nalg-st-qr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    mat.clone().qr();
+                })
+            });
+            c.bench_function(&format!("nalg-st-colqr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    mat.clone().col_piv_qr();
+                })
+            });
+        }
+
+        let mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+
+        {
+            let mut copy = mat.clone();
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
-
-            b.iter(|| {
-                no_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    Parallelism::None,
-                    stack.rb_mut(),
-                    Default::default(),
-                );
-            })
-        });
-
-        c.bench_function(&format!("faer-mt-qr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+            c.bench_function(&format!("faer-st-qr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    no_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        Parallelism::None,
+                        stack.rb_mut(),
+                        Default::default(),
+                    );
+                })
+            });
+        }
+        {
+            let mut copy = mat.clone();
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
+            c.bench_function(&format!("faer-mt-qr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    no_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        Parallelism::Rayon(0),
+                        stack.rb_mut(),
+                        Default::default(),
+                    );
+                })
+            });
+        }
 
-            b.iter(|| {
-                no_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    Parallelism::Rayon(0),
-                    stack.rb_mut(),
-                    Default::default(),
-                );
-            })
-        });
-
-        c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
-            let mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+        {
             let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
+            c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    col_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        &mut perm,
+                        &mut perm_inv,
+                        Parallelism::None,
+                        DynStack::new(&mut []),
+                        Default::default(),
+                    );
+                })
+            });
+        }
 
-            b.iter(|| {
-                faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                    .for_each(|mut dst, src| dst.write(src.read()));
-                col_pivoting::compute::qr_in_place(
-                    copy.as_mut(),
-                    householder.as_mut(),
-                    &mut perm,
-                    &mut perm_inv,
-                    Parallelism::None,
-                    DynStack::new(&mut []),
-                    Default::default(),
-                );
-            })
-        });
-
-        c.bench_function(&format!("faer-mt-colqr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+        {
+            let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
+            c.bench_function(&format!("faer-mt-colqr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    col_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        &mut perm,
+                        &mut perm_inv,
+                        Parallelism::Rayon(0),
+                        DynStack::new(&mut []),
+                        Default::default(),
+                    );
+                })
+            });
+        }
 
-            b.iter(|| {
-                col_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    &mut perm,
-                    &mut perm_inv,
-                    Parallelism::Rayon(0),
-                    DynStack::new(&mut []),
-                    Default::default(),
-                );
-            })
-        });
-
-        c.bench_function(&format!("faer-st-cplx-colqr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(m, n, |_, _| c64::new(random(), random()));
+        let mat = Mat::with_dims(m, n, |_, _| c64::new(random(), random()));
+        {
+            let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<c64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| c64::new(random(), random()));
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
+            c.bench_function(&format!("faer-st-cplx-colqr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    col_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        &mut perm,
+                        &mut perm_inv,
+                        Parallelism::None,
+                        DynStack::new(&mut []),
+                        Default::default(),
+                    );
+                })
+            });
+        }
 
-            b.iter(|| {
-                col_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    &mut perm,
-                    &mut perm_inv,
-                    Parallelism::None,
-                    DynStack::new(&mut []),
-                    Default::default(),
-                );
-            })
-        });
-
-        c.bench_function(&format!("faer-mt-cplx-colqr-{m}x{n}"), |b| {
-            let mut mat = Mat::with_dims(m, n, |_, _| c64::new(random(), random()));
+        {
+            let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<c64>(m, n);
             let mut householder = Mat::with_dims(blocksize, n, |_, _| c64::new(random(), random()));
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
-
-            b.iter(|| {
-                col_pivoting::compute::qr_in_place(
-                    mat.as_mut(),
-                    householder.as_mut(),
-                    &mut perm,
-                    &mut perm_inv,
-                    Parallelism::Rayon(0),
-                    DynStack::new(&mut []),
-                    Default::default(),
-                );
-            })
-        });
+            c.bench_function(&format!("faer-mt-cplx-colqr-{m}x{n}"), |b| {
+                b.iter(|| {
+                    faer_core::zipped!(copy.as_mut(), mat.as_ref())
+                        .for_each(|mut dst, src| dst.write(src.read()));
+                    col_pivoting::compute::qr_in_place(
+                        copy.as_mut(),
+                        householder.as_mut(),
+                        &mut perm,
+                        &mut perm_inv,
+                        Parallelism::Rayon(0),
+                        DynStack::new(&mut []),
+                        Default::default(),
+                    );
+                })
+            });
+        }
     }
 
     let _c = c;
@@ -148,10 +183,7 @@ pub fn qr(c: &mut Criterion) {
 
 criterion_group!(
     name = benches;
-    config = Criterion::default()
-        .warm_up_time(Duration::from_secs(1))
-        .measurement_time(Duration::from_secs(1))
-        .sample_size(10);
+    config = Criterion::default();
     targets = qr
 );
 criterion_main!(benches);

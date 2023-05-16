@@ -159,7 +159,7 @@ fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
 }
 
 fn evd<E: ComplexField>(criterion: &mut Criterion) {
-    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+    for n in [4, 6, 8, 10, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 4096] {
         let mut mat = Mat::with_dims(n, n, |_, _| random::<E>());
         let adjoint = mat.adjoint().to_owned();
 
@@ -235,7 +235,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
 }
 
 fn evd_nalgebra(criterion: &mut Criterion) {
-    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+    for n in [4, 6, 8, 10, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 4096] {
         let mat = nalgebra::DMatrix::<f64>::from_fn(n, n, |_, _| random::<f64>());
         criterion.bench_function(
             &format!("sym-evd-nalgebra-{}-{}", type_name::<f64>(), n),

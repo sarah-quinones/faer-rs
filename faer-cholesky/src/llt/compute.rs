@@ -1,4 +1,5 @@
 use super::CholeskyError;
+use crate::ldlt_diagonal::compute::RankUpdate;
 use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
@@ -9,7 +10,7 @@ use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
-    parallelism: Parallelism,
+    _parallelism: Parallelism,
 ) -> Result<(), CholeskyError> {
     let mut matrix = matrix;
     debug_assert!(
@@ -34,6 +35,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     };
 
     let mut idx = 0;
+    let arch = pulp::Arch::new();
     loop {
         let block_size = 1;
 
@@ -74,7 +76,12 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 )),
         );
 
-        cholesky_in_place_left_looking_impl(a11.rb_mut(), parallelism)?;
+        let real = a11.read(0, 0).real();
+        if real > E::Real::zero() {
+            a11.write(0, 0, E::from_real(real.sqrt()));
+        } else {
+            return Err(CholeskyError);
+        };
 
         if idx + block_size == n {
             break;
@@ -83,12 +90,20 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         let l11 = a11.read(0, 0);
 
         // A21 -= L20 × L10^H
-        for j in 0..idx {
-            let l20_col = l20.col(j);
-            let l10_conj = l10.read(0, j).conj();
+        if E::HAS_SIMD && a21.row_stride() == 1 {
+            arch.dispatch(RankUpdate {
+                a21: a21.rb_mut(),
+                l20,
+                l10,
+            });
+        } else {
+            for j in 0..idx {
+                let l20_col = l20.col(j);
+                let l10_conj = l10.read(0, j).conj();
 
-            zipped!(a21.rb_mut(), l20_col)
-                .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+                zipped!(a21.rb_mut(), l20_col)
+                    .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+            }
         }
 
         // A21 is now L21×L11^H

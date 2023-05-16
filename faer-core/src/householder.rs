@@ -31,22 +31,24 @@
 use crate::{
     join_raw,
     mul::{
-        matmul, matmul_with_conj,
+        inner_prod, matmul, matmul_with_conj,
         triangular::{self, BlockStructure},
     },
-    solve, temp_mat_req, temp_mat_uninit, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism,
 };
 use assert2::assert;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use reborrow::*;
 
 #[doc(hidden)]
+#[inline]
 pub fn make_householder_in_place<E: ComplexField>(
     essential: Option<MatMut<'_, E>>,
     head: E,
     tail_squared_norm: E::Real,
 ) -> (E, E) {
-    let one_half = E::Real::one().add(&E::Real::one()).inv();
+    let one_half = E::Real::from_f64(0.5);
     let head_squared_norm = head.mul(&head.conj()).real();
     let norm = head_squared_norm.add(&tail_squared_norm).sqrt();
 
@@ -58,17 +60,16 @@ pub fn make_householder_in_place<E: ComplexField>(
 
     let signed_norm = sign.mul(&E::from_real(norm));
     let head_with_beta = head.add(&signed_norm);
-    let inv = head_with_beta.inv();
+    let head_with_beta_inv = head_with_beta.inv();
 
     if head_with_beta != E::zero() {
         if let Some(essential) = essential {
             assert!(essential.ncols() == 1);
-            essential
-                .cwise()
-                .for_each(|mut e| e.write(e.read().mul(&inv)));
+            zipped!(essential).for_each(|mut e| e.write(e.read().mul(&head_with_beta_inv)));
         }
-        let tau = one_half
-            .mul(&E::Real::one().add(&tail_squared_norm.mul(&(inv.mul(&inv.conj())).real())));
+        let tau = one_half.mul(&E::Real::one().add(
+            &tail_squared_norm.mul(&(head_with_beta_inv.mul(&head_with_beta_inv.conj())).real()),
+        ));
         (E::from_real(tau), signed_norm.neg())
     } else {
         (E::from_real(E::Real::zero().inv()), E::zero())
@@ -324,82 +325,195 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     assert!(householder_basis.ncols() == householder_factor.nrows());
     assert!(matrix.nrows() == householder_basis.nrows());
 
-    let [essentials_top, essentials_bot] =
-        householder_basis.split_at_row(householder_basis.ncols());
     let bs = householder_factor.nrows();
-    let n = matrix.ncols();
+    if E::HAS_SIMD && householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
+        let arch = pulp::Arch::new();
 
-    let [mut matrix_top, mut matrix_bot] = matrix.split_at_row(bs);
+        struct ApplyOnLeft<'a, E: ComplexField> {
+            tau_inv: E,
+            essential: MatRef<'a, E>,
+            rhs: MatMut<'a, E>,
+        }
 
-    // essentials* × mat
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(bs, n, stack) };
-    let mut tmp = tmp.as_mut();
+        impl<E: ComplexField> pulp::WithSimd for ApplyOnLeft<'_, E> {
+            type Output = ();
 
-    triangular::matmul_with_conj(
-        tmp.rb_mut(),
-        BlockStructure::Rectangular,
-        essentials_top.transpose(),
-        BlockStructure::UnitTriangularUpper,
-        Conj::Yes.compose(conj_lhs),
-        matrix_top.rb(),
-        BlockStructure::Rectangular,
-        Conj::No,
-        None,
-        E::one(),
-        parallelism,
-    );
-    matmul_with_conj(
-        tmp.rb_mut(),
-        essentials_bot.transpose(),
-        Conj::Yes.compose(conj_lhs),
-        matrix_bot.rb(),
-        Conj::No,
-        Some(E::one()),
-        E::one(),
-        parallelism,
-    );
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self {
+                    tau_inv,
+                    essential,
+                    mut rhs,
+                } = self;
+                debug_assert_eq!(essential.row_stride(), 1);
+                debug_assert_eq!(rhs.row_stride(), 1);
 
-    // [T^-1|T^-*] × essentials* × tmp
-    if forward {
-        solve::solve_lower_triangular_in_place_with_conj(
-            householder_factor.transpose(),
-            Conj::Yes.compose(conj_lhs),
+                let n = rhs.ncols();
+
+                if rhs.nrows() == 0 {
+                    return;
+                }
+
+                let m = rhs.nrows() - 1;
+                let lane_count =
+                    core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                let prefix = m % lane_count;
+
+                let essential = E::map(
+                    essential.as_ptr(),
+                    #[inline(always)]
+                    |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+                );
+
+                let (essential_scalar, essential_simd) = E::unzip(E::map(
+                    E::copy(&essential),
+                    #[inline(always)]
+                    |slice| slice.split_at(prefix),
+                ));
+                let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
+
+                for idx in 0..n {
+                    let col = rhs.rb_mut().col(idx);
+                    let [mut col_head, col_tail] = col.split_at_row(1);
+
+                    let col_head_ = col_head.read(0, 0);
+                    let col_tail = E::map(
+                        col_tail.as_ptr(),
+                        #[inline(always)]
+                        |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+                    );
+
+                    let dot = col_head_.add(
+                        &inner_prod::AccConjAxB::<'_, E> {
+                            a: E::rb(E::as_ref(&essential)),
+                            b: E::rb(E::as_ref(&col_tail)),
+                        }
+                        .with_simd(simd),
+                    );
+
+                    let k = (dot.mul(&tau_inv)).neg();
+                    col_head.write(0, 0, col_head_.add(&k));
+
+                    let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                        col_tail,
+                        #[inline(always)]
+                        |slice| slice.split_at_mut(prefix),
+                    ));
+                    let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
+
+                    for (a, b) in
+                        E::into_iter(col_tail_scalar).zip(E::into_iter(E::copy(&essential_scalar)))
+                    {
+                        let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
+                        let b = E::from_units(E::deref(b));
+                        a_ = a_.add(&k.mul(&b));
+
+                        E::map(
+                            E::zip(a, a_.into_units()),
+                            #[inline(always)]
+                            |(a, a_)| *a = a_,
+                        );
+                    }
+
+                    let k = E::simd_splat(simd, k);
+                    for (a, b) in
+                        E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
+                    {
+                        let mut a_ = E::deref(E::rb(E::as_ref(&a)));
+                        let b = E::deref(b);
+                        a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+
+                        E::map(
+                            E::zip(a, a_),
+                            #[inline(always)]
+                            |(a, a_)| *a = a_,
+                        );
+                    }
+                }
+            }
+        }
+
+        arch.dispatch(ApplyOnLeft {
+            tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
+            essential: householder_basis.split_at_row(1)[1],
+            rhs: matrix,
+        });
+    } else {
+        let [essentials_top, essentials_bot] = householder_basis.split_at_row(bs);
+        let n = matrix.ncols();
+
+        let [mut matrix_top, mut matrix_bot] = matrix.split_at_row(bs);
+
+        // essentials* × mat
+        let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(bs, n, stack) };
+        let mut tmp = tmp.as_mut();
+
+        triangular::matmul_with_conj(
             tmp.rb_mut(),
+            BlockStructure::Rectangular,
+            essentials_top.transpose(),
+            BlockStructure::UnitTriangularUpper,
+            Conj::Yes.compose(conj_lhs),
+            matrix_top.rb(),
+            BlockStructure::Rectangular,
+            Conj::No,
+            None,
+            E::one(),
             parallelism,
         );
-    } else {
-        solve::solve_upper_triangular_in_place_with_conj(
-            householder_factor,
-            Conj::No.compose(conj_lhs),
+        matmul_with_conj(
             tmp.rb_mut(),
+            essentials_bot.transpose(),
+            Conj::Yes.compose(conj_lhs),
+            matrix_bot.rb(),
+            Conj::No,
+            Some(E::one()),
+            E::one(),
+            parallelism,
+        );
+
+        // [T^-1|T^-*] × essentials* × tmp
+        if forward {
+            solve::solve_lower_triangular_in_place_with_conj(
+                householder_factor.transpose(),
+                Conj::Yes.compose(conj_lhs),
+                tmp.rb_mut(),
+                parallelism,
+            );
+        } else {
+            solve::solve_upper_triangular_in_place_with_conj(
+                householder_factor,
+                Conj::No.compose(conj_lhs),
+                tmp.rb_mut(),
+                parallelism,
+            );
+        }
+
+        // essentials × [T^-1|T^-*] × essentials* × tmp
+        triangular::matmul_with_conj(
+            matrix_top.rb_mut(),
+            BlockStructure::Rectangular,
+            essentials_top,
+            BlockStructure::UnitTriangularLower,
+            Conj::No.compose(conj_lhs),
+            tmp.rb(),
+            BlockStructure::Rectangular,
+            Conj::No,
+            Some(E::one()),
+            E::one().neg(),
+            parallelism,
+        );
+        matmul_with_conj(
+            matrix_bot.rb_mut(),
+            essentials_bot,
+            Conj::No.compose(conj_lhs),
+            tmp.rb(),
+            Conj::No,
+            Some(E::one()),
+            E::one().neg(),
             parallelism,
         );
     }
-
-    // essentials × [T^-1|T^-*] × essentials* × tmp
-    triangular::matmul_with_conj(
-        matrix_top.rb_mut(),
-        BlockStructure::Rectangular,
-        essentials_top,
-        BlockStructure::UnitTriangularLower,
-        Conj::No.compose(conj_lhs),
-        tmp.rb(),
-        BlockStructure::Rectangular,
-        Conj::No,
-        Some(E::one()),
-        E::one().neg(),
-        parallelism,
-    );
-    matmul_with_conj(
-        matrix_bot.rb_mut(),
-        essentials_bot,
-        Conj::No.compose(conj_lhs),
-        tmp.rb(),
-        Conj::No,
-        Some(E::one()),
-        E::one().neg(),
-        parallelism,
-    );
 }
 
 /// Computes the product of the matrix, multiplied by the given block Householder transformation,

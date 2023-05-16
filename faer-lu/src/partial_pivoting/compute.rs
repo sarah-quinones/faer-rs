@@ -76,9 +76,11 @@ fn lu_in_place_unblocked<E: ComplexField>(
     n: usize,
     perm: &mut [usize],
     transpositions: &mut [usize],
-    mut stack: DynStack<'_>,
+    stack: DynStack<'_>,
 ) -> usize {
+    let _ = &stack;
     let m = matrix.nrows();
+    let ncols = matrix.ncols();
     debug_assert!(m >= n);
     debug_assert!(perm.len() == m);
 
@@ -88,50 +90,179 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
     let mut n_transpositions = 0;
 
-    for (j, t) in transpositions.iter_mut().enumerate() {
-        let mut max = E::Real::zero();
-        let mut imax = j;
+    let arch = pulp::Arch::new();
 
-        for i in j..m {
-            let abs = matrix.read(i, j + col_start).score();
-            if abs > max {
-                imax = i;
-                max = abs;
+    for (k, t) in transpositions.iter_mut().enumerate() {
+        let imax;
+        {
+            let col = k + col_start;
+            let col = matrix.rb().col(col).subrows(k, m - k);
+            let m = col.nrows();
+
+            let mut imax0 = 0;
+            let mut imax1 = 0;
+            let mut max0 = E::Real::zero();
+            let mut max1 = E::Real::zero();
+
+            for i in 0..m / 2 {
+                let i = 2 * i;
+
+                let abs0 = unsafe { col.read_unchecked(i + 0, 0) }.score();
+                let abs1 = unsafe { col.read_unchecked(i + 1, 0) }.score();
+
+                if abs0 > max0 {
+                    imax0 = i + 0;
+                    max0 = abs0;
+                }
+                if abs1 > max1 {
+                    imax1 = i + 1;
+                    max1 = abs1;
+                }
+            }
+
+            if m % 2 != 0 {
+                let i = m - 1;
+                let abs0 = unsafe { col.read_unchecked(i + 0, 0) }.score();
+                if abs0 > max0 {
+                    imax0 = i;
+                    max0 = abs0;
+                }
+            }
+
+            if max0 > max1 {
+                imax = imax0 + k;
+            } else {
+                imax = imax1 + k;
             }
         }
 
-        *t = imax - j;
+        *t = imax - k;
 
-        if imax != j {
+        if imax != k {
             n_transpositions += 1;
-            perm.swap(j, imax);
+            perm.swap(k, imax);
         }
 
-        swap_rows(matrix.rb_mut(), j, imax);
+        if k != imax {
+            for j in 0..ncols {
+                unsafe {
+                    let mk = matrix.read_unchecked(k, j);
+                    let mi = matrix.read_unchecked(imax, j);
+                    matrix.write_unchecked(k, j, mi);
+                    matrix.write_unchecked(imax, j, mk);
+                }
+            }
+        }
 
         let [_, _, _, middle_right] = matrix.rb_mut().split_at(0, col_start);
         let [_, _, middle, _] = middle_right.split_at(0, n);
-        update(middle, j, stack.rb_mut());
+        update(arch, middle, k);
     }
 
     n_transpositions
 }
 
-fn update<E: ComplexField>(mut matrix: MatMut<E>, j: usize, _stack: DynStack<'_>) {
-    let m = matrix.nrows();
-    let inv = matrix.read(j, j).inv();
-    for i in j + 1..m {
-        matrix.write(i, j, matrix.read(i, j).mul(&inv));
-    }
-    let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
-    let lhs = bottom_left.rb().col(j);
-    let rhs = top_right.rb().row(j);
-    let mut mat = bottom_right;
+struct Update<'a, E: ComplexField> {
+    matrix: MatMut<'a, E>,
+    j: usize,
+}
 
-    for k in 0..mat.ncols() {
-        let col = mat.rb_mut().col(k);
-        let rhs = rhs.read(0, k);
-        zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(&lhs.read().mul(&rhs))));
+impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
+    type Output = ();
+
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+        let Self { mut matrix, j } = self;
+
+        debug_assert_eq!(matrix.row_stride(), 1);
+
+        let m = matrix.nrows();
+        let inv = matrix.read(j, j).inv();
+        for i in j + 1..m {
+            unsafe {
+                matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).mul(&inv));
+            }
+        }
+        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
+        let lhs = bottom_left.rb().col(j);
+        let rhs = top_right.rb().row(j);
+        let mut mat = bottom_right;
+
+        let m = mat.nrows();
+        let lhs = E::map(
+            lhs.as_ptr(),
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+        );
+
+        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+
+        let prefix = m % lane_count;
+
+        let (lhs_head, lhs_tail) = E::unzip(E::map(
+            lhs,
+            #[inline(always)]
+            |slice| slice.split_at(prefix),
+        ));
+        let lhs_tail = faer_core::simd::slice_as_simd::<E, S>(lhs_tail).0;
+
+        for k in 0..mat.ncols() {
+            let acc = E::map(
+                mat.rb_mut().ptr_at(0, k),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+            );
+            let (acc_head, acc_tail) = E::unzip(E::map(
+                acc,
+                #[inline(always)]
+                |slice| slice.split_at_mut(prefix),
+            ));
+            let acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
+
+            let rhs = E::simd_splat(simd, unsafe { rhs.read_unchecked(0, k).neg() });
+
+            let mut acc_head_ = E::partial_load_last(simd, E::rb(E::as_ref(&acc_head)));
+            acc_head_ = E::simd_mul_adde(
+                simd,
+                E::copy(&rhs),
+                E::partial_load_last(simd, E::copy(&lhs_head)),
+                acc_head_,
+            );
+            E::partial_store_last(simd, acc_head, acc_head_);
+
+            for (acc, lhs) in E::into_iter(acc_tail).zip(E::into_iter(E::copy(&lhs_tail))) {
+                let mut acc_ = E::deref(E::rb(E::as_ref(&acc)));
+                let lhs = E::deref(lhs);
+                acc_ = E::simd_mul_adde(simd, E::copy(&rhs), lhs, acc_);
+                E::map(
+                    E::zip(acc, acc_),
+                    #[inline(always)]
+                    |(acc, acc_)| *acc = acc_,
+                );
+            }
+        }
+    }
+}
+
+fn update<E: ComplexField>(arch: pulp::Arch, mut matrix: MatMut<E>, j: usize) {
+    if E::HAS_SIMD && matrix.row_stride() == 1 {
+        arch.dispatch(Update { matrix, j });
+    } else {
+        let m = matrix.nrows();
+        let inv = matrix.read(j, j).inv();
+        for i in j + 1..m {
+            matrix.write(i, j, matrix.read(i, j).mul(&inv));
+        }
+        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
+        let lhs = bottom_left.rb().col(j);
+        let rhs = top_right.rb().row(j);
+        let mut mat = bottom_right;
+
+        for k in 0..mat.ncols() {
+            let col = mat.rb_mut().col(k);
+            let rhs = rhs.read(0, k);
+            zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(&lhs.read().mul(&rhs))));
+        }
     }
 }
 

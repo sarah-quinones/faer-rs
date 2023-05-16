@@ -170,42 +170,126 @@ pub mod inner_prod {
     }
 
     #[inline(always)]
-    fn reduce_add<E: ComplexField, S: Simd>(a: E::Group<&[E::Unit]>) -> E {
-        let mut acc = E::zero();
-        for a in E::into_iter(a) {
-            acc = E::add(&acc, &E::from_units(E::deref(a)));
-        }
-        acc
-    }
-
-    #[inline(always)]
     fn a_x_b_accumulate_simd<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
         a: E::Group<&[E::Unit]>,
         b: E::Group<&[E::Unit]>,
     ) -> E {
-        let (a_head, a_tail) = slice_as_simd::<E, S>(a);
-        let (b_head, b_tail) = slice_as_simd::<E, S>(b);
-        let prologue = if E::N_COMPONENTS == 1 {
-            a_x_b_accumulate_prologue8::<CONJ_A, E, S>(simd, a_head, b_head)
-        } else if E::N_COMPONENTS == 2 {
-            a_x_b_accumulate_prologue4::<CONJ_A, E, S>(simd, a_head, b_head)
-        } else if E::N_COMPONENTS == 4 {
-            a_x_b_accumulate_prologue2::<CONJ_A, E, S>(simd, a_head, b_head)
-        } else {
-            a_x_b_accumulate_prologue1::<CONJ_A, E, S>(simd, a_head, b_head)
-        };
+        {
+            let mut len = 0;
+            E::map(E::as_ref(&a), |slice| len = slice.len());
 
-        let mut acc = reduce_add::<E, S>(one_simd_as_slice::<E, S>(E::as_ref(&prologue)));
+            let (a_head, a_tail) = slice_as_simd::<E, S>(a);
+            let (b_head, b_tail) = slice_as_simd::<E, S>(b);
+            let prologue = if E::N_COMPONENTS == 1 {
+                a_x_b_accumulate_prologue8::<CONJ_A, E, S>(simd, a_head, b_head)
+            } else if E::N_COMPONENTS == 2 {
+                a_x_b_accumulate_prologue4::<CONJ_A, E, S>(simd, a_head, b_head)
+            } else if E::N_COMPONENTS == 4 {
+                a_x_b_accumulate_prologue2::<CONJ_A, E, S>(simd, a_head, b_head)
+            } else {
+                a_x_b_accumulate_prologue1::<CONJ_A, E, S>(simd, a_head, b_head)
+            };
 
-        for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
-            let a = E::from_units(E::deref(a));
-            let a = if CONJ_A { a.conj() } else { a };
-            let b = E::from_units(E::deref(b));
-            acc = E::add(&acc, &E::mul(&a, &b));
+            let mut rem = 0;
+            E::map(E::as_ref(&a_tail), |slice| rem = slice.len());
+
+            let mut acc = if len > rem {
+                E::simd_reduce_add(simd, prologue)
+            } else {
+                E::zero()
+            };
+
+            let a = {
+                #[inline(always)]
+                |i: usize| unsafe {
+                    let a = E::from_units(E::deref(E::map(E::copy(&a_tail), |slice| {
+                        slice.get_unchecked(i)
+                    })));
+
+                    if CONJ_A {
+                        a.conj()
+                    } else {
+                        a
+                    }
+                }
+            };
+
+            let b = {
+                #[inline(always)]
+                |i: usize| unsafe {
+                    E::from_units(E::deref(E::map(E::copy(&b_tail), |slice| {
+                        slice.get_unchecked(i)
+                    })))
+                }
+            };
+
+            match rem {
+                0 => {}
+                1 => {
+                    acc = acc.add(&a(0).mul(&b(0)));
+                }
+                2 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+
+                    acc = acc.add(&x0.add(&x1));
+                }
+                3 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+                    let x2 = &a(2).mul(&b(2));
+                    acc = acc.add(&x0.add(&x1).add(&x2));
+                }
+                4 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+                    let x2 = &a(2).mul(&b(2));
+                    let x3 = &a(3).mul(&b(3));
+                    acc = acc.add(&E::add(&x0.add(&x1), &x2.add(&x3)));
+                }
+                5 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+                    let x2 = &a(2).mul(&b(2));
+                    let x3 = &a(3).mul(&b(3));
+                    let x4 = &a(4).mul(&b(4));
+                    acc = acc.add(&E::add(&x0.add(&x1), &x2.add(&x3).add(&x4)));
+                }
+                6 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+                    let x2 = &a(2).mul(&b(2));
+                    let x3 = &a(3).mul(&b(3));
+                    let x4 = &a(4).mul(&b(4));
+                    let x5 = &a(5).mul(&b(5));
+                    acc = acc.add(&E::add(&x0.add(&x1).add(&x2), &x3.add(&x4).add(&x5)));
+                }
+                7 => {
+                    let x0 = &a(0).mul(&b(0));
+                    let x1 = &a(1).mul(&b(1));
+                    let x2 = &a(2).mul(&b(2));
+                    let x3 = &a(3).mul(&b(3));
+                    let x4 = &a(4).mul(&b(4));
+                    let x5 = &a(5).mul(&b(5));
+                    let x6 = &a(6).mul(&b(6));
+                    acc = acc.add(&E::add(
+                        &E::add(&E::add(&x0, &x1), &E::add(&x2, &x3)),
+                        &x4.add(&x5).add(&x6),
+                    ));
+                }
+                _ => {
+                    for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
+                        let a = E::from_units(E::deref(a));
+                        let a = if CONJ_A { a.conj() } else { a };
+                        let b = E::from_units(E::deref(b));
+                        acc = E::add(&acc, &E::mul(&a, &b));
+                    }
+                }
+            }
+
+            acc
         }
-
-        acc
     }
 
     pub struct AccNoConjAxB<'a, E: ComplexField> {
@@ -234,8 +318,9 @@ pub mod inner_prod {
         }
     }
 
-    #[inline]
-    pub fn inner_prod_with_conj<E: ComplexField>(
+    #[inline(always)]
+    pub fn inner_prod_with_conj_arch<E: ComplexField>(
+        arch: pulp::Arch,
         lhs: MatRef<'_, E>,
         conj_lhs: Conj,
         rhs: MatRef<'_, E>,
@@ -261,9 +346,9 @@ pub mod inner_prod {
             });
 
             if conj_lhs == conj_rhs {
-                pulp::Arch::new().dispatch(AccNoConjAxB::<E> { a, b })
+                arch.dispatch(AccNoConjAxB::<E> { a, b })
             } else {
-                pulp::Arch::new().dispatch(AccConjAxB::<E> { a, b })
+                arch.dispatch(AccConjAxB::<E> { a, b })
             }
         } else {
             let mut acc = E::zero();
@@ -283,6 +368,16 @@ pub mod inner_prod {
             Conj::Yes => res.conj(),
             Conj::No => res,
         }
+    }
+
+    #[inline]
+    pub fn inner_prod_with_conj<E: ComplexField>(
+        lhs: MatRef<'_, E>,
+        conj_lhs: Conj,
+        rhs: MatRef<'_, E>,
+        conj_rhs: Conj,
+    ) -> E {
+        inner_prod_with_conj_arch(pulp::Arch::new(), lhs, conj_lhs, rhs, conj_rhs)
     }
 }
 
@@ -484,6 +579,7 @@ mod matvec_colmajor {
         let mut acc = acc;
         if acc.row_stride() == 1 {
             match alpha {
+                Some(alpha) if alpha == E::one() => {}
                 Some(alpha) => {
                     for i in 0..m {
                         acc.write(i, 0, acc.read(i, 0).mul(&alpha));

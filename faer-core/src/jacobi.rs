@@ -101,30 +101,244 @@ impl<E: RealField> JacobiRotation<E> {
 
     #[inline]
     pub fn apply_on_the_left_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
-        pulp::Arch::new().dispatch(
-            #[inline(always)]
-            move || {
-                assert!(x.nrows() == 1);
+        struct ApplyOnLeft<'a, E: RealField> {
+            c: E,
+            s: E,
+            x: MatMut<'a, E>,
+            y: MatMut<'a, E>,
+        }
 
-                let Self { c, s } = self;
-                if *c == E::one() && *s == E::zero() {
+        impl<E: RealField> pulp::WithSimd for ApplyOnLeft<'_, E> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self { x, y, c, s } = self;
+                assert!(x.nrows() == 1);
+                assert!(y.nrows() == 1);
+                assert_eq!(x.ncols(), y.ncols());
+
+                if c == E::one() && s == E::zero() {
                     return;
                 }
 
-                zipped!(x, y).for_each(move |mut x, mut y| {
-                    let x_ = x.read();
-                    let y_ = y.read();
-                    x.write(c.mul(&x_).add(&s.mul(&y_)));
-                    y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
-                });
-            },
-        )
+                let n = x.ncols();
+                let x = E::map(
+                    x.as_ptr(),
+                    #[inline(always)]
+                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
+                );
+                let y = E::map(
+                    y.as_ptr(),
+                    #[inline(always)]
+                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
+                );
+
+                let c = E::simd_splat(simd, c);
+                let s = E::simd_splat(simd, s);
+
+                let (x_head, x_tail) = crate::simd::slice_as_mut_simd::<E, S>(x);
+                let (y_head, y_tail) = crate::simd::slice_as_mut_simd::<E, S>(y);
+
+                for (x, y) in E::into_iter(x_head).zip(E::into_iter(y_head)) {
+                    let mut x_ = E::deref(E::rb(E::as_ref(&x)));
+                    let mut y_ = E::deref(E::rb(E::as_ref(&y)));
+
+                    (x_, y_) = (
+                        E::simd_mul_adde(
+                            simd,
+                            E::copy(&c),
+                            E::copy(&x_),
+                            E::simd_mul(simd, E::copy(&s), E::copy(&y_)),
+                        ),
+                        E::simd_mul_adde(
+                            simd,
+                            E::copy(&c),
+                            E::copy(&y_),
+                            E::simd_neg(simd, E::simd_mul(simd, E::copy(&s), E::copy(&x_))),
+                        ),
+                    );
+
+                    E::map(
+                        E::zip(x, x_),
+                        #[inline(always)]
+                        |(x, x_)| *x = x_,
+                    );
+                    E::map(
+                        E::zip(y, y_),
+                        #[inline(always)]
+                        |(y, y_)| *y = y_,
+                    );
+                }
+
+                let mut x_ = E::partial_load(simd, E::rb(E::as_ref(&x_tail)));
+                let mut y_ = E::partial_load(simd, E::rb(E::as_ref(&y_tail)));
+
+                (x_, y_) = (
+                    E::simd_mul_adde(
+                        simd,
+                        E::copy(&c),
+                        E::copy(&x_),
+                        E::simd_mul(simd, E::copy(&s), E::copy(&y_)),
+                    ),
+                    E::simd_mul_adde(
+                        simd,
+                        E::copy(&c),
+                        E::copy(&y_),
+                        E::simd_neg(simd, E::simd_mul(simd, E::copy(&s), E::copy(&x_))),
+                    ),
+                );
+
+                E::partial_store(simd, x_tail, x_);
+                E::partial_store(simd, y_tail, y_);
+            }
+        }
+
+        let Self { c, s } = self;
+        let c = c.clone();
+        let s = s.clone();
+        if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
+            pulp::Arch::new().dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
+        } else {
+            zipped!(x, y).for_each(move |mut x, mut y| {
+                let x_ = x.read();
+                let y_ = y.read();
+                x.write(c.mul(&x_).add(&s.mul(&y_)));
+                y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
+            });
+        }
+    }
+
+    #[inline]
+    pub fn apply_on_the_left_in_place_arch(
+        &self,
+        arch: pulp::Arch,
+        x: MatMut<'_, E>,
+        y: MatMut<'_, E>,
+    ) {
+        struct ApplyOnLeft<'a, E: RealField> {
+            c: E,
+            s: E,
+            x: MatMut<'a, E>,
+            y: MatMut<'a, E>,
+        }
+
+        impl<E: RealField> pulp::WithSimd for ApplyOnLeft<'_, E> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self { x, y, c, s } = self;
+                assert!(x.nrows() == 1);
+                assert!(y.nrows() == 1);
+                assert_eq!(x.ncols(), y.ncols());
+
+                if c == E::one() && s == E::zero() {
+                    return;
+                }
+
+                let n = x.ncols();
+                let x = E::map(
+                    x.as_ptr(),
+                    #[inline(always)]
+                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
+                );
+                let y = E::map(
+                    y.as_ptr(),
+                    #[inline(always)]
+                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
+                );
+
+                let c = E::simd_splat(simd, c);
+                let s = E::simd_splat(simd, s);
+
+                let (x_head, x_tail) = crate::simd::slice_as_mut_simd::<E, S>(x);
+                let (y_head, y_tail) = crate::simd::slice_as_mut_simd::<E, S>(y);
+
+                for (x, y) in E::into_iter(x_head).zip(E::into_iter(y_head)) {
+                    let mut x_ = E::deref(E::rb(E::as_ref(&x)));
+                    let mut y_ = E::deref(E::rb(E::as_ref(&y)));
+
+                    (x_, y_) = (
+                        E::simd_mul_adde(
+                            simd,
+                            E::copy(&c),
+                            E::copy(&x_),
+                            E::simd_mul(simd, E::copy(&s), E::copy(&y_)),
+                        ),
+                        E::simd_mul_adde(
+                            simd,
+                            E::copy(&c),
+                            E::copy(&y_),
+                            E::simd_neg(simd, E::simd_mul(simd, E::copy(&s), E::copy(&x_))),
+                        ),
+                    );
+
+                    E::map(
+                        E::zip(x, x_),
+                        #[inline(always)]
+                        |(x, x_)| *x = x_,
+                    );
+                    E::map(
+                        E::zip(y, y_),
+                        #[inline(always)]
+                        |(y, y_)| *y = y_,
+                    );
+                }
+
+                let mut x_ = E::partial_load(simd, E::rb(E::as_ref(&x_tail)));
+                let mut y_ = E::partial_load(simd, E::rb(E::as_ref(&y_tail)));
+
+                (x_, y_) = (
+                    E::simd_mul_adde(
+                        simd,
+                        E::copy(&c),
+                        E::copy(&x_),
+                        E::simd_mul(simd, E::copy(&s), E::copy(&y_)),
+                    ),
+                    E::simd_mul_adde(
+                        simd,
+                        E::copy(&c),
+                        E::copy(&y_),
+                        E::simd_neg(simd, E::simd_mul(simd, E::copy(&s), E::copy(&x_))),
+                    ),
+                );
+
+                E::partial_store(simd, x_tail, x_);
+                E::partial_store(simd, y_tail, y_);
+            }
+        }
+
+        let Self { c, s } = self;
+        let c = c.clone();
+        let s = s.clone();
+        if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
+            arch.dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
+        } else {
+            zipped!(x, y).for_each(move |mut x, mut y| {
+                let x_ = x.read();
+                let y_ = y.read();
+                x.write(c.mul(&x_).add(&s.mul(&y_)));
+                y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
+            });
+        }
     }
 
     #[inline]
     pub fn apply_on_the_right_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
         self.transpose()
             .apply_on_the_left_in_place(x.transpose(), y.transpose());
+    }
+
+    #[inline]
+    pub fn apply_on_the_right_in_place_arch(
+        &self,
+        arch: pulp::Arch,
+        x: MatMut<'_, E>,
+        y: MatMut<'_, E>,
+    ) {
+        self.transpose()
+            .apply_on_the_left_in_place_arch(arch, x.transpose(), y.transpose());
     }
 
     #[inline]
