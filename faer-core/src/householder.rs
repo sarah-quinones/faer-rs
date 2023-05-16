@@ -329,115 +329,227 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     if E::HAS_SIMD && householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
         let arch = pulp::Arch::new();
 
-        struct ApplyOnLeft<'a, E: ComplexField> {
-            tau_inv: E,
-            essential: MatRef<'a, E>,
-            rhs: MatMut<'a, E>,
-        }
+        if matches!(conj_lhs, Conj::No) {
+            struct ApplyOnLeftNoConj<'a, E: ComplexField> {
+                tau_inv: E,
+                essential: MatRef<'a, E>,
+                rhs: MatMut<'a, E>,
+            }
 
-        impl<E: ComplexField> pulp::WithSimd for ApplyOnLeft<'_, E> {
-            type Output = ();
+            impl<E: ComplexField> pulp::WithSimd for ApplyOnLeftNoConj<'_, E> {
+                type Output = ();
 
-            #[inline(always)]
-            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                let Self {
-                    tau_inv,
-                    essential,
-                    mut rhs,
-                } = self;
-                debug_assert_eq!(essential.row_stride(), 1);
-                debug_assert_eq!(rhs.row_stride(), 1);
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    let Self {
+                        tau_inv,
+                        essential,
+                        mut rhs,
+                    } = self;
+                    debug_assert_eq!(essential.row_stride(), 1);
+                    debug_assert_eq!(rhs.row_stride(), 1);
 
-                let n = rhs.ncols();
+                    let n = rhs.ncols();
 
-                if rhs.nrows() == 0 {
-                    return;
-                }
-
-                let m = rhs.nrows() - 1;
-                let lane_count =
-                    core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
-                let prefix = m % lane_count;
-
-                let essential = E::map(
-                    essential.as_ptr(),
-                    #[inline(always)]
-                    |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-                );
-
-                let (essential_scalar, essential_simd) = E::unzip(E::map(
-                    E::copy(&essential),
-                    #[inline(always)]
-                    |slice| slice.split_at(prefix),
-                ));
-                let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
-
-                for idx in 0..n {
-                    let col = rhs.rb_mut().col(idx);
-                    let [mut col_head, col_tail] = col.split_at_row(1);
-
-                    let col_head_ = col_head.read(0, 0);
-                    let col_tail = E::map(
-                        col_tail.as_ptr(),
-                        #[inline(always)]
-                        |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-                    );
-
-                    let dot = col_head_.add(
-                        &inner_prod::AccConjAxB::<'_, E> {
-                            a: E::rb(E::as_ref(&essential)),
-                            b: E::rb(E::as_ref(&col_tail)),
-                        }
-                        .with_simd(simd),
-                    );
-
-                    let k = (dot.mul(&tau_inv)).neg();
-                    col_head.write(0, 0, col_head_.add(&k));
-
-                    let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
-                        col_tail,
-                        #[inline(always)]
-                        |slice| slice.split_at_mut(prefix),
-                    ));
-                    let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
-
-                    for (a, b) in
-                        E::into_iter(col_tail_scalar).zip(E::into_iter(E::copy(&essential_scalar)))
-                    {
-                        let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
-                        let b = E::from_units(E::deref(b));
-                        a_ = a_.add(&k.mul(&b));
-
-                        E::map(
-                            E::zip(a, a_.into_units()),
-                            #[inline(always)]
-                            |(a, a_)| *a = a_,
-                        );
+                    if rhs.nrows() == 0 {
+                        return;
                     }
 
-                    let k = E::simd_splat(simd, k);
-                    for (a, b) in
-                        E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
-                    {
-                        let mut a_ = E::deref(E::rb(E::as_ref(&a)));
-                        let b = E::deref(b);
-                        a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+                    let m = rhs.nrows() - 1;
+                    let lane_count =
+                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let prefix = m % lane_count;
 
-                        E::map(
-                            E::zip(a, a_),
+                    let essential = E::map(
+                        essential.as_ptr(),
+                        #[inline(always)]
+                        |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+                    );
+
+                    let (essential_scalar, essential_simd) = E::unzip(E::map(
+                        E::copy(&essential),
+                        #[inline(always)]
+                        |slice| slice.split_at(prefix),
+                    ));
+                    let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
+
+                    for idx in 0..n {
+                        let col = rhs.rb_mut().col(idx);
+                        let [mut col_head, col_tail] = col.split_at_row(1);
+
+                        let col_head_ = col_head.read(0, 0);
+                        let col_tail = E::map(
+                            col_tail.as_ptr(),
                             #[inline(always)]
-                            |(a, a_)| *a = a_,
+                            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
                         );
+
+                        let dot = col_head_.add(
+                            &inner_prod::AccConjAxB::<'_, E> {
+                                a: E::rb(E::as_ref(&essential)),
+                                b: E::rb(E::as_ref(&col_tail)),
+                            }
+                            .with_simd(simd),
+                        );
+
+                        let k = (dot.mul(&tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(&k));
+
+                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                            col_tail,
+                            #[inline(always)]
+                            |slice| slice.split_at_mut(prefix),
+                        ));
+                        let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
+
+                        for (a, b) in E::into_iter(col_tail_scalar)
+                            .zip(E::into_iter(E::copy(&essential_scalar)))
+                        {
+                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
+                            let b = E::from_units(E::deref(b));
+                            a_ = a_.add(&k.mul(&b));
+
+                            E::map(
+                                E::zip(a, a_.into_units()),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
+
+                        let k = E::simd_splat(simd, k);
+                        for (a, b) in
+                            E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
+                        {
+                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
+                            let b = E::deref(b);
+                            a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+
+                            E::map(
+                                E::zip(a, a_),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
                     }
                 }
             }
-        }
 
-        arch.dispatch(ApplyOnLeft {
-            tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
-            essential: householder_basis.split_at_row(1)[1],
-            rhs: matrix,
-        });
+            arch.dispatch(ApplyOnLeftNoConj {
+                tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
+                essential: householder_basis.split_at_row(1)[1],
+                rhs: matrix,
+            });
+        } else {
+            struct ApplyOnLeftConj<'a, E: ComplexField> {
+                tau_inv: E,
+                essential: MatRef<'a, E>,
+                rhs: MatMut<'a, E>,
+            }
+
+            impl<E: ComplexField> pulp::WithSimd for ApplyOnLeftConj<'_, E> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    let Self {
+                        tau_inv,
+                        essential,
+                        mut rhs,
+                    } = self;
+                    debug_assert_eq!(essential.row_stride(), 1);
+                    debug_assert_eq!(rhs.row_stride(), 1);
+
+                    let n = rhs.ncols();
+
+                    if rhs.nrows() == 0 {
+                        return;
+                    }
+
+                    let m = rhs.nrows() - 1;
+                    let lane_count =
+                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let prefix = m % lane_count;
+
+                    let essential = E::map(
+                        essential.as_ptr(),
+                        #[inline(always)]
+                        |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+                    );
+
+                    let (essential_scalar, essential_simd) = E::unzip(E::map(
+                        E::copy(&essential),
+                        #[inline(always)]
+                        |slice| slice.split_at(prefix),
+                    ));
+                    let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
+
+                    for idx in 0..n {
+                        let col = rhs.rb_mut().col(idx);
+                        let [mut col_head, col_tail] = col.split_at_row(1);
+
+                        let col_head_ = col_head.read(0, 0);
+                        let col_tail = E::map(
+                            col_tail.as_ptr(),
+                            #[inline(always)]
+                            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+                        );
+
+                        let dot = col_head_.add(
+                            &inner_prod::AccNoConjAxB::<'_, E> {
+                                a: E::rb(E::as_ref(&essential)),
+                                b: E::rb(E::as_ref(&col_tail)),
+                            }
+                            .with_simd(simd),
+                        );
+
+                        let k = (dot.mul(&tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(&k));
+
+                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                            col_tail,
+                            #[inline(always)]
+                            |slice| slice.split_at_mut(prefix),
+                        ));
+                        let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
+
+                        for (a, b) in E::into_iter(col_tail_scalar)
+                            .zip(E::into_iter(E::copy(&essential_scalar)))
+                        {
+                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
+                            let b = E::from_units(E::deref(b));
+                            a_ = a_.add(&k.mul(&b.conj()));
+
+                            E::map(
+                                E::zip(a, a_.into_units()),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
+
+                        let k = E::simd_splat(simd, k);
+                        for (a, b) in
+                            E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
+                        {
+                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
+                            let b = E::deref(b);
+                            a_ = E::simd_conj_mul_adde(simd, E::copy(&b), E::copy(&k), a_);
+
+                            E::map(
+                                E::zip(a, a_),
+                                #[inline(always)]
+                                |(a, a_)| *a = a_,
+                            );
+                        }
+                    }
+                }
+            }
+
+            arch.dispatch(ApplyOnLeftConj {
+                tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
+                essential: householder_basis.split_at_row(1)[1],
+                rhs: matrix,
+            });
+        }
     } else {
         let [essentials_top, essentials_bot] = householder_basis.split_at_row(bs);
         let n = matrix.ncols();
