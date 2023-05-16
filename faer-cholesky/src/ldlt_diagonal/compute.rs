@@ -151,7 +151,8 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             0,
             0,
             a11.read(0, 0)
-                .sub(&faer_core::mul::inner_prod::inner_prod_with_conj(
+                .sub(&faer_core::mul::inner_prod::inner_prod_with_conj_arch(
+                    arch,
                     l10xd0.row(0).transpose(),
                     Conj::Yes,
                     l10.row(0).transpose(),
