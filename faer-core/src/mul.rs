@@ -351,17 +351,22 @@ pub mod inner_prod {
                 arch.dispatch(AccConjAxB::<E> { a, b })
             }
         } else {
-            let mut acc = E::zero();
-            if conj_lhs == conj_rhs {
-                for i in 0..nrows {
-                    acc = acc.add(&E::mul(&a.read(i, 0), &b.read(i, 0)));
+            unsafe {
+                let mut acc = E::zero();
+                if conj_lhs == conj_rhs {
+                    for i in 0..nrows {
+                        acc = acc.add(&E::mul(&a.read_unchecked(i, 0), &b.read_unchecked(i, 0)));
+                    }
+                } else {
+                    for i in 0..nrows {
+                        acc = acc.add(&E::mul(
+                            &a.read_unchecked(i, 0).conj(),
+                            &b.read_unchecked(i, 0),
+                        ));
+                    }
                 }
-            } else {
-                for i in 0..nrows {
-                    acc = acc.add(&E::mul(&a.read(i, 0).conj(), &b.read(i, 0)));
-                }
+                acc
             }
-            acc
         };
 
         match conj_rhs {
@@ -1386,6 +1391,8 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let n = acc.ncols();
     let k = lhs.ncols();
 
+    let mut acc = acc;
+
     if m == 0 || n == 0 {
         return;
     }
@@ -1431,6 +1438,192 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             beta,
         );
         return;
+    }
+
+    unsafe {
+        if m + n < 32 && k <= 6 {
+            let term = {
+                #[inline(always)]
+                |i, j, depth| {
+                    lhs.read_unchecked(i, depth)
+                        .mul(&rhs.read_unchecked(depth, j))
+                }
+            };
+
+            match k {
+                0 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                acc.write_unchecked(i, j, acc.read_unchecked(i, j).mul(alpha))
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                acc.write_unchecked(i, j, E::zero())
+                            }
+                        }
+                    }
+                },
+                1 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0);
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0);
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                2 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0).add(&term(i, j, 1));
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0).add(&term(i, j, 1));
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                3 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0).add(&term(i, j, 1)).add(&term(i, j, 2));
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = term(i, j, 0).add(&term(i, j, 1)).add(&term(i, j, 2));
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                4 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)),
+                                    &E::add(&term(i, j, 2), &term(i, j, 3)),
+                                );
+
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)),
+                                    &E::add(&term(i, j, 2), &term(i, j, 3)),
+                                );
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                5 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)).add(&term(i, j, 2)),
+                                    &E::add(&term(i, j, 3), &term(i, j, 4)),
+                                );
+
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)).add(&term(i, j, 2)),
+                                    &E::add(&term(i, j, 3), &term(i, j, 4)),
+                                );
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                6 => match &alpha {
+                    Some(alpha) => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)).add(&term(i, j, 2)),
+                                    &E::add(&term(i, j, 3), &term(i, j, 4)).add(&term(i, j, 5)),
+                                );
+
+                                acc.write_unchecked(
+                                    i,
+                                    j,
+                                    E::add(&acc.read_unchecked(i, j).mul(alpha), &dot.mul(&beta)),
+                                )
+                            }
+                        }
+                    }
+                    None => {
+                        for i in 0..m {
+                            for j in 0..n {
+                                let dot = E::add(
+                                    &E::add(&term(i, j, 0), &term(i, j, 1)).add(&term(i, j, 2)),
+                                    &E::add(&term(i, j, 3), &term(i, j, 4)).add(&term(i, j, 5)),
+                                );
+                                acc.write_unchecked(i, j, dot.mul(&beta))
+                            }
+                        }
+                    }
+                },
+                _ => unreachable!(),
+            }
+            return;
+        }
     }
 
     if use_gemm {

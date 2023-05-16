@@ -290,11 +290,30 @@ fn update_and_best_in_col<'a, E: ComplexField, S: Simd>(
     <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
     <E::Real as Entity>::SimdIndex<S>,
 ) {
-    let (dst_head, dst_tail) = simd::slice_as_mut_simd::<E, S>(data);
-    let (lhs_head, lhs_tail) = simd::slice_as_simd::<E, S>(lhs);
+    let mut len = 0;
+    E::map(
+        E::as_ref(&data),
+        #[inline(always)]
+        |slice| len = slice.len(),
+    );
 
     let iota = E::Real::simd_index_seq(simd);
     let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+
+    let rhs = E::simd_splat(simd, rhs);
+
+    if len <= lane_count {
+        let dst0 = E::partial_load(simd, E::rb(E::as_ref(&data)));
+        let lhs0 = E::partial_load(simd, lhs);
+        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
+        E::partial_store(simd, data, E::copy(&dst0));
+
+        return (E::simd_score(simd, dst0), iota);
+    }
+
+    let (dst_head, dst_tail) = simd::slice_as_mut_simd::<E, S>(data);
+    let (lhs_head, lhs_tail) = simd::slice_as_simd::<E, S>(lhs);
+
     let increment1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(lane_count));
     let increment2 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(2 * lane_count));
 
@@ -309,8 +328,6 @@ fn update_and_best_in_col<'a, E: ComplexField, S: Simd>(
 
     let (dst_head2, dst_tail2) = E::as_arrays_mut::<2, _>(dst_head);
     let (lhs_head2, lhs_tail2) = E::as_arrays::<2, _>(lhs_head);
-
-    let rhs = E::simd_splat(simd, rhs);
 
     for (dst, lhs) in E::into_iter(dst_head2).zip(E::into_iter(lhs_head2)) {
         let [dst0, dst1] = E::unzip2(E::deref(E::rb(E::as_ref(&dst))));
@@ -508,13 +525,18 @@ best_in_col_simd!(c32, f32, u32);
 
 #[inline(always)]
 fn reduce2d<E: RealField>(
+    len: usize,
     best_value: E::Group<&[E::Unit]>,
     best_row: &[E::Index],
     best_col: &[E::Index],
 ) -> (E, E::Index, E::Index) {
     let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) =
         (E::zero(), E::usize_to_index(0), E::usize_to_index(0));
-    for ((value, &row), &col) in E::into_iter(best_value).zip(best_row).zip(best_col) {
+    for ((value, &row), &col) in E::into_iter(best_value)
+        .zip(best_row)
+        .zip(best_col)
+        .take(len)
+    {
         let value = E::from_units(E::deref(value));
         (best_value_scalar, best_row_scalar, best_col_scalar) = {
             if value > best_value_scalar {
@@ -642,7 +664,12 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
                 );
             }
 
+            let len = Ord::min(
+                m,
+                core::mem::size_of::<E::SimdIndex<S>>() / core::mem::size_of::<E::Index>(),
+            );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
+                len,
                 simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
@@ -709,7 +736,12 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
                 );
             }
 
+            let len = Ord::min(
+                m,
+                core::mem::size_of::<E::SimdIndex<S>>() / core::mem::size_of::<E::Index>(),
+            );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
+                len,
                 simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),

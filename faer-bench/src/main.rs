@@ -303,9 +303,10 @@ fn eigen(
     v.into_iter().map(Duration::from_secs_f64).collect()
 }
 
-const N: usize = 12;
+const INPUT_SIZES: &[usize] = &[4, 8, 16, 32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
+const N: usize = INPUT_SIZES.len();
 fn main() -> Result<()> {
-    let input_sizes: [usize; N] = [32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
+    let input_sizes = INPUT_SIZES;
 
     {
         println!("f32");

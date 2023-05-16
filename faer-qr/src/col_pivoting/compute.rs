@@ -525,6 +525,7 @@ struct ProcessCols<'a, E: ComplexField> {
 impl<E: ComplexField> pulp::WithSimd for ProcessCols<'_, E> {
     type Output = ();
 
+    #[inline(always)]
     fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
         let Self {
             mut matrix,

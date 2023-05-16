@@ -3,7 +3,7 @@ use crate::ldlt_diagonal::compute::RankUpdate;
 use assert2::{assert, debug_assert};
 use dyn_stack::{DynStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Conj, Entity,
+    mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Entity,
     MatMut, Parallelism,
 };
 use reborrow::*;
@@ -13,10 +13,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     _parallelism: Parallelism,
 ) -> Result<(), CholeskyError> {
     let mut matrix = matrix;
-    debug_assert!(
-        matrix.ncols() == matrix.nrows(),
-        "only square matrices can be decomposed into cholesky factors",
-    );
+    assert_eq!(matrix.ncols(), matrix.nrows());
 
     let n = matrix.nrows();
 
@@ -64,17 +61,11 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // L20×L00^H  L20×L10^H + L21×L11^H  L20×L20^H + L21×L21^H + L22×L22^H
 
         // A11 -= L10 × L10^H
-        a11.write(
-            0,
-            0,
-            a11.read(0, 0)
-                .sub(&faer_core::mul::inner_prod::inner_prod_with_conj(
-                    l10.transpose(),
-                    Conj::Yes,
-                    l10.transpose(),
-                    Conj::No,
-                )),
-        );
+        let mut dot = E::Real::zero();
+        for j in 0..idx {
+            dot = dot.add(&l10.read(0, j).abs2());
+        }
+        a11.write(0, 0, E::from_real(a11.read(0, 0).real().sub(&dot)));
 
         let real = a11.read(0, 0).real();
         if real > E::Real::zero() {

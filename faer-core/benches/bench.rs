@@ -7,7 +7,7 @@ use std::time::Duration;
 
 pub fn matmul<E: ComplexField>(criterion: &mut Criterion) {
     let name = core::any::type_name::<E>();
-    for n in [32, 64, 128, 256, 512, 1024] {
+    for n in [2, 3, 4, 5, 6, 8, 32, 64, 128, 256, 512, 1024] {
         let mut acc = Mat::<E>::zeros(n, n);
         let a = Mat::<E>::zeros(n, n);
         let b = Mat::<E>::zeros(n, n);
