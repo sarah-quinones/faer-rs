@@ -154,7 +154,7 @@ fn update_and_norm2_simd_impl_c32<'a, S: Simd>(
     fn accumulate<S: Simd>(simd: S, acc: S::f32s, a: S::c32s) -> S::f32s {
         if coe::is_same::<S, pulp::Scalar>() {
             let norm2: c32 = bytemuck::cast(simd.c32s_abs2(a));
-            bytemuck::cast(norm2)
+            bytemuck::cast(norm2.re)
         } else {
             simd.f32s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
         }
@@ -240,7 +240,7 @@ fn update_and_norm2_simd_impl_c64<'a, S: Simd>(
     fn accumulate<S: Simd>(simd: S, acc: S::f64s, a: S::c64s) -> S::f64s {
         if coe::is_same::<S, pulp::Scalar>() {
             let norm2: c64 = bytemuck::cast(simd.c64s_abs2(a));
-            bytemuck::cast(norm2)
+            bytemuck::cast(norm2.re)
         } else {
             simd.f64s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
         }
