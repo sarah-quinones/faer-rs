@@ -1,6 +1,6 @@
 use faer_core::{Entity, MatMut, MatRef};
 
-use crate::impls::{CblasInt, CblasLayout};
+use crate::{CblasInt, CblasLayout};
 
 #[inline(always)]
 pub unsafe fn from_blas<'a, E: Entity>(
@@ -56,6 +56,7 @@ pub unsafe fn from_blas_vec_mut<'a, E: Entity>(
     MatMut::<E>::from_raw_parts(ptr, n as usize, 1, inc as isize, 0)
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Stride {
     pub row: isize,
     pub col: isize,
@@ -72,6 +73,14 @@ impl Stride {
                 col: leading_dim as isize,
                 row: 1,
             },
+        }
+    }
+
+    #[inline(always)]
+    pub fn transposed(self) -> Self {
+        Self {
+            row: self.col,
+            col: self.row,
         }
     }
 }

@@ -1,6 +1,7 @@
 mod conversions;
 mod impls;
 
+pub use impls::*;
 use paste::paste;
 
 // This is macro is pretty cursed: we munch on the type list, then for each
@@ -36,8 +37,9 @@ impl_fn!(gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTransp
 #[cfg(test)]
 mod tests {
     use crate::{
-        cblas_sgemm, cblas_sgemv,
+        cblas_sgemm, cblas_sgemv, cblas_ssymm,
         impls::{CblasLayout, CblasTranspose},
+        CblasSide, CblasUpLo,
     };
 
     #[test]
@@ -71,7 +73,100 @@ mod tests {
             );
         }
 
-        assert_eq!(c, [58., 64., 139., 154.,])
+        assert_eq!(c, [58., 64., 139., 154.,]);
+
+        /*
+                       T
+                | 1 4 |   | 7  8  |       | 58  64  |
+            1 * | 2 5 | x | 9  10 | + 0 = | 139 154 |
+                | 3 6 |   | 11 12 |
+        */
+        // Trans a
+        let a = [1., 4., 2., 5., 3., 6.];
+        let mut c = [0.; 4];
+
+        unsafe {
+            cblas_sgemm(
+                CblasLayout::RowMajor,
+                CblasTranspose::Trans,
+                CblasTranspose::NoTrans,
+                2,
+                2,
+                3,
+                1.,
+                a.as_ptr(),
+                2,
+                b.as_ptr(),
+                2,
+                0.,
+                c.as_mut_ptr(),
+                2,
+            );
+        }
+
+        assert_eq!(c, [58., 64., 139., 154.,]);
+    }
+
+    #[test]
+    fn test_symm() {
+        /*
+                | 1 2 3 |   | 7  8  |       | 58 64 |
+            1 * | 2 0 2 | x | 9  10 | + 0 = | 36 40 |
+                | 3 2 1 |   | 11 12 |       | 50 56 |
+        */
+
+        let a = [1., 2., 3., 2., 0., 2., 3., 2., 1.];
+        let b = [7., 8., 9., 10., 11., 12.];
+        let mut c = [0.; 6];
+
+        unsafe {
+            cblas_ssymm(
+                CblasLayout::RowMajor,
+                CblasSide::Left,
+                CblasUpLo::Upper,
+                3,
+                2,
+                1.,
+                a.as_ptr(),
+                3,
+                b.as_ptr(),
+                2,
+                0.,
+                c.as_mut_ptr(),
+                2,
+            );
+        }
+
+        assert_eq!(c, [58., 64., 36., 40., 50., 56.]);
+
+        /*
+                | 7  8  |   | 1 2 |       | 23 22 |
+            1 * | 9  10 | * | 2 1 | + 0 = | 29 28 |
+                | 11 12 |                 | 35 34 |
+        */
+
+        let a = [1., 2., 2., 1.];
+        let mut c = [0.; 6];
+
+        unsafe {
+            cblas_ssymm(
+                CblasLayout::RowMajor,
+                CblasSide::Right,
+                CblasUpLo::Upper,
+                3,
+                2,
+                1.,
+                a.as_ptr(),
+                2,
+                b.as_ptr(),
+                2,
+                0.,
+                c.as_mut_ptr(),
+                2,
+            );
+        }
+
+        assert_eq!(c, [23., 22., 29., 28., 35., 34.]);
     }
 
     #[test]

@@ -23,11 +23,11 @@ pub enum CblasTranspose {
 }
 
 impl CblasTranspose {
-    fn trans(&self) -> bool {
+    pub fn trans(&self) -> bool {
         matches!(self, Self::Trans | Self::ConjTrans)
     }
 
-    fn conj(&self) -> Conj {
+    pub fn conj(&self) -> Conj {
         match self {
             CblasTranspose::NoTrans | CblasTranspose::Trans => Conj::No,
             CblasTranspose::ConjTrans => Conj::Yes,
@@ -108,8 +108,19 @@ pub unsafe fn gemm<T: 'static>(
     // The definitions of alpha and beta are swapped
     let (faer_alpha, faer_beta) = (beta, alpha);
 
-    let a_stride = Stride::from_leading_dim(layout, lda);
-    let b_stride = Stride::from_leading_dim(layout, ldb);
+    // Note that m, n, k are post-op (mathematical, not storage) dimensions. trans_a(a) is m-by-k, and trans_b(b) is k-by-n.
+    // By swapping the strides, m, n, and k match up with the dimensions of the matrix supplied to gemm,
+    // we do not swap the dimension values.
+
+    let mut a_stride = Stride::from_leading_dim(layout, lda);
+    if trans_a.trans() {
+        a_stride = a_stride.transposed();
+    }
+
+    let mut b_stride = Stride::from_leading_dim(layout, ldb);
+    if trans_b.trans() {
+        b_stride = b_stride.transposed();
+    }
     let c_stride = Stride::from_leading_dim(layout, ldc);
 
     gemm::gemm(
@@ -152,9 +163,9 @@ pub unsafe fn symm<T: 'static>(
     ldc: CblasInt,
 ) {
     // TODO: specialise
-    let ka = match side {
-        CblasSide::Left => m,
-        CblasSide::Right => n,
+    let (ka, left, right) = match side {
+        CblasSide::Left => (m, a, b),
+        CblasSide::Right => (n, b, a),
     };
     gemm::<T>(
         layout,
@@ -164,9 +175,9 @@ pub unsafe fn symm<T: 'static>(
         n,
         ka,
         alpha,
-        a,
+        left,
         lda,
-        b,
+        right,
         ldb,
         beta,
         c,
