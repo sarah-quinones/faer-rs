@@ -10,3 +10,4 @@ crate-type = ["cdylib"]
 faer-core = { version = "0.16.0", path = "../faer-core" }
 gemm = "0.17"
 num-traits = "0.2.15"
+paste = "1.0.12"

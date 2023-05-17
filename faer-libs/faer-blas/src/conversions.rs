@@ -1,6 +1,6 @@
 use faer_core::{Entity, MatMut, MatRef};
 
-use crate::{CblasInt, CblasLayout};
+use crate::impls::{CblasInt, CblasLayout};
 
 #[inline(always)]
 pub unsafe fn from_blas<'a, E: Entity>(
@@ -64,11 +64,11 @@ impl Stride {
     #[inline(always)]
     pub fn from_leading_dim(layout: CblasLayout, leading_dim: CblasInt) -> Self {
         match layout {
-            CblasLayout::CblasRowMajor => Self {
+            CblasLayout::RowMajor => Self {
                 col: 1,
                 row: leading_dim as isize,
             },
-            CblasLayout::CblasColMajor => Self {
+            CblasLayout::ColMajor => Self {
                 col: leading_dim as isize,
                 row: 1,
             },
@@ -78,7 +78,7 @@ impl Stride {
 
 #[cfg(test)]
 mod tests {
-    use crate::CblasLayout;
+    use crate::impls::CblasLayout;
 
     use super::{from_blas, from_blas_vec};
 
@@ -93,7 +93,7 @@ mod tests {
         let n = 3;
         let lda = 3;
         let a: [f64; 6] = [0.11, 0.12, 0.13, 0.21, 0.22, 0.23];
-        let result = unsafe { from_blas::<f64>(CblasLayout::CblasRowMajor, a.as_ptr(), m, n, lda) };
+        let result = unsafe { from_blas::<f64>(CblasLayout::RowMajor, a.as_ptr(), m, n, lda) };
         assert_eq!(result.nrows(), 2);
         assert_eq!(result.ncols(), 3);
         assert_eq!(*result.get(0, 0), 0.11);
@@ -112,7 +112,7 @@ mod tests {
         let n = 3;
         let lda = 2;
         let a: [f64; 6] = [0.11, 0.21, 0.12, 0.22, 0.13, 0.23];
-        let result = unsafe { from_blas::<f64>(CblasLayout::CblasColMajor, a.as_ptr(), m, n, lda) };
+        let result = unsafe { from_blas::<f64>(CblasLayout::ColMajor, a.as_ptr(), m, n, lda) };
         assert_eq!(result.nrows(), 2);
         assert_eq!(result.ncols(), 3);
         assert_eq!(*result.get(0, 0), 0.11);
@@ -131,7 +131,7 @@ mod tests {
         let n = 3;
         let lda = 5;
         let a: [f64; 10] = [0.11, 0.12, 0.13, 0.0, 0.0, 0.21, 0.22, 0.23, 0.0, 0.0];
-        let result = unsafe { from_blas::<f64>(CblasLayout::CblasRowMajor, a.as_ptr(), m, n, lda) };
+        let result = unsafe { from_blas::<f64>(CblasLayout::RowMajor, a.as_ptr(), m, n, lda) };
         assert_eq!(result.nrows(), 2);
         assert_eq!(result.ncols(), 3);
         assert_eq!(*result.get(0, 0), 0.11);

@@ -1,144 +1,44 @@
 mod conversions;
+mod impls;
 
-use conversions::{from_blas, from_blas_vec, from_blas_vec_mut, Stride};
-use faer_core::{mul::matvec::matvec_with_conj, ComplexField, Conj};
-use gemm::{c32, c64, Parallelism};
+use paste::paste;
 
-type CblasInt = i32;
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CblasLayout {
-    CblasRowMajor = 101,
-    CblasColMajor = 102,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CblasTranspose {
-    CblasNoTrans = 111,
-    CblasTrans = 112,
-    CblasConjTrans = 113,
-}
-
-impl CblasTranspose {
-    fn has_trans(&self) -> bool {
-        matches!(self, Self::CblasTrans | Self::CblasConjTrans)
-    }
-
-    fn conj(&self) -> Conj {
-        match self {
-            CblasTranspose::CblasNoTrans | CblasTranspose::CblasTrans => Conj::No,
-            CblasTranspose::CblasConjTrans => Conj::Yes,
-        }
-    }
-}
-
-/*
-    BLAS level 2 functions
-*/
-
-macro_rules! impl_gemv {
-    ($t: ty, $f: ident) => {
-        #[no_mangle]
-        pub unsafe extern "C" fn $f(
-            layout: CblasLayout,
-            trans: CblasTranspose,
-            m: CblasInt,
-            n: CblasInt,
-            alpha: $t,
-            a: *const $t,
-            lda: CblasInt,
-            x: *const $t,
-            incx: CblasInt,
-            beta: $t,
-            y: *mut $t,
-            incy: CblasInt,
-        ) {
-            // The definitions of alpha and beta are swapped
-            let (faer_alpha, faer_beta) = (beta, alpha);
-
-            let mut a = unsafe { from_blas::<$t>(layout, a, m, n, lda) };
-            if trans.has_trans() {
-                a = a.transpose();
+// This is macro is pretty cursed: we munch on the type list, then for each
+// type we declare a mod to create a type alias TY to "monomorphise" the
+// "generic" TY in the argument list. A mod is required to constaint the scope
+// of type alias TY.
+// But we avoid writing a shim for each function, so maybe worth it
+macro_rules! impl_fn {
+    ($f:ident($($arg:ident : $arg_ty:ty),*), []) => {};
+    ($f:ident($($arg:ident : $arg_ty:ty),*), [$t:ty : $prefix:ident $($tail:tt)*]) => {
+        paste!{
+            mod [< m $prefix $f >] {
+                use crate::impls::*;
+                type TY = $t;
+                #[no_mangle]
+                pub unsafe extern "C" fn [< cblas_ $prefix $f >](
+                    $($arg : $arg_ty),*
+                ) {
+                    crate::impls::$f::<$t>($($arg),*);
+                }
             }
-            let x = unsafe { from_blas_vec::<$t>(x, n, incx) };
-            let y = unsafe { from_blas_vec_mut::<$t>(y, m, incy) };
-
-            let faer_alpha = (faer_alpha != <$t>::zero()).then_some(faer_alpha);
-            matvec_with_conj(y, a, trans.conj(), x, Conj::No, faer_alpha, faer_beta);
+            pub use [< m $prefix $f >]::*;
         }
-    };
+        impl_fn!($f($($arg : $arg_ty),*), [$($tail) *]);
+    }
 }
 
-impl_gemv!(f32, cblas_sgemv);
-impl_gemv!(f64, cblas_dgemv);
-impl_gemv!(faer_core::c32, cblas_cgemv);
-impl_gemv!(faer_core::c64, cblas_zgemv);
+impl_fn!(gemv(layout: CblasLayout, trans: CblasTranspose, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, x: *const TY, incx: CblasInt, beta: TY, y: *mut TY, incy: CblasInt), [f32:s f64:d faer_core::c32:c faer_core::c64:z]);
 
-/*
-    BLAS level 3 functions
-*/
-
-macro_rules! impl_gemm {
-    ($t: ty, $f: ident) => {
-        #[no_mangle]
-        pub unsafe extern "C" fn $f(
-            layout: CblasLayout,
-            trans_a: CblasTranspose,
-            trans_b: CblasTranspose,
-            m: CblasInt,
-            n: CblasInt,
-            k: CblasInt,
-            alpha: $t,
-            a: *const $t,
-            lda: CblasInt,
-            b: *const $t,
-            ldb: CblasInt,
-            beta: $t,
-            c: *mut $t,
-            ldc: CblasInt,
-        ) {
-            // The definitions of alpha and beta are swapped
-            let (faer_alpha, faer_beta) = (beta, alpha);
-
-            let a_stride = Stride::from_leading_dim(layout, lda);
-            let b_stride = Stride::from_leading_dim(layout, ldb);
-            let c_stride = Stride::from_leading_dim(layout, ldc);
-
-            gemm::gemm(
-                m as usize,
-                n as usize,
-                k as usize,
-                c,
-                c_stride.col,
-                c_stride.row,
-                false,
-                a,
-                a_stride.col,
-                a_stride.row,
-                b,
-                b_stride.col,
-                b_stride.row,
-                faer_alpha,
-                faer_beta,
-                false,
-                trans_a.conj() == Conj::Yes,
-                trans_b.conj() == Conj::Yes,
-                Parallelism::Rayon(0),
-            );
-        }
-    };
-}
-
-impl_gemm!(f32, cblas_sgemm);
-impl_gemm!(f64, cblas_dgemm);
-impl_gemm!(c32, cblas_cgemm);
-impl_gemm!(c64, cblas_zgemm);
+impl_fn!(symm(layout: CblasLayout, side: CblasSide, _uplo: CblasUpLo, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d gemm::c32:c gemm::c64:z]);
+impl_fn!(gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTranspose, m: CblasInt, n: CblasInt, k: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d gemm::c32:c gemm::c64:z]);
 
 #[cfg(test)]
 mod tests {
-    use crate::{cblas_sgemm, cblas_sgemv, CblasLayout, CblasTranspose};
+    use crate::{
+        cblas_sgemm, cblas_sgemv,
+        impls::{CblasLayout, CblasTranspose},
+    };
 
     #[test]
     fn test_gemm() {
@@ -154,9 +54,9 @@ mod tests {
 
         unsafe {
             cblas_sgemm(
-                CblasLayout::CblasRowMajor,
-                CblasTranspose::CblasNoTrans,
-                CblasTranspose::CblasNoTrans,
+                CblasLayout::RowMajor,
+                CblasTranspose::NoTrans,
+                CblasTranspose::NoTrans,
                 2,
                 2,
                 3,
@@ -186,8 +86,8 @@ mod tests {
 
         unsafe {
             cblas_sgemv(
-                CblasLayout::CblasColMajor,
-                CblasTranspose::CblasNoTrans,
+                CblasLayout::ColMajor,
+                CblasTranspose::NoTrans,
                 2,
                 3,
                 1.,
