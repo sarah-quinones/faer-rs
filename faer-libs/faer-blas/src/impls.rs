@@ -1,6 +1,8 @@
-use crate::conversions::{from_blas, from_blas_vec, from_blas_vec_mut, Stride};
-use faer_core::{mul::matvec::matvec_with_conj, ComplexField, Conj, Entity};
-use gemm::Parallelism;
+use crate::conversions::{from_blas, from_blas_mut, from_blas_vec, from_blas_vec_mut};
+use faer_core::{
+    mul::{matmul_with_conj, matvec::matvec_with_conj},
+    ComplexField, Conj, Entity, Parallelism,
+};
 
 #[cfg(not(ilp64))]
 pub type CblasInt = i32;
@@ -89,85 +91,81 @@ pub unsafe fn gemv<E>(
 */
 
 #[inline(always)]
-pub unsafe fn gemm<T: 'static>(
+pub unsafe fn gemm<E>(
     layout: CblasLayout,
     trans_a: CblasTranspose,
     trans_b: CblasTranspose,
     m: CblasInt,
     n: CblasInt,
     k: CblasInt,
-    alpha: T,
-    a: *const T,
+    alpha: E,
+    a: E::Group<*const E::Unit>,
     lda: CblasInt,
-    b: *const T,
+    b: E::Group<*const E::Unit>,
     ldb: CblasInt,
-    beta: T,
-    c: *mut T,
+    beta: E,
+    c: E::Group<*mut E::Unit>,
     ldc: CblasInt,
-) {
+) where
+    E: ComplexField + Entity,
+{
     // The definitions of alpha and beta are swapped
     let (faer_alpha, faer_beta) = (beta, alpha);
 
-    // Note that m, n, k are post-op (mathematical, not storage) dimensions. trans_a(a) is m-by-k, and trans_b(b) is k-by-n.
-    // By swapping the strides, m, n, and k match up with the dimensions of the matrix supplied to gemm,
-    // we do not swap the dimension values.
+    // Note that m, n, k are post-op (mathematical, not storage) dimensions. trans_a(a) is m-by-k,
+    // and trans_b(b) is k-by-n.
 
-    let mut a_stride = Stride::from_leading_dim(layout, lda);
-    if trans_a.trans() {
-        a_stride = a_stride.transposed();
-    }
+    let a = if !trans_a.trans() {
+        from_blas::<E>(layout, a, m, k, lda)
+    } else {
+        from_blas::<E>(layout, a, k, m, lda).transpose()
+    };
 
-    let mut b_stride = Stride::from_leading_dim(layout, ldb);
-    if trans_b.trans() {
-        b_stride = b_stride.transposed();
-    }
-    let c_stride = Stride::from_leading_dim(layout, ldc);
+    let b = if !trans_b.trans() {
+        from_blas::<E>(layout, b, k, n, ldb)
+    } else {
+        from_blas::<E>(layout, b, n, k, ldb).transpose()
+    };
 
-    gemm::gemm(
-        m as usize,
-        n as usize,
-        k as usize,
+    let c = from_blas_mut::<E>(layout, c, m, n, ldc);
+
+    let faer_alpha = (faer_alpha != <E>::zero()).then_some(faer_alpha);
+    matmul_with_conj(
         c,
-        c_stride.col,
-        c_stride.row,
-        false,
         a,
-        a_stride.col,
-        a_stride.row,
+        trans_a.conj(),
         b,
-        b_stride.col,
-        b_stride.row,
+        trans_b.conj(),
         faer_alpha,
         faer_beta,
-        false,
-        trans_a.conj() == Conj::Yes,
-        trans_b.conj() == Conj::Yes,
         Parallelism::Rayon(0),
     );
 }
 
 #[inline(always)]
-pub unsafe fn symm<T: 'static>(
+pub unsafe fn symm<E>(
     layout: CblasLayout,
     side: CblasSide,
     _uplo: CblasUpLo,
     m: CblasInt,
     n: CblasInt,
-    alpha: T,
-    a: *const T,
+    alpha: E,
+    a: E::Group<*const E::Unit>,
     lda: CblasInt,
-    b: *const T,
+    b: E::Group<*const E::Unit>,
     ldb: CblasInt,
-    beta: T,
-    c: *mut T,
+    beta: E,
+    c: E::Group<*mut E::Unit>,
     ldc: CblasInt,
-) {
+) where
+    E: ComplexField + Entity,
+{
     // TODO: specialise
     let (ka, left, right) = match side {
         CblasSide::Left => (m, a, b),
         CblasSide::Right => (n, b, a),
     };
-    gemm::<T>(
+    gemm::<E>(
         layout,
         CblasTranspose::NoTrans,
         CblasTranspose::NoTrans,

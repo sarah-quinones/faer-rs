@@ -14,7 +14,10 @@ macro_rules! impl_fn {
     ($f:ident($($arg:ident : $arg_ty:ty),*), [$t:ty : $prefix:ident $($tail:tt)*]) => {
         paste!{
             mod [< m $prefix $f >] {
+                #![allow(unused_imports)]
+
                 use crate::impls::*;
+                use faer_core::{c32, c64};
                 type TY = $t;
                 #[no_mangle]
                 pub unsafe extern "C" fn [< cblas_ $prefix $f >](
@@ -29,10 +32,10 @@ macro_rules! impl_fn {
     }
 }
 
-impl_fn!(gemv(layout: CblasLayout, trans: CblasTranspose, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, x: *const TY, incx: CblasInt, beta: TY, y: *mut TY, incy: CblasInt), [f32:s f64:d faer_core::c32:c faer_core::c64:z]);
+impl_fn!(gemv(layout: CblasLayout, trans: CblasTranspose, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, x: *const TY, incx: CblasInt, beta: TY, y: *mut TY, incy: CblasInt), [f32:s f64:d c32:c c64:z]);
 
-impl_fn!(symm(layout: CblasLayout, side: CblasSide, _uplo: CblasUpLo, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d gemm::c32:c gemm::c64:z]);
-impl_fn!(gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTranspose, m: CblasInt, n: CblasInt, k: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d gemm::c32:c gemm::c64:z]);
+impl_fn!(symm(layout: CblasLayout, side: CblasSide, _uplo: CblasUpLo, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d c32:c c64:z]);
+impl_fn!(gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTranspose, m: CblasInt, n: CblasInt, k: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d c32:c c64:z]);
 
 #[cfg(test)]
 mod tests {
