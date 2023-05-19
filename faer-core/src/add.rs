@@ -1,5 +1,7 @@
+//! addition and subtraction of matrices
+
 use crate::{ComplexField, Conjugate, Entity, Mat, MatRef};
-use std::ops::{Add, AddAssign, Sub};
+use core::ops::{Add, AddAssign, Sub};
 
 // add two matrices together
 impl<'a, T> Add<MatRef<'_, T>> for MatRef<'a, T>
@@ -8,6 +10,9 @@ where
     T::Unit: ComplexField,
 {
     type Output = Mat<T>;
+    /// create a new matrix corresponding to the addition of `rhs` to `self`.
+    /// # Panics
+    /// Panics if the matrix dimensions do not match.
     fn add(self, rhs: MatRef<'_, T>) -> Self::Output {
         assert_eq!(
             (self.nrows(), self.ncols()),
@@ -20,13 +25,15 @@ where
     }
 }
 
-// subtract two matrices
 impl<'a, T> Sub<MatRef<'_, T>> for MatRef<'a, T>
 where
     T: ComplexField,
     T::Unit: ComplexField,
 {
     type Output = Mat<T>;
+    /// create a new matrix corresponding to the subtraction of `rhs` from `self`.
+    /// # Panics
+    /// Panics if the matrix dimensions do not match.
     fn sub(self, rhs: MatRef<'_, T>) -> Self::Output {
         assert_eq!(
             (self.nrows(), self.ncols()),
