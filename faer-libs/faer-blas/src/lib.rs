@@ -4,38 +4,83 @@ mod impls;
 pub use impls::*;
 use paste::paste;
 
+// Complex scalar values in CBLAS parameters are passed as *void,
+// whereas real scalars are passed directly as float or double.
+// We dereference the complex scalars before we call the generic
+// implementations
+macro_rules! deref_arg {
+    (c $arg:ident : SCALAR_TY) => {
+        *$arg
+    };
+    (z $arg:ident : SCALAR_TY) => {
+        *$arg
+    };
+
+    ($_:ident $arg:ident : $__:ty) => {
+        $arg
+    };
+}
+
+macro_rules! elem_type {
+    (s) => {
+        f32
+    };
+    (d) => {
+        f64
+    };
+    (c) => {
+        faer_core::c32
+    };
+    (z) => {
+        faer_core::c64
+    };
+}
+
+macro_rules! scalar_type {
+    (s) => {
+        f32
+    };
+    (d) => {
+        f64
+    };
+    (c) => {
+        *const faer_core::c32
+    };
+    (z) => {
+        *const faer_core::c64
+    };
+}
+
 // This is macro is pretty cursed: we munch on the type list, then for each
-// type we declare a mod to create a type alias TY to "monomorphise" the
-// "generic" TY in the argument list. A mod is required to constaint the scope
-// of type alias TY.
+// type we declare a mod to create type aliases ELEM_TY and SCALAR_TY to "monomorphise" the
+// "generic" types in the parameter list. A mod is required to constaint the scope
+// of type alias ELEM_TY and SCALAR_TY.
 // But we avoid writing a shim for each function, so maybe worth it
 macro_rules! impl_fn {
-    ($f:ident($($arg:ident : $arg_ty:ty),*), []) => {};
-    ($f:ident($($arg:ident : $arg_ty:ty),*), [$t:ty : $prefix:ident $($tail:tt)*]) => {
+    ({} $f:ident($($arg:ident : $arg_ty:ty),*)) => {};
+    ({$prefix:ident $($tail:tt)*} $f:ident($($arg:ident : $arg_ty:ty),*)) => {
         paste!{
-            mod [< m $prefix $f >] {
-                #![allow(unused_imports)]
-
+            mod [< mod_ $prefix $f >] {
+                #![allow(non_camel_case_types)]
                 use crate::impls::*;
-                use faer_core::{c32, c64};
-                type TY = $t;
+                type ELEM_TY = elem_type!($prefix);
+                type SCALAR_TY = scalar_type!($prefix);
                 #[no_mangle]
-                pub unsafe extern "C" fn [< cblas_ $prefix $f >](
-                    $($arg : $arg_ty),*
-                ) {
-                    crate::impls::$f::<$t>($($arg),*);
+                pub unsafe extern "C" fn [< cblas_ $prefix $f >]($($arg:$arg_ty),*) {
+                    crate::impls::$f::<ELEM_TY>($(
+                        deref_arg!($prefix $arg:$arg_ty),
+                    )*);
                 }
             }
-            pub use [< m $prefix $f >]::*;
+            pub use [< mod_ $prefix $f >]::*;
         }
-        impl_fn!($f($($arg : $arg_ty),*), [$($tail) *]);
+        impl_fn!({$($tail) *} $f($($arg : $arg_ty),*));
     }
 }
 
-impl_fn!(gemv(layout: CblasLayout, trans: CblasTranspose, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, x: *const TY, incx: CblasInt, beta: TY, y: *mut TY, incy: CblasInt), [f32:s f64:d c32:c c64:z]);
-
-impl_fn!(symm(layout: CblasLayout, side: CblasSide, _uplo: CblasUpLo, m: CblasInt, n: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d c32:c c64:z]);
-impl_fn!(gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTranspose, m: CblasInt, n: CblasInt, k: CblasInt, alpha: TY, a: *const TY, lda: CblasInt, b: *const TY, ldb: CblasInt, beta: TY, c: *mut TY, ldc: CblasInt), [f32:s f64:d c32:c c64:z]);
+impl_fn!({s d c z}gemv(layout: CblasLayout, trans: CblasTranspose, m: CblasInt, n: CblasInt, alpha: SCALAR_TY, a: *const ELEM_TY, lda: CblasInt, x: *const ELEM_TY, incx: CblasInt, beta: SCALAR_TY, y: *mut ELEM_TY, incy: CblasInt));
+impl_fn!({s d c z}symm(layout: CblasLayout, side: CblasSide, uplo: CblasUpLo, m: CblasInt, n: CblasInt, alpha: SCALAR_TY, a: *const ELEM_TY, lda: CblasInt, b: *const ELEM_TY, ldb: CblasInt, beta: SCALAR_TY, c: *mut ELEM_TY, ldc: CblasInt));
+impl_fn!({s d c z}gemm(layout: CblasLayout, trans_a: CblasTranspose, trans_b: CblasTranspose, m: CblasInt, n: CblasInt, k: CblasInt, alpha: SCALAR_TY, a: *const ELEM_TY, lda: CblasInt, b: *const ELEM_TY, ldb: CblasInt, beta: SCALAR_TY, c: *mut ELEM_TY, ldc: CblasInt));
 
 #[cfg(test)]
 mod tests {
