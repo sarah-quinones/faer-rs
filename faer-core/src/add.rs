@@ -7,7 +7,6 @@ use core::ops::{Add, Sub};
 impl<'a, T> Add<MatRef<'_, T>> for MatRef<'a, T>
 where
     T: ComplexField,
-    T::Unit: ComplexField,
 {
     type Output = Mat<T>;
     /// create a new matrix corresponding to the addition of `rhs` to `self`.
@@ -28,7 +27,6 @@ where
 impl<'a, T> Sub<MatRef<'_, T>> for MatRef<'a, T>
 where
     T: ComplexField,
-    T::Unit: ComplexField,
 {
     type Output = Mat<T>;
     /// create a new matrix corresponding to the subtraction of `rhs` from `self`.

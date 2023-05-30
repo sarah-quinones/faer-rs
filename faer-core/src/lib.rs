@@ -18,12 +18,13 @@ pub mod householder;
 #[doc(hidden)]
 pub mod jacobi;
 
-pub mod add;
 pub mod inverse;
 pub mod mul;
 pub mod permutation;
 pub mod solve;
 pub mod zip;
+
+mod add;
 
 #[doc(hidden)]
 pub mod simd;
