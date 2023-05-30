@@ -52,10 +52,9 @@ where
 macro_rules! impl_binary_op {
     ($Op:ty) => {
         paste::paste! {
-            impl<'a,T> $Op<MatRef<'_,T>> for Mat<T>
+            impl<T> $Op<MatRef<'_,T>> for Mat<T>
             where
                 T: ComplexField,
-                T::Unit: ComplexField,
             {
                 type Output = Mat<T>;
                 fn [<$Op:lower>](self, rhs: MatRef<'_,T>) -> Self::Output {
@@ -63,10 +62,9 @@ macro_rules! impl_binary_op {
                 }
             }
 
-            impl<'a,T> $Op<Mat<T>> for MatRef<'_,T>
+            impl<T> $Op<Mat<T>> for MatRef<'_,T>
             where
                 T: ComplexField,
-                T::Unit: ComplexField,
             {
                 type Output = Mat<T>;
                 fn [<$Op:lower>](self, rhs: Mat<T>) -> Self::Output {
@@ -74,13 +72,62 @@ macro_rules! impl_binary_op {
                 }
             }
 
-            impl<'a,T> $Op<Mat<T>> for Mat<T>
+            impl<T> $Op<Mat<T>> for Mat<T>
             where
                 T: ComplexField,
-                T::Unit: ComplexField,
             {
                 type Output = Mat<T>;
                 fn [<$Op:lower>](self, rhs: Mat<T>) -> Self::Output {
+                    self.as_ref().[<$Op:lower>] (rhs.as_ref())
+                }
+            }
+
+            impl<T> $Op<&Mat<T>> for MatRef<'_,T>
+            where
+                T: ComplexField,
+            {
+                type Output = Mat<T>;
+                fn [<$Op:lower>](self, rhs: &Mat<T>) -> Self::Output {
+                    self.[<$Op:lower>] (rhs.as_ref())
+                }
+            }
+
+            impl<T> $Op<MatRef<'_,T>> for &Mat<T>
+            where
+                T: ComplexField,
+            {
+                type Output = Mat<T>;
+                fn [<$Op:lower>](self, rhs: MatRef<'_,T>) -> Self::Output {
+                    self.as_ref().[<$Op:lower>] (rhs)
+                }
+            }
+
+            impl<T> $Op<&Mat<T>> for &'_ Mat<T>
+            where
+                T: ComplexField,
+            {
+                type Output = Mat<T>;
+                fn [<$Op:lower>](self, rhs: &Mat<T>) -> Self::Output {
+                    self.as_ref().[<$Op:lower>] (rhs.as_ref())
+                }
+            }
+
+            impl<T> $Op<Mat<T>> for &Mat<T>
+            where
+                T: ComplexField,
+            {
+                type Output = Mat<T>;
+                fn [<$Op:lower>](self, rhs: Mat<T>) -> Self::Output {
+                    self.as_ref().[<$Op:lower>] (rhs.as_ref())
+                }
+            }
+
+            impl<T> $Op<&Mat<T>> for Mat<T>
+            where
+                T: ComplexField,
+            {
+                type Output = Mat<T>;
+                fn [<$Op:lower>](self, rhs: &Mat<T>) -> Self::Output {
                     self.as_ref().[<$Op:lower>] (rhs.as_ref())
                 }
             }
@@ -111,8 +158,11 @@ mod test {
         let expected = mat![[-5.1, 5.0], [3.0, 2.0], [8.4, -13.5],];
 
         assert_matrix_approx_eq(A.as_ref() + B.as_ref(), &expected);
+        assert_matrix_approx_eq(&A + &B, &expected);
         assert_matrix_approx_eq(A.as_ref() + B.clone(), &expected);
+        assert_matrix_approx_eq(&A + B.clone(), &expected);
         assert_matrix_approx_eq(A.clone() + B.as_ref(), &expected);
+        assert_matrix_approx_eq(A.clone() + &B, &expected);
         assert_matrix_approx_eq(A + B, &expected);
     }
 
@@ -123,8 +173,12 @@ mod test {
         let expected = mat![[10.7, -11.6], [-6.4, 8.4], [0.8, -3.1],];
 
         assert_matrix_approx_eq(A.as_ref() - B.as_ref(), &expected);
+        assert_matrix_approx_eq(&A - B.as_ref(), &expected);
         assert_matrix_approx_eq(A.as_ref() - B.clone(), &expected);
+        assert_matrix_approx_eq(&A - B.clone(), &expected);
         assert_matrix_approx_eq(A.clone() - B.as_ref(), &expected);
+        assert_matrix_approx_eq(A.clone() - &B, &expected);
+        assert_matrix_approx_eq(&A - &B, &expected);
         assert_matrix_approx_eq(A - B, &expected);
     }
 

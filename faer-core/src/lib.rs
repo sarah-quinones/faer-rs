@@ -24,7 +24,7 @@ pub mod permutation;
 pub mod solve;
 pub mod zip;
 
-mod add;
+pub mod add;
 
 #[doc(hidden)]
 pub mod simd;
