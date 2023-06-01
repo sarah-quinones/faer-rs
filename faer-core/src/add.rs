@@ -152,6 +152,22 @@ mod test {
     }
 
     #[test]
+    #[should_panic]
+    fn test_adding_matrices_of_different_sizes_should_panic() {
+        let A = mat![[1.0, 2.0], [3.0, 4.0]];
+        let B = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+        _ = A + B;
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_subtracting_two_matrices_of_different_sizes_should_panic() {
+        let A = mat![[1.0, 2.0], [3.0, 4.0]];
+        let B = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+        _ = A - B;
+    }
+
+    #[test]
     fn test_add() {
         let (A, B) = matrices();
 
@@ -159,6 +175,8 @@ mod test {
 
         assert_matrix_approx_eq(A.as_ref() + B.as_ref(), &expected);
         assert_matrix_approx_eq(&A + &B, &expected);
+        assert_matrix_approx_eq(A.as_ref() + &B, &expected);
+        assert_matrix_approx_eq(&A + B.as_ref(), &expected);
         assert_matrix_approx_eq(A.as_ref() + B.clone(), &expected);
         assert_matrix_approx_eq(&A + B.clone(), &expected);
         assert_matrix_approx_eq(A.clone() + B.as_ref(), &expected);
@@ -173,12 +191,13 @@ mod test {
         let expected = mat![[10.7, -11.6], [-6.4, 8.4], [0.8, -3.1],];
 
         assert_matrix_approx_eq(A.as_ref() - B.as_ref(), &expected);
+        assert_matrix_approx_eq(&A - &B, &expected);
+        assert_matrix_approx_eq(A.as_ref() - &B, &expected);
         assert_matrix_approx_eq(&A - B.as_ref(), &expected);
         assert_matrix_approx_eq(A.as_ref() - B.clone(), &expected);
         assert_matrix_approx_eq(&A - B.clone(), &expected);
         assert_matrix_approx_eq(A.clone() - B.as_ref(), &expected);
         assert_matrix_approx_eq(A.clone() - &B, &expected);
-        assert_matrix_approx_eq(&A - &B, &expected);
         assert_matrix_approx_eq(A - B, &expected);
     }
 
