@@ -5077,6 +5077,61 @@ where
     }
 }
 
+impl<'a, T: ComplexField> core::ops::Mul<T> for MatRef<'a, T> {
+    type Output = Mat<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        Mat::with_dims(self.nrows(), self.ncols(), |i, j| self.read(i, j).mul(&rhs))
+    }
+}
+
+impl<T: ComplexField> core::ops::Mul<T> for Mat<T> {
+    type Output = Mat<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        self.as_ref().mul(rhs)
+    }
+}
+
+impl<T: ComplexField> core::ops::Mul<T> for &Mat<T> {
+    type Output = Mat<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        self.as_ref().mul(rhs)
+    }
+}
+
+macro_rules! impl_scalar_mul {
+    ($(<$scalar: ty> * $mat: ty,)*) => {
+        $(
+            impl core::ops::Mul<$mat> for $scalar {
+                type Output = Mat<$scalar>;
+
+                fn mul(self, rhs: $mat) -> Self::Output {
+                    rhs.mul(self)
+                }
+            }
+        )*
+    };
+}
+
+impl_scalar_mul! {
+    <f32> * MatRef<'_, f32>,
+    <f64> * MatRef<'_, f64>,
+    <c32> * MatRef<'_, c32>,
+    <c64> * MatRef<'_, c64>,
+
+    <f32> * Mat<f32>,
+    <f64> * Mat<f64>,
+    <c32> * Mat<c32>,
+    <c64> * Mat<c64>,
+
+    <f32> * &Mat<f32>,
+    <f64> * &Mat<f64>,
+    <c32> * &Mat<c32>,
+    <c64> * &Mat<c64>,
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! impl_unit_entity {
@@ -5426,5 +5481,18 @@ mod tests {
             assert_approx_eq!(target_re, sqrt_re);
             assert_approx_eq!(target_im, sqrt_im);
         }
+    }
+
+    #[test]
+    fn mat_times_scalar() {
+        let x = mat![[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]];
+        let expected = mat![[0.0, 2.0], [4.0, 6.0], [8.0, 10.0]];
+
+        assert_eq!(&x * 2.0, expected);
+        assert_eq!(2.0 * &x, expected);
+        assert_eq!(x.as_ref() * 2.0, expected);
+        assert_eq!(2.0 * x.as_ref(), expected);
+        assert_eq!(x.clone() * 2.0, expected);
+        assert_eq!(2.0 * x, expected);
     }
 }
