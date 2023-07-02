@@ -5077,6 +5077,21 @@ where
     }
 }
 
+impl<'a, T: ComplexField> core::ops::MulAssign<T> for MatMut<'a, T> {
+    fn mul_assign(&mut self, rhs: T) {
+        self.rb_mut().cwise().for_each(|mut x| {
+            let val = x.read();
+            x.write(val.mul(&rhs));
+        });
+    }
+}
+
+impl<T: ComplexField> core::ops::MulAssign<T> for Mat<T> {
+    fn mul_assign(&mut self, rhs: T) {
+        self.as_mut().mul_assign(rhs);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! impl_unit_entity {
@@ -5426,5 +5441,19 @@ mod tests {
             assert_approx_eq!(target_re, sqrt_re);
             assert_approx_eq!(target_im, sqrt_im);
         }
+    }
+
+    #[test]
+    fn mat_mul_assign_scalar() {
+        let mut x = mat![[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]];
+
+        let expected = mat![[0.0, 2.0], [4.0, 6.0], [8.0, 10.0]];
+        x *= 2.0;
+        assert_eq!(x, expected);
+
+        let expected = mat![[0.0, 4.0], [8.0, 12.0], [16.0, 20.0]];
+        let mut x_mut = x.as_mut();
+        x_mut *= 2.0;
+        assert_eq!(x, expected);
     }
 }
