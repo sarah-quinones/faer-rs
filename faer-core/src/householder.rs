@@ -72,9 +72,8 @@ pub fn make_householder_in_place<E: ComplexField>(
             assert!(essential.ncols() == 1);
             zipped!(essential).for_each(|mut e| e.write(e.read().mul(&head_with_beta_inv)));
         }
-        let tau = one_half.mul(&E::Real::one().add(
-            &tail_squared_norm.mul(&(head_with_beta_inv.mul(&head_with_beta_inv.conj())).real()),
-        ));
+        let tau =
+            one_half.mul(&E::Real::one().add(&tail_squared_norm.mul(&head_with_beta_inv.abs2())));
         (E::from_real(tau), signed_norm.neg())
     } else {
         (E::from_real(E::Real::zero().inv()), E::zero())

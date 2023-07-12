@@ -1174,6 +1174,44 @@ fn bidiag_svd_impl<E: RealField>(
     mut stack: DynStack<'_>,
 ) {
     let n = diag.len();
+
+    let mut max_val = E::zero();
+
+    for x in &*diag {
+        let val = x.abs();
+        if val > max_val {
+            max_val = val;
+        }
+    }
+    for x in &*subdiag {
+        let val = x.abs();
+        if val > max_val {
+            max_val = val;
+        }
+    }
+
+    if max_val == E::zero() {
+        u.set_zeros();
+        if u.nrows() == n + 1 {
+            u.diagonal().set_zeros();
+        } else {
+            u.write(0, 0, E::one());
+            u.write(1, n, E::one());
+        }
+        v.map(|mut v| {
+            v.set_zeros();
+            v.diagonal().set_constant(E::one());
+        });
+        return;
+    }
+
+    for x in &mut *diag {
+        *x = (&*x).div(&max_val);
+    }
+    for x in &mut *subdiag {
+        *x = (&*x).div(&max_val);
+    }
+
     assert!(subdiag.len() == n);
     assert!(n > jacobi_fallback_threshold);
 
@@ -1725,6 +1763,10 @@ fn bidiag_svd_impl<E: RealField>(
                 update_u(parallelism, stack);
             }
         }
+    }
+
+    for x in &mut *diag {
+        *x = (&*x).mul(&max_val);
     }
 }
 

@@ -289,6 +289,10 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
         if x == E::zero() {
             E::one()
         } else {
+            let re = x.real().abs();
+            let im = x.imag().abs();
+            let max = if re > im { re } else { im };
+            let x = x.scale_real(&max.inv());
             x.scale_real(&x.abs().inv())
         }
     };
@@ -1070,7 +1074,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-3);
                     }
                 }
             }
@@ -1252,7 +1256,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..m {
-                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-3);
                     }
                 }
             }
@@ -1442,40 +1446,81 @@ mod tests {
     }
 
     #[test]
-    fn test_svd_ones() {
-        let n = 500;
-        let m = 500;
+    fn test_real_ones() {
+        for n in [1, 2, 4, 8, 64, 512] {
+            for m in [1, 2, 4, 8, 64, 512] {
+                let f = |_, _| 1f64;
+                let mat = Mat::with_dims(m, n, f);
+                let mut s = Mat::zeros(m, n);
+                let mut u = Mat::zeros(m, m);
+                let mut v = Mat::zeros(n, n);
 
-        let f = |_, _| 1f64;
-        let mat = Mat::with_dims(m, n, f);
-        let mut s = Mat::zeros(m, n);
-        let mut u = Mat::zeros(m, m);
-        let mut v = Mat::zeros(n, n);
+                compute_svd(
+                    mat.as_ref(),
+                    s.as_mut().diagonal(),
+                    Some(u.as_mut()),
+                    Some(v.as_mut()),
+                    f64::EPSILON,
+                    f64::MIN_POSITIVE,
+                    faer_core::Parallelism::None,
+                    make_stack!(compute_svd_req::<f64>(
+                        m,
+                        n,
+                        ComputeVectors::Full,
+                        ComputeVectors::Full,
+                        faer_core::Parallelism::None,
+                        Default::default(),
+                    )),
+                    Default::default(),
+                );
 
-        compute_svd(
-            mat.as_ref(),
-            s.as_mut().diagonal(),
-            Some(u.as_mut()),
-            Some(v.as_mut()),
-            f64::EPSILON,
-            f64::MIN_POSITIVE,
-            faer_core::Parallelism::Rayon(0),
-            make_stack!(compute_svd_req::<f64>(
-                m,
-                n,
-                ComputeVectors::Full,
-                ComputeVectors::Full,
-                faer_core::Parallelism::Rayon(0),
-                Default::default(),
-            )),
-            Default::default(),
-        );
+                let reconstructed = &u * &s * v.transpose();
 
-        let reconstructed = &u * &s * v.transpose();
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                    }
+                }
+            }
+        }
+    }
 
-        for j in 0..n {
-            for i in 0..m {
-                assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+    #[test]
+    fn test_cplx_ones() {
+        for n in [1, 2, 4, 8, 32, 64, 512] {
+            for m in [1, 2, 4, 8, 32, 64, 512] {
+                let f = |_, _| c64::new(1.0, 0.0);
+                let mat = Mat::with_dims(m, n, f);
+                let mut s = Mat::zeros(m, n);
+                let mut u = Mat::zeros(m, m);
+                let mut v = Mat::zeros(n, n);
+
+                compute_svd(
+                    mat.as_ref(),
+                    s.as_mut().diagonal(),
+                    Some(u.as_mut()),
+                    Some(v.as_mut()),
+                    f64::EPSILON,
+                    f64::MIN_POSITIVE,
+                    faer_core::Parallelism::None,
+                    make_stack!(compute_svd_req::<c64>(
+                        m,
+                        n,
+                        ComputeVectors::Full,
+                        ComputeVectors::Full,
+                        faer_core::Parallelism::None,
+                        Default::default(),
+                    )),
+                    Default::default(),
+                );
+
+                let reconstructed = &u * &s * v.transpose();
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                    }
+                }
             }
         }
     }

@@ -1364,7 +1364,12 @@ impl ComplexField for c32 {
         } else if self.re == inf || self.im == inf {
             Self::zero()
         } else {
-            self.conj().scale_real(&self.abs2().inv())
+            let re = self.real().abs();
+            let im = self.imag().abs();
+            let max = if re > im { re } else { im };
+            let max_inv = max.inv();
+            let x = self.scale_real(&max_inv);
+            x.conj().scale_real(&x.abs2().inv().mul(&max_inv))
         }
     }
 
@@ -1652,7 +1657,12 @@ impl ComplexField for c64 {
         } else if self.re == inf || self.im == inf {
             Self::zero()
         } else {
-            self.conj().scale_real(&self.abs2().inv())
+            let re = self.real().abs();
+            let im = self.imag().abs();
+            let max = if re > im { re } else { im };
+            let max_inv = max.inv();
+            let x = self.scale_real(&max_inv);
+            x.conj().scale_real(&x.abs2().inv().mul(&max_inv))
         }
     }
 
@@ -1944,7 +1954,12 @@ impl<E: RealField> ComplexField for Complex<E> {
         } else if self.re == inf || self.im == inf {
             Self::zero()
         } else {
-            self.conj().scale_real(&self.abs2().inv())
+            let re = self.real().abs();
+            let im = self.imag().abs();
+            let max = if re > im { re } else { im };
+            let max_inv = max.inv();
+            let x = self.scale_real(&max_inv);
+            x.conj().scale_real(&x.abs2().inv().mul(&max_inv))
         }
     }
 
