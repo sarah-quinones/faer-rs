@@ -48,11 +48,16 @@ pub fn make_householder_in_place<E: ComplexField>(
     head: E,
     tail_squared_norm: E::Real,
 ) -> (E, E) {
+    if tail_squared_norm == E::Real::zero() {
+        return (E::from_real(E::Real::zero().inv()), head);
+    }
+
     let one_half = E::Real::from_f64(0.5);
+
     let head_squared_norm = head.mul(&head.conj()).real();
     let norm = head_squared_norm.add(&tail_squared_norm).sqrt();
 
-    let sign = if head != E::zero() {
+    let sign = if head_squared_norm != E::Real::zero() {
         head.scale_real(&head_squared_norm.sqrt().inv())
     } else {
         E::one()

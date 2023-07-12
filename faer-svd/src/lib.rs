@@ -1440,4 +1440,43 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_svd_ones() {
+        let n = 500;
+        let m = 500;
+
+        let f = |_, _| 1f64;
+        let mat = Mat::with_dims(m, n, f);
+        let mut s = Mat::zeros(m, n);
+        let mut u = Mat::zeros(m, m);
+        let mut v = Mat::zeros(n, n);
+
+        compute_svd(
+            mat.as_ref(),
+            s.as_mut().diagonal(),
+            Some(u.as_mut()),
+            Some(v.as_mut()),
+            f64::EPSILON,
+            f64::MIN_POSITIVE,
+            faer_core::Parallelism::Rayon(0),
+            make_stack!(compute_svd_req::<f64>(
+                m,
+                n,
+                ComputeVectors::Full,
+                ComputeVectors::Full,
+                faer_core::Parallelism::Rayon(0),
+                Default::default(),
+            )),
+            Default::default(),
+        );
+
+        let reconstructed = &u * &s * v.transpose();
+
+        for j in 0..n {
+            for i in 0..m {
+                assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+            }
+        }
+    }
 }
