@@ -4540,6 +4540,15 @@ impl<E: Entity> Mat<E> {
         self.as_ref().read(row, col)
     }
 
+    /// Return a column as a slice.
+    #[inline(always)]
+    #[track_caller]
+    pub fn col_as_slice(&self, col: usize) -> <E as Entity>::Group<&[<E as Entity>::Unit]> {
+        E::map(self.as_ref().ptr_at(0, col), |ptr| unsafe {
+            core::slice::from_raw_parts(ptr, self.nrows())
+        })
+    }
+
     #[inline(always)]
     #[track_caller]
     pub unsafe fn write_unchecked(&mut self, row: usize, col: usize, value: E) {
@@ -5470,5 +5479,19 @@ mod tests {
         let mut x_mut = x.as_mut();
         x_mut *= 2.0;
         assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn mat_col_as_slice() {
+        let x = mat![
+            [0.0, 1.0, 2.5],
+            [2.0, 3.0, 4.5],
+            [4.0, 5.0, 6.5],
+            [6.0, 7.0, 8.5]
+        ];
+
+        assert_eq!(x.col_as_slice(0), &[0.0, 2.0, 4.0, 6.0]);
+        assert_eq!(x.col_as_slice(1), &[1.0, 3.0, 5.0, 7.0]);
+        assert_eq!(x.col_as_slice(2), &[2.5, 4.5, 6.5, 8.5]);
     }
 }
