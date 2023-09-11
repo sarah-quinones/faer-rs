@@ -8,6 +8,7 @@ members = [
   "faer-evd",
 ]
 exclude = ["faer-bench"]
+resolver = "2"
 
 [workspace.dependencies]
 coe-rs = "0.1"

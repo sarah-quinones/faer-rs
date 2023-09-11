@@ -1,3 +1,5 @@
+//! Matrix zipping module.
+
 use crate::{Entity, MatMut, MatRef};
 use assert2::{assert, debug_assert};
 use core::mem::MaybeUninit;
@@ -8,6 +10,8 @@ mod seal {
     pub trait Seal {}
 }
 
+/// Specifies whether the main diagonal should be traversed, when iterating over a triangular chunk
+/// of the matrix.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Diag {
     /// Do not include diagonal of matrix
@@ -16,9 +20,11 @@ pub enum Diag {
     Include,
 }
 
+/// Read only view over a single matrix element.
 pub struct Read<'a, E: Entity> {
     ptr: E::Group<&'a MaybeUninit<E::Unit>>,
 }
+/// Read-write view over a single matrix element.
 pub struct ReadWrite<'a, E: Entity> {
     ptr: E::Group<&'a mut MaybeUninit<E::Unit>>,
 }
@@ -55,6 +61,7 @@ impl<E: Entity> ReadWrite<'_, E> {
     }
 }
 
+/// Internal trait for abstracting over [`MatRef`] and [`MatMut`].
 pub trait Mat<'short, Outlives = &'short Self>: Seal {
     type Item;
     type RawSlice;
@@ -74,6 +81,7 @@ pub trait Mat<'short, Outlives = &'short Self>: Seal {
         n_elems: usize,
     ) -> Self::RawSlice;
 
+    #[doc(hidden)]
     // this is a bad api since it needs to extend the lifetime of slice, but this is somewhat fine
     // since we only use it internally in this module
     unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item;
@@ -219,6 +227,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
     }
 }
 
+/// Structure holding matrix views with matching dimensions.
 pub struct Zip<Tuple> {
     pub(crate) tuple: Tuple,
 }

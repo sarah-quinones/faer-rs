@@ -650,6 +650,10 @@ pub fn rank_r_update_clobber<E: ComplexField>(
     assert!(w.nrows() == n);
     assert!(alpha.nrows() == k);
 
+    if n == 0 {
+        return;
+    }
+
     RankRUpdate {
         ld: cholesky_factors,
         w,
@@ -832,7 +836,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     let r = inserted_matrix.ncols();
 
     assert!(cholesky_factors_extended.ncols() == new_n);
-    assert!(r < new_n);
+    assert!(r <= new_n);
     let old_n = new_n - r;
 
     assert!(insertion_index <= old_n);
