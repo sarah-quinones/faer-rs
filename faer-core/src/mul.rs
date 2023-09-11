@@ -1,3 +1,5 @@
+//! Matrix multiplication.
+
 use crate::{
     c32, c64, simd::*, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
     Parallelism, SimdGroup,
@@ -7,6 +9,7 @@ use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use pulp::Simd;
 use reborrow::*;
 
+#[doc(hidden)]
 pub mod inner_prod {
     use super::*;
     use assert2::assert;
@@ -617,6 +620,7 @@ mod matvec_colmajor {
     }
 }
 
+#[doc(hidden)]
 pub mod matvec {
     use super::*;
 
@@ -686,6 +690,7 @@ pub mod matvec {
     }
 }
 
+#[doc(hidden)]
 pub mod outer_prod {
     use super::*;
     use assert2::assert;
@@ -1902,6 +1907,62 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     }
 }
 
+/// Computes the matrix product `[alpha * acc] + beta * lhs * rhs` (while optionally conjugating
+/// either or both of the input matrices) and stores the result in `acc`.
+///
+/// Performs the operation:
+/// - `acc = beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `None` (in this case, the preexisting
+/// values in `acc` are not read, so it is allowed to be a view over uninitialized values if `E:
+/// Copy`),
+/// - `acc = alpha * acc + beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `Some(_)`,
+///
+/// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
+/// `Conj::Yes`.  
+/// `Op_rhs` is the identity if `conj_rhs` is `Conj::No`, and the conjugation operation if it is
+/// `Conj::Yes`.  
+///
+/// # Panics
+///
+/// Panics if the matrix dimensions are not compatible for matrix multiplication.  
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// # Example
+///
+/// ```
+/// use faer_core::{mat, mul::matmul_with_conj, zipped, Conj, Mat, Parallelism};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+///     [
+///         2.5 * (lhs.read(0, 0) * rhs.read(0, 0) + lhs.read(0, 1) * rhs.read(1, 0)),
+///         2.5 * (lhs.read(0, 0) * rhs.read(0, 1) + lhs.read(0, 1) * rhs.read(1, 1)),
+///     ],
+///     [
+///         2.5 * (lhs.read(1, 0) * rhs.read(0, 0) + lhs.read(1, 1) * rhs.read(1, 0)),
+///         2.5 * (lhs.read(1, 0) * rhs.read(0, 1) + lhs.read(1, 1) * rhs.read(1, 1)),
+///     ],
+/// ];
+///
+/// matmul_with_conj(
+///     acc.as_mut(),
+///     lhs.as_ref(),
+///     Conj::No,
+///     rhs.as_ref(),
+///     Conj::No,
+///     None,
+///     2.5,
+///     Parallelism::None,
+/// );
+///
+/// zipped!(acc.as_ref(), target.as_ref())
+///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+/// ```
 #[inline]
 #[track_caller]
 pub fn matmul_with_conj<E: ComplexField>(
@@ -1930,6 +1991,54 @@ pub fn matmul_with_conj<E: ComplexField>(
     );
 }
 
+/// Computes the matrix product `[alpha * acc] + beta * lhs * rhs` and
+/// stores the result in `acc`.
+///
+/// Performs the operation:
+/// - `acc = beta * lhs * rhs` if `alpha` is `None` (in this case, the preexisting values in `acc`
+///   are not read, so it is allowed to be a view over uninitialized values if `E: Copy`),
+/// - `acc = alpha * acc + beta * lhs * rhs` if `alpha` is `Some(_)`,
+///
+/// # Panics
+///
+/// Panics if the matrix dimensions are not compatible for matrix multiplication.  
+/// i.e.  
+///  - `acc.nrows() == lhs.nrows()`
+///  - `acc.ncols() == rhs.ncols()`
+///  - `lhs.ncols() == rhs.nrows()`
+///
+/// # Example
+///
+/// ```
+/// use faer_core::{mat, mul::matmul, zipped, Mat, Parallelism};
+///
+/// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+/// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+///
+/// let mut acc = Mat::<f64>::zeros(2, 2);
+/// let target = mat![
+///     [
+///         2.5 * (lhs.read(0, 0) * rhs.read(0, 0) + lhs.read(0, 1) * rhs.read(1, 0)),
+///         2.5 * (lhs.read(0, 0) * rhs.read(0, 1) + lhs.read(0, 1) * rhs.read(1, 1)),
+///     ],
+///     [
+///         2.5 * (lhs.read(1, 0) * rhs.read(0, 0) + lhs.read(1, 1) * rhs.read(1, 0)),
+///         2.5 * (lhs.read(1, 0) * rhs.read(0, 1) + lhs.read(1, 1) * rhs.read(1, 1)),
+///     ],
+/// ];
+///
+/// matmul(
+///     acc.as_mut(),
+///     lhs.as_ref(),
+///     rhs.as_ref(),
+///     None,
+///     2.5,
+///     Parallelism::None,
+/// );
+///
+/// zipped!(acc.as_ref(), target.as_ref())
+///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+/// ```
 #[track_caller]
 pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
     acc: MatMut<'_, E>,
@@ -2766,8 +2875,14 @@ pub mod triangular {
         }
     }
 
-    /// Computes the matrix product `[alpha * acc] + beta * Op_lhs(lhs) * Op_rhs(rhs)` and
-    /// stores the result in `acc`.
+    /// Computes the matrix product `[alpha * acc] + beta * lhs * rhs` (while optionally conjugating
+    /// either or both of the input matrices) and stores the result in `acc`.
+    ///
+    /// Performs the operation:
+    /// - `acc = beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `None` (in this case, the
+    ///   preexisting values in `acc` are not read, so it is allowed to be a view over uninitialized
+    ///   values if `E: Copy`),
+    /// - `acc = alpha * acc + beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `Some(_)`,
     ///
     /// The left hand side and right hand side may be interpreted as triangular depending on the
     /// given corresponding matrix structure.  
@@ -2778,9 +2893,6 @@ pub mod triangular {
     /// triangular,
     /// - only the strict triangular half (excluding the diagonal) is computed if the structure is
     /// strictly triangular or unit triangular.
-    ///
-    /// If `alpha` is not provided, he preexisting values in `acc` are not read so it is allowed to
-    /// be a view over uninitialized values if `E: Copy`.
     ///
     /// `Op_lhs` is the identity if `conj_lhs` is `Conj::No`, and the conjugation operation if it is
     /// `Conj::Yes`.  
@@ -2885,6 +2997,74 @@ pub mod triangular {
         }
     }
 
+    /// Computes the matrix product `[alpha * acc] + beta * lhs * rhs` and stores the result in
+    /// `acc`.
+    ///
+    /// Performs the operation:
+    /// - `acc = beta * lhs * rhs` if `alpha` is `None` (in this case, the preexisting values in
+    ///   `acc` are not read, so it is allowed to be a view over uninitialized values if `E: Copy`),
+    /// - `acc = alpha * acc + beta * lhs * rhs` if `alpha` is `Some(_)`,
+    ///
+    /// The left hand side and right hand side may be interpreted as triangular depending on the
+    /// given corresponding matrix structure.  
+    ///
+    /// For the destination matrix, the result is:
+    /// - fully computed if the structure is rectangular,
+    /// - only the triangular half (including the diagonal) is computed if the structure is
+    /// triangular,
+    /// - only the strict triangular half (excluding the diagonal) is computed if the structure is
+    /// strictly triangular or unit triangular.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the matrix dimensions are not compatible for matrix multiplication.  
+    /// i.e.  
+    ///  - `acc.nrows() == lhs.nrows()`
+    ///  - `acc.ncols() == rhs.ncols()`
+    ///  - `lhs.ncols() == rhs.nrows()`
+    ///
+    ///  Additionally, matrices that are marked as triangular must be square, i.e., they must have
+    ///  the same number of rows and columns.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use faer_core::{
+    ///     mat,
+    ///     mul::triangular::{matmul, BlockStructure},
+    ///     zipped, Conj, Mat, Parallelism,
+    /// };
+    ///
+    /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
+    /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
+    ///
+    /// let mut acc = Mat::<f64>::zeros(2, 2);
+    /// let target = mat![
+    ///     [
+    ///         2.5 * (lhs.read(0, 0) * rhs.read(0, 0) + lhs.read(0, 1) * rhs.read(1, 0)),
+    ///         0.0,
+    ///     ],
+    ///     [
+    ///         2.5 * (lhs.read(1, 0) * rhs.read(0, 0) + lhs.read(1, 1) * rhs.read(1, 0)),
+    ///         2.5 * (lhs.read(1, 0) * rhs.read(0, 1) + lhs.read(1, 1) * rhs.read(1, 1)),
+    ///     ],
+    /// ];
+    ///
+    /// matmul(
+    ///     acc.as_mut(),
+    ///     BlockStructure::TriangularLower,
+    ///     lhs.as_ref(),
+    ///     BlockStructure::Rectangular,
+    ///     rhs.as_ref(),
+    ///     BlockStructure::Rectangular,
+    ///     None,
+    ///     2.5,
+    ///     Parallelism::None,
+    /// );
+    ///
+    /// zipped!(acc.as_ref(), target.as_ref())
+    ///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+    /// ```
     #[track_caller]
     #[inline]
     pub fn matmul<

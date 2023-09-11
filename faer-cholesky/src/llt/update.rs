@@ -918,6 +918,10 @@ pub fn rank_r_update_clobber<E: ComplexField>(
     assert!(w.nrows() == n);
     assert!(alpha.nrows() == k);
 
+    if n == 0 {
+        return Ok(());
+    }
+
     RankRUpdate {
         l: cholesky_factor,
         w,

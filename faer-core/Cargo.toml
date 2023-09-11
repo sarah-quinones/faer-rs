@@ -31,7 +31,7 @@ std = ["gemm/std", "pulp/std"]
 nightly = ["gemm/nightly", "pulp/nightly"]
 
 [dev-dependencies]
-criterion = "0.4"
+criterion = "0.5"
 rand = "0.8.5"
 nalgebra = "0.32.2"
 assert_approx_eq = "1.1.0"
