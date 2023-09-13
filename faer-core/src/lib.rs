@@ -1,3 +1,79 @@
+//! `faer` is a linear algebra library for Rust, with a focus on high performance for
+//! medium/large matrices.
+//!
+//! The core module contains the building blocks of linear algebra:
+//! * Matrix structure definitions: [`Mat`], [`MatRef`], and [`MatMut`].
+//! * Coefficient-wise matrix operations, like addition and subtraction: either using the builtin
+//! `+` and `-` operators or using the low level api [`zipped!`].
+//! * Matrix multiplication: either using the builtin `*` operator or the low level [`mul`] module.
+//! * Triangular matrix solve: the [`solve`] module.
+//! * Triangular matrix inverse: the [`inverse`] module.
+//! * Householder matrix multiplication: the [`householder`] module.
+//!
+//! # Example
+//! ```
+//! use faer_core::{mat, Mat};
+//!
+//! let a = mat![
+//!     [1.0, 5.0, 9.0],
+//!     [2.0, 6.0, 10.0],
+//!     [3.0, 7.0, 11.0],
+//!     [4.0, 8.0, 12.0f64],
+//! ];
+//!
+//! let b = Mat::<f64>::with_dims(4, 3, |i, j| (i + j) as f64);
+//!
+//! let add = &a + &b;
+//! let sub = &a - &b;
+//! let mul = &a * b.transpose();
+//! ```
+//!
+//! # Entity trait
+//! Matrices are built on top of the [`Entity`] trait, which describes the prefered memory storage
+//! layout for a given type `E`. An entity can be decomposed into a group of units: for a natively
+//! supported type ([`f32`], [`f64`], [`c32`], [`c64`]), the unit is simply the type itself, and a
+//! group contains a single element. On the other hand, for a type with a more specific preferred
+//! layout, like an extended precision floating point type, or a dual number type, the unit would
+//! be one of the natively supported types, and the group would be a structure holding the
+//! components that build up the full value.
+//!
+//! To take a more specific example: [`num_complex::Complex<f64>`] has a storage memory layout that
+//! differs from that of [`c64`] (see [`complex_native`] for more details). Its real and complex
+//! components are stored separately, so its unit type is `f64`, while its group type is `Complex`.
+//! In practice, this means that for a `Mat<f64>`, methods such as [`Mat::col_ref`] will return a
+//! `&[f64]`. Meanwhile, for a `Mat<Complex<f64>>`, [`Mat::col_ref`] will return `Complex<&[f64]>`,
+//! which holds two slices, each pointing respectively to a view over the real and the imaginary
+//! components.
+//!
+//! While the design of the entity trait is unconventional, it helps us achieve much higher
+//! performance when targetting non native types, due to the design matching the typical preffered
+//! CPU layout for SIMD operations. And for native types, since [`Group<T>` is just
+//! `T`](Entity#impl-Entity-for-f64), the entity layer is a no-op, and the matrix layout is
+//! compatible with the classic contiguous layout that's commonly used by other libraries.
+//!
+//! # Memory allocation
+//! Since most `faer` crates aim to expose a low level api for optimal performance, all algorithms
+//! are mostly allocation-free in single threaded settings, and allocate minimal amounts in
+//! multithreaded settings.
+//!
+//! However, since a lot of algorithms need some form of temporary space for intermediate
+//! computations, they may ask for a slice of memory for that purpose, by taking a [`stack:
+//! DynStack`](dyn_stack::DynStack) parameter. A `DynStack` is a thin wrapper over a slice of
+//! possibly uninitialized memory bytes. This memory may come from any valid source (heap
+//! allocation, fixed-size array on the stack, etc.). The functions taking a `DynStack` parameter
+//! have a corresponding function with a similar name ending in `_req` that returns the memory
+//! requirements of the algorithm. For example:
+//! [`householder::apply_block_householder_on_the_left_in_place_with_conj`] and
+//! [`householder::apply_block_householder_on_the_left_in_place_req`].
+//!
+//! The memory stack may be reused in user-code to avoid repeated allocations, and it is also
+//! possible to compute the sum ([`dyn_stack::StackReq::all_of`]) or union
+//! ([`dyn_stack::StackReq::any_of`]) of multiple requirements, in order to optimally combine them
+//! into a single allocation.
+//!
+//! After computing a [`dyn_stack::StackReq`], one can query its size and alignment to allocate the
+//! required memory. The simplest way to do so is through [`dyn_stack::GlobalMemBuffer::new`].
+
 use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::{
@@ -5178,6 +5254,34 @@ impl<E: Entity> Mat<E> {
         }
     }
 
+    /// Returns a reference to a slice over the column at the given index.
+    #[inline]
+    #[track_caller]
+    pub fn col_ref(&self, col: usize) -> E::Group<&[E::Unit]> {
+        assert!(col < self.ncols());
+        let nrows = self.nrows();
+        let ptr = self.as_ref().ptr_at(0, col);
+        E::map(
+            ptr,
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts(ptr, nrows) },
+        )
+    }
+
+    /// Returns a mutable reference to a slice over the column at the given index.
+    #[inline]
+    #[track_caller]
+    pub fn col_mut(&mut self, col: usize) -> E::Group<&mut [E::Unit]> {
+        assert!(col < self.ncols());
+        let nrows = self.nrows();
+        let ptr = self.as_mut().ptr_at(0, col);
+        E::map(
+            ptr,
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, nrows) },
+        )
+    }
+
     /// Returns a view over the matrix.
     #[inline]
     pub fn as_ref(&self) -> MatRef<'_, E> {
@@ -6159,5 +6263,18 @@ mod tests {
         let mut x_mut = x.as_mut();
         x_mut *= 2.0;
         assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_col_slice() {
+        let mut matrix = mat![[1.0, 5.0, 9.0], [2.0, 6.0, 10.0], [3.0, 7.0, 11.0f64]];
+
+        assert_eq!(matrix.col_ref(1), &[5.0, 6.0, 7.0]);
+        assert_eq!(matrix.col_mut(0), &[1.0, 2.0, 3.0]);
+
+        matrix.col_mut(0).copy_from_slice(&[-1.0, -2.0, -3.0]);
+
+        let expected = mat![[-1.0, 5.0, 9.0], [-2.0, 6.0, 10.0], [-3.0, 7.0, 11.0f64]];
+        assert_eq!(matrix, expected);
     }
 }
