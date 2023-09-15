@@ -646,7 +646,45 @@ pub fn compute_svd_req<E: ComplexField>(
 /// - The number of columns may be either equal to the number of rows, or it may be equal to the
 /// minimum of `matrix.nrows()` and `matrix.ncols()`, in which case only the singular vectors
 /// corresponding to the provided column storage are computed.
+///
+/// # Panics
+/// Panics if any of the conditions described above is violated, or if the type `E` does not have a
+/// fixed precision at compile time, e.g. a dynamic multiprecision floating point type.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see [`compute_svd_req`]).
+#[track_caller]
 pub fn compute_svd<E: ComplexField>(
+    matrix: MatRef<'_, E>,
+    s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    v: Option<MatMut<'_, E>>,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: SvdParams,
+) {
+    compute_svd_custom_epsilon(
+        matrix,
+        s,
+        u,
+        v,
+        E::Real::epsilon().unwrap(),
+        E::Real::zero_threshold().unwrap(),
+        parallelism,
+        stack,
+        params,
+    );
+}
+
+/// See [`compute_svd`].
+///
+/// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
+/// represents the precision of the values in the matrix, and `zero_threshold` is the value below
+/// which the precision starts to deteriorate, e.g. due to denormalized numbers.
+///
+/// These values need to be provided manually for types that do not have a known precision at
+/// compile time, e.g. a dynamic multiprecision floating point type.
+#[track_caller]
+pub fn compute_svd_custom_epsilon<E: ComplexField>(
     matrix: MatRef<'_, E>,
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
@@ -1015,8 +1053,6 @@ mod tests {
                     s.as_mut().submatrix(0, 0, size, size).diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f64::EPSILON,
-                    f64::MIN_POSITIVE,
                     Parallelism::None,
                     make_stack!(compute_svd_req::<f64>(
                         m,
@@ -1056,8 +1092,6 @@ mod tests {
                     s.as_mut().submatrix(0, 0, size, size).diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f32::EPSILON,
-                    f32::MIN_POSITIVE,
                     Parallelism::None,
                     make_stack!(compute_svd_req::<f32>(
                         m,
@@ -1123,8 +1157,6 @@ mod tests {
                             } else {
                                 Some(v.as_mut())
                             },
-                            f64::EPSILON,
-                            f64::MIN_POSITIVE,
                             Parallelism::None,
                             make_stack!(compute_svd_req::<f64>(
                                 m,
@@ -1146,8 +1178,6 @@ mod tests {
                             s_target.as_mut().submatrix(0, 0, size, size).diagonal(),
                             Some(u_target.as_mut()),
                             Some(v_target.as_mut()),
-                            f64::EPSILON,
-                            f64::MIN_POSITIVE,
                             Parallelism::None,
                             make_stack!(compute_svd_req::<f64>(
                                 m,
@@ -1197,8 +1227,6 @@ mod tests {
                     s.as_mut().submatrix(0, 0, size, size).diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f64::EPSILON,
-                    f64::MIN_POSITIVE,
                     Parallelism::None,
                     make_stack!(compute_svd_req::<c64>(
                         m,
@@ -1238,8 +1266,6 @@ mod tests {
                     s.as_mut().submatrix(0, 0, size, size).diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f32::EPSILON,
-                    f32::MIN_POSITIVE,
                     Parallelism::None,
                     make_stack!(compute_svd_req::<c32>(
                         m,
@@ -1306,8 +1332,6 @@ mod tests {
                             } else {
                                 Some(v.as_mut())
                             },
-                            f64::EPSILON,
-                            f64::MIN_POSITIVE,
                             Parallelism::None,
                             make_stack!(compute_svd_req::<c64>(
                                 m,
@@ -1329,8 +1353,6 @@ mod tests {
                             s_target.as_mut().submatrix(0, 0, size, size).diagonal(),
                             Some(u_target.as_mut()),
                             Some(v_target.as_mut()),
-                            f64::EPSILON,
-                            f64::MIN_POSITIVE,
                             Parallelism::None,
                             make_stack!(compute_svd_req::<c64>(
                                 m,
@@ -1460,8 +1482,6 @@ mod tests {
                     s.as_mut().diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f64::EPSILON,
-                    f64::MIN_POSITIVE,
                     faer_core::Parallelism::None,
                     make_stack!(compute_svd_req::<f64>(
                         m,
@@ -1500,8 +1520,6 @@ mod tests {
                     s.as_mut().diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    f64::EPSILON,
-                    f64::MIN_POSITIVE,
                     faer_core::Parallelism::None,
                     make_stack!(compute_svd_req::<c64>(
                         m,

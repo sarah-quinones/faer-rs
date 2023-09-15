@@ -789,6 +789,9 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 
 /// Unstable trait containing the operations that a real number type needs to implement.
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
+    fn epsilon() -> Option<Self>;
+    fn zero_threshold() -> Option<Self>;
+
     fn div(&self, rhs: &Self) -> Self;
 
     fn usize_to_index(a: usize) -> Self::Index;
@@ -1308,6 +1311,15 @@ impl ComplexField for f64 {
 }
 impl RealField for f32 {
     #[inline(always)]
+    fn epsilon() -> Option<Self> {
+        Some(Self::EPSILON)
+    }
+    #[inline(always)]
+    fn zero_threshold() -> Option<Self> {
+        Some(Self::MIN_POSITIVE)
+    }
+
+    #[inline(always)]
     fn div(&self, rhs: &Self) -> Self {
         self / rhs
     }
@@ -1402,6 +1414,14 @@ impl RealField for f32 {
     }
 }
 impl RealField for f64 {
+    #[inline(always)]
+    fn epsilon() -> Option<Self> {
+        Some(Self::EPSILON)
+    }
+    #[inline(always)]
+    fn zero_threshold() -> Option<Self> {
+        Some(Self::MIN_POSITIVE)
+    }
     #[inline(always)]
     fn div(&self, rhs: &Self) -> Self {
         self / rhs

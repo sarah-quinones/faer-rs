@@ -106,7 +106,42 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
 ///
 /// If `u` is `None`, then only the eigenvalues are computed. Otherwise, the eigenvectors are
 /// computed and stored in `u`.
+///
+/// # Panics
+/// Panics if any of the conditions described above is violated, or if the type `E` does not have a
+/// fixed precision at compile time, e.g. a dynamic multiprecision floating point type.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`compute_hermitian_evd_req`]).
 pub fn compute_hermitian_evd<E: ComplexField>(
+    matrix: MatRef<'_, E>,
+    s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: SymmetricEvdParams,
+) {
+    compute_hermitian_evd_custom_epsilon(
+        matrix,
+        s,
+        u,
+        E::Real::epsilon().unwrap(),
+        E::Real::zero_threshold().unwrap(),
+        parallelism,
+        stack,
+        params,
+    );
+}
+
+/// See [`compute_hermitian_evd`].
+///
+/// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
+/// represents the precision of the values in the matrix, and `zero_threshold` is the value below
+/// which the precision starts to deteriorate, e.g. due to denormalized numbers.
+///
+/// These values need to be provided manually for types that do not have a known precision at
+/// compile time, e.g. a dynamic multiprecision floating point type.
+pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     matrix: MatRef<'_, E>,
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
@@ -278,13 +313,49 @@ pub fn compute_hermitian_evd<E: ComplexField>(
 /// eigenvalues are stored consecutively. And the real and imaginary parts of the eigenvector
 /// corresponding to the eigenvalue $a + ib$ are stored at indices `k` and `k+1`. The eigenvector
 /// corresponding to $a - ib$ can be computed as the conjugate of that vector.
+///
+/// # Panics
+/// Panics if any of the conditions described above is violated, or if the type `E` does not have a
+/// fixed precision at compile time, e.g. a dynamic multiprecision floating point type.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see [`compute_evd_req`]).
 pub fn compute_evd_real<E: RealField>(
     matrix: MatRef<'_, E>,
     s_re: MatMut<'_, E>,
     s_im: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
-    epsilon: E::Real,
-    zero_threshold: E::Real,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: EvdParams,
+) {
+    compute_evd_real_custom_epsilon(
+        matrix,
+        s_re,
+        s_im,
+        u,
+        E::epsilon().unwrap(),
+        E::zero_threshold().unwrap(),
+        parallelism,
+        stack,
+        params,
+    );
+}
+
+/// See [`compute_evd_real`].
+///
+/// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
+/// represents the precision of the values in the matrix, and `zero_threshold` is the value below
+/// which the precision starts to deteriorate, e.g. due to denormalized numbers.
+///
+/// These values need to be provided manually for types that do not have a known precision at
+/// compile time, e.g. a dynamic multiprecision floating point type.
+pub fn compute_evd_real_custom_epsilon<E: RealField>(
+    matrix: MatRef<'_, E>,
+    s_re: MatMut<'_, E>,
+    s_im: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    epsilon: E,
+    zero_threshold: E,
     parallelism: Parallelism,
     stack: DynStack<'_>,
     params: EvdParams,
@@ -679,7 +750,41 @@ pub fn compute_evd_req<E: ComplexField>(
 ///
 /// If `u` is `None`, then only the eigenvalues are computed. Otherwise, the eigenvectors are
 /// computed and stored in `u`.
+///
+/// # Panics
+/// Panics if any of the conditions described above is violated, or if the type `E` does not have a
+/// fixed precision at compile time, e.g. a dynamic multiprecision floating point type.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see [`compute_evd_req`]).
 pub fn compute_evd_complex<E: ComplexField>(
+    matrix: MatRef<'_, E>,
+    s: MatMut<'_, E>,
+    u: Option<MatMut<'_, E>>,
+    parallelism: Parallelism,
+    stack: DynStack<'_>,
+    params: EvdParams,
+) {
+    compute_evd_complex_custom_epsilon(
+        matrix,
+        s,
+        u,
+        E::Real::epsilon().unwrap(),
+        E::Real::zero_threshold().unwrap(),
+        parallelism,
+        stack,
+        params,
+    );
+}
+
+/// See [`compute_evd_complex`].
+///
+/// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
+/// represents the precision of the values in the matrix, and `zero_threshold` is the value below
+/// which the precision starts to deteriorate, e.g. due to denormalized numbers.
+///
+/// These values need to be provided manually for types that do not have a known precision at
+/// compile time, e.g. a dynamic multiprecision floating point type.
+pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     matrix: MatRef<'_, E>,
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
@@ -850,8 +955,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
                     n,
@@ -886,8 +989,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
                     n,
@@ -921,8 +1022,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
                     n,
@@ -955,8 +1054,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
                     n,
@@ -990,8 +1087,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
                     n,
@@ -1024,8 +1119,6 @@ mod herm_tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
                     n,
@@ -1080,8 +1173,6 @@ mod tests {
                     s_re.as_mut().diagonal(),
                     s_im.as_mut().diagonal(),
                     Some(u_re.as_mut()),
-                    f64::EPSILON,
-                    f64::MIN_POSITIVE,
                     Parallelism::None,
                     make_stack!(compute_evd_req::<c64>(
                         n,
@@ -1144,8 +1235,6 @@ mod tests {
                 s_re.as_mut().diagonal(),
                 s_im.as_mut().diagonal(),
                 Some(u_re.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
                     n,
@@ -1207,8 +1296,6 @@ mod tests {
                 s_re.as_mut().diagonal(),
                 s_im.as_mut().diagonal(),
                 Some(u_re.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
                     n,
@@ -1265,8 +1352,6 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
                     n,
@@ -1302,8 +1387,6 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
                     n,
@@ -1337,8 +1420,6 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal(),
                 Some(u.as_mut()),
-                f64::EPSILON,
-                f64::MIN_POSITIVE,
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
                     n,
