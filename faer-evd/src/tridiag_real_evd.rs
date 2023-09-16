@@ -48,8 +48,8 @@ fn secular_eq<E: RealField>(
         let mut i = 0;
 
         while i < n / 8 * 8 {
-            let z0 = z.read_unchecked(i + 0, 0);
-            let d0 = d.read_unchecked(i + 0, 0);
+            let z0 = z.read_unchecked(i, 0);
+            let d0 = d.read_unchecked(i, 0);
             let z1 = z.read_unchecked(i + 1, 0);
             let d1 = d.read_unchecked(i + 1, 0);
             let z2 = z.read_unchecked(i + 2, 0);
@@ -331,8 +331,8 @@ fn compute_eigenvalues<E: RealField>(
             }
         }
 
-        assert!(!(f_left > E::zero()));
-        assert!(!(f_right < E::zero()));
+        assert!(PartialOrd::partial_cmp(&f_left, &E::zero()) != Some(core::cmp::Ordering::Greater));
+        assert!(PartialOrd::partial_cmp(&f_right, &E::zero()) != Some(core::cmp::Ordering::Less));
 
         // try bisection just to get a good guess for secant
         while right_shifted.sub(&left_shifted)
@@ -717,10 +717,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             if i == n1 {
                 *p = n1 + j;
                 j += 1;
-            } else if j == n - n1 {
-                *p = i;
-                i += 1;
-            } else if diag[i] < diag[n1 + j] {
+            } else if (j == n - n1) || (diag[i] < diag[n1 + j]) {
                 *p = i;
                 i += 1;
             } else {
@@ -732,11 +729,11 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
     // permuted_diag = Pl * diag * Pl.T
     // permuted_z = Pl * diag
-    for i in 0..n {
-        permuted_diag.write(i, 0, diag[pl_before[i]].clone());
+    for (i, &pl_before) in pl_before.iter().enumerate() {
+        permuted_diag.write(i, 0, diag[pl_before].clone());
     }
-    for i in 0..n {
-        permuted_z.write(i, 0, z.read(pl_before[i], 0).clone());
+    for (i, &pl_before) in pl_before.iter().enumerate() {
+        permuted_z.write(i, 0, z.read(pl_before, 0).clone());
     }
 
     let mut dmax = E::zero();
@@ -771,14 +768,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         zipped!(tmp_tr.rb_mut()).for_each(|mut dst| dst.write(E::zero()));
         zipped!(tmp_bl.rb_mut()).for_each(|mut dst| dst.write(E::zero()));
 
-        for j in 0..n {
-            let dst_j = pl_before[j];
+        for (j, &dst_j) in pl_before.iter().enumerate() {
             zipped!(u.rb_mut().col(dst_j), tmp.rb().col(j))
                 .for_each(|mut dst, src| dst.write(src.read()));
         }
 
-        for j in 0..n {
-            diag[j] = permuted_diag.read(j, 0);
+        for (j, diag) in diag.iter_mut().enumerate() {
+            *diag = permuted_diag.read(j, 0);
         }
 
         return;
@@ -931,9 +927,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     }
 
     // compute singular vectors
-    for j in 0..n {
-        let pj = pr[j];
-
+    for (j, &pj) in pr.iter().enumerate() {
         if pj >= non_deflated {
             zipped!(repaired_u.rb_mut().col(j)).for_each(|mut x| x.write(E::zero()));
             repaired_u.write(pl_after[pj], j, E::one());
@@ -941,14 +935,14 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             let mu_j = mus.read(pj, 0);
             let shift_j = shifts.read(pj, 0);
 
-            for i in 0..non_deflated {
+            for (i, &pl_after) in pl_after[..non_deflated].iter().enumerate() {
                 let zi = permuted_z.read(i, 0);
                 let di = permuted_diag.read(i, 0);
 
-                repaired_u.write(pl_after[i], j, zi.div(&di.sub(&shift_j).sub(&mu_j)));
+                repaired_u.write(pl_after, j, zi.div(&di.sub(&shift_j).sub(&mu_j)));
             }
-            for i in 0..deflated {
-                repaired_u.write(pl_after[i + non_deflated], j, E::zero());
+            for &pl_after in &pl_after[non_deflated..non_deflated + deflated] {
+                repaired_u.write(pl_after, j, E::zero());
             }
 
             let inv_norm = norm2(repaired_u.rb().col(j)).sqrt().inv();
@@ -987,8 +981,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         }
 
         for j in 0..n {
-            for i in 0..n {
-                tmp.write(pl_before[i], j, repaired_u.read(i, j));
+            for (i, &pl_before) in pl_before.iter().enumerate() {
+                tmp.write(pl_before, j, repaired_u.read(i, j));
             }
         }
 

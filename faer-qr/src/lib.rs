@@ -122,6 +122,9 @@
 //! }
 //! ```
 
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+
 pub mod col_pivoting;
 pub mod no_pivoting;
 

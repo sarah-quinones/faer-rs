@@ -9,6 +9,9 @@
 //!
 //! If $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
 
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+
 use assert2::assert;
 use coe::Coerce;
 use dyn_stack::{DynStack, SizeOverflow, StackReq};

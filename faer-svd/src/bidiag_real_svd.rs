@@ -122,12 +122,12 @@ fn compute_svd_of_m<E: RealField>(
         mus.rb(),
     );
 
-    for idx in 0..actual_n {
-        diag[idx] = s.read(actual_n - idx - 1, 0);
+    for (idx, diag) in diag[..actual_n].iter_mut().enumerate() {
+        *diag = s.read(actual_n - idx - 1, 0);
     }
 
-    for idx in actual_n..n {
-        diag[idx] = s.read(idx, 0);
+    for (idx, diag) in diag[actual_n..n].iter_mut().enumerate() {
+        *diag = s.read(actual_n + idx, 0);
     }
 }
 
@@ -599,8 +599,14 @@ fn compute_singular_values_generic<E: RealField>(
                         )
                     };
 
-                assert!(!(f_left > E::zero()));
-                assert!(!(f_right < E::zero()));
+                assert!(
+                    PartialOrd::partial_cmp(&f_left, &E::zero())
+                        != Some(core::cmp::Ordering::Greater)
+                );
+                assert!(
+                    PartialOrd::partial_cmp(&f_right, &E::zero())
+                        != Some(core::cmp::Ordering::Less)
+                );
 
                 let mut iteration_count = 0;
                 let mut f_prev = f_mid;
@@ -936,7 +942,9 @@ fn deflate<E: RealField>(
 
     let mut total_deflation = true;
     for c in col0[1..].iter() {
-        if !(c.abs() < consider_zero_threshold) {
+        if PartialOrd::partial_cmp(&c.abs(), &consider_zero_threshold)
+            != Some(core::cmp::Ordering::Less)
+        {
             total_deflation = false;
             break;
         }
@@ -1118,8 +1126,8 @@ pub fn compute_bidiag_real_svd<E: RealField>(
             consider_zero_threshold,
         );
 
-        for i in 0..n {
-            diag[i] = s.read(i, i);
+        for (i, diag) in diag.iter_mut().enumerate() {
+            *diag = s.read(i, i);
         }
         if let Some(mut u) = u {
             zipped!(u.rb_mut().row(n)).for_each(|mut x| x.write(E::zero()));
@@ -1198,18 +1206,18 @@ fn bidiag_svd_impl<E: RealField>(
             u.write(0, 0, E::one());
             u.write(1, n, E::one());
         }
-        v.map(|mut v| {
+        if let Some(mut v) = v {
             v.set_zeros();
             v.diagonal().set_constant(E::one());
-        });
+        };
         return;
     }
 
     for x in &mut *diag {
-        *x = (&*x).div(&max_val);
+        *x = (*x).div(&max_val);
     }
     for x in &mut *subdiag {
-        *x = (&*x).div(&max_val);
+        *x = (*x).div(&max_val);
     }
 
     assert!(subdiag.len() == n);
@@ -1225,7 +1233,7 @@ fn bidiag_svd_impl<E: RealField>(
     let alpha = (*alpha).clone();
     let beta = (*beta).clone();
 
-    let compact_u = !(u.nrows() == n + 1) as usize;
+    let compact_u = (u.nrows() != n + 1) as usize;
 
     if k <= jacobi_fallback_threshold || rem <= jacobi_fallback_threshold {
         let (mut u1_alloc, stack) =
@@ -1766,7 +1774,7 @@ fn bidiag_svd_impl<E: RealField>(
     }
 
     for x in &mut *diag {
-        *x = (&*x).mul(&max_val);
+        *x = (*x).mul(&max_val);
     }
 }
 

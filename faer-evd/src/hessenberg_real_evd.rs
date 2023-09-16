@@ -100,10 +100,7 @@ fn lahqr_schur22<E: RealField>(
         cs = zero.clone();
         sn = one.clone();
 
-        let temp = d;
-
-        d = a;
-        a = temp;
+        std::mem::swap(&mut d, &mut a);
         b = c.neg();
         c = zero.clone();
     } else if a.sub(&d) == zero && sign(&b) != sign(&c) {
@@ -182,29 +179,25 @@ fn lahqr_schur22<E: RealField>(
             a = temp.clone();
             d = temp.clone();
 
-            if c != zero {
-                if b != zero {
-                    if sign(&b) == sign(&c) {
-                        // Real eigenvalues: reduce to upper triangular form
-                        let sab = b.abs().sqrt();
-                        let sac = c.abs().sqrt();
-                        p = if c > zero {
-                            sab.mul(&sac)
-                        } else {
-                            sab.neg().mul(&sac)
-                        };
-                        tau = (b.add(&c)).abs().sqrt().inv();
-                        a = temp.add(&p);
-                        d = temp.sub(&p);
-                        b = b.sub(&c);
-                        c = zero.clone();
-                        let cs1 = sab.mul(&tau);
-                        let sn1 = sac.mul(&tau);
-                        temp = cs.mul(&cs1).sub(&sn.mul(&sn1));
-                        sn = cs.mul(&sn1).add(&sn.mul(&cs1));
-                        cs = temp;
-                    }
-                }
+            if c != zero && b != zero && sign(&b) == sign(&c) {
+                // Real eigenvalues: reduce to upper triangular form
+                let sab = b.abs().sqrt();
+                let sac = c.abs().sqrt();
+                p = if c > zero {
+                    sab.mul(&sac)
+                } else {
+                    sab.neg().mul(&sac)
+                };
+                tau = (b.add(&c)).abs().sqrt().inv();
+                a = temp.add(&p);
+                d = temp.sub(&p);
+                b = b.sub(&c);
+                c = zero.clone();
+                let cs1 = sab.mul(&tau);
+                let sn1 = sac.mul(&tau);
+                temp = cs.mul(&cs1).sub(&sn.mul(&sn1));
+                sn = cs.mul(&sn1).add(&sn.mul(&cs1));
+                cs = temp;
             }
         }
     }
@@ -449,6 +442,7 @@ fn lasy2<E: RealField>(
 
     // Perform elimination with pivoting to solve 4x4 system
     let (mut ipsv, mut jpsv);
+    #[allow(clippy::needless_range_loop)]
     for i in 0..3 {
         ipsv = i;
         jpsv = i;
@@ -561,51 +555,41 @@ fn schur_move<E: RealField>(
     }
 
     // Check if ifst points to the middle of a 2x2 block
-    if ifst > 0 {
-        if a.read(ifst, ifst - 1) != E::zero() {
-            ifst = ifst - 1;
-        }
+    if ifst > 0 && (a.read(ifst, ifst - 1) != E::zero()) {
+        ifst -= 1;
     }
 
     // Size of the current block, can be either 1, 2
     let mut nbf = 1;
-    if ifst < n - 1 {
-        if a.read(ifst + 1, ifst) != E::zero() {
-            nbf = 2;
-        }
+    if ifst < n - 1 && (a.read(ifst + 1, ifst) != E::zero()) {
+        nbf = 2;
     }
 
     // Check if ilst points to the middle of a 2x2 block
-    if *ilst > 0 {
-        if a.read(*ilst, *ilst - 1) != E::zero() {
-            *ilst = *ilst - 1;
-        }
+    if *ilst > 0 && (a.read(*ilst, *ilst - 1) != E::zero()) {
+        *ilst -= 1;
     }
 
     // Size of the final block, can be either 1, 2
     let mut nbl = 1;
-    if *ilst < n - 1 {
-        if a.read(*ilst + 1, *ilst) != E::zero() {
-            nbl = 2;
-        }
+    if (*ilst < n - 1) && (a.read(*ilst + 1, *ilst) != E::zero()) {
+        nbl = 2;
     }
 
     let mut here = ifst;
     if ifst < *ilst {
         if nbf == 2 && nbl == 1 {
-            *ilst = *ilst - 1;
+            *ilst -= 1;
         }
         if nbf == 1 && nbl == 2 {
-            *ilst = *ilst + 1;
+            *ilst += 1;
         }
 
         while here != *ilst {
             // Size of the next eigenvalue block
             let mut nbnext = 1;
-            if here + nbf + 1 < n {
-                if a.read(here + nbf + 1, here + nbf) != E::zero() {
-                    nbnext = 2;
-                }
+            if (here + nbf + 1 < n) && (a.read(here + nbf + 1, here + nbf) != E::zero()) {
+                nbnext = 2;
             }
 
             let ierr = schur_swap(
@@ -622,16 +606,14 @@ fn schur_move<E: RealField>(
                 *ilst = here;
                 return 1;
             }
-            here = here + nbnext;
+            here += nbnext;
         }
     } else {
         while here != *ilst {
             // Size of the next eigenvalue block
             let mut nbnext = 1;
-            if here > 1 {
-                if a.read(here - 1, here - 2) != E::zero() {
-                    nbnext = 2;
-                }
+            if here > 1 && (a.read(here - 1, here - 2) != E::zero()) {
+                nbnext = 2;
             }
 
             let ierr = schur_swap(
@@ -648,7 +630,7 @@ fn schur_move<E: RealField>(
                 *ilst = here;
                 return 1;
             }
-            here = here - nbnext;
+            here -= nbnext;
         }
     }
 
@@ -672,53 +654,49 @@ fn schur_swap<E: RealField>(
 
     // Check if the 2x2 eigenvalue blocks consist of 2 1x1 blocks
     // If so, treat them separately
-    if n1 == 2 {
-        if a.read(j1, j0) == E::zero() {
-            // only 2x2 swaps can fail, so we don't need to check for error
-            schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                j1,
-                1,
-                n2,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
-            schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                j0,
-                1,
-                n2,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
-            return 0;
-        }
+    if n1 == 2 && (a.read(j1, j0) == E::zero()) {
+        // only 2x2 swaps can fail, so we don't need to check for error
+        schur_swap(
+            a.rb_mut(),
+            q.rb_mut(),
+            j1,
+            1,
+            n2,
+            epsilon.clone(),
+            zero_threshold.clone(),
+        );
+        schur_swap(
+            a.rb_mut(),
+            q.rb_mut(),
+            j0,
+            1,
+            n2,
+            epsilon.clone(),
+            zero_threshold.clone(),
+        );
+        return 0;
     }
-    if n2 == 2 {
-        if a.read(j0 + n1 + 1, j0 + n1) == E::zero() {
-            // only 2x2 swaps can fail, so we don't need to check for error
-            schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                j0,
-                n1,
-                1,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
-            schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                j1,
-                n1,
-                1,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
-            return 0;
-        }
+    if n2 == 2 && a.read(j0 + n1 + 1, j0 + n1) == E::zero() {
+        // only 2x2 swaps can fail, so we don't need to check for error
+        schur_swap(
+            a.rb_mut(),
+            q.rb_mut(),
+            j0,
+            n1,
+            1,
+            epsilon.clone(),
+            zero_threshold.clone(),
+        );
+        schur_swap(
+            a.rb_mut(),
+            q.rb_mut(),
+            j1,
+            n1,
+            1,
+            epsilon.clone(),
+            zero_threshold.clone(),
+        );
+        return 0;
     }
 
     if n1 == 1 && n2 == 1 {
@@ -1400,14 +1378,13 @@ fn aggressive_early_deflation<E: RealField>(
     let mut ilst = infqr;
     while ilst < ns {
         let mut bulge = false;
-        if ns > 1 {
-            if tw.read(ns - 1, ns - 2) != E::zero() {
-                bulge = true;
-            }
+        if ns > 1 && tw.read(ns - 1, ns - 2) != E::zero() {
+            bulge = true;
         }
 
         if !bulge {
             // 1x1 eigenvalue block
+            #[allow(clippy::disallowed_names)]
             let mut foo = tw.read(ns - 1, ns - 1).abs();
             if foo == E::zero() {
                 foo = s_spike.abs();
@@ -1415,7 +1392,7 @@ fn aggressive_early_deflation<E: RealField>(
             if s_spike.abs().mul(&v.read(0, ns - 1).abs()) <= max(small_num.clone(), eps.mul(&foo))
             {
                 // Eigenvalue is deflatable
-                ns = ns - 1;
+                ns -= 1;
             } else {
                 // Eigenvalue is not deflatable.
                 // Move it up out of the way.
@@ -1428,10 +1405,11 @@ fn aggressive_early_deflation<E: RealField>(
                     epsilon.clone(),
                     zero_threshold.clone(),
                 );
-                ilst = ilst + 1;
+                ilst += 1;
             }
         } else {
             // 2x2 eigenvalue block
+            #[allow(clippy::disallowed_names)]
             let mut foo = tw.read(ns - 1, ns - 1).abs().add(
                 &tw.read(ns - 1, ns - 2)
                     .abs()
@@ -1447,7 +1425,7 @@ fn aggressive_early_deflation<E: RealField>(
             ) <= max(small_num.clone(), eps.mul(&foo))
             {
                 // Eigenvalue pair is deflatable
-                ns = ns - 2;
+                ns -= 2;
             } else {
                 // Eigenvalue pair is not deflatable.
                 // Move it up out of the way.
@@ -1460,7 +1438,7 @@ fn aggressive_early_deflation<E: RealField>(
                     epsilon.clone(),
                     zero_threshold.clone(),
                 );
-                ilst = ilst + 2;
+                ilst += 2;
             }
         }
     }
@@ -1473,7 +1451,7 @@ fn aggressive_early_deflation<E: RealField>(
         // Agressive early deflation didn't deflate any eigenvalues
         // We don't need to apply the update to the rest of the matrix
         nd = jw - ns;
-        ns = ns - infqr;
+        ns -= infqr;
         return (ns, nd);
     }
 
@@ -1500,7 +1478,7 @@ fn aggressive_early_deflation<E: RealField>(
 
             // Check if there is a next block
             if i1 + n1 == jw {
-                ilst = ilst - n1 as isize;
+                ilst -= n1 as isize;
                 break;
             }
 
@@ -1509,10 +1487,8 @@ fn aggressive_early_deflation<E: RealField>(
 
             // Size of the second block
             let mut n2 = 1;
-            if i2 + 1 < jw {
-                if tw.read(i2 + 1, i2) != E::zero() {
-                    n2 = 2;
-                }
+            if i2 + 1 < jw && tw.read(i2 + 1, i2) != E::zero() {
+                n2 = 2;
             }
 
             let (ev1, ev2);
@@ -1545,7 +1521,7 @@ fn aggressive_early_deflation<E: RealField>(
                     zero_threshold.clone(),
                 );
                 if ierr == 0 {
-                    i1 = i1 + n2;
+                    i1 += n2;
                 } else {
                     i1 = i2;
                 }
@@ -1559,10 +1535,8 @@ fn aggressive_early_deflation<E: RealField>(
     let mut i = 0;
     while i < jw {
         let mut n1 = 1;
-        if i + 1 < jw {
-            if tw.read(i + 1, i) != E::zero() {
-                n1 = 2;
-            }
+        if i + 1 < jw && tw.read(i + 1, i) != E::zero() {
+            n1 = 2;
         }
 
         if n1 == 1 {
@@ -1581,7 +1555,7 @@ fn aggressive_early_deflation<E: RealField>(
             s_re.write(kwtop + i + 1, 0, s2_re);
             s_im.write(kwtop + i + 1, 0, s2_im);
         }
-        i = i + n1;
+        i += n1;
     }
 
     // Reduce A back to Hessenberg form (if neccesary)
@@ -1680,7 +1654,7 @@ fn aggressive_early_deflation<E: RealField>(
 
     // Store number of deflated eigenvalues
     nd = jw - ns;
-    ns = ns - infqr;
+    ns -= infqr;
 
     //
     // Update rest of the matrix using matrix matrix multiplication
@@ -1712,7 +1686,7 @@ fn aggressive_early_deflation<E: RealField>(
                 parallelism,
             );
             a_slice.clone_from(wh_slice.rb());
-            i = i + iblock;
+            i += iblock;
         }
     }
 
@@ -1734,7 +1708,7 @@ fn aggressive_early_deflation<E: RealField>(
                 parallelism,
             );
             a_slice.clone_from(wv_slice.rb());
-            i = i + iblock;
+            i += iblock;
         }
     }
     // Update Z (also a vertical multiplication)
@@ -1755,7 +1729,7 @@ fn aggressive_early_deflation<E: RealField>(
                 parallelism,
             );
             z_slice.clone_from(wv_slice.rb());
-            i = i + iblock;
+            i += iblock;
         }
     }
 
@@ -2015,54 +1989,51 @@ fn multishift_qr_sweep<E: RealField>(
                 );
 
                 // Test for deflation.
-                if i_pos > ilo {
-                    if a.read(i_pos, i_pos - 1) != E::zero() {
-                        let mut tst1 =
-                            abs1(&a.read(i_pos - 1, i_pos - 1)).add(&abs1(&a.read(i_pos, i_pos)));
-                        if tst1 == E::Real::zero() {
-                            if i_pos > ilo + 1 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
-                            }
-                            if i_pos > ilo + 2 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
-                            }
-                            if i_pos > ilo + 3 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
-                            }
-                            if i_pos < ihi - 1 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
-                            }
-                            if i_pos < ihi - 2 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
-                            }
-                            if i_pos < ihi - 3 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
-                            }
+                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                    let mut tst1 =
+                        abs1(&a.read(i_pos - 1, i_pos - 1)).add(&abs1(&a.read(i_pos, i_pos)));
+                    if tst1 == E::Real::zero() {
+                        if i_pos > ilo + 1 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
                         }
-                        if abs1(&a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(&tst1))
+                        if i_pos > ilo + 2 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
+                        }
+                        if i_pos > ilo + 3 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
+                        }
+                        if i_pos < ihi - 1 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
+                        }
+                        if i_pos < ihi - 2 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
+                        }
+                        if i_pos < ihi - 3 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
+                        }
+                    }
+                    if abs1(&a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(&tst1)) {
+                        let ab = max(
+                            abs1(&a.read(i_pos, i_pos - 1)),
+                            abs1(&a.read(i_pos - 1, i_pos)),
+                        );
+                        let ba = min(
+                            abs1(&a.read(i_pos, i_pos - 1)),
+                            abs1(&a.read(i_pos - 1, i_pos)),
+                        );
+                        let aa = max(
+                            abs1(&a.read(i_pos, i_pos)),
+                            abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                        );
+                        let bb = min(
+                            abs1(&a.read(i_pos, i_pos)),
+                            abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                        );
+                        let s = aa.add(&ab);
+                        if ba.mul(&ab.div(&s))
+                            <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
                         {
-                            let ab = max(
-                                abs1(&a.read(i_pos, i_pos - 1)),
-                                abs1(&a.read(i_pos - 1, i_pos)),
-                            );
-                            let ba = min(
-                                abs1(&a.read(i_pos, i_pos - 1)),
-                                abs1(&a.read(i_pos - 1, i_pos)),
-                            );
-                            let aa = max(
-                                abs1(&a.read(i_pos, i_pos)),
-                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                            );
-                            let bb = min(
-                                abs1(&a.read(i_pos, i_pos)),
-                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                            );
-                            let s = aa.add(&ab);
-                            if ba.mul(&ab.div(&s))
-                                <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
-                            {
-                                a.write(i_pos, i_pos - 1, E::zero());
-                            }
+                            a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
                 }
@@ -2162,7 +2133,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
         // Vertical multiply
@@ -2183,7 +2154,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
         // Update Z (also a vertical multiplication)
@@ -2204,7 +2175,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
 
@@ -2298,54 +2269,51 @@ fn multishift_qr_sweep<E: RealField>(
                 );
 
                 // Test for deflation.
-                if i_pos > ilo {
-                    if a.read(i_pos, i_pos - 1) != E::zero() {
-                        let mut tst1 =
-                            abs1(&a.read(i_pos - 1, i_pos - 1)).add(&abs1(&a.read(i_pos, i_pos)));
-                        if tst1 == E::Real::zero() {
-                            if i_pos > ilo + 1 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
-                            }
-                            if i_pos > ilo + 2 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
-                            }
-                            if i_pos > ilo + 3 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
-                            }
-                            if i_pos < ihi - 1 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
-                            }
-                            if i_pos < ihi - 2 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
-                            }
-                            if i_pos < ihi - 3 {
-                                tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
-                            }
+                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                    let mut tst1 =
+                        abs1(&a.read(i_pos - 1, i_pos - 1)).add(&abs1(&a.read(i_pos, i_pos)));
+                    if tst1 == E::Real::zero() {
+                        if i_pos > ilo + 1 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
                         }
-                        if abs1(&a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(&tst1))
+                        if i_pos > ilo + 2 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
+                        }
+                        if i_pos > ilo + 3 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
+                        }
+                        if i_pos < ihi - 1 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
+                        }
+                        if i_pos < ihi - 2 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
+                        }
+                        if i_pos < ihi - 3 {
+                            tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
+                        }
+                    }
+                    if abs1(&a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(&tst1)) {
+                        let ab = max(
+                            abs1(&a.read(i_pos, i_pos - 1)),
+                            abs1(&a.read(i_pos - 1, i_pos)),
+                        );
+                        let ba = min(
+                            abs1(&a.read(i_pos, i_pos - 1)),
+                            abs1(&a.read(i_pos - 1, i_pos)),
+                        );
+                        let aa = max(
+                            abs1(&a.read(i_pos, i_pos)),
+                            abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                        );
+                        let bb = min(
+                            abs1(&a.read(i_pos, i_pos)),
+                            abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                        );
+                        let s = aa.add(&ab);
+                        if ba.mul(&ab.div(&s))
+                            <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
                         {
-                            let ab = max(
-                                abs1(&a.read(i_pos, i_pos - 1)),
-                                abs1(&a.read(i_pos - 1, i_pos)),
-                            );
-                            let ba = min(
-                                abs1(&a.read(i_pos, i_pos - 1)),
-                                abs1(&a.read(i_pos - 1, i_pos)),
-                            );
-                            let aa = max(
-                                abs1(&a.read(i_pos, i_pos)),
-                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                            );
-                            let bb = min(
-                                abs1(&a.read(i_pos, i_pos)),
-                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                            );
-                            let s = aa.add(&ab);
-                            if ba.mul(&ab.div(&s))
-                                <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
-                            {
-                                a.write(i_pos, i_pos - 1, E::zero());
-                            }
+                            a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
                 }
@@ -2448,7 +2416,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
 
@@ -2470,7 +2438,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
         // Update Z (also a vertical multiplication)
@@ -2491,11 +2459,11 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
 
-        i_pos_block = i_pos_block + n_pos;
+        i_pos_block += n_pos;
     }
 
     //
@@ -2628,55 +2596,52 @@ fn multishift_qr_sweep<E: RealField>(
                     );
 
                     // Test for deflation.
-                    if i_pos > ilo {
-                        if a.read(i_pos, i_pos - 1) != E::zero() {
-                            let mut tst1 = abs1(&a.read(i_pos - 1, i_pos - 1))
-                                .add(&abs1(&a.read(i_pos, i_pos)));
-                            if tst1 == E::Real::zero() {
-                                if i_pos > ilo + 1 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
-                                }
-                                if i_pos > ilo + 2 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
-                                }
-                                if i_pos > ilo + 3 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
-                                }
-                                if i_pos < ihi - 1 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
-                                }
-                                if i_pos < ihi - 2 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
-                                }
-                                if i_pos < ihi - 3 {
-                                    tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
-                                }
+                    if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                        let mut tst1 =
+                            abs1(&a.read(i_pos - 1, i_pos - 1)).add(&abs1(&a.read(i_pos, i_pos)));
+                        if tst1 == E::Real::zero() {
+                            if i_pos > ilo + 1 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 2)));
                             }
-                            if abs1(&a.read(i_pos, i_pos - 1))
-                                < max(small_num.clone(), eps.mul(&tst1))
+                            if i_pos > ilo + 2 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 3)));
+                            }
+                            if i_pos > ilo + 3 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos - 1, i_pos - 4)));
+                            }
+                            if i_pos < ihi - 1 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos + 1, i_pos)));
+                            }
+                            if i_pos < ihi - 2 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos + 2, i_pos)));
+                            }
+                            if i_pos < ihi - 3 {
+                                tst1 = tst1.add(&abs1(&a.read(i_pos + 3, i_pos)));
+                            }
+                        }
+                        if abs1(&a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(&tst1))
+                        {
+                            let ab = max(
+                                abs1(&a.read(i_pos, i_pos - 1)),
+                                abs1(&a.read(i_pos - 1, i_pos)),
+                            );
+                            let ba = min(
+                                abs1(&a.read(i_pos, i_pos - 1)),
+                                abs1(&a.read(i_pos - 1, i_pos)),
+                            );
+                            let aa = max(
+                                abs1(&a.read(i_pos, i_pos)),
+                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                            );
+                            let bb = min(
+                                abs1(&a.read(i_pos, i_pos)),
+                                abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
+                            );
+                            let s = aa.add(&ab);
+                            if ba.mul(&ab.div(&s))
+                                <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
                             {
-                                let ab = max(
-                                    abs1(&a.read(i_pos, i_pos - 1)),
-                                    abs1(&a.read(i_pos - 1, i_pos)),
-                                );
-                                let ba = min(
-                                    abs1(&a.read(i_pos, i_pos - 1)),
-                                    abs1(&a.read(i_pos - 1, i_pos)),
-                                );
-                                let aa = max(
-                                    abs1(&a.read(i_pos, i_pos)),
-                                    abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                                );
-                                let bb = min(
-                                    abs1(&a.read(i_pos, i_pos)),
-                                    abs1(&a.read(i_pos, i_pos).sub(&a.read(i_pos - 1, i_pos - 1))),
-                                );
-                                let s = aa.add(&ab);
-                                if ba.mul(&ab.div(&s))
-                                    <= max(small_num.clone(), eps.mul(&bb.mul(&aa.div(&s))))
-                                {
-                                    a.write(i_pos, i_pos - 1, E::zero());
-                                }
+                                a.write(i_pos, i_pos - 1, E::zero());
                             }
                         }
                     }
@@ -2788,7 +2753,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
 
@@ -2810,7 +2775,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
         // Update Z (also a vertical multiplication)
@@ -2831,7 +2796,7 @@ fn multishift_qr_sweep<E: RealField>(
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
-                i = i + iblock;
+                i += iblock;
             }
         }
     }
@@ -3002,10 +2967,10 @@ pub fn multishift_qr<E: RealField>(
                 nw = nh
             };
             let kwtop = istop - nw;
-            if kwtop > istart + 2 {
-                if abs1(&a.read(kwtop, kwtop - 1)) > abs1(&a.read(kwtop - 1, kwtop - 2)) {
-                    nw = nw + 1;
-                }
+            if kwtop > istart + 2
+                && abs1(&a.read(kwtop, kwtop - 1)) > abs1(&a.read(kwtop - 1, kwtop - 2))
+            {
+                nw += 1;
             }
         }
 
@@ -3027,7 +2992,7 @@ pub fn multishift_qr<E: RealField>(
 
         count_aed += 1;
 
-        istop = istop - ld;
+        istop -= ld;
 
         if ld > 0 {
             k_defl = 0;
@@ -3041,7 +3006,7 @@ pub fn multishift_qr<E: RealField>(
             continue;
         }
 
-        k_defl = k_defl + 1;
+        k_defl += 1;
         let mut ns = Ord::min(nh - 1, Ord::min(ls, nsr));
         let mut i_shifts = istop - ls;
 
@@ -3140,27 +3105,25 @@ pub fn multishift_qr<E: RealField>(
             // Since we shuffled the shifts, we will only drop
             // Real shifts
             if ns > 1 && ns % 2 == 1 {
-                ns = ns - 1;
+                ns -= 1;
             }
             i_shifts = istop - ns;
         }
 
         // If there are only two shifts and both are real
         // then use only one (helps avoid interference)
-        if ns == 2 {
-            if w_im.read(i_shifts, 0) == E::zero() {
-                if (w_re.read(i_shifts, 0).sub(&a.read(istop - 1, istop - 1))).abs()
-                    < (w_re
-                        .read(i_shifts + 1, 0)
-                        .sub(&a.read(istop - 1, istop - 1)))
-                    .abs()
-                {
-                    w_re.write(i_shifts + 1, 0, w_re.read(i_shifts, 0));
-                    w_im.write(i_shifts + 1, 0, w_im.read(i_shifts, 0));
-                } else {
-                    w_re.write(i_shifts, 0, w_re.read(i_shifts + 1, 0));
-                    w_im.write(i_shifts, 0, w_im.read(i_shifts + 1, 0));
-                }
+        if ns == 2 && w_im.read(i_shifts, 0) == E::zero() {
+            if (w_re.read(i_shifts, 0).sub(&a.read(istop - 1, istop - 1))).abs()
+                < (w_re
+                    .read(i_shifts + 1, 0)
+                    .sub(&a.read(istop - 1, istop - 1)))
+                .abs()
+            {
+                w_re.write(i_shifts + 1, 0, w_re.read(i_shifts, 0));
+                w_im.write(i_shifts + 1, 0, w_im.read(i_shifts, 0));
+            } else {
+                w_re.write(i_shifts, 0, w_re.read(i_shifts + 1, 0));
+                w_im.write(i_shifts, 0, w_im.read(i_shifts + 1, 0));
             }
         }
 

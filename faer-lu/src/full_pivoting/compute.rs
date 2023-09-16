@@ -281,7 +281,7 @@ fn best_in_col<E: ComplexField, S: Simd>(
 }
 
 #[inline(always)]
-fn update_and_best_in_col<'a, E: ComplexField, S: Simd>(
+fn update_and_best_in_col<E: ComplexField, S: Simd>(
     simd: S,
     data: E::Group<&mut [E::Unit]>,
     lhs: E::Group<&[E::Unit]>,

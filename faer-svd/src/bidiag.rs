@@ -402,9 +402,7 @@ fn bidiag_fused_op_step0<E: ComplexField>(
             sum_v0 = E::simd_conj_mul_adde(simd, E::copy(&aij_new), ui, sum_v0);
             E::partial_store(simd, a_j_tail, aij_new);
 
-            let sum = E::simd_reduce_add(simd, sum_v0);
-
-            sum
+            E::simd_reduce_add(simd, sum_v0)
         }
     }
 

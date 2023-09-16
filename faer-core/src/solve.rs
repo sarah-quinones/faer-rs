@@ -205,7 +205,7 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
 }
 
 #[inline]
-fn blocksize<E: 'static>(n: usize) -> usize {
+fn blocksize(n: usize) -> usize {
     // we want remainder to be a multiple of register size
 
     let base_rem = n / 2;
@@ -221,7 +221,7 @@ fn blocksize<E: 'static>(n: usize) -> usize {
 }
 
 #[inline]
-fn recursion_threshold<E: 'static>() -> usize {
+fn recursion_threshold() -> usize {
     4
 }
 
@@ -588,7 +588,7 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
     debug_assert!(tril.nrows() == tril.ncols());
     debug_assert!(rhs.nrows() == tril.ncols());
 
-    if n <= recursion_threshold::<E>() {
+    if n <= recursion_threshold() {
         pulp::Arch::new().dispatch(
             #[inline(always)]
             || match conj_lhs {
@@ -603,7 +603,7 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    let bs = blocksize::<E>(n);
+    let bs = blocksize(n);
 
     let [tril_top_left, _, tril_bot_left, tril_bot_right] = tril.split_at(bs, bs);
     let [_, mut rhs_top, _, mut rhs_bot] = rhs.split_at(bs, 0);
@@ -691,7 +691,7 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
 
     let n = tril.nrows();
 
-    if n <= recursion_threshold::<E>() {
+    if n <= recursion_threshold() {
         pulp::Arch::new().dispatch(
             #[inline(always)]
             || match conj_lhs {
@@ -706,7 +706,7 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    let bs = blocksize::<E>(n);
+    let bs = blocksize(n);
 
     let [tril_top_left, _, tril_bot_left, tril_bot_right] = tril.split_at(bs, bs);
     let [_, mut rhs_top, _, mut rhs_bot] = rhs.split_at(bs, 0);

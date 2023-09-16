@@ -135,6 +135,11 @@ impl<'a> PermutationRef<'a> {
 
 impl<'a> PermutationMut<'a> {
     /// Returns the permutation as an array.
+    ///
+    /// # Safety
+    ///
+    /// The behavior is undefined if the arrays are no longer inverse permutations of each other by
+    /// the end of lifetime `'a`.
     #[inline]
     pub unsafe fn into_arrays(self) -> (&'a mut [usize], &'a mut [usize]) {
         (self.forward, self.inverse)
@@ -252,8 +257,6 @@ pub fn permute_rows<E: ComplexField>(
     assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
     assert!(perm_indices.into_arrays().0.len() == src.nrows());
 
-    let src = src;
-    let perm_indices = perm_indices;
     let mut dst = dst;
     let m = src.nrows();
     let n = src.ncols();
