@@ -291,14 +291,17 @@ fn cholesky_in_place_impl<E: ComplexField>(
 ///
 /// # Warning
 ///
-/// The Cholesky decomposition may have poor numerical stability properties when used with non
-/// positive definite matrices. In the general case, it is recommended to first permute the matrix
-/// using [`crate::compute_cholesky_permutation`] and
-/// [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric_lower).
+/// The Cholesky decomposition with diagonal may have poor numerical stability properties when used
+/// with non positive definite matrices. In the general case, it is recommended to first permute
+/// (and conjugate when necessary) the rows and columns of the matrix using the permutation obtained
+/// from [`crate::compute_cholesky_permutation`].
 ///
 /// # Panics
 ///
 /// Panics if the input matrix is not square.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`raw_cholesky_in_place_req`]).
 #[track_caller]
 #[inline]
 pub fn raw_cholesky_in_place<E: ComplexField>(

@@ -72,7 +72,7 @@ pub fn solve_transpose_req<E: Entity>(
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
 #[track_caller]
 pub fn solve_in_place<E: ComplexField>(
     qr_factors: MatRef<'_, E>,
@@ -119,7 +119,8 @@ pub fn solve_in_place<E: ComplexField>(
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see
+///   [`solve_transpose_in_place_req`]).
 #[track_caller]
 pub fn solve_transpose_in_place<E: ComplexField>(
     qr_factors: MatRef<'_, E>,
@@ -173,7 +174,7 @@ pub fn solve_transpose_in_place<E: ComplexField>(
 /// - Panics if the block size is zero.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
 #[track_caller]
 pub fn solve<E: ComplexField>(
     dst: MatMut<'_, E>,
@@ -212,7 +213,7 @@ pub fn solve<E: ComplexField>(
 /// - Panics if the block size is zero.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
 #[track_caller]
 pub fn solve_transpose<E: ComplexField>(
     dst: MatMut<'_, E>,

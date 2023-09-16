@@ -65,7 +65,9 @@ pub fn invert_lower_in_place_req<E: Entity>(
 /// # Panics
 ///
 /// - Panics if `cholesky_factor` is not a square matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`invert_lower_req`]).
 #[track_caller]
 pub fn invert_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
@@ -83,7 +85,9 @@ pub fn invert_lower_in_place<E: ComplexField>(
 ///
 /// - Panics if `cholesky_factor` is not a square matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`invert_lower_in_place_req`]).
 #[track_caller]
 pub fn invert_lower<E: ComplexField>(
     dst: MatMut<'_, E>,

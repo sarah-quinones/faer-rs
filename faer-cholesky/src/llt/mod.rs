@@ -243,8 +243,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [1, 3],
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -270,8 +271,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [0, 2],
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -297,8 +299,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [0, 2, 3],
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -335,8 +338,10 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [position, position + 1],
+                Parallelism::Rayon(8),
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<f64>(n + r, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<f64>(n + r, r, Parallelism::Rayon(8))
+                        .unwrap(),
                 )),
             );
 

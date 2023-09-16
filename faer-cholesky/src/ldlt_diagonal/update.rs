@@ -637,6 +637,14 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 ///
 /// The matrix $W$ and the vector $\alpha$ are clobbered, meaning that the values they contain after
 /// the function is called are unspecified.
+///
+/// # Panics
+///
+/// Panics if any of these conditions is violated:
+/// * `cholesky_factors` must be square of dimension `n`.
+/// * `w` must have `n` rows.
+/// * `alpha` must have one column.
+/// * `alpha` must have the same number of rows as the number of columns in `w`.
 #[track_caller]
 pub fn rank_r_update_clobber<E: ComplexField>(
     cholesky_factors: MatMut<'_, E>,
@@ -726,7 +734,9 @@ pub(crate) fn rank_update_indices(
 pub fn delete_rows_and_cols_clobber_req<E: Entity>(
     dim: usize,
     number_of_rows_to_remove: usize,
+    parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
     let r = number_of_rows_to_remove;
     StackReq::try_all_of([temp_mat_req::<E>(dim, r)?, temp_mat_req::<E>(r, 1)?])
 }
@@ -740,12 +750,22 @@ pub fn delete_rows_and_cols_clobber_req<E: Entity>(
 ///
 /// The indices are clobbered, meaning that the values that the slice contains after the function
 /// is called are unspecified.
+///
+/// # Panics
+///
+/// Panics if the matrix is not square, the indices are out of bounds, or the list of indices
+/// contains duplicates.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`delete_rows_and_cols_clobber_req`]).
 #[track_caller]
 pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     cholesky_factors: MatMut<'_, E>,
     indices: &mut [usize],
+    parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
+    let _ = parallelism;
     let n = cholesky_factors.nrows();
     let r = indices.len();
     assert!(cholesky_factors.ncols() == n);
@@ -824,6 +844,13 @@ pub fn insert_rows_and_cols_clobber_req<E: Entity>(
 ///
 /// The inserted matrix is clobbered, meaning that the values it contains after the function
 /// is called are unspecified.
+///
+/// # Panics
+///
+/// Panics if the index is out of bounds or the matrix dimensions are invalid.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`insert_rows_and_cols_clobber_req`]).
 #[track_caller]
 pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     cholesky_factors_extended: MatMut<'_, E>,

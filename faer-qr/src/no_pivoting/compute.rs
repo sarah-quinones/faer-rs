@@ -331,7 +331,7 @@ fn qr_in_place_blocked<E: ComplexField>(
 /// - Panics if the number of columns of the householder factor is not equal to the minimum of the
 /// number of rows and the number of columns of the input matrix.
 /// - Panics if the block size is zero.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`qr_in_place_req`]).
 #[track_caller]
 pub fn qr_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,

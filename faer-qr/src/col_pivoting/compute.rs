@@ -687,7 +687,7 @@ pub fn qr_in_place_req<E: Entity>(
 /// - Panics if the block size is zero.
 /// - Panics if the length of `col_perm` and `col_perm_inv` is not equal to the number of columns
 /// of `matrix`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`qr_in_place_req`]).
 pub fn qr_in_place<'out, E: ComplexField>(
     matrix: MatMut<'_, E>,
     householder_factor: MatMut<'_, E>,
@@ -992,6 +992,185 @@ mod tests {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
                 let mut mat = Mat::<c32>::with_dims(m, n, |_, _| c32::new(random(), random()));
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    parallelism,
+                    make_stack!(qr_in_place_req::<c32>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qr = Mat::zeros(m, n);
+                let mut qhq = Mat::zeros(m, m);
+                matmul(
+                    qr.as_mut(),
+                    q.as_ref(),
+                    r.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                matmul(
+                    qhq.as_mut(),
+                    q.as_ref().adjoint(),
+                    q.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c32_zeros() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let mut mat = Mat::<c32>::zeros(m, n);
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    parallelism,
+                    make_stack!(qr_in_place_req::<c32>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qr = Mat::zeros(m, n);
+                let mut qhq = Mat::zeros(m, m);
+                matmul(
+                    qr.as_mut(),
+                    q.as_ref(),
+                    r.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                matmul(
+                    qhq.as_mut(),
+                    q.as_ref().adjoint(),
+                    q.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c32_ones() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let mut mat = Mat::<c32>::with_dims(m, n, |_, _| c32::one());
+                let mat_orig = mat.clone();
+                let size = m.min(n);
+                let blocksize = 8;
+                let mut householder = Mat::zeros(blocksize, size);
+                let mut perm = vec![0; n];
+                let mut perm_inv = vec![0; n];
+
+                qr_in_place(
+                    mat.as_mut(),
+                    householder.as_mut(),
+                    &mut perm,
+                    &mut perm_inv,
+                    parallelism,
+                    make_stack!(qr_in_place_req::<c32>(
+                        m,
+                        n,
+                        blocksize,
+                        parallelism,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+
+                let (q, r) = reconstruct_factors(mat.as_ref(), householder.as_ref());
+                let mut qr = Mat::zeros(m, n);
+                let mut qhq = Mat::zeros(m, m);
+                matmul(
+                    qr.as_mut(),
+                    q.as_ref(),
+                    r.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                matmul(
+                    qhq.as_mut(),
+                    q.as_ref().adjoint(),
+                    q.as_ref(),
+                    None,
+                    c32::one(),
+                    Parallelism::Rayon(8),
+                );
+
+                for j in 0..n {
+                    for i in 0..m {
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_qr_c32_rank_2() {
+        for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
+            for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
+                let u0 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
+                let v0 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+                let u1 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
+                let v1 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+
+                let mut mat = u0 * v0 + u1 * v1;
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;

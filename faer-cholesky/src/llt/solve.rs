@@ -62,31 +62,41 @@ pub fn solve_transpose_req<E: Entity>(
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
 ///
 /// The solution of the linear system is stored in `rhs`.
+///
+/// # Panics
+///
+/// Panics if any of these conditions is violated:
+///
+/// * `cholesky_factor` must be square of dimension `n`.
+/// * `rhs` must have `n` rows.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`solve_in_place_req`]).
 #[track_caller]
 pub fn solve_in_place_with_conj<E: ComplexField>(
-    cholesky_factors: MatRef<'_, E>,
+    cholesky_factor: MatRef<'_, E>,
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: DynStack<'_>,
 ) {
     let _ = &stack;
-    let n = cholesky_factors.nrows();
+    let n = cholesky_factor.nrows();
 
-    assert!(cholesky_factors.nrows() == cholesky_factors.ncols());
+    assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     assert!(rhs.nrows() == n);
 
     let mut rhs = rhs;
 
     solve::solve_lower_triangular_in_place_with_conj(
-        cholesky_factors,
+        cholesky_factor,
         conj_lhs,
         rhs.rb_mut(),
         parallelism,
     );
 
     solve::solve_upper_triangular_in_place_with_conj(
-        cholesky_factors.transpose(),
+        cholesky_factor.transpose(),
         conj_lhs.compose(Conj::Yes),
         rhs.rb_mut(),
         parallelism,
@@ -100,10 +110,21 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
 ///
 /// The solution of the linear system is stored in `dst`.
+///
+/// # Panics
+///
+/// Panics if any of these conditions is violated:
+///
+/// * `cholesky_factor` must be square of dimension `n`.
+/// * `rhs` must have `n` rows.
+/// * `dst` must have `n` rows, and the same number of columns as `rhs`.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`solve_req`]).
 #[track_caller]
 pub fn solve_with_conj<E: ComplexField>(
     dst: MatMut<'_, E>,
-    cholesky_factors: MatRef<'_, E>,
+    cholesky_factor: MatRef<'_, E>,
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
@@ -111,7 +132,7 @@ pub fn solve_with_conj<E: ComplexField>(
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
-    solve_in_place_with_conj(cholesky_factors, conj_lhs, dst, parallelism, stack)
+    solve_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }
 
 /// Given the Cholesky factor of a matrix $A$ and a matrix $B$ stored in `rhs`, this function
@@ -121,9 +142,19 @@ pub fn solve_with_conj<E: ComplexField>(
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
 ///
 /// The solution of the linear system is stored in `rhs`.
+///
+/// # Panics
+///
+/// Panics if any of these conditions is violated:
+///
+/// * `cholesky_factor` must be square of dimension `n`.
+/// * `rhs` must have `n` rows.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`solve_transpose_in_place_req`]).
 #[track_caller]
 pub fn solve_transpose_in_place_with_conj<E: ComplexField>(
-    cholesky_factors: MatRef<'_, E>,
+    cholesky_factor: MatRef<'_, E>,
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
@@ -131,7 +162,7 @@ pub fn solve_transpose_in_place_with_conj<E: ComplexField>(
 ) {
     // (L L.*).T = conj(L L.*)
     solve_in_place_with_conj(
-        cholesky_factors,
+        cholesky_factor,
         conj_lhs.compose(Conj::Yes),
         rhs,
         parallelism,
@@ -146,10 +177,21 @@ pub fn solve_transpose_in_place_with_conj<E: ComplexField>(
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
 ///
 /// The solution of the linear system is stored in `dst`.
+///
+/// # Panics
+///
+/// Panics if any of these conditions is violated:
+///
+/// * `cholesky_factor` must be square of dimension `n`.
+/// * `rhs` must have `n` rows.
+/// * `dst` must have `n` rows, and the same number of columns as `rhs`.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`solve_transpose_req`]).
 #[track_caller]
 pub fn solve_transpose_with_conj<E: ComplexField>(
     dst: MatMut<'_, E>,
-    cholesky_factors: MatRef<'_, E>,
+    cholesky_factor: MatRef<'_, E>,
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
@@ -157,5 +199,5 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
-    solve_transpose_in_place_with_conj(cholesky_factors, conj_lhs, dst, parallelism, stack)
+    solve_transpose_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }
