@@ -40,10 +40,9 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     while end > 0 {
         for i in start..end {
-            if offdiag[i].abs() < consider_zero_threshold {
-                offdiag[i] = E::zero();
-            } else if offdiag[i].abs()
-                <= epsilon.mul(&E::add(&diag[i].abs(), &diag[i + 1].abs()).sqrt())
+            if (offdiag[i].abs() < consider_zero_threshold)
+                || (offdiag[i].abs()
+                    <= epsilon.mul(&E::add(&diag[i].abs(), &diag[i + 1].abs()).sqrt()))
             {
                 offdiag[i] = E::zero();
             }
@@ -132,10 +131,11 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         let mut min_idx = i;
         let mut min_val = diag[i].clone();
 
-        for k in i + 1..n {
-            if diag[k] < min_val {
+        for (k, diag) in diag[i + 1..n].iter().enumerate() {
+            let k = k + i + 1;
+            if *diag < min_val {
                 min_idx = k;
-                min_val = diag[k].clone();
+                min_val = diag.clone();
             }
         }
         if min_idx > i {

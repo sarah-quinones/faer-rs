@@ -824,8 +824,9 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                         let alpha_conj_wj = local_alpha.mul(&wj.conj());
 
                         let sqr_nljj = ljj.mul(&ljj).add(&alpha_conj_wj.mul(&wj));
-                        if !(sqr_nljj.real() > E::Real::zero()) {
-                            return Err(CholeskyError);
+                        match PartialOrd::partial_cmp(&sqr_nljj.real(), &E::Real::zero()) {
+                            Some(core::cmp::Ordering::Greater) => (),
+                            _ => return Err(CholeskyError),
                         }
                         let nljj = E::from_real(sqr_nljj.real().sqrt());
                         let inv_ljj = ljj.inv();

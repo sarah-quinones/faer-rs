@@ -73,6 +73,9 @@
 //! After computing a [`dyn_stack::StackReq`], one can query its size and alignment to allocate the
 //! required memory. The simplest way to do so is through [`dyn_stack::GlobalMemBuffer::new`].
 
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+
 use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::{
@@ -389,6 +392,9 @@ impl Debug for c64conj {
 /// For example, `f64` is treated as a single indivisible unit, but [`num_complex::Complex<f64>`]
 /// is split up into its real and imaginary components, with each one being stored in a separate
 /// container.
+///
+/// # Safety
+/// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
     type Unit: Clone + Send + Sync + Debug + 'static;
     type Index: Copy + Send + Sync + Debug + 'static;
@@ -560,6 +566,9 @@ impl Conj {
 }
 
 /// Trait for types that may be implicitly conjugated.
+///
+/// # Safety
+/// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Conjugate: Entity {
     /// Must have the same layout as `Self`, and `Conj::Unit` must have the same layout as `Unit`.
     type Conj: Entity + Conjugate<Conj = Self, Canonical = Self::Canonical>;
@@ -774,6 +783,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 
         let slice = simd::simd_as_slice::<Self, S>(Self::map(
             Self::as_ref(&values),
+            #[allow(clippy::redundant_closure)]
             #[inline(always)]
             |ptr| core::slice::from_ref(ptr),
         ));
@@ -4893,13 +4903,11 @@ impl<E: Entity> RawMat<E> {
 
         let group = E::map(group, ManuallyDrop::new);
 
-        let this = Self {
+        Self {
             ptr: E::into_copy(E::map(group, |mat| mat.ptr)),
             row_capacity,
             col_capacity,
-        };
-
-        this
+        }
     }
 }
 
@@ -5115,6 +5123,13 @@ impl<T> Drop for MatUnit<T> {
             }
             ptr = ptr.wrapping_add(cs);
         }
+    }
+}
+
+impl<E: Entity> Default for Mat<E> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -5858,7 +5873,7 @@ pub fn temp_mat_constant<E: ComplexField>(
 
     (
         DynMat {
-            inner: E::map(alloc, |alloc| DynMatUnitImpl::Init(alloc)),
+            inner: E::map(alloc, DynMatUnitImpl::Init),
             nrows,
             ncols,
             col_stride,
@@ -5901,7 +5916,7 @@ pub fn temp_mat_zeroed<E: ComplexField>(
 
     (
         DynMat {
-            inner: E::map(alloc, |alloc| DynMatUnitImpl::Init(alloc)),
+            inner: E::map(alloc, DynMatUnitImpl::Init),
             nrows,
             ncols,
             col_stride,
@@ -5911,6 +5926,10 @@ pub fn temp_mat_zeroed<E: ComplexField>(
 }
 
 /// Creates a temporary matrix of zero values, from the given memory stack.
+///
+/// # Safety
+/// Elements of the matrix must be initialized before they are read, or references to them are
+/// formed.
 pub unsafe fn temp_mat_uninit<E: ComplexField>(
     nrows: usize,
     ncols: usize,
@@ -5940,7 +5959,7 @@ pub unsafe fn temp_mat_uninit<E: ComplexField>(
         );
         (
             DynMat {
-                inner: E::map(alloc, |alloc| DynMatUnitImpl::Uninit(alloc)),
+                inner: E::map(alloc, DynMatUnitImpl::Uninit),
                 nrows,
                 ncols,
                 col_stride,

@@ -236,20 +236,20 @@ pub mod inner_prod {
                     let x0 = &a(0).mul(&b(0));
                     let x1 = &a(1).mul(&b(1));
 
-                    acc = acc.add(&x0.add(&x1));
+                    acc = acc.add(&x0.add(x1));
                 }
                 3 => {
                     let x0 = &a(0).mul(&b(0));
                     let x1 = &a(1).mul(&b(1));
                     let x2 = &a(2).mul(&b(2));
-                    acc = acc.add(&x0.add(&x1).add(&x2));
+                    acc = acc.add(&x0.add(x1).add(x2));
                 }
                 4 => {
                     let x0 = &a(0).mul(&b(0));
                     let x1 = &a(1).mul(&b(1));
                     let x2 = &a(2).mul(&b(2));
                     let x3 = &a(3).mul(&b(3));
-                    acc = acc.add(&E::add(&x0.add(&x1), &x2.add(&x3)));
+                    acc = acc.add(&E::add(&x0.add(x1), &x2.add(x3)));
                 }
                 5 => {
                     let x0 = &a(0).mul(&b(0));
@@ -257,7 +257,7 @@ pub mod inner_prod {
                     let x2 = &a(2).mul(&b(2));
                     let x3 = &a(3).mul(&b(3));
                     let x4 = &a(4).mul(&b(4));
-                    acc = acc.add(&E::add(&x0.add(&x1), &x2.add(&x3).add(&x4)));
+                    acc = acc.add(&E::add(&x0.add(x1), &x2.add(x3).add(x4)));
                 }
                 6 => {
                     let x0 = &a(0).mul(&b(0));
@@ -266,7 +266,7 @@ pub mod inner_prod {
                     let x3 = &a(3).mul(&b(3));
                     let x4 = &a(4).mul(&b(4));
                     let x5 = &a(5).mul(&b(5));
-                    acc = acc.add(&E::add(&x0.add(&x1).add(&x2), &x3.add(&x4).add(&x5)));
+                    acc = acc.add(&E::add(&x0.add(x1).add(x2), &x3.add(x4).add(x5)));
                 }
                 7 => {
                     let x0 = &a(0).mul(&b(0));
@@ -277,8 +277,8 @@ pub mod inner_prod {
                     let x5 = &a(5).mul(&b(5));
                     let x6 = &a(6).mul(&b(6));
                     acc = acc.add(&E::add(
-                        &E::add(&E::add(&x0, &x1), &E::add(&x2, &x3)),
-                        &x4.add(&x5).add(&x6),
+                        &E::add(&E::add(x0, x1), &E::add(x2, x3)),
+                        &x4.add(x5).add(x6),
                     ));
                 }
                 _ => {
@@ -1054,22 +1054,36 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
 
                     let mut a_uninit =
                         [MaybeUninit::<E::GroupCopy<E::SimdUnit<S>>>::uninit(); MR_DIV_N];
-                    for i in 0..MR_DIV_N {
+
+                    let mut i = 0usize;
+                    loop {
+                        if i == MR_DIV_N {
+                            break;
+                        }
                         a_uninit[i] = MaybeUninit::new(E::into_copy(E::map(
                             E::copy(&a),
                             #[inline(always)]
                             |ptr| *(ptr.add(i * lane_count) as *const E::SimdUnit<S>),
                         )));
+                        i += 1;
                     }
                     let a: [E::Group<E::SimdUnit<S>>; MR_DIV_N] = transmute_unchecked(a_uninit);
 
-                    for j in 0..NR {
+                    let mut j = 0usize;
+                    loop {
+                        if j == NR {
+                            break;
+                        }
                         let b = E::map(
                             b.ptr_at(depth, j),
                             #[inline(always)]
                             |ptr| E::simd_splat_unit(simd, (*ptr).clone()),
                         );
-                        for i in 0..MR_DIV_N {
+                        let mut i = 0;
+                        loop {
+                            if i == MR_DIV_N {
+                                break;
+                            }
                             let local_acc = &mut local_acc[j][i];
                             *local_acc =
                                 E::into_copy(
@@ -1080,14 +1094,16 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                                         E::from_copy(*local_acc),
                                     ),
                                 );
+                            i += 1;
                         }
+                        j += 1;
                     }
                 }
             };
 
             let mut depth = 0;
             while depth < k / 4 * 4 {
-                one_iter(depth + 0);
+                one_iter(depth);
                 one_iter(depth + 1);
                 one_iter(depth + 2);
                 one_iter(depth + 3);
@@ -1098,8 +1114,16 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                 depth += 1;
             }
 
-            for j in 0..NR {
-                for i in 0..MR_DIV_N {
+            let mut j = 0usize;
+            loop {
+                if j == NR {
+                    break;
+                }
+                let mut i = 0usize;
+                loop {
+                    if i == MR_DIV_N {
+                        break;
+                    }
                     let acc = acc.rb_mut().ptr_inbounds_at(i * lane_count, j);
                     let mut acc_value =
                         E::map(E::copy(&acc), |acc| *(acc as *const E::SimdUnit<S>));
@@ -1107,7 +1131,9 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                     E::map(E::zip(acc, acc_value), |(acc, new_acc)| {
                         *(acc as *mut E::SimdUnit<S>) = new_acc
                     });
+                    i += 1;
                 }
+                j += 1;
             }
         }
     }
@@ -2070,9 +2096,11 @@ macro_rules! stack_mat_16x16_begin {
             },
         );
 
-        let zero = <$ty as $crate::Entity>::into_units(<$ty as $crate::ComplexField>::zero());
         <$ty as $crate::Entity>::map(
-            <$ty as $crate::Entity>::zip(<$ty as $crate::Entity>::as_mut(&mut __data), zero),
+            <$ty as $crate::Entity>::zip(
+                <$ty as $crate::Entity>::as_mut(&mut __data),
+                <$ty as $crate::Entity>::into_units(<$ty as $crate::ComplexField>::zero()),
+            ),
             #[inline(always)]
             |(__data, zero)| {
                 for __data in __data {

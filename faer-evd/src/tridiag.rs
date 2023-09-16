@@ -881,7 +881,6 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                                                   // represented exactly as floats
 
                 let idx_to_col_start = |idx: usize| {
-                    let ncols = ncols;
                     let idx_as_percent = idx as f64 / n_threads;
                     let col_start_percent = 1.0 - (1.0 - idx_as_percent).sqrt();
                     (col_start_percent * ncols) as usize
@@ -977,51 +976,49 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     parallelism,
                 );
             }
+        } else if E::HAS_SIMD {
+            let mut acc = v21.rb_mut().col(0);
+            let lhs = a22.rb();
+            let rhs = a21.rb();
+
+            let first_col = 0;
+            let last_col = n - k - 1;
+
+            arch.dispatch(SymMatVec {
+                acc: acc.rb_mut(),
+                lhs,
+                rhs,
+                first_col,
+                last_col,
+            });
+
+            zipped!(y21.rb_mut(), acc.rb(), a22.rb().diagonal(), a21.rb())
+                .for_each(|mut y, v, a, u| y.write(v.read().add(&a.read().mul(&u.read()))));
         } else {
-            if E::HAS_SIMD {
-                let mut acc = v21.rb_mut().col(0);
-                let lhs = a22.rb();
-                let rhs = a21.rb();
-
-                let first_col = 0;
-                let last_col = n - k - 1;
-
-                arch.dispatch(SymMatVec {
-                    acc: acc.rb_mut(),
-                    lhs,
-                    rhs,
-                    first_col,
-                    last_col,
-                });
-
-                zipped!(y21.rb_mut(), acc.rb(), a22.rb().diagonal(), a21.rb())
-                    .for_each(|mut y, v, a, u| y.write(v.read().add(&a.read().mul(&u.read()))));
-            } else {
-                zipped!(y21.rb_mut(), a22.rb().diagonal(), a21.rb())
-                    .for_each(|mut y, a, u| y.write(a.read().mul(&u.read())));
-                triangular::matmul(
-                    y21.rb_mut(),
-                    BlockStructure::Rectangular,
-                    a22.rb(),
-                    BlockStructure::StrictTriangularLower,
-                    a21.rb(),
-                    BlockStructure::Rectangular,
-                    Some(E::one()),
-                    E::one(),
-                    parallelism,
-                );
-                triangular::matmul(
-                    y21.rb_mut(),
-                    BlockStructure::Rectangular,
-                    a22.rb().adjoint(),
-                    BlockStructure::StrictTriangularUpper,
-                    a21.rb(),
-                    BlockStructure::Rectangular,
-                    Some(E::one()),
-                    E::one(),
-                    parallelism,
-                );
-            }
+            zipped!(y21.rb_mut(), a22.rb().diagonal(), a21.rb())
+                .for_each(|mut y, a, u| y.write(a.read().mul(&u.read())));
+            triangular::matmul(
+                y21.rb_mut(),
+                BlockStructure::Rectangular,
+                a22.rb(),
+                BlockStructure::StrictTriangularLower,
+                a21.rb(),
+                BlockStructure::Rectangular,
+                Some(E::one()),
+                E::one(),
+                parallelism,
+            );
+            triangular::matmul(
+                y21.rb_mut(),
+                BlockStructure::Rectangular,
+                a22.rb().adjoint(),
+                BlockStructure::StrictTriangularUpper,
+                a21.rb(),
+                BlockStructure::Rectangular,
+                Some(E::one()),
+                E::one(),
+                parallelism,
+            );
         }
 
         zipped!(u21.rb_mut(), a21.rb()).for_each(|mut dst, src| dst.write(src.read()));

@@ -73,7 +73,12 @@ pub trait Mat<'short, Outlives = &'short Self>: Seal {
     fn ncols(&self) -> usize;
     fn row_stride(&self) -> isize;
     fn col_stride(&self) -> isize;
+    /// # Safety
+    /// `i` and `j` must be within bounds.
     unsafe fn get(&'short mut self, i: usize, j: usize) -> Self::Item;
+    /// # Safety
+    /// The row stride must be `1`.
+    /// `[i, i + n_elems)` and `j` must be within bounds.
     unsafe fn get_column_slice(
         &'short mut self,
         i: usize,

@@ -65,6 +65,7 @@ fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j:
     }
 }
 
+#[allow(clippy::extra_unused_type_parameters)]
 fn lu_unblocked_req<E: Entity>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
     Ok(StackReq::default())
 }
@@ -107,11 +108,11 @@ fn lu_in_place_unblocked<E: ComplexField>(
             for i in 0..m / 2 {
                 let i = 2 * i;
 
-                let abs0 = unsafe { col.read_unchecked(i + 0, 0) }.score();
+                let abs0 = unsafe { col.read_unchecked(i, 0) }.score();
                 let abs1 = unsafe { col.read_unchecked(i + 1, 0) }.score();
 
                 if abs0 > max0 {
-                    imax0 = i + 0;
+                    imax0 = i;
                     max0 = abs0;
                 }
                 if abs1 > max1 {
@@ -122,7 +123,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
             if m % 2 != 0 {
                 let i = m - 1;
-                let abs0 = unsafe { col.read_unchecked(i + 0, 0) }.score();
+                let abs0 = unsafe { col.read_unchecked(i, 0) }.score();
                 if abs0 > max0 {
                     imax0 = i;
                     max0 = abs0;
@@ -266,11 +267,13 @@ fn update<E: ComplexField>(arch: pulp::Arch, mut matrix: MatMut<E>, j: usize) {
     }
 }
 
+#[allow(clippy::extra_unused_type_parameters)]
 fn recursion_threshold<E: Entity>(_m: usize) -> usize {
     16
 }
 
 #[inline]
+#[allow(clippy::extra_unused_type_parameters)]
 // we want remainder to be a multiple of register size
 fn blocksize<E: Entity>(n: usize) -> usize {
     let base_rem = n / 2;
@@ -295,6 +298,7 @@ fn lu_recursive_req<E: Entity>(
     }
 
     let bs = blocksize::<E>(n);
+    let _ = parallelism;
 
     StackReq::try_any_of([
         lu_recursive_req::<E>(m, bs, parallelism)?,
@@ -458,7 +462,7 @@ pub fn lu_in_place_req<E: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = &params;
 
-    let size = <usize as Ord>::min(n, m);
+    let size = Ord::min(n, m);
     StackReq::try_any_of([
         StackReq::try_new::<usize>(size)?,
         lu_recursive_req::<E>(m, size, parallelism)?,
@@ -503,10 +507,10 @@ pub fn lu_in_place<'out, E: ComplexField>(
     let mut stack = stack;
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = <usize as Ord>::min(n, m);
+    let size = Ord::min(n, m);
 
-    for i in 0..m {
-        perm[i] = i;
+    for (i, p) in perm.iter_mut().enumerate() {
+        *p = i;
     }
 
     let n_transpositions = {
