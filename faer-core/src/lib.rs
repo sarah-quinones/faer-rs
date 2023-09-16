@@ -52,9 +52,8 @@
 //! compatible with the classic contiguous layout that's commonly used by other libraries.
 //!
 //! # Memory allocation
-//! Since most `faer` crates aim to expose a low level api for optimal performance, all algorithms
-//! are mostly allocation-free in single threaded settings, and allocate minimal amounts in
-//! multithreaded settings.
+//! Since most `faer` crates aim to expose a low level api for optimal performance, most algorithms
+//! try to defer memory allocation to the user.
 //!
 //! However, since a lot of algorithms need some form of temporary space for intermediate
 //! computations, they may ask for a slice of memory for that purpose, by taking a [`stack:
