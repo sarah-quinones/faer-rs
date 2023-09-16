@@ -19,7 +19,7 @@ use reborrow::*;
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if `dst` doesn't have the same shape as `qr_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
 pub fn invert<E: ComplexField>(
     dst: MatMut<'_, E>,
@@ -68,7 +68,7 @@ pub fn invert<E: ComplexField>(
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
 pub fn invert_in_place<E: ComplexField>(
     qr_factors: MatMut<'_, E>,

@@ -18,7 +18,7 @@ assert2 = "0.3"
 num-traits = "0.2"
 num-complex = "0.4.3"
 rayon = "1.7"
-pulp = { version = "0.13", default-features = false }
+pulp = { version = "0.13.2", default-features = false }
 bytemuck = "1"
 
 [profile.dev]

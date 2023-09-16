@@ -1036,21 +1036,28 @@ fn lu_in_place_unblocked<E: ComplexField>(
 ) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
+    let size = Ord::min(m, n);
 
-    debug_assert!(row_transpositions.len() == m);
-    debug_assert!(col_transpositions.len() == n);
+    debug_assert!(row_transpositions.len() == size);
+    debug_assert!(col_transpositions.len() == size);
 
     if n == 0 || m == 0 {
         return 0;
     }
 
-    let size = <usize as Ord>::min(m, n);
-
     let mut n_transpositions = 0;
 
-    let (mut max_row, mut max_col, _) = best_in_matrix(matrix.rb());
+    let (mut max_row, mut max_col, mut biggest) = best_in_matrix(matrix.rb());
 
     for k in 0..size {
+        if biggest < E::Real::zero_threshold().unwrap() {
+            for idx in k..size {
+                row_transpositions[idx] = idx;
+                col_transpositions[idx] = idx;
+            }
+            break;
+        }
+
         row_transpositions[k] = max_row;
         col_transpositions[k] = max_col;
 
@@ -1091,7 +1098,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
         match parallelism {
             Parallelism::None => {
-                (max_row, max_col, _) = rank_one_update_and_best_in_matrix(
+                (max_row, max_col, biggest) = rank_one_update_and_best_in_matrix(
                     bottom_right,
                     bottom_left.col(k).rb(),
                     top_right.row(k).rb(),
@@ -1100,13 +1107,13 @@ fn lu_in_place_unblocked<E: ComplexField>(
             _ => {
                 let n_threads = parallelism_degree(parallelism);
 
-                let mut biggest = vec![(0_usize, 0_usize, E::Real::zero()); n_threads];
+                let mut biggest_vec = vec![(0_usize, 0_usize, E::Real::zero()); n_threads];
 
                 let lhs = bottom_left.col(k).into_const();
                 let rhs = top_right.row(k).into_const();
 
                 {
-                    let biggest = Ptr(biggest.as_mut_ptr());
+                    let biggest = Ptr(biggest_vec.as_mut_ptr());
 
                     for_each_raw(
                         n_threads,
@@ -1127,13 +1134,14 @@ fn lu_in_place_unblocked<E: ComplexField>(
                 max_row = 0;
                 max_col = 0;
                 let mut biggest_value = E::Real::zero();
-                for (row, col, value) in biggest {
+                for (row, col, value) in biggest_vec {
                     if value > biggest_value {
                         max_row = row;
                         max_col = col;
                         biggest_value = value;
                     }
                 }
+                biggest = biggest_value;
             }
         };
         max_row += k + 1;
@@ -1195,10 +1203,10 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 /// # Panics
 ///
 /// - Panics if the length of the row permutation slices is not equal to the number of rows of the
-///   matrix
+///   matrix.
 /// - Panics if the length of the column permutation slices is not equal to the number of columns of
-///   the matrix
-/// - Panics if the provided memory in `stack` is insufficient.
+///   the matrix.
+/// - Panics if the provided memory in `stack` is insufficient (see [`lu_in_place_req`]).
 pub fn lu_in_place<'out, E: ComplexField>(
     matrix: MatMut<'_, E>,
     row_perm: &'out mut [usize],
@@ -1216,13 +1224,15 @@ pub fn lu_in_place<'out, E: ComplexField>(
     let _ = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
+    let size = Ord::min(m, n);
+
     assert!(row_perm.len() == m);
     assert!(row_perm_inv.len() == m);
     assert!(col_perm.len() == n);
     assert!(col_perm_inv.len() == n);
 
-    let (mut row_transpositions, stack) = stack.make_with(m, |i| i);
-    let (mut col_transpositions, _) = stack.make_with(n, |i| i);
+    let (mut row_transpositions, stack) = stack.make_with(size, |_| 0usize);
+    let (mut col_transpositions, _) = stack.make_with(size, |_| 0usize);
 
     let n_transpositions = if matrix.row_stride().abs() < matrix.col_stride().abs() {
         lu_in_place_unblocked(
@@ -1438,5 +1448,172 @@ mod tests {
         compute_lu_col_major_generic::<c32>(random_c32, 1e-2);
         compute_lu_row_major_generic::<c64>(random_c64, 1e-6);
         compute_lu_row_major_generic::<c32>(random_c32, 1e-2);
+    }
+
+    #[test]
+    fn test_lu_c32_zeros() {
+        for (m, n) in [
+            (2, 4),
+            (2, 2),
+            (3, 3),
+            (4, 2),
+            (2, 1),
+            (4, 4),
+            (20, 20),
+            (20, 2),
+            (2, 20),
+            (40, 20),
+            (20, 40),
+        ] {
+            let mat = Mat::with_dims(m, n, |_i, _j| c32::zero());
+            for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+                let mut mat = mat.clone();
+                let mat_orig = mat.clone();
+
+                let mut mat = mat.as_mut();
+                let mat_orig = mat_orig.as_ref();
+
+                let mut row_perm = vec![0; m];
+                let mut row_perm_inv = vec![0; m];
+                let mut col_perm = vec![0; n];
+                let mut col_perm_inv = vec![0; n];
+
+                let (_, row_perm, col_perm) = lu_in_place(
+                    mat.rb_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    parallelism,
+                    make_stack!(lu_in_place_req::<f64>(
+                        m,
+                        n,
+                        Parallelism::None,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+                let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
+
+                for i in 0..m {
+                    for j in 0..n {
+                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lu_c32_ones() {
+        for (m, n) in [
+            (2, 4),
+            (2, 2),
+            (3, 3),
+            (4, 2),
+            (2, 1),
+            (4, 4),
+            (20, 20),
+            (20, 2),
+            (2, 20),
+            (40, 20),
+            (20, 40),
+        ] {
+            let mat = Mat::with_dims(m, n, |_i, _j| c32::one());
+            for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+                let mut mat = mat.clone();
+                let mat_orig = mat.clone();
+
+                let mut mat = mat.as_mut();
+                let mat_orig = mat_orig.as_ref();
+
+                let mut row_perm = vec![0; m];
+                let mut row_perm_inv = vec![0; m];
+                let mut col_perm = vec![0; n];
+                let mut col_perm_inv = vec![0; n];
+
+                let (_, row_perm, col_perm) = lu_in_place(
+                    mat.rb_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    parallelism,
+                    make_stack!(lu_in_place_req::<f64>(
+                        m,
+                        n,
+                        Parallelism::None,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+                let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
+
+                for i in 0..m {
+                    for j in 0..n {
+                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_lu_c32_rank_2() {
+        for (m, n) in [
+            (2, 4),
+            (2, 2),
+            (3, 3),
+            (4, 2),
+            (2, 1),
+            (4, 4),
+            (20, 20),
+            (20, 2),
+            (2, 20),
+            (40, 20),
+            (20, 40),
+        ] {
+            let u0 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
+            let v0 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+            let u1 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
+            let v1 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+
+            let mat = u0 * v0 + u1 * v1;
+            for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+                let mut mat = mat.clone();
+                let mat_orig = mat.clone();
+
+                let mut mat = mat.as_mut();
+                let mat_orig = mat_orig.as_ref();
+
+                let mut row_perm = vec![0; m];
+                let mut row_perm_inv = vec![0; m];
+                let mut col_perm = vec![0; n];
+                let mut col_perm_inv = vec![0; n];
+
+                let (_, row_perm, col_perm) = lu_in_place(
+                    mat.rb_mut(),
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut col_perm,
+                    &mut col_perm_inv,
+                    parallelism,
+                    make_stack!(lu_in_place_req::<f64>(
+                        m,
+                        n,
+                        Parallelism::None,
+                        Default::default()
+                    )),
+                    Default::default(),
+                );
+                let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
+
+                for i in 0..m {
+                    for j in 0..n {
+                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                    }
+                }
+            }
+        }
     }
 }

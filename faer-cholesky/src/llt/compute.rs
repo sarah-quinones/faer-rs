@@ -185,8 +185,10 @@ fn cholesky_in_place_impl<E: ComplexField>(
 ///
 /// # Panics
 ///
-/// - Panics if the input matrix is not square.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// Panics if the input matrix is not square.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`cholesky_in_place_req`]).
 #[track_caller]
 #[inline]
 pub fn cholesky_in_place<E: ComplexField>(

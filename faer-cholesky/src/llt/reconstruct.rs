@@ -30,6 +30,9 @@ pub fn reconstruct_lower_in_place_req<E: Entity>(
 ///
 /// - Panics if `cholesky_factor` is not a square matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`reconstruct_lower_req`]).
 #[track_caller]
 pub fn reconstruct_lower<E: ComplexField>(
     dst: MatMut<'_, E>,
@@ -60,6 +63,9 @@ pub fn reconstruct_lower<E: ComplexField>(
 /// # Panics
 ///
 /// - Panics if `cholesky_factor` is not a square matrix.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`reconstruct_lower_in_place_req`]).
 #[track_caller]
 pub fn reconstruct_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,

@@ -78,7 +78,7 @@ pub fn solve_transpose_req<T: Entity>(
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
 #[track_caller]
 pub fn solve_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
@@ -118,7 +118,8 @@ pub fn solve_in_place<T: ComplexField>(
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see
+///   [`solve_transpose_in_place_req`]).
 #[track_caller]
 pub fn solve_transpose_in_place<T: ComplexField>(
     qr_factors: MatRef<'_, T>,
@@ -159,7 +160,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
 #[track_caller]
 pub fn solve<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -202,7 +203,7 @@ pub fn solve<T: ComplexField>(
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
 #[track_caller]
 pub fn solve_transpose<T: ComplexField>(
     dst: MatMut<'_, T>,

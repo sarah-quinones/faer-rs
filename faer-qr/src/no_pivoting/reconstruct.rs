@@ -15,7 +15,7 @@ use reborrow::*;
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `dst` doesn't have the same shape as `qr_factors`.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
 pub fn reconstruct<E: ComplexField>(
     dst: MatMut<'_, E>,
@@ -60,7 +60,7 @@ pub fn reconstruct<E: ComplexField>(
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
 pub fn reconstruct_in_place<E: ComplexField>(
     qr_factors: MatMut<'_, E>,

@@ -3,9 +3,9 @@
 //! where $D$ is a diagonal matrix, and $L$ is a unit lower triangular matrix.
 //!
 //! The Cholesky decomposition with diagonal may have poor numerical stability properties when used
-//! with non positive definite matrices. In the general case, it is recommended to first permute the
-//! matrix using [`crate::compute_cholesky_permutation`] and
-//! [`permute_rows_and_cols_symmetric`](faer_core::permutation::permute_rows_and_cols_symmetric_lower).
+//! with non positive definite matrices. In the general case, it is recommended to first permute
+//! (and conjugate when necessary) the rows and columns of the matrix using the permutation obtained
+//! from [`crate::compute_cholesky_permutation`].
 
 pub mod compute;
 pub mod solve;
@@ -239,8 +239,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [1, 3],
+                Parallelism::None,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
 
@@ -268,8 +269,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [0, 2],
+                Parallelism::None,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
 
@@ -297,8 +299,9 @@ mod tests {
             delete_rows_and_cols_clobber(
                 a.as_mut(),
                 &mut [0, 2, 3],
+                Parallelism::None,
                 DynStack::new(&mut GlobalMemBuffer::new(
-                    delete_rows_and_cols_clobber_req::<E>(n, r).unwrap(),
+                    delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
 

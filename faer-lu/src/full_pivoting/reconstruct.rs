@@ -102,7 +102,7 @@ fn reconstruct_impl<T: ComplexField>(
 /// - Panics if the column permutation doesn't have the same dimension as the number of columns of
 ///   the matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
 pub fn reconstruct<T: ComplexField>(
     dst: MatMut<'_, T>,
@@ -133,7 +133,7 @@ pub fn reconstruct<T: ComplexField>(
 ///   matrix.
 /// - Panics if the column permutation doesn't have the same dimension as the number of columns of
 ///   the matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
 pub fn reconstruct_in_place<T: ComplexField>(
     lu_factors: MatMut<'_, T>,

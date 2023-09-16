@@ -91,7 +91,7 @@ pub fn invert_req<E: Entity>(
 /// - Panics if the LU factors are not a square matrix.
 /// - Panics if the row permutation doesn't have the same dimension as the matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
 pub fn invert<E: ComplexField>(
     dst: MatMut<'_, E>,
@@ -115,7 +115,7 @@ pub fn invert<E: ComplexField>(
 /// - Panics if the LU factors are not a square matrix.
 /// - Panics if the row permutation doesn't have the same dimension as the matrix.
 /// - Panics if the destination shape doesn't match the shape of the matrix.
-/// - Panics if the provided memory in `stack` is insufficient.
+/// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
 pub fn invert_in_place<E: ComplexField>(
     lu_factors: MatMut<'_, E>,
