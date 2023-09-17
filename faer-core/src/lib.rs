@@ -12,7 +12,7 @@
 //!
 //! # Example
 //! ```
-//! use faer_core::{mat, Mat};
+//! use faer_core::{mat, Mat, Scale};
 //!
 //! let a = mat![
 //!     [1.0, 5.0, 9.0],
@@ -25,6 +25,7 @@
 //!
 //! let add = &a + &b;
 //! let sub = &a - &b;
+//! let scale = Scale(3.0) * &a;
 //! let mul = &a * b.transpose();
 //! ```
 //!
@@ -103,6 +104,9 @@ pub mod solve;
 pub mod zip;
 
 mod matrix_ops;
+
+/// Thin wrapper used for scalar multiplication of a matrix by a scalar value.
+pub use matrix_ops::Scale;
 
 #[doc(hidden)]
 pub mod simd;
@@ -262,15 +266,24 @@ impl core::ops::Neg for c32 {
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        <Self as ComplexField>::neg(&self)
+        Self::new(-self.re, -self.im)
     }
 }
-impl core::ops::Sub for c32 {
+
+impl core::ops::Add<f32> for c32 {
     type Output = c32;
 
     #[inline(always)]
-    fn sub(self, rhs: Self) -> Self::Output {
-        <Self as ComplexField>::sub(&self, &rhs)
+    fn add(self, rhs: f32) -> Self::Output {
+        Self::new(self.re + rhs, self.im)
+    }
+}
+impl core::ops::Add<c32> for f32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn add(self, rhs: c32) -> Self::Output {
+        Self::Output::new(self + rhs.re, rhs.im)
     }
 }
 impl core::ops::Add for c32 {
@@ -278,7 +291,85 @@ impl core::ops::Add for c32 {
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
-        <Self as ComplexField>::add(&self, &rhs)
+        Self::new(self.re + rhs.re, self.im + rhs.im)
+    }
+}
+
+impl core::ops::Sub<f32> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: f32) -> Self::Output {
+        Self::new(self.re - rhs, self.im)
+    }
+}
+impl core::ops::Sub<c32> for f32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: c32) -> Self::Output {
+        Self::Output::new(self - rhs.re, -rhs.im)
+    }
+}
+impl core::ops::Sub for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new(self.re - rhs.re, self.im - rhs.im)
+    }
+}
+
+impl core::ops::Mul<f32> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn mul(self, rhs: f32) -> Self::Output {
+        Self::new(self.re * rhs, self.im * rhs)
+    }
+}
+impl core::ops::Mul<c32> for f32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn mul(self, rhs: c32) -> Self::Output {
+        Self::Output::new(self * rhs.re, self * rhs.im)
+    }
+}
+impl core::ops::Mul for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::new(
+            self.re * rhs.re - self.im * rhs.im,
+            self.re * rhs.im + self.im * rhs.re,
+        )
+    }
+}
+
+impl core::ops::Div<f32> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn div(self, rhs: f32) -> Self::Output {
+        Self::new(self.re / rhs, self.im / rhs)
+    }
+}
+impl core::ops::Div<c32> for f32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn div(self, rhs: c32) -> Self::Output {
+        self * <c32 as ComplexField>::inv(&rhs)
+    }
+}
+impl core::ops::Div for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn div(self, rhs: Self) -> Self::Output {
+        self * <Self as ComplexField>::inv(&rhs)
     }
 }
 
@@ -287,15 +378,24 @@ impl core::ops::Neg for c64 {
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        <Self as ComplexField>::neg(&self)
+        Self::new(-self.re, -self.im)
     }
 }
-impl core::ops::Sub for c64 {
+
+impl core::ops::Add<f64> for c64 {
     type Output = c64;
 
     #[inline(always)]
-    fn sub(self, rhs: Self) -> Self::Output {
-        <Self as ComplexField>::sub(&self, &rhs)
+    fn add(self, rhs: f64) -> Self::Output {
+        Self::new(self.re + rhs, self.im)
+    }
+}
+impl core::ops::Add<c64> for f64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn add(self, rhs: c64) -> Self::Output {
+        Self::Output::new(self + rhs.re, rhs.im)
     }
 }
 impl core::ops::Add for c64 {
@@ -303,7 +403,85 @@ impl core::ops::Add for c64 {
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
-        <Self as ComplexField>::add(&self, &rhs)
+        Self::new(self.re + rhs.re, self.im + rhs.im)
+    }
+}
+
+impl core::ops::Sub<f64> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: f64) -> Self::Output {
+        Self::new(self.re - rhs, self.im)
+    }
+}
+impl core::ops::Sub<c64> for f64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: c64) -> Self::Output {
+        Self::Output::new(self - rhs.re, -rhs.im)
+    }
+}
+impl core::ops::Sub for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new(self.re - rhs.re, self.im - rhs.im)
+    }
+}
+
+impl core::ops::Mul<f64> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn mul(self, rhs: f64) -> Self::Output {
+        Self::new(self.re * rhs, self.im * rhs)
+    }
+}
+impl core::ops::Mul<c64> for f64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn mul(self, rhs: c64) -> Self::Output {
+        Self::Output::new(self * rhs.re, self * rhs.im)
+    }
+}
+impl core::ops::Mul for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self::new(
+            self.re * rhs.re - self.im * rhs.im,
+            self.re * rhs.im + self.im * rhs.re,
+        )
+    }
+}
+
+impl core::ops::Div<f64> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn div(self, rhs: f64) -> Self::Output {
+        Self::new(self.re / rhs, self.im / rhs)
+    }
+}
+impl core::ops::Div<c64> for f64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn div(self, rhs: c64) -> Self::Output {
+        self * <c64 as ComplexField>::inv(&rhs)
+    }
+}
+impl core::ops::Div for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn div(self, rhs: Self) -> Self::Output {
+        self * <Self as ComplexField>::inv(&rhs)
     }
 }
 
@@ -6112,21 +6290,6 @@ where
     }
 }
 
-impl<T: ComplexField> core::ops::MulAssign<T> for MatMut<'_, T> {
-    fn mul_assign(&mut self, rhs: T) {
-        self.rb_mut().cwise().for_each(|mut x| {
-            let val = x.read();
-            x.write(val.mul(&rhs));
-        });
-    }
-}
-
-impl<T: ComplexField> core::ops::MulAssign<T> for Mat<T> {
-    fn mul_assign(&mut self, rhs: T) {
-        self.as_mut().mul_assign(rhs);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     macro_rules! impl_unit_entity {
@@ -6483,12 +6646,12 @@ mod tests {
         let mut x = mat![[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]];
 
         let expected = mat![[0.0, 2.0], [4.0, 6.0], [8.0, 10.0]];
-        x *= 2.0;
+        x *= Scale(2.0);
         assert_eq!(x, expected);
 
         let expected = mat![[0.0, 4.0], [8.0, 12.0], [16.0, 20.0]];
         let mut x_mut = x.as_mut();
-        x_mut *= 2.0;
+        x_mut *= Scale(2.0);
         assert_eq!(x, expected);
     }
 

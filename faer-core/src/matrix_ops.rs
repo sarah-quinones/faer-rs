@@ -1,7 +1,7 @@
 //! addition and subtraction of matrices
 
 use crate::{zipped, ComplexField, Conjugate, Mat, MatMut, MatRef};
-use core::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use reborrow::*;
 
 impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<MatRef<'_, RhsE>>
@@ -84,6 +84,45 @@ where
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct Scale<T>(pub T);
+
+impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<Scale<E>> for MatRef<'_, MatE> {
+    type Output = Mat<E>;
+
+    fn mul(self, rhs: Scale<E>) -> Self::Output {
+        unsafe {
+            Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
+                self.read_unchecked(i, j).canonicalize().mul(&rhs.0)
+            })
+        }
+    }
+}
+
+impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<MatRef<'_, MatE>> for Scale<E> {
+    type Output = Mat<E>;
+
+    fn mul(self, rhs: MatRef<'_, MatE>) -> Self::Output {
+        rhs * self
+    }
+}
+
+impl<E: ComplexField> MulAssign<Scale<E>> for MatMut<'_, E> {
+    fn mul_assign(&mut self, rhs: Scale<E>) {
+        self.rb_mut().cwise().for_each(|mut x| {
+            let val = x.read();
+            x.write(val.mul(&rhs.0));
+        });
+    }
+}
+
+impl<E: ComplexField> MulAssign<Scale<E>> for Mat<E> {
+    fn mul_assign(&mut self, rhs: Scale<E>) {
+        self.as_mut().mul_assign(rhs)
+    }
+}
+
 // implement unary traits for cases where the operand is
 // an owned matrix by deferring to the case where it's a reference
 // @todo: this will allocate even if the operand could be reused
@@ -122,6 +161,29 @@ macro_rules! impl_binary_op_single {
         }
     };
 }
+
+macro_rules! impl_scale_binary_op_single {
+    ($trait_name: ident, $op: ident, $rhs: ty) => {
+        impl<E: ComplexField, MatE: Conjugate<Canonical = E>> $trait_name<$rhs> for Scale<E> {
+            type Output = Mat<E>;
+            fn $op(self, rhs: $rhs) -> Self::Output {
+                self.$op(rhs.as_ref())
+            }
+        }
+        impl<E: ComplexField, MatE: Conjugate<Canonical = E>> $trait_name<Scale<E>> for $rhs {
+            type Output = Mat<E>;
+            fn $op(self, rhs: Scale<E>) -> Self::Output {
+                self.as_ref().$op(rhs)
+            }
+        }
+    };
+}
+
+impl_scale_binary_op_single!(Mul, mul, &MatRef<'_, MatE>);
+impl_scale_binary_op_single!(Mul, mul, &MatMut<'_, MatE>);
+impl_scale_binary_op_single!(Mul, mul, &Mat<MatE>);
+impl_scale_binary_op_single!(Mul, mul, MatMut<'_, MatE>);
+impl_scale_binary_op_single!(Mul, mul, Mat<MatE>);
 
 macro_rules! impl_assign_op_single {
     ($trait_name: ident, $op: ident, $lhs: ty, $rhs: ty) => {
@@ -351,6 +413,40 @@ mod test {
         let expected = mat![[-2.8, 3.3], [1.7, -5.2], [-4.6, 8.3],];
 
         assert_eq!(-A, expected);
+    }
+
+    #[test]
+    fn test_scalar_mul() {
+        use crate::Scale;
+
+        let (A, _) = matrices();
+        let scale = Scale(3.0);
+        let expected = Mat::with_dims(A.nrows(), A.ncols(), |i, j| A.read(i, j) * scale.0);
+
+        {
+            assert_matrix_approx_eq(A.as_ref() * scale, &expected);
+            assert_matrix_approx_eq(&A * scale, &expected);
+            assert_matrix_approx_eq(A.as_ref() * scale, &expected);
+            assert_matrix_approx_eq(&A * scale, &expected);
+            assert_matrix_approx_eq(A.as_ref() * scale, &expected);
+            assert_matrix_approx_eq(&A * scale, &expected);
+            assert_matrix_approx_eq(A.clone() * scale, &expected);
+            assert_matrix_approx_eq(A.clone() * scale, &expected);
+            assert_matrix_approx_eq(A * scale, &expected);
+        }
+
+        let (A, _) = matrices();
+        {
+            assert_matrix_approx_eq(scale * A.as_ref(), &expected);
+            assert_matrix_approx_eq(scale * &A, &expected);
+            assert_matrix_approx_eq(scale * A.as_ref(), &expected);
+            assert_matrix_approx_eq(scale * &A, &expected);
+            assert_matrix_approx_eq(scale * A.as_ref(), &expected);
+            assert_matrix_approx_eq(scale * &A, &expected);
+            assert_matrix_approx_eq(scale * A.clone(), &expected);
+            assert_matrix_approx_eq(scale * A.clone(), &expected);
+            assert_matrix_approx_eq(scale * A, &expected);
+        }
     }
 
     fn assert_matrix_approx_eq(given: Mat<f64>, expected: &Mat<f64>) {
