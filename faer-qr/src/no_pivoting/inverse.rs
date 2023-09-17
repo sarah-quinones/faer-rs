@@ -28,9 +28,7 @@ pub fn invert<E: ComplexField>(
 ) {
     assert!(qr_factors.nrows() == qr_factors.ncols());
     assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
-    assert!(
-        householder_factor.ncols() == <usize as Ord>::min(qr_factors.nrows(), qr_factors.ncols())
-    );
+    assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
     assert!(householder_factor.nrows() > 0);
 
     let mut dst = dst;

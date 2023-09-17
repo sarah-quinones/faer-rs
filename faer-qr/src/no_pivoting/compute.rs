@@ -17,7 +17,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
 ) {
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = <usize as Ord>::min(m, n);
+    let size = Ord::min(m, n);
 
     assert!(householder_factor.nrows() == size);
 
@@ -254,7 +254,7 @@ fn qr_in_place_blocked<E: ComplexField>(
     let mut parallelism = parallelism;
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = <usize as Ord>::min(m, n);
+    let size = Ord::min(m, n);
 
     let (disable_blocking, disable_parallelism) = params.normalize();
 
@@ -262,7 +262,7 @@ fn qr_in_place_blocked<E: ComplexField>(
 
     let mut j = 0;
     while j < size {
-        let bs = <usize as Ord>::min(blocksize, size - j);
+        let bs = Ord::min(blocksize, size - j);
         let mut householder_factor = if householder_is_full_matrix {
             householder_factor.rb_mut().submatrix(j, j, bs, bs)
         } else {
@@ -341,7 +341,7 @@ pub fn qr_in_place<E: ComplexField>(
     params: QrComputeParams,
 ) {
     let blocksize = householder_factor.nrows();
-    let size = <usize as Ord>::min(matrix.nrows(), matrix.ncols());
+    let size = Ord::min(matrix.nrows(), matrix.ncols());
     assert!(blocksize > 0);
     assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     if blocksize == 1 {

@@ -22,7 +22,7 @@ fn reconstruct_impl<E: ComplexField>(
 
     let m = lu_factors.nrows();
     let n = lu_factors.ncols();
-    let size = <usize as Ord>::min(m, n);
+    let size = Ord::min(m, n);
 
     let (mut lu, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
     let mut lu = lu.as_mut();

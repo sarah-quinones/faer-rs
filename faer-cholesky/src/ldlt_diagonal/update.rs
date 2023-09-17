@@ -579,11 +579,11 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 
         let arch = pulp::Arch::new();
         for j in 0..n {
-            let r = <usize as Ord>::min((*r)(), k);
+            let r = Ord::min((*r)(), k);
 
             let mut r_idx = 0;
             while r_idx < r {
-                let r_chunk = <usize as Ord>::min(r - r_idx, 4);
+                let r_chunk = Ord::min(r - r_idx, 4);
                 let mut p_array = [E::zero(), E::zero(), E::zero(), E::zero()];
                 let mut beta_array = [E::zero(), E::zero(), E::zero(), E::zero()];
 

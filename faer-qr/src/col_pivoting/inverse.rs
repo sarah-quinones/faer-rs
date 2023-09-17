@@ -31,9 +31,7 @@ pub fn invert<E: ComplexField>(
 ) {
     fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
     fancy_assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
-    fancy_assert!(
-        householder_factor.ncols() == <usize as Ord>::min(qr_factors.nrows(), qr_factors.ncols())
-    );
+    fancy_assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
     fancy_assert!(householder_factor.nrows() > 0);
 
     let mut dst = dst;

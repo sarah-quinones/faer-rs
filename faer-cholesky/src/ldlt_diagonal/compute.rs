@@ -224,7 +224,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     if n < 32 {
         cholesky_in_place_left_looking_impl(matrix, parallelism);
     } else {
-        let block_size = <usize as Ord>::min(n / 2, 128);
+        let block_size = Ord::min(n / 2, 128);
         let rem = n - block_size;
         let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
 

@@ -791,7 +791,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
 
     let mut j = 0;
     while j < size {
-        let bs = <usize as Ord>::min(blocksize, size - j);
+        let bs = Ord::min(blocksize, size - j);
         let essentials = householder_basis.submatrix(j, j, m - j, bs);
         let householder = householder_factor.submatrix(0, j, bs, bs);
 

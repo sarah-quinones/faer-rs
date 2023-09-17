@@ -385,7 +385,7 @@ fn qr_in_place_colmajor<E: ComplexField>(
 ) -> usize {
     let m = matrix.nrows();
     let n = matrix.ncols();
-    let size = <usize as Ord>::min(m, n);
+    let size = Ord::min(m, n);
 
     debug_assert!(householder_coeffs.nrows() == size);
 
@@ -675,6 +675,10 @@ pub fn qr_in_place_req<E: Entity>(
 ///
 /// The block size is chosed as the number of rows of `householder_factor`.
 ///
+/// After the function returns, `col_perm` contains the order of the columns after pivoting, i.e.
+/// the result is the same as computing the non-pivoted QR decomposition of the matrix `matrix[:,
+/// col_perm]`. `col_perm_inv` contains its inverse permutation.
+///
 /// # Output
 ///
 /// - The number of transpositions that constitute the permutation.
@@ -740,7 +744,7 @@ pub fn qr_in_place<'out, E: ComplexField>(
 
         let func = |idx: usize| {
             let j = idx * blocksize;
-            let blocksize = <usize as Ord>::min(blocksize, size - j);
+            let blocksize = Ord::min(blocksize, size - j);
             let mut householder = unsafe { householder_factor.rb().const_cast() }
                 .submatrix(0, j, blocksize, blocksize);
 

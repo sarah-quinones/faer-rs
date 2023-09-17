@@ -800,7 +800,7 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
     pulp::Arch::new().dispatch(BestInMat(matrix))
 }
 
-pub fn update_and_best_in_matrix_c64(
+fn update_and_best_in_matrix_c64(
     matrix: MatMut<'_, c64>,
     lhs: MatRef<'_, c64>,
     rhs: MatRef<'_, c64>,
@@ -1193,6 +1193,11 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 ///   `row_perm_inv` respectively,
 /// - the permutation representing $Q$, as well as its inverse, are stored in `col_perm` and
 ///   `col_perm_inv` respectively.
+///
+/// After the function returns, `row_perm` (resp. `col_perm`) contains the order of the rows (resp.
+/// columns) after pivoting, i.e. the result is the same as computing the non-pivoted LU
+/// decomposition of the matrix `matrix[row_perm, col_perm]`. `row_perm_inv` (resp. `col_perm_inv`)
+/// contains its inverse permutation.
 ///
 /// # Output
 ///

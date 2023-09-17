@@ -804,11 +804,11 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
         let arch = Arch::new();
         unsafe {
             for j in 0..n {
-                let r = <usize as Ord>::min((*r)(), k);
+                let r = Ord::min((*r)(), k);
 
                 let mut r_idx = 0;
                 while r_idx < r {
-                    let r_chunk = <usize as Ord>::min(r - r_idx, 4);
+                    let r_chunk = Ord::min(r - r_idx, 4);
                     let mut neg_wj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
                     let mut alpha_wj_over_nljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
                     let mut nljj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];

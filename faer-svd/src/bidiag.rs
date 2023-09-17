@@ -660,7 +660,7 @@ fn bidiag_fused_op<E: ComplexField>(
             let mut idx = 0;
             let mut first_init = true;
             while idx < n_threads {
-                let bs = <usize as Ord>::min(2, n_threads - idx);
+                let bs = Ord::min(2, n_threads - idx);
                 let z_block = z_tmp.rb_mut().submatrix(0, idx, m - 1, bs);
 
                 match bs {

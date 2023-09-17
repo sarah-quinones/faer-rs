@@ -481,6 +481,10 @@ pub fn lu_in_place_req<E: Entity>(
 /// diagonal, $U$ is stored in the upper triangular half of `matrix`, and the permutation
 /// representing $P$, as well as its inverse, are stored in `perm` and `perm_inv` respectively.
 ///
+/// After the function returns, `perm` contains the order of the rows after pivoting, i.e. the
+/// result is the same as computing the non-pivoted LU decomposition of the matrix `matrix[perm,
+/// :]`. `perm_inv` contains its inverse permutation.
+///
 /// # Output
 ///
 /// - The number of transpositions that constitute the permutation,
