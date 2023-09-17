@@ -1,7 +1,7 @@
 # 0.10
 - Performance improvements for small matrices.
 - Simpler SVD/EVD API for fixed precision floating point types.
-- Simpler math operators (+, -, *). Thanks @geo-and and @DJDuque.
+- Simpler math operators (+, -, *). Thanks @geo-ant and @DJDuque.
 - More robust pivoted decompositions for rank deficient matrices.
 - Better overflow/underflow handling in matrix decompositions, as well as non finite inputs.
 - Provide control over global parallelism settings in faer-core.
