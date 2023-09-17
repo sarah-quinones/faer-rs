@@ -84,6 +84,7 @@ use core::{
     marker::PhantomData,
     mem::{ManuallyDrop, MaybeUninit},
     ptr::NonNull,
+    sync::atomic::AtomicUsize,
 };
 use dyn_stack::{DynArray, DynStack, SizeOverflow, StackReq};
 use num_complex::Complex;
@@ -5978,6 +5979,41 @@ pub enum Parallelism {
     Rayon(usize),
 }
 
+/// 0: Disable
+/// 1: None
+/// n >= 2: Rayon(n - 2)
+///
+/// default: Rayon(0)
+static GLOBAL_PARALLELISM: AtomicUsize = AtomicUsize::new(2);
+
+/// Causes functions that access global parallelism settings to panic.
+pub fn disable_global_parallelism() {
+    GLOBAL_PARALLELISM.store(0, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Sets the global parallelism settings.
+pub fn set_global_parallelism(parallelism: Parallelism) {
+    let value = match parallelism {
+        Parallelism::None => 1,
+        Parallelism::Rayon(n) => n.saturating_add(2),
+    };
+    GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Gets the global parallelism settings.
+///
+/// # Panics
+/// Panics if global parallelism is disabled.
+#[track_caller]
+pub fn get_global_parallelism() -> Parallelism {
+    let value = GLOBAL_PARALLELISM.load(core::sync::atomic::Ordering::Relaxed);
+    match value {
+        0 => panic!("Global parallelism is disabled."),
+        1 => Parallelism::None,
+        n => Parallelism::Rayon(n - 2),
+    }
+}
+
 #[inline]
 #[doc(hidden)]
 pub fn join_raw(
@@ -6374,6 +6410,7 @@ where
 {
     type Output = Mat<LhsE::Canonical>;
 
+    #[track_caller]
     fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
         let mut out = Mat::zeros(self.nrows(), rhs.ncols());
         mul::matmul(
@@ -6382,7 +6419,7 @@ where
             rhs,
             None,
             LhsE::Canonical::one(),
-            Parallelism::Rayon(0),
+            get_global_parallelism(),
         );
         out
     }

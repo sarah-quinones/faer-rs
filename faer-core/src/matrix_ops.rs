@@ -7,6 +7,7 @@ use reborrow::*;
 impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<MatRef<'_, RhsE>>
     for MatMut<'_, LhsE>
 {
+    #[track_caller]
     fn add_assign(&mut self, rhs: MatRef<'_, RhsE>) {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         zipped!(self.rb_mut(), rhs).for_each(|mut lhs, rhs| {
@@ -18,6 +19,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<MatRef<'_,
 impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<MatRef<'_, RhsE>>
     for MatMut<'_, LhsE>
 {
+    #[track_caller]
     fn sub_assign(&mut self, rhs: MatRef<'_, RhsE>) {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         zipped!(self.rb_mut(), rhs).for_each(|mut lhs, rhs| {
@@ -33,6 +35,7 @@ where
 {
     type Output = Mat<LhsE::Canonical>;
 
+    #[track_caller]
     fn add(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         // SAFETY: we checked that the lhs and rhs dimensions are the same, so unchecked access is
@@ -54,6 +57,7 @@ where
 {
     type Output = Mat<LhsE::Canonical>;
 
+    #[track_caller]
     fn sub(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         // SAFETY: we checked that the lhs and rhs dimensions are the same, so unchecked access is
@@ -74,6 +78,7 @@ where
 {
     type Output = Mat<E::Canonical>;
 
+    #[track_caller]
     fn neg(self) -> Self::Output {
         // SAFETY: destination and input dimensions are the same
         unsafe {
@@ -91,6 +96,7 @@ pub struct Scale<T>(pub T);
 impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<Scale<E>> for MatRef<'_, MatE> {
     type Output = Mat<E>;
 
+    #[track_caller]
     fn mul(self, rhs: Scale<E>) -> Self::Output {
         unsafe {
             Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
@@ -103,12 +109,14 @@ impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<Scale<E>> for MatRef<'
 impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<MatRef<'_, MatE>> for Scale<E> {
     type Output = Mat<E>;
 
+    #[track_caller]
     fn mul(self, rhs: MatRef<'_, MatE>) -> Self::Output {
         rhs * self
     }
 }
 
 impl<E: ComplexField> MulAssign<Scale<E>> for MatMut<'_, E> {
+    #[track_caller]
     fn mul_assign(&mut self, rhs: Scale<E>) {
         self.rb_mut().cwise().for_each(|mut x| {
             let val = x.read();
@@ -118,6 +126,7 @@ impl<E: ComplexField> MulAssign<Scale<E>> for MatMut<'_, E> {
 }
 
 impl<E: ComplexField> MulAssign<Scale<E>> for Mat<E> {
+    #[track_caller]
     fn mul_assign(&mut self, rhs: Scale<E>) {
         self.as_mut().mul_assign(rhs)
     }
@@ -135,6 +144,7 @@ macro_rules! impl_unary_op_single {
             E::Canonical: ComplexField,
         {
             type Output = Mat<E::Canonical>;
+            #[track_caller]
             fn $op(self) -> Self::Output {
                 self.as_ref().$op()
             }
@@ -155,6 +165,7 @@ macro_rules! impl_binary_op_single {
             LhsE::Canonical: ComplexField,
         {
             type Output = Mat<LhsE::Canonical>;
+            #[track_caller]
             fn $op(self, rhs: $rhs) -> Self::Output {
                 self.as_ref().$op(rhs.as_ref())
             }
@@ -166,12 +177,14 @@ macro_rules! impl_scale_binary_op_single {
     ($trait_name: ident, $op: ident, $rhs: ty) => {
         impl<E: ComplexField, MatE: Conjugate<Canonical = E>> $trait_name<$rhs> for Scale<E> {
             type Output = Mat<E>;
+            #[track_caller]
             fn $op(self, rhs: $rhs) -> Self::Output {
                 self.$op(rhs.as_ref())
             }
         }
         impl<E: ComplexField, MatE: Conjugate<Canonical = E>> $trait_name<Scale<E>> for $rhs {
             type Output = Mat<E>;
+            #[track_caller]
             fn $op(self, rhs: Scale<E>) -> Self::Output {
                 self.as_ref().$op(rhs)
             }
@@ -188,6 +201,7 @@ impl_scale_binary_op_single!(Mul, mul, Mat<MatE>);
 macro_rules! impl_assign_op_single {
     ($trait_name: ident, $op: ident, $lhs: ty, $rhs: ty) => {
         impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> $trait_name<$rhs> for $lhs {
+            #[track_caller]
             fn $op(&mut self, rhs: $rhs) {
                 self.as_mut().$op(rhs.as_ref())
             }
@@ -201,6 +215,7 @@ macro_rules! impl_eq_single {
         where
             LhsE::Canonical: ComplexField,
         {
+            #[track_caller]
             fn eq(&self, rhs: &$rhs) -> bool {
                 PartialEq::eq(&self.as_ref(), &rhs.as_ref())
             }
