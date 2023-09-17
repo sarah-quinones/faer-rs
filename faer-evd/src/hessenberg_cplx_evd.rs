@@ -644,6 +644,7 @@ pub fn lahqr<E: ComplexField>(
 }
 
 #[derive(Default, Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct EvdParams {
     /// Function that returns the number of shifts to use for a given matrix size
     pub recommended_shift_count:

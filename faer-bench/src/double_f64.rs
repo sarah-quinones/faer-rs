@@ -533,6 +533,13 @@ mod faer_impl {
     }
 
     impl RealField for DoubleF64 {
+        fn epsilon() -> Option<Self> {
+            Some(Self::EPSILON)
+        }
+        fn zero_threshold() -> Option<Self> {
+            Some(Self::MIN_POSITIVE)
+        }
+
         #[inline(always)]
         fn div(&self, rhs: &Self) -> Self {
             *self / *rhs

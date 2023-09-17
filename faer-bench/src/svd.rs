@@ -1,8 +1,8 @@
 use super::timeit;
+use crate::random;
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
-use ndarray_linalg::{SVDDC, JobSvd};
-use crate::random;
+use ndarray_linalg::{JobSvd, SVDDC};
 use std::time::Duration;
 
 pub fn ndarray<T: ndarray_linalg::Lapack>(sizes: &[usize]) -> Vec<Duration> {
@@ -49,7 +49,10 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
+pub fn faer<T: faer_core::ComplexField>(
+    sizes: &[usize],
+    parallelism: Parallelism,
+) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -83,8 +86,6 @@ pub fn faer<T: faer_core::ComplexField>(sizes: &[usize], parallelism: Parallelis
                     s.as_mut().diagonal(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
-                    crate::epsilon::<T>(),
-                    crate::min_positive::<T>(),
                     parallelism,
                     stack.rb_mut(),
                     faer_svd::SvdParams::default(),

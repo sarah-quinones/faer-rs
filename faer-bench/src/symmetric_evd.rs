@@ -85,8 +85,6 @@ pub fn faer<T: faer_core::ComplexField>(
                     c.as_ref(),
                     s.as_mut().diagonal(),
                     Some(u.as_mut()),
-                    crate::epsilon::<T>(),
-                    crate::min_positive::<T>(),
                     parallelism,
                     stack.rb_mut(),
                     Default::default(),

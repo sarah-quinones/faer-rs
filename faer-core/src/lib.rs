@@ -359,6 +359,7 @@ impl core::ops::Div<f32> for c32 {
 impl core::ops::Div<c32> for f32 {
     type Output = c32;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c32) -> Self::Output {
         self * <c32 as ComplexField>::inv(&rhs)
@@ -367,6 +368,7 @@ impl core::ops::Div<c32> for f32 {
 impl core::ops::Div for c32 {
     type Output = c32;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         self * <Self as ComplexField>::inv(&rhs)
@@ -471,6 +473,7 @@ impl core::ops::Div<f64> for c64 {
 impl core::ops::Div<c64> for f64 {
     type Output = c64;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c64) -> Self::Output {
         self * <c64 as ComplexField>::inv(&rhs)
@@ -479,6 +482,7 @@ impl core::ops::Div<c64> for f64 {
 impl core::ops::Div for c64 {
     type Output = c64;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         self * <Self as ComplexField>::inv(&rhs)
@@ -820,6 +824,17 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         #[allow(clippy::eq_op)]
         {
             self != self
+        }
+    }
+
+    /// Returns true if `self` is a NaN value, or false otherwise.
+    #[inline(always)]
+    fn is_finite(&self) -> bool {
+        let inf = Self::Real::zero().inv();
+        if coe::is_same::<Self, Self::Real>() {
+            self.real().abs() < inf
+        } else {
+            (self.real().abs() < inf) & (self.imag().abs() < inf)
         }
     }
 
@@ -3541,6 +3556,33 @@ impl<'short, 'a, E: Entity> ReborrowMut<'short> for MatMut<'a, E> {
     }
 }
 
+impl<'a, E: Entity> IntoConst for MatRef<'a, E> {
+    type Target = MatRef<'a, E>;
+
+    #[inline(always)]
+    fn into_const(self) -> Self::Target {
+        self
+    }
+}
+
+impl<'short, 'a, E: Entity> Reborrow<'short> for MatRef<'a, E> {
+    type Target = MatRef<'short, E>;
+
+    #[inline(always)]
+    fn rb(&'short self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for MatRef<'a, E> {
+    type Target = MatRef<'short, E>;
+
+    #[inline(always)]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        *self
+    }
+}
+
 unsafe impl<E: Entity> Send for MatRef<'_, E> {}
 unsafe impl<E: Entity> Sync for MatRef<'_, E> {}
 unsafe impl<E: Entity> Send for MatMut<'_, E> {}
@@ -4224,6 +4266,30 @@ impl<'a, E: Entity> MatRef<'a, E> {
         mat
     }
 
+    #[inline]
+    pub fn has_nan(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        let mut found_nan = false;
+        zipped!(*self).for_each(|x| {
+            found_nan |= x.read().is_nan();
+        });
+        found_nan
+    }
+
+    #[inline]
+    pub fn is_all_finite(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        let mut all_finite = true;
+        zipped!(*self).for_each(|x| {
+            all_finite &= x.read().is_finite();
+        });
+        all_finite
+    }
+
     /// Returns a thin wrapper that can be used to execute coefficient-wise operations on matrices.
     #[inline]
     pub fn cwise(self) -> Zip<(Self,)> {
@@ -4882,6 +4948,22 @@ impl<'a, E: Entity> MatMut<'a, E> {
         E: Conjugate,
     {
         self.rb().to_owned()
+    }
+
+    #[inline]
+    pub fn has_nan(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        self.rb().has_nan()
+    }
+
+    #[inline]
+    pub fn is_all_finite(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        self.rb().is_all_finite()
     }
 
     /// Returns a thin wrapper that can be used to execute coefficient-wise operations on matrices.
@@ -5791,6 +5873,22 @@ impl<E: Entity> Mat<E> {
     {
         self.as_ref().to_owned()
     }
+
+    #[inline]
+    pub fn has_nan(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        self.as_ref().has_nan()
+    }
+
+    #[inline]
+    pub fn is_all_finite(&self) -> bool
+    where
+        E: ComplexField,
+    {
+        self.as_ref().is_all_finite()
+    }
 }
 
 #[doc(hidden)]
@@ -6697,5 +6795,40 @@ mod tests {
     fn from_slice_too_small() {
         let slice = [1.0, 2.0, 3.0, 4.0, 5.0_f64];
         MatRef::<f64>::from_column_major_slice(&slice, 3, 2);
+    }
+
+    #[test]
+    fn test_is_finite() {
+        let inf = f32::INFINITY;
+        let nan = f32::NAN;
+
+        {
+            assert!(<f32 as ComplexField>::is_finite(&1.0));
+            assert!(!<f32 as ComplexField>::is_finite(&inf));
+            assert!(!<f32 as ComplexField>::is_finite(&-inf));
+            assert!(!<f32 as ComplexField>::is_finite(&nan));
+        }
+        {
+            let x = c32::new(1.0, 2.0);
+            assert!(<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(inf, 2.0);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(1.0, inf);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(inf, inf);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(nan, 2.0);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(1.0, nan);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+
+            let x = c32::new(nan, nan);
+            assert!(!<c32 as ComplexField>::is_finite(&x));
+        }
     }
 }
