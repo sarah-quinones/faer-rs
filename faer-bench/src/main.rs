@@ -37,42 +37,6 @@ fn random<T: 'static>() -> T {
     }
 }
 
-fn epsilon<T: faer_core::ComplexField>() -> T::Real {
-    if is_same::<f32, T>() {
-        coe::coerce_static(f32::EPSILON)
-    } else if is_same::<f64, T>() {
-        coe::coerce_static(f64::EPSILON)
-    } else if is_same::<f128, T>() {
-        coe::coerce_static(f128::EPSILON)
-    } else if is_same::<c32, T>() {
-        coe::coerce_static(f32::EPSILON)
-    } else if is_same::<c64, T>() {
-        coe::coerce_static(f64::EPSILON)
-    } else if is_same::<c128, T>() {
-        coe::coerce_static(f128::EPSILON)
-    } else {
-        unimplemented!()
-    }
-}
-
-fn min_positive<T: faer_core::ComplexField>() -> T::Real {
-    if is_same::<f32, T>() {
-        coe::coerce_static(f32::MIN_POSITIVE)
-    } else if is_same::<f64, T>() {
-        coe::coerce_static(f64::MIN_POSITIVE)
-    } else if is_same::<f128, T>() {
-        coe::coerce_static(f128::MIN_POSITIVE)
-    } else if is_same::<c32, T>() {
-        coe::coerce_static(f32::MIN_POSITIVE)
-    } else if is_same::<c64, T>() {
-        coe::coerce_static(f64::MIN_POSITIVE)
-    } else if is_same::<c128, T>() {
-        coe::coerce_static(f128::MIN_POSITIVE)
-    } else {
-        unimplemented!()
-    }
-}
-
 fn time(mut f: impl FnMut()) -> f64 {
     let instant = std::time::Instant::now();
     f();
@@ -303,7 +267,9 @@ fn eigen(
     v.into_iter().map(Duration::from_secs_f64).collect()
 }
 
-const INPUT_SIZES: &[usize] = &[4, 8, 16, 32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024];
+const INPUT_SIZES: &[usize] = &[
+    4, 8, 16, 32, 64, 96, 128, 192, 256, 384, 512, 640, 768, 896, 1024,
+];
 const N: usize = INPUT_SIZES.len();
 fn main() -> Result<()> {
     let input_sizes = INPUT_SIZES;

@@ -29,7 +29,7 @@ use faer_core::{
     Parallelism, RealField,
 };
 use faer_qr::no_pivoting::compute::recommended_blocksize;
-use hessenberg_cplx_evd::EvdParams;
+pub use hessenberg_cplx_evd::EvdParams;
 use reborrow::*;
 
 #[doc(hidden)]
@@ -163,6 +163,19 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     if let Some(u) = u.rb() {
         assert!(u.nrows() == n);
         assert!(u.ncols() == n);
+    }
+
+    let mut all_finite = true;
+    zipped!(matrix).for_each_triangular_lower(faer_core::zip::Diag::Include, |x| {
+        all_finite &= x.read().is_finite();
+    });
+
+    if !all_finite {
+        { s }.set_constant(E::nan());
+        if let Some(mut u) = u {
+            u.set_constant(E::nan());
+        }
+        return;
     }
 
     let (mut trid, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
@@ -376,6 +389,15 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     }
 
     if n == 0 {
+        return;
+    }
+
+    if !matrix.is_all_finite() {
+        { s_re }.set_constant(E::nan());
+        { s_im }.set_constant(E::nan());
+        if let Some(mut u) = u {
+            u.set_constant(E::nan());
+        }
         return;
     }
 
@@ -809,6 +831,14 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     }
 
     if n == 0 {
+        return;
+    }
+
+    if !matrix.is_all_finite() {
+        { s }.set_constant(E::nan());
+        if let Some(mut u) = u {
+            u.set_constant(E::nan());
+        }
         return;
     }
 
