@@ -3566,9 +3566,9 @@ mod tests {
             (mid0, mid0, 1),
             (1, 1, 1),
         ] {
-            let a = Mat::with_dims(m, k, random);
-            let b = Mat::with_dims(k, n, random);
-            let acc_init = Mat::with_dims(m, n, random);
+            let a = Mat::from_fn(m, k, random);
+            let b = Mat::from_fn(k, n, random);
+            let acc_init = Mat::from_fn(m, n, random);
 
             for reverse_acc_cols in bools {
                 for reverse_acc_rows in bools {

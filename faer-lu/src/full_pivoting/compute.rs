@@ -1337,7 +1337,7 @@ mod tests {
             (20, 40),
             (1024, 1023),
         ] {
-            let random_mat = Mat::with_dims(m, n, |_i, _j| random());
+            let random_mat = Mat::from_fn(m, n, |_i, _j| random());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
@@ -1389,7 +1389,7 @@ mod tests {
             (20, 40),
             (1024, 1023),
         ] {
-            let random_mat = Mat::with_dims(n, m, |_i, _j| random());
+            let random_mat = Mat::from_fn(n, m, |_i, _j| random());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
@@ -1470,7 +1470,7 @@ mod tests {
             (40, 20),
             (20, 40),
         ] {
-            let mat = Mat::with_dims(m, n, |_i, _j| c32::zero());
+            let mat = Mat::from_fn(m, n, |_i, _j| c32::zero());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = mat.clone();
                 let mat_orig = mat.clone();
@@ -1524,7 +1524,7 @@ mod tests {
             (40, 20),
             (20, 40),
         ] {
-            let mat = Mat::with_dims(m, n, |_i, _j| c32::one());
+            let mat = Mat::from_fn(m, n, |_i, _j| c32::one());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = mat.clone();
                 let mat_orig = mat.clone();
@@ -1578,10 +1578,10 @@ mod tests {
             (40, 20),
             (20, 40),
         ] {
-            let u0 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
-            let v0 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
-            let u1 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
-            let v1 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+            let u0 = Mat::from_fn(m, 1, |_, _| c32::new(random(), random()));
+            let v0 = Mat::from_fn(1, n, |_, _| c32::new(random(), random()));
+            let u1 = Mat::from_fn(m, 1, |_, _| c32::new(random(), random()));
+            let v1 = Mat::from_fn(1, n, |_, _| c32::new(random(), random()));
 
             let mat = u0 * v0 + u1 * v1;
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {

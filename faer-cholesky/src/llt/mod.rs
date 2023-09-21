@@ -45,7 +45,7 @@ mod tests {
     }
 
     fn random_positive_definite(n: usize) -> Mat<E> {
-        let a = Mat::with_dims(n, n, |_, _| random());
+        let a = Mat::from_fn(n, n, |_, _| random());
         let mut ata = Mat::zeros(n, n);
 
         mul::matmul(
@@ -120,7 +120,7 @@ mod tests {
         for n in 0..20 {
             let k = 5;
             let mut a = random_positive_definite(n);
-            let mut rhs = Mat::with_dims(n, k, |_, _| random());
+            let mut rhs = Mat::from_fn(n, k, |_, _| random());
             let a_orig = a.clone();
             let rhs_orig = rhs.clone();
 
@@ -180,8 +180,8 @@ mod tests {
             let n = 4;
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
-            let mut w = Mat::with_dims(n, k, |_, _| random());
-            let mut alpha = Mat::with_dims(k, 1, |_, _| E::from_real(rand::random()));
+            let mut w = Mat::from_fn(n, k, |_, _| random());
+            let mut alpha = Mat::from_fn(k, 1, |_, _| E::from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);

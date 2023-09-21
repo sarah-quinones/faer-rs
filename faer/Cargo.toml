@@ -1,0 +1,69 @@
+[package]
+name = "faer"
+version = "0.10.0"
+edition = "2021"
+authors = ["sarah <>"]
+description = "Basic linear algebra routines"
+readme = "../README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
+
+[dependencies]
+faer-core = { version = "0.10.0", path = "../faer-core" }
+faer-cholesky = { version = "0.10.0", path = "../faer-cholesky" }
+faer-lu = { version = "0.10.0", path = "../faer-lu" }
+faer-qr = { version = "0.10.0", path = "../faer-qr" }
+faer-svd = { version = "0.10.0", path = "../faer-svd" }
+faer-evd = { version = "0.10.0", path = "../faer-evd" }
+dyn-stack.workspace = true
+assert2.workspace = true
+reborrow.workspace = true
+coe-rs.workspace = true
+matrixcompare = "0.3"
+dbgf = "0.1.0"
+nalgebra = { version = "0.32", optional = true, default-features = false }
+ndarray = { version = "0.15", optional = true, default-features = false }
+polars = { version = "0.33", optional = true, default-features = false }
+
+[features]
+default = ["std"]
+std = [
+  "faer-core/std",
+  "faer-cholesky/std",
+  "faer-lu/std",
+  "faer-qr/std",
+  "faer-svd/std",
+  "faer-evd/std",
+]
+nightly = [
+  "faer-core/nightly",
+  "faer-cholesky/nightly",
+  "faer-lu/nightly",
+  "faer-qr/nightly",
+  "faer-svd/nightly",
+  "faer-evd/nightly",
+]
+nalgebra = ["dep:nalgebra"]
+ndarray = ["dep:ndarray"]
+polars = ["dep:polars"]
+polars-lazy = ["polars/lazy"]
+
+[dev-dependencies]
+assert_approx_eq = "1.1.0"
+rand = "0.8.5"
+nalgebra = "0.32"
+ndarray = "0.15"
+polars = { version = "0.33", features = ["lazy", "parquet"] }
+
+[[example]]
+name = "conversions"
+required-features = ["nalgebra", "ndarray"]
+
+[[example]]
+name = "polars"
+required-features = ["polars", "polars-lazy"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]

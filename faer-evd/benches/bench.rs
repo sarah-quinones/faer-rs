@@ -48,7 +48,7 @@ fn min_positive<E: 'static>() -> E {
 
 fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024] {
-        let mut mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mut mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
@@ -160,7 +160,7 @@ fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
 
 fn evd<E: ComplexField>(criterion: &mut Criterion) {
     for n in [4, 6, 8, 10, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 4096] {
-        let mut mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mut mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
@@ -246,7 +246,7 @@ fn evd_nalgebra(criterion: &mut Criterion) {
 
 fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024, 4096] {
-        let mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let mut t = mat.clone();
         let mut z = mat.clone();
         let mut w = Mat::zeros(n, 1);
@@ -332,7 +332,7 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
 
 fn real_schur<E: RealField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024, 4096] {
-        let mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let mut t = mat.clone();
         let mut z = mat.clone();
         let mut w_re = Mat::zeros(n, 1);
@@ -421,7 +421,7 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
 
 fn hessenberg<E: ComplexField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024, 4096] {
-        let mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let mut t = mat.clone();
         let bs = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(n - 1, n - 1);
         let mut householder = Mat::zeros(n - 1, bs);
@@ -454,7 +454,7 @@ fn hessenberg<E: ComplexField>(criterion: &mut Criterion) {
 
 fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
     for n in [32, 64, 128, 256, 512, 1024, 4096] {
-        let mat = Mat::with_dims(n, n, |_, _| random::<E>());
+        let mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let mut z = mat.clone();
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);

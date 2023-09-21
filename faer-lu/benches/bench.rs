@@ -29,7 +29,7 @@ pub fn lu(c: &mut Criterion) {
             });
         }
 
-        let mat = Mat::with_dims(n, n, |_, _| random::<f64>());
+        let mat = Mat::from_fn(n, n, |_, _| random::<f64>());
         {
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];

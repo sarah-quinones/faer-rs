@@ -41,7 +41,7 @@ where
         // SAFETY: we checked that the lhs and rhs dimensions are the same, so unchecked access is
         // fine
         unsafe {
-            Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
+            Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j)
                     .canonicalize()
                     .add(&rhs.read_unchecked(i, j).canonicalize())
@@ -63,7 +63,7 @@ where
         // SAFETY: we checked that the lhs and rhs dimensions are the same, so unchecked access is
         // fine
         unsafe {
-            Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
+            Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j)
                     .canonicalize()
                     .sub(&rhs.read_unchecked(i, j).canonicalize())
@@ -82,13 +82,14 @@ where
     fn neg(self) -> Self::Output {
         // SAFETY: destination and input dimensions are the same
         unsafe {
-            Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
+            Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j).canonicalize().neg()
             })
         }
     }
 }
 
+/// Wrapper around a scalar value that allows scalar multiplication by matrices.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Scale<T>(pub T);
@@ -99,7 +100,7 @@ impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<Scale<E>> for MatRef<'
     #[track_caller]
     fn mul(self, rhs: Scale<E>) -> Self::Output {
         unsafe {
-            Self::Output::with_dims(self.nrows(), self.ncols(), |i, j| {
+            Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j).canonicalize().mul(&rhs.0)
             })
         }
@@ -436,7 +437,7 @@ mod test {
 
         let (A, _) = matrices();
         let scale = Scale(3.0);
-        let expected = Mat::with_dims(A.nrows(), A.ncols(), |i, j| A.read(i, j) * scale.0);
+        let expected = Mat::from_fn(A.nrows(), A.ncols(), |i, j| A.read(i, j) * scale.0);
 
         {
             assert_matrix_approx_eq(A.as_ref() * scale, &expected);

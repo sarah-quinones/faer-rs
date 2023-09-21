@@ -711,12 +711,12 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.set_constant(E::nan());
+        { s }.fill_with_constant(E::nan());
         if let Some(mut u) = u {
-            u.set_constant(E::nan());
+            u.fill_with_constant(E::nan());
         }
         if let Some(mut v) = v {
-            v.set_constant(E::nan());
+            v.fill_with_constant(E::nan());
         }
         return;
     }
@@ -897,7 +897,7 @@ mod tests {
     #[test]
     fn test_real_big() {
         for (m, n) in [(3, 2), (2, 2), (4, 4), (15, 10), (10, 10), (15, 15)] {
-            let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
+            let mat = Mat::from_fn(m, n, |_, _| rand::random::<f64>());
             let size = m.min(n);
 
             let mut s = Mat::zeros(m, n);
@@ -1017,7 +1017,7 @@ mod tests {
     #[test]
     fn test_real_small() {
         for (m, n) in [(4, 4), (5, 5), (15, 10), (10, 10), (15, 15)] {
-            let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
+            let mat = Mat::from_fn(m, n, |_, _| rand::random::<f64>());
             let size = m.min(n);
 
             let mut s = Mat::zeros(m, n);
@@ -1055,7 +1055,7 @@ mod tests {
     fn test_real() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
+                let mat = Mat::from_fn(m, n, |_, _| rand::random::<f64>());
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1094,7 +1094,7 @@ mod tests {
     fn test_real_f32() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(m, n, |_, _| rand::random::<f32>());
+                let mat = Mat::from_fn(m, n, |_, _| rand::random::<f32>());
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1137,7 +1137,7 @@ mod tests {
                 for compute_u in [No, Thin, Full] {
                     for compute_v in [No, Thin, Full] {
                         dbg!(m, n, compute_u, compute_v);
-                        let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
+                        let mat = Mat::from_fn(m, n, |_, _| rand::random::<f64>());
                         let size = m.min(n);
 
                         let mut s = Mat::zeros(m, n);
@@ -1229,7 +1229,7 @@ mod tests {
     fn test_cplx() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(m, n, |_, _| c64::new(rand::random(), rand::random()));
+                let mat = Mat::from_fn(m, n, |_, _| c64::new(rand::random(), rand::random()));
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1268,7 +1268,7 @@ mod tests {
     fn test_cplx_f32() {
         for m in 0..20 {
             for n in 0..20 {
-                let mat = Mat::with_dims(m, n, |_, _| c32::new(rand::random(), rand::random()));
+                let mat = Mat::from_fn(m, n, |_, _| c32::new(rand::random(), rand::random()));
                 let size = m.min(n);
 
                 let mut s = Mat::zeros(m, n);
@@ -1312,7 +1312,7 @@ mod tests {
                     for compute_v in [No, Thin, Full] {
                         dbg!(m, n, compute_u, compute_v);
                         let mat =
-                            Mat::with_dims(m, n, |_, _| c64::new(rand::random(), rand::random()));
+                            Mat::from_fn(m, n, |_, _| c64::new(rand::random(), rand::random()));
                         let size = m.min(n);
 
                         let mut s = Mat::zeros(m, n);
@@ -1486,7 +1486,7 @@ mod tests {
         for n in [1, 2, 4, 8, 64, 512] {
             for m in [1, 2, 4, 8, 64, 512] {
                 let f = |_, _| 1f64;
-                let mat = Mat::with_dims(m, n, f);
+                let mat = Mat::from_fn(m, n, f);
                 let mut s = Mat::zeros(m, n);
                 let mut u = Mat::zeros(m, m);
                 let mut v = Mat::zeros(n, n);
@@ -1524,7 +1524,7 @@ mod tests {
         for n in [1, 2, 4, 8, 32, 64, 512] {
             for m in [1, 2, 4, 8, 32, 64, 512] {
                 let f = |_, _| c64::new(1.0, 0.0);
-                let mat = Mat::with_dims(m, n, f);
+                let mat = Mat::from_fn(m, n, f);
                 let mut s = Mat::zeros(m, n);
                 let mut u = Mat::zeros(m, m);
                 let mut v = Mat::zeros(n, n);

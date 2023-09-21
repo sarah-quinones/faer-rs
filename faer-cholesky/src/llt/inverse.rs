@@ -78,8 +78,8 @@ pub fn invert_lower_in_place<E: ComplexField>(
     invert_lower_impl(cholesky_factor, None, parallelism, stack);
 }
 
-/// Computes the inverse of a matrix, given its partial pivoting LU decomposition,
-/// and stores the result in `lu_factors`.
+/// Computes the lower triangular part of the inverse of a matrix, given its Cholesky
+/// decomposition, and stores the result in `dst`.
 ///
 /// # Panics
 ///

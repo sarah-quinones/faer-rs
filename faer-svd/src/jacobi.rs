@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn test_jacobi() {
         for n in [0, 1, 2, 4, 8, 15, 16, 31, 32] {
-            let mat = Mat::<f64>::with_dims(n, n, |_, _| rand::random::<f64>());
+            let mat = Mat::<f64>::from_fn(n, n, |_, _| rand::random::<f64>());
 
             let mut s = mat.clone();
             let mut u = Mat::<f64>::zeros(n, n);
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_skip_first() {
         for n in [2, 4, 8, 15, 16, 31, 32] {
-            let mat = Mat::<f64>::with_dims(
+            let mat = Mat::<f64>::from_fn(
                 n,
                 n,
                 |_, j| if j == 0 { 0.0 } else { rand::random::<f64>() },
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn test_skip_last() {
         for n in [2, 4, 8, 15, 16, 31, 32] {
-            let mat = Mat::<f64>::with_dims(n, n, |_, j| {
+            let mat = Mat::<f64>::from_fn(n, n, |_, j| {
                 if j == n - 1 {
                     0.0
                 } else {

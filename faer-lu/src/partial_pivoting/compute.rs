@@ -602,7 +602,7 @@ mod tests {
             (100, 200),
             (200, 200),
         ] {
-            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+            let mut mat = Mat::from_fn(m, n, |_, _| random::<f64>());
             let mat_orig = mat.clone();
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
@@ -649,7 +649,7 @@ mod tests {
             (100, 200),
             (200, 200),
         ] {
-            let mut mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+            let mut mat = Mat::from_fn(m, n, |_, _| random::<f64>());
             let mut mat = mat.as_mut().reverse_rows();
             let mat_orig = mat.to_owned();
             let mut perm = vec![0; m];
@@ -697,7 +697,7 @@ mod tests {
             (100, 200),
             (200, 200),
         ] {
-            let mut mat = Mat::with_dims(n, m, |_, _| random::<f64>());
+            let mut mat = Mat::from_fn(n, m, |_, _| random::<f64>());
             let mut mat = mat.as_mut().transpose();
             let mat_orig = mat.to_owned();
             let mut perm = vec![0; m];

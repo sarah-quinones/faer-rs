@@ -23,12 +23,12 @@ pub fn bidiag(c: &mut Criterion) {
         (2048, 2048),
         (4096, 4096),
     ] {
-        let mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+        let mat = Mat::from_fn(m, n, |_, _| random::<f64>());
 
         {
             let mut copy = mat.clone();
-            let mut householder_left = Mat::with_dims(n, 1, |_, _| random::<f64>());
-            let mut householder_right = Mat::with_dims(n, 1, |_, _| random::<f64>());
+            let mut householder_left = Mat::from_fn(n, 1, |_, _| random::<f64>());
+            let mut householder_right = Mat::from_fn(n, 1, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(
                 faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)
@@ -51,8 +51,8 @@ pub fn bidiag(c: &mut Criterion) {
 
         {
             let mut copy = mat.clone();
-            let mut householder_left = Mat::with_dims(n, 1, |_, _| random::<f64>());
-            let mut householder_right = Mat::with_dims(n, 1, |_, _| random::<f64>());
+            let mut householder_left = Mat::from_fn(n, 1, |_, _| random::<f64>());
+            let mut householder_right = Mat::from_fn(n, 1, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(
                 faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::Rayon(0))
@@ -174,7 +174,7 @@ fn real_svd(c: &mut Criterion) {
         (2048, 2048),
         (4096, 4096),
     ] {
-        let mat = Mat::with_dims(m, n, |_, _| rand::random::<f64>());
+        let mat = Mat::from_fn(m, n, |_, _| rand::random::<f64>());
         let mat = mat.as_ref();
 
         let size = m.min(n);

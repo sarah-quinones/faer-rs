@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn test_invert_lower() {
         (0..32).for_each(|n| {
-            let a = Mat::with_dims(n, n, |_, _| 2.0 + random::<f64>());
+            let a = Mat::from_fn(n, n, |_, _| 2.0 + random::<f64>());
             let mut inv = Mat::zeros(n, n);
             invert_lower_triangular(inv.as_mut(), a.as_ref(), Parallelism::Rayon(0));
 
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn test_invert_unit_lower() {
         (0..32).for_each(|n| {
-            let a = Mat::with_dims(n, n, |_, _| 2.0 + random::<f64>());
+            let a = Mat::from_fn(n, n, |_, _| 2.0 + random::<f64>());
             let mut inv = Mat::zeros(n, n);
             invert_unit_lower_triangular(inv.as_mut(), a.as_ref(), Parallelism::Rayon(0));
 
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn test_invert_upper() {
         (0..32).for_each(|n| {
-            let a = Mat::with_dims(n, n, |_, _| 2.0 + random::<f64>());
+            let a = Mat::from_fn(n, n, |_, _| 2.0 + random::<f64>());
             let mut inv = Mat::zeros(n, n);
             invert_upper_triangular(inv.as_mut(), a.as_ref(), Parallelism::Rayon(0));
 
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_invert_unit_upper() {
         (0..32).for_each(|n| {
-            let a = Mat::with_dims(n, n, |_, _| 2.0 + random::<f64>());
+            let a = Mat::from_fn(n, n, |_, _| 2.0 + random::<f64>());
             let mut inv = Mat::zeros(n, n);
             invert_unit_upper_triangular(inv.as_mut(), a.as_ref(), Parallelism::Rayon(0));
 
