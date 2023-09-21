@@ -39,12 +39,12 @@ pub fn qr(c: &mut Criterion) {
             });
         }
 
-        let mat = Mat::with_dims(m, n, |_, _| random::<f64>());
+        let mat = Mat::from_fn(m, n, |_, _| random::<f64>());
 
         {
             let mut copy = mat.clone();
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
@@ -65,7 +65,7 @@ pub fn qr(c: &mut Criterion) {
         {
             let mut copy = mat.clone();
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
 
             let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
             let mut stack = DynStack::new(&mut mem);
@@ -87,7 +87,7 @@ pub fn qr(c: &mut Criterion) {
         {
             let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<f64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
             c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
@@ -110,7 +110,7 @@ pub fn qr(c: &mut Criterion) {
         {
             let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<f64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| random::<f64>());
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
             c.bench_function(&format!("faer-mt-colqr-{m}x{n}"), |b| {
@@ -130,11 +130,11 @@ pub fn qr(c: &mut Criterion) {
             });
         }
 
-        let mat = Mat::with_dims(m, n, |_, _| c64::new(random(), random()));
+        let mat = Mat::from_fn(m, n, |_, _| c64::new(random(), random()));
         {
             let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<c64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| c64::new(random(), random()));
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| c64::new(random(), random()));
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
             c.bench_function(&format!("faer-st-cplx-colqr-{m}x{n}"), |b| {
@@ -157,7 +157,7 @@ pub fn qr(c: &mut Criterion) {
         {
             let mut copy = mat.clone();
             let blocksize = recommended_blocksize::<c64>(m, n);
-            let mut householder = Mat::with_dims(blocksize, n, |_, _| c64::new(random(), random()));
+            let mut householder = Mat::from_fn(blocksize, n, |_, _| c64::new(random(), random()));
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
             c.bench_function(&format!("faer-mt-cplx-colqr-{m}x{n}"), |b| {

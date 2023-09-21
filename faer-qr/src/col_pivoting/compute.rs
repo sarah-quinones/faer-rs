@@ -841,7 +841,7 @@ mod tests {
     fn test_qr_f64() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63), (1024, 1024)] {
-                let mut mat = Mat::<f64>::with_dims(m, n, |_, _| random());
+                let mut mat = Mat::<f64>::from_fn(m, n, |_, _| random());
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -889,7 +889,7 @@ mod tests {
     fn test_qr_c64() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let mut mat = Mat::<c64>::with_dims(m, n, |_, _| c64::new(random(), random()));
+                let mut mat = Mat::<c64>::from_fn(m, n, |_, _| c64::new(random(), random()));
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -947,7 +947,7 @@ mod tests {
     fn test_qr_f32() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63), (1024, 1024)] {
-                let mut mat = Mat::<f32>::with_dims(m, n, |_, _| random());
+                let mut mat = Mat::<f32>::from_fn(m, n, |_, _| random());
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -995,7 +995,7 @@ mod tests {
     fn test_qr_c32() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let mut mat = Mat::<c32>::with_dims(m, n, |_, _| c32::new(random(), random()));
+                let mut mat = Mat::<c32>::from_fn(m, n, |_, _| c32::new(random(), random()));
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -1111,7 +1111,7 @@ mod tests {
     fn test_qr_c32_ones() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let mut mat = Mat::<c32>::with_dims(m, n, |_, _| c32::one());
+                let mut mat = Mat::<c32>::from_fn(m, n, |_, _| c32::one());
                 let mat_orig = mat.clone();
                 let size = m.min(n);
                 let blocksize = 8;
@@ -1169,10 +1169,10 @@ mod tests {
     fn test_qr_c32_rank_2() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(8)] {
             for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4), (63, 63)] {
-                let u0 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
-                let v0 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
-                let u1 = Mat::with_dims(m, 1, |_, _| c32::new(random(), random()));
-                let v1 = Mat::with_dims(1, n, |_, _| c32::new(random(), random()));
+                let u0 = Mat::from_fn(m, 1, |_, _| c32::new(random(), random()));
+                let v0 = Mat::from_fn(1, n, |_, _| c32::new(random(), random()));
+                let u1 = Mat::from_fn(m, 1, |_, _| c32::new(random(), random()));
+                let v1 = Mat::from_fn(1, n, |_, _| c32::new(random(), random()));
 
                 let mut mat = u0 * v0 + u1 * v1;
                 let mat_orig = mat.clone();

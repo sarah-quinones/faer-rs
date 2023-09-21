@@ -1,14 +1,9 @@
 //! Matrix zipping module.
 
-use crate::{Entity, MatMut, MatRef};
+use crate::{seal::Seal, Entity, MatMut, MatRef};
 use assert2::{assert, debug_assert};
 use core::mem::MaybeUninit;
 use reborrow::*;
-use seal::Seal;
-
-mod seal {
-    pub trait Seal {}
-}
 
 /// Specifies whether the main diagonal should be traversed, when iterating over a triangular chunk
 /// of the matrix.
@@ -253,19 +248,19 @@ mod tests {
                     for transpose_dst in [false, true] {
                         for transpose_src in [false, true] {
                             for diag in [Diag::Include, Diag::Skip] {
-                                let mut dst = Mat::with_dims(
+                                let mut dst = Mat::from_fn(
                                     if transpose_dst { n } else { m },
                                     if transpose_dst { m } else { n },
                                     |_, _| f64::zero(),
                                 );
-                                let src = Mat::with_dims(
+                                let src = Mat::from_fn(
                                     if transpose_src { n } else { m },
                                     if transpose_src { m } else { n },
                                     |_, _| f64::one(),
                                 );
 
-                                let mut target = Mat::with_dims(m, n, |_, _| f64::zero());
-                                let target_src = Mat::with_dims(m, n, |_, _| f64::one());
+                                let mut target = Mat::from_fn(m, n, |_, _| f64::zero());
+                                let target_src = Mat::from_fn(m, n, |_, _| f64::one());
 
                                 zipped!(target.as_mut(), target_src.as_ref())
                                     .for_each_triangular_lower(diag, |mut dst, src| {

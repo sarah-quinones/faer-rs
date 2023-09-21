@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_invert() {
         for n in [31, 32, 48, 65] {
-            let mat = Mat::with_dims(n, n, |_, _| random_value());
+            let mat = Mat::from_fn(n, n, |_, _| random_value());
             let blocksize = recommended_blocksize::<E>(n, n);
             let mut qr = mat.clone();
             let mut householder_factor = Mat::zeros(blocksize, n);

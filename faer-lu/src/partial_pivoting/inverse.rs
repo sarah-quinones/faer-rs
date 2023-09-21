@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_inverse() {
         (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
-            let mat = Mat::with_dims(n, n, |_, _| random::<f64>());
+            let mat = Mat::from_fn(n, n, |_, _| random::<f64>());
             let mut lu = mat.clone();
             let mut row_perm = vec![0; n];
             let mut row_perm_inv = vec![0; n];

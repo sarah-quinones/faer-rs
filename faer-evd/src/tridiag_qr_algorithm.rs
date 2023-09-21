@@ -157,7 +157,7 @@ mod tests {
     #[track_caller]
     fn test_evd(diag: &[f64], offdiag: &[f64]) {
         let n = diag.len();
-        let mut u = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n, n, |_, _| f64::NAN);
 
         let s = {
             let mut diag = diag.to_vec();
@@ -171,7 +171,7 @@ mod tests {
                 f64::MIN_POSITIVE,
             );
 
-            Mat::with_dims(n, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * u.transpose();

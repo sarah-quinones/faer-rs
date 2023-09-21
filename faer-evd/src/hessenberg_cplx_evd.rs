@@ -782,8 +782,8 @@ fn aggressive_early_deflation<E: ComplexField>(
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    v.set_zeros();
-    v.rb_mut().diagonal().set_constant(E::one());
+    v.fill_with_zero();
+    v.rb_mut().diagonal().fill_with_constant(E::one());
 
     let infqr = if jw
         < params
@@ -1688,8 +1688,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
             // The number of bulges that are in the pencil
@@ -1971,8 +1971,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let n_block = n_shifts + n_pos;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2243,8 +2243,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let n_block = ihi - i_pos_block;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2598,7 +2598,7 @@ mod tests {
             ],
         ];
 
-        let mut q = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
         let mut w = Mat::zeros(n, 1);
         let mut t = h.clone();
         lahqr(
@@ -2635,7 +2635,7 @@ mod tests {
                 }
 
                 let mut q =
-                    Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+                    Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
                 let mut w = Mat::zeros(n, 1);
 
@@ -2679,7 +2679,7 @@ mod tests {
                 }
 
                 let mut q =
-                    Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+                    Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
                 let mut w = Mat::zeros(n, 1);
 
@@ -12934,9 +12934,9 @@ mod tests {
                 c64::new(0.626537, 0.651087),
             ],
         ];
-        let h = Mat::with_dims(n, n, |i, j| h[i][j]);
+        let h = Mat::from_fn(n, n, |i, j| h[i][j]);
 
-        let mut q = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
         let mut w = Mat::zeros(n, 1);
         let mut t = h.clone();
         let params = EvdParams {

@@ -21,7 +21,7 @@
 //!     [4.0, 8.0, 12.0f64],
 //! ];
 //!
-//! let b = Mat::<f64>::with_dims(4, 3, |i, j| (i + j) as f64);
+//! let b = Mat::<f64>::from_fn(4, 3, |i, j| (i + j) as f64);
 //!
 //! let add = &a + &b;
 //! let sub = &a - &b;
@@ -116,6 +116,7 @@ pub mod simd;
 #[doc(hidden)]
 pub unsafe fn transmute_unchecked<From, To>(t: From) -> To {
     assert!(core::mem::size_of::<From>() == core::mem::size_of::<To>());
+    assert!(core::mem::align_of::<From>() == core::mem::align_of::<To>());
     core::mem::transmute_copy(&ManuallyDrop::new(t))
 }
 
@@ -585,6 +586,7 @@ pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
     type SimdMask<S: Simd>: Copy + Send + Sync + Debug + 'static;
     type SimdIndex<S: Simd>: Copy + Send + Sync + Debug + 'static;
 
+    /// If `Group<()> == ()`, then that must imply `Group<T> == T`.
     type Group<T>;
     /// Must be the same as `Group<T>`.
     type GroupCopy<T: Copy>: Copy;
@@ -730,6 +732,23 @@ pub unsafe trait Entity: Clone + PartialEq + Send + Sync + Debug + 'static {
         unsafe { core::mem::transmute_copy(group) }
     }
 }
+
+pub trait SimpleEntity: Entity<Group<()> = (), Unit = Self> {
+    #[inline(always)]
+    fn from_group<T>(group: Self::Group<T>) -> T {
+        unsafe { transmute_unchecked(group) }
+    }
+    #[inline(always)]
+    fn to_group<T>(group: T) -> Self::Group<T> {
+        unsafe { transmute_unchecked(group) }
+    }
+}
+impl<E: Entity<Group<()> = (), Unit = E>> SimpleEntity for E {}
+
+const _: () = {
+    const fn __assert_simple_entity<E: SimpleEntity>() {}
+    __assert_simple_entity::<f32>();
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
@@ -1041,6 +1060,144 @@ pub trait RealField: ComplexField<Real = Self> + PartialOrd {
         a: Self::SimdIndex<S>,
         b: Self::SimdIndex<S>,
     ) -> Self::SimdIndex<S>;
+}
+
+pub trait AsMatRef<E: Entity> {
+    fn as_mat_ref(&self) -> MatRef<'_, E>;
+}
+pub trait AsMatMut<E: Entity> {
+    fn as_mat_mut(&mut self) -> MatMut<'_, E>;
+}
+
+impl<E: Entity> AsMatRef<E> for MatRef<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        *self
+    }
+}
+impl<E: Entity> AsMatRef<E> for &'_ MatRef<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        **self
+    }
+}
+impl<E: Entity> AsMatRef<E> for MatMut<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (*self).rb()
+    }
+}
+impl<E: Entity> AsMatRef<E> for &'_ MatMut<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (**self).rb()
+    }
+}
+impl<E: Entity> AsMatRef<E> for Mat<E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (*self).as_ref()
+    }
+}
+impl<E: Entity> AsMatRef<E> for &'_ Mat<E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (**self).as_ref()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for MatMut<'_, E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (*self).rb_mut()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for &'_ mut MatMut<'_, E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (**self).rb_mut()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for Mat<E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (*self).as_mut()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for &'_ mut Mat<E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_mut()
+    }
+}
+
+impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Dense(self)
+    }
+}
+
+impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
+    #[inline]
+    fn fetch_single(&self, row: usize, col: usize) -> E {
+        self.read(row, col)
+    }
+}
+
+impl<E: Entity> matrixcompare_core::Matrix<E> for MatMut<'_, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Dense(self)
+    }
+}
+
+impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
+    #[inline]
+    fn fetch_single(&self, row: usize, col: usize) -> E {
+        self.read(row, col)
+    }
+}
+
+impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Dense(self)
+    }
+}
+
+impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
+    #[inline]
+    fn fetch_single(&self, row: usize, col: usize) -> E {
+        self.read(row, col)
+    }
 }
 
 impl ComplexField for f32 {
@@ -3608,6 +3765,246 @@ pub fn par_split_indices(n: usize, idx: usize, chunk_count: usize) -> (usize, us
     (start, end - start)
 }
 
+mod seal {
+    pub trait Seal {}
+}
+
+pub trait MatIndex<RowRange, ColRange>: seal::Seal + Sized {
+    type Target;
+    unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
+        <Self as MatIndex<RowRange, ColRange>>::get(this, row, col)
+    }
+    fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target;
+}
+
+const _: () = {
+    // RangeFull
+    // Range
+    // RangeInclusive
+    // RangeTo
+    // RangeToInclusive
+    // usize
+
+    use core::ops::RangeFull;
+    type Range = core::ops::Range<usize>;
+    type RangeInclusive = core::ops::RangeInclusive<usize>;
+    type RangeTo = core::ops::RangeTo<usize>;
+    type RangeToInclusive = core::ops::RangeToInclusive<usize>;
+
+    macro_rules! impl_ranges {
+        ($mat: ident) => {
+            impl<E: Entity, RowRange> MatIndex<RowRange, RangeTo> for $mat<'_, E>
+            where
+                Self: MatIndex<RowRange, Range>,
+            {
+                type Target = <Self as MatIndex<RowRange, Range>>::Target;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(
+                    this: Self,
+                    row: RowRange,
+                    col: RangeTo,
+                ) -> <Self as MatIndex<RowRange, Range>>::Target {
+                    <Self as MatIndex<RowRange, Range>>::get(this, row, 0..col.end)
+                }
+            }
+            impl<E: Entity, RowRange> MatIndex<RowRange, RangeToInclusive> for $mat<'_, E>
+            where
+                Self: MatIndex<RowRange, Range>,
+            {
+                type Target = <Self as MatIndex<RowRange, Range>>::Target;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(
+                    this: Self,
+                    row: RowRange,
+                    col: RangeToInclusive,
+                ) -> <Self as MatIndex<RowRange, Range>>::Target {
+                    assert!(col.end != usize::MAX);
+                    <Self as MatIndex<RowRange, Range>>::get(this, row, 0..col.end + 1)
+                }
+            }
+            impl<E: Entity, RowRange> MatIndex<RowRange, RangeInclusive> for $mat<'_, E>
+            where
+                Self: MatIndex<RowRange, Range>,
+            {
+                type Target = <Self as MatIndex<RowRange, Range>>::Target;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(
+                    this: Self,
+                    row: RowRange,
+                    col: RangeInclusive,
+                ) -> <Self as MatIndex<RowRange, Range>>::Target {
+                    assert!(*col.end() != usize::MAX);
+                    <Self as MatIndex<RowRange, Range>>::get(
+                        this,
+                        row,
+                        *col.start()..*col.end() + 1,
+                    )
+                }
+            }
+            impl<E: Entity, RowRange> MatIndex<RowRange, RangeFull> for $mat<'_, E>
+            where
+                Self: MatIndex<RowRange, Range>,
+            {
+                type Target = <Self as MatIndex<RowRange, Range>>::Target;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(
+                    this: Self,
+                    row: RowRange,
+                    col: RangeFull,
+                ) -> <Self as MatIndex<RowRange, Range>>::Target {
+                    let _ = col;
+                    let ncols = this.ncols();
+                    <Self as MatIndex<RowRange, Range>>::get(this, row, 0..ncols)
+                }
+            }
+
+            impl<E: Entity> MatIndex<RangeFull, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeFull, col: Range) -> Self {
+                    let _ = row;
+                    this.subcols(col.start, col.end - col.start)
+                }
+            }
+            impl<E: Entity> MatIndex<RangeFull, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeFull, col: usize) -> Self {
+                    let _ = row;
+                    this.col(col)
+                }
+            }
+
+            impl<E: Entity> MatIndex<Range, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: Range, col: Range) -> Self {
+                    this.submatrix(
+                        row.start,
+                        col.start,
+                        row.end - row.start,
+                        col.end - col.start,
+                    )
+                }
+            }
+            impl<E: Entity> MatIndex<Range, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: Range, col: usize) -> Self {
+                    this.submatrix(row.start, col, row.end - row.start, 1)
+                }
+            }
+
+            impl<E: Entity> MatIndex<RangeInclusive, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeInclusive, col: Range) -> Self {
+                    assert!(*row.end() != usize::MAX);
+                    <Self as MatIndex<Range, Range>>::get(this, *row.start()..*row.end() + 1, col)
+                }
+            }
+            impl<E: Entity> MatIndex<RangeInclusive, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeInclusive, col: usize) -> Self {
+                    assert!(*row.end() != usize::MAX);
+                    <Self as MatIndex<Range, usize>>::get(this, *row.start()..*row.end() + 1, col)
+                }
+            }
+
+            impl<E: Entity> MatIndex<RangeToInclusive, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeToInclusive, col: Range) -> Self {
+                    assert!(row.end != usize::MAX);
+                    <Self as MatIndex<Range, Range>>::get(this, 0..row.end + 1, col)
+                }
+            }
+            impl<E: Entity> MatIndex<RangeToInclusive, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeToInclusive, col: usize) -> Self {
+                    assert!(row.end != usize::MAX);
+                    <Self as MatIndex<Range, usize>>::get(this, 0..row.end + 1, col)
+                }
+            }
+
+            impl<E: Entity> MatIndex<usize, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: usize, col: Range) -> Self {
+                    this.submatrix(row, col.start, 1, col.end - col.start)
+                }
+            }
+        };
+    }
+
+    impl_ranges!(MatRef);
+    impl_ranges!(MatMut);
+
+    impl<'a, E: Entity> MatIndex<usize, usize> for MatRef<'a, E> {
+        type Target = E::Group<&'a E::Unit>;
+
+        #[track_caller]
+        #[inline(always)]
+        unsafe fn get_unchecked(this: Self, row: usize, col: usize) -> Self::Target {
+            unsafe { E::map(this.ptr_inbounds_at(row, col), |ptr| &*ptr) }
+        }
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, row: usize, col: usize) -> Self::Target {
+            assert!(row < this.nrows());
+            assert!(col < this.ncols());
+            unsafe { <Self as MatIndex<usize, usize>>::get_unchecked(this, row, col) }
+        }
+    }
+
+    impl<'a, E: Entity> MatIndex<usize, usize> for MatMut<'a, E> {
+        type Target = E::Group<&'a mut E::Unit>;
+
+        #[track_caller]
+        #[inline(always)]
+        unsafe fn get_unchecked(this: Self, row: usize, col: usize) -> Self::Target {
+            unsafe { E::map(this.ptr_inbounds_at(row, col), |ptr| &mut *ptr) }
+        }
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, row: usize, col: usize) -> Self::Target {
+            assert!(row < this.nrows());
+            assert!(col < this.ncols());
+            unsafe { <Self as MatIndex<usize, usize>>::get_unchecked(this, row, col) }
+        }
+    }
+};
+
 impl<'a, E: Entity> MatRef<'a, E> {
     /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
     /// The data is interpreted in a column-major format, so that the first chunk of `nrows`
@@ -3863,7 +4260,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
         [left, right]
     }
 
-    /// Returns references to the element at the given indices.
+    /// Returns references to the element at the given indices, or submatrices if either `row` or
+    /// `col` is a range.
     ///
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
@@ -3871,15 +4269,23 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ///
     /// # Safety
     /// The behavior is undefined if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn get_unchecked(self, row: usize, col: usize) -> E::Group<&'a E::Unit> {
-        E::map(self.ptr_inbounds_at(row, col), |ptr| &*ptr)
+    pub unsafe fn get_unchecked<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <Self as MatIndex<RowRange, ColRange>>::Target
+    where
+        Self: MatIndex<RowRange, ColRange>,
+    {
+        <Self as MatIndex<RowRange, ColRange>>::get_unchecked(self, row, col)
     }
 
-    /// Returns references to the element at the given indices, with bound checks.
+    /// Returns references to the element at the given indices, or submatrices if either `row` or
+    /// `col` is a range, with bound checks.
     ///
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
@@ -3887,14 +4293,19 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ///
     /// # Panics
     /// The function panics if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn get(self, row: usize, col: usize) -> E::Group<&'a E::Unit> {
-        assert!(row < self.nrows());
-        assert!(col < self.ncols());
-        unsafe { self.get_unchecked(row, col) }
+    pub fn get<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <Self as MatIndex<RowRange, ColRange>>::Target
+    where
+        Self: MatIndex<RowRange, ColRange>,
+    {
+        <Self as MatIndex<RowRange, ColRange>>::get(self, row, col)
     }
 
     /// Reads the value of the element at the given indices.
@@ -4267,6 +4678,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         mat
     }
 
+    /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
     #[inline]
     pub fn has_nan(&self) -> bool
     where
@@ -4279,6 +4691,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         found_nan
     }
 
+    /// Returns `true` if all of the elements are finite, otherwise returns `false`.
     #[inline]
     pub fn is_all_finite(&self) -> bool
     where
@@ -4310,6 +4723,52 @@ impl<'a, E: Entity> MatRef<'a, E> {
             inner: self.inner,
             __marker: PhantomData,
         }
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatRef<'_, E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &E {
+        E::from_group(self.get(row, col))
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatMut<'_, E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &E {
+        E::from_group(self.rb().get(row, col))
+    }
+}
+
+impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for MatMut<'_, E> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut E {
+        E::from_group(self.rb_mut().get(row, col))
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for Mat<E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &E {
+        E::from_group(self.as_ref().get(row, col))
+    }
+}
+
+impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for Mat<E> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut E {
+        E::from_group(self.as_mut().get(row, col))
     }
 }
 
@@ -4562,7 +5021,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
         [left, right]
     }
 
-    /// Returns mutable references to the element at the given indices.
+    /// Returns mutable references to the element at the given indices, or submatrices if either
+    /// `row` or `col` is a range.
     ///
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
@@ -4570,15 +5030,23 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ///
     /// # Safety
     /// The behavior is undefined if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn get_unchecked(self, row: usize, col: usize) -> E::Group<&'a mut E::Unit> {
-        E::map(self.ptr_inbounds_at(row, col), |ptr| &mut *ptr)
+    pub unsafe fn get_unchecked<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <Self as MatIndex<RowRange, ColRange>>::Target
+    where
+        Self: MatIndex<RowRange, ColRange>,
+    {
+        <Self as MatIndex<RowRange, ColRange>>::get_unchecked(self, row, col)
     }
 
-    /// Returns mutable references to the element at the given indices, with bound checks.
+    /// Returns mutable references to the element at the given indices, or submatrices if either
+    /// `row` or `col` is a range, with bound checks.
     ///
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
@@ -4586,14 +5054,19 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ///
     /// # Panics
     /// The function panics if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn get(self, row: usize, col: usize) -> E::Group<&'a mut E::Unit> {
-        assert!(row < self.nrows());
-        assert!(col < self.ncols());
-        unsafe { self.get_unchecked(row, col) }
+    pub fn get<RowRange, ColRange>(
+        self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <Self as MatIndex<RowRange, ColRange>>::Target
+    where
+        Self: MatIndex<RowRange, ColRange>,
+    {
+        <Self as MatIndex<RowRange, ColRange>>::get(self, row, col)
     }
 
     /// Reads the value of the element at the given indices.
@@ -4656,14 +5129,18 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.ncols() == other.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn clone_from(&mut self, other: MatRef<'_, E>) {
-        zipped!(self.rb_mut(), other).for_each(|mut dst, src| dst.write(src.read()));
+    pub fn clone_from(&mut self, other: impl AsMatRef<E>) {
+        #[track_caller]
+        fn implementation<E: Entity>(this: MatMut<'_, E>, other: MatRef<'_, E>) {
+            zipped!(this, other).for_each(|mut dst, src| dst.write(src.read()));
+        }
+        implementation(self.rb_mut(), other.as_mat_ref())
     }
 
     /// Fills the elements of `self` with zeros.
     #[inline(always)]
     #[track_caller]
-    pub fn set_zeros(&mut self)
+    pub fn fill_with_zero(&mut self)
     where
         E: ComplexField,
     {
@@ -4673,7 +5150,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// Fills the elements of `self` with copies of `constant`.
     #[inline(always)]
     #[track_caller]
-    pub fn set_constant(&mut self, constant: E) {
+    pub fn fill_with_constant(&mut self, constant: E) {
         zipped!(self.rb_mut()).for_each(|mut x| x.write(constant.clone()));
     }
 
@@ -4951,6 +5428,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
         self.rb().to_owned()
     }
 
+    /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
     #[inline]
     pub fn has_nan(&self) -> bool
     where
@@ -4959,6 +5437,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
         self.rb().has_nan()
     }
 
+    /// Returns `true` if all of the elements are finite, otherwise returns `false`.
     #[inline]
     pub fn is_all_finite(&self) -> bool
     where
@@ -5266,7 +5745,7 @@ impl<E: Entity> Clone for Mat<E> {
     fn clone(&self) -> Self {
         let this = self.as_ref();
         unsafe {
-            Self::with_dims(self.nrows, self.ncols, |i, j| {
+            Self::from_fn(self.nrows, self.ncols, |i, j| {
                 E::from_units(E::deref(this.get_unchecked(i, j)))
             })
         }
@@ -5428,7 +5907,7 @@ impl<E: Entity> Mat<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn with_dims(nrows: usize, ncols: usize, f: impl FnMut(usize, usize) -> E) -> Self {
+    pub fn from_fn(nrows: usize, ncols: usize, f: impl FnMut(usize, usize) -> E) -> Self {
         let mut this = Self::new();
         this.resize_with(nrows, ncols, f);
         this
@@ -5443,7 +5922,22 @@ impl<E: Entity> Mat<E> {
     where
         E: ComplexField,
     {
-        Self::with_dims(nrows, ncols, |_, _| E::zero())
+        Self::from_fn(nrows, ncols, |_, _| E::zero())
+    }
+
+    /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with zeros, except the main
+    /// diagonal which is filled with ones.
+    ///
+    /// # Panics
+    /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn identity(nrows: usize, ncols: usize) -> Self
+    where
+        E: ComplexField,
+    {
+        let mut matrix = Self::zeros(nrows, ncols);
+        matrix.as_mut().diagonal().fill_with_constant(E::one());
+        matrix
     }
 
     /// Set the dimensions of the matrix.
@@ -5794,6 +6288,98 @@ impl<E: Entity> Mat<E> {
         }
     }
 
+    /// Returns references to the element at the given indices, or submatrices if either `row` or
+    /// `col` is a range.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline]
+    pub unsafe fn get_unchecked<RowRange, ColRange>(
+        &self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'_, E> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatRef<'a, E>: MatIndex<RowRange, ColRange>,
+    {
+        self.as_ref().get_unchecked(row, col)
+    }
+
+    /// Returns references to the element at the given indices, or submatrices if either `row` or
+    /// `col` is a range, with bound checks.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline]
+    pub fn get<RowRange, ColRange>(
+        &self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatRef<'_, E> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatRef<'a, E>: MatIndex<RowRange, ColRange>,
+    {
+        self.as_ref().get(row, col)
+    }
+
+    /// Returns mutable references to the element at the given indices, or submatrices if either
+    /// `row` or `col` is a range.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline]
+    pub unsafe fn get_mut_unchecked<RowRange, ColRange>(
+        &mut self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatMut<'_, E> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatMut<'a, E>: MatIndex<RowRange, ColRange>,
+    {
+        self.as_mut().get_unchecked(row, col)
+    }
+
+    /// Returns mutable references to the element at the given indices, or submatrices if either
+    /// `row` or `col` is a range, with bound checks.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be contained in `[0, self.nrows())`.
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline]
+    pub fn get_mut<RowRange, ColRange>(
+        &mut self,
+        row: RowRange,
+        col: ColRange,
+    ) -> <MatMut<'_, E> as MatIndex<RowRange, ColRange>>::Target
+    where
+        for<'a> MatMut<'a, E>: MatIndex<RowRange, ColRange>,
+    {
+        self.as_mut().get(row, col)
+    }
+
     /// Reads the value of the element at the given indices.
     ///
     /// # Safety
@@ -5842,6 +6428,38 @@ impl<E: Entity> Mat<E> {
         self.as_mut().write(row, col, value);
     }
 
+    /// Copies the values from `other` into `self`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn clone_from(&mut self, other: impl AsMatRef<E>) {
+        #[track_caller]
+        fn implementation<E: Entity>(this: &mut Mat<E>, other: MatRef<'_, E>) {
+            let mut mat = Mat::<E>::new();
+            mat.resize_with(other.nrows(), other.ncols(), |row, col| unsafe {
+                other.read_unchecked(row, col)
+            });
+            *this = mat;
+        }
+        implementation(self, other.as_mat_ref());
+    }
+
+    /// Fills the elements of `self` with zeros.
+    #[inline(always)]
+    #[track_caller]
+    pub fn fill_with_zero(&mut self)
+    where
+        E: ComplexField,
+    {
+        self.as_mut().fill_with_zero()
+    }
+
+    /// Fills the elements of `self` with copies of `constant`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn fill_with_constant(&mut self, constant: E) {
+        self.as_mut().fill_with_constant(constant)
+    }
+
     /// Returns a view over the transpose of `self`.
     #[inline]
     pub fn transpose(&self) -> MatRef<'_, E> {
@@ -5875,6 +6493,7 @@ impl<E: Entity> Mat<E> {
         self.as_ref().to_owned()
     }
 
+    /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
     #[inline]
     pub fn has_nan(&self) -> bool
     where
@@ -5883,6 +6502,7 @@ impl<E: Entity> Mat<E> {
         self.as_ref().has_nan()
     }
 
+    /// Returns `true` if all of the elements are finite, otherwise returns `false`.
     #[inline]
     pub fn is_all_finite(&self) -> bool
     where
@@ -5953,7 +6573,7 @@ macro_rules! mat {
 
             #[allow(unused_unsafe)]
             unsafe {
-                $crate::Mat::<_>::with_dims(nrows, ncols, |i, j| $crate::ref_to_ptr(&data[j][i]).read())
+                $crate::Mat::<_>::from_fn(nrows, ncols, |i, j| $crate::ref_to_ptr(&data[j][i]).read())
             }
         }
     };
@@ -6643,19 +7263,25 @@ mod tests {
 
     #[test]
     fn matrix_macro() {
-        let x = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
+        let mut x = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
 
-        assert!(x.read(0, 0) == 1.0);
-        assert!(x.read(0, 1) == 2.0);
-        assert!(x.read(0, 2) == 3.0);
+        assert!(x[(0, 0)] == 1.0);
+        assert!(x[(0, 1)] == 2.0);
+        assert!(x[(0, 2)] == 3.0);
 
-        assert!(x.read(1, 0) == 4.0);
-        assert!(x.read(1, 1) == 5.0);
-        assert!(x.read(1, 2) == 6.0);
+        assert!(x[(1, 0)] == 4.0);
+        assert!(x[(1, 1)] == 5.0);
+        assert!(x[(1, 2)] == 6.0);
 
-        assert!(x.read(2, 0) == 7.0);
-        assert!(x.read(2, 1) == 8.0);
-        assert!(x.read(2, 2) == 9.0);
+        assert!(x[(2, 0)] == 7.0);
+        assert!(x[(2, 1)] == 8.0);
+        assert!(x[(2, 2)] == 9.0);
+
+        x[(0, 0)] = 13.0;
+        assert!(x[(0, 0)] == 13.0);
+
+        assert!(x.get(.., ..) == x);
+        assert!(x.get(.., 1..3) == x.as_ref().submatrix(0, 1, 3, 2));
     }
 
     #[test]

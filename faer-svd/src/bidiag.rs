@@ -793,7 +793,7 @@ mod tests {
 
     #[test]
     fn bidiag_f64() {
-        let mat = Mat::with_dims(15, 10, |_, _| rand::random::<f64>());
+        let mat = Mat::from_fn(15, 10, |_, _| rand::random::<f64>());
 
         let m = mat.nrows();
         let n = mat.ncols();
@@ -846,7 +846,7 @@ mod tests {
 
     #[test]
     fn bidiag_c64() {
-        let mat = Mat::with_dims(15, 10, |_, _| c64::new(rand::random(), rand::random()));
+        let mat = Mat::from_fn(15, 10, |_, _| c64::new(rand::random(), rand::random()));
 
         let m = mat.nrows();
         let n = mat.ncols();

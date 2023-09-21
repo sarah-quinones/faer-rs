@@ -1199,16 +1199,16 @@ fn bidiag_svd_impl<E: RealField>(
     }
 
     if max_val == E::zero() {
-        u.set_zeros();
+        u.fill_with_zero();
         if u.nrows() == n + 1 {
-            u.diagonal().set_zeros();
+            u.diagonal().fill_with_zero();
         } else {
             u.write(0, 0, E::one());
             u.write(1, n, E::one());
         }
         if let Some(mut v) = v {
-            v.set_zeros();
-            v.diagonal().set_constant(E::one());
+            v.fill_with_zero();
+            v.diagonal().fill_with_constant(E::one());
         };
         return;
     }
@@ -1848,8 +1848,8 @@ mod tests {
             dbg!(&diag, &subdiag);
 
             let n = diag.len();
-            let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-            let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+            let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+            let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
             let s = {
                 let mut diag = diag.clone();
                 let mut subdiag = subdiag.clone();
@@ -1870,7 +1870,7 @@ mod tests {
                         Parallelism::None
                     )),
                 );
-                Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+                Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
             };
 
             let reconstructed = &u * &s * v.transpose();
@@ -2026,8 +2026,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -2048,7 +2048,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();
@@ -2331,8 +2331,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -2353,7 +2353,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();
@@ -4428,8 +4428,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -4450,7 +4450,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();
@@ -5501,8 +5501,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -5523,7 +5523,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();
@@ -7598,8 +7598,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -7620,7 +7620,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();
@@ -9695,8 +9695,8 @@ mod tests {
         ];
 
         let n = diag.len();
-        let mut u = Mat::with_dims(n + 1, n + 1, |_, _| f64::NAN);
-        let mut v = Mat::with_dims(n, n, |_, _| f64::NAN);
+        let mut u = Mat::from_fn(n + 1, n + 1, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
         let s = {
             let mut diag = diag.clone();
             let mut subdiag = subdiag.clone();
@@ -9717,7 +9717,7 @@ mod tests {
                     Parallelism::None
                 )),
             );
-            Mat::with_dims(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
+            Mat::from_fn(n + 1, n, |i, j| if i == j { diag[i] } else { 0.0 })
         };
 
         let reconstructed = &u * &s * v.transpose();

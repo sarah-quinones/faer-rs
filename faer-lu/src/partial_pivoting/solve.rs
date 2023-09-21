@@ -301,13 +301,13 @@ mod tests {
     fn test_solve<E: ComplexField>(mut gen: impl FnMut() -> E, epsilon: E::Real) {
         (0..32).chain((1..8).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(n, n, |_, _| gen());
+                let a = Mat::from_fn(n, n, |_, _| gen());
                 let mut lu = a.clone();
                 let a = a.as_ref();
                 let mut lu = lu.as_mut();
 
                 let k = 32;
-                let rhs = Mat::with_dims(n, k, |_, _| gen());
+                let rhs = Mat::from_fn(n, k, |_, _| gen());
                 let rhs = rhs.as_ref();
                 let mut sol = Mat::<E>::zeros(n, k);
                 let mut sol = sol.as_mut();
@@ -362,13 +362,13 @@ mod tests {
     fn test_solve_transpose<E: ComplexField>(mut gen: impl FnMut() -> E, epsilon: E::Real) {
         (0..32).chain((1..8).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
-                let a = Mat::with_dims(n, n, |_, _| gen());
+                let a = Mat::from_fn(n, n, |_, _| gen());
                 let mut lu = a.clone();
                 let a = a.as_ref();
                 let mut lu = lu.as_mut();
 
                 let k = 32;
-                let rhs = Mat::with_dims(n, k, |_, _| gen());
+                let rhs = Mat::from_fn(n, k, |_, _| gen());
                 let rhs = rhs.as_ref();
                 let mut sol = Mat::<E>::zeros(n, k);
                 let mut sol = sol.as_mut();

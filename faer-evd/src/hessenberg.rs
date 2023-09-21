@@ -380,7 +380,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
 
             if E::HAS_SIMD && a22.row_stride() == 1 {
                 if k > 0 {
-                    w21.set_zeros();
+                    w21.fill_with_zero();
                     arch.dispatch(HessenbergFusedUpdate {
                         a: a22.rb_mut(),
                         v: v21.rb_mut(),
@@ -568,7 +568,7 @@ mod tests {
     fn test_make_hessenberg() {
         for n in [10, 20, 64, 128, 1024] {
             for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
-                let a = Mat::with_dims(n, n, |_, _| c64::new(rand::random(), rand::random()));
+                let a = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
 
                 let mut h = a.clone();
                 let householder_blocksize = Ord::min(8, n - 1);

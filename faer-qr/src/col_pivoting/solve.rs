@@ -246,12 +246,12 @@ mod tests {
         let n = 32;
         let k = 6;
 
-        let a = Mat::with_dims(n, n, |_, _| random());
-        let rhs = Mat::with_dims(n, k, |_, _| random());
+        let a = Mat::from_fn(n, n, |_, _| random());
+        let rhs = Mat::from_fn(n, k, |_, _| random());
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::with_dims(blocksize, n, |_, _| T::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 
@@ -314,12 +314,12 @@ mod tests {
         let n = 32;
         let k = 6;
 
-        let a = Mat::with_dims(n, n, |_, _| random());
-        let rhs = Mat::with_dims(n, k, |_, _| random());
+        let a = Mat::from_fn(n, n, |_, _| random());
+        let rhs = Mat::from_fn(n, k, |_, _| random());
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::with_dims(blocksize, n, |_, _| T::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 

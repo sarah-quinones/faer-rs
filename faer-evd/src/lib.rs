@@ -171,9 +171,9 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     });
 
     if !all_finite {
-        { s }.set_constant(E::nan());
+        { s }.fill_with_constant(E::nan());
         if let Some(mut u) = u {
-            u.set_constant(E::nan());
+            u.fill_with_constant(E::nan());
         }
         return;
     }
@@ -393,10 +393,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     }
 
     if !matrix.is_all_finite() {
-        { s_re }.set_constant(E::nan());
-        { s_im }.set_constant(E::nan());
+        { s_re }.fill_with_constant(E::nan());
+        { s_im }.fill_with_constant(E::nan());
         if let Some(mut u) = u {
-            u.set_constant(E::nan());
+            u.fill_with_constant(E::nan());
         }
         return;
     }
@@ -414,7 +414,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().set_constant(E::one());
+    z.rb_mut().diagonal().fill_with_constant(E::one());
 
     {
         let (mut householder, mut stack) =
@@ -835,9 +835,9 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.set_constant(E::nan());
+        { s }.fill_with_constant(E::nan());
         if let Some(mut u) = u {
-            u.set_constant(E::nan());
+            u.fill_with_constant(E::nan());
         }
         return;
     }
@@ -854,7 +854,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().set_constant(E::one());
+    z.rb_mut().diagonal().fill_with_constant(E::one());
 
     {
         let (mut householder, mut stack) =
@@ -979,7 +979,7 @@ mod herm_tests {
     #[test]
     fn test_real() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |_, _| rand::random::<f64>());
+            let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1011,7 +1011,7 @@ mod herm_tests {
     #[test]
     fn test_cplx() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |i, j| {
+            let mat = Mat::from_fn(n, n, |i, j| {
                 c64::new(rand::random(), if i == j { 0.0 } else { rand::random() })
             });
 
@@ -1046,7 +1046,7 @@ mod herm_tests {
     #[test]
     fn test_real_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1078,7 +1078,7 @@ mod herm_tests {
     #[test]
     fn test_cplx_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1111,7 +1111,7 @@ mod herm_tests {
     #[test]
     fn test_real_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |_, _| f64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| f64::zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1143,7 +1143,7 @@ mod herm_tests {
     #[test]
     fn test_cplx_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |_, _| c64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| c64::zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1192,7 +1192,7 @@ mod tests {
     fn test_real() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
             for _ in 0..10 {
-                let mat = Mat::with_dims(n, n, |_, _| rand::random::<f64>());
+                let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
 
                 let n = mat.nrows();
 
@@ -1235,9 +1235,9 @@ mod tests {
                     j += 1;
                 }
 
-                let u = Mat::with_dims(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
-                let s = Mat::with_dims(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
-                let mat = Mat::with_dims(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
+                let u = Mat::from_fn(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
+                let s = Mat::from_fn(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
+                let mat = Mat::from_fn(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
 
                 let left = &mat * &u;
                 let right = &u * &s;
@@ -1254,7 +1254,7 @@ mod tests {
     #[test]
     fn test_real_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
             let n = mat.nrows();
 
@@ -1297,9 +1297,9 @@ mod tests {
                 j += 1;
             }
 
-            let u = Mat::with_dims(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
-            let s = Mat::with_dims(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
-            let mat = Mat::with_dims(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
+            let u = Mat::from_fn(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
+            let s = Mat::from_fn(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
+            let mat = Mat::from_fn(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
 
             let left = &mat * &u;
             let right = &u * &s;
@@ -1358,9 +1358,9 @@ mod tests {
                 j += 1;
             }
 
-            let u = Mat::with_dims(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
-            let s = Mat::with_dims(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
-            let mat = Mat::with_dims(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
+            let u = Mat::from_fn(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
+            let s = Mat::from_fn(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
+            let mat = Mat::from_fn(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
 
             let left = &mat * &u;
             let right = &u * &s;
@@ -1376,7 +1376,7 @@ mod tests {
     #[test]
     fn test_cplx() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |_, _| c64::new(rand::random(), rand::random()));
+            let mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1411,7 +1411,7 @@ mod tests {
     #[test]
     fn test_cplx_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1444,7 +1444,7 @@ mod tests {
     #[test]
     fn test_cplx_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::with_dims(n, n, |_, _| c64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| c64::zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);

@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn test_unblocked() {
         for (m, n) in [(2, 2), (2, 4), (4, 2), (4, 4)] {
-            let mut mat = Mat::with_dims(m, n, |_, _| random_value());
+            let mut mat = Mat::from_fn(m, n, |_, _| random_value());
             let mat_orig = mat.clone();
             let size = m.min(n);
             let mut householder = Mat::zeros(1, size);
@@ -513,7 +513,7 @@ mod tests {
                 (64, 64),
                 (1024, 1024),
             ] {
-                let mat_orig = Mat::with_dims(m, n, |_, _| random_value());
+                let mat_orig = Mat::from_fn(m, n, |_, _| random_value());
                 let mut mat = mat_orig.clone();
                 let size = m.min(n);
                 let blocksize = size.min(512);

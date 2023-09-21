@@ -6,6 +6,7 @@ members = [
   "faer-qr",
   "faer-svd",
   "faer-evd",
+  "faer",
 ]
 exclude = ["faer-bench"]
 resolver = "2"

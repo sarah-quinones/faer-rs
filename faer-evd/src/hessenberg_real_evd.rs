@@ -1325,8 +1325,8 @@ fn aggressive_early_deflation<E: RealField>(
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    v.set_zeros();
-    v.rb_mut().diagonal().set_constant(E::one());
+    v.fill_with_zero();
+    v.rb_mut().diagonal().fill_with_constant(E::one());
 
     let infqr = if jw
         < params
@@ -1900,8 +1900,8 @@ fn multishift_qr_sweep<E: RealField>(
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
             // The number of bulges that are in the pencil
@@ -2193,8 +2193,8 @@ fn multishift_qr_sweep<E: RealField>(
         let n_block = n_shifts + n_pos;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2473,8 +2473,8 @@ fn multishift_qr_sweep<E: RealField>(
         let n_block = ihi - i_pos_block;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.set_zeros();
-        u2.rb_mut().diagonal().set_constant(E::one());
+        u2.fill_with_zero();
+        u2.rb_mut().diagonal().fill_with_constant(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -3670,7 +3670,7 @@ mod tests {
                         }
                     }
                 }
-                let mut q = Mat::with_dims(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
+                let mut q = Mat::from_fn(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
 
                 let mut w_re = Mat::zeros(n, 1);
                 let mut w_im = Mat::zeros(n, 1);
@@ -3716,7 +3716,7 @@ mod tests {
                 }
 
                 let mut q =
-                    Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+                    Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
                 let mut w_re = Mat::zeros(n, 1);
                 let mut w_im = Mat::zeros(n, 1);
@@ -3839,7 +3839,7 @@ mod tests {
             ],
         ];
 
-        let mut q = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -4083,7 +4083,7 @@ mod tests {
             ],
         ];
 
-        let mut q = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -4765,7 +4765,7 @@ mod tests {
         ];
         let n = h.nrows();
 
-        let mut q = Mat::with_dims(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);

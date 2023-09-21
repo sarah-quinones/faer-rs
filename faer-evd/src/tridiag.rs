@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn tridiag_f64() {
         for (n, parallelism) in [(10, Parallelism::None), (512, Parallelism::Rayon(4))] {
-            let mut mat = Mat::with_dims(n, n, |_, _| rand::random::<f64>());
+            let mut mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
             let transpose = mat.transpose().to_owned();
 
             zipped!(mat.as_mut(), transpose.as_ref())
@@ -1115,7 +1115,7 @@ mod tests {
     #[test]
     fn tridiag_c64() {
         for (n, parallelism) in [(10, Parallelism::None), (64, Parallelism::Rayon(4))] {
-            let mut mat = Mat::with_dims(n, n, |_, _| c64::new(rand::random(), rand::random()));
+            let mut mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
             let transpose = mat.adjoint().to_owned();
             zipped!(mat.as_mut(), transpose.as_ref())
                 .for_each(|mut x, y| x.write(x.read() + y.read()));
