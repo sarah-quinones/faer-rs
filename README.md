@@ -7,6 +7,17 @@ See the [official website](https://faer-rs.github.io) and the `docs.rs` document
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
 
+
+## faer
+
+[![Documentation](https://docs.rs/faer/badge.svg)](https://docs.rs/faer)
+[![Crate](https://img.shields.io/crates/v/faer.svg)](https://crates.io/crates/faer)
+
+The faer module implements high level abstractions over the other modules, exposing easy to use matrix decomposition structures.
+This is the recommended entry point for developers who are new to faer.
+
+For developers who want to know more about the data layout and underlying structures, the faer-core documentation is a good place to get more information.
+
 ## faer-core
 
 [![Documentation](https://docs.rs/faer-core/badge.svg)](https://docs.rs/faer-core)

@@ -1,3 +1,9 @@
+# 0.11
+- High level api implemented in `faer`.
+- Renamed `Mat::with_dims` to `Mat::from_fn`.
+- Renamed `{Mat,MatRef,MatMut}::set_zeros` to `fill_with_zeros`.
+- Renamed `{Mat,MatRef,MatMut}::set_constant` to `fill_with_constant`.
+
 # 0.10
 - Performance improvements for small matrices.
 - Simpler SVD/EVD API for fixed precision floating point types.
