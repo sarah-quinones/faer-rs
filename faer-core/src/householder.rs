@@ -784,6 +784,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     let mut stack = stack;
     let blocksize = householder_factor.nrows();
     assert!(blocksize > 0);
+    assert!(matrix.nrows() == householder_basis.nrows());
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 

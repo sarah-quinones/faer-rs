@@ -63,7 +63,7 @@ pub fn solve_transpose_req<T: Entity>(
 }
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
-/// this function computes the solution of the linear system:
+/// this function computes the solution of the linear system in the sense of least squares:
 /// $$\text{Op}_A(A)X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
@@ -72,7 +72,6 @@ pub fn solve_transpose_req<T: Entity>(
 ///
 /// # Panics
 ///
-/// - Panics if `qr_factors` is not a square matrix.
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
@@ -99,11 +98,12 @@ pub fn solve_in_place<T: ComplexField>(
         parallelism,
         stack.rb_mut(),
     );
-    permute_rows_in_place(rhs, col_perm.inverse(), stack);
+    let size = qr_factors.ncols();
+    permute_rows_in_place(rhs.subrows(0, size), col_perm.inverse(), stack);
 }
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
-/// this function computes the solution of the linear system:
+/// this function computes the solution of the linear system in the sense of least squares::
 /// $$\text{Op}_A(A)\top X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
@@ -112,7 +112,6 @@ pub fn solve_in_place<T: ComplexField>(
 ///
 /// # Panics
 ///
-/// - Panics if `qr_factors` is not a square matrix.
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.

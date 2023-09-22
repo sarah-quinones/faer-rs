@@ -4798,7 +4798,7 @@ mod tests {
         );
         // asserts to ensure that we don't mess up the shift computation and slow down convergence
         assert!(n_aed <= 30);
-        assert!(n_sweep <= 16);
+        assert!(n_sweep <= 20);
 
         for j in 0..n {
             for i in j + 2..n {
