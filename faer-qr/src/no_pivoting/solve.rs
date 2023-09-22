@@ -58,7 +58,7 @@ pub fn solve_transpose_req<E: Entity>(
 }
 
 /// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
-/// the solution of the linear system:
+/// the solution of the linear system in the sense of least squares:
 /// $$\text{Op}_A(A)X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
@@ -67,7 +67,7 @@ pub fn solve_transpose_req<E: Entity>(
 ///
 /// # Panics
 ///
-/// - Panics if `qr_factors` is not a square matrix.
+/// - Panics if `qr_factors` is not a tall matrix.
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
@@ -84,9 +84,11 @@ pub fn solve_in_place<E: ComplexField>(
 ) {
     // conjᵃ(H₀ × ... × Hₖ₋₁ × R) X = conjᵇ(B)
     // X = conjᵃ(R)⁻¹ × conjᵃ(Hₖ₋₁) × ... × conjᵃ(H₀) × conjᵇ(B)
-    assert!(qr_factors.nrows() == qr_factors.ncols());
-    let size = qr_factors.nrows();
+    let m = qr_factors.nrows();
+    let n = qr_factors.ncols();
+    let size = Ord::min(m, n);
     let blocksize = householder_factor.nrows();
+    assert!(qr_factors.nrows() >= qr_factors.ncols());
     assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
     assert!(rhs.nrows() == qr_factors.nrows());
 
@@ -101,7 +103,12 @@ pub fn solve_in_place<E: ComplexField>(
         stack.rb_mut(),
     );
 
-    solve::solve_upper_triangular_in_place_with_conj(qr_factors, conj_lhs, rhs, parallelism);
+    solve::solve_upper_triangular_in_place_with_conj(
+        qr_factors.submatrix(0, 0, size, size),
+        conj_lhs,
+        rhs.subrows(0, size),
+        parallelism,
+    );
 }
 
 /// Given the QR factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes

@@ -91,6 +91,9 @@
 //! where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is an upper trapezoidal
 //! matrix.
 //!
+//! It is slower than the version with no pivoting, in exchange for being more numerically stable
+//! for rank-deficient matrices.
+//!
 //! ## Singular value decomposition
 //! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
@@ -148,7 +151,7 @@ use solvers::*;
 /// Commonly used traits for a streamlined user experience.
 pub mod prelude {
     pub use crate::{
-        solvers::{Solver, SolverCore, SolverLstsq},
+        solvers::{Solver, SolverCore, SolverLstsq, SolverLstsqCore},
         Faer, IntoFaer,
     };
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
@@ -193,6 +196,45 @@ pub mod solvers {
         fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
     }
 
+    pub trait SolverLstsqCore<E: Entity>: SolverCore<E> {
+        #[doc(hidden)]
+        fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+    }
+
+    pub trait SolverLstsq<E: Entity>: SolverLstsqCore<E> {
+        /// Solves the equation `self * X = rhs`, in the sense of least squares, and stores the
+        /// result in the top rows of `rhs`.
+        fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>);
+        /// Solves the equation `conjugate(self) * X = rhs`, in the sense of least squares, and
+        /// stores the result in the top rows of `rhs`.
+        fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>);
+        /// Solves the equation `self * X = rhs`, and returns the result.
+        fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>)
+            -> Mat<E>;
+        /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
+        fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E>;
+    }
+
+    #[track_caller]
+    fn solve_lstsq_with_conj_impl<
+        E: ComplexField,
+        D: ?Sized + SolverLstsqCore<E>,
+        ViewE: Conjugate<Canonical = E>,
+    >(
+        d: &D,
+        rhs: MatRef<'_, ViewE>,
+        conj: Conj,
+    ) -> Mat<E> {
+        let mut rhs = rhs.to_owned();
+        let k = rhs.ncols();
+        d.solve_lstsq_in_place_with_conj_impl(rhs.as_mut(), conj);
+        rhs.resize_with(d.ncols(), k, |_, _| unreachable!());
+        rhs
+    }
+
     #[track_caller]
     fn solve_with_conj_impl<
         E: ComplexField,
@@ -226,6 +268,7 @@ pub mod solvers {
     const _: () = {
         fn __assert_object_safe<E: ComplexField>() {
             let _: Option<&dyn SolverCore<E>> = None;
+            let _: Option<&dyn SolverLstsqCore<E>> = None;
         }
     };
 
@@ -252,6 +295,36 @@ pub mod solvers {
             &self,
             rhs: impl AsMatRef<ViewE>,
         ) -> Mat<E>;
+    }
+
+    impl<E: ComplexField, Dec: ?Sized + SolverLstsqCore<E>> SolverLstsq<E> for Dec {
+        #[track_caller]
+        fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>) {
+            let mut rhs = rhs;
+            self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+        }
+
+        #[track_caller]
+        fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>) {
+            let mut rhs = rhs;
+            self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+        }
+
+        #[track_caller]
+        fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+        }
+
+        #[track_caller]
+        fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+        }
     }
 
     impl<E: ComplexField, Dec: ?Sized + SolverCore<E>> Solver<E> for Dec {
@@ -305,8 +378,6 @@ pub mod solvers {
             solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
         }
     }
-
-    pub trait SolverLstsq {}
 
     /// Cholesky decomposition.
     pub struct Cholesky<E: Entity> {
@@ -1001,25 +1072,7 @@ pub mod solvers {
         #[track_caller]
         fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             assert!(self.nrows() == self.ncols());
-
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_qr::no_pivoting::solve::solve_in_place(
-                self.factors.as_ref(),
-                self.householder.as_ref(),
-                conj,
-                rhs,
-                parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    faer_qr::no_pivoting::solve::solve_in_place_req::<E>(
-                        self.nrows(),
-                        self.blocksize(),
-                        rhs_ncols,
-                    )
-                    .unwrap(),
-                )),
-            );
+            self.solve_lstsq_in_place_with_conj_impl(rhs, conj)
         }
 
         #[track_caller]
@@ -1052,6 +1105,30 @@ pub mod solvers {
 
         fn ncols(&self) -> usize {
             self.factors.ncols()
+        }
+    }
+
+    impl<E: ComplexField> SolverLstsqCore<E> for Qr<E> {
+        #[track_caller]
+        fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_qr::no_pivoting::solve::solve_in_place(
+                self.factors.as_ref(),
+                self.householder.as_ref(),
+                conj,
+                rhs,
+                parallelism,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    faer_qr::no_pivoting::solve::solve_in_place_req::<E>(
+                        self.nrows(),
+                        self.blocksize(),
+                        rhs_ncols,
+                    )
+                    .unwrap(),
+                )),
+            );
         }
     }
 
@@ -1175,26 +1252,7 @@ pub mod solvers {
         #[track_caller]
         fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             assert!(self.nrows() == self.ncols());
-
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_qr::col_pivoting::solve::solve_in_place(
-                self.factors.as_ref(),
-                self.householder.as_ref(),
-                self.col_permutation(),
-                conj,
-                rhs,
-                parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
-                    faer_qr::col_pivoting::solve::solve_in_place_req::<E>(
-                        self.nrows(),
-                        self.blocksize(),
-                        rhs_ncols,
-                    )
-                    .unwrap(),
-                )),
-            );
+            self.solve_lstsq_in_place_with_conj_impl(rhs, conj);
         }
 
         #[track_caller]
@@ -1228,6 +1286,31 @@ pub mod solvers {
 
         fn ncols(&self) -> usize {
             self.factors.ncols()
+        }
+    }
+
+    impl<E: ComplexField> SolverLstsqCore<E> for ColPivQr<E> {
+        #[track_caller]
+        fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_qr::col_pivoting::solve::solve_in_place(
+                self.factors.as_ref(),
+                self.householder.as_ref(),
+                self.col_permutation(),
+                conj,
+                rhs,
+                parallelism,
+                DynStack::new(&mut GlobalMemBuffer::new(
+                    faer_qr::col_pivoting::solve::solve_in_place_req::<E>(
+                        self.nrows(),
+                        self.blocksize(),
+                        rhs_ncols,
+                    )
+                    .unwrap(),
+                )),
+            );
         }
     }
 
@@ -2825,7 +2908,7 @@ mod tests {
         }
     }
 
-    fn test_decomposition(H: impl AsMatRef<c64>, decomp: &dyn SolverCore<c64>) {
+    fn test_solver(H: impl AsMatRef<c64>, decomp: &dyn SolverCore<c64>) {
         let H = H.as_mat_ref();
         let n = H.nrows();
         let k = 2;
@@ -2851,6 +2934,22 @@ mod tests {
         assert_approx_eq(H * decomp.inverse(), I);
     }
 
+    fn test_solver_lstsq(H: impl AsMatRef<c64>, decomp: &dyn SolverLstsqCore<c64>) {
+        let H = H.as_mat_ref();
+
+        let m = H.nrows();
+        let k = 2;
+
+        let random = |_, _| c64::new(rand::random(), rand::random());
+        let rhs = Mat::from_fn(m, k, random);
+
+        let sol = decomp.solve_lstsq(&rhs);
+        assert_approx_eq(H.adjoint() * H * &sol, H.adjoint() * &rhs);
+
+        let sol = decomp.solve_lstsq_conj(&rhs);
+        assert_approx_eq(H.transpose() * H.conjugate() * &sol, H.transpose() * &rhs);
+    }
+
     #[test]
     fn test_cholesky() {
         let n = 7;
@@ -2859,8 +2958,8 @@ mod tests {
         let H = Mat::from_fn(n, n, random);
         let H = &H * H.adjoint();
 
-        test_decomposition(&H, &H.cholesky(Side::Lower).unwrap());
-        test_decomposition(&H, &H.cholesky(Side::Upper).unwrap());
+        test_solver(&H, &H.cholesky(Side::Lower).unwrap());
+        test_solver(&H, &H.cholesky(Side::Upper).unwrap());
     }
 
     #[test]
@@ -2870,7 +2969,7 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let H = Mat::from_fn(n, n, random);
 
-        test_decomposition(&H, &H.partial_piv_lu());
+        test_solver(&H, &H.partial_piv_lu());
     }
 
     #[test]
@@ -2880,7 +2979,7 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let H = Mat::from_fn(n, n, random);
 
-        test_decomposition(&H, &H.full_piv_lu());
+        test_solver(&H, &H.full_piv_lu());
     }
 
     #[test]
@@ -2891,12 +2990,15 @@ mod tests {
         let H = Mat::from_fn(n, n, random);
 
         let qr = H.qr();
-        test_decomposition(&H, &qr);
+        test_solver(&H, &qr);
 
         for (m, n) in [(7, 5), (5, 7), (7, 7)] {
             let H = Mat::from_fn(m, n, random);
             let qr = H.qr();
             assert_approx_eq(qr.compute_q() * qr.compute_r(), &H);
+            if m >= n {
+                test_solver_lstsq(H, &qr)
+            }
         }
     }
 
@@ -2907,7 +3009,15 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let H = Mat::from_fn(n, n, random);
 
-        test_decomposition(&H, &H.col_piv_qr());
+        test_solver(&H, &H.col_piv_qr());
+
+        for (m, n) in [(7, 5), (5, 7), (7, 7)] {
+            let H = Mat::from_fn(m, n, random);
+            let qr = H.col_piv_qr();
+            if m >= n {
+                test_solver_lstsq(H, &qr)
+            }
+        }
     }
 
     #[test]
@@ -2917,8 +3027,8 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let H = Mat::from_fn(n, n, random);
 
-        test_decomposition(&H, &H.svd());
-        test_decomposition(&H.adjoint().to_owned(), &H.adjoint().svd());
+        test_solver(&H, &H.svd());
+        test_solver(&H.adjoint().to_owned(), &H.adjoint().svd());
 
         let svd = H.svd();
         for i in 0..n - 1 {
@@ -2937,8 +3047,8 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let H = Mat::from_fn(n, n, random);
 
-        test_decomposition(&H, &H.thin_svd());
-        test_decomposition(&H.adjoint().to_owned(), &H.adjoint().thin_svd());
+        test_solver(&H, &H.thin_svd());
+        test_solver(&H.adjoint().to_owned(), &H.adjoint().thin_svd());
     }
 
     #[test]
@@ -2949,13 +3059,13 @@ mod tests {
         let H = Mat::from_fn(n, n, random);
         let H = &H * H.adjoint();
 
-        test_decomposition(&H, &H.selfadjoint_eigendecomposition(Side::Lower));
-        test_decomposition(&H, &H.selfadjoint_eigendecomposition(Side::Upper));
-        test_decomposition(
+        test_solver(&H, &H.selfadjoint_eigendecomposition(Side::Lower));
+        test_solver(&H, &H.selfadjoint_eigendecomposition(Side::Upper));
+        test_solver(
             &H.adjoint().to_owned(),
             &H.adjoint().selfadjoint_eigendecomposition(Side::Lower),
         );
-        test_decomposition(
+        test_solver(
             &H.adjoint().to_owned(),
             &H.adjoint().selfadjoint_eigendecomposition(Side::Upper),
         );
@@ -3023,6 +3133,7 @@ mod tests {
     fn test_ext_ndarray() {
         let mut I_faer = Mat::<f32>::identity(8, 7);
         let mut I_ndarray = ndarray::Array2::<f32>::zeros([8, 7]);
+        I_ndarray.diag_mut().fill(1.0);
 
         assert_matrix_eq!(I_ndarray.view().into_faer(), I_faer, comp = exact);
         assert!(I_faer.as_ref().into_ndarray() == I_ndarray);
