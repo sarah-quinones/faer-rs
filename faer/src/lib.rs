@@ -2699,50 +2699,76 @@ pub mod polars {
     use polars::prelude::*;
 
     pub trait Frame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame>;
+        fn is_numeric(self) -> PolarsResult<LazyFrame>;
     }
 
-    impl Frame for DataFrame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame> {
-            let _ = columns;
-            Ok(self)
-        }
-    }
-
-    #[cfg(feature = "polars-lazy")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "polars-lazy")))]
     impl Frame for LazyFrame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame> {
-            let cols = columns.into_iter().map(|c| col(c)).collect::<Vec<_>>();
-            self.select(cols).collect()
+        fn is_numeric(self) -> PolarsResult<LazyFrame> {
+            let test: bool = self
+                .clone()
+                .limit(0)
+                .collect()
+                .unwrap()
+                .dtypes()
+                .into_iter()
+                .map(|e| {
+                    matches!(
+                        e,
+                        DataType::UInt8
+                            | DataType::UInt16
+                            | DataType::UInt32
+                            | DataType::UInt64
+                            | DataType::Int8
+                            | DataType::Int16
+                            | DataType::Int32
+                            | DataType::Int64
+                            | DataType::Float32
+                            | DataType::Float64
+                    )
+                })
+                .all(|e| e);
+            match test {
+                true => Ok(self),
+                false => Err(PolarsError::InvalidOperation(
+                    "cannot cast non-numerical column data to floating point in a sensible manner"
+                        .into(),
+                )),
+            }
         }
     }
 
     macro_rules! polars_impl {
-        ($ty: ident, $fn_name: ident) => {
-            /// Converts a `polars` dataframe into a [`Mat`] by selecting the appropriate columns.
+        ($ty: ident, $dtype: ident, $fn_name: ident) => {
+            /// Converts a `polars` lazyframe into a [`Mat`].
             ///
-            /// Note that this function does not perform any implicit conversions.
+            /// Note that this function expects that the frame passed "looks like"
+            /// a numerical array and all values will be cast to either f32 or f64
+            /// prior to building [`Mat`].
+            ///
+            /// Passing a frame with non-numerical column data will error.
             #[cfg(feature = "polars")]
             #[cfg_attr(docsrs, doc(cfg(feature = "polars")))]
             pub fn $fn_name(
                 frame: impl Frame,
-                columns: &[&str],
                 null_value: $ty,
             ) -> PolarsResult<Mat<$ty>> {
                 use core::{iter::zip, mem::MaybeUninit};
 
                 fn implementation(
-                    df: DataFrame,
-                    cols: &[&str],
+                    lf: LazyFrame,
                     null_value: $ty,
                 ) -> PolarsResult<Mat<$ty>> {
+                    let df = lf.fill_null(null_value)
+                        .select(&[col("*").cast(DataType::$dtype)])
+                        .collect()
+                        .unwrap();
+
                     let nrows = df.height();
-                    let ncols = cols.len();
+                    let ncols = df.dtypes().len();
 
-                    let mut out = Mat::<$ty>::with_capacity(df.height(), cols.len());
+                    let mut out = Mat::<$ty>::with_capacity(df.height(), df.dtypes().len());
 
-                    cols.iter()
+                    df.get_column_names().iter()
                         .enumerate()
                         .try_for_each(|(j, col)| -> PolarsResult<()> {
                             let mut row_start = 0usize;
@@ -2871,13 +2897,13 @@ pub mod polars {
                     Ok(out)
                 }
 
-                implementation(frame.to_dataframe(columns)?, columns, null_value)
+                implementation(frame.is_numeric()?, null_value)
             }
         };
     }
 
-    polars_impl!(f32, polars_to_faer_f32);
-    polars_impl!(f64, polars_to_faer_f64);
+    polars_impl!(f32, Float32, polars_to_faer_f32);
+    polars_impl!(f64, Float64, polars_to_faer_f64);
 }
 
 #[cfg(test)]
@@ -3153,5 +3179,62 @@ mod tests {
 
         assert!(I_nalgebra.view_range_mut(.., ..).into_faer() == I_faer);
         assert!(I_faer.as_mut().into_nalgebra() == I_nalgebra);
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    fn test_polars_pos() {
+        use crate::polars::{polars_to_faer_f32, polars_to_faer_f64};
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        let arr_32 = polars_to_faer_f32(lf.clone(), 12f32).unwrap();
+        let arr_64 = polars_to_faer_f64(lf, 12f64).unwrap();
+
+        let expected_32 = mat![[1f32, 10f32], [2f32, 11f32], [3f32, 12f32]];
+        let expected_64 = mat![[1f64, 10f64], [2f64, 11f64], [3f64, 12f64]];
+
+        assert_approx_eq(arr_32, expected_32);
+        assert_approx_eq(arr_64, expected_64);
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(
+        expected = "cannot cast non-numerical column data to floating point in a sensible manner"
+    )]
+    fn test_polars_neg_32() {
+        use crate::polars::polars_to_faer_f32;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+        let s2: Series = Series::new("c", [Some("fish"), Some("dog"), None]);
+
+        let lf = DataFrame::new(vec![s0, s1, s2]).unwrap().lazy();
+
+        polars_to_faer_f32(lf.clone(), f32::NAN).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(
+        expected = "cannot cast non-numerical column data to floating point in a sensible manner"
+    )]
+    fn test_polars_neg_64() {
+        use crate::polars::polars_to_faer_f64;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+        let s2: Series = Series::new("c", [Some("fish"), Some("dog"), None]);
+
+        let lf = DataFrame::new(vec![s0, s1, s2]).unwrap().lazy();
+
+        polars_to_faer_f64(lf.clone(), f64::NAN).unwrap();
     }
 }
