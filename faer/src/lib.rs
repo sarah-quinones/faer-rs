@@ -2771,13 +2771,11 @@ pub mod polars {
             #[cfg_attr(docsrs, doc(cfg(feature = "polars")))]
             pub fn $fn_name(
                 frame: impl Frame,
-                // null_value: $ty,
             ) -> PolarsResult<Mat<$ty>> {
                 use core::{iter::zip, mem::MaybeUninit};
 
                 fn implementation(
                     lf: LazyFrame,
-                    // dtype: $ty,
                 ) -> PolarsResult<Mat<$ty>> {
                     let df = lf
                         .select(&[col("*").cast(DataType::$dtype)])
