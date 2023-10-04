@@ -3154,7 +3154,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// Fills the elements of `self` with zeros.
     #[inline(always)]
     #[track_caller]
-    pub fn fill_with_zero(&mut self)
+    pub fn fill_zeros(&mut self)
     where
         E: ComplexField,
     {
@@ -3164,7 +3164,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// Fills the elements of `self` with copies of `constant`.
     #[inline(always)]
     #[track_caller]
-    pub fn fill_with_constant(&mut self, constant: E) {
+    pub fn fill(&mut self, constant: E) {
         zipped!(self.rb_mut()).for_each(|mut x| x.write(constant));
     }
 
@@ -3953,7 +3953,7 @@ impl<E: Entity> Mat<E> {
         E: ComplexField,
     {
         let mut matrix = Self::zeros(nrows, ncols);
-        matrix.as_mut().diagonal().fill_with_constant(E::one());
+        matrix.as_mut().diagonal().fill(E::one());
         matrix
     }
 
@@ -4463,18 +4463,18 @@ impl<E: Entity> Mat<E> {
     /// Fills the elements of `self` with zeros.
     #[inline(always)]
     #[track_caller]
-    pub fn fill_with_zero(&mut self)
+    pub fn fill_zeros(&mut self)
     where
         E: ComplexField,
     {
-        self.as_mut().fill_with_zero()
+        self.as_mut().fill_zeros()
     }
 
     /// Fills the elements of `self` with copies of `constant`.
     #[inline(always)]
     #[track_caller]
-    pub fn fill_with_constant(&mut self, constant: E) {
-        self.as_mut().fill_with_constant(constant)
+    pub fn fill(&mut self, constant: E) {
+        self.as_mut().fill(constant)
     }
 
     /// Returns a view over the transpose of `self`.

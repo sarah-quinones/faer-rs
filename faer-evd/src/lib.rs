@@ -171,9 +171,9 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     });
 
     if !all_finite {
-        { s }.fill_with_constant(E::nan());
+        { s }.fill(E::nan());
         if let Some(mut u) = u {
-            u.fill_with_constant(E::nan());
+            u.fill(E::nan());
         }
         return;
     }
@@ -392,10 +392,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     }
 
     if !matrix.is_all_finite() {
-        { s_re }.fill_with_constant(E::nan());
-        { s_im }.fill_with_constant(E::nan());
+        { s_re }.fill(E::nan());
+        { s_im }.fill(E::nan());
         if let Some(mut u) = u {
-            u.fill_with_constant(E::nan());
+            u.fill(E::nan());
         }
         return;
     }
@@ -413,7 +413,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill_with_constant(E::one());
+    z.rb_mut().diagonal().fill(E::one());
 
     {
         let (mut householder, mut stack) =
@@ -833,9 +833,9 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.fill_with_constant(E::nan());
+        { s }.fill(E::nan());
         if let Some(mut u) = u {
-            u.fill_with_constant(E::nan());
+            u.fill(E::nan());
         }
         return;
     }
@@ -852,7 +852,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill_with_constant(E::one());
+    z.rb_mut().diagonal().fill(E::one());
 
     {
         let (mut householder, mut stack) =

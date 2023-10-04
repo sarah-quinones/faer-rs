@@ -1172,16 +1172,16 @@ fn bidiag_svd_impl<E: RealField>(
     }
 
     if max_val == E::zero() {
-        u.fill_with_zero();
+        u.fill_zeros();
         if u.nrows() == n + 1 {
-            u.diagonal().fill_with_zero();
+            u.diagonal().fill_zeros();
         } else {
             u.write(0, 0, E::one());
             u.write(1, n, E::one());
         }
         if let Some(mut v) = v {
-            v.fill_with_zero();
-            v.diagonal().fill_with_constant(E::one());
+            v.fill_zeros();
+            v.diagonal().fill(E::one());
         };
         return;
     }

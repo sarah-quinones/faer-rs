@@ -643,7 +643,7 @@ pub mod solvers {
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
                     dst.write(E::zero())
                 });
-            factor.as_mut().diagonal().fill_with_constant(E::one());
+            factor.as_mut().diagonal().fill(E::one());
             factor
         }
     }
@@ -827,7 +827,7 @@ pub mod solvers {
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
                     dst.write(E::zero())
                 });
-            factor.as_mut().diagonal().fill_with_constant(E::one());
+            factor.as_mut().diagonal().fill(E::one());
             factor
         }
     }
@@ -999,7 +999,7 @@ pub mod solvers {
             let m = factors.nrows();
 
             let mut q = Mat::<E>::zeros(m, m);
-            q.as_mut().diagonal().fill_with_constant(E::one());
+            q.as_mut().diagonal().fill(E::one());
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                 factors,

@@ -380,7 +380,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
 
             if E::HAS_SIMD && a22.row_stride() == 1 {
                 if k > 0 {
-                    w21.fill_with_zero();
+                    w21.fill_zeros();
                     arch.dispatch(HessenbergFusedUpdate {
                         a: a22.rb_mut(),
                         v: v21.rb_mut(),

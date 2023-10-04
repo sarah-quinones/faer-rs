@@ -706,12 +706,12 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.fill_with_constant(E::nan());
+        { s }.fill(E::nan());
         if let Some(mut u) = u {
-            u.fill_with_constant(E::nan());
+            u.fill(E::nan());
         }
         if let Some(mut v) = v {
-            v.fill_with_constant(E::nan());
+            v.fill(E::nan());
         }
         return;
     }

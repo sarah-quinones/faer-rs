@@ -772,8 +772,8 @@ fn aggressive_early_deflation<E: ComplexField>(
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    v.fill_with_zero();
-    v.rb_mut().diagonal().fill_with_constant(E::one());
+    v.fill_zeros();
+    v.rb_mut().diagonal().fill(E::one());
 
     let infqr = if jw
         < params
@@ -1662,8 +1662,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_with_zero();
-        u2.rb_mut().diagonal().fill_with_constant(E::one());
+        u2.fill_zeros();
+        u2.rb_mut().diagonal().fill(E::one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
             // The number of bulges that are in the pencil
@@ -1941,8 +1941,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let n_block = n_shifts + n_pos;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_with_zero();
-        u2.rb_mut().diagonal().fill_with_constant(E::one());
+        u2.fill_zeros();
+        u2.rb_mut().diagonal().fill(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2209,8 +2209,8 @@ fn multishift_qr_sweep<E: ComplexField>(
         let n_block = ihi - i_pos_block;
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_with_zero();
-        u2.rb_mut().diagonal().fill_with_constant(E::one());
+        u2.fill_zeros();
+        u2.rb_mut().diagonal().fill(E::one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:

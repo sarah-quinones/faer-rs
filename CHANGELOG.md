@@ -1,7 +1,7 @@
 # 0.11
 - High level api implemented in `faer`.
 - Renamed `Mat::with_dims` to `Mat::from_fn`.
-- Renamed `{Mat,MatRef,MatMut}::set_zeros` to `fill_with_zeros`.
+- Renamed `{Mat,MatRef,MatMut}::set_zeros` to `fill_with_zero`.
 - Renamed `{Mat,MatRef,MatMut}::set_constant` to `fill_with_constant`.
 
 # 0.10
