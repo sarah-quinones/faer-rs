@@ -3,26 +3,7 @@ use polars::prelude::*;
 
 fn main() -> PolarsResult<()> {
     let directory = "./faer/examples/";
-
-    for (filename, cols) in [
-        (
-            "diabetes_data_raw.parquet",
-            [
-                "age", "sex", "bmi", "bp", "s1", "s2", "s3", "s4", "s5", "s6",
-            ]
-            .as_slice(),
-        ),
-        (
-            "iris.parquet",
-            [
-                "sepal length (cm)",
-                "sepal width (cm)",
-                "petal length (cm)",
-                "petal width (cm)",
-            ]
-            .as_slice(),
-        ),
-    ] {
+    for filename in ["diabetes_data_raw.parquet", "iris.parquet"] {
         dbg!(filename);
 
         let data = LazyFrame::scan_parquet(
@@ -38,7 +19,7 @@ fn main() -> PolarsResult<()> {
                 use_statistics: true,
             },
         )
-        .and_then(|df| polars_to_faer_f64(df, cols, 0.0))
+        .and_then(|lf| polars_to_faer_f64(lf))
         .unwrap();
         dbgf!("6.2?", data);
     }
