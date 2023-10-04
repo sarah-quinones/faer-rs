@@ -1,7 +1,7 @@
 use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
 use assert2::{assert, debug_assert};
 use core::{iter::zip, slice};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
     temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
@@ -46,14 +46,14 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
         let (w3_head, w3_tail) = slice_as_mut_simd::<E, S>(w3);
 
         {
-            let p0 = E::simd_splat(simd, p0.clone());
-            let p1 = E::simd_splat(simd, p1.clone());
-            let p2 = E::simd_splat(simd, p2.clone());
-            let p3 = E::simd_splat(simd, p3.clone());
-            let beta0 = E::simd_splat(simd, beta0.clone());
-            let beta1 = E::simd_splat(simd, beta1.clone());
-            let beta2 = E::simd_splat(simd, beta2.clone());
-            let beta3 = E::simd_splat(simd, beta3.clone());
+            let p0 = E::simd_splat(simd, p0);
+            let p1 = E::simd_splat(simd, p1);
+            let p2 = E::simd_splat(simd, p2);
+            let p3 = E::simd_splat(simd, p3);
+            let beta0 = E::simd_splat(simd, beta0);
+            let beta1 = E::simd_splat(simd, beta1);
+            let beta2 = E::simd_splat(simd, beta2);
+            let beta3 = E::simd_splat(simd, beta3);
 
             for (l, (w0, (w1, (w2, w3)))) in zip(
                 E::into_iter(l_head),
@@ -160,12 +160,12 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 3> {
         let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
 
         {
-            let p0 = E::simd_splat(simd, p0.clone());
-            let p1 = E::simd_splat(simd, p1.clone());
-            let p2 = E::simd_splat(simd, p2.clone());
-            let beta0 = E::simd_splat(simd, beta0.clone());
-            let beta1 = E::simd_splat(simd, beta1.clone());
-            let beta2 = E::simd_splat(simd, beta2.clone());
+            let p0 = E::simd_splat(simd, p0);
+            let p1 = E::simd_splat(simd, p1);
+            let p2 = E::simd_splat(simd, p2);
+            let beta0 = E::simd_splat(simd, beta0);
+            let beta1 = E::simd_splat(simd, beta1);
+            let beta2 = E::simd_splat(simd, beta2);
 
             for (l, (w0, (w1, w2))) in zip(
                 E::into_iter(l_head),
@@ -253,10 +253,10 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 2> {
         let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
 
         {
-            let p0 = E::simd_splat(simd, p0.clone());
-            let p1 = E::simd_splat(simd, p1.clone());
-            let beta0 = E::simd_splat(simd, beta0.clone());
-            let beta1 = E::simd_splat(simd, beta1.clone());
+            let p0 = E::simd_splat(simd, p0);
+            let p1 = E::simd_splat(simd, p1);
+            let beta0 = E::simd_splat(simd, beta0);
+            let beta1 = E::simd_splat(simd, beta1);
 
             for (l, (w0, w1)) in zip(
                 E::into_iter(l_head),
@@ -325,8 +325,8 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
         let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
 
         {
-            let p0 = E::simd_splat(simd, p0.clone());
-            let beta0 = E::simd_splat(simd, beta0.clone());
+            let p0 = E::simd_splat(simd, p0);
+            let beta0 = E::simd_splat(simd, beta0);
 
             for (l, w0) in zip(E::into_iter(l_head), E::into_iter(w0_head)) {
                 let mut local_l = E::deref(E::rb(E::as_ref(&l)));
@@ -763,7 +763,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     cholesky_factors: MatMut<'_, E>,
     indices: &mut [usize],
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let _ = parallelism;
     let n = cholesky_factors.nrows();
@@ -783,8 +783,8 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
 
     let first = indices[0];
 
-    let (mut w, stack) = unsafe { temp_mat_uninit::<E>(n - first - r, r, stack) };
-    let (mut alpha, _) = unsafe { temp_mat_uninit::<E>(r, 1, stack) };
+    let (mut w, stack) = temp_mat_uninit::<E>(n - first - r, r, stack);
+    let (mut alpha, _) = temp_mat_uninit::<E>(r, 1, stack);
     let mut w = w.as_mut();
     let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
@@ -857,7 +857,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     insertion_index: usize,
     inserted_matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let new_n = cholesky_factors_extended.nrows();
     let r = inserted_matrix.ncols();

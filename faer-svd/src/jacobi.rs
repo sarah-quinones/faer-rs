@@ -127,7 +127,7 @@ pub fn jacobi_svd<E: RealField>(
                 let threshold = if threshold > consider_zero_threshold {
                     threshold
                 } else {
-                    consider_zero_threshold.clone()
+                    consider_zero_threshold
                 };
 
                 if (matrix.read(p, q).abs() > threshold) || (matrix.read(q, p).abs() > threshold) {

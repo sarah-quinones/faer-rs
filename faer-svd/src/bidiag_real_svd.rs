@@ -16,7 +16,7 @@ use crate::jacobi::{jacobi_svd, Skip};
 use assert2::assert;
 use coe::Coerce;
 use core::{iter::zip, mem::swap};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     jacobi::JacobiRotation, join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, Conj,
     Entity, MatMut, MatRef, Parallelism, RealField,
@@ -35,7 +35,7 @@ fn compute_svd_of_m<E: RealField>(
     outer_perm: &[usize],
     epsilon: E,
     _consider_zero_threshold: E,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = diag.len();
 
@@ -55,16 +55,16 @@ fn compute_svd_of_m<E: RealField>(
             .map(|(i, _)| i),
     );
     let perm = &*perm;
-    let (col0_perm, stack) = stack.collect(perm.iter().map(|&p| col0[p].clone()));
-    let (diag_perm, stack) = stack.collect(perm.iter().map(|&p| diag[p].clone()));
+    let (col0_perm, stack) = stack.collect(perm.iter().map(|&p| col0[p]));
+    let (diag_perm, stack) = stack.collect(perm.iter().map(|&p| diag[p]));
 
-    let (mut shifts, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
+    let (mut shifts, stack) = temp_mat_uninit::<E>(n, 1, stack);
     let shifts = shifts.as_mut();
-    let (mut mus, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
+    let (mut mus, stack) = temp_mat_uninit::<E>(n, 1, stack);
     let mus = mus.as_mut();
-    let (mut singular_vals, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
+    let (mut singular_vals, stack) = temp_mat_uninit::<E>(n, 1, stack);
     let singular_vals = singular_vals.as_mut();
-    let (mut zhat, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
+    let (mut zhat, stack) = temp_mat_uninit::<E>(n, 1, stack);
     let zhat = zhat.as_mut();
 
     let mut shifts = shifts.col(0);
@@ -165,8 +165,8 @@ fn compute_singular_vectors<E: RealField>(
             continue;
         }
 
-        let mu = mus.read(k, 0).clone();
-        let shift = shifts.read(k, 0).clone();
+        let mu = mus.read(k, 0);
+        let shift = shifts.read(k, 0);
 
         assert_eq!(zhat.row_stride(), 1);
 
@@ -231,7 +231,7 @@ fn perturb_col0<E: RealField>(
             continue;
         }
 
-        let dk = diag[k].clone();
+        let dk = diag[k];
         let mut prod = (s.read(last_idx, 0).add(dk))
             .mul(mus.read(last_idx, 0).add(shifts.read(last_idx, 0).sub(dk)));
 
@@ -407,22 +407,14 @@ fn compute_singular_values_generic<E: RealField>(
                 mus.write(k, 0, E::zero());
 
                 if col0[k] == E::zero() || actual_n == 1 {
-                    s.write(
-                        k,
-                        0,
-                        if k == 0 {
-                            col0[0].clone()
-                        } else {
-                            diag[k].clone()
-                        },
-                    );
+                    s.write(k, 0, if k == 0 { col0[0] } else { diag[k] });
                     shifts.write(k, 0, s.read(k, 0));
                     mus.write(k, 0, E::zero());
                     continue 'kth_value;
                 }
 
                 let last_k = k == actual_n - 1;
-                let left = diag[k].clone();
+                let left = diag[k];
                 let right = if last_k {
                     let mut norm2 = E::zero();
                     for &x in col0 {
@@ -434,7 +426,7 @@ fn compute_singular_values_generic<E: RealField>(
                     while col0[l] == E::zero() {
                         l += 1;
                     }
-                    diag[l].clone()
+                    diag[l]
                 };
 
                 let mid = left.add(right.sub(left).scale_power_of_two(one_half));
@@ -451,23 +443,23 @@ fn compute_singular_values_generic<E: RealField>(
                     ],
                     col0_perm,
                     diag_perm,
-                    [E::zero(), left.clone(), left.clone(), right.clone()],
+                    [E::zero(), left, left, right],
                 );
 
                 let mut shift = if last_k || f_mid > E::zero() {
-                    left.clone()
+                    left
                 } else {
-                    right.clone()
+                    right
                 };
 
                 if !last_k {
                     if shift == left {
                         if f_mid_left_shift < E::zero() {
-                            shift = right.clone();
+                            shift = right;
                             f_mid = f_mid_right_shift;
                         }
                     } else if f_mid_right_shift > E::zero() {
-                        shift = left.clone();
+                        shift = left;
                         f_mid = f_mid_left_shift;
                     }
                 }
@@ -492,9 +484,9 @@ fn compute_singular_values_generic<E: RealField>(
                         let same_sign = f_prev.mul(f_cur) > E::zero();
                         if !same_sign {
                             let (min, max) = if mu_cur < mu_prev {
-                                (mu_cur.clone(), mu_prev.clone())
+                                (mu_cur, mu_prev)
                             } else {
-                                (mu_prev.clone(), mu_cur.clone())
+                                (mu_prev, mu_cur)
                             };
                             left_candidate = Some(min);
                             right_candidate = Some(max);
@@ -520,19 +512,18 @@ fn compute_singular_values_generic<E: RealField>(
                                 .div(mu_prev.sub(mu_cur));
                             let b = f_cur.sub(a.div(mu_cur));
                             let mu_zero = a.div(b).neg();
-                            let f_zero =
-                                secular_eq(mu_zero.clone(), col0_perm, diag_perm, shift.clone());
+                            let f_zero = secular_eq(mu_zero, col0_perm, diag_perm, shift);
 
                             if f_zero < E::zero() {
-                                left_candidate = Some(mu_zero.clone());
+                                left_candidate = Some(mu_zero);
                             } else {
-                                right_candidate = Some(mu_zero.clone());
+                                right_candidate = Some(mu_zero);
                             }
 
                             mu_prev = mu_cur;
                             f_prev = f_cur;
                             mu_cur = mu_zero;
-                            f_cur = f_zero.clone();
+                            f_cur = f_zero;
 
                             if shift == left && (mu_cur < E::zero() || mu_cur > (right.sub(left))) {
                                 err = SecantError::OutOfBounds;
@@ -551,12 +542,8 @@ fn compute_singular_values_generic<E: RealField>(
                                 let mut k = E::one();
                                 for _ in 0..4 {
                                     let mu_opposite = a.neg().div(k.mul(f_zero).add(b));
-                                    let f_opposite = secular_eq(
-                                        mu_opposite.clone(),
-                                        col0_perm,
-                                        diag_perm,
-                                        shift.clone(),
-                                    );
+                                    let f_opposite =
+                                        secular_eq(mu_opposite, col0_perm, diag_perm, shift);
                                     if f_zero < E::zero() && f_opposite >= E::zero() {
                                         // this will be our right candidate
                                         right_candidate = Some(mu_opposite);
@@ -585,12 +572,12 @@ fn compute_singular_values_generic<E: RealField>(
                             } else {
                                 (right.sub(left)).mul(one_half)
                             },
-                            if last_k { f_max } else { f_mid.clone() },
+                            if last_k { f_max } else { f_mid },
                         )
                     } else {
                         (
                             (right.sub(left)).neg().scale_power_of_two(one_half),
-                            f_mid.clone(),
+                            f_mid,
                             E::zero(),
                             E::zero().inv(),
                         )
@@ -609,7 +596,7 @@ fn compute_singular_values_generic<E: RealField>(
                 let mut f_prev = f_mid;
                 // try to find non zero starting bounds
 
-                let half0 = one_half.clone();
+                let half0 = one_half;
                 let half1 = half0.scale_power_of_two(half0);
                 let half2 = half1.scale_power_of_two(half1);
                 let half3 = half2.scale_power_of_two(half2);
@@ -641,16 +628,12 @@ fn compute_singular_values_generic<E: RealField>(
                         left_shifted.scale_power_of_two(half0),
                     ]
                 };
-                let f_values = secular_eq_multi_fast(
-                    mu_values.clone(),
-                    col0_perm,
-                    diag_perm,
-                    [(); 8].map(|_| shift.clone()),
-                );
+                let f_values =
+                    secular_eq_multi_fast(mu_values, col0_perm, diag_perm, [(); 8].map(|_| shift));
 
                 if shift == left {
                     let mut i = 0;
-                    for (mu, f) in zip(mu_values.clone(), f_values.clone()) {
+                    for (mu, f) in zip(mu_values, f_values) {
                         if f < E::zero() {
                             left_shifted = mu;
                             f_left = f;
@@ -658,12 +641,12 @@ fn compute_singular_values_generic<E: RealField>(
                         }
                     }
                     if i < f_values.len() {
-                        right_shifted = mu_values[i].clone();
-                        f_right = f_values[i].clone();
+                        right_shifted = mu_values[i];
+                        f_right = f_values[i];
                     }
                 } else {
                     let mut i = 0;
-                    for (mu, f) in zip(mu_values.clone(), f_values.clone()) {
+                    for (mu, f) in zip(mu_values, f_values) {
                         if f > E::zero() {
                             right_shifted = mu;
                             f_right = f;
@@ -671,8 +654,8 @@ fn compute_singular_values_generic<E: RealField>(
                         }
                     }
                     if i < f_values.len() {
-                        left_shifted = mu_values[i].clone();
-                        f_left = f_values[i].clone();
+                        left_shifted = mu_values[i];
+                        f_left = f_values[i];
                     }
                 }
 
@@ -698,12 +681,11 @@ fn compute_singular_values_generic<E: RealField>(
                     } else {
                         mid_shifted_geometric
                     };
-                    let f_mid =
-                        secular_eq(mid_shifted.clone(), col0_perm, diag_perm, shift.clone());
+                    let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
 
                     if f_mid == E::zero() {
                         s.write(k, 0, shift.add(mid_shifted));
-                        shifts.write(k, 0, shift.clone());
+                        shifts.write(k, 0, shift);
                         mus.write(k, 0, mid_shifted);
                         continue 'kth_value;
                     } else if f_mid > E::zero() {
@@ -727,19 +709,14 @@ fn compute_singular_values_generic<E: RealField>(
                 let args = if left_shifted == E::zero() {
                     (
                         right_shifted.add(right_shifted),
-                        right_shifted.clone(),
+                        right_shifted,
                         f_prev,
                         f_right,
                     )
                 } else if right_shifted == E::zero() {
-                    (
-                        left_shifted.add(left_shifted),
-                        left_shifted.clone(),
-                        f_prev,
-                        f_left,
-                    )
+                    (left_shifted.add(left_shifted), left_shifted, f_prev, f_left)
                 } else {
-                    (left_shifted.clone(), right_shifted.clone(), f_left, f_right)
+                    (left_shifted, right_shifted, f_left, f_right)
                 };
 
                 let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
@@ -770,8 +747,7 @@ fn compute_singular_values_generic<E: RealField>(
                     {
                         let mid_shifted =
                             (left_shifted.add(right_shifted)).scale_power_of_two(one_half);
-                        let f_mid =
-                            secular_eq(mid_shifted.clone(), col0_perm, diag_perm, shift.clone());
+                        let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
 
                         if f_mid == E::zero() {
                             break;
@@ -786,7 +762,7 @@ fn compute_singular_values_generic<E: RealField>(
                 }
 
                 s.write(k, 0, shift.add(mu_cur));
-                shifts.write(k, 0, shift.clone());
+                shifts.write(k, 0, shift);
                 mus.write(k, 0, mu_cur);
             }
         },
@@ -875,7 +851,7 @@ fn deflate<E: RealField>(
     k: usize,
     epsilon: E,
     consider_zero_threshold: E,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) -> (usize, usize) {
     let n = diag.len();
     let mut jacobi_0i = 0;
@@ -915,8 +891,8 @@ fn deflate<E: RealField>(
 
     // condition 4.1
     if diag[0] < epsilon_coarse {
-        diag[0] = epsilon_coarse.clone();
-        col0[0] = epsilon_coarse.clone();
+        diag[0] = epsilon_coarse;
+        col0[0] = epsilon_coarse;
     }
 
     // condition 4.2
@@ -1008,7 +984,7 @@ fn deflate<E: RealField>(
         real_ind[j] = real_i;
         real_ind[i] = pi;
     }
-    col0[0] = diag[0].clone();
+    col0[0] = diag[0];
     for (i, p) in perm.iter_mut().enumerate() {
         *p = i;
     }
@@ -1043,16 +1019,16 @@ fn deflation43<E: RealField>(
     _u: MatMut<E>,
     i: usize,
 ) -> Option<JacobiRotation<E>> {
-    let c = col0[0].clone();
-    let s = col0[i].clone();
+    let c = col0[0];
+    let s = col0[i];
     let r = ((c.mul(c)).add(s.mul(s))).sqrt();
     if r == E::zero() {
         diag[i] = E::zero();
         return None;
     }
 
-    col0[0] = r.clone();
-    diag[0] = r.clone();
+    col0[0] = r;
+    diag[0] = r;
     col0[i] = E::zero();
     diag[i] = E::zero();
 
@@ -1071,18 +1047,18 @@ fn deflation44<E: RealField>(
     i: usize,
     j: usize,
 ) -> Option<JacobiRotation<E>> {
-    let c = col0[i].clone();
-    let s = col0[j].clone();
+    let c = col0[i];
+    let s = col0[j];
     let r = ((c.mul(c)).add(s.mul(s))).sqrt();
     if r == E::zero() {
-        diag[i] = diag[j].clone();
+        diag[i] = diag[j];
         return None;
     }
 
     let c = c.div(r);
     let s = s.neg().div(r);
     col0[i] = r;
-    diag[j] = diag[i].clone();
+    diag[j] = diag[i];
     col0[j] = E::zero();
 
     let rot = JacobiRotation { c, s };
@@ -1099,7 +1075,7 @@ pub fn compute_bidiag_real_svd<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = diag.len();
 
@@ -1108,9 +1084,9 @@ pub fn compute_bidiag_real_svd<E: RealField>(
         let mut s = s.as_mut();
 
         for i in 0..n {
-            s.write(i, i, diag[i].clone());
+            s.write(i, i, diag[i]);
             if i + 1 < n {
-                s.write(i + 1, i, subdiag[i].clone());
+                s.write(i + 1, i, subdiag[i]);
             }
         }
 
@@ -1146,7 +1122,7 @@ pub fn compute_bidiag_real_svd<E: RealField>(
                 stack,
             ),
             None => {
-                let (mut u, stack) = unsafe { temp_mat_uninit::<E>(2, n + 1, stack) };
+                let (mut u, stack) = temp_mat_uninit::<E>(2, n + 1, stack);
                 let u = u.as_mut();
                 bidiag_svd_impl(
                     diag,
@@ -1176,7 +1152,7 @@ fn bidiag_svd_impl<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    mut stack: PodStack<'_>,
 ) {
     let n = diag.len();
 
@@ -1227,17 +1203,16 @@ fn bidiag_svd_impl<E: RealField>(
     let (sub_d1, beta_sub_d2) = subdiag.split_at_mut(k);
     let (alpha, d2) = alpha_d2.split_first_mut().unwrap();
     let (beta, sub_d2) = beta_sub_d2.split_first_mut().unwrap();
-    let alpha = (*alpha).clone();
-    let beta = (*beta).clone();
+    let alpha = *alpha;
+    let beta = *beta;
 
     let compact_u = (u.nrows() != n + 1) as usize;
 
     if k <= jacobi_fallback_threshold || rem <= jacobi_fallback_threshold {
         let (mut u1_alloc, stack) =
-            unsafe { temp_mat_uninit::<E>(k + 1, compact_u * (k + 1), stack.rb_mut()) };
+            temp_mat_uninit::<E>(k + 1, compact_u * (k + 1), stack.rb_mut());
         let mut u1_alloc = u1_alloc.as_mut();
-        let (mut u2_alloc, stack) =
-            unsafe { temp_mat_uninit::<E>(rem + 1, compact_u * (rem + 1), stack) };
+        let (mut u2_alloc, stack) = temp_mat_uninit::<E>(rem + 1, compact_u * (rem + 1), stack);
         let mut u2_alloc = u2_alloc.as_mut();
 
         let (_u0, mut u1, mut u2) = if compact_u == 0 {
@@ -1269,12 +1244,12 @@ fn bidiag_svd_impl<E: RealField>(
         let mut matrix2 = matrix2.as_mut();
 
         for j in 0..k {
-            matrix1.write(j, j, d1[j].clone());
-            matrix1.write(j + 1, j, sub_d1[j].clone());
+            matrix1.write(j, j, d1[j]);
+            matrix1.write(j + 1, j, sub_d1[j]);
         }
         for j in 0..rem {
-            matrix2.write(j, j + 1, d2[j].clone());
-            matrix2.write(j + 1, j + 1, sub_d2[j].clone());
+            matrix2.write(j, j + 1, d2[j]);
+            matrix2.write(j + 1, j + 1, sub_d2[j]);
         }
 
         jacobi_svd(
@@ -1282,8 +1257,8 @@ fn bidiag_svd_impl<E: RealField>(
             Some(u1.rb_mut()),
             v1.rb_mut(),
             Skip::Last,
-            epsilon.clone(),
-            consider_zero_threshold.clone(),
+            epsilon,
+            consider_zero_threshold,
         );
         for j in 0..matrix1.ncols() {
             for i in 0..matrix1.nrows() {
@@ -1297,8 +1272,8 @@ fn bidiag_svd_impl<E: RealField>(
             Some(u2.rb_mut()),
             v2.rb_mut(),
             Skip::First,
-            epsilon.clone(),
-            consider_zero_threshold.clone(),
+            epsilon,
+            consider_zero_threshold,
         );
         for j in 0..matrix2.ncols() {
             for i in 0..matrix1.nrows() {
@@ -1389,8 +1364,8 @@ fn bidiag_svd_impl<E: RealField>(
         };
 
         let stack_bytes = stack.len_bytes();
-        let (mut mem1, stack2) = stack.rb_mut().make_uninit::<u8>(stack_bytes / 2);
-        let stack1 = DynStack::new(&mut mem1);
+        let (mut mem1, stack2) = stack.rb_mut().make_raw::<u8>(stack_bytes / 2);
+        let stack1 = PodStack::new(&mut mem1);
 
         join_raw(
             |parallelism| {
@@ -1401,8 +1376,8 @@ fn bidiag_svd_impl<E: RealField>(
                     v1.rb_mut(),
                     true,
                     jacobi_fallback_threshold,
-                    epsilon.clone(),
-                    consider_zero_threshold.clone(),
+                    epsilon,
+                    consider_zero_threshold,
                     parallelism,
                     stack1,
                 );
@@ -1415,8 +1390,8 @@ fn bidiag_svd_impl<E: RealField>(
                     v2.rb_mut(),
                     true,
                     jacobi_fallback_threshold,
-                    epsilon.clone(),
-                    consider_zero_threshold.clone(),
+                    epsilon,
+                    consider_zero_threshold,
                     parallelism,
                     stack2,
                 );
@@ -1432,7 +1407,7 @@ fn bidiag_svd_impl<E: RealField>(
         }
 
         for i in (0..k).rev() {
-            diag[i + 1] = diag[i].clone();
+            diag[i + 1] = diag[i];
         }
     }
 
@@ -1463,7 +1438,7 @@ fn bidiag_svd_impl<E: RealField>(
     };
 
     let col0 = subdiag;
-    diag[0] = r0.clone();
+    diag[0] = r0;
     col0[0] = r0;
 
     if compact_u == 0 {
@@ -1543,8 +1518,8 @@ fn bidiag_svd_impl<E: RealField>(
             transpositions,
             perm,
             k,
-            epsilon.clone(),
-            consider_zero_threshold.clone(),
+            epsilon,
+            consider_zero_threshold,
             stack,
         )
     };
@@ -1620,8 +1595,8 @@ fn bidiag_svd_impl<E: RealField>(
 
     let v_is_none = v.is_none();
 
-    let mut update_v = |parallelism, stack: DynStack<'_>| {
-        let (mut combined_v, _) = unsafe { temp_mat_uninit::<E>(n, allocate_vm * n, stack) };
+    let mut update_v = |parallelism, stack: PodStack<'_>| {
+        let (mut combined_v, _) = temp_mat_uninit::<E>(n, allocate_vm * n, stack);
         let mut combined_v = combined_v.as_mut();
         let v_rhs = vm.rb();
 
@@ -1672,9 +1647,8 @@ fn bidiag_svd_impl<E: RealField>(
         }
     };
 
-    let mut update_u = |parallelism, stack: DynStack<'_>| {
-        let (mut combined_u, _) =
-            unsafe { temp_mat_uninit::<E>(n + 1, allocate_um * (n + 1), stack) };
+    let mut update_u = |parallelism, stack: PodStack<'_>| {
+        let (mut combined_u, _) = temp_mat_uninit::<E>(n + 1, allocate_um * (n + 1), stack);
         let mut combined_u = combined_u.as_mut();
 
         if fill_u {
@@ -1738,7 +1712,7 @@ fn bidiag_svd_impl<E: RealField>(
     if compact_u == 1 {
         update_v(parallelism, stack.rb_mut());
         if fill_u {
-            let (mut combined_u, _) = unsafe { temp_mat_uninit::<E>(2, n + 1, stack) };
+            let (mut combined_u, _) = temp_mat_uninit::<E>(2, n + 1, stack);
             let mut combined_u = combined_u.as_mut();
             faer_core::mul::matmul(
                 combined_u.rb_mut(),
@@ -1755,8 +1729,8 @@ fn bidiag_svd_impl<E: RealField>(
             Parallelism::Rayon(_) if !v_is_none => {
                 let req_v = faer_core::temp_mat_req::<E>(n, n).unwrap();
                 let (mut mem_v, stack_u) =
-                    stack.make_aligned_uninit::<u8>(req_v.size_bytes(), req_v.align_bytes());
-                let stack_v = DynStack::new(&mut mem_v);
+                    stack.make_aligned_raw::<u8>(req_v.size_bytes(), req_v.align_bytes());
+                let stack_v = PodStack::new(&mut mem_v);
                 faer_core::join_raw(
                     |parallelism| update_v(parallelism, stack_v),
                     |parallelism| update_u(parallelism, stack_u),
@@ -1823,7 +1797,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

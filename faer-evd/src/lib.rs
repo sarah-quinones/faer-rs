@@ -14,7 +14,7 @@
 
 use assert2::assert;
 use coe::Coerce;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_req,
@@ -121,7 +121,7 @@ pub fn compute_hermitian_evd<E: ComplexField>(
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SymmetricEvdParams,
 ) {
     compute_hermitian_evd_custom_epsilon(
@@ -151,7 +151,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SymmetricEvdParams,
 ) {
     let _ = params;
@@ -178,12 +178,11 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         return;
     }
 
-    let (mut trid, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
+    let (mut trid, stack) = temp_mat_uninit::<E>(n, n, stack);
     let householder_blocksize =
         faer_qr::no_pivoting::compute::recommended_blocksize::<E>(n - 1, n - 1);
 
-    let (mut householder, mut stack) =
-        unsafe { temp_mat_uninit::<E>(householder_blocksize, n - 1, stack) };
+    let (mut householder, mut stack) = temp_mat_uninit::<E>(householder_blocksize, n - 1, stack);
     let mut householder = householder.as_mut();
 
     let mut trid = trid.as_mut();
@@ -216,7 +215,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 zero_threshold,
             );
             for i in 0..n {
-                s.write(i, 0, E::from_real(diag[i].clone()));
+                s.write(i, 0, E::from_real(diag[i]));
             }
 
             return;
@@ -254,7 +253,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         } else {
             let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
 
-            let (mut u_real, stack) = unsafe { temp_mat_uninit::<E::Real>(n, n, stack) };
+            let (mut u_real, stack) = temp_mat_uninit::<E::Real>(n, n, stack);
             let (mut mul, stack) = stack.make_with(n, |_| E::zero());
 
             let normalized = |x: E| {
@@ -295,7 +294,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         }
 
         for i in 0..n {
-            s.write(i, 0, E::from_real(diag[i].clone()));
+            s.write(i, 0, E::from_real(diag[i]));
         }
     }
 
@@ -341,7 +340,7 @@ pub fn compute_evd_real<E: RealField>(
     s_im: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     compute_evd_real_custom_epsilon(
@@ -373,7 +372,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     epsilon: E,
     zero_threshold: E,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     assert!(matrix.nrows() == matrix.ncols());
@@ -407,7 +406,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     let mut s_re = s_re;
     let mut s_im = s_im;
 
-    let (mut h, stack) = unsafe { temp_mat_uninit(n, n, stack) };
+    let (mut h, stack) = temp_mat_uninit(n, n, stack);
     let mut h = h.as_mut();
 
     h.clone_from(matrix);
@@ -418,7 +417,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     {
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit(householder_blocksize, n - 1, stack.rb_mut()) };
+            temp_mat_uninit(householder_blocksize, n - 1, stack.rb_mut());
         let mut householder = householder.as_mut();
 
         hessenberg::make_hessenberg_in_place(
@@ -454,8 +453,8 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             s_im.rb_mut(),
             0,
             n,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -738,7 +737,7 @@ pub fn compute_evd_req<E: ComplexField>(
         temp_mat_req::<E>(n, if compute_vecs { n } else { 0 })?,
         StackReq::try_any_of([
             StackReq::try_all_of([
-                temp_mat_req::<E>(n, householder_blocksize)?,
+                temp_mat_req::<E>(householder_blocksize, n - 1)?,
                 StackReq::try_any_of([
                     hessenberg::make_hessenberg_in_place_req::<E>(
                         n,
@@ -785,7 +784,7 @@ pub fn compute_evd_complex<E: ComplexField>(
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     compute_evd_complex_custom_epsilon(
@@ -815,7 +814,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     assert!(!coe::is_same::<E, E::Real>());
@@ -846,7 +845,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     let mut u = u;
     let mut s = s;
 
-    let (mut h, stack) = unsafe { temp_mat_uninit(n, n, stack) };
+    let (mut h, stack) = temp_mat_uninit(n, n, stack);
     let mut h = h.as_mut();
 
     h.clone_from(matrix);
@@ -857,7 +856,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     {
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit(n - 1, householder_blocksize, stack.rb_mut()) };
+            temp_mat_uninit(n - 1, householder_blocksize, stack.rb_mut());
         let mut householder = householder.as_mut();
 
         hessenberg::make_hessenberg_in_place(
@@ -892,8 +891,8 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
             s.rb_mut(),
             0,
             n,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -971,7 +970,7 @@ mod herm_tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -1183,7 +1182,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

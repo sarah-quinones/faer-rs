@@ -1,7 +1,7 @@
 use super::CholeskyError;
 use crate::ldlt_diagonal::compute::RankUpdate;
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Entity,
     MatMut, Parallelism,
@@ -130,7 +130,7 @@ pub fn cholesky_in_place_req<E: Entity>(
 fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) -> Result<(), CholeskyError> {
     // right looking cholesky
 
@@ -194,7 +194,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 pub fn cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: LltParams,
 ) -> Result<(), CholeskyError> {
     let _ = params;

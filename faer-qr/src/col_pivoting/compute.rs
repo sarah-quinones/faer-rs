@@ -1,6 +1,6 @@
 use assert2::{assert, debug_assert};
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     c32, c64, for_each_raw,
     householder::upgrade_householder_factor,
@@ -35,7 +35,7 @@ fn update_and_norm2_simd_impl<'a, E: ComplexField, S: Simd>(
     let (b, b_rem) = simd::slice_as_simd::<E, S>(b);
 
     let k_ = k;
-    let k = E::simd_splat(simd, k_.clone());
+    let k = E::simd_splat(simd, k_);
 
     let (a, a_remv) = E::as_arrays_mut::<8, _>(a);
     let (b, b_remv) = E::as_arrays::<8, _>(b);
@@ -484,7 +484,7 @@ fn qr_in_place_colmajor<E: ComplexField>(
                                 matrix,
                                 col_start,
                                 first_tail,
-                                tau_inv.clone(),
+                                tau_inv,
                                 &mut local_biggest_col_value,
                                 &mut local_biggest_col_idx,
                             );
@@ -698,7 +698,7 @@ pub fn qr_in_place<'out, E: ComplexField>(
     col_perm: &'out mut [usize],
     col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: ColPivQrComputeParams,
 ) -> (usize, PermutationMut<'out>) {
     let _ = &stack;
@@ -795,7 +795,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

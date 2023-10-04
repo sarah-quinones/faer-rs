@@ -41,7 +41,7 @@ impl<E: Entity> ReadWrite<'_, E> {
         E::from_units(E::map(
             E::as_ref(&self.ptr),
             #[inline(always)]
-            |ptr| unsafe { ptr.assume_init_ref().clone() },
+            |ptr| unsafe { *ptr.assume_init_ref() },
         ))
     }
 

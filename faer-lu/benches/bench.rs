@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_core::{Mat, Parallelism};
 use faer_lu::{
     full_pivoting::compute::FullPivLuComputeParams,
@@ -35,7 +35,7 @@ pub fn lu(c: &mut Criterion) {
             let mut perm_inv = vec![0; n];
             let mut copy = mat.clone();
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 partial_pivoting::compute::lu_in_place_req::<f64>(
                     n,
                     n,
@@ -44,7 +44,7 @@ pub fn lu(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-plu-{n}"), |b| {
                 b.iter(|| {
                     copy.as_mut().clone_from(mat.as_ref());
@@ -64,7 +64,7 @@ pub fn lu(c: &mut Criterion) {
             let mut perm = vec![0; n];
             let mut perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 partial_pivoting::compute::lu_in_place_req::<f64>(
                     n,
                     n,
@@ -73,7 +73,7 @@ pub fn lu(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-plu-{n}"), |b| {
                 b.iter(|| {
                     copy.as_mut().clone_from(mat.as_ref());
@@ -96,7 +96,7 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 full_pivoting::compute::lu_in_place_req::<f64>(
                     n,
                     n,
@@ -105,7 +105,7 @@ pub fn lu(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             c.bench_function(&format!("faer-st-flu-{n}"), |b| {
                 b.iter(|| {
@@ -131,7 +131,7 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 full_pivoting::compute::lu_in_place_req::<f64>(
                     n,
                     n,
@@ -140,7 +140,7 @@ pub fn lu(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-flu-{n}"), |b| {
                 b.iter(|| {
                     copy.as_mut().clone_from(mat.as_ref());

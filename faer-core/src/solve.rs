@@ -11,7 +11,7 @@ fn identity<E: Clone>(x: E) -> E {
 
 #[inline(always)]
 fn conj<E: ComplexField>(x: E) -> E {
-    x.clone().conj()
+    x.conj()
 }
 
 #[inline(always)]

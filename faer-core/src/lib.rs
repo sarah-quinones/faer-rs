@@ -58,11 +58,11 @@
 //!
 //! However, since a lot of algorithms need some form of temporary space for intermediate
 //! computations, they may ask for a slice of memory for that purpose, by taking a [`stack:
-//! DynStack`](dyn_stack::DynStack) parameter. A `DynStack` is a thin wrapper over a slice of
-//! possibly uninitialized memory bytes. This memory may come from any valid source (heap
-//! allocation, fixed-size array on the stack, etc.). The functions taking a `DynStack` parameter
-//! have a corresponding function with a similar name ending in `_req` that returns the memory
-//! requirements of the algorithm. For example:
+//! PodStack`](dyn_stack::PodStack) parameter. A `PodStack` is a thin wrapper over a slice of
+//! memory bytes. This memory may come from any valid source (heap allocation, fixed-size array on
+//! the stack, etc.). The functions taking a `PodStack` parameter have a corresponding function
+//! with a similar name ending in `_req` that returns the memory requirements of the algorithm. For
+//! example:
 //! [`householder::apply_block_householder_on_the_left_in_place_with_conj`] and
 //! [`householder::apply_block_householder_on_the_left_in_place_req`].
 //!
@@ -82,13 +82,9 @@ pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimpleEntity};
 use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::{
-    fmt::Debug,
-    marker::PhantomData,
-    mem::{ManuallyDrop, MaybeUninit},
-    ptr::NonNull,
-    sync::atomic::AtomicUsize,
+    fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
 };
-use dyn_stack::{DynArray, DynStack, SizeOverflow, StackReq};
+use dyn_stack::{DynArray, PodStack, SizeOverflow, StackReq};
 use num_complex::Complex;
 use pulp::Simd;
 use reborrow::*;
@@ -1788,6 +1784,7 @@ mod seal {
 
 pub trait MatIndex<RowRange, ColRange>: seal::Seal + Sized {
     type Target;
+    #[allow(clippy::missing_safety_doc)]
     unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
         <Self as MatIndex<RowRange, ColRange>>::get(this, row, col)
     }
@@ -3645,7 +3642,10 @@ pub fn is_vectorizable<T: 'static>() -> bool {
 #[inline(always)]
 pub fn align_for<T: 'static>() -> usize {
     if is_vectorizable::<T>() {
-        aligned_vec::CACHELINE_ALIGN
+        Ord::max(
+            core::mem::size_of::<T>(),
+            Ord::max(core::mem::align_of::<T>(), aligned_vec::CACHELINE_ALIGN),
+        )
     } else {
         core::mem::align_of::<T>()
     }
@@ -4312,7 +4312,7 @@ impl<E: Entity> Mat<E> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     ///
-    /// # Panics
+    /// # Safety
     /// The behavior is undefined if any of the following conditions are violated:
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
@@ -4358,7 +4358,7 @@ impl<E: Entity> Mat<E> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     ///
-    /// # Panics
+    /// # Safety
     /// The behavior is undefined if any of the following conditions are violated:
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
@@ -4742,12 +4742,11 @@ pub fn parallelism_degree(parallelism: Parallelism) -> usize {
 
 enum DynMatUnitImpl<'a, T> {
     Init(DynArray<'a, T>),
-    Uninit(DynArray<'a, MaybeUninit<T>>),
 }
 
-/// A temporary matrix allocated from a [`DynStack`].
+/// A temporary matrix allocated from a [`PodStack`].
 ///
-/// [`DynStack`]: dyn_stack::DynStack
+/// [`PodStack`]: dyn_stack::PodStack
 pub struct DynMat<'a, E: Entity> {
     inner: E::Group<DynMatUnitImpl<'a, E::Unit>>,
     nrows: usize,
@@ -4762,7 +4761,6 @@ impl<'a, E: Entity> DynMat<'a, E> {
             MatRef::from_raw_parts(
                 E::map(E::as_ref(&self.inner), |inner| match inner {
                     DynMatUnitImpl::Init(init) => init.as_ptr(),
-                    DynMatUnitImpl::Uninit(uninit) => uninit.as_ptr() as *const E::Unit,
                 }),
                 self.nrows,
                 self.ncols,
@@ -4777,7 +4775,6 @@ impl<'a, E: Entity> DynMat<'a, E> {
             MatMut::from_raw_parts(
                 E::map(E::as_mut(&mut self.inner), |inner| match inner {
                     DynMatUnitImpl::Init(init) => init.as_mut_ptr(),
-                    DynMatUnitImpl::Uninit(uninit) => uninit.as_mut_ptr() as *mut E::Unit,
                 }),
                 self.nrows,
                 self.ncols,
@@ -4799,8 +4796,8 @@ pub fn temp_mat_constant<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     value: E,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, E>, DynStack<'_>) {
+    stack: PodStack<'_>,
+) -> (DynMat<'_, E>, PodStack<'_>) {
     let col_stride = if is_vectorizable::<E::Unit>() {
         round_up_to(
             nrows,
@@ -4833,8 +4830,8 @@ pub fn temp_mat_constant<E: ComplexField>(
 pub fn temp_mat_zeroed<E: ComplexField>(
     nrows: usize,
     ncols: usize,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, E>, DynStack<'_>) {
+    stack: PodStack<'_>,
+) -> (DynMat<'_, E>, PodStack<'_>) {
     let col_stride = if is_vectorizable::<E::Unit>() {
         round_up_to(
             nrows,
@@ -4872,48 +4869,40 @@ pub fn temp_mat_zeroed<E: ComplexField>(
     )
 }
 
-/// Creates a temporary matrix of zero values, from the given memory stack.
-///
-/// # Safety
-/// Elements of the matrix must be initialized before they are read, or references to them are
-/// formed.
-pub unsafe fn temp_mat_uninit<E: ComplexField>(
+/// Creates a temporary matrix of untouched values, from the given memory stack.
+pub fn temp_mat_uninit<E: ComplexField>(
     nrows: usize,
     ncols: usize,
-    stack: DynStack<'_>,
-) -> (DynMat<'_, E>, DynStack<'_>) {
-    if core::mem::needs_drop::<E::Unit>() || (cfg!(debug_assertions) && !cfg!(miri)) {
-        temp_mat_constant(nrows, ncols, E::nan(), stack)
-    } else {
-        let col_stride = if is_vectorizable::<E::Unit>() {
-            round_up_to(
-                nrows,
-                align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-            )
-        } else {
-            nrows
-        };
-
-        let (stack, alloc) = E::map_with_context(
-            stack,
-            E::from_copy(E::UNIT),
-            #[inline(always)]
-            |stack, ()| {
-                let (alloc, stack) = stack
-                    .make_aligned_uninit::<E::Unit>(ncols * col_stride, align_for::<E::Unit>());
-                (stack, alloc)
-            },
-        );
-        (
-            DynMat {
-                inner: E::map(alloc, DynMatUnitImpl::Uninit),
-                nrows,
-                ncols,
-                col_stride,
-            },
-            stack,
+    stack: PodStack<'_>,
+) -> (DynMat<'_, E>, PodStack<'_>) {
+    let col_stride = if is_vectorizable::<E::Unit>() {
+        round_up_to(
+            nrows,
+            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
         )
-    }
+    } else {
+        nrows
+    };
+
+    let (stack, alloc) = E::map_with_context(
+        stack,
+        E::from_copy(E::UNIT),
+        #[inline(always)]
+        |stack, ()| {
+            let (alloc, stack) =
+                stack.make_aligned_raw::<E::Unit>(ncols * col_stride, align_for::<E::Unit>());
+            (stack, alloc)
+        },
+    );
+    (
+        DynMat {
+            inner: E::map(alloc, DynMatUnitImpl::Init),
+            nrows,
+            ncols,
+            col_stride,
+        },
+        stack,
+    )
 }
 
 /// Returns the stack requirements for creating a temporary matrix with the given dimensions.

@@ -19,7 +19,7 @@
 //!
 //! ```
 //! use assert_approx_eq::assert_approx_eq;
-//! use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
+//! use dyn_stack::{PodStack, GlobalPodBuffer, StackReq};
 //! use faer_core::{mat, solve, Conj, Mat, Parallelism};
 //! use reborrow::*;
 //!
@@ -63,7 +63,7 @@
 //!
 //! // we allocate the memory for the operations that we perform
 //! let mut mem =
-//!     GlobalMemBuffer::new(StackReq::any_of(
+//!     GlobalPodBuffer::new(StackReq::any_of(
 //!         [
 //!             faer_qr::no_pivoting::compute::qr_in_place_req::<f64>(
 //!                 a.nrows(),
@@ -79,7 +79,7 @@
 //!             .unwrap(),
 //!         ],
 //!     ));
-//! let mut stack = DynStack::new(&mut mem);
+//! let mut stack = PodStack::new(&mut mem);
 //!
 //! let mut qr = a.clone();
 //! let mut h_factor = Mat::zeros(blocksize, rank);
@@ -135,7 +135,7 @@ mod tests {
     fn test_example() {
         use crate::no_pivoting::compute;
         use assert_approx_eq::assert_approx_eq;
-        use dyn_stack::{DynStack, GlobalMemBuffer, StackReq};
+        use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
         use faer_core::{householder, mat, solve, Conj, Mat, Parallelism};
         use reborrow::*;
 
@@ -179,7 +179,7 @@ mod tests {
 
         // we allocate the memory for the operations that we perform
         let mut mem =
-            GlobalMemBuffer::new(StackReq::any_of([
+            GlobalPodBuffer::new(StackReq::any_of([
                 compute::qr_in_place_req::<f64>(
                     a.nrows(),
                     a.ncols(),
@@ -193,7 +193,7 @@ mod tests {
                 >(a.nrows(), blocksize, b.ncols())
                 .unwrap(),
             ]));
-        let mut stack = DynStack::new(&mut mem);
+        let mut stack = PodStack::new(&mut mem);
 
         let mut qr = a;
         let mut h_factor = Mat::zeros(blocksize, rank);

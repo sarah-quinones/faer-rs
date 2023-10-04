@@ -1,5 +1,5 @@
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
     Conj, Entity, MatMut, MatRef, Parallelism,
@@ -52,7 +52,7 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
 
         for j in 0..n {
             let l10_ = unsafe { l10.read_unchecked(0, j).neg().conj() };
-            let l10 = E::simd_splat(simd, l10_.clone());
+            let l10 = E::simd_splat(simd, l10_);
 
             let l20 = E::map(
                 l20.ptr_at(0, j),
@@ -212,7 +212,7 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
 fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // right looking cholesky
 
@@ -241,7 +241,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
         {
             // reserve space for L10×D0
-            let (mut l10xd0, _) = unsafe { temp_mat_uninit(rem, block_size, stack.rb_mut()) };
+            let (mut l10xd0, _) = temp_mat_uninit(rem, block_size, stack.rb_mut());
             let mut l10xd0 = l10xd0.as_mut();
 
             for j in 0..block_size {
@@ -307,7 +307,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 pub fn raw_cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: LdltDiagParams,
 ) {
     let _ = params;

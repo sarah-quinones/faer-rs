@@ -65,10 +65,10 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
         {
             // Wilkinson Shift.
-            let td = diag[end - 1].clone();
-            let e = offdiag[end - 1].clone();
+            let td = diag[end - 1];
+            let e = offdiag[end - 1];
 
-            let mut mu = diag[end].clone();
+            let mut mu = diag[end];
 
             if td == E::zero() {
                 mu = mu.sub(e.abs());
@@ -85,11 +85,11 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
             }
 
             let mut x = diag[start].sub(mu);
-            let mut z = offdiag[start].clone();
+            let mut z = offdiag[start];
 
             let mut k = start;
             while k < end && z != E::zero() {
-                let rot = JacobiRotation::make_givens(x.clone(), z.clone());
+                let rot = JacobiRotation::make_givens(x, z);
                 // do T = G' T G
                 let sdk = rot.s.mul(diag[k]).add(rot.c.mul(offdiag[k]));
                 let dkp1 = rot.s.mul(offdiag[k]).add(rot.c.mul(diag[k + 1]));
@@ -105,7 +105,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
                     offdiag[k - 1] = rot.c.mul(offdiag[k - 1]).sub(rot.s.mul(z));
                 }
 
-                x = offdiag[k].clone();
+                x = offdiag[k];
                 if k < end - 1 {
                     z = rot.s.neg().mul(offdiag[k + 1]);
                     offdiag[k + 1] = rot.c.mul(offdiag[k + 1]);
@@ -126,13 +126,13 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     for i in 0..n - 1 {
         let mut min_idx = i;
-        let mut min_val = diag[i].clone();
+        let mut min_val = diag[i];
 
         for (k, diag) in diag[i + 1..n].iter().enumerate() {
             let k = k + i + 1;
             if *diag < min_val {
                 min_idx = k;
-                min_val = diag.clone();
+                min_val = *diag;
             }
         }
         if min_idx > i {

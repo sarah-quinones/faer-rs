@@ -1,6 +1,6 @@
 use super::timeit;
 use crate::random;
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
+use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::QR;
 use std::time::Duration;
@@ -67,7 +67,7 @@ pub fn faer<T: faer_core::ComplexField>(
             let blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<T>(n, n);
             let mut householder = Mat::<T>::zeros(blocksize, n);
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_qr::no_pivoting::compute::qr_in_place_req::<T>(
                     n,
                     n,
@@ -77,7 +77,7 @@ pub fn faer<T: faer_core::ComplexField>(
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let mut block = || {
                 qr.as_mut()

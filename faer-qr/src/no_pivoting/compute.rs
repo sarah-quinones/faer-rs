@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_transpose_on_the_left_in_place_with_conj,
@@ -13,7 +13,7 @@ use reborrow::*;
 fn qr_in_place_unblocked<E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     mut householder_factor: MatMut<'_, E>,
-    _stack: DynStack<'_>,
+    _stack: PodStack<'_>,
 ) {
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -43,7 +43,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
             first_col_head.read(0, 0),
             tail_squared_norm,
         );
-        householder_factor.write(k, 0, tau.clone());
+        householder_factor.write(k, 0, tau);
         let tau_inv = tau.inv();
 
         first_col_head.write(0, 0, beta);
@@ -241,7 +241,7 @@ fn qr_in_place_blocked<E: ComplexField>(
     householder_factor: MatMut<'_, E>,
     blocksize: usize,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: QrComputeParams,
 ) {
     if blocksize == 1 {
@@ -337,7 +337,7 @@ pub fn qr_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     householder_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: QrComputeParams,
 ) {
     let blocksize = householder_factor.nrows();
@@ -393,7 +393,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

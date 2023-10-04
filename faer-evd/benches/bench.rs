@@ -1,5 +1,5 @@
 use criterion::*;
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_core::{c32, c64, zipped, ComplexField, Mat, Parallelism, RealField};
 use faer_evd::{
     tridiag::{tridiagonalize_in_place, tridiagonalize_in_place_req},
@@ -52,7 +52,7 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().add(&y.read())));
+            .for_each(|mut x, y| x.write(x.read().add(y.read())));
 
         let mut trid = mat.clone();
         let mut tau_left = Mat::zeros(n - 1, 1);
@@ -60,8 +60,8 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         {
             let parallelism = Parallelism::None;
             let mut mem =
-                GlobalMemBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
-            let mut stack = DynStack::new(&mut mem);
+                GlobalPodBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("tridiag-st-{}-{}", type_name::<E>(), n),
@@ -82,8 +82,8 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         {
             let parallelism = Parallelism::Rayon(0);
             let mut mem =
-                GlobalMemBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
-            let mut stack = DynStack::new(&mut mem);
+                GlobalPodBuffer::new(tridiagonalize_in_place_req::<E>(n, parallelism).unwrap());
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("tridiag-mt-{}-{}", type_name::<E>(), n),
@@ -112,8 +112,8 @@ fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
 
         let parallelism = Parallelism::None;
         let mut mem =
-            GlobalMemBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
-        let mut stack = DynStack::new(&mut mem);
+            GlobalPodBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
+        let mut stack = PodStack::new(&mut mem);
 
         criterion.bench_function(
             &format!("tridiag-evd-st-{}-{}", type_name::<E>(), n),
@@ -135,8 +135,8 @@ fn tridiagonal_evd<E: RealField>(criterion: &mut Criterion) {
         );
         let parallelism = Parallelism::Rayon(0);
         let mut mem =
-            GlobalMemBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
-        let mut stack = DynStack::new(&mut mem);
+            GlobalPodBuffer::new(compute_tridiag_real_evd_req::<E>(n, parallelism).unwrap());
+        let mut stack = PodStack::new(&mut mem);
         criterion.bench_function(
             &format!("tridiag-evd-mt-{}-{}", type_name::<E>(), n),
             |bencher| {
@@ -164,14 +164,14 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().add(&y.read())));
+            .for_each(|mut x, y| x.write(x.read().add(y.read())));
 
         let mut s = Mat::zeros(n, n);
         let mut u = Mat::zeros(n, n);
 
         {
             let parallelism = Parallelism::None;
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::compute_hermitian_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
@@ -180,7 +180,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("sym-evd-st-{}-{}", type_name::<E>(), n),
@@ -200,7 +200,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
         }
         {
             let parallelism = Parallelism::Rayon(0);
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::compute_hermitian_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
@@ -209,7 +209,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("sym-evd-mt-{}-{}", type_name::<E>(), n),
@@ -253,7 +253,7 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
 
         {
             let parallelism = Parallelism::None;
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::hessenberg_cplx_evd::multishift_qr_req::<E>(
                     n,
                     n,
@@ -264,7 +264,7 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(&format!("schur-st-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
@@ -291,7 +291,7 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
         }
         {
             let parallelism = Parallelism::Rayon(0);
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::hessenberg_cplx_evd::multishift_qr_req::<E>(
                     n,
                     n,
@@ -302,7 +302,7 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(&format!("schur-mt-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
@@ -340,7 +340,7 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
 
         {
             let parallelism = Parallelism::None;
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::hessenberg_real_evd::multishift_qr_req::<E>(
                     n,
                     n,
@@ -351,7 +351,7 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(&format!("schur-st-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
@@ -379,7 +379,7 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
         }
         {
             let parallelism = Parallelism::Rayon(0);
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::hessenberg_real_evd::multishift_qr_req::<E>(
                     n,
                     n,
@@ -390,7 +390,7 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(&format!("schur-mt-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
@@ -427,11 +427,11 @@ fn hessenberg<E: ComplexField>(criterion: &mut Criterion) {
         let mut householder = Mat::zeros(n - 1, bs);
 
         let parallelism = Parallelism::Rayon(0);
-        let mut mem = GlobalMemBuffer::new(
+        let mut mem = GlobalPodBuffer::new(
             faer_evd::hessenberg::make_hessenberg_in_place_req::<E>(n, bs, Parallelism::None)
                 .unwrap(),
         );
-        let mut stack = DynStack::new(&mut mem);
+        let mut stack = PodStack::new(&mut mem);
 
         criterion.bench_function(
             &format!("hessenberg-mt-{}-{}", type_name::<E>(), n),
@@ -461,7 +461,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
 
         {
             let parallelism = Parallelism::None;
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::compute_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
@@ -470,7 +470,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("unsym-evd-st-{}-{}", type_name::<E>(), n),
@@ -491,7 +491,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
         }
         {
             let parallelism = Parallelism::Rayon(0);
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_evd::compute_evd_req::<E>(
                     n,
                     faer_evd::ComputeVectors::Yes,
@@ -500,7 +500,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             criterion.bench_function(
                 &format!("unsym-evd-mt-{}-{}", type_name::<E>(), n),

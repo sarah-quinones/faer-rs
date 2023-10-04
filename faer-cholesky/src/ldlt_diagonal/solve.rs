@@ -1,4 +1,4 @@
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{solve, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism};
 use reborrow::*;
 
@@ -79,7 +79,7 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = cholesky_factors.nrows();
     let k = rhs.ncols();
@@ -99,7 +99,7 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
 
     for j in 0..k {
         for i in 0..n {
-            let d = unsafe { cholesky_factors.read_unchecked(i, i).clone() };
+            let d = unsafe { cholesky_factors.read_unchecked(i, i) };
             let rhs_elem = unsafe { rhs.read_unchecked(i, j) };
             unsafe {
                 rhs.write_unchecked(i, j, rhs_elem.mul(d.inv()));
@@ -138,7 +138,7 @@ pub fn solve_transpose_in_place_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // (L D L.*).T = conj(L D L.*)
     solve_in_place_with_conj(
@@ -178,7 +178,7 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
@@ -210,7 +210,7 @@ pub fn solve_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));

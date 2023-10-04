@@ -5,7 +5,7 @@
 
 use crate::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req};
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_req,
@@ -162,7 +162,7 @@ fn lahqr_eig22<E: ComplexField>(mut a00: E, mut a01: E, mut a10: E, mut a11: E) 
 }
 
 fn rotg<E: ComplexField>(a: E, b: E, epsilon: E::Real, zero_threshold: E::Real) -> (E::Real, E, E) {
-    let safmin = zero_threshold.clone();
+    let safmin = zero_threshold;
     let safmax = zero_threshold.inv();
     let rtmin = zero_threshold.div(epsilon).sqrt();
     let rtmax = rtmin.inv();
@@ -212,7 +212,7 @@ fn rotg<E: ComplexField>(a: E, b: E, epsilon: E::Real, zero_threshold: E::Real) 
             r = a.scale_real(h2.mul(p));
         } else {
             // Use scaled algorithm
-            let u = min(safmax.clone(), max(safmin.clone(), max(f1.clone(), g1)));
+            let u = min(safmax, max(safmin, max(f1, g1)));
             let uu = u.inv();
             let gs = b.scale_real(uu);
             let g2 = gs.real().abs2().add(gs.imag().abs2());
@@ -493,7 +493,7 @@ pub fn lahqr<E: ComplexField>(
                     abs1(a.read(i, i).sub(a.read(i - 1, i - 1))),
                 );
                 let s = aa.add(ab);
-                if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                     // A(i,i-1) is negligible, take i as new istart.
                     a.write(i, i - 1, E::zero());
                     istart = i;
@@ -523,7 +523,7 @@ pub fn lahqr<E: ComplexField>(
             a00 = E::from_real(dat1.mul(s)).add(a.read(istop - 1, istop - 1));
             a01 = E::from_real(dat2.mul(s));
             a10 = E::from_real(s);
-            a11 = a00.clone();
+            a11 = a00;
         } else {
             // Wilkinson shift
             a00 = a.read(istop - 2, istop - 2);
@@ -548,7 +548,7 @@ pub fn lahqr<E: ComplexField>(
                 let h00 = a.read(i, i).sub(s1);
                 let h10 = a.read(i + 1, i);
 
-                let (_cs, sn, _r) = rotg(h00, h10, eps.clone(), zero_threshold.clone());
+                let (_cs, sn, _r) = rotg(h00, h10, eps, zero_threshold);
                 if abs1(sn.conj().mul(a.read(i, i - 1)))
                     <= eps.mul(abs1(a.read(i, i - 1)).add(abs1(a.read(i, i + 1))))
                 {
@@ -563,17 +563,12 @@ pub fn lahqr<E: ComplexField>(
             if i == istart2 {
                 let h00 = a.read(i, i).sub(s1);
                 let h10 = a.read(i + 1, i);
-                (cs, sn, _) = rotg(h00, h10, eps.clone(), zero_threshold.clone());
+                (cs, sn, _) = rotg(h00, h10, eps, zero_threshold);
                 if i > istart {
                     a.write(i, i - 1, a.read(i, i - 1).scale_real(cs));
                 }
             } else {
-                (cs, sn, r) = rotg(
-                    a.read(i, i - 1),
-                    a.read(i + 1, i - 1),
-                    eps.clone(),
-                    zero_threshold.clone(),
-                );
+                (cs, sn, r) = rotg(a.read(i, i - 1), a.read(i + 1, i - 1), eps, zero_threshold);
                 a.write(i, i - 1, r);
                 a.write(i + 1, i - 1, E::zero());
             }
@@ -599,8 +594,8 @@ pub fn lahqr<E: ComplexField>(
                 arch.dispatch(Rot {
                     ai,
                     aj: aip1,
-                    c: cs.clone(),
-                    s: sn.clone(),
+                    c: cs,
+                    s: sn,
                 });
             } else {
                 zipped!(ai, aip1).for_each(|mut ai, mut aip1| {
@@ -620,8 +615,8 @@ pub fn lahqr<E: ComplexField>(
                     arch.dispatch(Rot {
                         ai: zi,
                         aj: zip1,
-                        c: cs.clone(),
-                        s: sn.clone(),
+                        c: cs,
+                        s: sn,
                     });
                 } else {
                     zipped!(zi, zip1).for_each(|mut zi, mut zip1| {
@@ -711,7 +706,7 @@ fn aggressive_early_deflation<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    mut stack: PodStack<'_>,
     params: EvdParams,
 ) -> (usize, usize) {
     let n = a.nrows();
@@ -719,7 +714,7 @@ fn aggressive_early_deflation<E: ComplexField>(
     // Because we will use the lower triangular part of A as workspace,
     // We have a maximum window size
     let nw_max = (n - 3) / 3;
-    let eps = epsilon.clone();
+    let eps = epsilon;
     let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
 
     // Size of the deflation window
@@ -792,8 +787,8 @@ fn aggressive_early_deflation<E: ComplexField>(
             s_window.rb_mut(),
             0,
             jw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
         )
     } else {
         let infqr = multishift_qr(
@@ -803,8 +798,8 @@ fn aggressive_early_deflation<E: ComplexField>(
             s_window.rb_mut(),
             0,
             jw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -833,7 +828,7 @@ fn aggressive_early_deflation<E: ComplexField>(
         if foo == E::Real::zero() {
             foo = abs1(s_spike);
         }
-        if abs1(s_spike).mul(abs1(v.read(0, ns - 1))) <= max(small_num.clone(), eps.mul(foo)) {
+        if abs1(s_spike).mul(abs1(v.read(0, ns - 1))) <= max(small_num, eps.mul(foo)) {
             // Eigenvalue is deflatable
             ns -= 1;
         } else {
@@ -845,8 +840,8 @@ fn aggressive_early_deflation<E: ComplexField>(
                 Some(v.rb_mut()),
                 ifst,
                 &mut ilst,
-                epsilon.clone(),
-                zero_threshold.clone(),
+                epsilon,
+                zero_threshold,
             );
             ilst += 1;
         }
@@ -897,13 +892,7 @@ fn aggressive_early_deflation<E: ComplexField>(
                 i1 = i2;
             } else {
                 sorted = false;
-                let ierr = schur_swap(
-                    tw.rb_mut(),
-                    Some(v.rb_mut()),
-                    i1,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
-                );
+                let ierr = schur_swap(tw.rb_mut(), Some(v.rb_mut()), i1, epsilon, zero_threshold);
                 if ierr == 0 {
                     i1 += 1;
                 } else {
@@ -1119,13 +1108,7 @@ fn schur_move<E: ComplexField>(
     if ifst < *ilst {
         while here != *ilst {
             // Size of the next eigenvalue block
-            let ierr = schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                here,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
+            let ierr = schur_swap(a.rb_mut(), q.rb_mut(), here, epsilon, zero_threshold);
             if ierr != 0 {
                 // The swap failed, return with error
                 *ilst = here;
@@ -1136,13 +1119,7 @@ fn schur_move<E: ComplexField>(
     } else {
         while here != *ilst {
             // Size of the next eigenvalue block
-            let ierr = schur_swap(
-                a.rb_mut(),
-                q.rb_mut(),
-                here - 1,
-                epsilon.clone(),
-                zero_threshold.clone(),
-            );
+            let ierr = schur_swap(a.rb_mut(), q.rb_mut(), here - 1, epsilon, zero_threshold);
             if ierr != 0 {
                 // The swap failed, return with error
                 *ilst = here;
@@ -1184,14 +1161,14 @@ fn schur_swap<E: ComplexField>(
     if j2 < n {
         let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).transpose().const_cast() };
         let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).transpose().const_cast() };
-        rot(row1.transpose(), row2.transpose(), cs.clone(), sn.clone());
+        rot(row1.transpose(), row2.transpose(), cs, sn);
     }
     // Apply transformation from the right
     if j0 > 0 {
         let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
         let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
 
-        rot(col1, col2, cs.clone(), sn.conj());
+        rot(col1, col2, cs, sn.conj());
     }
     if let Some(q) = q {
         let col1 = unsafe { q.rb().col(j0).const_cast() };
@@ -1244,7 +1221,7 @@ pub fn multishift_qr<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
@@ -1388,8 +1365,8 @@ pub fn multishift_qr<E: ComplexField>(
             istart,
             istop,
             nw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -1416,12 +1393,14 @@ pub fn multishift_qr<E: ComplexField>(
 
         if k_defl % non_convergence_limit_shift == 0 {
             ns = nsr;
-            for i in (i_shifts..istop - 1).step_by(2) {
+            // TODO: compare with original fortran impl
+            // unsure about this part
+            for i in (i_shifts + 1..istop - 1).step_by(2) {
                 let ss = abs1(a.read(i, i - 1)).add(abs1(a.read(i - 1, i - 2)));
                 let aa = E::from_real(dat1.mul(ss)).add(a.read(i, i));
-                let bb = E::from_real(ss.clone());
+                let bb = E::from_real(ss);
                 let cc = E::from_real(dat2.mul(ss));
-                let dd = aa.clone();
+                let dd = aa;
                 let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                 w.write(i, 0, s1);
                 w.write(i + 1, 0, s2);
@@ -1439,8 +1418,8 @@ pub fn multishift_qr<E: ComplexField>(
                     shifts.rb_mut(),
                     0,
                     nsr,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
+                    epsilon,
+                    zero_threshold,
                 ) as usize;
 
                 ns = nsr - ierr;
@@ -1509,8 +1488,8 @@ pub fn multishift_qr<E: ComplexField>(
             shifts.rb_mut(),
             istart,
             istop,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
         );
@@ -1559,7 +1538,7 @@ fn move_bulge<E: ComplexField>(
         // The bulge has collapsed, attempt to reintroduce using
         // 2-small-subdiagonals trick
         let mut vt_storage = E::map(E::zero().into_units(), |zero_unit| {
-            [zero_unit.clone(), zero_unit.clone(), zero_unit]
+            [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::map(E::as_mut(&mut vt_storage), |array| array.as_mut_ptr());
         let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
@@ -1612,11 +1591,11 @@ fn multishift_qr_sweep<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = a.nrows();
 
-    let eps = epsilon.clone();
+    let eps = epsilon;
     let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
     assert!(n >= 12);
 
@@ -1712,7 +1691,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
                     let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                     let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
-                    move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon.clone());
+                    move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
                 }
 
                 // Apply the reflector we just calculated from the right
@@ -1783,7 +1762,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                             tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -1801,7 +1780,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                             abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                             a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
@@ -1981,7 +1960,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                 let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
                 let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                 let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
-                move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon.clone());
+                move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
 
                 // Apply the reflector we just calculated from the right
                 // We leave the last row for later (it interferes with the
@@ -2051,7 +2030,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                             tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -2069,7 +2048,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                             abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                             a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
@@ -2301,7 +2280,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
                     let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                     let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
-                    move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon.clone());
+                    move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
 
                     {
                         let t0 = v.read(0, 0).conj();
@@ -2367,7 +2346,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                                 tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                             }
                         }
-                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                             let ab = max(
                                 abs1(a.read(i_pos, i_pos - 1)),
                                 abs1(a.read(i_pos - 1, i_pos)),
@@ -2385,9 +2364,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                                 abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                             );
                             let s = aa.add(ab);
-                            if ba.mul(ab.div(s))
-                                <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s))))
-                            {
+                            if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                                 a.write(i_pos, i_pos - 1, E::zero());
                             }
                         }
@@ -2558,7 +2535,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

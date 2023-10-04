@@ -1,5 +1,5 @@
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::matmul,
     permutation::{swap_rows, PermutationMut},
@@ -44,12 +44,12 @@ fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j:
         let a = E::map(
             E::copy(&ptr_a),
             #[inline(always)]
-            |ptr| (*ptr).clone(),
+            |ptr| (*ptr),
         );
         let b = E::map(
             E::copy(&ptr_b),
             #[inline(always)]
-            |ptr| (*ptr).clone(),
+            |ptr| (*ptr),
         );
 
         E::map(
@@ -77,7 +77,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
     n: usize,
     perm: &mut [usize],
     transpositions: &mut [usize],
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) -> usize {
     let _ = &stack;
     let m = matrix.nrows();
@@ -317,7 +317,7 @@ fn lu_in_place_impl<E: ComplexField>(
     perm: &mut [usize],
     transpositions: &mut [usize],
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    mut stack: PodStack<'_>,
 ) -> usize {
     let m = matrix.nrows();
     let full_n = matrix.ncols();
@@ -463,7 +463,7 @@ pub fn lu_in_place_req<E: Entity>(
     let _ = &params;
 
     let size = Ord::min(n, m);
-    StackReq::try_any_of([
+    StackReq::try_all_of([
         StackReq::try_new::<usize>(size)?,
         lu_recursive_req::<E>(m, size, parallelism)?,
     ])
@@ -500,7 +500,7 @@ pub fn lu_in_place<'out, E: ComplexField>(
     perm: &'out mut [usize],
     perm_inv: &'out mut [usize],
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: PartialPivLuComputeParams,
 ) -> (usize, PermutationMut<'out>) {
     let _ = &params;
@@ -552,13 +552,13 @@ mod tests {
     use crate::partial_pivoting::reconstruct;
     use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::GlobalMemBuffer;
+    use dyn_stack::GlobalPodBuffer;
     use faer_core::{permutation::PermutationRef, Mat, MatRef};
     use rand::random;
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -607,10 +607,10 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let (_, row_perm) = lu_in_place(
                 mat.as_mut(),
@@ -655,10 +655,10 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let (_, row_perm) = lu_in_place(
                 mat.rb_mut(),
@@ -703,10 +703,10 @@ mod tests {
             let mut perm = vec![0; m];
             let mut perm_inv = vec![0; m];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 lu_in_place_req::<f64>(m, n, Parallelism::Rayon(8), Default::default()).unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let (_, row_perm) = lu_in_place(
                 mat.rb_mut(),

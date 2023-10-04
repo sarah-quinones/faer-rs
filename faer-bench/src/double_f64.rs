@@ -1,8 +1,13 @@
+use bytemuck::{Pod, Zeroable};
 use pulp::{Scalar, Simd};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(C)]
 pub struct Double<T>(pub T, pub T);
 pub type DoubleF64 = Double<f64>;
+
+unsafe impl<T: Zeroable> Zeroable for Double<T> {}
+unsafe impl<T: Pod> Pod for Double<T> {}
 
 impl<I: Iterator> Iterator for Double<I> {
     type Item = Double<I::Item>;
@@ -461,7 +466,6 @@ mod faer_impl {
 
         type Group<T> = Double<T>;
         type GroupCopy<T: Copy> = Double<T>;
-        type GroupThreadSafe<T: Send + Sync> = Double<T>;
         type Iter<I: Iterator> = Double<I>;
 
         const N_COMPONENTS: usize = 2;
@@ -541,8 +545,8 @@ mod faer_impl {
         }
 
         #[inline(always)]
-        fn div(&self, rhs: &Self) -> Self {
-            *self / *rhs
+        fn div(self, rhs: Self) -> Self {
+            self / rhs
         }
 
         #[inline(always)]
@@ -639,10 +643,11 @@ mod faer_impl {
 
     impl ComplexField for DoubleF64 {
         type Real = DoubleF64;
+        type Simd = pulp::Arch;
 
         #[inline(always)]
-        fn sqrt(&self) -> Self {
-            (*self).sqrt()
+        fn sqrt(self) -> Self {
+            self.sqrt()
         }
 
         #[inline(always)]
@@ -651,58 +656,58 @@ mod faer_impl {
         }
 
         #[inline(always)]
-        fn add(&self, rhs: &Self) -> Self {
-            *self + *rhs
+        fn add(self, rhs: Self) -> Self {
+            self + rhs
         }
 
         #[inline(always)]
-        fn sub(&self, rhs: &Self) -> Self {
-            *self - *rhs
+        fn sub(self, rhs: Self) -> Self {
+            self - rhs
         }
 
         #[inline(always)]
-        fn mul(&self, rhs: &Self) -> Self {
-            *self * *rhs
+        fn mul(self, rhs: Self) -> Self {
+            self * rhs
         }
 
         #[inline(always)]
-        fn neg(&self) -> Self {
-            -*self
+        fn neg(self) -> Self {
+            -self
         }
 
         #[inline(always)]
-        fn inv(&self) -> Self {
-            (*self).recip()
+        fn inv(self) -> Self {
+            (self).recip()
         }
 
         #[inline(always)]
-        fn conj(&self) -> Self {
-            *self
+        fn conj(self) -> Self {
+            self
         }
 
         #[inline(always)]
-        fn scale_real(&self, rhs: &Self::Real) -> Self {
-            *self * *rhs
+        fn scale_real(self, rhs: Self::Real) -> Self {
+            self * rhs
         }
 
         #[inline(always)]
-        fn scale_power_of_two(&self, rhs: &Self::Real) -> Self {
+        fn scale_power_of_two(self, rhs: Self::Real) -> Self {
             Self(self.0 * rhs.0, self.1 * rhs.0)
         }
 
         #[inline(always)]
-        fn score(&self) -> Self::Real {
-            (*self).abs()
+        fn score(self) -> Self::Real {
+            self.abs()
         }
 
         #[inline(always)]
-        fn abs(&self) -> Self::Real {
-            (*self).abs()
+        fn abs(self) -> Self::Real {
+            self.abs()
         }
 
         #[inline(always)]
-        fn abs2(&self) -> Self::Real {
-            *self * *self
+        fn abs2(self) -> Self::Real {
+            self * self
         }
 
         #[inline(always)]
@@ -716,12 +721,12 @@ mod faer_impl {
         }
 
         #[inline(always)]
-        fn real(&self) -> Self::Real {
-            *self
+        fn real(self) -> Self::Real {
+            self
         }
 
         #[inline(always)]
-        fn imag(&self) -> Self::Real {
+        fn imag(self) -> Self::Real {
             Self::ZERO
         }
 

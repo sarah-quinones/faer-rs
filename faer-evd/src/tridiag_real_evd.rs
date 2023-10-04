@@ -1,5 +1,5 @@
 use assert2::debug_assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::{inner_prod::inner_prod_with_conj, matmul},
     temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
@@ -134,9 +134,9 @@ fn compute_eigenvalues<E: RealField>(
         let mid_left_shift = right.sub(left).scale_power_of_two(one_half);
         let f_mid_left_shift = secular_eq(d, z, rho, mid_left_shift, left, n);
         let shift = if last_i || f_mid_left_shift > E::zero() {
-            left.clone()
+            left
         } else {
-            right.clone()
+            right
         };
 
         enum SecantError {
@@ -159,9 +159,9 @@ fn compute_eigenvalues<E: RealField>(
                 let same_sign = f_prev.mul(f_cur) > E::zero();
                 if !same_sign {
                     let (min, max) = if mu_cur < mu_prev {
-                        (mu_cur.clone(), mu_prev.clone())
+                        (mu_cur, mu_prev)
                     } else {
-                        (mu_prev.clone(), mu_cur.clone())
+                        (mu_prev, mu_cur)
                     };
                     left_candidate = Some(min);
                     right_candidate = Some(max);
@@ -190,15 +190,15 @@ fn compute_eigenvalues<E: RealField>(
                     let f_zero = secular_eq(d, z, rho, mu_zero, shift, n);
 
                     if f_zero < E::zero() {
-                        left_candidate = Some(mu_zero.clone());
+                        left_candidate = Some(mu_zero);
                     } else {
-                        right_candidate = Some(mu_zero.clone());
+                        right_candidate = Some(mu_zero);
                     }
 
                     mu_prev = mu_cur;
                     f_prev = f_cur;
                     mu_cur = mu_zero;
-                    f_cur = f_zero.clone();
+                    f_cur = f_zero;
 
                     if shift == left && (mu_cur < E::zero() || mu_cur > (right.sub(left))) {
                         err = SecantError::OutOfBounds;
@@ -243,14 +243,14 @@ fn compute_eigenvalues<E: RealField>(
             } else {
                 (
                     right.sub(left).scale_power_of_two(one_half),
-                    f_mid_left_shift.clone(),
+                    f_mid_left_shift,
                 )
             };
             (E::zero(), E::zero().inv().neg(), right_shifted, f_right)
         } else {
             (
                 right.sub(left).neg().scale_power_of_two(one_half),
-                f_mid_left_shift.clone(),
+                f_mid_left_shift,
                 E::zero(),
                 E::zero().inv(),
             )
@@ -259,7 +259,7 @@ fn compute_eigenvalues<E: RealField>(
         let mut iteration_count = 0;
         let mut f_prev = f_mid_left_shift;
 
-        let half0 = one_half.clone();
+        let half0 = one_half;
         let half1 = half0.scale_power_of_two(half0);
         let half2 = half1.scale_power_of_two(half1);
         let half3 = half2.scale_power_of_two(half2);
@@ -305,7 +305,7 @@ fn compute_eigenvalues<E: RealField>(
 
         if shift == left {
             let mut i = 0;
-            for (mu, f) in core::iter::zip(mu_values.clone(), f_values.clone()) {
+            for (mu, f) in core::iter::zip(mu_values, f_values) {
                 if f < E::zero() {
                     left_shifted = mu;
                     f_left = f;
@@ -313,12 +313,12 @@ fn compute_eigenvalues<E: RealField>(
                 }
             }
             if i < f_values.len() {
-                right_shifted = mu_values[i].clone();
-                f_right = f_values[i].clone();
+                right_shifted = mu_values[i];
+                f_right = f_values[i];
             }
         } else {
             let mut i = 0;
-            for (mu, f) in core::iter::zip(mu_values.clone(), f_values.clone()) {
+            for (mu, f) in core::iter::zip(mu_values, f_values) {
                 if f > E::zero() {
                     right_shifted = mu;
                     f_right = f;
@@ -326,8 +326,8 @@ fn compute_eigenvalues<E: RealField>(
                 }
             }
             if i < f_values.len() {
-                left_shifted = mu_values[i].clone();
-                f_left = f_values[i].clone();
+                left_shifted = mu_values[i];
+                f_left = f_values[i];
             }
         }
 
@@ -359,7 +359,7 @@ fn compute_eigenvalues<E: RealField>(
             let f_mid = secular_eq(d, z, rho, mid_shifted, shift, n);
 
             if f_mid == E::zero() {
-                shifts.write(i, 0, shift.clone());
+                shifts.write(i, 0, shift);
                 mus.write(i, 0, mid_shifted);
                 continue 'kth_iter;
             } else if f_mid > E::zero() {
@@ -383,19 +383,14 @@ fn compute_eigenvalues<E: RealField>(
         let args = if left_shifted == E::zero() {
             (
                 right_shifted.add(right_shifted),
-                right_shifted.clone(),
+                right_shifted,
                 f_prev,
                 f_right,
             )
         } else if right_shifted == E::zero() {
-            (
-                left_shifted.add(left_shifted),
-                left_shifted.clone(),
-                f_prev,
-                f_left,
-            )
+            (left_shifted.add(left_shifted), left_shifted, f_prev, f_left)
         } else {
-            (left_shifted.clone(), right_shifted.clone(), f_left, f_right)
+            (left_shifted, right_shifted, f_left, f_right)
         };
 
         let (use_bisection, mut mu_cur, left_candidate, right_candidate, _err) =
@@ -455,21 +450,21 @@ pub fn compute_tridiag_real_evd<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = diag.len();
     let (mut pl_before, stack) = stack.make_with(n, |_| 0usize);
     let (mut pl_after, stack) = stack.make_with(n, |_| 0usize);
     let (mut pr, stack) = stack.make_with(n, |_| 0usize);
     let (mut run_info, stack) = stack.make_with(n, |_| 0usize);
-    let (mut z, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut permuted_diag, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut permuted_z, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut householder, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut mus, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut shifts, stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack) };
-    let (mut repaired_u, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
+    let (mut z, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut permuted_diag, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut permuted_z, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut householder, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut mus, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut shifts, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut repaired_u, stack) = temp_mat_uninit::<E>(n, n, stack);
+    let (mut tmp, _) = temp_mat_uninit::<E>(n, n, stack);
 
     compute_tridiag_real_evd_impl(
         diag,
@@ -521,9 +516,9 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     }
 
     if n == 2 {
-        let a = diag[0].clone();
-        let d = diag[1].clone();
-        let b = offdiag[0].clone();
+        let a = diag[0];
+        let d = diag[1];
+        let b = offdiag[0];
 
         let half = E::Real::from_f64(0.5);
 
@@ -572,12 +567,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
             let r0_reconstructed = c.mul(a).sub(s.mul(b)).div(c);
             if r0.sub(r0_reconstructed).abs() < r1.sub(r0_reconstructed) {
-                u.write(0, 0, c.clone());
+                u.write(0, 0, c);
                 u.write(1, 0, s.neg());
                 u.write(0, 1, s);
                 u.write(1, 1, c);
             } else {
-                u.write(0, 1, c.clone());
+                u.write(0, 1, c);
                 u.write(1, 1, s.neg());
                 u.write(0, 0, s);
                 u.write(1, 0, c);
@@ -600,7 +595,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     }
 
     let n1 = n / 2;
-    let mut rho = offdiag[n1 - 1].clone();
+    let mut rho = offdiag[n1 - 1];
 
     let (diag0, diag1) = diag.split_at_mut(n1);
     let (offdiag0, mut offdiag1) = offdiag.split_at_mut(n1 - 1);
@@ -630,8 +625,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                     diag0,
                     offdiag0,
                     u0.rb_mut(),
-                    epsilon.clone(),
-                    consider_zero_threshold.clone(),
+                    epsilon,
+                    consider_zero_threshold,
                     parallelism,
                     pl_before0,
                     pl_after0,
@@ -652,8 +647,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                     diag1,
                     offdiag1,
                     u1.rb_mut(),
-                    epsilon.clone(),
-                    consider_zero_threshold.clone(),
+                    epsilon,
+                    consider_zero_threshold,
                     parallelism,
                     pl_before1,
                     pl_after1,
@@ -727,10 +722,10 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // permuted_diag = Pl * diag * Pl.T
     // permuted_z = Pl * diag
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        permuted_diag.write(i, 0, diag[pl_before].clone());
+        permuted_diag.write(i, 0, diag[pl_before]);
     }
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        permuted_z.write(i, 0, z.read(pl_before, 0).clone());
+        permuted_z.write(i, 0, z.read(pl_before, 0));
     }
 
     let mut dmax = E::zero();
@@ -795,7 +790,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         while idx + run_len < n {
             let d_next = permuted_diag.read(idx + run_len, 0);
             if d_next.sub(d_prev) < tol {
-                permuted_diag.write(idx + run_len, 0, d_prev.clone());
+                permuted_diag.write(idx + run_len, 0, d_prev);
                 run_len += 1;
             } else {
                 break;
@@ -854,7 +849,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let deflated = writer_deflated;
 
     for i in 0..deflated {
-        permuted_diag.write(non_deflated + i, 0, diag[i].clone());
+        permuted_diag.write(non_deflated + i, 0, diag[i]);
         pl_after[non_deflated + i] = pr[i];
     }
 
@@ -1064,7 +1059,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

@@ -38,7 +38,7 @@ use crate::{
     Parallelism,
 };
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
 
 #[doc(hidden)]
@@ -323,7 +323,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     matrix: MatMut<'_, E>,
     forward: bool,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!(householder_factor.nrows() == householder_factor.ncols());
     assert!(householder_basis.ncols() == householder_factor.nrows());
@@ -561,7 +561,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
         let [mut matrix_top, mut matrix_bot] = matrix.split_at_row(bs);
 
         // essentials* × mat
-        let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(bs, n, stack) };
+        let (mut tmp, _) = temp_mat_uninit::<E>(bs, n, stack);
         let mut tmp = tmp.as_mut();
 
         triangular::matmul_with_conj(
@@ -641,7 +641,7 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<E: ComplexField>(
     conj_rhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_transpose_on_the_left_in_place_with_conj(
         householder_basis,
@@ -662,7 +662,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<E: Comp
     conj_rhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_on_the_left_in_place_with_conj(
         householder_basis,
@@ -683,7 +683,7 @@ pub fn apply_block_householder_on_the_left_in_place_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_on_the_left_in_place_generic(
         householder_basis,
@@ -705,7 +705,7 @@ pub fn apply_block_householder_transpose_on_the_left_in_place_with_conj<E: Compl
     conj_lhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_on_the_left_in_place_generic(
         householder_basis,
@@ -728,7 +728,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<E: Comple
     conj_lhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut matrix = matrix;
     let mut stack = stack;
@@ -778,7 +778,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     conj_lhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut matrix = matrix;
     let mut stack = stack;
@@ -818,7 +818,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<E: Compl
     conj_rhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
         householder_basis,
@@ -842,7 +842,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_con
     conj_rhs: Conj,
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     apply_block_householder_sequence_on_the_left_in_place_with_conj(
         householder_basis,

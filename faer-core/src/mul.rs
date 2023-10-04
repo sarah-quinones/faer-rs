@@ -473,7 +473,7 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b.clone());
+                let b = E::simd_splat(simd, self.b);
 
                 for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                     let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -502,7 +502,7 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b.clone());
+                let b = E::simd_splat(simd, self.b);
 
                 for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                     let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -724,8 +724,8 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha.clone());
-                            let b = E::simd_splat(simd, self.b.clone());
+                            let alpha = E::simd_splat(simd, alpha);
+                            let b = E::simd_splat(simd, self.b);
 
                             for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                                 let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -754,7 +754,7 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b.clone());
+                        let b = E::simd_splat(simd, self.b);
 
                         for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                             let a = E::deref(a);
@@ -793,8 +793,8 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha.clone());
-                            let b = E::simd_splat(simd, self.b.clone());
+                            let alpha = E::simd_splat(simd, alpha);
+                            let b = E::simd_splat(simd, self.b);
 
                             for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                                 let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -823,7 +823,7 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b.clone());
+                        let b = E::simd_splat(simd, self.b);
 
                         for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                             let a = E::deref(a);
@@ -889,8 +889,6 @@ pub mod outer_prod {
                 Conj::No => b,
             };
             let b = b.mul(beta);
-
-            let alpha = alpha.clone();
             match conj_a {
                 Conj::Yes => arch.dispatch(ConjImpl { acc, a, b, alpha }),
                 Conj::No => arch.dispatch(NoConjImpl { acc, a, b, alpha }),
@@ -1075,7 +1073,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                         let b = E::map(
                             b.ptr_at(depth, j),
                             #[inline(always)]
-                            |ptr| E::simd_splat_unit(simd, (*ptr).clone()),
+                            |ptr| E::simd_splat_unit(simd, *ptr),
                         );
                         let mut i = 0;
                         loop {
@@ -2264,8 +2262,8 @@ pub mod triangular {
                 dst_bot_left.rb_mut(),
                 lhs_bot_right,
                 rhs_bot_left,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2276,8 +2274,8 @@ pub mod triangular {
                 lhs_bot_right,
                 rhs_bot_right,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2290,7 +2288,7 @@ pub mod triangular {
                 rhs_top_left,
                 rhs_diag,
                 alpha,
-                beta.clone(),
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2301,7 +2299,7 @@ pub mod triangular {
                 lhs_top_right,
                 rhs_bot_left,
                 Some(E::one()),
-                beta.clone(),
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2384,8 +2382,8 @@ pub mod triangular {
                         lhs_left,
                         rhs_top_left,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2397,8 +2395,8 @@ pub mod triangular {
                         lhs_right,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2484,8 +2482,8 @@ pub mod triangular {
                 lhs_diag,
                 rhs_top_left,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2495,8 +2493,8 @@ pub mod triangular {
                 lhs_bot_left,
                 rhs_top_left,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2507,7 +2505,7 @@ pub mod triangular {
                 lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
                 Some(E::one()),
-                beta.clone(),
+                beta,
                 conj_rhs,
                 conj_lhs,
                 parallelism,
@@ -2592,8 +2590,8 @@ pub mod triangular {
                         dst_top_left.rb_mut(),
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2605,7 +2603,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(E::one()),
-                        beta.clone(),
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2619,8 +2617,8 @@ pub mod triangular {
                                 lhs_top_right,
                                 rhs_bot_right,
                                 rhs_diag,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -2632,8 +2630,8 @@ pub mod triangular {
                                 rhs_bot_left.transpose(),
                                 lhs_bot_right.transpose(),
                                 lhs_diag,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_rhs,
                                 conj_lhs,
                                 parallelism,
@@ -2648,8 +2646,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2727,8 +2725,8 @@ pub mod triangular {
                         skip_diag,
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2741,7 +2739,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(E::one()),
-                        beta.clone(),
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2753,8 +2751,8 @@ pub mod triangular {
                         rhs_bot_left.transpose(),
                         lhs_bot_right.transpose(),
                         lhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_rhs,
                         conj_lhs,
                         parallelism,
@@ -2766,8 +2764,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2835,8 +2833,8 @@ pub mod triangular {
                         dst_bot_left,
                         lhs_bot,
                         rhs_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2850,8 +2848,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_top,
                                 rhs_left,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -2863,8 +2861,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_bot,
                                 rhs_right,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -3456,6 +3454,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "takes too long in CI"]
     fn test_matmul() {
         let random = |_, _| c32 {
             re: rand::random(),

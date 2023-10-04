@@ -1,6 +1,6 @@
 use assert2::assert;
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
     parallelism_degree, simd, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField,
@@ -26,7 +26,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
     mut householder_left: MatMut<'_, E>,
     mut householder_right: MatMut<'_, E>,
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    mut stack: PodStack<'_>,
 ) {
     let m = a.nrows();
     let n = a.ncols();
@@ -35,9 +35,9 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
     let n_threads = parallelism_degree(parallelism);
 
-    let (mut y, mut stack) = unsafe { temp_mat_uninit::<E>(n, 1, stack.rb_mut()) };
+    let (mut y, mut stack) = temp_mat_uninit::<E>(n, 1, stack.rb_mut());
     let mut y = y.as_mut();
-    let (mut z, mut stack) = unsafe { temp_mat_uninit::<E>(m, 1, stack.rb_mut()) };
+    let (mut z, mut stack) = temp_mat_uninit::<E>(m, 1, stack.rb_mut());
     let mut z = z.as_mut();
 
     let (mut z_tmp, _) = temp_mat_zeroed::<E>(m, n_threads, stack.rb_mut());
@@ -92,7 +92,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
         let mut z = z.rb_mut().submatrix(k, 0, m - 1, 1);
         let z_tmp = z_tmp.rb_mut().submatrix(k, 0, m - 1, n_threads);
 
-        let tl_prev = tl.clone();
+        let tl_prev = tl;
         let a00;
         (tl, a00) = {
             let head = a_col.read(0, 0);
@@ -105,7 +105,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
             make_householder_in_place(Some(essential), head, tail_squared_norm)
         };
         a_col.write(0, 0, a00);
-        householder_left.write(k, 0, tl.clone());
+        householder_left.write(k, 0, tl);
 
         if n == 1 {
             break;
@@ -118,8 +118,8 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
             m,
             n,
             tl_prev,
-            tl.clone(),
-            tr.clone(),
+            tl,
+            tr,
             z_tmp,
             a_left,
             a_top,
@@ -141,7 +141,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
             }
             make_householder_in_place(None, head, tail_squared_norm)
         };
-        householder_right.write(k, 0, tr.clone());
+        householder_right.write(k, 0, tr);
 
         let diff = a_row.read(0, 0).sub(a01);
 
@@ -643,9 +643,9 @@ fn bidiag_fused_op<E: ComplexField>(
                                 v_prev,
                                 y,
                                 z.rb(),
-                                tl_prev_inv.clone(),
-                                tr_prev_inv.clone(),
-                                tl_inv.clone(),
+                                tl_prev_inv,
+                                tr_prev_inv,
+                                tl_inv,
                             );
                         },
                         parallelism,
@@ -782,7 +782,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

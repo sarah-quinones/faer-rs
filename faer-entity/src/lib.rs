@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use bytemuck::Pod;
 use core::{fmt::Debug, mem::ManuallyDrop};
 use num_complex::Complex;

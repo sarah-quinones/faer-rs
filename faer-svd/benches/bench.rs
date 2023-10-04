@@ -30,11 +30,11 @@ pub fn bidiag(c: &mut Criterion) {
             let mut householder_left = Mat::from_fn(n, 1, |_, _| random::<f64>());
             let mut householder_right = Mat::from_fn(n, 1, |_, _| random::<f64>());
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)
                     .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-bidiag-{m}x{n}"), |b| {
                 b.iter(|| {
                     copy.as_mut().clone_from(mat.as_ref());
@@ -54,11 +54,11 @@ pub fn bidiag(c: &mut Criterion) {
             let mut householder_left = Mat::from_fn(n, 1, |_, _| random::<f64>());
             let mut householder_right = Mat::from_fn(n, 1, |_, _| random::<f64>());
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_svd::bidiag::bidiagonalize_in_place_req::<f64>(m, n, Parallelism::Rayon(0))
                     .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-bidiag-{m}x{n}"), |b| {
                 b.iter(|| {
                     copy.as_mut().clone_from(mat.as_ref());
@@ -87,7 +87,7 @@ fn bidiag_svd(c: &mut Criterion) {
             let mut u = Mat::zeros(n + 1, n + 1);
             let mut v = Mat::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_svd::bidiag_real_svd::bidiag_real_svd_req::<f64>(
                     n,
                     4,
@@ -97,7 +97,7 @@ fn bidiag_svd(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             c.bench_function(&format!("faer-st-bidiag-svd-{n}"), |bencher| {
                 bencher.iter(|| {
@@ -125,7 +125,7 @@ fn bidiag_svd(c: &mut Criterion) {
         let mut u = Mat::zeros(n + 1, n + 1);
         let mut v = Mat::zeros(n, n);
 
-        let mut mem = GlobalMemBuffer::new(
+        let mut mem = GlobalPodBuffer::new(
             faer_svd::bidiag_real_svd::bidiag_real_svd_req::<f64>(
                 n,
                 4,
@@ -135,7 +135,7 @@ fn bidiag_svd(c: &mut Criterion) {
             )
             .unwrap(),
         );
-        let mut stack = DynStack::new(&mut mem);
+        let mut stack = PodStack::new(&mut mem);
         {
             c.bench_function(&format!("faer-mt-bidiag-svd-{n}"), |bencher| {
                 bencher.iter(|| {
@@ -183,7 +183,7 @@ fn real_svd(c: &mut Criterion) {
         let mut v = Mat::zeros(n, size);
 
         {
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_svd::compute_svd_req::<f64>(
                     m,
                     n,
@@ -194,7 +194,7 @@ fn real_svd(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-svd-f64-{m}x{n}"), |bencher| {
                 bencher.iter(|| {
                     compute_svd(
@@ -210,7 +210,7 @@ fn real_svd(c: &mut Criterion) {
             });
         }
         {
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_svd::compute_svd_req::<f64>(
                     m,
                     n,
@@ -221,7 +221,7 @@ fn real_svd(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-svd-f64-{m}x{n}"), |bencher| {
                 bencher.iter(|| {
                     compute_svd(

@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
     Entity, MatMut, MatRef, Parallelism,
@@ -13,7 +13,7 @@ fn reconstruct_impl<E: ComplexField>(
     lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let lu_factors = match lu_factors {
         Some(lu_factors) => lu_factors,
@@ -24,7 +24,7 @@ fn reconstruct_impl<E: ComplexField>(
     let n = lu_factors.ncols();
     let size = Ord::min(m, n);
 
-    let (mut lu, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+    let (mut lu, _) = temp_mat_uninit::<E>(m, n, stack);
     let mut lu = lu.as_mut();
 
     let [l_top, _, l_bot, _] = lu_factors.split_at(size, size);
@@ -84,7 +84,7 @@ pub fn reconstruct<E: ComplexField>(
     lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
     assert!(row_perm.len() == lu_factors.nrows());
@@ -104,7 +104,7 @@ pub fn reconstruct_in_place<E: ComplexField>(
     lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!(row_perm.len() == lu_factors.nrows());
     reconstruct_impl(lu_factors, None, row_perm, parallelism, stack)

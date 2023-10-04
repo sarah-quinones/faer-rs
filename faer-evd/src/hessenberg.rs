@@ -1,6 +1,6 @@
 use assert2::assert;
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_on_the_right_in_place_req,
@@ -154,10 +154,10 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 let u_rhs = E::simd_splat(simd, u_.read(j, 0).conj().neg());
                 let x_rhs = E::simd_splat(simd, x_.read(j, 0));
 
-                let mut sum0 = E::simd_splat(simd, zero.clone());
-                let mut sum1 = E::simd_splat(simd, zero.clone());
-                let mut sum2 = E::simd_splat(simd, zero.clone());
-                let mut sum3 = E::simd_splat(simd, zero.clone());
+                let mut sum0 = E::simd_splat(simd, zero);
+                let mut sum1 = E::simd_splat(simd, zero);
+                let mut sum2 = E::simd_splat(simd, zero);
+                let mut sum3 = E::simd_splat(simd, zero);
 
                 let mut a_prefix_ = E::partial_load_last(simd, E::rb(E::as_ref(&a_prefix)));
                 let u_prefix = E::partial_load_last(simd, E::copy(&u_prefix));
@@ -296,7 +296,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
     a: MatMut<'_, E>,
     householder: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);
@@ -502,7 +502,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             let tau_inv = householder.read(k_local, k_local).inv();
 
             let nrows = k_local + 1;
-            let (mut dot, _) = unsafe { temp_mat_uninit::<E>(nrows, 1, stack.rb_mut()) };
+            let (mut dot, _) = temp_mat_uninit::<E>(nrows, 1, stack.rb_mut());
             let mut dot = dot.as_mut();
             matmul(
                 dot.rb_mut(),
@@ -560,7 +560,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

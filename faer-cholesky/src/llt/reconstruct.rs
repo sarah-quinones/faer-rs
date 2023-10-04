@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::{self, BlockStructure},
     temp_mat_req, temp_mat_uninit,
@@ -38,7 +38,7 @@ pub fn reconstruct_lower<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
@@ -70,10 +70,10 @@ pub fn reconstruct_lower<E: ComplexField>(
 pub fn reconstruct_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = cholesky_factor.nrows();
-    let (mut tmp, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
+    let (mut tmp, stack) = temp_mat_uninit::<E>(n, n, stack);
     let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
     zipped!(cholesky_factor, tmp.rb())

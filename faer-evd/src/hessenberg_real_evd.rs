@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use assert2::{assert, debug_assert};
-use dyn_stack::DynStack;
+use dyn_stack::PodStack;
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_with_conj,
@@ -93,19 +93,19 @@ fn lahqr_schur22<E: RealField>(
 
     if c == zero {
         // c is zero, the matrix is already in Schur form.
-        cs = one.clone();
-        sn = zero.clone();
+        cs = one;
+        sn = zero;
     } else if b == zero {
         // b is zero, swapping rows and columns results in Schur form.
-        cs = zero.clone();
-        sn = one.clone();
+        cs = zero;
+        sn = one;
 
         std::mem::swap(&mut d, &mut a);
         b = c.neg();
-        c = zero.clone();
+        c = zero;
     } else if a.sub(d) == zero && sign(b) != sign(c) {
-        cs = one.clone();
-        sn = zero.clone();
+        cs = one;
+        sn = zero;
     } else {
         let mut temp = a.sub(d);
         let mut p = temp.scale_power_of_two(half);
@@ -113,7 +113,7 @@ fn lahqr_schur22<E: RealField>(
         let bcmax = max(b.abs(), c.abs());
         let bcmin = min(b.abs(), c.abs()).mul(sign(b).mul(sign(c)));
 
-        let mut scale = max(p.abs(), bcmax.clone());
+        let mut scale = max(p.abs(), bcmax);
 
         let mut z = ((p.div(scale)).mul(p)).add(bcmax.div(scale).mul(bcmin));
 
@@ -132,7 +132,7 @@ fn lahqr_schur22<E: RealField>(
             cs = z.div(tau);
             sn = c.div(tau);
             b = b.sub(c);
-            c = zero.clone();
+            c = zero;
         } else {
             // Complex eigenvalues, or real (almost) equal eigenvalues.
 
@@ -176,8 +176,8 @@ fn lahqr_schur22<E: RealField>(
             d = bb.neg().mul(sn).add(dd.mul(cs));
 
             temp = (a.add(d)).scale_power_of_two(half);
-            a = temp.clone();
-            d = temp.clone();
+            a = temp;
+            d = temp;
 
             if c != zero && b != zero && sign(b) == sign(c) {
                 // Real eigenvalues: reduce to upper triangular form
@@ -192,7 +192,7 @@ fn lahqr_schur22<E: RealField>(
                 a = temp.add(p);
                 d = temp.sub(p);
                 b = b.sub(c);
-                c = zero.clone();
+                c = zero;
                 let cs1 = sab.mul(tau);
                 let sn1 = sac.mul(tau);
                 temp = cs.mul(cs1).sub(sn.mul(sn1));
@@ -204,9 +204,9 @@ fn lahqr_schur22<E: RealField>(
 
     let (s1, s2) = if c != zero {
         let temp = b.abs().sqrt().mul(c.abs().sqrt());
-        ((a.clone(), temp.clone()), (d.clone(), temp.neg()))
+        ((a, temp), (d, temp.neg()))
     } else {
-        ((a.clone(), E::zero()), (d.clone(), E::zero()))
+        ((a, E::zero()), (d, E::zero()))
     };
 
     ((a, b, c, d), s1, s2, (cs, sn))
@@ -219,7 +219,7 @@ fn lahqr_eig22<E: RealField>(mut a00: E, mut a01: E, mut a10: E, mut a11: E) -> 
 
     let s = a00.abs().add(a01.abs()).add(a10.abs()).add(a11.abs());
     if s == zero {
-        return ((zero.clone(), zero.clone()), (zero.clone(), zero));
+        return ((zero, zero), (zero, zero));
     }
 
     a00 = a00.div(s);
@@ -232,15 +232,12 @@ fn lahqr_eig22<E: RealField>(mut a00: E, mut a01: E, mut a10: E, mut a11: E) -> 
 
     if det >= zero {
         let rtdisc = det.sqrt();
-        (
-            (s.mul(tr.add(rtdisc)), zero.clone()),
-            (s.mul(tr.sub(rtdisc)), zero.clone()),
-        )
+        ((s.mul(tr.add(rtdisc)), zero), (s.mul(tr.sub(rtdisc)), zero))
     } else {
         let rtdisc = det.neg().sqrt();
         let re = s.mul(tr);
         let im = s.mul(rtdisc);
-        ((re.clone(), im.clone()), (re, im.neg()))
+        ((re, im), (re, im.neg()))
     }
 }
 
@@ -301,7 +298,7 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
 }
 
 fn rotg<E: RealField>(a: E, b: E, zero_threshold: E::Real) -> (E::Real, E, E) {
-    let safmin = zero_threshold.clone();
+    let safmin = zero_threshold;
     let safmax = zero_threshold.inv();
 
     let (c, s, r);
@@ -319,7 +316,7 @@ fn rotg<E: RealField>(a: E, b: E, zero_threshold: E::Real) -> (E::Real, E, E) {
         s = E::one();
         r = b;
     } else {
-        let scl = min(safmax, max(safmin, max(anorm.clone(), bnorm.clone())));
+        let scl = min(safmax, max(safmin, max(anorm, bnorm)));
         let sigma = if anorm > bnorm { sign(a) } else { sign(b) };
         r = sigma
             .mul(scl)
@@ -343,15 +340,13 @@ fn lasy2<E: RealField>(
     let n1 = tl.nrows();
     let n2 = tr.nrows();
 
-    let eps = epsilon.clone();
+    let eps = epsilon;
     let small_num = zero_threshold.div(eps);
 
     debug_assert!(n1 == 2);
     debug_assert!(n2 == 2);
 
-    let mut btmp = E::map(E::zero().into_units(), |zero| {
-        [zero.clone(), zero.clone(), zero.clone(), zero]
-    });
+    let mut btmp = E::map(E::zero().into_units(), |zero| [zero, zero, zero, zero]);
     let mut btmp = unsafe {
         MatMut::<E>::from_raw_parts(
             E::map(E::as_mut(&mut btmp), |array| array.as_mut_ptr()),
@@ -362,9 +357,7 @@ fn lasy2<E: RealField>(
         )
     };
 
-    let mut tmp = E::map(E::zero().into_units(), |zero| {
-        [zero.clone(), zero.clone(), zero.clone(), zero]
-    });
+    let mut tmp = E::map(E::zero().into_units(), |zero| [zero, zero, zero, zero]);
     let mut tmp = unsafe {
         MatMut::<E>::from_raw_parts(
             E::map(E::as_mut(&mut tmp), |array| array.as_mut_ptr()),
@@ -377,22 +370,8 @@ fn lasy2<E: RealField>(
 
     let mut t16 = E::map(E::zero().into_units(), |zero| {
         [
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero.clone(),
-            zero,
+            zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero,
+            zero, zero,
         ]
     });
     let mut t16 = unsafe {
@@ -418,7 +397,7 @@ fn lasy2<E: RealField>(
             max(abs1(tl.read(1, 0)), abs1(tl.read(1, 1))),
         ),
     );
-    smin = max(eps.mul(smin), small_num.clone());
+    smin = max(eps.mul(smin), small_num);
 
     t16.write(0, 0, tl.read(0, 0).sub(tr.read(0, 0)));
     t16.write(1, 1, tl.read(1, 1).sub(tr.read(0, 0)));
@@ -470,7 +449,7 @@ fn lasy2<E: RealField>(
         jpiv[i] = jpsv;
         if abs1(t16.read(i, i)) < smin {
             info = 1;
-            t16.write(i, i, smin.clone());
+            t16.write(i, i, smin);
         }
         for j in i + 1..4 {
             t16.write(j, i, t16.read(j, i).div(t16.read(i, i)));
@@ -594,8 +573,8 @@ fn schur_move<E: RealField>(
                 here,
                 nbf,
                 nbnext,
-                epsilon.clone(),
-                zero_threshold.clone(),
+                epsilon,
+                zero_threshold,
             );
             if ierr != 0 {
                 // The swap failed, return with error
@@ -618,8 +597,8 @@ fn schur_move<E: RealField>(
                 here - nbnext,
                 nbnext,
                 nbf,
-                epsilon.clone(),
-                zero_threshold.clone(),
+                epsilon,
+                zero_threshold,
             );
             if ierr != 0 {
                 // The swap failed, return with error
@@ -652,46 +631,14 @@ fn schur_swap<E: RealField>(
     // If so, treat them separately
     if n1 == 2 && (a.read(j1, j0) == E::zero()) {
         // only 2x2 swaps can fail, so we don't need to check for error
-        schur_swap(
-            a.rb_mut(),
-            q.rb_mut(),
-            j1,
-            1,
-            n2,
-            epsilon.clone(),
-            zero_threshold.clone(),
-        );
-        schur_swap(
-            a.rb_mut(),
-            q.rb_mut(),
-            j0,
-            1,
-            n2,
-            epsilon.clone(),
-            zero_threshold.clone(),
-        );
+        schur_swap(a.rb_mut(), q.rb_mut(), j1, 1, n2, epsilon, zero_threshold);
+        schur_swap(a.rb_mut(), q.rb_mut(), j0, 1, n2, epsilon, zero_threshold);
         return 0;
     }
     if n2 == 2 && a.read(j0 + n1 + 1, j0 + n1) == E::zero() {
         // only 2x2 swaps can fail, so we don't need to check for error
-        schur_swap(
-            a.rb_mut(),
-            q.rb_mut(),
-            j0,
-            n1,
-            1,
-            epsilon.clone(),
-            zero_threshold.clone(),
-        );
-        schur_swap(
-            a.rb_mut(),
-            q.rb_mut(),
-            j1,
-            n1,
-            1,
-            epsilon.clone(),
-            zero_threshold.clone(),
-        );
+        schur_swap(a.rb_mut(), q.rb_mut(), j0, n1, 1, epsilon, zero_threshold);
+        schur_swap(a.rb_mut(), q.rb_mut(), j1, n1, 1, epsilon, zero_threshold);
         return 0;
     }
 
@@ -706,7 +653,7 @@ fn schur_swap<E: RealField>(
         //
         let temp = a.read(j0, j1);
         let temp2 = t11.sub(t00);
-        let (cs, sn, _) = rotg(temp, temp2, zero_threshold.clone());
+        let (cs, sn, _) = rotg(temp, temp2, zero_threshold);
 
         a.write(j1, j1, t00);
         a.write(j0, j0, t11);
@@ -715,13 +662,13 @@ fn schur_swap<E: RealField>(
         if j2 < n {
             let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
             let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-            rot(row1.transpose(), row2.transpose(), cs.clone(), sn.clone());
+            rot(row1.transpose(), row2.transpose(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
             let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
             let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot(col1, col2, cs.clone(), sn.clone());
+            rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
             let col1 = unsafe { q.rb().col(j0).const_cast() };
@@ -734,14 +681,7 @@ fn schur_swap<E: RealField>(
         // Swap 1-by-1 block with 2-by-2 block
         //
         let mut b_storage = E::map(E::zero().into_units(), |zero| {
-            [
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero,
-            ]
+            [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::map(E::as_mut(&mut b_storage), |array| array.as_mut_ptr());
         let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
@@ -841,14 +781,7 @@ fn schur_swap<E: RealField>(
         //
 
         let mut b_storage = E::map(E::zero().into_units(), |zero| {
-            [
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero,
-            ]
+            [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::map(E::as_mut(&mut b_storage), |array| array.as_mut_ptr());
         let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
@@ -945,22 +878,8 @@ fn schur_swap<E: RealField>(
     if n1 == 2 && n2 == 2 {
         let mut d_storage = E::map(E::zero().into_units(), |zero| {
             [
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero,
+                zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero,
+                zero, zero,
             ]
         });
         let d_ptr = E::map(E::as_mut(&mut d_storage), |array| array.as_mut_ptr());
@@ -969,23 +888,14 @@ fn schur_swap<E: RealField>(
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
         d.clone_from(ad_slice);
         let mut dnorm = E::zero();
-        zipped!(d.rb()).for_each(|d| dnorm = max(dnorm.clone(), d.read().abs()));
+        zipped!(d.rb()).for_each(|d| dnorm = max(dnorm, d.read().abs()));
 
-        let eps = epsilon.clone();
+        let eps = epsilon;
         let small_num = zero_threshold.div(eps);
         let thresh = max(E::from_f64(10.0).mul(eps).mul(dnorm), small_num);
 
         let mut v_storage = E::map(E::zero().into_units(), |zero| {
-            [
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero.clone(),
-                zero,
-            ]
+            [zero, zero, zero, zero, zero, zero, zero, zero]
         });
         let v_ptr = E::map(E::as_mut(&mut v_storage), |array| array.as_mut_ptr());
         let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 4, 2, 1, 4) };
@@ -993,14 +903,7 @@ fn schur_swap<E: RealField>(
         let mut x = v.rb_mut().submatrix(0, 0, 2, 2);
         let [tl, b, _, tr] = d.rb().split_at(2, 2);
 
-        let scale = lasy2(
-            tl,
-            tr,
-            b,
-            x.rb_mut(),
-            epsilon.clone(),
-            zero_threshold.clone(),
-        );
+        let scale = lasy2(tl, tr, b, x.rb_mut(), epsilon, zero_threshold);
 
         v.write(2, 0, scale.neg());
         v.write(2, 1, E::zero());
@@ -1172,8 +1075,8 @@ fn schur_swap<E: RealField>(
             a.read(j0, j1),
             a.read(j1, j0),
             a.read(j1, j1),
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
         ); // Apply transformation from the left
 
         a.write(j0, j0, a00);
@@ -1185,13 +1088,13 @@ fn schur_swap<E: RealField>(
             let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
             let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
 
-            rot(row1.transpose(), row2.transpose(), cs.clone(), sn.clone());
+            rot(row1.transpose(), row2.transpose(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
             let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
             let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot(col1, col2, cs.clone(), sn.clone());
+            rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
             let col1 = unsafe { q.rb().col(j0).const_cast() };
@@ -1210,8 +1113,8 @@ fn schur_swap<E: RealField>(
             a.read(j0, j1),
             a.read(j1, j0),
             a.read(j1, j1),
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
         ); // Apply transformation from the left
 
         a.write(j0, j0, a00);
@@ -1223,13 +1126,13 @@ fn schur_swap<E: RealField>(
             let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
             let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
 
-            rot(row1.transpose(), row2.transpose(), cs.clone(), sn.clone());
+            rot(row1.transpose(), row2.transpose(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
             let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
             let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
-            rot(col1, col2, cs.clone(), sn.clone());
+            rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
             let col1 = unsafe { q.rb().col(j0).const_cast() };
@@ -1253,7 +1156,7 @@ fn aggressive_early_deflation<E: RealField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    mut stack: DynStack<'_>,
+    mut stack: PodStack<'_>,
     params: EvdParams,
 ) -> (usize, usize) {
     let n = a.nrows();
@@ -1261,7 +1164,7 @@ fn aggressive_early_deflation<E: RealField>(
     // Because we will use the lower triangular part of A as workspace,
     // We have a maximum window size
     let nw_max = (n - 3) / 3;
-    let eps = epsilon.clone();
+    let eps = epsilon;
     let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
 
     // Size of the deflation window
@@ -1337,8 +1240,8 @@ fn aggressive_early_deflation<E: RealField>(
             s_im_window.rb_mut(),
             0,
             jw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
         )
     } else {
         let infqr = multishift_qr(
@@ -1349,8 +1252,8 @@ fn aggressive_early_deflation<E: RealField>(
             s_im_window.rb_mut(),
             0,
             jw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -1385,7 +1288,7 @@ fn aggressive_early_deflation<E: RealField>(
             if foo == E::zero() {
                 foo = s_spike.abs();
             }
-            if s_spike.abs().mul(v.read(0, ns - 1).abs()) <= max(small_num.clone(), eps.mul(foo)) {
+            if s_spike.abs().mul(v.read(0, ns - 1).abs()) <= max(small_num, eps.mul(foo)) {
                 // Eigenvalue is deflatable
                 ns -= 1;
             } else {
@@ -1397,8 +1300,8 @@ fn aggressive_early_deflation<E: RealField>(
                     Some(v.rb_mut()),
                     ifst,
                     &mut ilst,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
+                    epsilon,
+                    zero_threshold,
                 );
                 ilst += 1;
             }
@@ -1417,7 +1320,7 @@ fn aggressive_early_deflation<E: RealField>(
             if max(
                 (s_spike.mul(v.read(0, ns - 1))).abs(),
                 (s_spike.mul(v.read(0, ns - 2))).abs(),
-            ) <= max(small_num.clone(), eps.mul(foo))
+            ) <= max(small_num, eps.mul(foo))
             {
                 // Eigenvalue pair is deflatable
                 ns -= 2;
@@ -1430,8 +1333,8 @@ fn aggressive_early_deflation<E: RealField>(
                     Some(v.rb_mut()),
                     ifst,
                     &mut ilst,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
+                    epsilon,
+                    zero_threshold,
                 );
                 ilst += 2;
             }
@@ -1514,8 +1417,8 @@ fn aggressive_early_deflation<E: RealField>(
                     i1,
                     n1,
                     n2,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
+                    epsilon,
+                    zero_threshold,
                 );
                 if ierr == 0 {
                     i1 += n2;
@@ -1772,7 +1675,7 @@ fn move_bulge<E: RealField>(
         // The bulge has collapsed, attempt to reintroduce using
         // 2-small-subdiagonals trick
         let mut vt_storage = E::map(E::zero().into_units(), |zero_unit| {
-            [zero_unit.clone(), zero_unit.clone(), zero_unit]
+            [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::map(E::as_mut(&mut vt_storage), |array| array.as_mut_ptr());
         let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
@@ -1826,11 +1729,11 @@ fn multishift_qr_sweep<E: RealField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = a.nrows();
 
-    let eps = epsilon.clone();
+    let eps = epsilon;
     let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
     assert!(n >= 12);
 
@@ -1935,7 +1838,7 @@ fn multishift_qr_sweep<E: RealField>(
                         v.rb_mut(),
                         (s1_re, s1_im),
                         (s2_re, s2_im),
-                        epsilon.clone(),
+                        epsilon,
                     );
                 }
 
@@ -2007,7 +1910,7 @@ fn multishift_qr_sweep<E: RealField>(
                             tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -2025,7 +1928,7 @@ fn multishift_qr_sweep<E: RealField>(
                             abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                             a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
@@ -2212,7 +2115,7 @@ fn multishift_qr_sweep<E: RealField>(
                     v.rb_mut(),
                     (s1_re, s1_im),
                     (s2_re, s2_im),
-                    epsilon.clone(),
+                    epsilon,
                 );
 
                 // Apply the reflector we just calculated from the right
@@ -2283,7 +2186,7 @@ fn multishift_qr_sweep<E: RealField>(
                             tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -2301,7 +2204,7 @@ fn multishift_qr_sweep<E: RealField>(
                             abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                             a.write(i_pos, i_pos - 1, E::zero());
                         }
                     }
@@ -2540,7 +2443,7 @@ fn multishift_qr_sweep<E: RealField>(
                         v.rb_mut(),
                         (s1_re, s1_im),
                         (s2_re, s2_im),
-                        epsilon.clone(),
+                        epsilon,
                     );
 
                     {
@@ -2607,7 +2510,7 @@ fn multishift_qr_sweep<E: RealField>(
                                 tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
                             }
                         }
-                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num.clone(), eps.mul(tst1)) {
+                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
                             let ab = max(
                                 abs1(a.read(i_pos, i_pos - 1)),
                                 abs1(a.read(i_pos - 1, i_pos)),
@@ -2625,9 +2528,7 @@ fn multishift_qr_sweep<E: RealField>(
                                 abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
                             );
                             let s = aa.add(ab);
-                            if ba.mul(ab.div(s))
-                                <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s))))
-                            {
+                            if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                                 a.write(i_pos, i_pos - 1, E::zero());
                             }
                         }
@@ -2821,7 +2722,7 @@ pub fn multishift_qr<E: RealField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
@@ -2970,8 +2871,8 @@ pub fn multishift_qr<E: RealField>(
             istart,
             istop,
             nw,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -2999,12 +2900,14 @@ pub fn multishift_qr<E: RealField>(
 
         if k_defl % non_convergence_limit_shift == 0 {
             ns = nsr;
-            for i in (i_shifts..istop - 1).step_by(2) {
+            // TODO: compare with original fortran impl
+            // unsure about this part
+            for i in (i_shifts + 1..istop - 1).step_by(2) {
                 let ss = abs1(a.read(i, i - 1)).add(abs1(a.read(i - 1, i - 2)));
                 let aa = E::from_real(dat1.mul(ss)).add(a.read(i, i));
-                let bb = E::from_real(ss.clone());
+                let bb = E::from_real(ss);
                 let cc = E::from_real(dat2.mul(ss));
-                let dd = aa.clone();
+                let dd = aa;
                 let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                 w_re.write(i, 0, s1.0);
                 w_im.write(i, 0, s1.1);
@@ -3026,8 +2929,8 @@ pub fn multishift_qr<E: RealField>(
                     shifts_im.rb_mut(),
                     0,
                     nsr,
-                    epsilon.clone(),
-                    zero_threshold.clone(),
+                    epsilon,
+                    zero_threshold,
                 ) as usize;
 
                 ns = nsr - ierr;
@@ -3122,8 +3025,8 @@ pub fn multishift_qr<E: RealField>(
             shifts_im.rb_mut(),
             istart,
             istop,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
         );
@@ -3201,7 +3104,7 @@ pub fn lahqr<E: RealField>(
     let mut istart = ilo;
 
     let mut v_storage = E::map(E::zero().into_units(), |zero_unit| {
-        [zero_unit.clone(), zero_unit.clone(), zero_unit]
+        [zero_unit, zero_unit, zero_unit]
     });
     let v_ptr = E::map(E::as_mut(&mut v_storage), |array| array.as_mut_ptr());
     let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 3, 1, 1, 3) };
@@ -3234,7 +3137,7 @@ pub fn lahqr<E: RealField>(
         for i in (istart + 1..istop).rev() {
             if a.read(i, i - 1).abs() < small_num {
                 // A(i,i-1) is negligible, take i as new istart.
-                a.write(i, i - 1, zero.clone());
+                a.write(i, i - 1, zero);
                 istart = i;
                 break;
             }
@@ -3273,9 +3176,9 @@ pub fn lahqr<E: RealField>(
                     (a.read(i, i).sub(a.read(i - 1, i - 1))).abs(),
                 );
                 let s = aa.add(ab);
-                if ba.mul(ab.div(s)) <= max(small_num.clone(), eps.mul(bb.mul(aa.div(s)))) {
+                if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
                     // A(i,i-1) is negligible, take i as new istart.
-                    a.write(i, i - 1, zero.clone());
+                    a.write(i, i - 1, zero);
                     istart = i;
                     break;
                 }
@@ -3287,7 +3190,7 @@ pub fn lahqr<E: RealField>(
                 // 1x1 block
                 k_defl = 0;
                 w_re.write(istart, 0, a.read(istart, istart));
-                w_im.write(istart, 0, zero.clone());
+                w_im.write(istart, 0, zero);
                 istop = istart;
                 istart = ilo;
                 continue;
@@ -3302,8 +3205,8 @@ pub fn lahqr<E: RealField>(
                         a.read(istart, istart + 1),
                         a.read(istart + 1, istart),
                         a.read(istart + 1, istart + 1),
-                        eps.clone(),
-                        zero_threshold.clone(),
+                        eps,
+                        zero_threshold,
                     );
 
                 a.write(istart, istart, a00);
@@ -3335,7 +3238,7 @@ pub fn lahqr<E: RealField>(
                                 .transpose()
                         };
 
-                        rot(x.transpose(), y.transpose(), cs.clone(), sn.clone());
+                        rot(x.transpose(), y.transpose(), cs, sn);
                     }
 
                     let x = unsafe {
@@ -3351,13 +3254,13 @@ pub fn lahqr<E: RealField>(
                             .const_cast()
                     };
 
-                    rot(x, y, cs.clone(), sn.clone());
+                    rot(x, y, cs, sn);
                 }
                 if let Some(z) = z.rb_mut() {
                     let x = unsafe { z.rb().col(istart).const_cast() };
                     let y = unsafe { z.rb().col(istart + 1).const_cast() };
 
-                    rot(x, y, cs.clone(), sn.clone());
+                    rot(x, y, cs, sn);
                 }
 
                 k_defl = 0;
@@ -3380,7 +3283,7 @@ pub fn lahqr<E: RealField>(
             a00 = dat1.mul(s).add(a.read(istop - 1, istop - 1));
             a01 = dat2.mul(s);
             a10 = s;
-            a11 = a00.clone();
+            a11 = a00;
         } else {
             // Wilkinson shift
             a00 = a.read(istop - 2, istop - 2);
@@ -3396,9 +3299,9 @@ pub fn lahqr<E: RealField>(
             if (s1.0.sub(a.read(istop - 1, istop - 1))).abs()
                 <= (s2.0.sub(a.read(istop - 1, istop - 1))).abs()
             {
-                s2 = s1.clone();
+                s2 = s1;
             } else {
-                s1 = s2.clone();
+                s1 = s2;
             }
         }
 
@@ -3410,7 +3313,7 @@ pub fn lahqr<E: RealField>(
         if istart + 3 < istop {
             for i in (istart + 1..istop - 2).rev() {
                 let h = a.rb().submatrix(i, i, 3, 3);
-                lahqr_shiftcolumn(h, v.rb_mut(), s1.clone(), s2.clone());
+                lahqr_shiftcolumn(h, v.rb_mut(), s1, s2);
                 let head = v.read(0, 0);
                 let tail_sqr_norm = v.read(1, 0).abs2().add(v.read(2, 0).abs2());
                 let (tau, _) =
@@ -3444,13 +3347,13 @@ pub fn lahqr<E: RealField>(
             if i == istart2 {
                 let h = a.rb().submatrix(i, i, nr, nr);
                 let mut x = v.rb_mut().subrows(0, nr);
-                lahqr_shiftcolumn(h, x.rb_mut(), s1.clone(), s2.clone());
+                lahqr_shiftcolumn(h, x.rb_mut(), s1, s2);
                 let head = x.read(0, 0);
                 let tail = x.rb_mut().subrows(1, nr - 1);
                 let tail_sqr_norm = inner_prod_with_conj(tail.rb(), Conj::No, tail.rb(), Conj::No);
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-                v.write(0, 0, beta.clone());
+                v.write(0, 0, beta);
                 t1 = t1.inv();
                 if i > istart {
                     a.write(i, i - 1, a.read(i, i - 1).mul(one.sub(t1)));
@@ -3467,7 +3370,7 @@ pub fn lahqr<E: RealField>(
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
                 t1 = t1.inv();
-                v.write(0, 0, beta.clone());
+                v.write(0, 0, beta);
                 a.write(i, i - 1, beta);
                 a.write(i + 1, i - 1, E::zero());
                 if nr == 3 {
@@ -3554,7 +3457,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -3712,7 +3615,7 @@ mod tests {
                     blocking_threshold: Some(15),
                     nibble_threshold: Some(14),
                 };
-                dbgf::dbgf!("6.6?", &h);
+                dbgf::dbgf!("6.?", &h);
                 multishift_qr(
                     true,
                     t.as_mut(),
@@ -3831,6 +3734,350 @@ mod tests {
         let mut t = h.clone();
         let params = EvdParams {
             blocking_threshold: Some(15),
+            ..Default::default()
+        };
+        multishift_qr(
+            true,
+            t.as_mut(),
+            Some(q.as_mut()),
+            w_re.as_mut(),
+            w_im.as_mut(),
+            0,
+            n,
+            f64::EPSILON,
+            f64::MIN_POSITIVE,
+            Parallelism::None,
+            make_stack!(multishift_qr_req::<f64>(
+                n,
+                n,
+                true,
+                true,
+                Parallelism::None,
+                params,
+            )),
+            params,
+        );
+        for j in 0..n {
+            for i in j + 2..n {
+                t.write(i, j, f64::zero());
+            }
+        }
+
+        let h_reconstructed = &q * &t * q.adjoint();
+
+        for i in 0..n {
+            for j in 0..n {
+                assert_approx_eq!(h_reconstructed.read(i, j), h.read(i, j));
+            }
+        }
+    }
+
+    #[test]
+    fn test_multi_overflow() {
+        let n = 16;
+        let h = [
+            [
+                0.5082033332322291,
+                0.19278229754064902,
+                0.7582607143336373,
+                0.7715867323390919,
+                0.4843097669733202,
+                0.8557566989156312,
+                0.5440555991762334,
+                0.29523727049381243,
+                0.7035598315525388,
+                0.48247977561464417,
+                0.2419015400814557,
+                0.08472540024441155,
+                0.10166545614661315,
+                0.9261282224368608,
+                0.412538202298689,
+                0.01670761047443714,
+            ],
+            [
+                0.4012924778724848,
+                0.33209240145197916,
+                0.38905644620224267,
+                0.8721844781404162,
+                0.33435223281860205,
+                0.9103508630583025,
+                0.07869728041461299,
+                0.5080294718539182,
+                0.5596454476429897,
+                0.857992618657097,
+                0.3269332512723093,
+                0.6961570628411101,
+                0.08883529765142462,
+                0.777500943826909,
+                0.5569060494353059,
+                0.7838620598102882,
+            ],
+            [
+                0.0,
+                0.8860840234442886,
+                0.5877376251746173,
+                0.44840846759666886,
+                0.4243469461847206,
+                0.14328026755297285,
+                0.935178192652044,
+                0.4011166199651638,
+                0.6903121529810737,
+                0.7819046563646196,
+                0.9857330633637121,
+                0.1489646930139985,
+                0.6192162607286191,
+                0.41636629099989664,
+                0.39015631916175286,
+                0.7877292973805862,
+            ],
+            [
+                0.0,
+                0.0,
+                0.5960681609918004,
+                0.059381557063348134,
+                0.1841531400722629,
+                0.7679894986642686,
+                0.5328514549737011,
+                0.17274072018299702,
+                0.00040905315502925976,
+                0.27174309646374906,
+                0.6141088621476543,
+                0.682296614903872,
+                0.5285289994435289,
+                0.9323358085862274,
+                0.7275192296944631,
+                0.6910943224861319,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.5844053685990991,
+                0.18626165355809998,
+                0.6952190777886833,
+                0.6177436875249922,
+                0.3928106423665203,
+                0.8705821679082996,
+                0.31085950672600327,
+                0.9173278329954161,
+                0.6914520312399561,
+                0.7363260094476175,
+                0.4932523863654541,
+                0.05435521004298871,
+                0.721585329921202,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.35591885168592186,
+                0.7134989226772329,
+                0.7778604491804499,
+                0.5987496258113865,
+                0.9064458747253632,
+                0.8603775941595915,
+                0.8695624421804301,
+                0.9364735575835075,
+                0.5694577135093022,
+                0.5423263577167224,
+                0.896006594491509,
+                0.2112561586383458,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.4355421175919909,
+                0.3907229168781784,
+                0.5885840203630461,
+                0.20567867612811597,
+                0.9720785258367162,
+                0.35389688999683055,
+                0.25788763287716254,
+                0.6269530262404968,
+                0.4109991384055858,
+                0.08375311555544851,
+                0.08815888420414142,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.09730029257957107,
+                0.9191592561755763,
+                0.9448078762009389,
+                0.6082888918709439,
+                0.19163251870250964,
+                0.04041436670860343,
+                0.0996567083283656,
+                0.005084112047402445,
+                0.31299382515731033,
+                0.8037209905921613,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.7468140249385696,
+                0.38680015498493514,
+                0.7815371901084612,
+                0.7711961886367154,
+                0.5007172963113481,
+                0.7875901105947827,
+                0.5968428466586312,
+                0.39923984172761195,
+                0.6560395229338111,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.31180345395217346,
+                0.8912548878214983,
+                0.40515817683748656,
+                0.08427995606023642,
+                0.9499956397844838,
+                0.1633811774642393,
+                0.5793901322947664,
+                0.3845348227014609,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.41125756469851116,
+                0.697127380381097,
+                0.3207566597468211,
+                0.7299409247402157,
+                0.6255734686225863,
+                0.9333840457627871,
+                0.49003671580923336,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.9758323101379016,
+                0.30032416079907664,
+                0.8332109140185943,
+                0.6663252300717202,
+                0.38249401080570744,
+                0.750050126827552,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.727768388177358,
+                0.3229227950602348,
+                0.32870267807698084,
+                0.3926038966865121,
+                0.6731012400691211,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.982098867251302,
+                0.09209438538943793,
+                0.7862813463085021,
+                0.7098908542213367,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.9279460055180068,
+                0.6193868142098146,
+                0.8377529319339238,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.8710629009278436,
+                0.9649844361796579,
+            ],
+        ];
+        let h = Mat::<f64>::from_fn(n, n, |i, j| h[i][j]);
+
+        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+
+        let mut w_re = Mat::zeros(n, 1);
+        let mut w_im = Mat::zeros(n, 1);
+
+        let mut t = h.clone();
+        let params = EvdParams {
+            recommended_shift_count: None,
+            recommended_deflation_window: None,
+            blocking_threshold: Some(15),
+            nibble_threshold: Some(14),
             ..Default::default()
         };
         multishift_qr(

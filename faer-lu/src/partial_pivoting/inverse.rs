@@ -1,5 +1,5 @@
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     inverse, join_raw,
     mul::triangular,
@@ -14,7 +14,7 @@ fn invert_impl<E: ComplexField>(
     lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let lu_factors = match lu_factors {
         Some(lu_factors) => lu_factors,
@@ -27,9 +27,9 @@ fn invert_impl<E: ComplexField>(
     debug_assert!(dst.nrows() == n);
     debug_assert!(dst.ncols() == n);
 
-    let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+    let (mut inv_lu, stack) = temp_mat_uninit::<E>(m, n, stack);
     let inv_lu = inv_lu.as_mut();
-    let (mut inv, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+    let (mut inv, _) = temp_mat_uninit::<E>(m, n, stack);
     let mut inv = inv.as_mut();
 
     // SAFETY: even though the matrices alias, only the strictly lower triangular part of l_inv is
@@ -98,7 +98,7 @@ pub fn invert<E: ComplexField>(
     lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
     assert!(lu_factors.ncols() == lu_factors.nrows());
@@ -121,7 +121,7 @@ pub fn invert_in_place<E: ComplexField>(
     lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
     assert!(lu_factors.ncols() == n);
@@ -140,7 +140,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

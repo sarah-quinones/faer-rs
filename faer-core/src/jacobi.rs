@@ -1,10 +1,14 @@
 use crate::{zipped, MatMut, RealField};
 
 #[derive(Copy, Clone, Debug)]
+#[repr(C)]
 pub struct JacobiRotation<T> {
     pub c: T,
     pub s: T,
 }
+
+unsafe impl<T: bytemuck::Zeroable> bytemuck::Zeroable for JacobiRotation<T> {}
+unsafe impl<T: bytemuck::Pod> bytemuck::Pod for JacobiRotation<T> {}
 
 impl<E: RealField> JacobiRotation<E> {
     #[inline]
@@ -76,7 +80,7 @@ impl<E: RealField> JacobiRotation<E> {
             let n = (t.mul(t).add(E::one())).sqrt().inv();
 
             Self {
-                c: n.clone(),
+                c: n,
                 s: neg_sign_y.mul(t).mul(n),
             }
         }
@@ -195,8 +199,6 @@ impl<E: RealField> JacobiRotation<E> {
         }
 
         let Self { c, s } = *self;
-        let c = c.clone();
-        let s = s.clone();
         if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
             pulp::Arch::new().dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
@@ -310,8 +312,6 @@ impl<E: RealField> JacobiRotation<E> {
         }
 
         let Self { c, s } = *self;
-        let c = c.clone();
-        let s = s.clone();
         if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
             arch.dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
@@ -344,7 +344,7 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline]
     pub fn transpose(&self) -> Self {
         Self {
-            c: self.c.clone(),
+            c: self.c,
             s: self.s.neg(),
         }
     }

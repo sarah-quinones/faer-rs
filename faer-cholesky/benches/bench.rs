@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_core::{c64, ComplexField};
 use reborrow::*;
 
@@ -16,7 +16,7 @@ pub fn cholesky(c: &mut Criterion) {
             let mut mat = Mat::new();
 
             mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::None,
@@ -24,7 +24,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 ldlt_diagonal::compute::raw_cholesky_in_place(
@@ -40,7 +40,7 @@ pub fn cholesky(c: &mut Criterion) {
             let mut mat = Mat::new();
 
             mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
@@ -48,7 +48,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 ldlt_diagonal::compute::raw_cholesky_in_place(
@@ -64,7 +64,7 @@ pub fn cholesky(c: &mut Criterion) {
             let mut mat = Mat::new();
 
             mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::None,
@@ -72,7 +72,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::cholesky_in_place(
@@ -89,7 +89,7 @@ pub fn cholesky(c: &mut Criterion) {
             let mut mat = Mat::new();
 
             mat.resize_with(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<f64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
@@ -97,7 +97,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::cholesky_in_place(
@@ -113,7 +113,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-st-cplx-llt-{n}"), |b| {
             let mut mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(
                     n,
                     Parallelism::None,
@@ -121,7 +121,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::cholesky_in_place(
@@ -137,7 +137,7 @@ pub fn cholesky(c: &mut Criterion) {
         c.bench_function(&format!("faer-mt-cplx-llt-{n}"), |b| {
             let mut mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
@@ -145,7 +145,7 @@ pub fn cholesky(c: &mut Criterion) {
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             b.iter(|| {
                 llt::compute::cholesky_in_place(

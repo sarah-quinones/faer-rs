@@ -1,4 +1,4 @@
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     permutation::{permute_rows, PermutationRef},
     solve::*,
@@ -14,7 +14,7 @@ fn solve_impl<T: ComplexField>(
     dst: MatMut<'_, T>,
     rhs: Option<MatRef<'_, T>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // LU = P(row_fwd) × A × P(col_inv)
 
@@ -24,7 +24,7 @@ fn solve_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
+    let (mut temp, _) = temp_mat_uninit::<T>(n, k, stack);
     let mut temp = temp.as_mut();
 
     // temp <- P(row_fwd) B
@@ -57,7 +57,7 @@ fn solve_transpose_impl<T: ComplexField>(
     dst: MatMut<'_, T>,
     rhs: Option<MatRef<'_, T>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // LU = P(row_fwd) × A × P(col_inv)
 
@@ -68,7 +68,7 @@ fn solve_transpose_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    let (mut temp, _) = unsafe { temp_mat_uninit::<T>(n, k, stack) };
+    let (mut temp, _) = temp_mat_uninit::<T>(n, k, stack);
     let mut temp = temp.as_mut();
 
     // temp <- P(col_fwd) B
@@ -174,7 +174,7 @@ pub fn solve<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     rhs: MatRef<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     solve_impl(
         lu_factors,
@@ -210,7 +210,7 @@ pub fn solve_in_place<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     rhs: MatMut<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     solve_impl(
         lu_factors,
@@ -248,7 +248,7 @@ pub fn solve_transpose<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     rhs: MatRef<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     solve_transpose_impl(
         lu_factors,
@@ -285,7 +285,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     col_perm: PermutationRef<'_>,
     rhs: MatMut<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     solve_transpose_impl(
         lu_factors,
@@ -309,7 +309,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
