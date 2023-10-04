@@ -2699,50 +2699,95 @@ pub mod polars {
     use polars::prelude::*;
 
     pub trait Frame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame>;
+        fn is_valid(self) -> PolarsResult<LazyFrame>;
     }
 
-    impl Frame for DataFrame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame> {
-            let _ = columns;
-            Ok(self)
-        }
-    }
-
-    #[cfg(feature = "polars-lazy")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "polars-lazy")))]
     impl Frame for LazyFrame {
-        fn to_dataframe(self, columns: &[&str]) -> PolarsResult<DataFrame> {
-            let cols = columns.into_iter().map(|c| col(c)).collect::<Vec<_>>();
-            self.select(cols).collect()
+        fn is_valid(self) -> PolarsResult<LazyFrame> {
+            let test_dtypes: bool = self
+                .clone()
+                .limit(0)
+                .collect()
+                .unwrap()
+                .dtypes()
+                .into_iter()
+                .map(|e| {
+                    matches!(
+                        e,
+                        DataType::UInt8
+                            | DataType::UInt16
+                            | DataType::UInt32
+                            | DataType::UInt64
+                            | DataType::Int8
+                            | DataType::Int16
+                            | DataType::Int32
+                            | DataType::Int64
+                            | DataType::Float32
+                            | DataType::Float64
+                    )
+                })
+                .all(|e| e);
+            let test_no_nulls: bool = self
+                .clone()
+                .null_count()
+                .with_column(sum_horizontal(&[col("*")]))
+                .select(&[col("sum")])
+                .collect()
+                .unwrap()
+                .column("sum")
+                .unwrap()
+                .u32()
+                .unwrap()
+                .into_iter()
+                .map(|e| e.eq(&Some(0u32)))
+                .collect::<Vec<_>>()[0];
+            match (test_dtypes, test_no_nulls) {
+                (true, true) => Ok(self),
+                (false, true) => Err(PolarsError::InvalidOperation(
+                    "frame contains non-numerical data".into(),
+                )),
+                (true, false) => Err(PolarsError::InvalidOperation(
+                    "frame contains null entries".into(),
+                )),
+                (false, false) => Err(PolarsError::InvalidOperation(
+                    "frame contains non-numerical data and null entries".into(),
+                )),
+            }
         }
     }
 
     macro_rules! polars_impl {
-        ($ty: ident, $fn_name: ident) => {
-            /// Converts a `polars` dataframe into a [`Mat`] by selecting the appropriate columns.
+        ($ty: ident, $dtype: ident, $fn_name: ident) => {
+            /// Converts a `polars` lazyframe into a [`Mat`].
             ///
-            /// Note that this function does not perform any implicit conversions.
+            /// Note that this function expects that the frame passed "looks like"
+            /// a numerical array and all values will be cast to either f32 or f64
+            /// prior to building [`Mat`].
+            ///
+            /// Passing a frame with either non-numerical column data or null
+            /// entries will result in a error. Users are expected to reolve
+            /// these issues in `polars` prior calling this function.
             #[cfg(feature = "polars")]
             #[cfg_attr(docsrs, doc(cfg(feature = "polars")))]
             pub fn $fn_name(
                 frame: impl Frame,
-                columns: &[&str],
-                null_value: $ty,
             ) -> PolarsResult<Mat<$ty>> {
                 use core::{iter::zip, mem::MaybeUninit};
 
                 fn implementation(
-                    df: DataFrame,
-                    cols: &[&str],
-                    null_value: $ty,
+                    lf: LazyFrame,
                 ) -> PolarsResult<Mat<$ty>> {
+                    let df = lf
+                        .select(&[col("*").cast(DataType::$dtype)])
+                        .collect()
+                        .unwrap();
+
                     let nrows = df.height();
-                    let ncols = cols.len();
+                    let ncols = df.get_column_names().len();
 
-                    let mut out = Mat::<$ty>::with_capacity(df.height(), cols.len());
+                    let mut out = Mat::<$ty>::with_capacity(df.height(), df.get_column_names().len());
 
-                    cols.iter()
+                    df.get_column_names().iter()
                         .enumerate()
                         .try_for_each(|(j, col)| -> PolarsResult<()> {
                             let mut row_start = 0usize;
@@ -2784,16 +2829,11 @@ pub mod polars {
                                                             let (out_prefix, out_suffix) = out_slice.split_at_mut(first_byte_len);
                                                             let (values_prefix, values_suffix) = values.split_at(first_byte_len);
 
-                                                            // unwrap is fine since len > 0
-                                                            let byte = bytes.first().unwrap();
-                                                            for (idx, (out_elem, value_elem)) in zip(
+                                                            for (out_elem, value_elem) in zip(
                                                                 out_prefix,
                                                                 values_prefix,
-                                                            ).enumerate() {
-                                                                let idx = idx + offset;
-                                                                let valid = ((byte >> idx) & 1u8) == 1u8;
-                                                                let value = if valid { *value_elem } else { null_value };
-                                                                *out_elem = MaybeUninit::new(value);
+                                                            ) {
+                                                                *out_elem = MaybeUninit::new(*value_elem)
                                                             }
 
                                                             bytes = &bytes[1..];
@@ -2802,34 +2842,26 @@ pub mod polars {
                                                         }
 
                                                         if bytes.len() > 0 {
-                                                            for (out_slice8, (values8, &byte)) in zip(
+                                                            for (out_slice8, values8) in zip(
                                                                 out_slice.chunks_exact_mut(BITS_PER_BYTE),
-                                                                zip(
-                                                                    values.chunks_exact(BITS_PER_BYTE),
-                                                                    bytes,
-                                                                ),
+                                                                values.chunks_exact(BITS_PER_BYTE),
                                                             ) {
-                                                                for (idx, (out_elem, value_elem)) in zip(out_slice8, values8).enumerate() {
-                                                                    let valid = ((byte >> idx) & 1u8) == 1u8;
-                                                                    let value = if valid { *value_elem } else { null_value };
-                                                                    *out_elem = MaybeUninit::new(value);
+                                                                for (out_elem, value_elem) in zip(out_slice8, values8) {
+                                                                    *out_elem = MaybeUninit::new(*value_elem);
                                                                 }
                                                             }
 
-                                                            // unwrap is fine since bytes.len() > 0
-                                                            let byte = bytes.last().unwrap();
-                                                            for (idx, (out_elem, value_elem)) in zip(
+                                                            for (out_elem, value_elem) in zip(
                                                                 out_slice.chunks_exact_mut(BITS_PER_BYTE).into_remainder(),
                                                                 values.chunks_exact(BITS_PER_BYTE).remainder(),
-                                                            ).enumerate() {
-                                                                let valid = ((byte >> idx) & 1u8) == 1u8;
-                                                                let value = if valid { *value_elem } else { null_value };
-                                                                *out_elem = MaybeUninit::new(value);
+                                                            ) {
+                                                                *out_elem = MaybeUninit::new(*value_elem);
                                                             }
                                                         }
                                                     }
                                                     None => {
                                                         // SAFETY: T and MaybeUninit<T> have the same layout
+                                                        // NOTE: This state should not be reachable
                                                         let values = unsafe {
                                                             core::slice::from_raw_parts(
                                                                 values.as_ptr() as *const MaybeUninit<$ty>,
@@ -2871,13 +2903,13 @@ pub mod polars {
                     Ok(out)
                 }
 
-                implementation(frame.to_dataframe(columns)?, columns, null_value)
+                implementation(frame.is_valid()?)
             }
         };
     }
 
-    polars_impl!(f32, polars_to_faer_f32);
-    polars_impl!(f64, polars_to_faer_f64);
+    polars_impl!(f32, Float32, polars_to_faer_f32);
+    polars_impl!(f64, Float64, polars_to_faer_f64);
 }
 
 #[cfg(test)]
@@ -3153,5 +3185,118 @@ mod tests {
 
         assert!(I_nalgebra.view_range_mut(.., ..).into_faer() == I_faer);
         assert!(I_faer.as_mut().into_nalgebra() == I_nalgebra);
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    fn test_polars_pos() {
+        use crate::polars::{polars_to_faer_f32, polars_to_faer_f64};
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [10, 11, 12]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        let arr_32 = polars_to_faer_f32(lf.clone()).unwrap();
+        let arr_64 = polars_to_faer_f64(lf).unwrap();
+
+        let expected_32 = mat![[1f32, 10f32], [2f32, 11f32], [3f32, 12f32]];
+        let expected_64 = mat![[1f64, 10f64], [2f64, 11f64], [3f64, 12f64]];
+
+        assert_approx_eq(arr_32, expected_32);
+        assert_approx_eq(arr_64, expected_64);
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains null entries")]
+    fn test_polars_neg_32_null() {
+        use crate::polars::polars_to_faer_f32;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        polars_to_faer_f32(lf).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains non-numerical data")]
+    fn test_polars_neg_32_strl() {
+        use crate::polars::polars_to_faer_f32;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        polars_to_faer_f32(lf).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains non-numerical data and null entries")]
+    fn test_polars_neg_32_combo() {
+        use crate::polars::polars_to_faer_f32;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+        let s2: Series = Series::new("c", [Some("fish"), Some("dog"), None]);
+
+        let lf = DataFrame::new(vec![s0, s1, s2]).unwrap().lazy();
+
+        polars_to_faer_f32(lf).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains null entries")]
+    fn test_polars_neg_64_null() {
+        use crate::polars::polars_to_faer_f64;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        polars_to_faer_f64(lf).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains non-numerical data")]
+    fn test_polars_neg_64_strl() {
+        use crate::polars::polars_to_faer_f64;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
+
+        let lf = DataFrame::new(vec![s0, s1]).unwrap().lazy();
+
+        polars_to_faer_f64(lf).unwrap();
+    }
+
+    #[cfg(feature = "polars")]
+    #[test]
+    #[should_panic(expected = "frame contains non-numerical data and null entries")]
+    fn test_polars_neg_64_combo() {
+        use crate::polars::polars_to_faer_f64;
+        use ::polars::prelude::*;
+
+        let s0: Series = Series::new("a", [1, 2, 3]);
+        let s1: Series = Series::new("b", [Some(10), Some(11), None]);
+        let s2: Series = Series::new("c", [Some("fish"), Some("dog"), None]);
+
+        let lf = DataFrame::new(vec![s0, s1, s2]).unwrap().lazy();
+
+        polars_to_faer_f64(lf).unwrap();
     }
 }
