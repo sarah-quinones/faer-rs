@@ -3,7 +3,7 @@
 
 use crate::{temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef};
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
 
 /// Swaps the two columns at indices `a` and `b` in the given matrix.
@@ -316,10 +316,10 @@ pub fn permute_cols_in_place_req<E: Entity>(
 pub fn permute_rows_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_>,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut matrix = matrix;
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack) };
+    let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);
     let mut tmp = tmp.as_mut();
     zipped!(tmp.rb_mut(), matrix.rb()).for_each(|mut dst, src| dst.write(src.read()));
     permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
@@ -336,10 +336,10 @@ pub fn permute_rows_in_place<E: ComplexField>(
 pub fn permute_cols_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_>,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut matrix = matrix;
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack) };
+    let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);
     let mut tmp = tmp.as_mut();
     zipped!(tmp.rb_mut(), matrix.rb()).for_each(|mut dst, src| dst.write(src.read()));
     permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);

@@ -1,5 +1,5 @@
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
     Conj, Entity, MatMut, MatRef, Parallelism,
@@ -52,7 +52,7 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
 
         for j in 0..n {
             let l10_ = unsafe { l10.read_unchecked(0, j).neg().conj() };
-            let l10 = E::simd_splat(simd, l10_.clone());
+            let l10 = E::simd_splat(simd, l10_);
 
             let l20 = E::map(
                 l20.ptr_at(0, j),
@@ -71,7 +71,7 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
             {
                 let mut acc_ = E::from_units(E::deref(E::rb(E::as_ref(&acc))));
                 let l20 = E::from_units(E::deref(l20));
-                acc_ = E::mul_adde(&l10_, &l20, &acc_);
+                acc_ = acc_.add(E::mul(l10_, l20));
                 E::map(
                     E::zip(acc, acc_.into_units()),
                     #[inline(always)]
@@ -143,7 +143,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
 
         zipped!(l10xd0.rb_mut(), l10, d0.transpose())
-            .for_each(|mut dst, src, factor| dst.write(src.read().mul(&factor.read())));
+            .for_each(|mut dst, src, factor| dst.write(src.read().mul(factor.read())));
 
         let l10xd0 = l10xd0.into_const();
 
@@ -151,7 +151,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             0,
             0,
             a11.read(0, 0)
-                .sub(&faer_core::mul::inner_prod::inner_prod_with_conj_arch(
+                .sub(faer_core::mul::inner_prod::inner_prod_with_conj_arch(
                     arch,
                     l10xd0.row(0).transpose(),
                     Conj::Yes,
@@ -182,12 +182,12 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 let l10_conj = l10xd0.read(0, j).conj();
 
                 zipped!(a21.rb_mut(), l20_col)
-                    .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+                    .for_each(|mut dst, src| dst.write(dst.read().sub(src.read().mul(l10_conj))));
             }
         }
 
         let r = l11.read(0, 0).real().inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(&r)));
+        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(r)));
 
         idx += block_size;
     }
@@ -212,7 +212,7 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
 fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // right looking cholesky
 
@@ -241,7 +241,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
         {
             // reserve space for L10×D0
-            let (mut l10xd0, _) = unsafe { temp_mat_uninit(rem, block_size, stack.rb_mut()) };
+            let (mut l10xd0, _) = temp_mat_uninit(rem, block_size, stack.rb_mut());
             let mut l10xd0 = l10xd0.as_mut();
 
             for j in 0..block_size {
@@ -253,7 +253,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
                 zipped!(l10xd0_col, a10_col).for_each(|mut l10xd0_elem, mut a10_elem| {
                     let a10_elem_read = a10_elem.read();
-                    a10_elem.write(a10_elem_read.mul(&d0_elem_inv));
+                    a10_elem.write(a10_elem_read.mul(d0_elem_inv));
                     l10xd0_elem.write(a10_elem_read);
                 });
             }
@@ -307,7 +307,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 pub fn raw_cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: LdltDiagParams,
 ) {
     let _ = params;

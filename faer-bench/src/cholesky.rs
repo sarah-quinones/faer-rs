@@ -1,5 +1,5 @@
 use super::timeit;
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
+use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::Cholesky;
 use std::time::Duration;
@@ -58,7 +58,7 @@ pub fn faer<T: faer_core::ComplexField>(
             }
             let mut chol = Mat::<T>::zeros(n, n);
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_cholesky::llt::compute::cholesky_in_place_req::<T>(
                     n,
                     parallelism,
@@ -66,7 +66,7 @@ pub fn faer<T: faer_core::ComplexField>(
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let time = timeit(|| {
                 chol.as_mut()

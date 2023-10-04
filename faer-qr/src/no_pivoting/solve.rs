@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_left_in_place_with_conj,
@@ -80,7 +80,7 @@ pub fn solve_in_place<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // conjᵃ(H₀ × ... × Hₖ₋₁ × R) X = conjᵇ(B)
     // X = conjᵃ(R)⁻¹ × conjᵃ(Hₖ₋₁) × ... × conjᵃ(H₀) × conjᵇ(B)
@@ -135,7 +135,7 @@ pub fn solve_transpose_in_place<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     // conjᵃ(H₀ × ... × Hₖ₋₁ × R)ᵀ X = conjᵇ(B)
     // conjᵃ(Rᵀ × Hₖ₋₁ᵀ × ... × H₀ᵀ) X = conjᵇ(B)
@@ -190,7 +190,7 @@ pub fn solve<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
@@ -229,7 +229,7 @@ pub fn solve_transpose<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
@@ -253,7 +253,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -308,7 +308,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon)
+                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
                 }
             }
         }
@@ -368,7 +368,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon)
+                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
                 }
             }
         }

@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::apply_block_householder_sequence_on_the_left_in_place_with_conj, temp_mat_req,
     temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
@@ -22,7 +22,7 @@ pub fn reconstruct<E: ComplexField>(
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
     assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
@@ -64,10 +64,9 @@ pub fn reconstruct_in_place<E: ComplexField>(
     qr_factors: MatMut<'_, E>,
     householder_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
-    let (mut dst, stack) =
-        unsafe { temp_mat_uninit::<E>(qr_factors.nrows(), qr_factors.ncols(), stack) };
+    let (mut dst, stack) = temp_mat_uninit::<E>(qr_factors.nrows(), qr_factors.ncols(), stack);
     let mut dst = dst.as_mut();
 
     reconstruct(
@@ -120,7 +119,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

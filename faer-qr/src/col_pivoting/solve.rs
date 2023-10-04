@@ -1,5 +1,5 @@
 use crate::no_pivoting;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     permutation::{permute_rows, permute_rows_in_place, permute_rows_in_place_req, PermutationRef},
     ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
@@ -86,7 +86,7 @@ pub fn solve_in_place<T: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut rhs = rhs;
     let mut stack = stack;
@@ -127,7 +127,7 @@ pub fn solve_transpose_in_place<T: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut rhs = rhs;
     let mut stack = stack;
@@ -169,7 +169,7 @@ pub fn solve<T: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     let mut stack = stack;
@@ -212,7 +212,7 @@ pub fn solve_transpose<T: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, T>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut dst = dst;
     let mut stack = stack;
@@ -237,7 +237,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -299,7 +299,7 @@ mod tests {
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
                     )
                 }
             }
@@ -367,7 +367,7 @@ mod tests {
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
                     )
                 }
             }

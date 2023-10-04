@@ -1,5 +1,5 @@
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     join_raw, mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit,
     ComplexField, Entity, MatMut, MatRef, Parallelism,
@@ -13,7 +13,7 @@ fn invert_impl<T: ComplexField>(
     row_perm: PermutationRef<'_>,
     col_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let lu_factors = match lu_factors {
         Some(lu_factors) => lu_factors,
@@ -26,8 +26,8 @@ fn invert_impl<T: ComplexField>(
     debug_assert!(dst.nrows() == n);
     debug_assert!(dst.ncols() == n);
 
-    let (mut inv_lu, stack) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
-    let (mut inv, _) = unsafe { temp_mat_uninit::<T>(m, n, stack) };
+    let (mut inv_lu, stack) = temp_mat_uninit::<T>(m, n, stack);
+    let (mut inv, _) = temp_mat_uninit::<T>(m, n, stack);
     let inv_lu = inv_lu.as_mut();
     let mut inv = inv.as_mut();
 
@@ -101,7 +101,7 @@ pub fn invert<T: ComplexField>(
     row_perm: PermutationRef<'_>,
     col_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
     assert!(lu_factors.nrows() == lu_factors.ncols());
@@ -132,7 +132,7 @@ pub fn invert_in_place<T: ComplexField>(
     row_perm: PermutationRef<'_>,
     col_perm: PermutationRef<'_>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
     assert!(lu_factors.nrows() == lu_factors.ncols());
@@ -173,7 +173,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

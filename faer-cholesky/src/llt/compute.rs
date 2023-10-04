@@ -1,7 +1,7 @@
 use super::CholeskyError;
 use crate::ldlt_diagonal::compute::RankUpdate;
 use assert2::{assert, debug_assert};
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Entity,
     MatMut, Parallelism,
@@ -63,9 +63,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A11 -= L10 × L10^H
         let mut dot = E::Real::zero();
         for j in 0..idx {
-            dot = dot.add(&l10.read(0, j).abs2());
+            dot = dot.add(l10.read(0, j).abs2());
         }
-        a11.write(0, 0, E::from_real(a11.read(0, 0).real().sub(&dot)));
+        a11.write(0, 0, E::from_real(a11.read(0, 0).real().sub(dot)));
 
         let real = a11.read(0, 0).real();
         if real > E::Real::zero() {
@@ -93,7 +93,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 let l10_conj = l10.read(0, j).conj();
 
                 zipped!(a21.rb_mut(), l20_col)
-                    .for_each(|mut dst, src| dst.write(dst.read().sub(&src.read().mul(&l10_conj))));
+                    .for_each(|mut dst, src| dst.write(dst.read().sub(src.read().mul(l10_conj))));
             }
         }
 
@@ -103,7 +103,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // conj(L11) L21^T = A21^T
 
         let r = l11.real().inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(&r)));
+        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(r)));
 
         idx += block_size;
     }
@@ -130,7 +130,7 @@ pub fn cholesky_in_place_req<E: Entity>(
 fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) -> Result<(), CholeskyError> {
     // right looking cholesky
 
@@ -194,7 +194,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 pub fn cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: LltParams,
 ) -> Result<(), CholeskyError> {
     let _ = params;

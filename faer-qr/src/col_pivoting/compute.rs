@@ -1,6 +1,6 @@
 use assert2::{assert, debug_assert};
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     c32, c64, for_each_raw,
     householder::upgrade_householder_factor,
@@ -35,7 +35,7 @@ fn update_and_norm2_simd_impl<'a, E: ComplexField, S: Simd>(
     let (b, b_rem) = simd::slice_as_simd::<E, S>(b);
 
     let k_ = k;
-    let k = E::simd_splat(simd, k_.clone());
+    let k = E::simd_splat(simd, k_);
 
     let (a, a_remv) = E::as_arrays_mut::<8, _>(a);
     let (b, b_remv) = E::as_arrays::<8, _>(b);
@@ -369,8 +369,8 @@ fn update_and_norm2<E: ComplexField>(
         let a = a_.read();
         let b = b.read();
 
-        a_.write(a.add(&k.mul(&b)));
-        acc = acc.add(&(a.conj().mul(&a)).real());
+        a_.write(a.add(k.mul(b)));
+        acc = acc.add((a.conj().mul(a)).real());
     });
 
     acc
@@ -484,7 +484,7 @@ fn qr_in_place_colmajor<E: ComplexField>(
                                 matrix,
                                 col_start,
                                 first_tail,
-                                tau_inv.clone(),
+                                tau_inv,
                                 &mut local_biggest_col_value,
                                 &mut local_biggest_col_idx,
                             );
@@ -565,10 +565,10 @@ impl<E: ComplexField> pulp::WithSimd for ProcessCols<'_, E> {
                 b: E::rb(E::as_ref(&col_tail)),
             }
             .with_simd(simd)
-            .add(&col_head_);
+            .add(col_head_);
 
-            let k = (tau_inv.mul(&dot)).neg();
-            col_head.write(0, 0, col_head_.add(&k));
+            let k = (tau_inv.mul(dot)).neg();
+            col_head.write(0, 0, col_head_.add(k));
 
             let col_value = UpdateAndNorm2 {
                 a: col_tail,
@@ -609,15 +609,15 @@ fn process_cols<E: ComplexField>(
             let [mut col_head, col_tail] = matrix.rb_mut().col(j).split_at_row(1);
             let col_head_ = col_head.read(0, 0);
 
-            let dot = col_head_.add(&inner_prod_with_conj_arch(
+            let dot = col_head_.add(inner_prod_with_conj_arch(
                 arch,
                 first_tail,
                 Conj::Yes,
                 col_tail.rb(),
                 Conj::No,
             ));
-            let k = (tau_inv.mul(&dot)).neg();
-            col_head.write(0, 0, col_head_.add(&k));
+            let k = (tau_inv.mul(dot)).neg();
+            col_head.write(0, 0, col_head_.add(k));
 
             let col_value = update_and_norm2(arch, col_tail, first_tail, k);
             if col_value > *biggest_col_value {
@@ -698,7 +698,7 @@ pub fn qr_in_place<'out, E: ComplexField>(
     col_perm: &'out mut [usize],
     col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: ColPivQrComputeParams,
 ) -> (usize, PermutationMut<'out>) {
     let _ = &stack;
@@ -795,7 +795,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

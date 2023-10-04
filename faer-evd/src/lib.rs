@@ -14,7 +14,7 @@
 
 use assert2::assert;
 use coe::Coerce;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_req,
@@ -121,7 +121,7 @@ pub fn compute_hermitian_evd<E: ComplexField>(
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SymmetricEvdParams,
 ) {
     compute_hermitian_evd_custom_epsilon(
@@ -151,7 +151,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SymmetricEvdParams,
 ) {
     let _ = params;
@@ -178,12 +178,11 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         return;
     }
 
-    let (mut trid, stack) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
+    let (mut trid, stack) = temp_mat_uninit::<E>(n, n, stack);
     let householder_blocksize =
         faer_qr::no_pivoting::compute::recommended_blocksize::<E>(n - 1, n - 1);
 
-    let (mut householder, mut stack) =
-        unsafe { temp_mat_uninit::<E>(householder_blocksize, n - 1, stack) };
+    let (mut householder, mut stack) = temp_mat_uninit::<E>(householder_blocksize, n - 1, stack);
     let mut householder = householder.as_mut();
 
     let mut trid = trid.as_mut();
@@ -216,7 +215,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 zero_threshold,
             );
             for i in 0..n {
-                s.write(i, 0, E::from_real(diag[i].clone()));
+                s.write(i, 0, E::from_real(diag[i]));
             }
 
             return;
@@ -254,14 +253,14 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         } else {
             let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
 
-            let (mut u_real, stack) = unsafe { temp_mat_uninit::<E::Real>(n, n, stack) };
+            let (mut u_real, stack) = temp_mat_uninit::<E::Real>(n, n, stack);
             let (mut mul, stack) = stack.make_with(n, |_| E::zero());
 
             let normalized = |x: E| {
                 if x == E::zero() {
                     E::one()
                 } else {
-                    x.scale_real(&x.abs().inv())
+                    x.scale_real(x.abs().inv())
                 }
             };
 
@@ -269,7 +268,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
 
             let mut x = E::one();
             for i in 1..n {
-                x = normalized(trid.read(i, i - 1).mul(&x.conj())).conj();
+                x = normalized(trid.read(i, i - 1).mul(x.conj())).conj();
                 mul[i] = x.conj();
             }
 
@@ -288,14 +287,14 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
             for j in 0..n {
                 for i in 0..n {
                     unsafe {
-                        u.write_unchecked(i, j, mul[i].scale_real(&u_real.read_unchecked(i, j)))
+                        u.write_unchecked(i, j, mul[i].scale_real(u_real.read_unchecked(i, j)))
                     };
                 }
             }
         }
 
         for i in 0..n {
-            s.write(i, 0, E::from_real(diag[i].clone()));
+            s.write(i, 0, E::from_real(diag[i]));
         }
     }
 
@@ -341,7 +340,7 @@ pub fn compute_evd_real<E: RealField>(
     s_im: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     compute_evd_real_custom_epsilon(
@@ -373,7 +372,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     epsilon: E,
     zero_threshold: E,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     assert!(matrix.nrows() == matrix.ncols());
@@ -407,7 +406,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     let mut s_re = s_re;
     let mut s_im = s_im;
 
-    let (mut h, stack) = unsafe { temp_mat_uninit(n, n, stack) };
+    let (mut h, stack) = temp_mat_uninit(n, n, stack);
     let mut h = h.as_mut();
 
     h.clone_from(matrix);
@@ -418,7 +417,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     {
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit(householder_blocksize, n - 1, stack.rb_mut()) };
+            temp_mat_uninit(householder_blocksize, n - 1, stack.rb_mut());
         let mut householder = householder.as_mut();
 
         hessenberg::make_hessenberg_in_place(
@@ -454,8 +453,8 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             s_im.rb_mut(),
             0,
             n,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -466,11 +465,11 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
         let mut norm = zero_threshold;
         zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
-            norm = norm.add(&x.read().abs());
+            norm = norm.add(x.read().abs());
         });
         // subdiagonal
         zipped!(h.rb().submatrix(1, 0, n - 1, n - 1).diagonal()).for_each(|x| {
-            norm = norm.add(&x.read().abs());
+            norm = norm.add(x.read().abs());
         });
 
         {
@@ -510,15 +509,15 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 Conj::No,
                             );
 
-                            x.write(i, k, x.read(i, k).sub(&dot));
-                            let mut z = h.read(i, i).sub(&p);
+                            x.write(i, k, x.read(i, k).sub(dot));
+                            let mut z = h.read(i, i).sub(p);
                             if z == E::zero() {
-                                z = epsilon.mul(&norm);
+                                z = epsilon.mul(norm);
                             }
                             let z_inv = z.inv();
                             let x_ = x.read(i, k);
                             if x_ != E::zero() {
-                                x.write(i, k, x.read(i, k).mul(&z_inv));
+                                x.write(i, k, x.read(i, k).mul(z_inv));
                             }
                         } else {
                             // 2x2 block
@@ -535,8 +534,8 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 Conj::No,
                             );
 
-                            x.write(i - 1, k, x.read(i - 1, k).sub(&dot0));
-                            x.write(i, k, x.read(i, k).sub(&dot1));
+                            x.write(i - 1, k, x.read(i - 1, k).sub(dot0));
+                            x.write(i, k, x.read(i, k).sub(dot1));
 
                             // solve
                             // [a b  [x0    [r0
@@ -544,17 +543,17 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             //
                             //  [x0    [a  -b  [r0
                             //   x1] =  -c  a]× r1] / det
-                            let a = h.read(i, i).sub(&p);
+                            let a = h.read(i, i).sub(p);
                             let b = h.read(i - 1, i);
                             let c = h.read(i, i - 1);
 
                             let r0 = x.read(i - 1, k);
                             let r1 = x.read(i, k);
 
-                            let inv_det = (a.mul(&a).sub(&b.mul(&c))).inv();
+                            let inv_det = (a.mul(a).sub(b.mul(c))).inv();
 
-                            let x0 = a.mul(&r0).sub(&b.mul(&r1)).mul(&inv_det);
-                            let x1 = a.mul(&r1).sub(&c.mul(&r0)).mul(&inv_det);
+                            let x0 = a.mul(r0).sub(b.mul(r1)).mul(inv_det);
+                            let x1 = a.mul(r1).sub(c.mul(r0)).mul(inv_det);
 
                             x.write(i - 1, k, x0);
                             x.write(i, k, x1);
@@ -569,13 +568,13 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         .read(k, k - 1)
                         .abs()
                         .sqrt()
-                        .mul(&h.read(k - 1, k).abs().sqrt());
+                        .mul(h.read(k - 1, k).abs().sqrt());
 
                     if h.read(k - 1, k).abs() >= h.read(k, k - 1) {
                         x.write(k - 1, k - 1, E::one());
-                        x.write(k, k, q.div(&h.read(k - 1, k)));
+                        x.write(k, k, q.div(h.read(k - 1, k)));
                     } else {
-                        x.write(k - 1, k - 1, q.neg().div(&h.read(k, k - 1)));
+                        x.write(k - 1, k - 1, q.neg().div(h.read(k, k - 1)));
                         x.write(k, k, E::one());
                     }
                     x.write(k - 1, k, E::zero());
@@ -584,8 +583,8 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                     // solve (h[:k-1, :k-1] - (p + iq) I) X = RHS
                     // form RHS
                     for i in 0..k - 1 {
-                        x.write(i, k - 1, x.read(k - 1, k - 1).neg().mul(&h.read(i, k - 1)));
-                        x.write(i, k, x.read(k, k).neg().mul(&h.read(i, k)));
+                        x.write(i, k - 1, x.read(k - 1, k - 1).neg().mul(h.read(i, k - 1)));
+                        x.write(i, k, x.read(k, k).neg().mul(h.read(i, k)));
                     }
 
                     // solve in place
@@ -603,19 +602,19 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             let mut dot = Complex::<E>::zero();
                             for j in i + 1..k - 1 {
                                 dot = dot.add(
-                                    &Complex {
+                                    Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(&h.read(i, j)),
+                                    .scale_real(h.read(i, j)),
                                 );
                             }
 
-                            x.write(i, k - 1, x.read(i, k - 1).sub(&dot.re));
-                            x.write(i, k, x.read(i, k).sub(&dot.im));
+                            x.write(i, k - 1, x.read(i, k - 1).sub(dot.re));
+                            x.write(i, k, x.read(i, k).sub(dot.im));
 
                             let z = Complex {
-                                re: h.read(i, i).sub(&p),
+                                re: h.read(i, i).sub(p),
                                 im: q.neg(),
                             };
                             let z_inv = z.inv();
@@ -624,7 +623,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 im: x.read(i, k),
                             };
                             if x_ != Complex::<E>::zero() {
-                                let x_ = z_inv.mul(&x_);
+                                let x_ = z_inv.mul(x_);
                                 x.write(i, k - 1, x_.re);
                                 x.write(i, k, x_.im);
                             }
@@ -634,28 +633,28 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             let mut dot1 = Complex::<E>::zero();
                             for j in i + 1..k - 1 {
                                 dot0 = dot0.add(
-                                    &Complex {
+                                    Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(&h.read(i - 1, j)),
+                                    .scale_real(h.read(i - 1, j)),
                                 );
                                 dot1 = dot1.add(
-                                    &Complex {
+                                    Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(&h.read(i, j)),
+                                    .scale_real(h.read(i, j)),
                                 );
                             }
 
-                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).sub(&dot0.re));
-                            x.write(i - 1, k, x.read(i - 1, k).sub(&dot0.im));
-                            x.write(i, k - 1, x.read(i, k - 1).sub(&dot1.re));
-                            x.write(i, k, x.read(i, k).sub(&dot1.im));
+                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).sub(dot0.re));
+                            x.write(i - 1, k, x.read(i - 1, k).sub(dot0.im));
+                            x.write(i, k - 1, x.read(i, k - 1).sub(dot1.re));
+                            x.write(i, k, x.read(i, k).sub(dot1.im));
 
                             let a = Complex {
-                                re: h.read(i, i).sub(&p),
+                                re: h.read(i, i).sub(p),
                                 im: q.neg(),
                             };
                             let b = h.read(i - 1, i);
@@ -670,11 +669,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 im: x.read(i, k),
                             };
 
-                            let inv_det =
-                                (a.mul(&a).sub(&Complex::<E>::from_real(b.mul(&c)))).inv();
+                            let inv_det = (a.mul(a).sub(Complex::<E>::from_real(b.mul(c)))).inv();
 
-                            let x0 = a.mul(&r0).sub(&r1.scale_real(&b)).mul(&inv_det);
-                            let x1 = a.mul(&r1).sub(&r0.scale_real(&c)).mul(&inv_det);
+                            let x0 = a.mul(r0).sub(r1.scale_real(b)).mul(inv_det);
+                            let x1 = a.mul(r1).sub(r0.scale_real(c)).mul(inv_det);
 
                             x.write(i - 1, k - 1, x0.re);
                             x.write(i - 1, k, x0.im);
@@ -739,7 +737,7 @@ pub fn compute_evd_req<E: ComplexField>(
         temp_mat_req::<E>(n, if compute_vecs { n } else { 0 })?,
         StackReq::try_any_of([
             StackReq::try_all_of([
-                temp_mat_req::<E>(n, householder_blocksize)?,
+                temp_mat_req::<E>(householder_blocksize, n - 1)?,
                 StackReq::try_any_of([
                     hessenberg::make_hessenberg_in_place_req::<E>(
                         n,
@@ -786,7 +784,7 @@ pub fn compute_evd_complex<E: ComplexField>(
     s: MatMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     compute_evd_complex_custom_epsilon(
@@ -816,7 +814,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: EvdParams,
 ) {
     assert!(!coe::is_same::<E, E::Real>());
@@ -847,7 +845,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     let mut u = u;
     let mut s = s;
 
-    let (mut h, stack) = unsafe { temp_mat_uninit(n, n, stack) };
+    let (mut h, stack) = temp_mat_uninit(n, n, stack);
     let mut h = h.as_mut();
 
     h.clone_from(matrix);
@@ -858,7 +856,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     {
         let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit(n - 1, householder_blocksize, stack.rb_mut()) };
+            temp_mat_uninit(n - 1, householder_blocksize, stack.rb_mut());
         let mut householder = householder.as_mut();
 
         hessenberg::make_hessenberg_in_place(
@@ -893,8 +891,8 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
             s.rb_mut(),
             0,
             n,
-            epsilon.clone(),
-            zero_threshold.clone(),
+            epsilon,
+            zero_threshold,
             parallelism,
             stack.rb_mut(),
             params,
@@ -905,7 +903,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
         let mut norm = zero_threshold;
         zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
-            norm = norm.add(&x.read().abs2());
+            norm = norm.add(x.read().abs2());
         });
         let norm = norm.sqrt();
 
@@ -920,17 +918,17 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
                         x.rb().col(k).subrows(i + 1, k - i - 1),
                         Conj::No,
                     );
-                    x.write(i, k, x.read(i, k).sub(&dot));
+                    x.write(i, k, x.read(i, k).sub(dot));
                 }
 
-                let mut z = h.read(i, i).sub(&h.read(k, k));
+                let mut z = h.read(i, i).sub(h.read(k, k));
                 if z == E::zero() {
-                    z = E::from_real(epsilon.mul(&norm));
+                    z = E::from_real(epsilon.mul(norm));
                 }
                 let z_inv = z.inv();
                 let x_ = x.read(i, k);
                 if x_ != E::zero() {
-                    x.write(i, k, x.read(i, k).mul(&z_inv));
+                    x.write(i, k, x.read(i, k).mul(z_inv));
                 }
             }
         }
@@ -972,7 +970,7 @@ mod herm_tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -1184,7 +1182,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

@@ -42,7 +42,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         for i in start..end {
             if (offdiag[i].abs() < consider_zero_threshold)
                 || (offdiag[i].abs()
-                    <= epsilon.mul(&E::add(&diag[i].abs(), &diag[i + 1].abs()).sqrt()))
+                    <= epsilon.mul(E::add(diag[i].abs(), diag[i + 1].abs()).sqrt()))
             {
                 offdiag[i] = E::zero();
             }
@@ -65,53 +65,50 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
         {
             // Wilkinson Shift.
-            let td = diag[end - 1].clone();
-            let e = offdiag[end - 1].clone();
+            let td = diag[end - 1];
+            let e = offdiag[end - 1];
 
-            let mut mu = diag[end].clone();
+            let mut mu = diag[end];
 
             if td == E::zero() {
-                mu = mu.sub(&e.abs());
+                mu = mu.sub(e.abs());
             } else if e != E::zero() {
                 let e2 = e.abs2();
-                let h = (td.abs2().add(&e.abs2())).sqrt();
+                let h = (td.abs2().add(e.abs2())).sqrt();
 
                 let h = if td > E::zero() { h } else { h.neg() };
                 if e2 == E::zero() {
-                    mu = mu.sub(&e.div(&td.add(&h).div(&e)));
+                    mu = mu.sub(e.div(td.add(h).div(e)));
                 } else {
-                    mu = mu.sub(&e2.div(&td.add(&h)));
+                    mu = mu.sub(e2.div(td.add(h)));
                 }
             }
 
-            let mut x = diag[start].sub(&mu);
-            let mut z = offdiag[start].clone();
+            let mut x = diag[start].sub(mu);
+            let mut z = offdiag[start];
 
             let mut k = start;
             while k < end && z != E::zero() {
-                let rot = JacobiRotation::make_givens(x.clone(), z.clone());
+                let rot = JacobiRotation::make_givens(x, z);
                 // do T = G' T G
-                let sdk = rot.s.mul(&diag[k]).add(&rot.c.mul(&offdiag[k]));
-                let dkp1 = rot.s.mul(&offdiag[k]).add(&rot.c.mul(&diag[k + 1]));
+                let sdk = rot.s.mul(diag[k]).add(rot.c.mul(offdiag[k]));
+                let dkp1 = rot.s.mul(offdiag[k]).add(rot.c.mul(diag[k + 1]));
 
                 diag[k] = rot
                     .c
-                    .mul(&rot.c.mul(&diag[k]).sub(&rot.s.mul(&offdiag[k])))
-                    .sub(
-                        &rot.s
-                            .mul(&rot.c.mul(&offdiag[k]).sub(&rot.s.mul(&diag[k + 1]))),
-                    );
-                diag[k + 1] = rot.s.mul(&sdk).add(&rot.c.mul(&dkp1));
-                offdiag[k] = rot.c.mul(&sdk).sub(&rot.s.mul(&dkp1));
+                    .mul(rot.c.mul(diag[k]).sub(rot.s.mul(offdiag[k])))
+                    .sub(rot.s.mul(rot.c.mul(offdiag[k]).sub(rot.s.mul(diag[k + 1]))));
+                diag[k + 1] = rot.s.mul(sdk).add(rot.c.mul(dkp1));
+                offdiag[k] = rot.c.mul(sdk).sub(rot.s.mul(dkp1));
 
                 if k > start {
-                    offdiag[k - 1] = rot.c.mul(&offdiag[k - 1]).sub(&rot.s.mul(&z));
+                    offdiag[k - 1] = rot.c.mul(offdiag[k - 1]).sub(rot.s.mul(z));
                 }
 
-                x = offdiag[k].clone();
+                x = offdiag[k];
                 if k < end - 1 {
-                    z = rot.s.neg().mul(&offdiag[k + 1]);
-                    offdiag[k + 1] = rot.c.mul(&offdiag[k + 1]);
+                    z = rot.s.neg().mul(offdiag[k + 1]);
+                    offdiag[k + 1] = rot.c.mul(offdiag[k + 1]);
                 }
 
                 // apply the givens rotation to the unit matrix Q = Q * G
@@ -129,13 +126,13 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     for i in 0..n - 1 {
         let mut min_idx = i;
-        let mut min_val = diag[i].clone();
+        let mut min_val = diag[i];
 
         for (k, diag) in diag[i + 1..n].iter().enumerate() {
             let k = k + i + 1;
             if *diag < min_val {
                 min_idx = k;
-                min_val = diag.clone();
+                min_val = *diag;
             }
         }
         if min_idx > i {

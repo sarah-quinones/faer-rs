@@ -46,8 +46,8 @@ pub fn qr(c: &mut Criterion) {
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
+            let mut mem = GlobalPodBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-qr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
@@ -67,8 +67,8 @@ pub fn qr(c: &mut Criterion) {
             let blocksize = no_pivoting::compute::recommended_blocksize::<f64>(m, n);
             let mut householder = Mat::from_fn(blocksize, n, |_, _| random::<f64>());
 
-            let mut mem = GlobalMemBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
-            let mut stack = DynStack::new(&mut mem);
+            let mut mem = GlobalPodBuffer::new(StackReq::new::<f64>(1024 * 1024 * 1024));
+            let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-qr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
@@ -100,7 +100,7 @@ pub fn qr(c: &mut Criterion) {
                         &mut perm,
                         &mut perm_inv,
                         Parallelism::None,
-                        DynStack::new(&mut []),
+                        PodStack::new(&mut []),
                         Default::default(),
                     );
                 })
@@ -123,7 +123,7 @@ pub fn qr(c: &mut Criterion) {
                         &mut perm,
                         &mut perm_inv,
                         Parallelism::Rayon(0),
-                        DynStack::new(&mut []),
+                        PodStack::new(&mut []),
                         Default::default(),
                     );
                 })
@@ -147,7 +147,7 @@ pub fn qr(c: &mut Criterion) {
                         &mut perm,
                         &mut perm_inv,
                         Parallelism::None,
-                        DynStack::new(&mut []),
+                        PodStack::new(&mut []),
                         Default::default(),
                     );
                 })
@@ -170,7 +170,7 @@ pub fn qr(c: &mut Criterion) {
                         &mut perm,
                         &mut perm_inv,
                         Parallelism::Rayon(0),
-                        DynStack::new(&mut []),
+                        PodStack::new(&mut []),
                         Default::default(),
                     );
                 })

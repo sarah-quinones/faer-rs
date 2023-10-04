@@ -15,7 +15,7 @@ use assert2::assert;
 use bidiag_real_svd::bidiag_real_svd_req;
 use coe::Coerce;
 use core::mem::swap;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_sequence_on_the_left_in_place_req,
@@ -177,7 +177,7 @@ fn compute_real_svd_small<E: RealField>(
     epsilon: E,
     zero_threshold: E,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut u = u;
     let mut v = v;
@@ -189,7 +189,7 @@ fn compute_real_svd_small<E: RealField>(
 
     // if the matrix is square, skip the QR
     if m == n {
-        let (mut jacobi_mat, _) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+        let (mut jacobi_mat, _) = temp_mat_uninit::<E>(m, n, stack);
         let mut jacobi_mat = jacobi_mat.as_mut();
         zipped!(jacobi_mat.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
 
@@ -207,14 +207,13 @@ fn compute_real_svd_small<E: RealField>(
 
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let (mut qr, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
-    let (mut householder, mut stack) =
-        unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
+    let (mut qr, stack) = temp_mat_uninit::<E>(m, n, stack);
+    let (mut householder, mut stack) = temp_mat_uninit::<E>(householder_blocksize, n, stack);
     let mut qr = qr.as_mut();
     let mut householder = householder.as_mut();
 
     {
-        let (mut r, mut stack) = unsafe { temp_mat_uninit::<E>(n, n, stack.rb_mut()) };
+        let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
         let mut r = r.as_mut();
 
         zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
@@ -273,14 +272,13 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     epsilon: E::Real,
     consider_zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let n = diag.len();
     let (mut u_real, stack) =
-        unsafe { temp_mat_uninit::<E::Real>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack) };
+        temp_mat_uninit::<E::Real>(n + 1, if u.is_some() { n + 1 } else { 0 }, stack);
     let mut u_real = u_real.as_mut();
-    let (mut v_real, stack) =
-        unsafe { temp_mat_uninit::<E::Real>(n, if v.is_some() { n } else { 0 }, stack) };
+    let (mut v_real, stack) = temp_mat_uninit::<E::Real>(n, if v.is_some() { n } else { 0 }, stack);
     let mut v_real = v_real.as_mut();
     let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.abs()));
     let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.abs()));
@@ -295,18 +293,18 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             let re = x.real().abs();
             let im = x.imag().abs();
             let max = if re > im { re } else { im };
-            let x = x.scale_real(&max.inv());
-            x.scale_real(&x.abs().inv())
+            let x = x.scale_real(max.inv());
+            x.scale_real(x.abs().inv())
         }
     };
 
-    let mut col_normalized = normalized(diag[0].clone()).conj();
-    col_mul[0] = col_normalized.clone();
+    let mut col_normalized = normalized(diag[0]).conj();
+    col_mul[0] = col_normalized;
     for i in 1..n {
-        let row_normalized = normalized(subdiag[i - 1].mul(&col_normalized)).conj();
+        let row_normalized = normalized(subdiag[i - 1].mul(col_normalized)).conj();
         row_mul[i - 1] = row_normalized.conj();
-        col_normalized = normalized(diag[i].mul(&row_normalized)).conj();
-        col_mul[i] = col_normalized.clone();
+        col_normalized = normalized(diag[i].mul(row_normalized)).conj();
+        col_mul[i] = col_normalized;
     }
 
     compute_bidiag_real_svd(
@@ -322,7 +320,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     );
 
     for i in 0..n {
-        diag[i] = E::from_real(diag_real[i].clone());
+        diag[i] = E::from_real(diag_real[i]);
     }
 
     let u_real = u_real.rb();
@@ -341,7 +339,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(row_mul.len() == n - 1);
             unsafe {
                 for i in 0..n - 1 {
-                    u.write_unchecked(i, 0, row_mul[i].scale_real(&u_real.read_unchecked(i, 0)));
+                    u.write_unchecked(i, 0, row_mul[i].scale_real(u_real.read_unchecked(i, 0)));
                 }
             }
         }
@@ -354,7 +352,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(col_mul.len() == n);
             unsafe {
                 for i in 0..n {
-                    v.write_unchecked(i, 0, col_mul[i].scale_real(&v_real.read_unchecked(i, 0)));
+                    v.write_unchecked(i, 0, col_mul[i].scale_real(v_real.read_unchecked(i, 0)));
                 }
             }
         }
@@ -400,12 +398,12 @@ fn compute_svd_big<E: ComplexField>(
         epsilon: E::Real,
         consider_zero_threshold: E::Real,
         parallelism: Parallelism,
-        stack: DynStack<'_>,
+        stack: PodStack<'_>,
     ),
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     let mut stack = stack;
 
@@ -415,13 +413,12 @@ fn compute_svd_big<E: ComplexField>(
     let n = matrix.ncols();
     let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-    let (mut bid, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack.rb_mut()) };
+    let (mut bid, stack) = temp_mat_uninit::<E>(m, n, stack.rb_mut());
     let mut bid = bid.as_mut();
-    let (mut householder_left, stack) =
-        unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
+    let (mut householder_left, stack) = temp_mat_uninit::<E>(householder_blocksize, n, stack);
     let mut householder_left = householder_left.as_mut();
     let (mut householder_right, mut stack) =
-        unsafe { temp_mat_uninit::<E>(householder_blocksize, n - 1, stack) };
+        temp_mat_uninit::<E>(householder_blocksize, n - 1, stack);
     let mut householder_right = householder_right.as_mut();
 
     zipped!(bid.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
@@ -469,11 +466,9 @@ fn compute_svd_big<E: ComplexField>(
         j_base += bs;
     }
 
-    let (mut u_b, stack) =
-        unsafe { temp_mat_uninit::<E>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack) };
+    let (mut u_b, stack) = temp_mat_uninit::<E>(if v.is_some() { n + 1 } else { 0 }, n + 1, stack);
     let mut u_b = u_b.as_mut();
-    let (mut v_b, mut stack) =
-        unsafe { temp_mat_uninit::<E>(n, if u.is_some() { n } else { 0 }, stack) };
+    let (mut v_b, mut stack) = temp_mat_uninit::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut v_b = v_b.as_mut();
 
     bidiag_svd(
@@ -489,7 +484,7 @@ fn compute_svd_big<E: ComplexField>(
     );
 
     for idx in 0..s.nrows() {
-        s.write(idx, 0, diag[idx].clone());
+        s.write(idx, 0, diag[idx]);
     }
 
     if let Some(mut u) = u {
@@ -522,7 +517,7 @@ fn compute_svd_big<E: ComplexField>(
         .for_each(|mut dst, src| dst.write(src.read()));
 
         let (mut bid_col_major, mut stack) =
-            unsafe { faer_core::temp_mat_uninit::<E>(n - 1, m, stack.rb_mut()) };
+            faer_core::temp_mat_uninit::<E>(n - 1, m, stack.rb_mut());
         let mut bid_col_major = bid_col_major.as_mut();
         zipped!(
             bid_col_major.rb_mut(),
@@ -662,7 +657,7 @@ pub fn compute_svd<E: ComplexField>(
     u: Option<MatMut<'_, E>>,
     v: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SvdParams,
 ) {
     compute_svd_custom_epsilon(
@@ -695,7 +690,7 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: SvdParams,
 ) {
     let size = Ord::min(matrix.nrows(), matrix.ncols());
@@ -759,14 +754,13 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
         // do a qr first, then do the svd
         let householder_blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<E>(m, n);
 
-        let (mut qr, stack) = unsafe { temp_mat_uninit::<E>(m, n, stack) };
+        let (mut qr, stack) = temp_mat_uninit::<E>(m, n, stack);
         let mut qr = qr.as_mut();
-        let (mut householder, mut stack) =
-            unsafe { temp_mat_uninit::<E>(householder_blocksize, n, stack) };
+        let (mut householder, mut stack) = temp_mat_uninit::<E>(householder_blocksize, n, stack);
         let mut householder = householder.as_mut();
 
         {
-            let (mut r, mut stack) = unsafe { temp_mat_uninit::<E>(n, n, stack.rb_mut()) };
+            let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
             let mut r = r.as_mut();
 
             zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
@@ -838,7 +832,7 @@ fn squareish_svd<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: DynStack,
+    stack: PodStack,
 ) {
     let size = matrix.ncols();
     if coe::is_same::<E, E::Real>() {
@@ -890,7 +884,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

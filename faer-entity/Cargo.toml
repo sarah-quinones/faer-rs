@@ -1,5 +1,5 @@
 [package]
-name = "faer-core"
+name = "faer-entity"
 version = "0.11.0"
 edition = "2021"
 authors = ["sarah <>"]
@@ -10,38 +10,21 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-entity = { version = "0.11.0", default-features = false, path = "../faer-entity" }
-gemm = { version = "0.15", default-features = false }
-aligned-vec = "0.5"
-seq-macro = "0.3"
-paste =  "1.0"
-matrixcompare-core = "0.1.0"
-
 pulp = { workspace = true, default-features = false }
 coe-rs = { workspace = true }
 reborrow = { workspace = true }
-dyn-stack = { workspace = true }
-assert2 = { workspace = true }
 num-traits = { workspace = true }
 num-complex = { workspace = true }
-rayon = { workspace = true }
 bytemuck = { workspace = true }
 
 [features]
 default = ["std"]
-std = ["gemm/std", "pulp/std"]
-nightly = ["gemm/nightly", "pulp/nightly"]
+std = ["pulp/std"]
+nightly = ["pulp/nightly"]
 
 [dev-dependencies]
-criterion = "0.5"
 rand = "0.8.5"
-nalgebra = "0.32.2"
 assert_approx_eq = "1.1.0"
-dbgf = "0.1.0"
-
-[[bench]]
-name = "bench"
-harness = false
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]

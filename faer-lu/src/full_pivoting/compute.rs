@@ -2,7 +2,7 @@ use assert2::{assert, debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
 use core::slice;
-use dyn_stack::{DynStack, StackReq};
+use dyn_stack::{PodStack, StackReq};
 use faer_core::{
     c32, c64, for_each_raw,
     mul::matmul,
@@ -1075,12 +1075,12 @@ fn lu_in_place_unblocked<E: ComplexField>(
         if !transposed {
             for i in k + 1..m {
                 let elem = matrix.read(i, k);
-                matrix.write(i, k, elem.mul(&inv));
+                matrix.write(i, k, elem.mul(inv));
             }
         } else {
             for i in k + 1..n {
                 let elem = matrix.read(k, i);
-                matrix.write(k, i, elem.mul(&inv));
+                matrix.write(k, i, elem.mul(inv));
             }
         }
 
@@ -1219,7 +1219,7 @@ pub fn lu_in_place<'out, E: ComplexField>(
     col_perm: &'out mut [usize],
     col_perm_inv: &'out mut [usize],
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
     params: FullPivLuComputeParams,
 ) -> (usize, PermutationMut<'out>, PermutationMut<'out>) {
     let disable_parallelism = params
@@ -1295,7 +1295,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 
@@ -1366,7 +1366,7 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
@@ -1422,7 +1422,7 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
@@ -1502,7 +1502,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }
@@ -1556,7 +1556,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }
@@ -1615,7 +1615,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }

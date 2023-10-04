@@ -1,6 +1,6 @@
 use super::timeit;
 use crate::random;
-use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
+use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::solve::Factorize;
 use std::time::Duration;
@@ -67,7 +67,7 @@ pub fn faer<T: faer_core::ComplexField>(
             let mut row_fwd = vec![0; n];
             let mut row_inv = vec![0; n];
 
-            let mut mem = GlobalMemBuffer::new(
+            let mut mem = GlobalPodBuffer::new(
                 faer_lu::partial_pivoting::compute::lu_in_place_req::<T>(
                     n,
                     n,
@@ -76,7 +76,7 @@ pub fn faer<T: faer_core::ComplexField>(
                 )
                 .unwrap(),
             );
-            let mut stack = DynStack::new(&mut mem);
+            let mut stack = PodStack::new(&mut mem);
 
             let mut block = || {
                 lu.as_mut()

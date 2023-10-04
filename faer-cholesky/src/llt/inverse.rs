@@ -1,5 +1,5 @@
 use assert2::assert;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     inverse::invert_lower_triangular,
     mul::triangular::{self, BlockStructure},
@@ -11,7 +11,7 @@ fn invert_lower_impl<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
-    stack: DynStack,
+    stack: PodStack,
 ) {
     // (L L.*).inv() = L.inv().* L.inv()
     //
@@ -21,7 +21,7 @@ fn invert_lower_impl<E: ComplexField>(
     };
     let n = cholesky_factor.nrows();
 
-    let (mut tmp, _) = unsafe { temp_mat_uninit::<E>(n, n, stack) };
+    let (mut tmp, _) = temp_mat_uninit::<E>(n, n, stack);
     let mut tmp = tmp.as_mut();
 
     invert_lower_triangular(tmp.rb_mut(), cholesky_factor, parallelism);
@@ -72,7 +72,7 @@ pub fn invert_lower_in_place_req<E: Entity>(
 pub fn invert_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack,
+    stack: PodStack,
 ) {
     assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     invert_lower_impl(cholesky_factor, None, parallelism, stack);
@@ -93,7 +93,7 @@ pub fn invert_lower<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack,
+    stack: PodStack,
 ) {
     assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));

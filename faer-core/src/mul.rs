@@ -230,55 +230,55 @@ pub mod inner_prod {
             match rem {
                 0 => {}
                 1 => {
-                    acc = acc.add(&a(0).mul(&b(0)));
+                    acc = acc.add(a(0).mul(b(0)));
                 }
                 2 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
 
-                    acc = acc.add(&x0.add(x1));
+                    acc = acc.add(x0.add(x1));
                 }
                 3 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
-                    let x2 = &a(2).mul(&b(2));
-                    acc = acc.add(&x0.add(x1).add(x2));
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
+                    let x2 = a(2).mul(b(2));
+                    acc = acc.add(x0.add(x1).add(x2));
                 }
                 4 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
-                    let x2 = &a(2).mul(&b(2));
-                    let x3 = &a(3).mul(&b(3));
-                    acc = acc.add(&E::add(&x0.add(x1), &x2.add(x3)));
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
+                    let x2 = a(2).mul(b(2));
+                    let x3 = a(3).mul(b(3));
+                    acc = acc.add(E::add(x0.add(x1), x2.add(x3)));
                 }
                 5 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
-                    let x2 = &a(2).mul(&b(2));
-                    let x3 = &a(3).mul(&b(3));
-                    let x4 = &a(4).mul(&b(4));
-                    acc = acc.add(&E::add(&x0.add(x1), &x2.add(x3).add(x4)));
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
+                    let x2 = a(2).mul(b(2));
+                    let x3 = a(3).mul(b(3));
+                    let x4 = a(4).mul(b(4));
+                    acc = acc.add(E::add(x0.add(x1), x2.add(x3).add(x4)));
                 }
                 6 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
-                    let x2 = &a(2).mul(&b(2));
-                    let x3 = &a(3).mul(&b(3));
-                    let x4 = &a(4).mul(&b(4));
-                    let x5 = &a(5).mul(&b(5));
-                    acc = acc.add(&E::add(&x0.add(x1).add(x2), &x3.add(x4).add(x5)));
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
+                    let x2 = a(2).mul(b(2));
+                    let x3 = a(3).mul(b(3));
+                    let x4 = a(4).mul(b(4));
+                    let x5 = a(5).mul(b(5));
+                    acc = acc.add(E::add(x0.add(x1).add(x2), x3.add(x4).add(x5)));
                 }
                 7 => {
-                    let x0 = &a(0).mul(&b(0));
-                    let x1 = &a(1).mul(&b(1));
-                    let x2 = &a(2).mul(&b(2));
-                    let x3 = &a(3).mul(&b(3));
-                    let x4 = &a(4).mul(&b(4));
-                    let x5 = &a(5).mul(&b(5));
-                    let x6 = &a(6).mul(&b(6));
-                    acc = acc.add(&E::add(
-                        &E::add(&E::add(x0, x1), &E::add(x2, x3)),
-                        &x4.add(x5).add(x6),
+                    let x0 = a(0).mul(b(0));
+                    let x1 = a(1).mul(b(1));
+                    let x2 = a(2).mul(b(2));
+                    let x3 = a(3).mul(b(3));
+                    let x4 = a(4).mul(b(4));
+                    let x5 = a(5).mul(b(5));
+                    let x6 = a(6).mul(b(6));
+                    acc = acc.add(E::add(
+                        E::add(E::add(x0, x1), E::add(x2, x3)),
+                        x4.add(x5).add(x6),
                     ));
                 }
                 _ => {
@@ -286,7 +286,7 @@ pub mod inner_prod {
                         let a = E::from_units(E::deref(a));
                         let a = if CONJ_A { a.conj() } else { a };
                         let b = E::from_units(E::deref(b));
-                        acc = E::add(&acc, &E::mul(&a, &b));
+                        acc = E::add(acc, E::mul(a, b));
                     }
                 }
             }
@@ -358,13 +358,13 @@ pub mod inner_prod {
                 let mut acc = E::zero();
                 if conj_lhs == conj_rhs {
                     for i in 0..nrows {
-                        acc = acc.add(&E::mul(&a.read_unchecked(i, 0), &b.read_unchecked(i, 0)));
+                        acc = acc.add(E::mul(a.read_unchecked(i, 0), b.read_unchecked(i, 0)));
                     }
                 } else {
                     for i in 0..nrows {
-                        acc = acc.add(&E::mul(
-                            &a.read_unchecked(i, 0).conj(),
-                            &b.read_unchecked(i, 0),
+                        acc = acc.add(E::mul(
+                            a.read_unchecked(i, 0).conj(),
+                            b.read_unchecked(i, 0),
                         ));
                     }
                 }
@@ -418,11 +418,9 @@ mod matvec_rowmajor {
         for i in 0..m {
             let a = a.submatrix(i, 0, 1, n);
             let res = inner_prod::inner_prod_with_conj(a.transpose(), conj_a, b, conj_b);
-            match &alpha {
-                Some(alpha) => {
-                    acc.write(i, 0, E::add(&alpha.mul(&acc.read(i, 0)), &beta.mul(&res)))
-                }
-                None => acc.write(i, 0, beta.mul(&res)),
+            match alpha {
+                Some(alpha) => acc.write(i, 0, E::add(alpha.mul(acc.read(i, 0)), beta.mul(res))),
+                None => acc.write(i, 0, beta.mul(res)),
             }
         }
     }
@@ -475,7 +473,7 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b.clone());
+                let b = E::simd_splat(simd, self.b);
 
                 for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                     let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -489,7 +487,7 @@ mod matvec_colmajor {
             for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                 let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
                 let a = E::from_units(E::deref(a));
-                acc = E::mul_adde(&b, &a, &acc);
+                acc = acc.add(E::mul(b, a));
                 let acc = E::into_units(acc);
                 E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
             }
@@ -504,7 +502,7 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b.clone());
+                let b = E::simd_splat(simd, self.b);
 
                 for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                     let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -518,7 +516,7 @@ mod matvec_colmajor {
             for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                 let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
                 let a = E::from_units(E::deref(a));
-                acc = E::conj_mul_adde(&a, &b, &acc);
+                acc = acc.add(a.conj().mul(b));
                 let acc = E::into_units(acc);
                 E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
             }
@@ -565,7 +563,7 @@ mod matvec_colmajor {
                 Conj::Yes => b.conj(),
                 Conj::No => b,
             };
-            let b = b.mul(&beta);
+            let b = b.mul(beta);
 
             match conj_a {
                 Conj::Yes => arch.dispatch(ConjImpl { acc, a, b }),
@@ -590,7 +588,7 @@ mod matvec_colmajor {
                 Some(alpha) if alpha == E::one() => {}
                 Some(alpha) => {
                     for i in 0..m {
-                        acc.write(i, 0, acc.read(i, 0).mul(&alpha));
+                        acc.write(i, 0, acc.read(i, 0).mul(alpha));
                     }
                 }
                 None => {
@@ -607,7 +605,7 @@ mod matvec_colmajor {
             match alpha {
                 Some(alpha) => {
                     for i in 0..m {
-                        acc.write(i, 0, (acc.read(i, 0).mul(&alpha)).add(&tmp.read(i, 0)))
+                        acc.write(i, 0, (acc.read(i, 0).mul(alpha)).add(tmp.read(i, 0)))
                     }
                 }
                 None => {
@@ -665,7 +663,7 @@ pub mod matvec {
         match alpha {
             Some(alpha) => {
                 for i in 0..m {
-                    acc.write(i, 0, acc.read(i, 0).mul(&alpha));
+                    acc.write(i, 0, acc.read(i, 0).mul(alpha));
                 }
             }
             None => {
@@ -681,10 +679,10 @@ pub mod matvec {
                 Conj::Yes => b.conj(),
                 Conj::No => b,
             };
-            let b = b.mul(&beta);
+            let b = b.mul(beta);
             for i in 0..m {
-                let mul = a.read(i, j).mul(&b);
-                acc.write(i, 0, acc.read(i, 0).add(&mul));
+                let mul = a.read(i, j).mul(b);
+                acc.write(i, 0, acc.read(i, 0).add(mul));
             }
         }
     }
@@ -726,8 +724,8 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha.clone());
-                            let b = E::simd_splat(simd, self.b.clone());
+                            let alpha = E::simd_splat(simd, alpha);
+                            let b = E::simd_splat(simd, self.b);
 
                             for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                                 let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -746,7 +744,7 @@ pub mod outer_prod {
                         for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                             let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
                             let a = E::from_units(E::deref(a));
-                            acc = E::mul_adde(&b, &a, &E::mul(&alpha, &acc));
+                            acc = E::add(E::mul(a, b), E::mul(alpha, acc));
                             let acc = E::into_units(acc);
                             E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
@@ -756,7 +754,7 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b.clone());
+                        let b = E::simd_splat(simd, self.b);
 
                         for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                             let a = E::deref(a);
@@ -768,7 +766,7 @@ pub mod outer_prod {
                     let b = self.b;
                     for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                         let a = E::from_units(E::deref(a));
-                        let acc = E::mul(&b, &a);
+                        let acc = E::mul(b, a);
                         let acc = E::into_units(acc);
                         E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                     }
@@ -795,8 +793,8 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha.clone());
-                            let b = E::simd_splat(simd, self.b.clone());
+                            let alpha = E::simd_splat(simd, alpha);
+                            let b = E::simd_splat(simd, self.b);
 
                             for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                                 let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
@@ -815,7 +813,7 @@ pub mod outer_prod {
                         for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                             let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
                             let a = E::from_units(E::deref(a));
-                            acc = E::conj_mul_adde(&a, &b, &E::mul(&alpha, &acc));
+                            acc = E::add(a.conj().mul(b), alpha.mul(acc));
                             let acc = E::into_units(acc);
                             E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
@@ -825,7 +823,7 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b.clone());
+                        let b = E::simd_splat(simd, self.b);
 
                         for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
                             let a = E::deref(a);
@@ -837,7 +835,7 @@ pub mod outer_prod {
                     let b = self.b;
                     for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
                         let a = E::from_units(E::deref(a));
-                        let acc = E::mul(&a.conj(), &b);
+                        let acc = E::mul(a.conj(), b);
                         let acc = E::into_units(acc);
                         E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                     }
@@ -890,9 +888,7 @@ pub mod outer_prod {
                 Conj::Yes => b.conj(),
                 Conj::No => b,
             };
-            let b = b.mul(&beta);
-
-            let alpha = alpha.clone();
+            let b = b.mul(beta);
             match conj_a {
                 Conj::Yes => arch.dispatch(ConjImpl { acc, a, b, alpha }),
                 Conj::No => arch.dispatch(NoConjImpl { acc, a, b, alpha }),
@@ -955,18 +951,18 @@ pub mod outer_prod {
                             Conj::Yes => b.conj(),
                             Conj::No => b,
                         };
-                        let b = b.mul(&beta);
+                        let b = b.mul(beta);
                         match conj_a {
                             Conj::Yes => {
                                 for i in 0..m {
-                                    let ab = a.read(i, 0).conj().mul(&b);
-                                    acc.write(i, j, E::add(&acc.read(i, j).mul(&alpha), &ab));
+                                    let ab = a.read(i, 0).conj().mul(b);
+                                    acc.write(i, j, E::add(acc.read(i, j).mul(alpha), ab));
                                 }
                             }
                             Conj::No => {
                                 for i in 0..m {
-                                    let ab = a.read(i, 0).mul(&b);
-                                    acc.write(i, j, E::add(&acc.read(i, j).mul(&alpha), &ab));
+                                    let ab = a.read(i, 0).mul(b);
+                                    acc.write(i, j, E::add(acc.read(i, j).mul(alpha), ab));
                                 }
                             }
                         }
@@ -979,16 +975,16 @@ pub mod outer_prod {
                             Conj::Yes => b.conj(),
                             Conj::No => b,
                         };
-                        let b = b.mul(&beta);
+                        let b = b.mul(beta);
                         match conj_a {
                             Conj::Yes => {
                                 for i in 0..m {
-                                    acc.write(i, j, a.read(i, 0).conj().mul(&b));
+                                    acc.write(i, j, a.read(i, 0).conj().mul(b));
                                 }
                             }
                             Conj::No => {
                                 for i in 0..m {
-                                    acc.write(i, j, a.read(i, 0).mul(&b));
+                                    acc.write(i, j, a.read(i, 0).mul(b));
                                 }
                             }
                         }
@@ -1077,7 +1073,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                         let b = E::map(
                             b.ptr_at(depth, j),
                             #[inline(always)]
-                            |ptr| E::simd_splat_unit(simd, (*ptr).clone()),
+                            |ptr| E::simd_splat_unit(simd, *ptr),
                         );
                         let mut i = 0;
                         loop {
@@ -1377,25 +1373,20 @@ fn matmul_with_conj_fallback<E: ComplexField>(
         for depth in 0..k {
             let a = a.read(i, depth);
             let b = b.read(depth, j);
-            local_acc = E::mul_adde(
-                &match conj_a {
+            local_acc = local_acc.add(E::mul(
+                match conj_a {
                     Conj::Yes => a.conj(),
                     Conj::No => a,
                 },
-                &match conj_b {
+                match conj_b {
                     Conj::Yes => b.conj(),
                     Conj::No => b,
                 },
-                &local_acc,
-            )
+            ))
         }
-        match &alpha {
-            Some(alpha) => acc.write(
-                0,
-                0,
-                E::add(&acc.read(0, 0).mul(alpha), &local_acc.mul(&beta)),
-            ),
-            None => acc.write(0, 0, local_acc.mul(&beta)),
+        match alpha {
+            Some(alpha) => acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), local_acc.mul(beta))),
+            None => acc.write(0, 0, local_acc.mul(beta)),
         }
     };
 
@@ -1433,10 +1424,10 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         let ab = inner_prod::inner_prod_with_conj(lhs.transpose(), conj_lhs, rhs, conj_rhs);
         match alpha {
             Some(alpha) => {
-                acc.write(0, 0, E::add(&acc.read(0, 0).mul(&alpha), &ab.mul(&beta)));
+                acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), ab.mul(beta)));
             }
             None => {
-                acc.write(0, 0, ab.mul(&beta));
+                acc.write(0, 0, ab.mul(beta));
             }
         }
         return;
@@ -1477,7 +1468,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                 ($term: expr) => {
                     let term = $term;
                     match k {
-                        0 => match &alpha {
+                        0 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
@@ -1497,7 +1488,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 }
                             }
                         },
-                        1 => match &alpha {
+                        1 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
@@ -1506,8 +1497,8 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1517,22 +1508,22 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = term(i, j, 0);
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
                         },
-                        2 => match &alpha {
+                        2 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = term(i, j, 0).add(&term(i, j, 1));
+                                        let dot = term(i, j, 0).add(term(i, j, 1));
                                         acc.write_unchecked(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1541,24 +1532,24 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = term(i, j, 0).add(&term(i, j, 1));
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                        let dot = term(i, j, 0).add(term(i, j, 1));
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
                         },
-                        3 => match &alpha {
+                        3 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot =
-                                            term(i, j, 0).add(&term(i, j, 1)).add(&term(i, j, 2));
+                                            term(i, j, 0).add(term(i, j, 1)).add(term(i, j, 2));
                                         acc.write_unchecked(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1568,27 +1559,27 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot =
-                                            term(i, j, 0).add(&term(i, j, 1)).add(&term(i, j, 2));
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                            term(i, j, 0).add(term(i, j, 1)).add(term(i, j, 2));
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
                         },
-                        4 => match &alpha {
+                        4 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1)),
-                                            &E::add(&term(i, j, 2), &term(i, j, 3)),
+                                            E::add(term(i, j, 0), term(i, j, 1)),
+                                            E::add(term(i, j, 2), term(i, j, 3)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1598,30 +1589,29 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1)),
-                                            &E::add(&term(i, j, 2), &term(i, j, 3)),
+                                            E::add(term(i, j, 0), term(i, j, 1)),
+                                            E::add(term(i, j, 2), term(i, j, 3)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
                         },
-                        5 => match &alpha {
+                        5 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1))
-                                                .add(&term(i, j, 2)),
-                                            &E::add(&term(i, j, 3), &term(i, j, 4)),
+                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
+                                            E::add(term(i, j, 3), term(i, j, 4)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1631,32 +1621,29 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1))
-                                                .add(&term(i, j, 2)),
-                                            &E::add(&term(i, j, 3), &term(i, j, 4)),
+                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
+                                            E::add(term(i, j, 3), term(i, j, 4)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
                         },
-                        6 => match &alpha {
+                        6 => match alpha {
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1))
-                                                .add(&term(i, j, 2)),
-                                            &E::add(&term(i, j, 3), &term(i, j, 4))
-                                                .add(&term(i, j, 5)),
+                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
+                                            E::add(term(i, j, 3), term(i, j, 4)).add(term(i, j, 5)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
                                             E::add(
-                                                &acc.read_unchecked(i, j).mul(alpha),
-                                                &dot.mul(&beta),
+                                                acc.read_unchecked(i, j).mul(alpha),
+                                                dot.mul(beta),
                                             ),
                                         )
                                     }
@@ -1666,12 +1653,10 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = E::add(
-                                            &E::add(&term(i, j, 0), &term(i, j, 1))
-                                                .add(&term(i, j, 2)),
-                                            &E::add(&term(i, j, 3), &term(i, j, 4))
-                                                .add(&term(i, j, 5)),
+                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
+                                            E::add(term(i, j, 3), term(i, j, 4)).add(term(i, j, 5)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(&beta))
+                                        acc.write_unchecked(i, j, dot.mul(beta))
                                     }
                                 }
                             }
@@ -1687,7 +1672,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             (lhs.read_unchecked(i, depth)
-                                .mul(&rhs.read_unchecked(depth, j)))
+                                .mul(rhs.read_unchecked(depth, j)))
                             .conj()
                         }
                     };
@@ -1699,7 +1684,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
                                 .conj()
-                                .mul(&rhs.read_unchecked(depth, j))
+                                .mul(rhs.read_unchecked(depth, j))
                         }
                     };
                     small_gemm!(term);
@@ -1709,7 +1694,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
-                                .mul(&rhs.read_unchecked(depth, j).conj())
+                                .mul(rhs.read_unchecked(depth, j).conj())
                         }
                     };
                     small_gemm!(term);
@@ -1719,7 +1704,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
-                                .mul(&rhs.read_unchecked(depth, j))
+                                .mul(rhs.read_unchecked(depth, j))
                         }
                     };
                     small_gemm!(term);
@@ -1909,22 +1894,19 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         match alpha {
             Some(alpha) => match conj_a {
                 Conj::Yes => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                    acc.write(E::add(
-                        &acc.read().mul(&alpha),
-                        &tmp.read().conj().mul(&beta),
-                    ))
+                    acc.write(E::add(acc.read().mul(alpha), tmp.read().conj().mul(beta)))
                 }),
                 Conj::No => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                    acc.write(E::add(&acc.read().mul(&alpha), &tmp.read().mul(&beta)))
+                    acc.write(E::add(acc.read().mul(alpha), tmp.read().mul(beta)))
                 }),
             },
             None => match conj_a {
                 Conj::Yes => {
                     zipped!(acc, tmp)
-                        .for_each(|mut acc, tmp| acc.write(tmp.read().conj().mul(&beta)));
+                        .for_each(|mut acc, tmp| acc.write(tmp.read().conj().mul(beta)));
                 }
                 Conj::No => {
-                    zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().mul(&beta)));
+                    zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().mul(beta)));
                 }
             },
         }
@@ -2120,21 +2102,6 @@ macro_rules! stack_mat_16x16_begin {
     };
 }
 
-macro_rules! stack_mat_16x16_end {
-    ($name: ident, $nrows: expr, $ncols: expr, $ty: ty) => {
-        <$ty as $crate::Entity>::map(
-            $name.as_ptr(),
-            #[inline(always)]
-            |__data| unsafe {
-                ::core::ptr::drop_in_place(
-                    __data as *mut <$ty as $crate::Entity>::Unit
-                        as *mut [<$ty as $crate::Entity>::Unit; 16 * 16],
-                )
-            },
-        );
-    };
-}
-
 /// Triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices.
 pub mod triangular {
@@ -2200,7 +2167,7 @@ pub mod triangular {
             Some(alpha) => {
                 zipped!(dst, src).for_each_triangular_lower(
                     if skip_diag { Diag::Skip } else { Diag::Include },
-                    |mut dst, src| dst.write(alpha.mul(&dst.read().add(&src.read()))),
+                    |mut dst, src| dst.write(alpha.mul(dst.read().add(src.read()))),
                 );
             }
             None => {
@@ -2274,9 +2241,6 @@ pub mod triangular {
                         parallelism,
                     );
                     accum_lower(dst, temp_dst.rb(), skip_diag, alpha);
-
-                    stack_mat_16x16_end!(temp_dst, n, n, E);
-                    stack_mat_16x16_end!(temp_rhs, n, n, E);
                 }
             };
             op();
@@ -2298,8 +2262,8 @@ pub mod triangular {
                 dst_bot_left.rb_mut(),
                 lhs_bot_right,
                 rhs_bot_left,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2310,8 +2274,8 @@ pub mod triangular {
                 lhs_bot_right,
                 rhs_bot_right,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2324,7 +2288,7 @@ pub mod triangular {
                 rhs_top_left,
                 rhs_diag,
                 alpha,
-                beta.clone(),
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2335,7 +2299,7 @@ pub mod triangular {
                 lhs_top_right,
                 rhs_bot_left,
                 Some(E::one()),
-                beta.clone(),
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2398,8 +2362,6 @@ pub mod triangular {
                         conj_rhs,
                         parallelism,
                     );
-
-                    stack_mat_16x16_end!(temp_rhs, n, n, E);
                 }
             };
             op();
@@ -2420,8 +2382,8 @@ pub mod triangular {
                         lhs_left,
                         rhs_top_left,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2433,8 +2395,8 @@ pub mod triangular {
                         lhs_right,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2498,10 +2460,6 @@ pub mod triangular {
                         parallelism,
                     );
                     accum_lower(dst, temp_dst.rb(), skip_diag, alpha);
-
-                    stack_mat_16x16_end!(temp_dst, n, n, E);
-                    stack_mat_16x16_end!(temp_lhs, n, n, E);
-                    stack_mat_16x16_end!(temp_rhs, n, n, E);
                 }
             };
             op();
@@ -2524,8 +2482,8 @@ pub mod triangular {
                 lhs_diag,
                 rhs_top_left,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2535,8 +2493,8 @@ pub mod triangular {
                 lhs_bot_left,
                 rhs_top_left,
                 rhs_diag,
-                alpha.clone(),
-                beta.clone(),
+                alpha,
+                beta,
                 conj_lhs,
                 conj_rhs,
                 parallelism,
@@ -2547,7 +2505,7 @@ pub mod triangular {
                 lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
                 Some(E::one()),
-                beta.clone(),
+                beta,
                 conj_rhs,
                 conj_lhs,
                 parallelism,
@@ -2608,9 +2566,6 @@ pub mod triangular {
                         conj_rhs,
                         parallelism,
                     );
-
-                    stack_mat_16x16_end!(temp_lhs, n, n, E);
-                    stack_mat_16x16_end!(temp_rhs, n, n, E);
                 }
             };
             op();
@@ -2635,8 +2590,8 @@ pub mod triangular {
                         dst_top_left.rb_mut(),
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2648,7 +2603,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(E::one()),
-                        beta.clone(),
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2662,8 +2617,8 @@ pub mod triangular {
                                 lhs_top_right,
                                 rhs_bot_right,
                                 rhs_diag,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -2675,8 +2630,8 @@ pub mod triangular {
                                 rhs_bot_left.transpose(),
                                 lhs_bot_right.transpose(),
                                 lhs_diag,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_rhs,
                                 conj_lhs,
                                 parallelism,
@@ -2691,8 +2646,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2704,7 +2659,7 @@ pub mod triangular {
     }
 
     unsafe fn upper_x_lower_into_lower_impl_unchecked<E: ComplexField>(
-        mut dst: MatMut<'_, E>,
+        dst: MatMut<'_, E>,
         skip_diag: bool,
         lhs: MatRef<'_, E>,
         lhs_diag: DiagonalKind,
@@ -2746,11 +2701,7 @@ pub mod triangular {
                         parallelism,
                     );
 
-                    accum_lower(dst.rb_mut(), temp_dst.rb(), skip_diag, alpha);
-
-                    stack_mat_16x16_end!(temp_dst, n, n, E);
-                    stack_mat_16x16_end!(temp_lhs, n, n, E);
-                    stack_mat_16x16_end!(temp_rhs, n, n, E);
+                    accum_lower(dst, temp_dst.rb(), skip_diag, alpha);
                 }
             };
             op();
@@ -2774,8 +2725,8 @@ pub mod triangular {
                         skip_diag,
                         lhs_top_right,
                         rhs_bot_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2788,7 +2739,7 @@ pub mod triangular {
                         rhs_top_left,
                         rhs_diag,
                         Some(E::one()),
-                        beta.clone(),
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2800,8 +2751,8 @@ pub mod triangular {
                         rhs_bot_left.transpose(),
                         lhs_bot_right.transpose(),
                         lhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_rhs,
                         conj_lhs,
                         parallelism,
@@ -2813,8 +2764,8 @@ pub mod triangular {
                         lhs_diag,
                         rhs_bot_right,
                         rhs_diag,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2867,8 +2818,6 @@ pub mod triangular {
                         parallelism,
                     );
                     accum_lower(dst, temp_dst.rb(), skip_diag, alpha);
-
-                    stack_mat_16x16_end!(temp_dst, n, n, E);
                 }
             };
             op();
@@ -2884,8 +2833,8 @@ pub mod triangular {
                         dst_bot_left,
                         lhs_bot,
                         rhs_left,
-                        alpha.clone(),
-                        beta.clone(),
+                        alpha,
+                        beta,
                         conj_lhs,
                         conj_rhs,
                         parallelism,
@@ -2899,8 +2848,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_top,
                                 rhs_left,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -2912,8 +2861,8 @@ pub mod triangular {
                                 skip_diag,
                                 lhs_bot,
                                 rhs_right,
-                                alpha.clone(),
-                                beta.clone(),
+                                alpha,
+                                beta,
                                 conj_lhs,
                                 conj_rhs,
                                 parallelism,
@@ -3288,7 +3237,7 @@ pub mod triangular {
         let clear_upper = |acc: MatMut<'_, E>, skip_diag: bool| match &alpha {
             Some(alpha) => zipped!(acc).for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |mut acc| acc.write(alpha.mul(&acc.read())),
+                |mut acc| acc.write(alpha.mul(acc.read())),
             ),
 
             None => zipped!(acc).for_each_triangular_upper(
@@ -3450,15 +3399,15 @@ pub mod triangular {
                             zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
                                 .for_each(|mut acc, lhs, rhs| {
                                     acc.write(
-                                        (alpha.mul(&acc.read()))
-                                            .add(&beta.mul(&lhs.read().mul(&rhs.read()))),
+                                        (alpha.mul(acc.read()))
+                                            .add(beta.mul(lhs.read().mul(rhs.read()))),
                                     )
                                 });
                         }
                         None => {
                             zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
                                 .for_each(|mut acc, lhs, rhs| {
-                                    acc.write(beta.mul(&lhs.read().mul(&rhs.read())))
+                                    acc.write(beta.mul(lhs.read().mul(rhs.read())))
                                 });
                         }
                     }
@@ -3502,11 +3451,10 @@ mod tests {
             let _ = &mut m;
             dbg!(&m);
         }
-        stack_mat_16x16_end!(m, 3, 3, f64);
     }
 
     #[test]
-    #[ignore = "this takes too long to launch in CI"]
+    #[ignore = "takes too long in CI"]
     fn test_matmul() {
         let random = |_, _| c32 {
             re: rand::random(),

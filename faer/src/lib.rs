@@ -142,7 +142,7 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-use dyn_stack::{DynStack, GlobalMemBuffer};
+use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_cholesky::llt::CholeskyError;
 use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity, MatMut, MatRef};
 use prelude::*;
@@ -469,7 +469,7 @@ pub mod solvers {
             faer_cholesky::llt::compute::cholesky_in_place(
                 factors.as_mut(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::compute::cholesky_in_place_req::<E>(
                         dim,
                         parallelism,
@@ -504,7 +504,7 @@ pub mod solvers {
                 inv.as_mut(),
                 self.factors.as_ref(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::inverse::invert_lower_req::<E>(self.dim(), parallelism)
                         .unwrap(),
                 )),
@@ -527,7 +527,7 @@ pub mod solvers {
                 rec.as_mut(),
                 self.factors.as_ref(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::reconstruct::reconstruct_lower_req::<E>(self.dim())
                         .unwrap(),
                 )),
@@ -552,7 +552,7 @@ pub mod solvers {
                 conj,
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::solve::solve_in_place_req::<E>(
                         self.dim(),
                         rhs_ncols,
@@ -597,7 +597,7 @@ pub mod solvers {
                 &mut row_perm,
                 &mut row_perm_inv,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::partial_pivoting::compute::lu_in_place_req::<E>(
                         dim,
                         dim,
@@ -657,7 +657,7 @@ pub mod solvers {
                 self.factors.as_ref(),
                 self.row_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::partial_pivoting::inverse::invert_req::<E>(
                         self.dim(),
                         self.dim(),
@@ -679,7 +679,7 @@ pub mod solvers {
                 self.factors.as_ref(),
                 self.row_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::partial_pivoting::reconstruct::reconstruct_req::<E>(
                         self.dim(),
                         self.dim(),
@@ -703,7 +703,7 @@ pub mod solvers {
                 self.row_permutation(),
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::partial_pivoting::solve::solve_in_place_req::<E>(
                         self.dim(),
                         self.dim(),
@@ -726,7 +726,7 @@ pub mod solvers {
                 self.row_permutation(),
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::partial_pivoting::solve::solve_transpose_in_place_req::<E>(
                         self.dim(),
                         self.dim(),
@@ -770,7 +770,7 @@ pub mod solvers {
                 &mut col_perm,
                 &mut col_perm_inv,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::full_pivoting::compute::lu_in_place_req::<E>(
                         m,
                         n,
@@ -847,7 +847,7 @@ pub mod solvers {
                 self.row_permutation(),
                 self.col_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::full_pivoting::inverse::invert_req::<E>(dim, dim, parallelism)
                         .unwrap(),
                 )),
@@ -866,7 +866,7 @@ pub mod solvers {
                 self.row_permutation(),
                 self.col_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::full_pivoting::reconstruct::reconstruct_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -893,7 +893,7 @@ pub mod solvers {
                 self.col_permutation(),
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::full_pivoting::solve::solve_in_place_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -919,7 +919,7 @@ pub mod solvers {
                 self.col_permutation(),
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_lu::full_pivoting::solve::solve_transpose_in_place_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -958,7 +958,7 @@ pub mod solvers {
                 factors.as_mut(),
                 householder.as_mut(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::no_pivoting::compute::qr_in_place_req::<E>(
                         nrows,
                         ncols,
@@ -1007,7 +1007,7 @@ pub mod solvers {
                 Conj::No,
                 q.as_mut(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_req::<E>(
                         m,
                         householder.nrows(),
@@ -1030,7 +1030,7 @@ pub mod solvers {
                 self.factors.as_ref(),
                 self.householder.as_ref(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::no_pivoting::reconstruct::reconstruct_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -1055,7 +1055,7 @@ pub mod solvers {
                 self.factors.as_ref(),
                 self.householder.as_ref(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::no_pivoting::inverse::invert_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -1088,7 +1088,7 @@ pub mod solvers {
                 conj,
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::no_pivoting::solve::solve_transpose_in_place_req::<E>(
                         self.nrows(),
                         self.blocksize(),
@@ -1120,7 +1120,7 @@ pub mod solvers {
                 conj,
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::no_pivoting::solve::solve_in_place_req::<E>(
                         self.nrows(),
                         self.blocksize(),
@@ -1156,7 +1156,7 @@ pub mod solvers {
                 &mut col_perm,
                 &mut col_perm_inv,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::col_pivoting::compute::qr_in_place_req::<E>(
                         nrows,
                         ncols,
@@ -1209,7 +1209,7 @@ pub mod solvers {
                 self.householder.as_ref(),
                 self.col_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::col_pivoting::reconstruct::reconstruct_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -1235,7 +1235,7 @@ pub mod solvers {
                 self.householder.as_ref(),
                 self.col_permutation(),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::col_pivoting::inverse::invert_req::<E>(
                         self.nrows(),
                         self.ncols(),
@@ -1269,7 +1269,7 @@ pub mod solvers {
                 conj,
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::col_pivoting::solve::solve_transpose_in_place_req::<E>(
                         self.nrows(),
                         self.blocksize(),
@@ -1302,7 +1302,7 @@ pub mod solvers {
                 conj,
                 rhs,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_qr::col_pivoting::solve::solve_in_place_req::<E>(
                         self.nrows(),
                         self.blocksize(),
@@ -1340,7 +1340,7 @@ pub mod solvers {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_svd::compute_svd_req::<E>(
                         m,
                         n,
@@ -1381,7 +1381,7 @@ pub mod solvers {
         let mut rhs = rhs;
         for j in 0..rhs.ncols() {
             zipped!(rhs.rb_mut().col(j), s)
-                .for_each(|mut rhs, s| rhs.write(rhs.read().scale_real(&s.read().real().inv())));
+                .for_each(|mut rhs, s| rhs.write(rhs.read().scale_real(s.read().real().inv())));
         }
     }
     impl<E: ComplexField> SolverCore<E> for Svd<E> {
@@ -1400,7 +1400,7 @@ pub mod solvers {
 
             let thin_u = self.u.as_ref().submatrix(0, 0, m, size);
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).mul(&s.read(j, 0)));
+            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).mul(s.read(j, 0)));
 
             us * self.v.adjoint()
         }
@@ -1413,7 +1413,7 @@ pub mod solvers {
             let v = self.v.as_ref();
             let s = self.s.as_ref();
 
-            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).mul(&s.read(j, 0).inv()));
+            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).mul(s.read(j, 0).inv()));
 
             vs_inv * u.adjoint()
         }
@@ -1534,7 +1534,7 @@ pub mod solvers {
                 s.as_mut(),
                 Some(u.as_mut()),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_evd::compute_hermitian_evd_req::<E>(
                         dim,
                         faer_evd::ComputeVectors::Yes,
@@ -1579,7 +1579,7 @@ pub mod solvers {
 
             let u = self.u.as_ref();
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).mul(&s.read(j, 0)));
+            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).mul(s.read(j, 0)));
 
             us * u.adjoint()
         }
@@ -1590,7 +1590,7 @@ pub mod solvers {
             let u = self.u.as_ref();
             let s = self.s.as_ref();
 
-            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).mul(&s.read(j, 0).inv()));
+            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).mul(s.read(j, 0).inv()));
 
             us_inv * u.adjoint()
         }
@@ -1663,7 +1663,7 @@ pub mod solvers {
                 s_im.as_mut(),
                 None,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_evd::compute_evd_req::<E::Real>(
                         dim,
                         faer_evd::ComputeVectors::Yes,
@@ -1677,7 +1677,7 @@ pub mod solvers {
 
             let imag = E::from_f64(-1.0).sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(&imag.mul(&E::from_real(im)))
+                E::from_real(re).add(imag.mul(E::from_real(im)))
             };
 
             (0..dim)
@@ -1707,7 +1707,7 @@ pub mod solvers {
                 s.as_mut(),
                 None,
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_evd::compute_evd_req::<E>(
                         dim,
                         faer_evd::ComputeVectors::Yes,
@@ -1751,7 +1751,7 @@ pub mod solvers {
                 s_im.as_mut(),
                 Some(u_real.as_mut()),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_evd::compute_evd_req::<E::Real>(
                         dim,
                         faer_evd::ComputeVectors::Yes,
@@ -1765,7 +1765,7 @@ pub mod solvers {
 
             let imag = E::from_f64(-1.0).sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(&imag.mul(&E::from_real(im)))
+                E::from_real(re).add(imag.mul(E::from_real(im)))
             };
 
             let s = Mat::<E>::from_fn(dim, 1, |i, j| cplx(s_re.read(i, j), s_im.read(i, j)));
@@ -1790,7 +1790,7 @@ pub mod solvers {
                     .for_each(|mut dst, mut dst_conj, re, im| {
                         let re = re.read();
                         let im = im.read();
-                        dst_conj.write(cplx(re.clone(), im.neg()));
+                        dst_conj.write(cplx(re, im.neg()));
                         dst.write(cplx(re, im));
                     });
 
@@ -1824,7 +1824,7 @@ pub mod solvers {
                 s.as_mut(),
                 Some(u.as_mut()),
                 parallelism,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     faer_evd::compute_evd_req::<E>(
                         dim,
                         faer_evd::ComputeVectors::Yes,
@@ -2063,7 +2063,7 @@ where
         let lu = self.partial_piv_lu();
         let mut det = E::Canonical::one();
         for i in 0..self.nrows() {
-            det = det.mul(&lu.factors.read(i, i));
+            det = det.mul(lu.factors.read(i, i));
         }
         if lu.transposition_count() % 2 == 0 {
             det
@@ -2090,7 +2090,7 @@ where
             s.as_mut(),
             None,
             parallelism,
-            DynStack::new(&mut GlobalMemBuffer::new(
+            PodStack::new(&mut GlobalPodBuffer::new(
                 faer_evd::compute_hermitian_evd_req::<E::Canonical>(
                     dim,
                     faer_evd::ComputeVectors::No,
@@ -2118,7 +2118,7 @@ where
             None,
             None,
             parallelism,
-            DynStack::new(&mut GlobalMemBuffer::new(
+            PodStack::new(&mut GlobalPodBuffer::new(
                 faer_svd::compute_svd_req::<E::Canonical>(
                     self.nrows(),
                     self.ncols(),
@@ -2373,7 +2373,7 @@ pub trait IntoNalgebra {
 #[cfg_attr(docsrs, doc(cfg(feature = "nalgebra")))]
 const _: () = {
     use faer_core::SimpleEntity;
-    use nalgebra::{Dim, Dyn, MatrixView, MatrixViewMut, ViewStorage, ViewStorageMut};
+    use nalgebra::{Dim, MatrixView, MatrixViewMut, Pod, ViewStorage, ViewStorageMut};
 
     impl<'a, T: SimpleEntity, R: Dim, C: Dim, RStride: Dim, CStride: Dim> IntoFaer
         for MatrixView<'a, T, R, C, RStride, CStride>
@@ -2422,7 +2422,7 @@ const _: () = {
     }
 
     impl<'a, T: SimpleEntity> IntoNalgebra for MatRef<'a, T> {
-        type Nalgebra = MatrixView<'a, T, Dyn, Dyn, Dyn, Dyn>;
+        type Nalgebra = MatrixView<'a, T, Pod, Pod, Pod, Pod>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2432,19 +2432,19 @@ const _: () = {
             let col_stride = self.col_stride();
             let ptr = T::from_group(self.as_ptr());
             unsafe {
-                MatrixView::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorage::<
+                MatrixView::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorage::<
                     '_,
                     T,
-                    Dyn,
-                    Dyn,
-                    Dyn,
-                    Dyn,
+                    Pod,
+                    Pod,
+                    Pod,
+                    Pod,
                 >::from_raw_parts(
                     ptr,
-                    (Dyn(nrows), Dyn(ncols)),
+                    (Pod(nrows), Pod(ncols)),
                     (
-                        Dyn(row_stride.try_into().unwrap()),
-                        Dyn(col_stride.try_into().unwrap()),
+                        Pod(row_stride.try_into().unwrap()),
+                        Pod(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -2452,7 +2452,7 @@ const _: () = {
     }
 
     impl<'a, T: SimpleEntity> IntoNalgebra for MatMut<'a, T> {
-        type Nalgebra = MatrixViewMut<'a, T, Dyn, Dyn, Dyn, Dyn>;
+        type Nalgebra = MatrixViewMut<'a, T, Pod, Pod, Pod, Pod>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2462,19 +2462,19 @@ const _: () = {
             let col_stride = self.col_stride();
             let ptr = T::from_group(self.as_ptr());
             unsafe {
-                MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
+                MatrixViewMut::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorageMut::<
                     '_,
                     T,
-                    Dyn,
-                    Dyn,
-                    Dyn,
-                    Dyn,
+                    Pod,
+                    Pod,
+                    Pod,
+                    Pod,
                 >::from_raw_parts(
                     ptr,
-                    (Dyn(nrows), Dyn(ncols)),
+                    (Pod(nrows), Pod(ncols)),
                     (
-                        Dyn(row_stride.try_into().unwrap()),
-                        Dyn(col_stride.try_into().unwrap()),
+                        Pod(row_stride.try_into().unwrap()),
+                        Pod(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -2584,11 +2584,11 @@ const _: () = {
 #[cfg(all(feature = "nalgebra", feature = "ndarray"))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "nalgebra", feature = "ndarray"))))]
 const _: () = {
-    use nalgebra::{Dim, Dyn, MatrixView, MatrixViewMut, ViewStorage, ViewStorageMut};
+    use nalgebra::{Dim, MatrixView, MatrixViewMut, Pod, ViewStorage, ViewStorageMut};
     use ndarray::{ArrayView, ArrayViewMut, IntoDimension, Ix2, ShapeBuilder};
 
     impl<'a, T> IntoNalgebra for ArrayView<'a, T, Ix2> {
-        type Nalgebra = MatrixView<'a, T, Dyn, Dyn, Dyn, Dyn>;
+        type Nalgebra = MatrixView<'a, T, Pod, Pod, Pod, Pod>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2598,26 +2598,26 @@ const _: () = {
             let ptr = self.as_ptr();
 
             unsafe {
-                MatrixView::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorage::<
+                MatrixView::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorage::<
                     '_,
                     T,
-                    Dyn,
-                    Dyn,
-                    Dyn,
-                    Dyn,
+                    Pod,
+                    Pod,
+                    Pod,
+                    Pod,
                 >::from_raw_parts(
                     ptr,
-                    (Dyn(nrows), Dyn(ncols)),
+                    (Pod(nrows), Pod(ncols)),
                     (
-                        Dyn(row_stride.try_into().unwrap()),
-                        Dyn(col_stride.try_into().unwrap()),
+                        Pod(row_stride.try_into().unwrap()),
+                        Pod(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
         }
     }
     impl<'a, T> IntoNalgebra for ArrayViewMut<'a, T, Ix2> {
-        type Nalgebra = MatrixViewMut<'a, T, Dyn, Dyn, Dyn, Dyn>;
+        type Nalgebra = MatrixViewMut<'a, T, Pod, Pod, Pod, Pod>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2627,19 +2627,19 @@ const _: () = {
             let ptr = { self }.as_mut_ptr();
 
             unsafe {
-                MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
+                MatrixViewMut::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorageMut::<
                     '_,
                     T,
-                    Dyn,
-                    Dyn,
-                    Dyn,
-                    Dyn,
+                    Pod,
+                    Pod,
+                    Pod,
+                    Pod,
                 >::from_raw_parts(
                     ptr,
-                    (Dyn(nrows), Dyn(ncols)),
+                    (Pod(nrows), Pod(ncols)),
                     (
-                        Dyn(row_stride.try_into().unwrap()),
-                        Dyn(col_stride.try_into().unwrap()),
+                        Pod(row_stride.try_into().unwrap()),
+                        Pod(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -2935,7 +2935,7 @@ mod tests {
 
         for j in 0..n {
             for i in 0..m {
-                assert!((a.read(i, j).sub(&b.read(i, j))).abs() < eps);
+                assert!((a.read(i, j).sub(b.read(i, j))).abs() < eps);
             }
         }
     }

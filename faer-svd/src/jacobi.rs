@@ -18,8 +18,8 @@ fn compute_2x2<E: RealField>(
     m10: E,
     m11: E,
 ) -> (JacobiRotation<E>, JacobiRotation<E>) {
-    let t = m00.add(&m11);
-    let d = m10.sub(&m01);
+    let t = m00.add(m11);
+    let d = m10.sub(m01);
 
     let rot1 = if d == E::zero() {
         JacobiRotation {
@@ -27,11 +27,11 @@ fn compute_2x2<E: RealField>(
             s: E::zero(),
         }
     } else {
-        let u = t.mul(&d.inv());
-        let tmp = (E::one().add(&u.mul(&u))).sqrt().inv();
+        let u = t.mul(d.inv());
+        let tmp = (E::one().add(u.mul(u))).sqrt().inv();
         let tmp = if tmp == E::zero() { u.abs().inv() } else { tmp };
         JacobiRotation {
-            c: u.mul(&tmp),
+            c: u.mul(tmp),
             s: tmp,
         }
     };
@@ -118,16 +118,16 @@ pub fn jacobi_svd<E: RealField>(
         }
     }
 
-    let precision = epsilon.scale_power_of_two(&E::one().add(&E::one()));
+    let precision = epsilon.scale_power_of_two(E::one().add(E::one()));
     loop {
         let mut failed = false;
         for p in 1..n {
             for q in 0..p {
-                let threshold = precision.mul(&max_diag);
+                let threshold = precision.mul(max_diag);
                 let threshold = if threshold > consider_zero_threshold {
                     threshold
                 } else {
-                    consider_zero_threshold.clone()
+                    consider_zero_threshold
                 };
 
                 if (matrix.read(p, q).abs() > threshold) || (matrix.read(q, p).abs() > threshold) {

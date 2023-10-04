@@ -1,6 +1,6 @@
 use assert2::assert;
 use core::slice;
-use dyn_stack::{DynStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::{
         apply_block_householder_on_the_right_in_place_req,
@@ -154,10 +154,10 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 let u_rhs = E::simd_splat(simd, u_.read(j, 0).conj().neg());
                 let x_rhs = E::simd_splat(simd, x_.read(j, 0));
 
-                let mut sum0 = E::simd_splat(simd, zero.clone());
-                let mut sum1 = E::simd_splat(simd, zero.clone());
-                let mut sum2 = E::simd_splat(simd, zero.clone());
-                let mut sum3 = E::simd_splat(simd, zero.clone());
+                let mut sum0 = E::simd_splat(simd, zero);
+                let mut sum1 = E::simd_splat(simd, zero);
+                let mut sum2 = E::simd_splat(simd, zero);
+                let mut sum3 = E::simd_splat(simd, zero);
 
                 let mut a_prefix_ = E::partial_load_last(simd, E::rb(E::as_ref(&a_prefix)));
                 let u_prefix = E::partial_load_last(simd, E::copy(&u_prefix));
@@ -296,7 +296,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
     a: MatMut<'_, E>,
     householder: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: DynStack<'_>,
+    stack: PodStack<'_>,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);
@@ -353,19 +353,19 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                     0,
                     0,
                     a11.read(0, 0)
-                        .sub(&(nu.mul(&psi.conj())).add(&zeta.mul(&nu.conj()))),
+                        .sub((nu.mul(psi.conj())).add(zeta.mul(nu.conj()))),
                 );
                 zipped!(a12.rb_mut(), y21.rb().transpose(), u21.rb().transpose()).for_each(
                     |mut a, y, u| {
                         let y = y.read();
                         let u = u.read();
-                        a.write(a.read().sub(&(nu.mul(&y.conj())).add(&zeta.mul(&u.conj()))));
+                        a.write(a.read().sub((nu.mul(y.conj())).add(zeta.mul(u.conj()))));
                     },
                 );
                 zipped!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|mut a, u, z| {
                     let z = z.read();
                     let u = u.read();
-                    a.write(a.read().sub(&(u.mul(&psi.conj())).add(&z.mul(&nu.conj()))));
+                    a.write(a.read().sub((u.mul(psi.conj())).add(z.mul(nu.conj()))));
                 });
             }
 
@@ -452,16 +452,16 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             a21.write(0, 0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
-                .scale_power_of_two(&E::Real::from_f64(0.5));
+                .scale_power_of_two(E::Real::from_f64(0.5));
 
             zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
                 let u = u.read();
                 let beta = beta.conj();
-                y.write(y.read().sub(&beta.mul(&u.mul(&tau_inv))).mul(&tau_inv));
+                y.write(y.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
             });
             zipped!(z21.rb_mut(), u21.rb()).for_each(|mut z, u| {
                 let u = u.read();
-                z.write(z.read().sub(&beta.mul(&u.mul(&tau_inv))).mul(&tau_inv));
+                z.write(z.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
             });
         }
     }
@@ -502,7 +502,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             let tau_inv = householder.read(k_local, k_local).inv();
 
             let nrows = k_local + 1;
-            let (mut dot, _) = unsafe { temp_mat_uninit::<E>(nrows, 1, stack.rb_mut()) };
+            let (mut dot, _) = temp_mat_uninit::<E>(nrows, 1, stack.rb_mut());
             let mut dot = dot.as_mut();
             matmul(
                 dot.rb_mut(),
@@ -560,7 +560,7 @@ mod tests {
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
-            ::dyn_stack::DynStack::new(&mut ::dyn_stack::GlobalMemBuffer::new($req.unwrap()))
+            ::dyn_stack::PodStack::new(&mut ::dyn_stack::GlobalPodBuffer::new($req.unwrap()))
         };
     }
 

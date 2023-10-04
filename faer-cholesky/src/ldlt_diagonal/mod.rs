@@ -14,7 +14,7 @@ pub mod update;
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{DynStack, GlobalMemBuffer};
+    use dyn_stack::{GlobalPodBuffer, PodStack};
     use faer_core::{c64, mat, Conj};
 
     use super::*;
@@ -33,7 +33,7 @@ mod tests {
             let dj = cholesky_factors.read(j, j);
             lxd.write(j, j, dj);
             for i in j + 1..n {
-                lxd.write(i, j, cholesky_factors.read(i, j).mul(&dj));
+                lxd.write(i, j, cholesky_factors.read(i, j).mul(dj));
             }
         }
 
@@ -86,7 +86,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -115,7 +115,7 @@ mod tests {
         raw_cholesky_in_place(
             a.as_mut(),
             Parallelism::Rayon(8),
-            DynStack::new(&mut GlobalMemBuffer::new(
+            PodStack::new(&mut GlobalPodBuffer::new(
                 raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                     .unwrap(),
             )),
@@ -126,7 +126,7 @@ mod tests {
             Conj::No,
             rhs.as_mut(),
             Parallelism::Rayon(8),
-            DynStack::new(&mut []),
+            PodStack::new(&mut []),
         );
 
         let mut result = Mat::zeros(n, k);
@@ -178,7 +178,7 @@ mod tests {
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).mul(&w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j, 0).mul(w.read(i, j)));
                 }
             }
 
@@ -197,7 +197,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -229,7 +229,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -240,7 +240,7 @@ mod tests {
                 a.as_mut(),
                 &mut [1, 3],
                 Parallelism::None,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
@@ -259,7 +259,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -270,7 +270,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2],
                 Parallelism::None,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
@@ -289,7 +289,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -300,7 +300,7 @@ mod tests {
                 a.as_mut(),
                 &mut [0, 2, 3],
                 Parallelism::None,
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     delete_rows_and_cols_clobber_req::<E>(n, r, Parallelism::None).unwrap(),
                 )),
             );
@@ -338,7 +338,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), w(0, 0), w(0, 1), a(0, 2), a(0, 3)],
@@ -357,7 +357,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -370,7 +370,7 @@ mod tests {
                 position,
                 w.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     insert_rows_and_cols_clobber_req::<f64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
@@ -408,7 +408,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [w(0, 0), w(0, 1), wc(2, 0), wc(3, 0), wc(4, 0), wc(5, 0)],
@@ -427,7 +427,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -440,7 +440,7 @@ mod tests {
                 position,
                 w.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
@@ -478,7 +478,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), a(0, 2), a(0, 3), w(0, 0), w(0, 1)],
@@ -497,7 +497,7 @@ mod tests {
             raw_cholesky_in_place(
                 a.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
                         .unwrap(),
                 )),
@@ -510,7 +510,7 @@ mod tests {
                 position,
                 w.as_mut(),
                 Parallelism::Rayon(8),
-                DynStack::new(&mut GlobalMemBuffer::new(
+                PodStack::new(&mut GlobalPodBuffer::new(
                     insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
