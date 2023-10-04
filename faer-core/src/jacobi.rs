@@ -28,23 +28,23 @@ impl<E: RealField> JacobiRotation<E> {
                 },
             }
         } else if p.abs() > q.abs() {
-            let t = q.div(&p);
-            let mut u = E::one().add(&t.abs2()).sqrt();
+            let t = q.div(p);
+            let mut u = E::one().add(t.abs2()).sqrt();
             if p < E::zero() {
                 u = u.neg();
             }
             let c = u.inv();
-            let s = t.neg().mul(&c);
+            let s = t.neg().mul(c);
 
             Self { c, s }
         } else {
-            let t = p.div(&q);
-            let mut u = E::one().add(&t.abs2()).sqrt();
+            let t = p.div(q);
+            let mut u = E::one().add(t.abs2()).sqrt();
             if q < E::zero() {
                 u = u.neg();
             }
             let s = u.inv().neg();
-            let c = t.neg().mul(&s);
+            let c = t.neg().mul(s);
 
             Self { c, s }
         }
@@ -53,19 +53,19 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline]
     pub fn from_triplet(x: E, y: E, z: E) -> Self {
         let abs_y = y.abs();
-        let two_abs_y = abs_y.add(&abs_y);
+        let two_abs_y = abs_y.add(abs_y);
         if two_abs_y == E::zero() {
             Self {
                 c: E::one(),
                 s: E::zero(),
             }
         } else {
-            let tau = (x.sub(&z)).mul(&two_abs_y.inv());
-            let w = ((tau.mul(&tau)).add(&E::one())).sqrt();
+            let tau = (x.sub(z)).mul(two_abs_y.inv());
+            let w = ((tau.mul(tau)).add(E::one())).sqrt();
             let t = if tau > E::zero() {
-                (tau.add(&w)).inv()
+                (tau.add(w)).inv()
             } else {
-                (tau.sub(&w)).inv()
+                (tau.sub(w)).inv()
             };
 
             let neg_sign_y = if y > E::zero() {
@@ -73,23 +73,23 @@ impl<E: RealField> JacobiRotation<E> {
             } else {
                 E::one()
             };
-            let n = (t.mul(&t).add(&E::one())).sqrt().inv();
+            let n = (t.mul(t).add(E::one())).sqrt().inv();
 
             Self {
                 c: n.clone(),
-                s: neg_sign_y.mul(&t).mul(&n),
+                s: neg_sign_y.mul(t).mul(n),
             }
         }
     }
 
     #[inline]
     pub fn apply_on_the_left_2x2(&self, m00: E, m01: E, m10: E, m11: E) -> (E, E, E, E) {
-        let Self { c, s } = self;
+        let Self { c, s } = *self;
         (
-            m00.mul(c).add(&m10.mul(s)),
-            m01.mul(c).add(&m11.mul(s)),
-            s.neg().mul(&m00).add(&c.mul(&m10)),
-            s.neg().mul(&m01).add(&c.mul(&m11)),
+            m00.mul(c).add(m10.mul(s)),
+            m01.mul(c).add(m11.mul(s)),
+            s.neg().mul(m00).add(c.mul(m10)),
+            s.neg().mul(m01).add(c.mul(m11)),
         )
     }
 
@@ -194,7 +194,7 @@ impl<E: RealField> JacobiRotation<E> {
             }
         }
 
-        let Self { c, s } = self;
+        let Self { c, s } = *self;
         let c = c.clone();
         let s = s.clone();
         if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
@@ -203,8 +203,8 @@ impl<E: RealField> JacobiRotation<E> {
             zipped!(x, y).for_each(move |mut x, mut y| {
                 let x_ = x.read();
                 let y_ = y.read();
-                x.write(c.mul(&x_).add(&s.mul(&y_)));
-                y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
+                x.write(c.mul(x_).add(s.mul(y_)));
+                y.write(s.neg().mul(x_).add(c.mul(y_)));
             });
         }
     }
@@ -309,7 +309,7 @@ impl<E: RealField> JacobiRotation<E> {
             }
         }
 
-        let Self { c, s } = self;
+        let Self { c, s } = *self;
         let c = c.clone();
         let s = s.clone();
         if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
@@ -318,8 +318,8 @@ impl<E: RealField> JacobiRotation<E> {
             zipped!(x, y).for_each(move |mut x, mut y| {
                 let x_ = x.read();
                 let y_ = y.read();
-                x.write(c.mul(&x_).add(&s.mul(&y_)));
-                y.write(s.neg().mul(&x_).add(&c.mul(&y_)));
+                x.write(c.mul(x_).add(s.mul(y_)));
+                y.write(s.neg().mul(x_).add(c.mul(y_)));
             });
         }
     }
@@ -356,8 +356,8 @@ impl<E: RealField> core::ops::Mul for JacobiRotation<E> {
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
         Self {
-            c: self.c.mul(&rhs.c).sub(&self.s.mul(&rhs.s)),
-            s: self.c.mul(&rhs.s).add(&self.s.mul(&rhs.c)),
+            c: self.c.mul(rhs.c).sub(self.s.mul(rhs.s)),
+            s: self.c.mul(rhs.s).add(self.s.mul(rhs.c)),
         }
     }
 }

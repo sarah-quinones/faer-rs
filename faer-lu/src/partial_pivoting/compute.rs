@@ -181,7 +181,7 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
         let inv = matrix.read(j, j).inv();
         for i in j + 1..m {
             unsafe {
-                matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).mul(&inv));
+                matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).mul(inv));
             }
         }
         let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
@@ -252,7 +252,7 @@ fn update<E: ComplexField>(arch: pulp::Arch, mut matrix: MatMut<E>, j: usize) {
         let m = matrix.nrows();
         let inv = matrix.read(j, j).inv();
         for i in j + 1..m {
-            matrix.write(i, j, matrix.read(i, j).mul(&inv));
+            matrix.write(i, j, matrix.read(i, j).mul(inv));
         }
         let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
         let lhs = bottom_left.rb().col(j);
@@ -262,7 +262,7 @@ fn update<E: ComplexField>(arch: pulp::Arch, mut matrix: MatMut<E>, j: usize) {
         for k in 0..mat.ncols() {
             let col = mat.rb_mut().col(k);
             let rhs = rhs.read(0, k);
-            zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(&lhs.read().mul(&rhs))));
+            zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(lhs.read().mul(rhs))));
         }
     }
 }

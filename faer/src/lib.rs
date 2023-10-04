@@ -1381,7 +1381,7 @@ pub mod solvers {
         let mut rhs = rhs;
         for j in 0..rhs.ncols() {
             zipped!(rhs.rb_mut().col(j), s)
-                .for_each(|mut rhs, s| rhs.write(rhs.read().scale_real(&s.read().real().inv())));
+                .for_each(|mut rhs, s| rhs.write(rhs.read().scale_real(s.read().real().inv())));
         }
     }
     impl<E: ComplexField> SolverCore<E> for Svd<E> {
@@ -1400,7 +1400,7 @@ pub mod solvers {
 
             let thin_u = self.u.as_ref().submatrix(0, 0, m, size);
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).mul(&s.read(j, 0)));
+            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).mul(s.read(j, 0)));
 
             us * self.v.adjoint()
         }
@@ -1413,7 +1413,7 @@ pub mod solvers {
             let v = self.v.as_ref();
             let s = self.s.as_ref();
 
-            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).mul(&s.read(j, 0).inv()));
+            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).mul(s.read(j, 0).inv()));
 
             vs_inv * u.adjoint()
         }
@@ -1579,7 +1579,7 @@ pub mod solvers {
 
             let u = self.u.as_ref();
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).mul(&s.read(j, 0)));
+            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).mul(s.read(j, 0)));
 
             us * u.adjoint()
         }
@@ -1590,7 +1590,7 @@ pub mod solvers {
             let u = self.u.as_ref();
             let s = self.s.as_ref();
 
-            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).mul(&s.read(j, 0).inv()));
+            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).mul(s.read(j, 0).inv()));
 
             us_inv * u.adjoint()
         }
@@ -1677,7 +1677,7 @@ pub mod solvers {
 
             let imag = E::from_f64(-1.0).sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(&imag.mul(&E::from_real(im)))
+                E::from_real(re).add(imag.mul(E::from_real(im)))
             };
 
             (0..dim)
@@ -1765,7 +1765,7 @@ pub mod solvers {
 
             let imag = E::from_f64(-1.0).sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(&imag.mul(&E::from_real(im)))
+                E::from_real(re).add(imag.mul(E::from_real(im)))
             };
 
             let s = Mat::<E>::from_fn(dim, 1, |i, j| cplx(s_re.read(i, j), s_im.read(i, j)));
@@ -2063,7 +2063,7 @@ where
         let lu = self.partial_piv_lu();
         let mut det = E::Canonical::one();
         for i in 0..self.nrows() {
-            det = det.mul(&lu.factors.read(i, i));
+            det = det.mul(lu.factors.read(i, i));
         }
         if lu.transposition_count() % 2 == 0 {
             det
@@ -2935,7 +2935,7 @@ mod tests {
 
         for j in 0..n {
             for i in 0..m {
-                assert!((a.read(i, j).sub(&b.read(i, j))).abs() < eps);
+                assert!((a.read(i, j).sub(b.read(i, j))).abs() < eps);
             }
         }
     }

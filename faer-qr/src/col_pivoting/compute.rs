@@ -369,8 +369,8 @@ fn update_and_norm2<E: ComplexField>(
         let a = a_.read();
         let b = b.read();
 
-        a_.write(a.add(&k.mul(&b)));
-        acc = acc.add(&(a.conj().mul(&a)).real());
+        a_.write(a.add(k.mul(b)));
+        acc = acc.add((a.conj().mul(a)).real());
     });
 
     acc
@@ -565,10 +565,10 @@ impl<E: ComplexField> pulp::WithSimd for ProcessCols<'_, E> {
                 b: E::rb(E::as_ref(&col_tail)),
             }
             .with_simd(simd)
-            .add(&col_head_);
+            .add(col_head_);
 
-            let k = (tau_inv.mul(&dot)).neg();
-            col_head.write(0, 0, col_head_.add(&k));
+            let k = (tau_inv.mul(dot)).neg();
+            col_head.write(0, 0, col_head_.add(k));
 
             let col_value = UpdateAndNorm2 {
                 a: col_tail,
@@ -609,15 +609,15 @@ fn process_cols<E: ComplexField>(
             let [mut col_head, col_tail] = matrix.rb_mut().col(j).split_at_row(1);
             let col_head_ = col_head.read(0, 0);
 
-            let dot = col_head_.add(&inner_prod_with_conj_arch(
+            let dot = col_head_.add(inner_prod_with_conj_arch(
                 arch,
                 first_tail,
                 Conj::Yes,
                 col_tail.rb(),
                 Conj::No,
             ));
-            let k = (tau_inv.mul(&dot)).neg();
-            col_head.write(0, 0, col_head_.add(&k));
+            let k = (tau_inv.mul(dot)).neg();
+            col_head.write(0, 0, col_head_.add(k));
 
             let col_value = update_and_norm2(arch, col_tail, first_tail, k);
             if col_value > *biggest_col_value {

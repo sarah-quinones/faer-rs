@@ -153,32 +153,28 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
             let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
             let mut local_w3 = E::from_units(E::deref(E::rb(E::as_ref(&w3))));
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
 
-            local_w2 = E::mul_adde(&neg_wj_over_ljj2, &local_l, &local_w2);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj2,
-                &local_w2,
-                &E::mul(&nljj_over_ljj2, &local_l),
+            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj2, local_w2),
+                E::mul(nljj_over_ljj2, local_l),
             );
 
-            local_w3 = E::mul_adde(&neg_wj_over_ljj3, &local_l, &local_w3);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj3,
-                &local_w3,
-                &E::mul(&nljj_over_ljj3, &local_l),
+            local_w3 = local_w3.add(E::mul(neg_wj_over_ljj3, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj3, local_w3),
+                E::mul(nljj_over_ljj3, local_l),
             );
 
             E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
@@ -305,25 +301,22 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 3> {
             let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
             let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
 
-            local_w2 = E::mul_adde(&neg_wj_over_ljj2, &local_l, &local_w2);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj2,
-                &local_w2,
-                &E::mul(&nljj_over_ljj2, &local_l),
+            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj2, local_w2),
+                E::mul(nljj_over_ljj2, local_l),
             );
 
             E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
@@ -420,18 +413,16 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 2> {
             let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
             let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
 
             E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
@@ -499,11 +490,10 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
             let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
             let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
 
             E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
@@ -559,32 +549,25 @@ fn rank_update_step_impl4<E: ComplexField>(
             let mut local_w2 = w2.read();
             let mut local_w3 = w3.read();
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
-
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
-
-            local_w2 = E::mul_adde(&neg_wj_over_ljj2, &local_l, &local_w2);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj2,
-                &local_w2,
-                &E::mul(&nljj_over_ljj2, &local_l),
+            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj2, local_w2),
+                E::mul(nljj_over_ljj2, local_l),
             );
-
-            local_w3 = E::mul_adde(&neg_wj_over_ljj3, &local_l, &local_w3);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj3,
-                &local_w3,
-                &E::mul(&nljj_over_ljj3, &local_l),
+            local_w3 = local_w3.add(E::mul(neg_wj_over_ljj3, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj3, local_w3),
+                E::mul(nljj_over_ljj3, local_l),
             );
 
             l.write(local_l);
@@ -640,25 +623,20 @@ fn rank_update_step_impl3<E: ComplexField>(
             let mut local_w1 = w1.read();
             let mut local_w2 = w2.read();
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
-
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
-
-            local_w2 = E::mul_adde(&neg_wj_over_ljj2, &local_l, &local_w2);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj2,
-                &local_w2,
-                &E::mul(&nljj_over_ljj2, &local_l),
+            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj2, local_w2),
+                E::mul(nljj_over_ljj2, local_l),
             );
 
             l.write(local_l);
@@ -708,18 +686,15 @@ fn rank_update_step_impl2<E: ComplexField>(
             let mut local_w0 = w0.read();
             let mut local_w1 = w1.read();
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
-
-            local_w1 = E::mul_adde(&neg_wj_over_ljj1, &local_l, &local_w1);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj1,
-                &local_w1,
-                &E::mul(&nljj_over_ljj1, &local_l),
+            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj1, local_w1),
+                E::mul(nljj_over_ljj1, local_l),
             );
 
             l.write(local_l);
@@ -762,11 +737,10 @@ fn rank_update_step_impl1<E: ComplexField>(
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
 
-            local_w0 = E::mul_adde(&neg_wj_over_ljj0, &local_l, &local_w0);
-            local_l = E::mul_adde(
-                &alpha_wj_over_nljj0,
-                &local_w0,
-                &E::mul(&nljj_over_ljj0, &local_l),
+            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
+            local_l = E::add(
+                E::mul(alpha_wj_over_nljj0, local_w0),
+                E::mul(nljj_over_ljj0, local_l),
             );
 
             l.write(local_l);
@@ -821,9 +795,9 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 
                         let local_alpha = alpha.read_unchecked(r_idx + k, 0);
                         let wj = w.read_unchecked(j, r_idx + k);
-                        let alpha_conj_wj = local_alpha.mul(&wj.conj());
+                        let alpha_conj_wj = local_alpha.mul(wj.conj());
 
-                        let sqr_nljj = ljj.mul(&ljj).add(&alpha_conj_wj.mul(&wj));
+                        let sqr_nljj = ljj.mul(ljj).add(alpha_conj_wj.mul(wj));
                         match PartialOrd::partial_cmp(&sqr_nljj.real(), &E::Real::zero()) {
                             Some(core::cmp::Ordering::Greater) => (),
                             _ => return Err(CholeskyError),
@@ -832,14 +806,14 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                         let inv_ljj = ljj.inv();
                         let inv_nljj = nljj.inv();
 
-                        *neg_wj_over_ljj = (wj.mul(&inv_ljj)).neg();
-                        *nljj_over_ljj = nljj.mul(&inv_ljj);
-                        *alpha_conj_wj_over_nljj = alpha_conj_wj.mul(&inv_nljj);
+                        *neg_wj_over_ljj = (wj.mul(inv_ljj)).neg();
+                        *nljj_over_ljj = nljj.mul(inv_ljj);
+                        *alpha_conj_wj_over_nljj = alpha_conj_wj.mul(inv_nljj);
                         alpha.write_unchecked(
                             r_idx + k,
                             0,
                             local_alpha.sub(
-                                &(*alpha_conj_wj_over_nljj).mul(&(*alpha_conj_wj_over_nljj).conj()),
+                                (*alpha_conj_wj_over_nljj).mul((*alpha_conj_wj_over_nljj).conj()),
                             ),
                         );
 

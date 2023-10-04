@@ -11,7 +11,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> AddAssign<MatRef<'_,
     fn add_assign(&mut self, rhs: MatRef<'_, RhsE>) {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         zipped!(self.rb_mut(), rhs).for_each(|mut lhs, rhs| {
-            lhs.write(lhs.read().add(&rhs.read().canonicalize()));
+            lhs.write(lhs.read().add(rhs.read().canonicalize()));
         });
     }
 }
@@ -23,7 +23,7 @@ impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> SubAssign<MatRef<'_,
     fn sub_assign(&mut self, rhs: MatRef<'_, RhsE>) {
         assert_eq!((self.nrows(), self.ncols()), (rhs.nrows(), rhs.ncols()));
         zipped!(self.rb_mut(), rhs).for_each(|mut lhs, rhs| {
-            lhs.write(lhs.read().sub(&rhs.read().canonicalize()));
+            lhs.write(lhs.read().sub(rhs.read().canonicalize()));
         });
     }
 }
@@ -44,7 +44,7 @@ where
             Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j)
                     .canonicalize()
-                    .add(&rhs.read_unchecked(i, j).canonicalize())
+                    .add(rhs.read_unchecked(i, j).canonicalize())
             })
         }
     }
@@ -66,7 +66,7 @@ where
             Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
                 self.read_unchecked(i, j)
                     .canonicalize()
-                    .sub(&rhs.read_unchecked(i, j).canonicalize())
+                    .sub(rhs.read_unchecked(i, j).canonicalize())
             })
         }
     }
@@ -101,7 +101,7 @@ impl<E: ComplexField, MatE: Conjugate<Canonical = E>> Mul<Scale<E>> for MatRef<'
     fn mul(self, rhs: Scale<E>) -> Self::Output {
         unsafe {
             Self::Output::from_fn(self.nrows(), self.ncols(), |i, j| {
-                self.read_unchecked(i, j).canonicalize().mul(&rhs.0)
+                self.read_unchecked(i, j).canonicalize().mul(rhs.0)
             })
         }
     }
@@ -121,7 +121,7 @@ impl<E: ComplexField> MulAssign<Scale<E>> for MatMut<'_, E> {
     fn mul_assign(&mut self, rhs: Scale<E>) {
         self.rb_mut().cwise().for_each(|mut x| {
             let val = x.read();
-            x.write(val.mul(&rhs.0));
+            x.write(val.mul(rhs.0));
         });
     }
 }

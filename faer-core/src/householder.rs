@@ -54,26 +54,26 @@ pub fn make_householder_in_place<E: ComplexField>(
 
     let one_half = E::Real::from_f64(0.5);
 
-    let head_squared_norm = head.mul(&head.conj()).real();
-    let norm = head_squared_norm.add(&tail_squared_norm).sqrt();
+    let head_squared_norm = head.mul(head.conj()).real();
+    let norm = head_squared_norm.add(tail_squared_norm).sqrt();
 
     let sign = if head_squared_norm != E::Real::zero() {
-        head.scale_real(&head_squared_norm.sqrt().inv())
+        head.scale_real(head_squared_norm.sqrt().inv())
     } else {
         E::one()
     };
 
-    let signed_norm = sign.mul(&E::from_real(norm));
-    let head_with_beta = head.add(&signed_norm);
+    let signed_norm = sign.mul(E::from_real(norm));
+    let head_with_beta = head.add(signed_norm);
     let head_with_beta_inv = head_with_beta.inv();
 
     if head_with_beta != E::zero() {
         if let Some(essential) = essential {
             assert!(essential.ncols() == 1);
-            zipped!(essential).for_each(|mut e| e.write(e.read().mul(&head_with_beta_inv)));
+            zipped!(essential).for_each(|mut e| e.write(e.read().mul(head_with_beta_inv)));
         }
         let tau =
-            one_half.mul(&E::Real::one().add(&tail_squared_norm.mul(&head_with_beta_inv.abs2())));
+            one_half.mul(E::Real::one().add(tail_squared_norm.mul(head_with_beta_inv.abs2())));
         (E::from_real(tau), signed_norm.neg())
     } else {
         (E::from_real(E::Real::zero().inv()), E::zero())
@@ -389,15 +389,15 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         );
 
                         let dot = col_head_.add(
-                            &inner_prod::AccConjAxB::<'_, E> {
+                            inner_prod::AccConjAxB::<'_, E> {
                                 a: E::rb(E::as_ref(&essential)),
                                 b: E::rb(E::as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(&tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(&k));
+                        let k = (dot.mul(tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(k));
 
                         let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
                             col_tail,
@@ -411,7 +411,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         {
                             let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
                             let b = E::from_units(E::deref(b));
-                            a_ = a_.add(&k.mul(&b));
+                            a_ = a_.add(k.mul(b));
 
                             E::map(
                                 E::zip(a, a_.into_units()),
@@ -499,15 +499,15 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         );
 
                         let dot = col_head_.add(
-                            &inner_prod::AccNoConjAxB::<'_, E> {
+                            inner_prod::AccNoConjAxB::<'_, E> {
                                 a: E::rb(E::as_ref(&essential)),
                                 b: E::rb(E::as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(&tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(&k));
+                        let k = (dot.mul(tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(k));
 
                         let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
                             col_tail,
@@ -521,7 +521,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         {
                             let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
                             let b = E::from_units(E::deref(b));
-                            a_ = a_.add(&k.mul(&b.conj()));
+                            a_ = a_.add(k.mul(b.conj()));
 
                             E::map(
                                 E::zip(a, a_.into_units()),

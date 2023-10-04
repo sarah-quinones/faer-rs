@@ -295,17 +295,17 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             let re = x.real().abs();
             let im = x.imag().abs();
             let max = if re > im { re } else { im };
-            let x = x.scale_real(&max.inv());
-            x.scale_real(&x.abs().inv())
+            let x = x.scale_real(max.inv());
+            x.scale_real(x.abs().inv())
         }
     };
 
     let mut col_normalized = normalized(diag[0].clone()).conj();
     col_mul[0] = col_normalized.clone();
     for i in 1..n {
-        let row_normalized = normalized(subdiag[i - 1].mul(&col_normalized)).conj();
+        let row_normalized = normalized(subdiag[i - 1].mul(col_normalized)).conj();
         row_mul[i - 1] = row_normalized.conj();
-        col_normalized = normalized(diag[i].mul(&row_normalized)).conj();
+        col_normalized = normalized(diag[i].mul(row_normalized)).conj();
         col_mul[i] = col_normalized.clone();
     }
 
@@ -341,7 +341,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(row_mul.len() == n - 1);
             unsafe {
                 for i in 0..n - 1 {
-                    u.write_unchecked(i, 0, row_mul[i].scale_real(&u_real.read_unchecked(i, 0)));
+                    u.write_unchecked(i, 0, row_mul[i].scale_real(u_real.read_unchecked(i, 0)));
                 }
             }
         }
@@ -354,7 +354,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(col_mul.len() == n);
             unsafe {
                 for i in 0..n {
-                    v.write_unchecked(i, 0, col_mul[i].scale_real(&v_real.read_unchecked(i, 0)));
+                    v.write_unchecked(i, 0, col_mul[i].scale_real(v_real.read_unchecked(i, 0)));
                 }
             }
         }

@@ -33,7 +33,7 @@ mod tests {
             let dj = cholesky_factors.read(j, j);
             lxd.write(j, j, dj);
             for i in j + 1..n {
-                lxd.write(i, j, cholesky_factors.read(i, j).mul(&dj));
+                lxd.write(i, j, cholesky_factors.read(i, j).mul(dj));
             }
         }
 
@@ -178,7 +178,7 @@ mod tests {
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).mul(&w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j, 0).mul(w.read(i, j)));
                 }
             }
 
@@ -338,7 +338,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), w(0, 0), w(0, 1), a(0, 2), a(0, 3)],
@@ -408,7 +408,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [w(0, 0), w(0, 1), wc(2, 0), wc(3, 0), wc(4, 0), wc(5, 0)],
@@ -478,7 +478,7 @@ mod tests {
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(&w(i, j));
+                let wc = |i, j| ComplexField::conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), a(0, 2), a(0, 3), w(0, 0), w(0, 1)],

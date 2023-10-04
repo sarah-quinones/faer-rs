@@ -308,7 +308,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon)
+                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
                 }
             }
         }
@@ -368,7 +368,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon)
+                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
                 }
             }
         }

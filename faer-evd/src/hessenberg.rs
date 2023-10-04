@@ -353,19 +353,19 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                     0,
                     0,
                     a11.read(0, 0)
-                        .sub(&(nu.mul(&psi.conj())).add(&zeta.mul(&nu.conj()))),
+                        .sub((nu.mul(psi.conj())).add(zeta.mul(nu.conj()))),
                 );
                 zipped!(a12.rb_mut(), y21.rb().transpose(), u21.rb().transpose()).for_each(
                     |mut a, y, u| {
                         let y = y.read();
                         let u = u.read();
-                        a.write(a.read().sub(&(nu.mul(&y.conj())).add(&zeta.mul(&u.conj()))));
+                        a.write(a.read().sub((nu.mul(y.conj())).add(zeta.mul(u.conj()))));
                     },
                 );
                 zipped!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|mut a, u, z| {
                     let z = z.read();
                     let u = u.read();
-                    a.write(a.read().sub(&(u.mul(&psi.conj())).add(&z.mul(&nu.conj()))));
+                    a.write(a.read().sub((u.mul(psi.conj())).add(z.mul(nu.conj()))));
                 });
             }
 
@@ -452,16 +452,16 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             a21.write(0, 0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
-                .scale_power_of_two(&E::Real::from_f64(0.5));
+                .scale_power_of_two(E::Real::from_f64(0.5));
 
             zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
                 let u = u.read();
                 let beta = beta.conj();
-                y.write(y.read().sub(&beta.mul(&u.mul(&tau_inv))).mul(&tau_inv));
+                y.write(y.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
             });
             zipped!(z21.rb_mut(), u21.rb()).for_each(|mut z, u| {
                 let u = u.read();
-                z.write(z.read().sub(&beta.mul(&u.mul(&tau_inv))).mul(&tau_inv));
+                z.write(z.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
             });
         }
     }

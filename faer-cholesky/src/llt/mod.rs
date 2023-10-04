@@ -187,7 +187,7 @@ mod tests {
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).mul(&w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j, 0).mul(w.read(i, j)));
                 }
             }
 

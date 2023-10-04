@@ -299,7 +299,7 @@ mod tests {
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
                     )
                 }
             }
@@ -367,7 +367,7 @@ mod tests {
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(&rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
                     )
                 }
             }

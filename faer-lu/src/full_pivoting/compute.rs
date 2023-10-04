@@ -1075,12 +1075,12 @@ fn lu_in_place_unblocked<E: ComplexField>(
         if !transposed {
             for i in k + 1..m {
                 let elem = matrix.read(i, k);
-                matrix.write(i, k, elem.mul(&inv));
+                matrix.write(i, k, elem.mul(inv));
             }
         } else {
             for i in k + 1..n {
                 let elem = matrix.read(k, i);
-                matrix.write(k, i, elem.mul(&inv));
+                matrix.write(k, i, elem.mul(inv));
             }
         }
 
@@ -1366,7 +1366,7 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
@@ -1422,7 +1422,7 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
                         );
                     }
                 }
@@ -1502,7 +1502,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }
@@ -1556,7 +1556,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }
@@ -1615,7 +1615,7 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(&reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
                     }
                 }
             }

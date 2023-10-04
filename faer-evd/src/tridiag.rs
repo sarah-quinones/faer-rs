@@ -355,10 +355,10 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 ));
 
                 let mut ljj = lhs.read(j, j);
-                ljj = ljj.sub(&u.mul(&y.conj())).sub(&y.mul(&u.conj()));
+                ljj = ljj.sub(u.mul(y.conj())).sub(y.mul(u.conj()));
                 lhs.write(j, j, ljj.clone());
 
-                ljj.conj().mul(&rhs)
+                ljj.conj().mul(rhs)
             };
 
             let rhs_single_j0 = E::map(
@@ -601,7 +601,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             }
 
             {
-                let sum = E::simd_reduce_add(simd, sum0).add(&sum0_scalar);
+                let sum = E::simd_reduce_add(simd, sum0).add(sum0_scalar);
                 let sum = E::into_units(sum);
 
                 E::map(
@@ -785,7 +785,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                 |slice| slice[j].clone(),
             ));
 
-            sum = sum.add(&acc_);
+            sum = sum.add(acc_);
             let sum = E::into_units(sum);
 
             E::map(
@@ -853,13 +853,13 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 0,
                 0,
                 a11.read(0, 0)
-                    .sub(&nu.mul(&psi.conj()).add(&psi.mul(&nu.conj()))),
+                    .sub(nu.mul(psi.conj()).add(psi.mul(nu.conj()))),
             );
 
             zipped!(a21.rb_mut(), u21.rb(), y21.rb()).for_each(|mut a, u, y| {
                 let u = u.read();
                 let y = y.read();
-                a.write(a.read().sub(&u.mul(&psi.conj()).add(&y.mul(&nu.conj()))))
+                a.write(a.read().sub(u.mul(psi.conj()).add(y.mul(nu.conj()))))
             });
         }
 
@@ -921,10 +921,10 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 );
 
                 zipped!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
-                    .for_each(|mut y, v, w| y.write(v.read().add(&w.read())));
+                    .for_each(|mut y, v, w| y.write(v.read().add(w.read())));
                 for i in 1..n_threads as usize {
                     zipped!(y21.rb_mut(), v21.rb().col(i), w21.rb().col(i))
-                        .for_each(|mut y, v, w| y.write(y.read().add(&v.read().add(&w.read()))));
+                        .for_each(|mut y, v, w| y.write(y.read().add(v.read().add(w.read()))));
                 }
             } else {
                 triangular::matmul(
@@ -951,7 +951,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 );
 
                 zipped!(y21.rb_mut(), a22.rb().diagonal(), a21.rb())
-                    .for_each(|mut y, a, u| y.write(a.read().mul(&u.read())));
+                    .for_each(|mut y, a, u| y.write(a.read().mul(u.read())));
 
                 triangular::matmul(
                     y21.rb_mut(),
@@ -993,10 +993,10 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             });
 
             zipped!(y21.rb_mut(), acc.rb(), a22.rb().diagonal(), a21.rb())
-                .for_each(|mut y, v, a, u| y.write(v.read().add(&a.read().mul(&u.read()))));
+                .for_each(|mut y, v, a, u| y.write(v.read().add(a.read().mul(u.read()))));
         } else {
             zipped!(y21.rb_mut(), a22.rb().diagonal(), a21.rb())
-                .for_each(|mut y, a, u| y.write(a.read().mul(&u.read())));
+                .for_each(|mut y, a, u| y.write(a.read().mul(u.read())));
             triangular::matmul(
                 y21.rb_mut(),
                 BlockStructure::Rectangular,
@@ -1025,11 +1025,11 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         a21.write(0, 0, new_head);
 
         let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, y21.rb(), Conj::No)
-            .scale_power_of_two(&E::Real::from_f64(0.5));
+            .scale_power_of_two(E::Real::from_f64(0.5));
 
         zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
             let u = u.read();
-            y.write(y.read().sub(&beta.mul(&u.mul(&tau_inv))).mul(&tau_inv));
+            y.write(y.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
         });
     }
 }

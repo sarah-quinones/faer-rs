@@ -23,7 +23,7 @@ unsafe fn invert_lower_triangular_impl_small<E: ComplexField>(
         2 => {
             let dst00 = src(0, 0).inv();
             let dst11 = src(1, 1).inv();
-            let dst10 = (dst11.mul(&src(1, 0)).mul(&dst00)).neg();
+            let dst10 = (dst11.mul(src(1, 0)).mul(dst00)).neg();
 
             dst.write_unchecked(0, 0, dst00);
             dst.write_unchecked(1, 1, dst11);

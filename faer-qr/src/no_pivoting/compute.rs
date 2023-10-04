@@ -105,15 +105,15 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         );
 
                         let dot = col_head_.add(
-                            &inner_prod::AccConjAxB::<'_, E> {
+                            inner_prod::AccConjAxB::<'_, E> {
                                 a: E::rb(E::as_ref(&first_col_tail)),
                                 b: E::rb(E::as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(&tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(&k));
+                        let k = (dot.mul(tau_inv)).neg();
+                        col_head.write(0, 0, col_head_.add(k));
 
                         let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
                             col_tail,
@@ -128,7 +128,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         {
                             let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
                             let b = E::from_units(E::deref(b));
-                            a_ = a_.add(&k.mul(&b));
+                            a_ = a_.add(k.mul(b));
 
                             E::map(
                                 E::zip(a, a_.into_units()),
@@ -166,17 +166,17 @@ fn qr_in_place_unblocked<E: ComplexField>(
                 let [mut col_head, col_tail] = col.split_at_row(1);
                 let col_head_ = col_head.read(0, 0);
 
-                let dot = col_head_.add(&inner_prod_with_conj_arch(
+                let dot = col_head_.add(inner_prod_with_conj_arch(
                     arch,
                     first_col_tail.rb(),
                     Conj::Yes,
                     col_tail.rb(),
                     Conj::No,
                 ));
-                let k = (dot.mul(&tau_inv)).neg();
-                col_head.write(0, 0, col_head_.add(&k));
+                let k = (dot.mul(tau_inv)).neg();
+                col_head.write(0, 0, col_head_.add(k));
                 zipped!(col_tail, first_col_tail.rb())
-                    .for_each(|mut a, b| a.write(a.read().add(&k.mul(&b.read()))));
+                    .for_each(|mut a, b| a.write(a.read().add(k.mul(b.read()))));
             }
         }
     }
