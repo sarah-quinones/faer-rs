@@ -36,7 +36,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         zipped!(u.rb_mut().diagonal()).for_each(|mut u| u.write(E::one()));
     }
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
 
     while end > 0 {
         for i in start..end {

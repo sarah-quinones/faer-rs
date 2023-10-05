@@ -4,7 +4,7 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
     parallelism_degree, simd, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField,
-    Conj, Entity, MatMut, MatRef, Parallelism,
+    Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use pulp::Simd;
 use reborrow::*;
@@ -252,7 +252,7 @@ fn bidiag_fused_op_reference<E: ComplexField>(
 }
 
 fn bidiag_fused_op_step0<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
 
     // update a_next
     mut a_j: E::Group<&mut [E::Unit]>,
@@ -417,7 +417,7 @@ fn bidiag_fused_op_step0<E: ComplexField>(
 }
 
 fn bidiag_fused_op_step1<'a, E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
 
     // update z
     z: E::Group<&'a mut [E::Unit]>,
@@ -463,7 +463,7 @@ fn bidiag_fused_op_step1<'a, E: ComplexField>(
 }
 
 fn bidiag_fused_op_process_batch<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     mut z_tmp: MatMut<'_, E>,
     mut a_next: MatMut<'_, E>,
     mut a_row: MatMut<'_, E>,
@@ -482,7 +482,7 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
         let u_rhs = y.read(j, 0).conj().mul(tl_prev_inv);
         let z_rhs = v_prev.read(0, j).conj().mul(tr_prev_inv);
 
-        let yj = if E::HAS_SIMD {
+        let yj = {
             let a_next = a_next.rb_mut();
             unsafe {
                 bidiag_fused_op_step0::<E>(
@@ -511,53 +511,21 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
                     ),
                 )
             }
-        } else {
-            let mut yj = E::zero();
-            for i in 0..nrows {
-                unsafe {
-                    a_next.write_unchecked(
-                        i,
-                        j,
-                        a_next
-                            .read_unchecked(i, j)
-                            .sub(u_prev.read_unchecked(i, 0).mul(u_rhs))
-                            .sub(z.read_unchecked(i, 0).mul(z_rhs)),
-                    );
-
-                    yj = yj.add(
-                        (a_next.read_unchecked(i, j))
-                            .conj()
-                            .mul(u.read_unchecked(i, 0)),
-                    );
-                }
-            }
-
-            yj
         };
         y.write(j, 0, yj.add(a_row.read(0, j).conj()));
         a_row.write(0, j, a_row.read(0, j).sub(y.read(j, 0).conj().mul(tl_inv)));
 
         let rhs = a_row.read(0, j).conj();
 
-        if E::HAS_SIMD {
-            let a_next = a_next.rb();
-            let z_tmp = z_tmp.rb_mut();
-            unsafe {
-                bidiag_fused_op_step1(
-                    arch,
-                    E::map(z_tmp.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, nrows)),
-                    E::map(a_next.ptr_at(0, j), |ptr| slice::from_raw_parts(ptr, nrows)),
-                    rhs,
-                );
-            }
-        } else {
-            for i in 0..nrows {
-                unsafe {
-                    let zi = z_tmp.read_unchecked(i, 0);
-                    let aij = a_next.read_unchecked(i, j);
-                    z_tmp.write_unchecked(i, 0, zi.add(aij.mul(rhs)));
-                }
-            }
+        let a_next = a_next.rb();
+        let z_tmp = z_tmp.rb_mut();
+        unsafe {
+            bidiag_fused_op_step1(
+                arch,
+                E::map(z_tmp.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, nrows)),
+                E::map(a_next.ptr_at(0, j), |ptr| slice::from_raw_parts(ptr, nrows)),
+                rhs,
+            );
         }
     }
 }
@@ -586,7 +554,7 @@ fn bidiag_fused_op<E: ComplexField>(
     };
     if k > 0 {
         if a_next.row_stride() == 1 {
-            let arch = pulp::Arch::new();
+            let arch = E::Simd::default();
 
             let n_threads = parallelism_degree(parallelism);
 

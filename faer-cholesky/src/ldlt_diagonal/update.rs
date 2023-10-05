@@ -4,9 +4,8 @@ use core::{iter::zip, slice};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
-    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism,
+    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
-use pulp::Arch;
 use reborrow::*;
 
 struct RankRUpdate<'a, E: Entity> {
@@ -358,7 +357,7 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
 }
 
 fn rank_update_step_impl4<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
     p_array: [E; 4],
@@ -370,7 +369,7 @@ fn rank_update_step_impl4<E: ComplexField>(
     let w1 = unsafe { w.col(1).const_cast() };
     let w2 = unsafe { w.col(2).const_cast() };
     let w3 = unsafe { w.col(3).const_cast() };
-    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+    if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 4> {
             l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
@@ -417,7 +416,7 @@ fn rank_update_step_impl4<E: ComplexField>(
 }
 
 fn rank_update_step_impl3<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
     p_array: [E; 4],
@@ -432,7 +431,7 @@ fn rank_update_step_impl3<E: ComplexField>(
     let [p_array @ .., _] = p_array;
     let [beta_array @ .., _] = beta_array;
 
-    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+    if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
             l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
@@ -473,7 +472,7 @@ fn rank_update_step_impl3<E: ComplexField>(
 }
 
 fn rank_update_step_impl2<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
     p_array: [E; 4],
@@ -486,7 +485,7 @@ fn rank_update_step_impl2<E: ComplexField>(
     let [p_array @ .., _, _] = p_array;
     let [beta_array @ .., _, _] = beta_array;
 
-    if E::HAS_SIMD && l_col.row_stride() == 1 && w.row_stride() == 1 {
+    if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 2> {
             l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
@@ -521,7 +520,7 @@ fn rank_update_step_impl2<E: ComplexField>(
 }
 
 fn rank_update_step_impl1<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     l_col: MatMut<'_, E>,
     w: MatMut<'_, E>,
     p_array: [E; 4],
@@ -534,7 +533,7 @@ fn rank_update_step_impl1<E: ComplexField>(
     let [p_array @ .., _, _, _] = p_array;
     let [beta_array @ .., _, _, _] = beta_array;
 
-    if E::HAS_SIMD && l_col.row_stride() == 1 && w_rs == 1 {
+    if l_col.row_stride() == 1 && w_rs == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 1> {
             l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe { [E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m))] },
@@ -577,7 +576,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
         debug_assert!(w.nrows() == n);
         debug_assert!(alpha.nrows() == k);
 
-        let arch = pulp::Arch::new();
+        let arch = E::Simd::default();
         for j in 0..n {
             let r = Ord::min((*r)(), k);
 
@@ -671,14 +670,14 @@ pub fn rank_r_update_clobber<E: ComplexField>(
     .run();
 }
 
-pub(crate) fn delete_rows_and_cols_triangular<E: Entity>(mat: MatMut<'_, E>, idx: &[usize]) {
+pub(crate) fn delete_rows_and_cols_triangular<E: ComplexField>(mat: MatMut<'_, E>, idx: &[usize]) {
     let mut mat = mat;
     let n = mat.nrows();
     let r = idx.len();
     debug_assert!(mat.ncols() == n);
     debug_assert!(r <= n);
 
-    Arch::new().dispatch(|| {
+    E::Simd::default().dispatch(|| {
         (0..=r).for_each(|chunk_j| {
             #[rustfmt::skip]
             let j_start = if chunk_j == 0 { 0 } else { idx[chunk_j - 1] + 1 };
@@ -789,7 +788,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     let alpha = alpha.as_mut();
     let mut alpha = alpha.col(0);
 
-    Arch::new().dispatch(|| {
+    E::Simd::default().dispatch(|| {
         for k in 0..r {
             let j = indices[k];
             unsafe {

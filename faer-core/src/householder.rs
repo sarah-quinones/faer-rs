@@ -39,6 +39,7 @@ use crate::{
 };
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
+use faer_entity::SimdCtx;
 use reborrow::*;
 
 #[doc(hidden)]
@@ -330,8 +331,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     assert!(matrix.nrows() == householder_basis.nrows());
 
     let bs = householder_factor.nrows();
-    if E::HAS_SIMD && householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
-        let arch = pulp::Arch::new();
+    if householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
+        let arch = E::Simd::default();
 
         if matches!(conj_lhs, Conj::No) {
             struct ApplyOnLeftNoConj<'a, E: ComplexField> {

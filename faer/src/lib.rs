@@ -2373,7 +2373,7 @@ pub trait IntoNalgebra {
 #[cfg_attr(docsrs, doc(cfg(feature = "nalgebra")))]
 const _: () = {
     use faer_core::SimpleEntity;
-    use nalgebra::{Dim, MatrixView, MatrixViewMut, Pod, ViewStorage, ViewStorageMut};
+    use nalgebra::{Dim, Dyn, MatrixView, MatrixViewMut, ViewStorage, ViewStorageMut};
 
     impl<'a, T: SimpleEntity, R: Dim, C: Dim, RStride: Dim, CStride: Dim> IntoFaer
         for MatrixView<'a, T, R, C, RStride, CStride>
@@ -2422,7 +2422,7 @@ const _: () = {
     }
 
     impl<'a, T: SimpleEntity> IntoNalgebra for MatRef<'a, T> {
-        type Nalgebra = MatrixView<'a, T, Pod, Pod, Pod, Pod>;
+        type Nalgebra = MatrixView<'a, T, Dyn, Dyn, Dyn, Dyn>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2432,19 +2432,19 @@ const _: () = {
             let col_stride = self.col_stride();
             let ptr = T::from_group(self.as_ptr());
             unsafe {
-                MatrixView::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorage::<
+                MatrixView::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorage::<
                     '_,
                     T,
-                    Pod,
-                    Pod,
-                    Pod,
-                    Pod,
+                    Dyn,
+                    Dyn,
+                    Dyn,
+                    Dyn,
                 >::from_raw_parts(
                     ptr,
-                    (Pod(nrows), Pod(ncols)),
+                    (Dyn(nrows), Dyn(ncols)),
                     (
-                        Pod(row_stride.try_into().unwrap()),
-                        Pod(col_stride.try_into().unwrap()),
+                        Dyn(row_stride.try_into().unwrap()),
+                        Dyn(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -2452,7 +2452,7 @@ const _: () = {
     }
 
     impl<'a, T: SimpleEntity> IntoNalgebra for MatMut<'a, T> {
-        type Nalgebra = MatrixViewMut<'a, T, Pod, Pod, Pod, Pod>;
+        type Nalgebra = MatrixViewMut<'a, T, Dyn, Dyn, Dyn, Dyn>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2462,19 +2462,19 @@ const _: () = {
             let col_stride = self.col_stride();
             let ptr = T::from_group(self.as_ptr());
             unsafe {
-                MatrixViewMut::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorageMut::<
+                MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
                     T,
-                    Pod,
-                    Pod,
-                    Pod,
-                    Pod,
+                    Dyn,
+                    Dyn,
+                    Dyn,
+                    Dyn,
                 >::from_raw_parts(
                     ptr,
-                    (Pod(nrows), Pod(ncols)),
+                    (Dyn(nrows), Dyn(ncols)),
                     (
-                        Pod(row_stride.try_into().unwrap()),
-                        Pod(col_stride.try_into().unwrap()),
+                        Dyn(row_stride.try_into().unwrap()),
+                        Dyn(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -2584,11 +2584,11 @@ const _: () = {
 #[cfg(all(feature = "nalgebra", feature = "ndarray"))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "nalgebra", feature = "ndarray"))))]
 const _: () = {
-    use nalgebra::{Dim, MatrixView, MatrixViewMut, Pod, ViewStorage, ViewStorageMut};
+    use nalgebra::{Dim, Dyn, MatrixView, MatrixViewMut, ViewStorage, ViewStorageMut};
     use ndarray::{ArrayView, ArrayViewMut, IntoDimension, Ix2, ShapeBuilder};
 
     impl<'a, T> IntoNalgebra for ArrayView<'a, T, Ix2> {
-        type Nalgebra = MatrixView<'a, T, Pod, Pod, Pod, Pod>;
+        type Nalgebra = MatrixView<'a, T, Dyn, Dyn, Dyn, Dyn>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2598,26 +2598,26 @@ const _: () = {
             let ptr = self.as_ptr();
 
             unsafe {
-                MatrixView::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorage::<
+                MatrixView::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorage::<
                     '_,
                     T,
-                    Pod,
-                    Pod,
-                    Pod,
-                    Pod,
+                    Dyn,
+                    Dyn,
+                    Dyn,
+                    Dyn,
                 >::from_raw_parts(
                     ptr,
-                    (Pod(nrows), Pod(ncols)),
+                    (Dyn(nrows), Dyn(ncols)),
                     (
-                        Pod(row_stride.try_into().unwrap()),
-                        Pod(col_stride.try_into().unwrap()),
+                        Dyn(row_stride.try_into().unwrap()),
+                        Dyn(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
         }
     }
     impl<'a, T> IntoNalgebra for ArrayViewMut<'a, T, Ix2> {
-        type Nalgebra = MatrixViewMut<'a, T, Pod, Pod, Pod, Pod>;
+        type Nalgebra = MatrixViewMut<'a, T, Dyn, Dyn, Dyn, Dyn>;
 
         #[track_caller]
         fn into_nalgebra(self) -> Self::Nalgebra {
@@ -2627,19 +2627,19 @@ const _: () = {
             let ptr = { self }.as_mut_ptr();
 
             unsafe {
-                MatrixViewMut::<'_, T, Pod, Pod, Pod, Pod>::from_data(ViewStorageMut::<
+                MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
                     T,
-                    Pod,
-                    Pod,
-                    Pod,
-                    Pod,
+                    Dyn,
+                    Dyn,
+                    Dyn,
+                    Dyn,
                 >::from_raw_parts(
                     ptr,
-                    (Pod(nrows), Pod(ncols)),
+                    (Dyn(nrows), Dyn(ncols)),
                     (
-                        Pod(row_stride.try_into().unwrap()),
-                        Pod(col_stride.try_into().unwrap()),
+                        Dyn(row_stride.try_into().unwrap()),
+                        Dyn(col_stride.try_into().unwrap()),
                     ),
                 ))
             }
@@ -3191,7 +3191,8 @@ mod tests {
     #[test]
     fn test_polars_pos() {
         use crate::polars::{polars_to_faer_f32, polars_to_faer_f64};
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [10, 11, 12]);
@@ -3213,7 +3214,8 @@ mod tests {
     #[should_panic(expected = "frame contains null entries")]
     fn test_polars_neg_32_null() {
         use crate::polars::polars_to_faer_f32;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3228,7 +3230,8 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data")]
     fn test_polars_neg_32_strl() {
         use crate::polars::polars_to_faer_f32;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
@@ -3243,7 +3246,8 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data and null entries")]
     fn test_polars_neg_32_combo() {
         use crate::polars::polars_to_faer_f32;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3259,7 +3263,8 @@ mod tests {
     #[should_panic(expected = "frame contains null entries")]
     fn test_polars_neg_64_null() {
         use crate::polars::polars_to_faer_f64;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3274,7 +3279,8 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data")]
     fn test_polars_neg_64_strl() {
         use crate::polars::polars_to_faer_f64;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
@@ -3289,7 +3295,8 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data and null entries")]
     fn test_polars_neg_64_combo() {
         use crate::polars::polars_to_faer_f64;
-        use polars::prelude::*;
+        #[rustfmt::skip]
+        use ::polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);

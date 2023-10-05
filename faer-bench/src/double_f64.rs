@@ -469,7 +469,6 @@ mod faer_impl {
         type Iter<I: Iterator> = Double<I>;
 
         const N_COMPONENTS: usize = 2;
-        const HAS_SIMD: bool = true;
         const UNIT: Self::GroupCopy<()> = Double((), ());
 
         #[inline(always)]
@@ -644,6 +643,7 @@ mod faer_impl {
     impl ComplexField for DoubleF64 {
         type Real = DoubleF64;
         type Simd = pulp::Arch;
+        type ScalarSimd = pulp::Arch;
 
         #[inline(always)]
         fn sqrt(self) -> Self {
@@ -895,6 +895,27 @@ mod faer_impl {
         #[inline(always)]
         fn simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
             Self::simd_mul(simd, values, values)
+        }
+
+        #[inline(always)]
+        fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+            let _ = simd;
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+            let _ = simd;
+            lhs * rhs
+        }
+        #[inline(always)]
+        fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+            let _ = simd;
+            lhs * rhs + acc
+        }
+        #[inline(always)]
+        fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+            let _ = simd;
+            lhs * rhs + acc
         }
     }
 }

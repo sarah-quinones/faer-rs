@@ -2,6 +2,7 @@
 
 use crate::{join_raw, ComplexField, Conj, Conjugate, MatMut, MatRef, Parallelism};
 use assert2::{assert, debug_assert};
+use faer_entity::SimdCtx;
 use reborrow::*;
 
 #[inline(always)]
@@ -589,7 +590,7 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
     debug_assert!(rhs.nrows() == tril.ncols());
 
     if n <= recursion_threshold() {
-        pulp::Arch::new().dispatch(
+        E::Simd::default().dispatch(
             #[inline(always)]
             || match conj_lhs {
                 Conj::Yes => solve_unit_lower_triangular_in_place_base_case_generic_unchecked(
@@ -692,7 +693,7 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
     let n = tril.nrows();
 
     if n <= recursion_threshold() {
-        pulp::Arch::new().dispatch(
+        E::Simd::default().dispatch(
             #[inline(always)]
             || match conj_lhs {
                 Conj::Yes => {

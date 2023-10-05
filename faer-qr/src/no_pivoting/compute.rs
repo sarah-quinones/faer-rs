@@ -6,7 +6,7 @@ use faer_core::{
         make_householder_in_place, upgrade_householder_factor,
     },
     mul::inner_prod::{self, inner_prod_with_conj_arch},
-    temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use reborrow::*;
 
@@ -21,7 +21,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
 
     assert!(householder_factor.nrows() == size);
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
     let row_stride = matrix.row_stride();
 
     for k in 0..size {
@@ -48,7 +48,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
 
         first_col_head.write(0, 0, beta);
 
-        if E::HAS_SIMD && row_stride == 1 {
+        if row_stride == 1 {
             struct TrailingColsUpdate<'a, E: ComplexField> {
                 tau_inv: E,
                 first_col_tail: MatRef<'a, E>,

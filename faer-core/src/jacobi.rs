@@ -1,4 +1,5 @@
 use crate::{zipped, MatMut, RealField};
+use faer_entity::SimdCtx;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -199,8 +200,8 @@ impl<E: RealField> JacobiRotation<E> {
         }
 
         let Self { c, s } = *self;
-        if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
-            pulp::Arch::new().dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
+        if x.col_stride() == 1 && y.col_stride() == 1 {
+            E::Simd::default().dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
             zipped!(x, y).for_each(move |mut x, mut y| {
                 let x_ = x.read();
@@ -214,7 +215,7 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline]
     pub fn apply_on_the_left_in_place_arch(
         &self,
-        arch: pulp::Arch,
+        arch: E::Simd,
         x: MatMut<'_, E>,
         y: MatMut<'_, E>,
     ) {
@@ -312,7 +313,7 @@ impl<E: RealField> JacobiRotation<E> {
         }
 
         let Self { c, s } = *self;
-        if E::HAS_SIMD && x.col_stride() == 1 && y.col_stride() == 1 {
+        if x.col_stride() == 1 && y.col_stride() == 1 {
             arch.dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
             zipped!(x, y).for_each(move |mut x, mut y| {
@@ -333,7 +334,7 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline]
     pub fn apply_on_the_right_in_place_arch(
         &self,
-        arch: pulp::Arch,
+        arch: E::Simd,
         x: MatMut<'_, E>,
         y: MatMut<'_, E>,
     ) {
