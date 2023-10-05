@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -10,12 +10,12 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.11.0", path = "../faer-core" }
-faer-cholesky = { version = "0.11.0", path = "../faer-cholesky" }
-faer-lu = { version = "0.11.0", path = "../faer-lu" }
-faer-qr = { version = "0.11.0", path = "../faer-qr" }
-faer-svd = { version = "0.11.0", path = "../faer-svd" }
-faer-evd = { version = "0.11.0", path = "../faer-evd" }
+faer-core = { version = "0.12.0", path = "../faer-core" }
+faer-cholesky = { version = "0.12.0", path = "../faer-cholesky" }
+faer-lu = { version = "0.12.0", path = "../faer-lu" }
+faer-qr = { version = "0.12.0", path = "../faer-qr" }
+faer-svd = { version = "0.12.0", path = "../faer-svd" }
+faer-evd = { version = "0.12.0", path = "../faer-evd" }
 dyn-stack.workspace = true
 assert2.workspace = true
 reborrow.workspace = true
