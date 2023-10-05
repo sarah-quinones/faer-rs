@@ -1,4 +1,5 @@
 publish:
+    cargo publish --package faer-entity
     cargo publish --package faer-core
     cargo publish --package faer-lu
     cargo publish --package faer-qr

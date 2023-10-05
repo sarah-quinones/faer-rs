@@ -1669,10 +1669,10 @@ impl<E: Entity> Clone for MatImpl<E> {
 /// # Note
 ///
 /// Unlike a slice, the data pointed to by `MatRef<'_, E>` is allowed to be partially or fully
-/// uninitialized under certain conditions ([`std::mem::needs_drop::<E::Unit>()`] must be false). In
-/// this case, care must be taken to not perform any operations that read the uninitialized values,
-/// or form references to them, either directly through [`MatRef::read`], or indirectly through any
-/// of the numerical library routines, unless it is explicitly permitted.
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`MatRef::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
 pub struct MatRef<'a, E: Entity> {
     inner: MatImpl<E>,
     __marker: PhantomData<&'a E>,
@@ -1691,10 +1691,10 @@ impl<E: Entity> Clone for MatRef<'_, E> {
 /// # Note
 ///
 /// Unlike a slice, the data pointed to by `MatMut<'_, E>` is allowed to be partially or fully
-/// uninitialized under certain conditions ([`std::mem::needs_drop::<E::Unit>()`] must be false). In
-/// this case, care must be taken to not perform any operations that read the uninitialized values,
-/// or form references to them, either directly through [`MatMut::read`], or indirectly through any
-/// of the numerical library routines, unless it is explicitly permitted.
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`MatMut::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
 ///
 /// # Move semantics
 /// Since `MatMut` mutably borrows data, it cannot be [`Copy`]. This means that if we pass a

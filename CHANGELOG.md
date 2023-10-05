@@ -1,8 +1,17 @@
+# 0.12
+- Implemented matrix chunked iterators and parallel chunked iterators.
+- Renamed `{Mat,MatMut}::fill_with_zero` to `fill_zeros`
+- Renamed `{Mat,MatMut}::fill_with_constant` to `fill`
+- More ergonomic `polars` api.
+- Refactored Entity and ComplexField SIMD api.
+- Switched from DynStack/GlobalMemBuffer to PodStack/GlobalPodBuffer.
+- Fixed usize overflow bug in eigenvalue decomposition.
+
 # 0.11
 - High level api implemented in `faer`.
 - Renamed `Mat::with_dims` to `Mat::from_fn`.
-- Renamed `{Mat,MatRef,MatMut}::set_zeros` to `fill_with_zero`.
-- Renamed `{Mat,MatRef,MatMut}::set_constant` to `fill_with_constant`.
+- Renamed `{Mat,MatMut}::set_zeros` to `fill_with_zero`.
+- Renamed `{Mat,MatMut}::set_constant` to `fill_with_constant`.
 
 # 0.10
 - Performance improvements for small matrices.
