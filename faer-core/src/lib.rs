@@ -670,6 +670,17 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
     }
 }
 
+#[inline]
+fn div_ceil(a: usize, b: usize) -> usize {
+    let d = a / b;
+    let r = a % b;
+    if r > 0 && b > 0 {
+        d + 1
+    } else {
+        d
+    }
+}
+
 impl ComplexField for c32 {
     type Real = f32;
     type Simd = pulp::Arch;
@@ -2738,6 +2749,80 @@ impl<'a, E: Entity> MatRef<'a, E> {
             __marker: PhantomData,
         }
     }
+
+    /// Returns an iterator that provides successive chunks of the columns of this matrix, with
+    /// each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn into_col_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
+        assert!(chunk_size > 0);
+        let chunk_count = div_ceil(self.ncols(), chunk_size);
+        (0..chunk_count).map(move |chunk_idx| {
+            let pos = chunk_size * chunk_idx;
+            self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
+        })
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of this matrix, with
+    /// each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn into_row_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
+        self.transpose()
+            .into_col_chunks(chunk_size)
+            .map(|chunk| chunk.transpose())
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the columns of this matrix,
+    /// with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_col_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+        use rayon::prelude::*;
+
+        assert!(chunk_size > 0);
+        let chunk_count = div_ceil(self.ncols(), chunk_size);
+        (0..chunk_count).into_par_iter().map(move |chunk_idx| {
+            let pos = chunk_size * chunk_idx;
+            self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
+        })
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
+    /// with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_row_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+        use rayon::prelude::*;
+
+        self.transpose()
+            .into_par_col_chunks(chunk_size)
+            .map(|chunk| chunk.transpose())
+    }
 }
 
 impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatRef<'_, E> {
@@ -3476,6 +3561,72 @@ impl<'a, E: Entity> MatMut<'a, E> {
     #[inline]
     pub fn as_mut(&mut self) -> MatMut<'_, E> {
         self.rb_mut()
+    }
+
+    /// Returns an iterator that provides successive chunks of the columns of this matrix, with
+    /// each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn into_col_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + DoubleEndedIterator<Item = MatMut<'a, E>> {
+        self.into_const()
+            .into_col_chunks(chunk_size)
+            .map(|chunk| unsafe { chunk.const_cast() })
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of this matrix,
+    /// with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn into_row_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + DoubleEndedIterator<Item = MatMut<'a, E>> {
+        self.into_const()
+            .into_row_chunks(chunk_size)
+            .map(|chunk| unsafe { chunk.const_cast() })
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the columns of this matrix,
+    /// with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_col_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, E>> {
+        use rayon::prelude::*;
+        self.into_const()
+            .into_par_col_chunks(chunk_size)
+            .map(|chunk| unsafe { chunk.const_cast() })
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
+    /// with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn into_par_row_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, E>> {
+        use rayon::prelude::*;
+        self.into_const()
+            .into_par_row_chunks(chunk_size)
+            .map(|chunk| unsafe { chunk.const_cast() })
     }
 }
 
@@ -4527,6 +4678,118 @@ impl<E: Entity> Mat<E> {
     {
         self.as_ref().is_all_finite()
     }
+
+    /// Returns an iterator that provides successive chunks of the columns of a view over this
+    /// matrix, with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn col_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl '_ + DoubleEndedIterator<Item = MatRef<'_, E>> {
+        self.as_ref().into_col_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides successive chunks of the columns of a mutable view over
+    /// this matrix, with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn col_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl '_ + DoubleEndedIterator<Item = MatMut<'_, E>> {
+        self.as_mut().into_col_chunks(chunk_size)
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the columns of a view over
+    /// this matrix, with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn par_col_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, E>> {
+        self.as_ref().into_par_col_chunks(chunk_size)
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the columns of a mutable view
+    /// over this matrix, with each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// columns.
+    #[inline]
+    #[track_caller]
+    pub fn par_col_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
+        self.as_mut().into_par_col_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of a view over this
+    /// matrix, with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn row_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl '_ + DoubleEndedIterator<Item = MatRef<'_, E>> {
+        self.as_ref().into_row_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of a mutable view over
+    /// this matrix, with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn row_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl '_ + DoubleEndedIterator<Item = MatMut<'_, E>> {
+        self.as_mut().into_row_chunks(chunk_size)
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the rows of a view over this
+    /// matrix, with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn par_row_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, E>> {
+        self.as_ref().into_par_row_chunks(chunk_size)
+    }
+
+    /// Returns a parallel iterator that provides successive chunks of the rows of a mutable view
+    /// over this matrix, with each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn par_row_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
+        self.as_mut().into_par_row_chunks(chunk_size)
+    }
 }
 
 #[doc(hidden)]
@@ -5483,5 +5746,21 @@ mod tests {
             let x = c32::new(nan, nan);
             assert!(!<c32 as ComplexField>::is_finite(&x));
         }
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut mat = Mat::from_fn(9, 10, |i, j| (i + j) as f64);
+        let mut iter = mat.row_chunks_mut(4);
+
+        let _0 = iter.next();
+        let _1 = iter.next();
+        let _2 = iter.next();
+        let none = iter.next();
+
+        assert!(_0 == Some(Mat::from_fn(4, 10, |i, j| (i + j) as f64).as_mut()));
+        assert!(_1 == Some(Mat::from_fn(4, 10, |i, j| (i + j + 4) as f64).as_mut()));
+        assert!(_2 == Some(Mat::from_fn(1, 10, |i, j| (i + j + 8) as f64).as_mut()));
+        assert!(none == None);
     }
 }
