@@ -8,7 +8,7 @@ use faer_core::Parallelism;
 use faer_sparse_experimental::{
     cholesky::*,
     ghost::{self, Array},
-    Index, SparseColMatRef,
+    Index, SparseColMatRef, SymbolicSparseColMatRef,
 };
 use matrix_market_rs::MtxData;
 
@@ -47,7 +47,10 @@ fn bench_supernodal(criterion: &mut Criterion) {
             col_counts[j] += 1;
         }
 
-        let A = SparseColMatRef::new_checked(n, n, &col_ptr, None, &row_ind, &*values);
+        let A = SparseColMatRef::<_, f64>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, &col_ptr, None, &row_ind),
+            &*values,
+        );
         let zero = truncate(0);
         let mut etree = vec![zero; n];
         let mut col_count = vec![zero; n];
@@ -76,7 +79,7 @@ fn bench_supernodal(criterion: &mut Criterion) {
             let A_lower = transpose(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                &mut A_lower_values,
+                &mut *A_lower_values,
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );

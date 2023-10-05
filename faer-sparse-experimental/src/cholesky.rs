@@ -1047,9 +1047,9 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
             let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
 
             let [Ld_top, Ld_mid_bot] = Ld.split_at_row(d_ncols);
-            let Ld_mid_bot = Ld_mid_bot.split_at_row(d_pattern_start)[1];
+            let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
             let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
-            let D = Ld_top.subrows(0, d_ncols).diagonal();
+            let D = Ld_top.diagonal();
 
             let stack = stack.rb_mut();
 
@@ -1094,8 +1094,13 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
                     .iter()
                     .enumerate()
                 {
+                    let i_idx = i_idx + j_idx;
+
                     let i = i.zx();
                     let i_s = i - s_start;
+
+                    debug_assert!(i_s >= j_s);
+
                     Ls.write(i_s, j_s, Ls.read(i_s, j_s).sub(tmp_top.read(i_idx, j_idx)));
                 }
             }
@@ -1128,9 +1133,9 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
             parallelism,
         );
         for j in 0..s_ncols {
-            let d = Ls_top.read(j, j).inv();
+            let d = Ls_top.read(j, j).real().inv();
             for i in 0..s_pattern.len() {
-                Ls_bot.write(i, j, Ls_bot.read(i, j).mul(d));
+                Ls_bot.write(i, j, Ls_bot.read(i, j).scale_real(d));
             }
         }
 
@@ -1210,13 +1215,13 @@ pub fn symbolic_transpose<'m, 'n, 'a, I: Index>(
     )
 }
 
-pub fn transpose<'m, 'n, 'a, I: Index>(
+pub fn transpose<'m, 'n, 'a, I: Index, E: Entity>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
-    new_values: &'a mut [f64],
-    A: ghost::SparseColMatRef<'m, 'n, '_, I, f64>,
+    new_values: E::Group<&'a mut [E::Unit]>,
+    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
     stack: PodStack<'_>,
-) -> ghost::SparseColMatRef<'n, 'm, 'a, I, f64> {
+) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
     let M = A.nrows();
     let N = A.ncols();
     assert!(new_col_ptrs.len() == *M + 1);
@@ -1252,17 +1257,25 @@ pub fn transpose<'m, 'n, 'a, I: Index>(
     }
 
     let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let new_values = &mut new_values[..new_col_ptrs[*M].zx()];
+    let mut new_values = E::map(new_values, |new_values| {
+        &mut new_values[..new_col_ptrs[*M].zx()]
+    });
     let current_row_position = &mut *col_count;
     // current_row_position[i] == col_ptr[i]
     for j in N.indices() {
         let j_: Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j)) {
+        for (i, val) in zip(A.row_indices_of_col(j), E::into_iter(A.values_of_col(j))) {
             let ci = &mut current_row_position[i];
 
             // SAFETY: see below
             *unsafe { new_row_indices.get_unchecked_mut(ci.zx()) } = *j_;
-            *unsafe { new_values.get_unchecked_mut(ci.zx()) } = *val;
+            E::map(
+                E::zip(val, E::as_mut(&mut new_values)),
+                #[inline(always)]
+                |(val, new_values)| unsafe {
+                    *new_values.get_unchecked_mut(ci.zx()) = *val;
+                },
+            );
             ci.incr();
         }
     }
@@ -1276,13 +1289,9 @@ pub fn transpose<'m, 'n, 'a, I: Index>(
     // 1. all written row indices are less than n
     ghost::SparseColMatRef::new(
         unsafe {
-            SparseColMatRef::new_unchecked(
-                *N,
-                *M,
-                new_col_ptrs,
-                None,
-                new_row_indices,
-                &*new_values,
+            SparseColMatRef::new(
+                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
+                E::map(new_values, |new_values| &*new_values),
             )
         },
         N,
@@ -1293,7 +1302,10 @@ pub fn transpose<'m, 'n, 'a, I: Index>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::qd::Double;
+    use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
+    use faer_core::Mat;
 
     macro_rules! monomorphize_test {
         ($name: ident) => {
@@ -1359,16 +1371,100 @@ mod tests {
 
     include!("../data.rs");
 
+    fn sparse_to_dense<I: Index, E: ComplexField>(sparse: SparseColMatRef<'_, I, E>) -> Mat<E> {
+        let m = sparse.nrows();
+        let n = sparse.ncols();
+
+        let mut dense = Mat::<E>::zeros(m, n);
+
+        for j in 0..n {
+            for (i, val) in zip(
+                sparse.row_indices_of_col(j),
+                E::into_iter::<&[E::Unit]>(sparse.values_of_col(j)),
+            ) {
+                let val = E::from_units(E::deref(val));
+                dense.write(i, j, val);
+            }
+        }
+
+        dense
+    }
+
+    fn reconstruct_from_supernodal<I: Index, E: ComplexField>(
+        symbolic: &SymbolicSupernodalCholesky<I>,
+        L_values: E::Group<&[E::Unit]>,
+    ) -> Mat<E> {
+        let n_supernodes = symbolic.supernode_etree__.len();
+        let n = symbolic.supernode_begin__[n_supernodes].zx();
+        let mut dense = Mat::<E>::zeros(n, n);
+
+        let col_ptr_row = &*symbolic.col_ptrs_for_row_indices__;
+        let col_ptr_val = &*symbolic.col_ptrs_for_values__;
+        let row_ind = &*symbolic.row_indices__;
+
+        for s in 0..n_supernodes {
+            let s_start = symbolic.supernode_begin__[s].zx();
+            let s_end = symbolic.supernode_begin__[s + 1].zx();
+
+            let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+            let s_ncols = s_end - s_start;
+            let s_nrows = s_pattern.len() + s_ncols;
+
+            let Ls = MatRef::<E>::from_column_major_slice(
+                E::map(E::copy(&L_values), |L_values| {
+                    &L_values[col_ptr_val[s].zx()..col_ptr_val[s + 1].zx()]
+                }),
+                s_nrows,
+                s_ncols,
+            );
+
+            let [Ls_top, Ls_bot] = Ls.split_at_row(s_ncols);
+            dense
+                .as_mut()
+                .submatrix(s_start, s_start, s_ncols, s_ncols)
+                .clone_from(Ls_top);
+
+            for col in 0..s_ncols {
+                for (i, row) in s_pattern.iter().enumerate() {
+                    dense.write(row.zx(), s_start + col, Ls_bot.read(i, col));
+                }
+            }
+        }
+
+        let mut D = Mat::<E>::zeros(n, n);
+        D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
+        dense.as_mut().diagonal().fill(E::one());
+        &dense * D * &dense.adjoint()
+    }
+
     fn test_supernodal<I: Index>() {
+        type E = Double<f64>;
         let truncate = I::truncate;
 
         let (_, col_ptr, row_ind, values) = MEDIUM;
 
         let n = col_ptr.len() - 1;
+        let nnz = values.len();
         let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+        let values_aos = &*values
+            .iter()
+            .copied()
+            .map(<E as ComplexField>::from_f64)
+            .collect::<Vec<_>>();
+        let mut values = E::map(E::zero().into_units(), |zero| vec![zero; nnz]);
+        for i in 0..nnz {
+            E::map(
+                E::zip(values_aos[i].into_units(), E::as_mut(&mut values)),
+                |(aos, values)| values[i] = aos,
+            );
+        }
+        let values = E::map(E::as_ref(&values), |values| &**values);
 
-        let A = SparseColMatRef::new_checked(n, n, col_ptr, None, row_ind, values);
+        let A = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            values,
+        );
         let zero = truncate(0);
         let mut etree = vec![zero; n];
         let mut col_count = vec![zero; n];
@@ -1391,30 +1487,52 @@ mod tests {
             .unwrap();
 
             let mut A_lower_col_ptr = col_ptr.to_vec();
-            let mut A_lower_values = values.to_vec();
+            let mut A_lower_values = E::map(E::copy(&values), |values| values.to_vec());
             let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = E::map(E::as_mut(&mut A_lower_values), |A_lower_values| {
+                &mut **A_lower_values
+            });
 
             let A_lower = transpose(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                &mut A_lower_values,
+                A_lower_values,
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
 
             let n_supernodes = symbolic.supernode_etree__.len();
-            let mut values = vec![0.0f64; symbolic.col_ptrs_for_values__[n_supernodes].zx()];
+            let mut values = E::map(E::zero().into_units(), |zero| {
+                vec![zero; symbolic.col_ptrs_for_values__[n_supernodes].zx()]
+            });
 
             factorize_supernodal_numeric(
                 *A_lower,
-                &mut values,
+                E::map(E::as_mut(&mut values), |values| &mut **values),
                 &symbolic,
                 Parallelism::None,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    factorize_supernodal_numeric_ldlt_req::<I, f64>(&symbolic, Parallelism::None)
+                    factorize_supernodal_numeric_ldlt_req::<I, E>(&symbolic, Parallelism::None)
                         .unwrap(),
                 )),
             );
+            let mut A = sparse_to_dense(*A);
+            for j in 0..n {
+                for i in j + 1..n {
+                    A.write(i, j, A.read(j, i));
+                }
+            }
+
+            let err = reconstruct_from_supernodal::<I, E>(
+                &symbolic,
+                E::map(E::as_ref(&values), |values| &**values),
+            ) - A;
+            let mut max = E::zero();
+            faer_core::zipped!(err.as_ref()).for_each(|x| {
+                let x = x.read().abs();
+                max = if max > x { max } else { x }
+            });
+            assert!(max < E::from_f64(1e-25));
         });
     }
 
