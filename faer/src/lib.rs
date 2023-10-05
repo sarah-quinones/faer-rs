@@ -144,7 +144,7 @@
 
 use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_cholesky::llt::CholeskyError;
-use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity, MatMut, MatRef};
+use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity};
 use prelude::*;
 use solvers::*;
 
@@ -159,7 +159,7 @@ pub mod prelude {
 
 pub use dbgf::dbgf;
 pub use faer_core::{
-    complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, Scale,
+    complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef, Scale,
 };
 pub use matrixcompare::assert_matrix_eq;
 
@@ -3191,7 +3191,7 @@ mod tests {
     #[test]
     fn test_polars_pos() {
         use crate::polars::{polars_to_faer_f32, polars_to_faer_f64};
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [10, 11, 12]);
@@ -3213,7 +3213,7 @@ mod tests {
     #[should_panic(expected = "frame contains null entries")]
     fn test_polars_neg_32_null() {
         use crate::polars::polars_to_faer_f32;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3228,7 +3228,7 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data")]
     fn test_polars_neg_32_strl() {
         use crate::polars::polars_to_faer_f32;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
@@ -3243,7 +3243,7 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data and null entries")]
     fn test_polars_neg_32_combo() {
         use crate::polars::polars_to_faer_f32;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3259,7 +3259,7 @@ mod tests {
     #[should_panic(expected = "frame contains null entries")]
     fn test_polars_neg_64_null() {
         use crate::polars::polars_to_faer_f64;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);
@@ -3274,7 +3274,7 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data")]
     fn test_polars_neg_64_strl() {
         use crate::polars::polars_to_faer_f64;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", ["fish", "dog", "crocodile"]);
@@ -3289,7 +3289,7 @@ mod tests {
     #[should_panic(expected = "frame contains non-numerical data and null entries")]
     fn test_polars_neg_64_combo() {
         use crate::polars::polars_to_faer_f64;
-        use ::polars::prelude::*;
+        use polars::prelude::*;
 
         let s0: Series = Series::new("a", [1, 2, 3]);
         let s1: Series = Series::new("b", [Some(10), Some(11), None]);

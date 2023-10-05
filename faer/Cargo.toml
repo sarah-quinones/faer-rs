@@ -24,7 +24,7 @@ matrixcompare = "0.3"
 dbgf = "0.1.0"
 nalgebra = { version = "0.32", optional = true, default-features = false }
 ndarray = { version = "0.15", optional = true, default-features = false }
-polars = { version = "0.33", optional = true, features =  [ "lazy" ] }
+polars = { version = "0.33", optional = true, features = ["lazy"] }
 
 [features]
 default = ["std"]
