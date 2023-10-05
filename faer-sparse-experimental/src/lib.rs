@@ -48,12 +48,6 @@ macro_rules! impl_deref {
     };
 }
 
-pub trait PodEntity: Entity + Pod {}
-impl<E: Entity + Pod> PodEntity for E {}
-
-pub trait PodComplexField: ComplexField + Pod {}
-impl<E: ComplexField + Pod> PodComplexField for E {}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum FaerSparseError {
@@ -222,7 +216,7 @@ mod __core {
     }
 
     // #[derive(Debug)]
-    pub struct SparseColMatRef<'a, I, E: PodEntity> {
+    pub struct SparseColMatRef<'a, I, E: Entity> {
         symbolic: SymbolicSparseColMatRef<'a, I>,
         val: E::GroupCopy<&'a [E::Unit]>,
     }
@@ -429,7 +423,7 @@ mod __core {
     ///
     /// Ensures:
     /// * self.compute_nnz() is <= I::MAX
-    impl<'a, I: Index, E: PodEntity> SparseColMatRef<'a, I, E> {
+    impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         #[inline]
         #[track_caller]
         pub fn new_checked(
@@ -573,7 +567,7 @@ mod __core {
 
 impl_copy!(<><I> <PermutationRef<'_, I>>);
 impl_copy!(<><I> <SymbolicSparseColMatRef<'_, I>>);
-impl_copy!(<><I, E: PodEntity> <SparseColMatRef<'_, I, E>>);
+impl_copy!(<><I, E: Entity> <SparseColMatRef<'_, I, E>>);
 
 #[inline(always)]
 pub fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {

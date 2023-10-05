@@ -1,7 +1,8 @@
-use crate::{mem::*, Index, PodEntity, __get_unchecked};
+use crate::{mem::*, Index, __get_unchecked};
 use assert2::{assert, debug_assert};
 use bytemuck::Pod;
 use core::{marker::PhantomData, ops::Deref};
+use faer_core::Entity;
 use reborrow::*;
 use std::ops::Range;
 
@@ -532,7 +533,7 @@ pub struct SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>(
 
 // #[derive(Debug)]
 #[repr(transparent)]
-pub struct SparseColMatRef<'nrows, 'ncols, 'a, I, E: PodEntity>(
+pub struct SparseColMatRef<'nrows, 'ncols, 'a, I, E: Entity>(
     Branded<'nrows, crate::SparseColMatRef<'a, I, E>>,
     Branded<'ncols, ()>,
 );
@@ -615,7 +616,7 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
     }
 }
 
-impl<'nrows, 'ncols, 'a, I: Index, E: PodEntity> SparseColMatRef<'nrows, 'ncols, 'a, I, E> {
+impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a, I, E> {
     #[inline]
     #[track_caller]
     pub fn new(
@@ -656,34 +657,34 @@ impl<'nrows, 'ncols, 'a, I: Index, E: PodEntity> SparseColMatRef<'nrows, 'ncols,
         E::map(
             self.0.values(),
             #[inline(always)]
-            |val| unsafe { crate::mem::__get_unchecked(val, self.0.col_range_unchecked(*j)) },
+            |val| unsafe { crate::mem::__get_unchecked(val, range.clone()) },
         )
     }
 }
 
 impl_copy!(<><I> <PermutationRef<'_, '_, I>>);
 impl_copy!(<><I> <SymbolicSparseColMatRef<'_, '_, '_, I>>);
-impl_copy!(<><I, E: PodEntity> <SparseColMatRef<'_, '_, '_, I, E>>);
+impl_copy!(<><I, E: Entity> <SparseColMatRef<'_, '_, '_, I, E>>);
 impl_deref!(<><><Target = usize><Size<'_>>);
 impl_deref!(<><I><Target = I><Idx<'_, I>>);
 impl_deref!(<><I><Target = I><MaybeIdx<'_, I>>);
 impl_deref!(<><I><Target = I><IdxInclusive<'_, I>>);
 impl_deref!(<'n, 'a><I><Target = crate::PermutationRef<'a, I>><PermutationRef<'n, 'a, I>>);
 impl_deref!(<'m, 'n, 'a><I><Target = crate::SymbolicSparseColMatRef<'a, I>><SymbolicSparseColMatRef<'m, 'n, 'a, I>>);
-impl_deref!(<'m, 'n, 'a><I, E: PodEntity><Target = crate::SparseColMatRef<'a, I, E>><SparseColMatRef<'m, 'n, 'a, I, E>>);
+impl_deref!(<'m, 'n, 'a><I, E: Entity><Target = crate::SparseColMatRef<'a, I, E>><SparseColMatRef<'m, 'n, 'a, I, E>>);
 
-pub struct ArrayGroup<'n, 'a, E: PodEntity>(pub E::GroupCopy<&'a Array<'n, E::Unit>>);
-pub struct ArrayGroupMut<'n, 'a, E: PodEntity>(pub E::Group<&'a mut Array<'n, E::Unit>>);
+pub struct ArrayGroup<'n, 'a, E: Entity>(pub E::GroupCopy<&'a Array<'n, E::Unit>>);
+pub struct ArrayGroupMut<'n, 'a, E: Entity>(pub E::Group<&'a mut Array<'n, E::Unit>>);
 
-impl<'n, 'a, E: PodEntity> Copy for ArrayGroup<'n, 'a, E> {}
-impl<'n, 'a, E: PodEntity> Clone for ArrayGroup<'n, 'a, E> {
+impl<'n, 'a, E: Entity> Copy for ArrayGroup<'n, 'a, E> {}
+impl<'n, 'a, E: Entity> Clone for ArrayGroup<'n, 'a, E> {
     #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'short, 'n, 'a, E: PodEntity> reborrow::ReborrowMut<'short> for ArrayGroupMut<'n, 'a, E> {
+impl<'short, 'n, 'a, E: Entity> reborrow::ReborrowMut<'short> for ArrayGroupMut<'n, 'a, E> {
     type Target = ArrayGroupMut<'n, 'short, E>;
 
     #[inline(always)]
@@ -692,7 +693,7 @@ impl<'short, 'n, 'a, E: PodEntity> reborrow::ReborrowMut<'short> for ArrayGroupM
     }
 }
 
-impl<'short, 'n, 'a, E: PodEntity> reborrow::Reborrow<'short> for ArrayGroupMut<'n, 'a, E> {
+impl<'short, 'n, 'a, E: Entity> reborrow::Reborrow<'short> for ArrayGroupMut<'n, 'a, E> {
     type Target = ArrayGroup<'n, 'short, E>;
 
     #[inline(always)]
@@ -701,7 +702,7 @@ impl<'short, 'n, 'a, E: PodEntity> reborrow::Reborrow<'short> for ArrayGroupMut<
     }
 }
 
-impl<'n, 'a, E: PodEntity> ArrayGroupMut<'n, 'a, E>
+impl<'n, 'a, E: Entity> ArrayGroupMut<'n, 'a, E>
 where
     E::Unit: Pod,
 {
@@ -729,7 +730,7 @@ where
     }
 }
 
-impl<'n, 'a, E: PodEntity> ArrayGroup<'n, 'a, E>
+impl<'n, 'a, E: Entity> ArrayGroup<'n, 'a, E>
 where
     E::Unit: Pod,
 {

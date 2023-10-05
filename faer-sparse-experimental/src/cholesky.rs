@@ -155,7 +155,7 @@ fn ereach_super<'n, 'nsuper, 'a, I: Index>(
     }
 }
 
-pub fn factorize_simplicial_numeric<'n, I: Index, E: PodComplexField>(
+pub fn factorize_simplicial_numeric<'n, I: Index, E: ComplexField>(
     L_values: E::Group<&mut [E::Unit]>,
     L_row_indices: &mut [Idx<'n, I>],
     L_col_ptrs: &[I],
@@ -164,9 +164,7 @@ pub fn factorize_simplicial_numeric<'n, I: Index, E: PodComplexField>(
     A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
 
     stack: PodStack<'_>,
-) where
-    E::Unit: Pod,
-{
+) {
     let N = A.ncols();
     let n = *N;
     E::map(
@@ -242,7 +240,7 @@ pub fn factorize_simplicial_numeric<'n, I: Index, E: PodComplexField>(
                     x.write(j, E::zero());
 
                     let dj = L_values.read(j_start).real();
-                    let lkj = xj.scale_real(&dj.inv());
+                    let lkj = xj.scale_real(dj.inv());
 
                     let range = j_start.next()..row_idx.to_inclusive();
                     for (i, lij) in zip(
@@ -256,12 +254,12 @@ pub fn factorize_simplicial_numeric<'n, I: Index, E: PodComplexField>(
                         let i = i.zx();
                         let mut xi = x.read(i);
                         let lij = E::from_units(E::deref(lij));
-                        let prod = lij.conj().mul(&xj);
-                        xi = xi.sub(&prod);
+                        let prod = lij.conj().mul(xj);
+                        xi = xi.sub(prod);
                         x.write(i, xi);
                     }
 
-                    d = d.sub(&lkj.mul(&xj.conj()).real());
+                    d = d.sub(lkj.mul(xj.conj()).real());
 
                     L_row_indices[row_idx] = k.truncate();
                     L_values.write(row_idx, lkj);
@@ -1049,7 +1047,7 @@ pub fn factorize_supernodal_numeric<I: Index>(
         faer_cholesky::ldlt_diagonal::compute::raw_cholesky_in_place(
             Ls_top.rb_mut(),
             parallelism,
-            dyn_stack::DynStack::new(&mut dyn_stack::GlobalMemBuffer::new(
+            dyn_stack::PodStack::new(&mut dyn_stack::GlobalPodBuffer::new(
                 faer_cholesky::ldlt_diagonal::compute::raw_cholesky_in_place_req::<f64>(
                     s_ncols,
                     parallelism,
