@@ -17,7 +17,7 @@ use faer_core::{
     mul::matmul,
     temp_mat_req,
     zip::Diag,
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
 };
 use reborrow::*;
 
@@ -425,7 +425,7 @@ pub fn lahqr<E: ComplexField>(
     // that we can treat this subblock separately.
     let mut istart = ilo;
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
@@ -590,7 +590,7 @@ pub fn lahqr<E: ComplexField>(
             let ai = unsafe { a.rb().col(i).subrows(istart_m, nrows_).const_cast() };
             let aip1 = unsafe { a.rb().col(i + 1).subrows(istart_m, nrows_).const_cast() };
 
-            if E::HAS_SIMD && a.row_stride() == 1 {
+            if a.row_stride() == 1 {
                 arch.dispatch(Rot {
                     ai,
                     aj: aip1,
@@ -611,7 +611,7 @@ pub fn lahqr<E: ComplexField>(
                 let zi = unsafe { z.rb().col(i).const_cast() };
                 let zip1 = unsafe { z.rb().col(i + 1).const_cast() };
 
-                if E::HAS_SIMD && z.row_stride() == 1 {
+                if z.row_stride() == 1 {
                     arch.dispatch(Rot {
                         ai: zi,
                         aj: zip1,

@@ -2,7 +2,7 @@ use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
-    Conj, Entity, MatMut, MatRef, Parallelism,
+    Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use reborrow::*;
 
@@ -115,7 +115,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     };
 
     let mut idx = 0;
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
     loop {
         let block_size = 1;
 
@@ -170,7 +170,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         let mut a21 = a21.col(0);
 
         // A21 -= L20 × L10^H
-        if E::HAS_SIMD && a21.row_stride() == 1 {
+        if a21.row_stride() == 1 {
             arch.dispatch(RankUpdate {
                 a21: a21.rb_mut(),
                 l20,

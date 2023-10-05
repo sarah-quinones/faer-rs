@@ -6,6 +6,7 @@ use crate::{
 };
 use assert2::assert;
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
+use faer_entity::SimdCtx;
 use pulp::Simd;
 use reborrow::*;
 
@@ -323,7 +324,7 @@ pub mod inner_prod {
 
     #[inline(always)]
     pub fn inner_prod_with_conj_arch<E: ComplexField>(
-        arch: pulp::Arch,
+        arch: E::Simd,
         lhs: MatRef<'_, E>,
         conj_lhs: Conj,
         rhs: MatRef<'_, E>,
@@ -340,7 +341,7 @@ pub mod inner_prod {
             b = b.reverse_rows();
         }
 
-        let res = if E::HAS_SIMD && a.row_stride() == 1 && b.row_stride() == 1 {
+        let res = if a.row_stride() == 1 && b.row_stride() == 1 {
             let a = E::map(a.as_ptr(), |ptr| unsafe {
                 core::slice::from_raw_parts(ptr, nrows)
             });
@@ -385,7 +386,7 @@ pub mod inner_prod {
         rhs: MatRef<'_, E>,
         conj_rhs: Conj,
     ) -> E {
-        inner_prod_with_conj_arch(pulp::Arch::new(), lhs, conj_lhs, rhs, conj_rhs)
+        inner_prod_with_conj_arch(E::Simd::default(), lhs, conj_lhs, rhs, conj_rhs)
     }
 }
 
@@ -548,7 +549,7 @@ mod matvec_colmajor {
             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
         );
 
-        let arch = pulp::Arch::new();
+        let arch = E::Simd::default();
         for j in 0..n {
             let a = a.submatrix(0, j, m, 1);
             let acc = E::rb_mut(E::as_mut(&mut acc));
@@ -644,17 +645,11 @@ pub mod matvec {
             b = b.reverse_rows();
         }
 
-        if E::HAS_SIMD {
-            if a.row_stride() == 1 {
-                return matvec_colmajor::matvec_with_conj(
-                    acc, a, conj_lhs, b, conj_rhs, alpha, beta,
-                );
-            }
-            if a.col_stride() == 1 {
-                return matvec_rowmajor::matvec_with_conj(
-                    acc, a, conj_lhs, b, conj_rhs, alpha, beta,
-                );
-            }
+        if a.row_stride() == 1 {
+            return matvec_colmajor::matvec_with_conj(acc, a, conj_lhs, b, conj_rhs, alpha, beta);
+        }
+        if a.col_stride() == 1 {
+            return matvec_rowmajor::matvec_with_conj(acc, a, conj_lhs, b, conj_rhs, alpha, beta);
         }
 
         let m = a.nrows();
@@ -866,7 +861,7 @@ pub mod outer_prod {
 
         let mut acc = acc;
 
-        let arch = pulp::Arch::new();
+        let arch = E::Simd::default();
 
         let a = E::map(
             a.as_ptr(),
@@ -926,7 +921,7 @@ pub mod outer_prod {
             core::mem::swap(&mut conj_a, &mut conj_b);
         }
 
-        if E::HAS_SIMD && acc.row_stride() == 1 {
+        if acc.row_stride() == 1 {
             if a.row_stride() == 1 {
                 outer_prod_with_conj_impl(acc, a, conj_a, b, conj_b, alpha, beta);
             } else {
@@ -1216,7 +1211,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
     let n = acc.ncols();
     let k = a.ncols();
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
     let lane_count = arch.dispatch(SimdLaneCount::<E> {
         __marker: PhantomData,
     });
@@ -1347,50 +1342,6 @@ fn div_ceil(a: usize, b: usize) -> usize {
     } else {
         d
     }
-}
-
-fn matmul_with_conj_fallback<E: ComplexField>(
-    acc: MatMut<'_, E>,
-    a: MatRef<'_, E>,
-    conj_a: Conj,
-    b: MatRef<'_, E>,
-    conj_b: Conj,
-    alpha: Option<E>,
-    beta: E,
-    parallelism: Parallelism,
-) {
-    let m = acc.nrows();
-    let n = acc.ncols();
-    let k = a.ncols();
-
-    let job = |idx: usize| {
-        let i = idx % m;
-        let j = idx / m;
-        let acc = acc.rb().submatrix(i, j, 1, 1);
-        let mut acc = unsafe { acc.const_cast() };
-
-        let mut local_acc = E::zero();
-        for depth in 0..k {
-            let a = a.read(i, depth);
-            let b = b.read(depth, j);
-            local_acc = local_acc.add(E::mul(
-                match conj_a {
-                    Conj::Yes => a.conj(),
-                    Conj::No => a,
-                },
-                match conj_b {
-                    Conj::Yes => b.conj(),
-                    Conj::No => b,
-                },
-            ))
-        }
-        match alpha {
-            Some(alpha) => acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), local_acc.mul(beta))),
-            None => acc.write(0, 0, local_acc.mul(beta)),
-        }
-    };
-
-    crate::for_each_raw(m * n, job, parallelism);
 }
 
 #[doc(hidden)]
@@ -1846,72 +1797,67 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         }
     }
 
-    if E::HAS_SIMD {
-        let arch = pulp::Arch::new();
-        let lane_count = arch.dispatch(SimdLaneCount::<E> {
-            __marker: PhantomData,
-        });
+    let arch = E::Simd::default();
+    let lane_count = arch.dispatch(SimdLaneCount::<E> {
+        __marker: PhantomData,
+    });
 
-        let mut a = lhs;
-        let mut b = rhs;
-        let mut conj_a = conj_lhs;
-        let mut conj_b = conj_rhs;
-        let mut acc = acc;
+    let mut a = lhs;
+    let mut b = rhs;
+    let mut conj_a = conj_lhs;
+    let mut conj_b = conj_rhs;
+    let mut acc = acc;
 
-        if n < m {
-            (a, b) = (b.transpose(), a.transpose());
-            core::mem::swap(&mut conj_a, &mut conj_b);
-            acc = acc.transpose();
-        }
+    if n < m {
+        (a, b) = (b.transpose(), a.transpose());
+        core::mem::swap(&mut conj_a, &mut conj_b);
+        acc = acc.transpose();
+    }
 
-        if b.row_stride() < 0 {
-            a = a.reverse_cols();
-            b = b.reverse_rows();
-        }
+    if b.row_stride() < 0 {
+        a = a.reverse_cols();
+        b = b.reverse_rows();
+    }
 
-        let m = acc.nrows();
-        let n = acc.ncols();
+    let m = acc.nrows();
+    let n = acc.ncols();
 
-        let padded_m = div_ceil(m, lane_count).checked_mul(lane_count).unwrap();
+    let padded_m = div_ceil(m, lane_count).checked_mul(lane_count).unwrap();
 
-        let mut a_copy = a.to_owned();
-        a_copy.resize_with(padded_m, k, |_, _| E::zero());
-        let a_copy = a_copy.as_ref();
-        let mut tmp = crate::Mat::<E>::zeros(padded_m, n);
-        let tmp_conj_b = match (conj_a, conj_b) {
-            (Conj::Yes, Conj::Yes) | (Conj::No, Conj::No) => Conj::No,
-            (Conj::Yes, Conj::No) | (Conj::No, Conj::Yes) => Conj::Yes,
-        };
-        if b.row_stride() == 1 {
-            matmul_with_conj_impl(tmp.as_mut(), a_copy, b, tmp_conj_b, parallelism);
-        } else {
-            let b = b.to_owned();
-            matmul_with_conj_impl(tmp.as_mut(), a_copy, b.as_ref(), tmp_conj_b, parallelism);
-        }
-
-        let tmp = tmp.as_ref().subrows(0, m);
-
-        match alpha {
-            Some(alpha) => match conj_a {
-                Conj::Yes => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                    acc.write(E::add(acc.read().mul(alpha), tmp.read().conj().mul(beta)))
-                }),
-                Conj::No => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                    acc.write(E::add(acc.read().mul(alpha), tmp.read().mul(beta)))
-                }),
-            },
-            None => match conj_a {
-                Conj::Yes => {
-                    zipped!(acc, tmp)
-                        .for_each(|mut acc, tmp| acc.write(tmp.read().conj().mul(beta)));
-                }
-                Conj::No => {
-                    zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().mul(beta)));
-                }
-            },
-        }
+    let mut a_copy = a.to_owned();
+    a_copy.resize_with(padded_m, k, |_, _| E::zero());
+    let a_copy = a_copy.as_ref();
+    let mut tmp = crate::Mat::<E>::zeros(padded_m, n);
+    let tmp_conj_b = match (conj_a, conj_b) {
+        (Conj::Yes, Conj::Yes) | (Conj::No, Conj::No) => Conj::No,
+        (Conj::Yes, Conj::No) | (Conj::No, Conj::Yes) => Conj::Yes,
+    };
+    if b.row_stride() == 1 {
+        matmul_with_conj_impl(tmp.as_mut(), a_copy, b, tmp_conj_b, parallelism);
     } else {
-        matmul_with_conj_fallback(acc, lhs, conj_lhs, rhs, conj_rhs, alpha, beta, parallelism);
+        let b = b.to_owned();
+        matmul_with_conj_impl(tmp.as_mut(), a_copy, b.as_ref(), tmp_conj_b, parallelism);
+    }
+
+    let tmp = tmp.as_ref().subrows(0, m);
+
+    match alpha {
+        Some(alpha) => match conj_a {
+            Conj::Yes => zipped!(acc, tmp).for_each(|mut acc, tmp| {
+                acc.write(E::add(acc.read().mul(alpha), tmp.read().conj().mul(beta)))
+            }),
+            Conj::No => zipped!(acc, tmp).for_each(|mut acc, tmp| {
+                acc.write(E::add(acc.read().mul(alpha), tmp.read().mul(beta)))
+            }),
+        },
+        None => match conj_a {
+            Conj::Yes => {
+                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().conj().mul(beta)));
+            }
+            Conj::No => {
+                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().mul(beta)));
+            }
+        },
     }
 }
 
@@ -3599,6 +3545,52 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn matmul_with_conj_fallback<E: ComplexField>(
+        acc: MatMut<'_, E>,
+        a: MatRef<'_, E>,
+        conj_a: Conj,
+        b: MatRef<'_, E>,
+        conj_b: Conj,
+        alpha: Option<E>,
+        beta: E,
+        parallelism: Parallelism,
+    ) {
+        let m = acc.nrows();
+        let n = acc.ncols();
+        let k = a.ncols();
+
+        let job = |idx: usize| {
+            let i = idx % m;
+            let j = idx / m;
+            let acc = acc.rb().submatrix(i, j, 1, 1);
+            let mut acc = unsafe { acc.const_cast() };
+
+            let mut local_acc = E::zero();
+            for depth in 0..k {
+                let a = a.read(i, depth);
+                let b = b.read(depth, j);
+                local_acc = local_acc.add(E::mul(
+                    match conj_a {
+                        Conj::Yes => a.conj(),
+                        Conj::No => a,
+                    },
+                    match conj_b {
+                        Conj::Yes => b.conj(),
+                        Conj::No => b,
+                    },
+                ))
+            }
+            match alpha {
+                Some(alpha) => {
+                    acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), local_acc.mul(beta)))
+                }
+                None => acc.write(0, 0, local_acc.mul(beta)),
+            }
+        };
+
+        crate::for_each_raw(m * n, job, parallelism);
     }
 
     fn test_matmul_impl(

@@ -18,8 +18,8 @@ use coe::Coerce;
 use core::{iter::zip, mem::swap};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    jacobi::JacobiRotation, join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, Conj,
-    Entity, MatMut, MatRef, Parallelism, RealField,
+    jacobi::JacobiRotation, join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped,
+    ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use reborrow::*;
 
@@ -308,7 +308,7 @@ fn compute_singular_values<E: RealField>(
             }
         }
 
-        pulp::Arch::new().dispatch(ImplF64 {
+        <f64 as ComplexField>::Simd::default().dispatch(ImplF64 {
             shifts: shifts.coerce(),
             mus: mus.coerce(),
             s: s.coerce(),
@@ -350,7 +350,7 @@ fn compute_singular_values<E: RealField>(
             }
         }
 
-        pulp::Arch::new().dispatch(ImplF32 {
+        <f64 as ComplexField>::Simd::default().dispatch(ImplF32 {
             shifts: shifts.coerce(),
             mus: mus.coerce(),
             s: s.coerce(),

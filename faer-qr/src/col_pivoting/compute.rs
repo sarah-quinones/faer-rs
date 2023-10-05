@@ -8,7 +8,7 @@ use faer_core::{
     par_split_indices, parallelism_degree,
     permutation::{swap_cols, PermutationMut},
     simd, transmute_unchecked, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
-    Ptr,
+    Ptr, SimdCtx,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
@@ -334,13 +334,13 @@ impl<E: ComplexField> pulp::WithSimd for UpdateAndNorm2<'_, E> {
 }
 
 #[inline(always)]
-fn norm2<E: ComplexField>(arch: pulp::Arch, a: MatRef<'_, E>) -> E::Real {
+fn norm2<E: ComplexField>(arch: E::Simd, a: MatRef<'_, E>) -> E::Real {
     inner_prod_with_conj_arch(arch, a, Conj::Yes, a, Conj::No).real()
 }
 
 #[inline(always)]
 fn update_and_norm2<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     a: MatMut<'_, E>,
     b: MatRef<'_, E>,
     k: E,
@@ -349,19 +349,17 @@ fn update_and_norm2<E: ComplexField>(
     if colmajor {
         let a_len = a.nrows();
 
-        if E::HAS_SIMD {
-            let a = E::map(
-                a.as_ptr(),
-                #[inline(always)]
-                |ptr| unsafe { slice::from_raw_parts_mut(ptr, a_len) },
-            );
-            let b = E::map(
-                b.as_ptr(),
-                #[inline(always)]
-                |ptr| unsafe { slice::from_raw_parts(ptr, a_len) },
-            );
-            return arch.dispatch(UpdateAndNorm2 { a, b, k });
-        }
+        let a = E::map(
+            a.as_ptr(),
+            #[inline(always)]
+            |ptr| unsafe { slice::from_raw_parts_mut(ptr, a_len) },
+        );
+        let b = E::map(
+            b.as_ptr(),
+            #[inline(always)]
+            |ptr| unsafe { slice::from_raw_parts(ptr, a_len) },
+        );
+        return arch.dispatch(UpdateAndNorm2 { a, b, k });
     }
 
     let mut acc = E::Real::zero();
@@ -398,7 +396,7 @@ fn qr_in_place_colmajor<E: ComplexField>(
     let mut biggest_col_idx = 0;
     let mut biggest_col_value = E::Real::zero();
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
 
     for j in 0..n {
         let col_value = norm2(arch, matrix.rb().col(j));
@@ -587,7 +585,7 @@ impl<E: ComplexField> pulp::WithSimd for ProcessCols<'_, E> {
 
 #[inline(always)]
 fn process_cols<E: ComplexField>(
-    arch: pulp::Arch,
+    arch: E::Simd,
     mut matrix: MatMut<'_, E>,
     offset: usize,
     first_tail: MatRef<'_, E>,
@@ -595,7 +593,7 @@ fn process_cols<E: ComplexField>(
     biggest_col_value: &mut E::Real,
     biggest_col_idx: &mut usize,
 ) {
-    if E::HAS_SIMD && matrix.row_stride() == 1 {
+    if matrix.row_stride() == 1 {
         arch.dispatch(ProcessCols {
             matrix,
             offset,

@@ -9,7 +9,7 @@ use faer_core::{
     },
     mul::{inner_prod::inner_prod_with_conj, matmul},
     parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField, Conj,
-    Entity, MatMut, MatRef, Parallelism,
+    Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use reborrow::*;
 
@@ -325,7 +325,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
         let mut v = v.as_mut();
         let mut w = w.as_mut();
 
-        let arch = pulp::Arch::new();
+        let arch = E::Simd::default();
         for k in 0..n - 1 {
             let a_cur = a.rb_mut().submatrix(k, k, n - k, n - k);
             let [mut a11, mut a12, mut a21, mut a22] = a_cur.split_at(1, 1);
@@ -378,58 +378,21 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             let tau_inv = tau.inv();
             householder.write(k, 0, tau);
 
-            if E::HAS_SIMD && a22.row_stride() == 1 {
-                if k > 0 {
-                    w21.fill_zeros();
-                    arch.dispatch(HessenbergFusedUpdate {
-                        a: a22.rb_mut(),
-                        v: v21.rb_mut(),
-                        w: w21.rb_mut().col(0),
-                        u: u21.rb(),
-                        y: y21.rb(),
-                        z: z21.rb(),
-                        x: a21.rb(),
-                    });
+            if k > 0 {
+                w21.fill_zeros();
+                arch.dispatch(HessenbergFusedUpdate {
+                    a: a22.rb_mut(),
+                    v: v21.rb_mut(),
+                    w: w21.rb_mut().col(0),
+                    u: u21.rb(),
+                    y: y21.rb(),
+                    z: z21.rb(),
+                    x: a21.rb(),
+                });
 
-                    y21.rb_mut().clone_from(v21.rb());
-                    z21.rb_mut().clone_from(w21.rb().col(0));
-                } else {
-                    matmul(
-                        y21.rb_mut(),
-                        a22.rb().adjoint(),
-                        a21.rb(),
-                        None,
-                        E::one(),
-                        parallelism,
-                    );
-                    matmul(
-                        z21.rb_mut(),
-                        a22.rb(),
-                        a21.rb(),
-                        None,
-                        E::one(),
-                        parallelism,
-                    );
-                }
+                y21.rb_mut().clone_from(v21.rb());
+                z21.rb_mut().clone_from(w21.rb().col(0));
             } else {
-                if k > 0 {
-                    matmul(
-                        a22.rb_mut(),
-                        u21.rb(),
-                        y21.rb().adjoint(),
-                        Some(E::one()),
-                        E::one().neg(),
-                        parallelism,
-                    );
-                    matmul(
-                        a22.rb_mut(),
-                        z21.rb(),
-                        u21.rb().adjoint(),
-                        Some(E::one()),
-                        E::one().neg(),
-                        parallelism,
-                    );
-                }
                 matmul(
                     y21.rb_mut(),
                     a22.rb().adjoint(),

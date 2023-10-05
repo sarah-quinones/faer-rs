@@ -8,7 +8,7 @@ use faer_core::{
     mul::matmul,
     par_split_indices, parallelism_degree,
     permutation::{swap_cols, swap_rows, PermutationMut},
-    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, Ptr, RealField,
+    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, Ptr, RealField, SimdCtx,
 };
 use paste::paste;
 use pulp::{cast_lossy, Simd};
@@ -682,7 +682,7 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
             )
         }
     }
-    pulp::Arch::new().dispatch(BestInMat(matrix))
+    E::Simd::default().dispatch(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_simd<E: ComplexField>(
@@ -754,7 +754,7 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
             )
         }
     }
-    pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+    E::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
@@ -797,7 +797,7 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    pulp::Arch::new().dispatch(BestInMat(matrix))
+    <c64 as ComplexField>::Simd::default().dispatch(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_c64(
@@ -851,7 +851,7 @@ fn update_and_best_in_matrix_c64(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+    <c64 as ComplexField>::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
@@ -894,7 +894,7 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    pulp::Arch::new().dispatch(BestInMat(matrix))
+    <c32 as ComplexField>::Simd::default().dispatch(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_c32(
@@ -948,7 +948,7 @@ fn update_and_best_in_matrix_c32(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    pulp::Arch::new().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+    <c32 as ComplexField>::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 #[inline]
@@ -962,7 +962,7 @@ fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::R
         coe::coerce_static(best_in_matrix_c64(matrix.coerce()))
     } else if is_col_major && is_c32 {
         coe::coerce_static(best_in_matrix_c32(matrix.coerce()))
-    } else if is_col_major && E::HAS_SIMD {
+    } else if is_col_major {
         best_in_matrix_simd(matrix)
     } else {
         let m = matrix.nrows();
@@ -1010,7 +1010,7 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
             lhs.coerce(),
             rhs.coerce(),
         ))
-    } else if E::HAS_SIMD && is_col_major {
+    } else if is_col_major {
         update_and_best_in_matrix_simd(dst, lhs, rhs)
     } else {
         matmul(

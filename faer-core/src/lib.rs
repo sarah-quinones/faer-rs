@@ -77,7 +77,8 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
-pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimpleEntity};
+use faer_entity::NoSimd;
+pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimdCtx, SimpleEntity};
 
 use assert2::{assert, debug_assert};
 use coe::Coerce;
@@ -86,7 +87,7 @@ use core::{
 };
 use dyn_stack::{DynArray, PodStack, SizeOverflow, StackReq};
 use num_complex::Complex;
-use pulp::Simd;
+use pulp::{cast, Simd};
 use reborrow::*;
 use zip::Zip;
 
@@ -684,6 +685,7 @@ fn div_ceil(a: usize, b: usize) -> usize {
 impl ComplexField for c32 {
     type Real = f32;
     type Simd = pulp::Arch;
+    type ScalarSimd = NoSimd;
 
     #[inline(always)]
     fn from_f64(value: f64) -> Self {
@@ -974,10 +976,28 @@ impl ComplexField for c32 {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        cast(simd.c32_scalar_mul(cast(lhs), cast(rhs)))
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        cast(simd.c32_scalar_conj_mul(cast(lhs), cast(rhs)))
+    }
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        cast(simd.c32_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        cast(simd.c32_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+    }
 }
 impl ComplexField for c64 {
     type Real = f64;
     type Simd = pulp::Arch;
+    type ScalarSimd = NoSimd;
 
     #[inline(always)]
     fn from_f64(value: f64) -> Self {
@@ -1268,6 +1288,23 @@ impl ComplexField for c64 {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        cast(simd.c64_scalar_mul(cast(lhs), cast(rhs)))
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        cast(simd.c64_scalar_conj_mul(cast(lhs), cast(rhs)))
+    }
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        cast(simd.c64_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        cast(simd.c64_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+    }
 }
 
 #[doc(hidden)]
@@ -1284,7 +1321,6 @@ unsafe impl Entity for c32 {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -1358,7 +1394,6 @@ unsafe impl Entity for c32conj {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -1433,7 +1468,6 @@ unsafe impl Entity for c64 {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -1507,7 +1541,6 @@ unsafe impl Entity for c64conj {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -5327,7 +5360,6 @@ mod tests {
                 type Iter<I: Iterator> = I;
 
                 const N_COMPONENTS: usize = 1;
-                const HAS_SIMD: bool = false;
                 const UNIT: Self::GroupCopy<()> = ();
 
                 #[inline(always)]

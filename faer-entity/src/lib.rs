@@ -125,7 +125,6 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     type Iter<I: Iterator>: Iterator<Item = Self::Group<I::Item>>;
 
     const N_COMPONENTS: usize;
-    const HAS_SIMD: bool;
     const UNIT: Self::GroupCopy<()>;
 
     fn from_units(group: Self::Group<Self::Unit>) -> Self;
@@ -281,9 +280,12 @@ pub unsafe trait Conjugate: Entity {
 
 type SimdGroup<E, S> = <E as Entity>::Group<<E as Entity>::SimdUnit<S>>;
 
-pub trait SimdCtx: Copy + Default {
+pub trait SimdCtx: core::fmt::Debug + Copy + Send + Sync + 'static + Default {
     fn dispatch<Op: pulp::WithSimd>(self, f: Op) -> Op::Output;
 }
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct NoSimd;
 
 impl SimdCtx for pulp::Arch {
     #[inline(always)]
@@ -292,10 +294,18 @@ impl SimdCtx for pulp::Arch {
     }
 }
 
+impl SimdCtx for NoSimd {
+    #[inline(always)]
+    fn dispatch<Op: pulp::WithSimd>(self, f: Op) -> Op::Output {
+        f.with_simd(pulp::Scalar::new())
+    }
+}
+
 /// Unstable trait containing the operations that a number type needs to implement.
 pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     type Real: RealField;
     type Simd: SimdCtx;
+    type ScalarSimd: SimdCtx;
 
     /// Converts `value` from `f64` to `Self`.  
     /// The conversion may be lossy when converting to a type with less precision.
@@ -447,6 +457,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         )
     }
 
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self;
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self;
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self;
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self;
+
     fn simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S>;
     fn simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S>;
 
@@ -573,6 +588,7 @@ pub trait RealField: ComplexField<Real = Self> + PartialOrd {
 impl ComplexField for f32 {
     type Real = Self;
     type Simd = pulp::Arch;
+    type ScalarSimd = NoSimd;
 
     #[inline(always)]
     fn from_f64(value: f64) -> Self {
@@ -805,10 +821,30 @@ impl ComplexField for f32 {
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         simd.f32s_abs(values)
     }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        let _ = simd;
+        lhs * rhs
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        let _ = simd;
+        lhs * rhs
+    }
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        simd.f32_scalar_mul_adde(lhs, rhs, acc)
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        simd.f32_scalar_mul_adde(lhs, rhs, acc)
+    }
 }
 impl ComplexField for f64 {
     type Real = Self;
     type Simd = pulp::Arch;
+    type ScalarSimd = NoSimd;
 
     #[inline(always)]
     fn from_f64(value: f64) -> Self {
@@ -1039,6 +1075,25 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
         simd.f64s_abs(values)
+    }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        let _ = simd;
+        lhs * rhs
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        let _ = simd;
+        lhs * rhs
+    }
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        simd.f64_scalar_mul_adde(lhs, rhs, acc)
+    }
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        simd.f64_scalar_mul_adde(lhs, rhs, acc)
     }
 }
 impl RealField for f32 {
@@ -1297,7 +1352,6 @@ unsafe impl Entity for f32 {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -1371,7 +1425,6 @@ unsafe impl Entity for f64 {
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const HAS_SIMD: bool = true;
     const UNIT: Self::GroupCopy<()> = ();
 
     #[inline(always)]
@@ -1445,7 +1498,6 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     type Iter<I: Iterator> = ComplexIter<E::Iter<I>>;
 
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
-    const HAS_SIMD: bool = E::HAS_SIMD;
     const UNIT: Self::GroupCopy<()> = Complex {
         re: E::UNIT,
         im: E::UNIT,
@@ -1537,7 +1589,6 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     type Iter<I: Iterator> = ComplexConjIter<E::Iter<I>>;
 
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
-    const HAS_SIMD: bool = E::HAS_SIMD;
     const UNIT: Self::GroupCopy<()> = ComplexConj {
         re: E::UNIT,
         neg_im: E::UNIT,
@@ -1630,6 +1681,7 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
 impl<E: RealField> ComplexField for Complex<E> {
     type Real = E;
     type Simd = <E as ComplexField>::Simd;
+    type ScalarSimd = <E as ComplexField>::ScalarSimd;
 
     #[inline(always)]
     fn from_f64(value: f64) -> Self {
@@ -1857,6 +1909,78 @@ impl<E: RealField> ComplexField for Complex<E> {
         Complex {
             re: E::simd_sub(simd, lhs.re, rhs.re),
             im: E::simd_sub(simd, lhs.im, rhs.im),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        Complex {
+            re: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.re,
+                E::simd_scalar_mul(simd, lhs.im.neg(), rhs.im),
+            ),
+            im: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_scalar_mul(simd, lhs.im, rhs.re),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        Complex {
+            re: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.re,
+                E::simd_scalar_mul_adde(simd, lhs.im.neg(), rhs.im, acc.re),
+            ),
+            im: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_scalar_mul_adde(simd, lhs.im, rhs.re, acc.im),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
+        Complex {
+            re: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.re,
+                E::simd_scalar_mul_adde(simd, lhs.im, rhs.im, acc.re),
+            ),
+            im: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_scalar_mul_adde(simd, lhs.im.neg(), rhs.re, acc.im),
+            ),
+        }
+    }
+
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self {
+        Complex {
+            re: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.re,
+                E::simd_scalar_mul(simd, lhs.im, rhs.im),
+            ),
+            im: E::simd_scalar_mul_adde(
+                simd,
+                lhs.re,
+                rhs.im,
+                E::simd_scalar_mul(simd, lhs.im.neg(), rhs.re),
+            ),
         }
     }
 

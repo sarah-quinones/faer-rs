@@ -4,7 +4,7 @@ use faer_core::{
     mul::matmul,
     permutation::{swap_rows, PermutationMut},
     solve::solve_unit_lower_triangular_in_place,
-    temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism,
+    temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
 use reborrow::*;
 
@@ -91,7 +91,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
     let mut n_transpositions = 0;
 
-    let arch = pulp::Arch::new();
+    let arch = E::Simd::default();
 
     for (k, t) in transpositions.iter_mut().enumerate() {
         let imax;
@@ -245,8 +245,8 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
     }
 }
 
-fn update<E: ComplexField>(arch: pulp::Arch, mut matrix: MatMut<E>, j: usize) {
-    if E::HAS_SIMD && matrix.row_stride() == 1 {
+fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
+    if matrix.row_stride() == 1 {
         arch.dispatch(Update { matrix, j });
     } else {
         let m = matrix.nrows();
