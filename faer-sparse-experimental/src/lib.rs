@@ -4,8 +4,8 @@
 use crate::mem::{__get_checked, __get_unchecked};
 pub use __core::*;
 use bytemuck::Pod;
-use core::{iter::zip, ops::Range};
-use dyn_stack::{SizeOverflow, StackReq};
+use core::{cell::Cell, iter::zip, ops::Range};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{ComplexField, Entity};
 use mem::NONE;
 
@@ -85,6 +85,7 @@ fn nomem<T>(_: T) -> FaerSparseError {
     FaerSparseError::OutOfMemory
 }
 
+pub mod amd;
 pub mod cholesky;
 pub mod ghost;
 
@@ -545,6 +546,117 @@ fn __try_any_of(reqs: impl IntoIterator<Item = StackReq>) -> Result<StackReq, Si
         Ok(total)
     }
     try_any_of_impl(reqs.into_iter())
+}
+
+#[inline(always)]
+fn permute_symmetric_common<'n, I: Index>(
+    new_col_ptrs: &mut [I],
+    current_row_position: &mut ghost::Array<'n, I>,
+    A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
+    perm: ghost::PermutationRef<'n, '_, I>,
+) {
+    let N = A.ncols();
+    assert!(new_col_ptrs.len() == *N + 1);
+
+    mem::fill_zero(current_row_position);
+    let col_counts = current_row_position;
+    let (_, perm_inv) = perm.fwd_inv();
+    for old_j in N.indices() {
+        let new_j = perm_inv[old_j].zx();
+        for old_i in A.row_indices_of_col(old_j) {
+            if old_i <= old_j {
+                let new_i = perm_inv[old_i].zx();
+                let new_max = Ord::max(new_i, new_j);
+                // cannot overflow because A.compute_nnz() <= I::MAX
+                // col_counts[new_max] always >= 0
+                col_counts[new_max].incr();
+            }
+        }
+    }
+
+    // col_counts[_] >= 0
+    // cumulative sum cannot overflow because it is <= A.compute_nnz()
+
+    // SAFETY: new_col_ptrs.len() == n + 1 > 0
+    new_col_ptrs[0] = I::truncate(0);
+    let new_col_ptrs = Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptrs));
+    for (count, [ci0, ci1]) in zip(&mut **col_counts, windows2(new_col_ptrs)) {
+        let ci0 = ci0.get();
+        ci1.set(ci0 + *count);
+        *count = ci0;
+    }
+    // new_col_ptrs is non-decreasing
+}
+
+#[inline(never)]
+pub fn permute_symmetric<'n, 'a, I: Index>(
+    new_values: &'a mut [f64],
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    A: ghost::SparseColMatRef<'n, 'n, '_, I, f64>,
+    perm: ghost::PermutationRef<'n, '_, I>,
+    stack: PodStack<'_>,
+) -> ghost::SparseColMatRef<'n, 'n, 'a, I, f64> {
+    let N = A.ncols();
+    let n = *A.ncols();
+
+    // (1)
+    assert!(new_col_ptrs.len() == n + 1);
+    let (_, perm_inv) = perm.fwd_inv();
+
+    let (mut current_row_position, _) = stack.make_raw::<I>(n);
+    let current_row_position = ghost::Array::from_mut(&mut current_row_position, N);
+    permute_symmetric_common(new_col_ptrs, current_row_position, A.symbolic(), perm);
+
+    let nnz = new_col_ptrs[n].zx();
+    let new_row_indices = &mut new_row_indices[..nnz];
+    let new_values = &mut new_values[..nnz];
+
+    ghost::with_size(
+        nnz,
+        #[inline(always)]
+        |NNZ| {
+            let new_values = ghost::Array::from_mut(new_values, NNZ);
+            let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
+            for old_j in N.indices() {
+                let new_j_ = perm_inv[old_j];
+                let new_j = new_j_.zx();
+
+                for (old_i, &val) in zip(A.row_indices_of_col(old_j), A.values_of_col(old_j)) {
+                    if old_i <= old_j {
+                        let new_i_ = perm_inv[old_i];
+                        let new_i = new_i_.zx();
+
+                        let new_max = Ord::max(new_i, new_j);
+                        let new_min = Ord::min(new_i_, new_j_);
+                        let current_row_pos = &mut current_row_position[new_max];
+                        // SAFETY: current_row_pos < NNZ
+                        let row_pos =
+                            unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                        current_row_pos.incr();
+                        new_values[row_pos] = val;
+                        // (2)
+                        new_row_indices[row_pos] = *new_min;
+                    }
+                }
+            }
+            debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+        },
+    );
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. new_values.len() == new_row_indices.len()
+    // 2. all written row indices are less than n
+    unsafe {
+        ghost::SparseColMatRef::new(
+            SparseColMatRef::new(
+                SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
+                &*new_values,
+            ),
+            N,
+            N,
+        )
+    }
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use faer_core::Parallelism;
 use faer_sparse_experimental::{
     cholesky::*,
     ghost::{self, Array},
-    Index, SparseColMatRef, SymbolicSparseColMatRef,
+    permute_symmetric, Index, PermutationRef, SparseColMatRef, SymbolicSparseColMatRef,
 };
 use matrix_market_rs::MtxData;
 
@@ -16,7 +16,7 @@ fn bench_supernodal(criterion: &mut Criterion) {
     type I = i64;
     let truncate = I::truncate;
 
-    let files = ["nd3k"];
+    let files = ["nd3k", "nd12k"];
 
     for file in files {
         let Ok(data) = MtxData::<f64>::from_file("./".to_string() + file + ".mtx") else {
@@ -51,11 +51,35 @@ fn bench_supernodal(criterion: &mut Criterion) {
             SymbolicSparseColMatRef::new_checked(n, n, &col_ptr, None, &row_ind),
             &*values,
         );
+
+        let (perm, perm_inv, _) = amd::order(
+            n as i64,
+            A.col_ptrs(),
+            A.row_indices(),
+            &amd::Control::default(),
+        )
+        .unwrap();
+
         let zero = truncate(0);
         let mut etree = vec![zero; n];
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
+            let perm = PermutationRef::new_checked(&perm, &perm_inv);
+            let perm = ghost::PermutationRef::new(perm, N);
+
+            let mut A_colptr = col_ptr.clone();
+            let mut A_rowind = row_ind.clone();
+            let mut A_values = values.clone();
+            let A = permute_symmetric(
+                &mut A_values,
+                &mut A_colptr,
+                &mut A_rowind,
+                A,
+                perm,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(n))),
+            );
+
             let etree = prefactorize_symbolic(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
