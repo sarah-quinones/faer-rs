@@ -587,6 +587,16 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
     }
 
     #[inline]
+    pub fn row_indices_of_col_raw(&self, j: Idx<'ncols>) -> &[Idx<'nrows, I>] {
+        unsafe {
+            Idx::slice_ref_unchecked(
+                __get_unchecked(self.0.row_indices(), self.0.col_range_unchecked(*j)),
+                self.nrows(),
+            )
+        }
+    }
+
+    #[inline]
     pub fn row_indices_of_col(
         &self,
         j: Idx<'ncols>,
@@ -783,5 +793,5 @@ pub fn set_identity<'out, 'n, I: Index>(
     for (i, pi) in slice.iter_mut().enumerate() {
         *pi = I::truncate(i);
     }
-    Array::from_mut(unsafe { Idx::slice_mut_unchecked(&mut **slice, N) }, N)
+    Array::from_mut(unsafe { Idx::slice_mut_unchecked(slice, N) }, N)
 }

@@ -43,7 +43,7 @@ pub unsafe fn transmute_slice_ref<From, To>(from: &[From]) -> &[To] {
     assert!(core::mem::size_of::<From>() == core::mem::size_of::<To>());
     assert!(core::mem::align_of::<From>() == core::mem::align_of::<To>());
     let len = from.len();
-    core::slice::from_raw_parts(from.as_ptr() as *const From as *const To, len)
+    core::slice::from_raw_parts(from.as_ptr() as *const To, len)
 }
 
 #[inline]
@@ -51,14 +51,7 @@ pub unsafe fn transmute_slice_mut<From, To>(from: &mut [From]) -> &mut [To] {
     assert!(core::mem::size_of::<From>() == core::mem::size_of::<To>());
     assert!(core::mem::align_of::<From>() == core::mem::align_of::<To>());
     let len = from.len();
-    core::slice::from_raw_parts_mut(from.as_mut_ptr() as *mut From as *mut To, len)
-}
-
-#[inline(always)]
-pub fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
-    slice
-        .windows(2)
-        .map(|window| unsafe { &*(window.as_ptr() as *const [I; 2]) })
+    core::slice::from_raw_parts_mut(from.as_mut_ptr() as *mut To, len)
 }
 
 #[inline]

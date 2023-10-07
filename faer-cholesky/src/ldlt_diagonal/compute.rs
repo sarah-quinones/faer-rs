@@ -110,10 +110,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
     let n = matrix.nrows();
 
-    match n {
-        0 => return 0,
-        _ => (),
-    };
+    if n == 0 {
+        return 0;
+    }
 
     let mut idx = 0;
     let arch = E::Simd::default();
@@ -174,15 +173,13 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                     d = eps.neg();
                     dynamic_regularization_count += 1;
                 }
-            } else {
-                if d.abs() <= delta {
-                    if d < E::Real::zero() {
-                        d = eps.neg();
-                        dynamic_regularization_count += 1;
-                    } else {
-                        d = eps;
-                        dynamic_regularization_count += 1;
-                    }
+            } else if d.abs() <= delta {
+                if d < E::Real::zero() {
+                    d = eps.neg();
+                    dynamic_regularization_count += 1;
+                } else {
+                    d = eps;
+                    dynamic_regularization_count += 1;
                 }
             }
         }

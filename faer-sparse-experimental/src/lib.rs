@@ -1,3 +1,7 @@
+// TODO: document safety requirements
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
 #![forbid(elided_lifetimes_in_paths)]
 #![allow(non_snake_case)]
 
@@ -101,6 +105,7 @@ mod seal {
 
 pub trait Index:
     seal::Seal
+    + core::ops::Neg<Output = Self>
     + core::ops::Add<Output = Self>
     + core::ops::Sub<Output = Self>
     + core::ops::AddAssign
@@ -147,6 +152,7 @@ impl Index for i32 {
 
     #[inline(always)]
     fn truncate(value: usize) -> Self {
+        #[allow(clippy::assertions_on_constants)]
         const _: () = {
             core::assert!(i32::BITS <= usize::BITS);
         };
@@ -175,6 +181,7 @@ impl Index for i64 {
 
     #[inline(always)]
     fn truncate(value: usize) -> Self {
+        #[allow(clippy::assertions_on_constants)]
         const _: () = {
             core::assert!(i64::BITS <= usize::BITS);
         };
@@ -535,19 +542,6 @@ pub fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
         .map(|window| unsafe { &*(window.as_ptr() as *const [I; 2]) })
 }
 
-/// FIXME: fix try_any_of upstream
-#[inline]
-fn __try_any_of(reqs: impl IntoIterator<Item = StackReq>) -> Result<StackReq, SizeOverflow> {
-    fn try_any_of_impl(mut reqs: impl Iterator<Item = StackReq>) -> Result<StackReq, SizeOverflow> {
-        let mut total = StackReq::empty();
-        while let Some(req) = reqs.next() {
-            total = total.try_or(req)?;
-        }
-        Ok(total)
-    }
-    try_any_of_impl(reqs.into_iter())
-}
-
 #[inline(always)]
 fn permute_symmetric_common<'n, I: Index>(
     new_col_ptrs: &mut [I],
@@ -640,7 +634,7 @@ pub fn permute_symmetric<'n, 'a, I: Index>(
                     }
                 }
             }
-            debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+            debug_assert!(**current_row_position == new_col_ptrs[1..]);
         },
     );
     // SAFETY:

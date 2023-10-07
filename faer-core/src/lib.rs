@@ -5094,32 +5094,9 @@ pub fn temp_mat_constant<E: ComplexField>(
     value: E,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
-
-    let value = value.into_units();
-
-    let (stack, alloc) = E::map_with_context(stack, value, |stack, value| {
-        let (alloc, stack) =
-            stack.make_aligned_with(ncols * col_stride, align_for::<E::Unit>(), |_| value);
-        (stack, alloc)
-    });
-
-    (
-        DynMat {
-            inner: E::map(alloc, DynMatUnitImpl::Init),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
+    let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
+    mat.as_mut().fill(value);
+    (mat, stack)
 }
 
 /// Creates a temporary matrix of zero values, from the given memory stack.
@@ -5128,41 +5105,9 @@ pub fn temp_mat_zeroed<E: ComplexField>(
     ncols: usize,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
-
-    let value = E::into_units(E::zero());
-
-    let (stack, alloc) = E::map_with_context(
-        stack,
-        value,
-        #[inline(always)]
-        |stack, value| {
-            let (alloc, stack) = stack.make_aligned_with(
-                ncols * col_stride,
-                align_for::<E::Unit>(),
-                #[inline(always)]
-                |_| value,
-            );
-            (stack, alloc)
-        },
-    );
-
-    (
-        DynMat {
-            inner: E::map(alloc, DynMatUnitImpl::Init),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
+    let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
+    mat.as_mut().fill_zeros();
+    (mat, stack)
 }
 
 /// Creates a temporary matrix of untouched values, from the given memory stack.
@@ -5171,14 +5116,8 @@ pub fn temp_mat_uninit<E: ComplexField>(
     ncols: usize,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
+    let col_stride = col_stride::<E::Unit>(nrows);
+    let alloc_size = ncols.checked_mul(col_stride).unwrap();
 
     let (stack, alloc) = E::map_with_context(
         stack,
@@ -5186,7 +5125,7 @@ pub fn temp_mat_uninit<E: ComplexField>(
         #[inline(always)]
         |stack, ()| {
             let (alloc, stack) =
-                stack.make_aligned_raw::<E::Unit>(ncols * col_stride, align_for::<E::Unit>());
+                stack.make_aligned_raw::<E::Unit>(alloc_size, align_for::<E::Unit>());
             (stack, alloc)
         },
     );
@@ -5201,23 +5140,26 @@ pub fn temp_mat_uninit<E: ComplexField>(
     )
 }
 
+#[inline]
+fn col_stride<Unit: 'static>(nrows: usize) -> usize {
+    if !is_vectorizable::<Unit>() || nrows >= isize::MAX as usize {
+        nrows
+    } else {
+        round_up_to(nrows, align_for::<Unit>() / core::mem::size_of::<Unit>())
+    }
+}
+
 /// Returns the stack requirements for creating a temporary matrix with the given dimensions.
 #[inline]
 pub fn temp_mat_req<E: Entity>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
+    let col_stride = col_stride::<E::Unit>(nrows);
+    let alloc_size = ncols.checked_mul(col_stride).ok_or(SizeOverflow)?;
 
     let req = Ok(StackReq::empty());
     let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), |req, ()| {
         let req = match (
             req,
-            StackReq::try_new_aligned::<E::Unit>(ncols * col_stride, align_for::<E::Unit>()),
+            StackReq::try_new_aligned::<E::Unit>(alloc_size, align_for::<E::Unit>()),
         ) {
             (Ok(req), Ok(additional)) => req.try_and(additional),
             _ => Err(SizeOverflow),

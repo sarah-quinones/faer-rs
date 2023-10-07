@@ -18,10 +18,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
     let n = matrix.nrows();
 
-    match n {
-        0 => return Ok(0),
-        _ => (),
-    };
+    if n == 0 {
+        return Ok(0);
+    }
 
     let mut idx = 0;
     let arch = E::Simd::default();

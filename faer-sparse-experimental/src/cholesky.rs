@@ -125,7 +125,7 @@ fn ereach<'n, 'a, I: Index>(
     unsafe { Idx::slice_ref_unchecked(stack, N) }
 }
 
-fn ereach_super<'n, 'nsuper, 'a, I: Index>(
+fn ereach_super<'n, 'nsuper, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     super_etree: &Array<'nsuper, MaybeIdx<'nsuper, I>>,
     index_to_super: &Array<'n, Idx<'nsuper, I>>,
@@ -282,6 +282,7 @@ pub struct ComputationModel {
 }
 
 impl ComputationModel {
+    #[allow(clippy::excessive_precision)]
     pub const OPENBLAS_I7_1185G7: Self = ComputationModel {
         ldl: [
             3.527141723946874224e-07,
@@ -399,8 +400,8 @@ pub fn postorder<'n, I: Index>(
     let (mut first_child, stack) = stack.make_raw::<I>(n);
     let (mut next_child, _) = stack.make_raw::<I>(n);
 
-    let stack = Array::from_mut(&mut *stack_, N);
-    let next_child = Array::from_mut(&mut *next_child, N);
+    let stack = Array::from_mut(&mut stack_, N);
+    let next_child = Array::from_mut(&mut next_child, N);
 
     let first_child = Array::from_mut(ghost::fill_none(&mut first_child, N), N);
 
@@ -815,7 +816,7 @@ pub fn factorize_supernodal_symbolic<'n, I: Index>(
 
                 let current_row_positions = supernode_sizes;
 
-                let row_indices = Idx::slice_mut_checked(&mut *row_indices__, N);
+                let row_indices = Idx::slice_mut_checked(&mut row_indices__, N);
                 let visited = Array::from_mut(&mut (**child_count)[..n_supernodes], N_SUPERNODES);
                 mem::fill_none(visited);
                 for s in N_SUPERNODES.indices() {
@@ -862,7 +863,7 @@ pub fn factorize_supernodal_symbolic<'n, I: Index>(
         let post_inv = Array::from_mut(&mut supernode_postorder_inv__, N_SUPERNODES);
         let desc_count = Array::from_mut(&mut descendent_count__, N_SUPERNODES);
         let etree = Array::from_ref(
-            &MaybeIdx::slice_ref_checked(&supernode_etree__, N_SUPERNODES),
+            MaybeIdx::slice_ref_checked(&supernode_etree__, N_SUPERNODES),
             N_SUPERNODES,
         );
 
@@ -920,10 +921,10 @@ pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
 
         let s_postordered = post_inv[s].zx();
         let desc_count = desc_count[s].zx();
-        for desc_postordered in s_postordered - desc_count..s_postordered {
+        for d in &post[s_postordered - desc_count..s_postordered] {
             let mut d_req = StackReq::empty();
 
-            let d = post[desc_postordered].zx();
+            let d = d.zx();
             let d_start = symbolic.supernode_begin__[d].zx();
             let d_end = symbolic.supernode_begin__[d + 1].zx();
 
@@ -1024,8 +1025,8 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
 
         let s_postordered = post_inv[s].zx();
         let desc_count = desc_count[s].zx();
-        for desc_postordered in s_postordered - desc_count..s_postordered {
-            let d = post[desc_postordered].zx();
+        for d in &post[s_postordered - desc_count..s_postordered] {
+            let d = d.zx();
             let d_start = symbolic.supernode_begin__[d].zx();
             let d_end = symbolic.supernode_begin__[d + 1].zx();
 
