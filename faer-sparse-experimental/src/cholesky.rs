@@ -1,17 +1,25 @@
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
-use super::*;
 use crate::{
-    amd::Control,
-    ghost::{Array, Idx, MaybeIdx},
+    amd::{self, Control},
+    ghost::{self, Array, Idx, MaybeIdx},
+    ghost_adjoint, ghost_adjoint_symbolic, ghost_permute_symmetric,
+    ghost_permute_symmetric_symbolic, make_raw_req, mem,
+    mem::NONE,
+    nomem, try_collect, try_zeroed, windows2, FaerSparseError, Index, PermutationRef, Side,
+    SliceGroup, SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
 };
 use assert2::{assert, debug_assert};
-use core::cell::Cell;
-use dyn_stack::PodStack;
-use faer_core::{temp_mat_req, temp_mat_uninit, zipped, MatMut, MatRef, Parallelism};
+use core::{cell::Cell, iter::zip};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
+use faer_core::{
+    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef, Parallelism,
+};
+use reborrow::*;
 
 #[derive(Copy, Clone)]
-pub enum Ordering<'a, I> {
+#[allow(dead_code)]
+enum Ordering<'a, I> {
     Identity,
     Custom(&'a [I]),
     Algorithm(
@@ -24,8 +32,27 @@ pub enum Ordering<'a, I> {
     ),
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct EtreeRef<'a, I> {
+    inner: &'a [I],
+}
+
+impl<'a, I: Index> EtreeRef<'a, I> {
+    #[inline]
+    pub fn inner(self) -> &'a [I] {
+        self.inner
+    }
+
+    #[inline]
+    #[track_caller]
+    fn ghost_inner<'n>(self, N: ghost::Size<'n>) -> &'a Array<'n, MaybeIdx<'n, I>> {
+        assert!(self.inner.len() == *N);
+        unsafe { Array::from_ref(MaybeIdx::slice_ref_unchecked(self.inner, N), N) }
+    }
+}
+
 // workspace: I*(n)
-pub fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
+fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     etree: &'out mut Array<'n, I>,
     col_counts: &mut Array<'n, I>,
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
@@ -65,6 +92,29 @@ pub fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     }
 
     etree
+}
+
+pub fn prefactorize_symbolic<'n, 'out, I: Index>(
+    etree: &'out mut [I],
+    col_counts: &mut [I],
+    A: SymbolicSparseColMatRef<'_, I>,
+    stack: PodStack<'_>,
+) -> EtreeRef<'out, I> {
+    let n = A.nrows();
+    assert!(A.nrows() == A.ncols());
+    assert!(etree.len() == n);
+    assert!(col_counts.len() == n);
+
+    ghost::with_size(n, |N| {
+        ghost_prefactorize_symbolic(
+            Array::from_mut(etree, N),
+            Array::from_mut(col_counts, N),
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            stack,
+        );
+    });
+
+    EtreeRef { inner: etree }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -164,7 +214,28 @@ pub fn factorize_simplicial_symbolic_req<I: Index>(n: usize) -> Result<StackReq,
     StackReq::try_all_of([n_req, n_req, n_req])
 }
 
-pub fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
+pub fn factorize_simplicial_symbolic<'n, I: Index>(
+    A: SymbolicSparseColMatRef<'_, I>,
+    etree: EtreeRef<'_, I>,
+    col_counts: &[I],
+    stack: PodStack<'_>,
+) -> Result<SymbolicSimplicialCholesky<I>, FaerSparseError> {
+    let n = A.nrows();
+    assert!(A.nrows() == A.ncols());
+    assert!(etree.inner.len() == n);
+    assert!(col_counts.len() == n);
+
+    ghost::with_size(n, |N| {
+        ghost_factorize_simplicial_symbolic(
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            etree.ghost_inner(N),
+            Array::from_ref(col_counts, N),
+            stack,
+        )
+    })
+}
+
+fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
     col_counts: &Array<'n, I>,
@@ -338,7 +409,7 @@ pub fn factorize_simplicial_numeric_with_row_indices<I: Index, E: ComplexField>(
     L_row_indices: &mut [I],
     L_col_ptrs: &[I],
 
-    etree: &[I],
+    etree: EtreeRef<'_, I>,
     A: SparseColMatRef<'_, I, E>,
 
     stack: PodStack<'_>,
@@ -346,13 +417,14 @@ pub fn factorize_simplicial_numeric_with_row_indices<I: Index, E: ComplexField>(
     let n = A.ncols();
     assert!(L_values.rb().len() == L_row_indices.len());
     assert!(L_col_ptrs.len() == n + 1);
+    assert!(etree.inner().len() == n);
     let l_nnz = L_col_ptrs[n].zx();
 
     ghost::with_size(
         n,
         #[inline(always)]
         |N| {
-            let etree = Array::from_ref(MaybeIdx::slice_ref_checked(etree, N), N);
+            let etree = etree.ghost_inner(N);
             let A = ghost::SparseColMatRef::new(A, N, N);
 
             ghost::with_size(
@@ -440,6 +512,7 @@ pub fn factorize_simplicial_numeric_with_row_indices<I: Index, E: ComplexField>(
 }
 
 #[derive(Debug, Copy, Clone)]
+#[doc(hidden)]
 pub struct ComputationModel {
     pub ldl: [f64; 4],
     pub triangular_solve: [f64; 6],
@@ -646,7 +719,7 @@ impl<I: Index> SymbolicCholesky<I> {
                     SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
                         &mut **val
                     }));
-                ghost_transpose(
+                ghost_adjoint(
                     &mut new_col_ptr,
                     &mut new_row_ind,
                     new_values,
@@ -684,7 +757,7 @@ impl<I: Index> SymbolicCholesky<I> {
                         SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
                             &mut **val
                         }));
-                    let A = ghost_transpose(
+                    let A = ghost_adjoint(
                         &mut new_col_ptr,
                         &mut new_row_ind,
                         new_values.rb_mut(),
@@ -858,7 +931,7 @@ fn postorder_depth_first_search<'n, I: Index>(
 }
 
 /// workspace: I×(3*n)
-pub fn ghost_postorder<'n, I: Index>(
+fn ghost_postorder<'n, I: Index>(
     post: &mut Array<'n, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
     stack: PodStack<'_>,
@@ -910,7 +983,29 @@ pub fn factorize_supernodal_symbolic_req<I: Index>(n: usize) -> Result<StackReq,
     StackReq::try_all_of([n_req, n_req, n_req, n_req])
 }
 
-pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
+pub fn factorize_supernodal_symbolic<'n, I: Index>(
+    A: SymbolicSparseColMatRef<'_, I>,
+    etree: EtreeRef<'_, I>,
+    col_counts: &[I],
+    stack: PodStack<'_>,
+    params: CholeskySymbolicSupernodalParams<'_>,
+) -> Result<SymbolicSupernodalCholesky<I>, FaerSparseError> {
+    let n = A.nrows();
+    assert!(A.nrows() == A.ncols());
+    assert!(etree.inner().len() == n);
+    assert!(col_counts.len() == n);
+    ghost::with_size(n, |N| {
+        ghost_factorize_supernodal_symbolic(
+            ghost::SymbolicSparseColMatRef::new(A, N, N),
+            etree.ghost_inner(N),
+            Array::from_ref(col_counts, N),
+            stack,
+            params,
+        )
+    })
+}
+
+fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
     col_counts: &Array<'n, I>,
@@ -1636,232 +1731,6 @@ pub fn factorize_supernodal_numeric_ldlt<I: Index, E: ComplexField>(
     }
 }
 
-pub fn ghost_transpose_symbolic<'m, 'n, 'a, I: Index>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
-    stack: PodStack<'_>,
-) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (mut col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = Array::from_mut(&mut col_count, M);
-    mem::fill_zero(col_count);
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    let col_count = &mut *col_count;
-    if A.nnz_per_col().is_some() {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i].incr();
-            }
-        }
-    } else {
-        for i in A.compressed_row_indices() {
-            col_count[i].incr();
-        }
-    }
-
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: Idx<'n, I> = j.truncate::<I>();
-        for i in A.row_indices_of_col(j) {
-            let ci = &mut current_row_position[i];
-
-            // SAFETY: see below
-            *unsafe { new_row_indices.get_unchecked_mut(ci.zx()) } = *j_;
-            ci.incr();
-        }
-    }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
-
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
-    // 1. all written row indices are less than n
-    ghost::SymbolicSparseColMatRef::new(
-        unsafe {
-            SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices)
-        },
-        N,
-        M,
-    )
-}
-
-pub fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: SliceGroupMut<'a, E>,
-    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-    stack: PodStack<'_>,
-) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (mut col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = Array::from_mut(&mut col_count, M);
-    mem::fill_zero(col_count);
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    let col_count = &mut *col_count;
-    if A.nnz_per_col().is_some() {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i].incr();
-            }
-        }
-    } else {
-        for i in A.symbolic().compressed_row_indices() {
-            col_count[i].incr();
-        }
-    }
-
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_iter()) {
-            let ci = &mut current_row_position[i];
-
-            // SAFETY: see below
-            unsafe {
-                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
-                new_values.write_unchecked(ci.zx(), val.read().conj())
-            };
-            ci.incr();
-        }
-    }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
-
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
-    // 1. all written row indices are less than n
-    ghost::SparseColMatRef::new(
-        unsafe {
-            SparseColMatRef::new(
-                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
-                new_values.into_const(),
-            )
-        },
-        N,
-        M,
-    )
-}
-
-pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: SliceGroupMut<'a, E>,
-    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-    stack: PodStack<'_>,
-) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (mut col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = Array::from_mut(&mut col_count, M);
-    mem::fill_zero(col_count);
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    let col_count = &mut *col_count;
-    if A.nnz_per_col().is_some() {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i].incr();
-            }
-        }
-    } else {
-        for i in A.symbolic().compressed_row_indices() {
-            col_count[i].incr();
-        }
-    }
-
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_iter()) {
-            let ci = &mut current_row_position[i];
-
-            // SAFETY: see below
-            unsafe {
-                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
-                new_values.write_unchecked(ci.zx(), val.read())
-            };
-            ci.incr();
-        }
-    }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
-
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
-    // 1. all written row indices are less than n
-    ghost::SparseColMatRef::new(
-        unsafe {
-            SparseColMatRef::new(
-                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
-                new_values.into_const(),
-            )
-        },
-        N,
-        M,
-    )
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct CholeskySymbolicParams<'a> {
     pub amd_params: Control,
@@ -1948,7 +1817,7 @@ pub fn factorize_symbolic<I: Index>(
         let (mut new_row_ind, mut stack) = stack.make_raw::<I>(lower * (A_nnz));
 
         let A = if side == Side::Lower {
-            ghost_transpose_symbolic(&mut new_col_ptr, &mut new_row_ind, A, stack.rb_mut())
+            ghost_adjoint_symbolic(&mut new_col_ptr, &mut new_row_ind, A, stack.rb_mut())
         } else {
             A
         };
@@ -2204,7 +2073,6 @@ mod tests {
         let (_, col_ptr, row_ind, values) = MEDIUM;
 
         let mut gen = rand::rngs::StdRng::seed_from_u64(0);
-
         let mut complexify = |e: E| {
             let i = E::one().neg().sqrt();
             if e == E::from_f64(1.0) {
@@ -2296,10 +2164,11 @@ mod tests {
 
         let (_, col_ptr, row_ind, values) = SMALL;
 
-        let complexify = |e: E| {
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+        let mut complexify = |e: E| {
             let i = E::one().neg().sqrt();
             if e == E::from_f64(1.0) {
-                e.add(i.mul(E::from_f64(rand::random())))
+                e.add(i.mul(E::from_f64(gen.gen())))
             } else {
                 e
             }

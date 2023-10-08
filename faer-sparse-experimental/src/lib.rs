@@ -120,6 +120,8 @@ fn make_raw<E: Entity>(
 
 pub mod amd;
 pub mod cholesky;
+
+#[doc(hidden)]
 pub mod ghost;
 
 mod mem;
@@ -134,20 +136,18 @@ mod seal {
 
 pub trait Index:
     seal::Seal
+    + core::fmt::Debug
     + core::ops::Neg<Output = Self>
     + core::ops::Add<Output = Self>
     + core::ops::Sub<Output = Self>
     + core::ops::AddAssign
     + core::ops::SubAssign
-    + Copy
     + Pod
-    + Clone
     + Eq
     + Ord
     + Send
     + Sync
     + 'static
-    + core::fmt::Debug
 {
     #[inline]
     fn incr(&mut self) {
@@ -304,21 +304,21 @@ mod __core {
     }
 
     /// Requires:
-    /// * nrows <= I::MAX (always checked)
-    /// * ncols <= I::MAX (always checked)
-    /// * col_ptrs has length n (always checked)
-    /// * col_ptrs is non-decreasing
-    /// * col_ptrs[0]..col_ptrs[n] is a valid range in row_indices (always checked, assuming
+    /// * `nrows <= I::MAX` (always checked)
+    /// * `ncols <= I::MAX` (always checked)
+    /// * `col_ptrs` has length n (always checked)
+    /// * `col_ptrs` is non-decreasing
+    /// * `col_ptrs[0]..col_ptrs[n]` is a valid range in row_indices (always checked, assuming
     ///   non-decreasing)
-    /// * if nnz_per_col is None, elements of row_indices[col_ptrs[j]..col_ptrs[j + 1]] are less
-    ///   than nrows
+    /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are
+    ///   less than `nrows`
     ///
-    /// * nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]
-    /// * if nnz_per_col is Some(_), elements of row_indices[col_ptrs[j]..][..nnz_per_col[j]] are
-    ///   less than nrows
+    /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
+    /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]`
+    ///   are less than `nrows`
     ///
     /// Ensures:
-    /// * self.compute_nnz() is <= I::MAX
+    /// * `self.compute_nnz() <= I::MAX`
     impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
         #[inline]
         #[track_caller]
@@ -468,12 +468,6 @@ mod __core {
         }
     }
 
-    /// Requires:
-    /// All the requirements of [`SymbolicSparseColMatRef`], and `values` must have the same length
-    /// as `row_indices`
-    ///
-    /// Ensures:
-    /// * self.compute_nnz() is <= I::MAX
     impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         #[inline]
         #[track_caller]
@@ -1001,7 +995,7 @@ fn permute_symmetric_common<'n, I: Index>(
     // new_col_ptrs is non-decreasing
 }
 
-pub fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
+fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
@@ -1074,7 +1068,7 @@ pub fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
     }
 }
 
-pub fn ghost_permute_symmetric_symbolic<'n, 'out, I: Index>(
+fn ghost_permute_symmetric_symbolic<'n, 'out, I: Index>(
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
@@ -1157,6 +1151,154 @@ pub fn permute_symmetric<'out, I: Index, E: Entity>(
             stack,
         )
     })
+}
+
+fn ghost_adjoint_symbolic<'m, 'n, 'a, I: Index>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+    stack: PodStack<'_>,
+) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
+    let M = A.nrows();
+    let N = A.ncols();
+    assert!(new_col_ptrs.len() == *M + 1);
+
+    let (mut col_count, _) = stack.make_raw::<I>(*M);
+    let col_count = ghost::Array::from_mut(&mut col_count, M);
+    mem::fill_zero(col_count);
+
+    // can't overflow because the total count is A.compute_nnz() <= I::MAX
+    let col_count = &mut *col_count;
+    if A.nnz_per_col().is_some() {
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i].incr();
+            }
+        }
+    } else {
+        for i in A.compressed_row_indices() {
+            col_count[i].incr();
+        }
+    }
+
+    // col_count elements are >= 0
+    for (j, [pj0, pj1]) in zip(
+        M.indices(),
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+    ) {
+        let cj = &mut col_count[j];
+        let pj = pj0.get();
+        // new_col_ptrs is non-decreasing
+        pj1.set(pj + *cj);
+        *cj = pj;
+    }
+
+    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+    let current_row_position = &mut *col_count;
+    // current_row_position[i] == col_ptr[i]
+    for j in N.indices() {
+        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
+        for i in A.row_indices_of_col(j) {
+            let ci = &mut current_row_position[i];
+
+            // SAFETY: see below
+            *unsafe { new_row_indices.get_unchecked_mut(ci.zx()) } = *j_;
+            ci.incr();
+        }
+    }
+    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+    // so all the unchecked accesses were valid and non-overlapping, which means the entire
+    // array is filled
+    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. all written row indices are less than n
+    ghost::SymbolicSparseColMatRef::new(
+        unsafe {
+            SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices)
+        },
+        N,
+        M,
+    )
+}
+
+fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    new_values: SliceGroupMut<'a, E>,
+    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+    stack: PodStack<'_>,
+) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
+    let M = A.nrows();
+    let N = A.ncols();
+    assert!(new_col_ptrs.len() == *M + 1);
+
+    let (mut col_count, _) = stack.make_raw::<I>(*M);
+    let col_count = ghost::Array::from_mut(&mut col_count, M);
+    mem::fill_zero(col_count);
+
+    // can't overflow because the total count is A.compute_nnz() <= I::MAX
+    let col_count = &mut *col_count;
+    if A.nnz_per_col().is_some() {
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i].incr();
+            }
+        }
+    } else {
+        for i in A.symbolic().compressed_row_indices() {
+            col_count[i].incr();
+        }
+    }
+
+    // col_count elements are >= 0
+    for (j, [pj0, pj1]) in zip(
+        M.indices(),
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+    ) {
+        let cj = &mut col_count[j];
+        let pj = pj0.get();
+        // new_col_ptrs is non-decreasing
+        pj1.set(pj + *cj);
+        *cj = pj;
+    }
+
+    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
+    let current_row_position = &mut *col_count;
+    // current_row_position[i] == col_ptr[i]
+    for j in N.indices() {
+        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
+        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_iter()) {
+            let ci = &mut current_row_position[i];
+
+            // SAFETY: see below
+            unsafe {
+                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
+                new_values.write_unchecked(ci.zx(), val.read().conj())
+            };
+            ci.incr();
+        }
+    }
+    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+    // so all the unchecked accesses were valid and non-overlapping, which means the entire
+    // array is filled
+    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. all written row indices are less than n
+    ghost::SparseColMatRef::new(
+        unsafe {
+            SparseColMatRef::new(
+                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
+                new_values.into_const(),
+            )
+        },
+        N,
+        M,
+    )
 }
 
 #[cfg(test)]
