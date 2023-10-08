@@ -229,7 +229,7 @@ pub fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
     )
 }
 
-pub fn factorize_simplicial_numeric<I: Index, E: ComplexField>(
+pub fn factorize_simplicial_numeric_ldlt<I: Index, E: ComplexField>(
     L_values: SliceGroupMut<'_, E>,
     A: SparseColMatRef<'_, I, E>,
     symbolic: &SymbolicSimplicialCholesky<I>,
@@ -596,8 +596,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
         match &self.raw {
             &SymbolicCholeskyRaw::Simplicial(_) => {
-                let simplicial_req =
-                    StackReq::try_all_of([make_raw_req::<E>(n)?, n_req, n_req, n_req])?;
+                let simplicial_req = factorize_simplicial_numeric_ldlt_req::<I, E>(n)?;
                 StackReq::try_all_of([
                     A_req2,
                     A_req,
@@ -675,7 +674,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
             match &self.raw {
                 &SymbolicCholeskyRaw::Simplicial(ref this) => {
-                    factorize_simplicial_numeric(L_values, *A, this, stack);
+                    factorize_simplicial_numeric_ldlt(L_values, *A, this, stack);
                 }
                 &SymbolicCholeskyRaw::Supernodal(ref this) => {
                     let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
@@ -692,7 +691,7 @@ impl<I: Index> SymbolicCholesky<I> {
                         A,
                         stack.rb_mut(),
                     );
-                    factorize_supernodal_numeric(L_values, *A, this, parallelism, stack);
+                    factorize_supernodal_numeric_ldlt(L_values, *A, this, parallelism, stack);
                 }
             }
         });
@@ -1385,6 +1384,13 @@ fn partition_fn<I: Index>(idx: usize) -> impl Fn(&I) -> bool {
     move |&i| i < idx
 }
 
+pub fn factorize_simplicial_numeric_ldlt_req<I: Index, E: Entity>(
+    n: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let n_req = StackReq::try_new::<I>(n)?;
+    StackReq::try_all_of([make_raw_req::<E>(n)?, n_req, n_req, n_req])
+}
+
 pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
     symbolic: &SymbolicSupernodalCholesky<I>,
     parallelism: Parallelism,
@@ -1441,7 +1447,7 @@ pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
     req.try_and(StackReq::try_new::<I>(n)?)
 }
 
-pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
+pub fn factorize_supernodal_numeric_ldlt<I: Index, E: ComplexField>(
     L_values: SliceGroupMut<'_, E>,
     A_lower: SparseColMatRef<'_, I, E>,
     symbolic: &SymbolicSupernodalCholesky<I>,
@@ -1545,7 +1551,7 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
 
             for i in 0..d_pattern_mid_len {
                 for j in 0..d_ncols {
-                    Ld_mid_x_D.write(i, j, Ld_mid.read(i, j).mul(D.read(j, 0)));
+                    Ld_mid_x_D.write(i, j, Ld_mid.read(i, j).scale_real(D.read(j, 0).real()));
                 }
             }
 
@@ -1693,6 +1699,84 @@ pub fn ghost_transpose_symbolic<'m, 'n, 'a, I: Index>(
     ghost::SymbolicSparseColMatRef::new(
         unsafe {
             SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices)
+        },
+        N,
+        M,
+    )
+}
+
+pub fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    new_values: SliceGroupMut<'a, E>,
+    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+    stack: PodStack<'_>,
+) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
+    let M = A.nrows();
+    let N = A.ncols();
+    assert!(new_col_ptrs.len() == *M + 1);
+
+    let (mut col_count, _) = stack.make_raw::<I>(*M);
+    let col_count = Array::from_mut(&mut col_count, M);
+    mem::fill_zero(col_count);
+
+    // can't overflow because the total count is A.compute_nnz() <= I::MAX
+    let col_count = &mut *col_count;
+    if A.nnz_per_col().is_some() {
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i].incr();
+            }
+        }
+    } else {
+        for i in A.symbolic().compressed_row_indices() {
+            col_count[i].incr();
+        }
+    }
+
+    // col_count elements are >= 0
+    for (j, [pj0, pj1]) in zip(
+        M.indices(),
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+    ) {
+        let cj = &mut col_count[j];
+        let pj = pj0.get();
+        // new_col_ptrs is non-decreasing
+        pj1.set(pj + *cj);
+        *cj = pj;
+    }
+
+    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
+    let current_row_position = &mut *col_count;
+    // current_row_position[i] == col_ptr[i]
+    for j in N.indices() {
+        let j_: Idx<'n, I> = j.truncate::<I>();
+        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_iter()) {
+            let ci = &mut current_row_position[i];
+
+            // SAFETY: see below
+            unsafe {
+                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
+                new_values.write_unchecked(ci.zx(), val.read().conj())
+            };
+            ci.incr();
+        }
+    }
+    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+    // so all the unchecked accesses were valid and non-overlapping, which means the entire
+    // array is filled
+    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. all written row indices are less than n
+    ghost::SparseColMatRef::new(
+        unsafe {
+            SparseColMatRef::new(
+                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
+                new_values.into_const(),
+            )
         },
         N,
         M,
@@ -1918,6 +2002,7 @@ mod tests {
     use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
     use faer_core::Mat;
+    use rand::{Rng, SeedableRng};
 
     macro_rules! monomorphize_test {
         ($name: ident) => {
@@ -2080,17 +2165,60 @@ mod tests {
         &dense * D * &dense.adjoint()
     }
 
+    fn reconstruct_from_simplicial<I: Index, E: ComplexField>(
+        symbolic: &SymbolicSimplicialCholesky<I>,
+        L_values: SliceGroup<'_, E>,
+    ) -> Mat<E> {
+        let n = symbolic.nrows();
+        let mut dense = Mat::<E>::zeros(n, n);
+
+        let L = SparseColMatRef::new(
+            SymbolicSparseColMatRef::new_checked(
+                n,
+                n,
+                symbolic.col_ptrs(),
+                None,
+                symbolic.row_indices(),
+            ),
+            L_values,
+        );
+
+        for j in 0..n {
+            for (i, val) in zip(L.row_indices_of_col(j), L.values_of_col(j).into_iter()) {
+                dense.write(i, j, val.read());
+            }
+        }
+
+        let mut D = Mat::<E>::zeros(n, n);
+        D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
+        dense.as_mut().diagonal().fill(E::one());
+
+        &dense * D * &dense.adjoint()
+    }
+
     fn test_supernodal<I: Index>() {
-        type E = Double<f64>;
+        type E = num_complex::Complex<Double<f64>>;
         let truncate = I::truncate;
 
         let (_, col_ptr, row_ind, values) = MEDIUM;
+
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+
+        let mut complexify = |e: E| {
+            let i = E::one().neg().sqrt();
+            if e == E::from_f64(1.0) {
+                e.add(i.mul(E::from_f64(gen.gen())))
+            } else {
+                e
+            }
+        };
 
         let n = col_ptr.len() - 1;
         let nnz = values.len();
         let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
-        let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| E::from_f64(values[i]));
+        let values_mat =
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
         let values = SliceGroup::new(values_mat.col_ref(0));
 
         let A = SparseColMatRef::<'_, I, E>::new(
@@ -2122,7 +2250,7 @@ mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
-            let A_lower = ghost_transpose(
+            let A_lower = ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
@@ -2132,7 +2260,7 @@ mod tests {
             let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
             let mut values = SliceGroupMut::new(values.col_mut(0));
 
-            factorize_supernodal_numeric(
+            factorize_supernodal_numeric_ldlt(
                 values.rb_mut(),
                 *A_lower,
                 &symbolic,
@@ -2145,21 +2273,102 @@ mod tests {
             let mut A = sparse_to_dense(*A);
             for j in 0..n {
                 for i in j + 1..n {
-                    A.write(i, j, A.read(j, i));
+                    A.write(i, j, A.read(j, i).conj());
                 }
             }
 
             let err = reconstruct_from_supernodal(&symbolic, values.rb()) - A;
-            let mut max = E::zero();
-            faer_core::zipped!(err.as_ref()).for_each(|x| {
-                let x = x.read().abs();
-                max = if max > x { max } else { x }
-            });
-            assert!(max < E::from_f64(1e-25));
+            let mut max = <E as ComplexField>::Real::zero();
+            for j in 0..n {
+                for i in 0..n {
+                    let x = err.read(i, j).abs();
+                    max = if max > x { max } else { x }
+                }
+            }
+            assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+        });
+    }
+
+    fn test_simplicial<I: Index>() {
+        type E = num_complex::Complex<Double<f64>>;
+        let truncate = I::truncate;
+
+        let (_, col_ptr, row_ind, values) = SMALL;
+
+        let complexify = |e: E| {
+            let i = E::one().neg().sqrt();
+            if e == E::from_f64(1.0) {
+                e.add(i.mul(E::from_f64(rand::random())))
+            } else {
+                e
+            }
+        };
+
+        let n = col_ptr.len() - 1;
+        let nnz = values.len();
+        let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+        let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+        let values_mat =
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
+        let values = SliceGroup::new(values_mat.col_ref(0));
+
+        let A = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            values,
+        );
+        let zero = truncate(0);
+        let mut etree = vec![zero; n];
+        let mut col_count = vec![zero; n];
+        ghost::with_size(n, |N| {
+            let A = ghost::SparseColMatRef::new(A, N, N);
+            let etree = ghost_prefactorize_symbolic(
+                Array::from_mut(&mut etree, N),
+                Array::from_mut(&mut col_count, N),
+                A.symbolic(),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+            );
+
+            let symbolic = ghost_factorize_simplicial_symbolic(
+                A.symbolic(),
+                etree,
+                Array::from_ref(&col_count, N),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            )
+            .unwrap();
+
+            let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
+            let mut values = SliceGroupMut::new(values.col_mut(0));
+
+            factorize_simplicial_numeric_ldlt(
+                values.rb_mut(),
+                *A,
+                &symbolic,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    factorize_simplicial_numeric_ldlt_req::<I, E>(n).unwrap(),
+                )),
+            );
+            let mut A = sparse_to_dense(*A);
+            for j in 0..n {
+                for i in j + 1..n {
+                    A.write(i, j, A.read(j, i).conj());
+                }
+            }
+
+            let err = reconstruct_from_simplicial(&symbolic, values.rb()) - &A;
+
+            let mut max = <E as ComplexField>::Real::zero();
+            for j in 0..n {
+                for i in 0..n {
+                    let x = err.read(i, j).abs();
+                    max = if max > x { max } else { x }
+                }
+            }
+            assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
         });
     }
 
     monomorphize_test!(test_amd);
     monomorphize_test!(test_counts);
     monomorphize_test!(test_supernodal, i32);
+    monomorphize_test!(test_simplicial, i32);
 }

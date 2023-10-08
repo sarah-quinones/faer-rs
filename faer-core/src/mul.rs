@@ -1160,7 +1160,7 @@ impl<E: ComplexField> MicroKernelShape<E> {
 
 /// acc += a * maybe_conj(b)
 ///
-/// acc, a, b are colmaajor
+/// acc, a, b are colmajor
 /// m is a multiple of simd lane count
 fn matmul_with_conj_impl<E: ComplexField>(
     acc: MatMut<'_, E>,
@@ -1199,10 +1199,20 @@ fn matmul_with_conj_impl<E: ComplexField>(
             )
         };
 
-        real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
-        real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one().neg());
-        real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one());
-        real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+        match conj_b {
+            Conj::Yes => {
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one().neg());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+            }
+            Conj::No => {
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one().neg());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+            }
+        }
 
         return;
     }
