@@ -1412,6 +1412,38 @@ mod tests {
 
     include!("../data.rs");
 
+    fn test_amd<I: Index>() {
+        for &(_, (_, col_ptr, row_ind, _)) in ALL {
+            let I = I::truncate;
+            let n = col_ptr.len() - 1;
+
+            let (amd_perm, amd_perm_inv, _) =
+                ::amd::order(n, col_ptr, row_ind, &Default::default()).unwrap();
+            let col_ptr = &*col_ptr.iter().copied().map(I).collect::<Vec<_>>();
+            let row_ind = &*row_ind.iter().copied().map(I).collect::<Vec<_>>();
+            let amd_perm = &*amd_perm.iter().copied().map(I).collect::<Vec<_>>();
+            let amd_perm_inv = &*amd_perm_inv.iter().copied().map(I).collect::<Vec<_>>();
+            let A = SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind);
+
+            let perm = &mut vec![I(0); n];
+            let perm_inv = &mut vec![I(0); n];
+
+            crate::amd::order_maybe_unsorted(
+                perm,
+                perm_inv,
+                A,
+                Default::default(),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    crate::amd::order_maybe_unsorted_req::<I>(n, row_ind.len()).unwrap(),
+                )),
+            )
+            .unwrap();
+
+            assert!(perm == amd_perm);
+            assert!(perm_inv == amd_perm_inv);
+        }
+    }
+
     fn sparse_to_dense<I: Index, E: ComplexField>(sparse: SparseColMatRef<'_, I, E>) -> Mat<E> {
         let m = sparse.nrows();
         let n = sparse.ncols();
@@ -1556,6 +1588,7 @@ mod tests {
         });
     }
 
+    monomorphize_test!(test_amd);
     monomorphize_test!(test_counts);
     monomorphize_test!(test_supernodal, i32);
 }

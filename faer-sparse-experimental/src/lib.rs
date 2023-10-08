@@ -937,7 +937,7 @@ impl_copy!(<><I> <SymbolicSparseColMatRef<'_, I>>);
 impl_copy!(<><I, E: Entity> <SparseColMatRef<'_, I, E>>);
 
 #[inline(always)]
-pub fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
+fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
     slice
         .windows(2)
         .map(|window| unsafe { &*(window.as_ptr() as *const [I; 2]) })

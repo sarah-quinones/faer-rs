@@ -1,10 +1,12 @@
 use crate::{mem::*, Index, SliceGroup, SliceGroupMut, __get_unchecked};
 use assert2::{assert, debug_assert};
 use bytemuck::Pod;
-use core::{marker::PhantomData, ops::Deref};
+use core::{
+    marker::PhantomData,
+    ops::{Deref, Range},
+};
 use faer_core::Entity;
 use reborrow::*;
-use std::ops::Range;
 
 pub type InvariantLifetime<'a> = PhantomData<fn(&'a ()) -> &'a ()>;
 
@@ -17,7 +19,7 @@ pub struct Branded<'brand, T: ?Sized> {
 
 impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for Branded<'_, T> {
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.unbranded.fmt(f)
     }
 }
