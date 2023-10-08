@@ -8,7 +8,8 @@ use faer_sparse_experimental::{
     amd::order_maybe_unsorted_req,
     cholesky::*,
     ghost::{self, Array},
-    permute_symmetric, Index, PermutationRef, SparseColMatRef, SymbolicSparseColMatRef,
+    ghost_permute_symmetric, Index, PermutationRef, SliceGroup, SliceGroupMut, SparseColMatRef,
+    SymbolicSparseColMatRef,
 };
 use matrix_market_rs::MtxData;
 
@@ -79,8 +80,9 @@ fn load_mtx(data: MtxData<f64>, side: Side) -> (usize, Vec<i64>, Vec<i64>, Vec<f
 }
 
 fn bench_supernodal(criterion: &mut Criterion) {
-    type I = i64;
-    let truncate = I::truncate;
+    type I = i32;
+    let I = I::truncate;
+    let zero = I(0);
 
     let files = [
         ("stiffness", Side::Upper),
@@ -93,24 +95,32 @@ fn bench_supernodal(criterion: &mut Criterion) {
             continue;
         };
         let (n, col_ptr, row_ind, values) = load_mtx(data, side);
+        let col_ptr = col_ptr
+            .into_iter()
+            .map(|x| I(x as usize))
+            .collect::<Vec<_>>();
+        let row_ind = row_ind
+            .into_iter()
+            .map(|x| I(x as usize))
+            .collect::<Vec<_>>();
 
         let A = SparseColMatRef::<_, f64>::new(
             SymbolicSparseColMatRef::new_checked(n, n, &col_ptr, None, &row_ind),
-            &*values,
+            SliceGroup::new(&*values),
         );
 
         let (perm_ref, perm_inv_ref, _) = amd::order(
-            n as i64,
+            I(n),
             A.col_ptrs(),
             A.row_indices(),
             &amd::Control::default(),
         )
         .unwrap();
 
-        let mut perm = vec![0i64; n];
-        let mut perm_inv = vec![0i64; n];
+        let mut perm = vec![zero; n];
+        let mut perm_inv = vec![zero; n];
 
-        faer_sparse_experimental::amd::order_maybe_unsorted::<i64>(
+        faer_sparse_experimental::amd::order_maybe_unsorted(
             &mut perm,
             &mut perm_inv,
             A.symbolic(),
@@ -124,7 +134,6 @@ fn bench_supernodal(criterion: &mut Criterion) {
         assert2::assert!(perm == perm_ref);
         assert2::assert!(perm_inv == perm_inv_ref);
 
-        let zero = truncate(0);
         let mut etree = vec![zero; n];
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
@@ -135,8 +144,8 @@ fn bench_supernodal(criterion: &mut Criterion) {
             let mut A_colptr = col_ptr.clone();
             let mut A_rowind = row_ind.clone();
             let mut A_values = values.clone();
-            let A = permute_symmetric(
-                &mut A_values,
+            let A = ghost_permute_symmetric(
+                SliceGroupMut::new(&mut *A_values),
                 &mut A_colptr,
                 &mut A_rowind,
                 A,
@@ -144,14 +153,14 @@ fn bench_supernodal(criterion: &mut Criterion) {
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(n))),
             );
 
-            let etree = prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 A.symbolic(),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
             );
 
-            let symbolic = factorize_supernodal_symbolic(
+            let symbolic = ghost_factorize_supernodal_symbolic(
                 A.symbolic(),
                 etree,
                 Array::from_ref(&col_count, N),
@@ -164,16 +173,16 @@ fn bench_supernodal(criterion: &mut Criterion) {
             let mut A_lower_values = values.to_vec();
             let mut A_lower_row_ind = row_ind.to_vec();
 
-            let A_lower = transpose(
+            let A_lower = ghost_transpose(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                &mut *A_lower_values,
+                SliceGroupMut::new(&mut *A_lower_values),
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
 
-            let n_supernodes = symbolic.supernode_etree__.len();
-            let mut values = vec![0.0f64; symbolic.col_ptrs_for_values__[n_supernodes].zx()];
+            let n_supernodes = symbolic.n_supernodes();
+            let mut values = vec![0.0f64; symbolic.col_ptrs_for_values()[n_supernodes].zx()];
 
             let parallelism = Parallelism::None;
             let mut mem = GlobalPodBuffer::new(
@@ -184,7 +193,7 @@ fn bench_supernodal(criterion: &mut Criterion) {
                 bench.iter(|| {
                     factorize_supernodal_numeric(
                         *A_lower,
-                        &mut values,
+                        SliceGroupMut::new(&mut *values),
                         &symbolic,
                         parallelism,
                         PodStack::new(&mut mem),
@@ -200,7 +209,7 @@ fn bench_supernodal(criterion: &mut Criterion) {
                 bench.iter(|| {
                     factorize_supernodal_numeric(
                         *A_lower,
-                        &mut values,
+                        SliceGroupMut::new(&mut *values),
                         &symbolic,
                         parallelism,
                         PodStack::new(&mut mem),

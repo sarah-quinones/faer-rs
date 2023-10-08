@@ -1007,9 +1007,9 @@ fn aat<I: Index>(
     nzaat.ok_or(FaerSparseError::IndexOverflow).map(I::zx)
 }
 
-pub fn order_sorted_req<I: Index>(n: usize, nnz: usize) -> Result<StackReq, SizeOverflow> {
+pub fn order_sorted_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
     let n_req = StackReq::try_new::<I>(n)?;
-    let nzaat = nnz.checked_mul(2).ok_or(SizeOverflow)?;
+    let nzaat = nnz_upper.checked_mul(2).ok_or(SizeOverflow)?;
     StackReq::try_all_of([
         // len
         n_req,
@@ -1037,11 +1037,14 @@ pub fn order_sorted_req<I: Index>(n: usize, nnz: usize) -> Result<StackReq, Size
     ])
 }
 
-pub fn order_maybe_unsorted_req<I: Index>(n: usize, nnz: usize) -> Result<StackReq, SizeOverflow> {
+pub fn order_maybe_unsorted_req<I: Index>(
+    n: usize,
+    nnz_upper: usize,
+) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
-        order_sorted_req::<I>(n, nnz)?,
+        order_sorted_req::<I>(n, nnz_upper)?,
         StackReq::try_new::<I>(n + 1)?,
-        StackReq::try_new::<I>(nnz)?,
+        StackReq::try_new::<I>(nnz_upper)?,
     ])
 }
 

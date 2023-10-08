@@ -1,4 +1,4 @@
-use crate::{mem::*, Index, __get_unchecked};
+use crate::{mem::*, Index, SliceGroup, SliceGroupMut, __get_unchecked};
 use assert2::{assert, debug_assert};
 use bytemuck::Pod;
 use core::{marker::PhantomData, ops::Deref};
@@ -68,7 +68,7 @@ pub struct Size<'n>(Branded<'n, usize>);
 
 impl<'n> Size<'n> {
     #[inline]
-    pub fn raw_unchecked(idx: usize) -> Self {
+    pub unsafe fn raw_unchecked(idx: usize) -> Self {
         Self(unsafe { Branded::new_unchecked(idx) })
     }
 
@@ -207,7 +207,7 @@ pub struct Array<'n, I>(Branded<'n, [I]>);
 impl<'n, I> Array<'n, I> {
     #[inline]
     pub fn len(&self) -> Size<'n> {
-        Size::raw_unchecked(self.0.unbranded.len())
+        unsafe { Size::raw_unchecked(self.0.unbranded.len()) }
     }
 }
 
@@ -549,6 +549,14 @@ impl<'n, 'a, I: Index> PermutationRef<'n, 'a, I> {
     }
 
     #[inline]
+    pub fn inverse(self) -> PermutationRef<'n, 'a, I> {
+        PermutationRef(Branded {
+            __marker: PhantomData,
+            unbranded: self.0.unbranded.inverse(),
+        })
+    }
+
+    #[inline]
     pub fn fwd_inv(self) -> (&'a Array<'n, Idx<'n, I>>, &'a Array<'n, Idx<'n, I>>) {
         unsafe {
             let (fwd, inv) = self.0.unbranded.fwd_inv();
@@ -556,6 +564,11 @@ impl<'n, 'a, I: Index> PermutationRef<'n, 'a, I> {
             let inv = &*(inv as *const [I] as *const Array<'n, Idx<'n, I>>);
             (fwd, inv)
         }
+    }
+
+    #[inline]
+    pub fn len(&self) -> Size<'n> {
+        unsafe { Size::raw_unchecked((**self).len()) }
     }
 }
 
@@ -579,11 +592,11 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
 
     #[inline]
     pub fn nrows(&self) -> Size<'nrows> {
-        Size::raw_unchecked(self.0.nrows())
+        unsafe { Size::raw_unchecked(self.0.nrows()) }
     }
     #[inline]
     pub fn ncols(&self) -> Size<'ncols> {
-        Size::raw_unchecked(self.0.ncols())
+        unsafe { Size::raw_unchecked(self.0.ncols()) }
     }
 
     #[inline]
@@ -646,11 +659,11 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a
 
     #[inline]
     pub fn nrows(&self) -> Size<'nrows> {
-        Size::raw_unchecked(self.0.nrows())
+        unsafe { Size::raw_unchecked(self.0.nrows()) }
     }
     #[inline]
     pub fn ncols(&self) -> Size<'ncols> {
-        Size::raw_unchecked(self.0.ncols())
+        unsafe { Size::raw_unchecked(self.0.ncols()) }
     }
 
     #[inline]
@@ -662,13 +675,12 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a
     }
 
     #[inline]
-    pub fn values_of_col(&self, j: Idx<'ncols>) -> E::Group<&[E::Unit]> {
-        let range = unsafe { self.col_range_unchecked(*j) };
-        E::map(
-            self.0.values(),
-            #[inline(always)]
-            |val| unsafe { crate::mem::__get_unchecked(val, range.clone()) },
-        )
+    pub fn values_of_col(&self, j: Idx<'ncols>) -> SliceGroup<'a, E> {
+        unsafe {
+            self.0
+                .values()
+                .subslice_unchecked(self.col_range_unchecked(*j))
+        }
     }
 }
 
@@ -683,13 +695,27 @@ impl_deref!(<'n, 'a><I><Target = crate::PermutationRef<'a, I>><PermutationRef<'n
 impl_deref!(<'m, 'n, 'a><I><Target = crate::SymbolicSparseColMatRef<'a, I>><SymbolicSparseColMatRef<'m, 'n, 'a, I>>);
 impl_deref!(<'m, 'n, 'a><I, E: Entity><Target = crate::SparseColMatRef<'a, I, E>><SparseColMatRef<'m, 'n, 'a, I, E>>);
 
-pub struct ArrayGroup<'n, 'a, E: Entity>(pub E::GroupCopy<&'a Array<'n, E::Unit>>);
-pub struct ArrayGroupMut<'n, 'a, E: Entity>(pub E::Group<&'a mut Array<'n, E::Unit>>);
+#[derive(Debug)]
+pub struct ArrayGroup<'n, 'a, E: Entity>(Branded<'n, SliceGroup<'a, E>>);
+#[derive(Debug)]
+pub struct ArrayGroupMut<'n, 'a, E: Entity>(Branded<'n, SliceGroupMut<'a, E>>);
 
-impl<'n, 'a, E: Entity> Copy for ArrayGroup<'n, 'a, E> {}
-impl<'n, 'a, E: Entity> Clone for ArrayGroup<'n, 'a, E> {
+impl_copy!(<'n, 'a><E: Entity><ArrayGroup<'n, 'a, E>>);
+
+impl<'short, 'n, 'a, E: Entity> reborrow::ReborrowMut<'short> for ArrayGroup<'n, 'a, E> {
+    type Target = ArrayGroup<'n, 'short, E>;
+
     #[inline(always)]
-    fn clone(&self) -> Self {
+    fn rb_mut(&'short mut self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'short, 'n, 'a, E: Entity> reborrow::Reborrow<'short> for ArrayGroup<'n, 'a, E> {
+    type Target = ArrayGroup<'n, 'short, E>;
+
+    #[inline(always)]
+    fn rb(&'short self) -> Self::Target {
         *self
     }
 }
@@ -699,7 +725,7 @@ impl<'short, 'n, 'a, E: Entity> reborrow::ReborrowMut<'short> for ArrayGroupMut<
 
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
-        ArrayGroupMut(E::map(E::as_mut(&mut self.0), |this| &mut **this))
+        ArrayGroupMut(unsafe { Branded::new_unchecked(self.0.unbranded.rb_mut()) })
     }
 }
 
@@ -708,7 +734,7 @@ impl<'short, 'n, 'a, E: Entity> reborrow::Reborrow<'short> for ArrayGroupMut<'n,
 
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
-        ArrayGroup(E::into_copy(E::map(E::as_ref(&self.0), |this| &**this)))
+        ArrayGroup(unsafe { Branded::new_unchecked(self.0.unbranded.rb()) })
     }
 }
 
@@ -717,26 +743,24 @@ where
     E::Unit: Pod,
 {
     #[inline(always)]
+    pub fn new(slice: SliceGroupMut<'a, E>, N: Size<'n>) -> Self {
+        assert!(slice.rb().len() == *N);
+        Self(unsafe { Branded::new_unchecked(slice) })
+    }
+
+    #[inline(always)]
+    pub fn into_slice(self) -> SliceGroupMut<'a, E> {
+        self.0.unbranded
+    }
+
+    #[inline(always)]
     pub fn read(&self, j: Idx<'n>) -> E {
         self.rb().read(j)
     }
 
     #[inline(always)]
     pub fn write(&mut self, j: Idx<'n>, value: E) {
-        E::map(
-            E::zip(self.rb_mut().0, value.into_units()),
-            #[inline(always)]
-            |(array, value)| array[j] = value,
-        );
-    }
-
-    #[inline(always)]
-    pub fn fill_zero(&mut self) {
-        E::map(
-            self.rb_mut().0,
-            #[inline(always)]
-            |array| crate::mem::fill_zero(array),
-        );
+        unsafe { self.rb_mut().into_slice().write_unchecked(*j, value) }
     }
 }
 
@@ -745,12 +769,27 @@ where
     E::Unit: Pod,
 {
     #[inline(always)]
+    pub fn new(slice: SliceGroup<'a, E>, N: Size<'n>) -> Self {
+        assert!(slice.len() == *N);
+        Self(unsafe { Branded::new_unchecked(slice) })
+    }
+
+    #[inline(always)]
+    pub fn into_slice(self) -> SliceGroup<'a, E> {
+        self.0.unbranded
+    }
+
+    #[inline(always)]
+    pub fn subslice(self, range: Range<IdxInclusive<'n>>) -> SliceGroup<'a, E> {
+        unsafe {
+            self.into_slice()
+                .subslice_unchecked(*range.start..*range.end)
+        }
+    }
+
+    #[inline(always)]
     pub fn read(&self, j: Idx<'n>) -> E {
-        E::from_units(E::map(
-            E::from_copy(self.0),
-            #[inline(always)]
-            |array| array[j],
-        ))
+        unsafe { self.into_slice().read_unchecked(*j) }
     }
 }
 
@@ -779,7 +818,7 @@ pub fn fill_none<'n, 'a, I: Index>(
 
 #[inline]
 pub fn copy_slice<'n, 'a, I: Index>(dst: &'a mut [I], src: &[Idx<'n, I>]) -> &'a mut [Idx<'n, I>] {
-    let size = Size::<'n>::raw_unchecked(usize::MAX);
+    let size = unsafe { Size::<'n>::raw_unchecked(usize::MAX) };
     let dst = unsafe { Idx::slice_mut_unchecked(dst, size) };
     dst.copy_from_slice(src);
     dst

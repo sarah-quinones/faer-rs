@@ -10,8 +10,9 @@ pub use __core::*;
 use bytemuck::Pod;
 use core::{cell::Cell, iter::zip, ops::Range};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
-use faer_core::{ComplexField, Entity};
+use faer_core::{transmute_unchecked, ComplexField, Entity};
 use mem::NONE;
+use reborrow::*;
 
 #[allow(unused_macros)]
 macro_rules! shadow {
@@ -87,6 +88,22 @@ where
 #[inline]
 fn nomem<T>(_: T) -> FaerSparseError {
     FaerSparseError::OutOfMemory
+}
+
+fn make_raw<E: Entity>(
+    size: usize,
+    stack: PodStack<'_>,
+) -> (E::Group<dyn_stack::DynArray<'_, E::Unit>>, PodStack<'_>) {
+    let (stack, array) = E::map_with_context(
+        stack,
+        E::from_copy(E::UNIT),
+        #[inline(always)]
+        |stack, ()| {
+            let (alloc, stack) = stack.make_raw::<E::Unit>(size);
+            (stack, alloc)
+        },
+    );
+    (array, stack)
 }
 
 pub mod amd;
@@ -207,6 +224,7 @@ impl Index for i64 {
 mod __core {
     use super::*;
     use assert2::{assert, debug_assert};
+    use core::marker::PhantomData;
 
     #[derive(Debug)]
     pub struct PermutationRef<'a, I> {
@@ -226,7 +244,7 @@ mod __core {
     // #[derive(Debug)]
     pub struct SparseColMatRef<'a, I, E: Entity> {
         symbolic: SymbolicSparseColMatRef<'a, I>,
-        val: E::GroupCopy<&'a [E::Unit]>,
+        values: SliceGroup<'a, E>,
     }
 
     impl<'a, I: Index> PermutationRef<'a, I> {
@@ -255,8 +273,21 @@ mod __core {
         }
 
         #[inline]
+        pub fn inverse(self) -> PermutationRef<'a, I> {
+            PermutationRef {
+                fwd: self.inv,
+                inv: self.fwd,
+            }
+        }
+
+        #[inline]
         pub fn fwd_inv(self) -> (&'a [I], &'a [I]) {
             (self.fwd, self.inv)
+        }
+
+        #[inline]
+        pub fn len(&self) -> usize {
+            self.fwd.len()
         }
     }
 
@@ -434,22 +465,9 @@ mod __core {
     impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         #[inline]
         #[track_caller]
-        pub fn new(
-            symbolic: SymbolicSparseColMatRef<'a, I>,
-            values: E::Group<&'a [E::Unit]>,
-        ) -> Self {
-            E::map(
-                E::copy(&values),
-                #[inline(always)]
-                |values| {
-                    assert!(symbolic.row_indices().len() == values.len());
-                },
-            );
-
-            Self {
-                symbolic,
-                val: E::into_copy(values),
-            }
+        pub fn new(symbolic: SymbolicSparseColMatRef<'a, I>, values: SliceGroup<'a, E>) -> Self {
+            assert!(symbolic.row_indices().len() == values.len());
+            Self { symbolic, values }
         }
 
         #[inline]
@@ -482,8 +500,8 @@ mod __core {
         }
 
         #[inline]
-        pub fn values(&self) -> E::Group<&'a [E::Unit]> {
-            E::from_copy(self.val)
+        pub fn values(&self) -> SliceGroup<'a, E> {
+            self.values
         }
 
         #[inline]
@@ -503,13 +521,9 @@ mod __core {
 
         #[inline]
         #[track_caller]
-        pub fn values_of_col(&self, j: usize) -> E::Group<&'a [E::Unit]> {
+        pub fn values_of_col(&self, j: usize) -> SliceGroup<'a, E> {
             let range = self.col_range(j);
-            E::map(
-                E::from_copy(self.val),
-                #[inline(always)]
-                |val| crate::mem::__get_checked(val, range.clone()),
-            )
+            self.values.subslice(range)
         }
 
         #[inline]
@@ -528,6 +542,393 @@ mod __core {
         pub unsafe fn col_range_unchecked(&self, j: usize) -> Range<usize> {
             self.symbolic.col_range_unchecked(j)
         }
+    }
+
+    pub struct SliceGroup<'a, E: Entity>(E::GroupCopy<&'static [E::Unit]>, PhantomData<&'a ()>);
+    pub struct SliceGroupMut<'a, E: Entity>(
+        E::Group<&'static mut [E::Unit]>,
+        PhantomData<&'a mut ()>,
+    );
+
+    pub struct RefGroup<'a, E: Entity>(E::GroupCopy<&'static E::Unit>, PhantomData<&'a ()>);
+    pub struct RefGroupMut<'a, E: Entity>(E::Group<&'static mut E::Unit>, PhantomData<&'a mut ()>);
+
+    impl_copy!(<'a><E: Entity><SliceGroup<'a, E>>);
+    impl_copy!(<'a><E: Entity><RefGroup<'a, E>>);
+
+    impl<'a, E: Entity> RefGroup<'a, E> {
+        #[inline(always)]
+        pub fn new(slice: E::Group<&'a E::Unit>) -> Self {
+            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+        }
+
+        #[inline(always)]
+        pub fn into_inner(self) -> E::Group<&'a E::Unit> {
+            unsafe { transmute_unchecked(self.0) }
+        }
+    }
+
+    impl<'a, E: Entity> RefGroupMut<'a, E> {
+        #[inline(always)]
+        pub fn new(slice: E::Group<&'a mut E::Unit>) -> Self {
+            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+        }
+
+        #[inline(always)]
+        pub fn into_inner(self) -> E::Group<&'a mut E::Unit> {
+            unsafe { transmute_unchecked(self.0) }
+        }
+    }
+
+    impl<'a, E: Entity> IntoConst for SliceGroup<'a, E> {
+        type Target = SliceGroup<'a, E>;
+
+        #[inline(always)]
+        fn into_const(self) -> Self::Target {
+            self
+        }
+    }
+    impl<'a, E: Entity> IntoConst for SliceGroupMut<'a, E> {
+        type Target = SliceGroup<'a, E>;
+
+        #[inline(always)]
+        fn into_const(self) -> Self::Target {
+            SliceGroup::new(E::map(
+                self.into_inner(),
+                #[inline(always)]
+                |slice| &*slice,
+            ))
+        }
+    }
+
+    impl<'a, E: Entity> IntoConst for RefGroup<'a, E> {
+        type Target = RefGroup<'a, E>;
+
+        #[inline(always)]
+        fn into_const(self) -> Self::Target {
+            self
+        }
+    }
+    impl<'a, E: Entity> IntoConst for RefGroupMut<'a, E> {
+        type Target = RefGroup<'a, E>;
+
+        #[inline(always)]
+        fn into_const(self) -> Self::Target {
+            RefGroup::new(E::map(
+                self.into_inner(),
+                #[inline(always)]
+                |slice| &*slice,
+            ))
+        }
+    }
+
+    impl<'short, 'a, E: Entity> ReborrowMut<'short> for RefGroup<'a, E> {
+        type Target = RefGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            *self
+        }
+    }
+
+    impl<'short, 'a, E: Entity> Reborrow<'short> for RefGroup<'a, E> {
+        type Target = RefGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb(&'short self) -> Self::Target {
+            *self
+        }
+    }
+
+    impl<'short, 'a, E: Entity> ReborrowMut<'short> for RefGroupMut<'a, E> {
+        type Target = RefGroupMut<'short, E>;
+
+        #[inline(always)]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            RefGroupMut::new(E::map(
+                E::as_mut(&mut self.0),
+                #[inline(always)]
+                |this| &mut **this,
+            ))
+        }
+    }
+
+    impl<'short, 'a, E: Entity> Reborrow<'short> for RefGroupMut<'a, E> {
+        type Target = RefGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb(&'short self) -> Self::Target {
+            RefGroup::new(E::map(
+                E::as_ref(&self.0),
+                #[inline(always)]
+                |this| &**this,
+            ))
+        }
+    }
+
+    impl<'a, E: Entity> SliceGroup<'a, E> {
+        #[inline(always)]
+        pub fn new(slice: E::Group<&'a [E::Unit]>) -> Self {
+            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+        }
+
+        #[inline(always)]
+        pub fn into_inner(self) -> E::Group<&'a [E::Unit]> {
+            unsafe { transmute_unchecked(self.0) }
+        }
+    }
+
+    impl<'a, E: Entity> SliceGroupMut<'a, E> {
+        #[inline(always)]
+        pub fn new(slice: E::Group<&'a mut [E::Unit]>) -> Self {
+            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+        }
+
+        #[inline(always)]
+        pub fn into_inner(self) -> E::Group<&'a mut [E::Unit]> {
+            unsafe { transmute_unchecked(self.0) }
+        }
+    }
+
+    impl<'short, 'a, E: Entity> ReborrowMut<'short> for SliceGroup<'a, E> {
+        type Target = SliceGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            *self
+        }
+    }
+
+    impl<'short, 'a, E: Entity> Reborrow<'short> for SliceGroup<'a, E> {
+        type Target = SliceGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb(&'short self) -> Self::Target {
+            *self
+        }
+    }
+
+    impl<'short, 'a, E: Entity> ReborrowMut<'short> for SliceGroupMut<'a, E> {
+        type Target = SliceGroupMut<'short, E>;
+
+        #[inline(always)]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            SliceGroupMut::new(E::map(
+                E::as_mut(&mut self.0),
+                #[inline(always)]
+                |this| &mut **this,
+            ))
+        }
+    }
+
+    impl<'short, 'a, E: Entity> Reborrow<'short> for SliceGroupMut<'a, E> {
+        type Target = SliceGroup<'short, E>;
+
+        #[inline(always)]
+        fn rb(&'short self) -> Self::Target {
+            SliceGroup::new(E::map(
+                E::as_ref(&self.0),
+                #[inline(always)]
+                |this| &**this,
+            ))
+        }
+    }
+}
+
+impl<E: Entity> core::fmt::Debug for RefGroup<'_, E> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.read().fmt(f)
+    }
+}
+impl<E: Entity> core::fmt::Debug for RefGroupMut<'_, E> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.read().fmt(f)
+    }
+}
+impl<E: Entity> core::fmt::Debug for SliceGroup<'_, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.into_iter()).finish()
+    }
+}
+impl<E: Entity> core::fmt::Debug for SliceGroupMut<'_, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.rb().fmt(f)
+    }
+}
+
+impl<'a, E: Entity> RefGroup<'a, E> {
+    #[inline(always)]
+    pub fn read(&self) -> E {
+        E::from_units(E::deref(self.into_inner()))
+    }
+}
+
+impl<'a, E: Entity> RefGroupMut<'a, E> {
+    #[inline(always)]
+    pub fn read(&self) -> E {
+        self.rb().read()
+    }
+
+    #[inline(always)]
+    pub fn write(&mut self, value: E) {
+        E::map(
+            E::zip(self.rb_mut().into_inner(), value.into_units()),
+            #[inline(always)]
+            |(r, value)| *r = value,
+        );
+    }
+}
+
+impl<'a, E: Entity> SliceGroup<'a, E> {
+    #[inline]
+    pub fn len(&self) -> usize {
+        let mut len = usize::MAX;
+        E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| len = Ord::min(len, slice.len()),
+        );
+        len
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, idx: usize) -> E {
+        assert!(idx < self.len());
+        unsafe { self.read_unchecked(idx) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn read_unchecked(&self, idx: usize) -> E {
+        debug_assert!(idx < self.len());
+        E::from_units(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| *slice.get_unchecked(idx),
+        ))
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn subslice(self, range: Range<usize>) -> Self {
+        assert!(range.start <= range.end);
+        assert!(range.end <= self.len());
+        unsafe { self.subslice_unchecked(range) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at(self, idx: usize) -> (Self, Self) {
+        assert!(idx <= self.len());
+        let (head, tail) = E::unzip(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.split_at(idx),
+        ));
+        (Self::new(head), Self::new(tail))
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
+        debug_assert!(range.start <= range.end);
+        debug_assert!(range.end <= self.len());
+        Self::new(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.get_unchecked(range.start..range.end),
+        ))
+    }
+
+    #[inline(always)]
+    pub fn into_iter(self) -> impl Iterator<Item = RefGroup<'a, E>> {
+        E::into_iter(self.into_inner()).map(RefGroup::new)
+    }
+}
+
+impl<'a, E: Entity> SliceGroupMut<'a, E> {
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.rb().len()
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, idx: usize) -> E {
+        self.rb().read(idx)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn read_unchecked(&self, idx: usize) -> E {
+        self.rb().read_unchecked(idx)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn write(&mut self, idx: usize, value: E) {
+        assert!(idx < self.len());
+        unsafe { self.write_unchecked(idx, value) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn write_unchecked(&mut self, idx: usize, value: E) {
+        debug_assert!(idx < self.len());
+        E::map(
+            E::zip(self.rb_mut().into_inner(), value.into_units()),
+            #[inline(always)]
+            |(slice, value)| *slice.get_unchecked_mut(idx) = value,
+        );
+    }
+
+    #[inline(always)]
+    pub fn fill_zero(&mut self) {
+        E::map(
+            self.rb_mut().into_inner(),
+            #[inline(always)]
+            |slice| mem::fill_zero(slice),
+        );
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn subslice(self, range: Range<usize>) -> Self {
+        assert!(range.start <= range.end);
+        assert!(range.end <= self.len());
+        unsafe { self.subslice_unchecked(range) }
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
+        debug_assert!(range.start <= range.end);
+        debug_assert!(range.end <= self.len());
+        Self::new(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.get_unchecked_mut(range.start..range.end),
+        ))
+    }
+
+    #[inline(always)]
+    pub fn into_iter(self) -> impl Iterator<Item = RefGroupMut<'a, E>> {
+        E::into_iter(self.into_inner()).map(RefGroupMut::new)
+    }
+
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at(self, idx: usize) -> (Self, Self) {
+        assert!(idx <= self.len());
+        let (head, tail) = E::unzip(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.split_at_mut(idx),
+        ));
+        (Self::new(head), Self::new(tail))
     }
 }
 
@@ -582,15 +983,14 @@ fn permute_symmetric_common<'n, I: Index>(
     // new_col_ptrs is non-decreasing
 }
 
-#[inline(never)]
-pub fn permute_symmetric<'n, 'a, I: Index>(
-    new_values: &'a mut [f64],
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    A: ghost::SparseColMatRef<'n, 'n, '_, I, f64>,
+pub fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
+    new_values: SliceGroupMut<'out, E>,
+    new_col_ptrs: &'out mut [I],
+    new_row_indices: &'out mut [I],
+    A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
     perm: ghost::PermutationRef<'n, '_, I>,
     stack: PodStack<'_>,
-) -> ghost::SparseColMatRef<'n, 'n, 'a, I, f64> {
+) -> ghost::SparseColMatRef<'n, 'n, 'out, I, E> {
     let N = A.ncols();
     let n = *A.ncols();
 
@@ -604,19 +1004,22 @@ pub fn permute_symmetric<'n, 'a, I: Index>(
 
     let nnz = new_col_ptrs[n].zx();
     let new_row_indices = &mut new_row_indices[..nnz];
-    let new_values = &mut new_values[..nnz];
+    let mut new_values = new_values.subslice(0..nnz);
 
     ghost::with_size(
         nnz,
         #[inline(always)]
         |NNZ| {
-            let new_values = ghost::Array::from_mut(new_values, NNZ);
+            let mut new_values = ghost::ArrayGroupMut::new(new_values.rb_mut(), NNZ);
             let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
             for old_j in N.indices() {
                 let new_j_ = perm_inv[old_j];
                 let new_j = new_j_.zx();
 
-                for (old_i, &val) in zip(A.row_indices_of_col(old_j), A.values_of_col(old_j)) {
+                for (old_i, val) in zip(
+                    A.row_indices_of_col(old_j),
+                    A.values_of_col(old_j).into_iter(),
+                ) {
                     if old_i <= old_j {
                         let new_i_ = perm_inv[old_i];
                         let new_i = new_i_.zx();
@@ -628,7 +1031,7 @@ pub fn permute_symmetric<'n, 'a, I: Index>(
                         let row_pos =
                             unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                         current_row_pos.incr();
-                        new_values[row_pos] = val;
+                        new_values.write(row_pos, val.read());
                         // (2)
                         new_row_indices[row_pos] = *new_min;
                     }
@@ -645,12 +1048,34 @@ pub fn permute_symmetric<'n, 'a, I: Index>(
         ghost::SparseColMatRef::new(
             SparseColMatRef::new(
                 SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
-                &*new_values,
+                new_values.into_const(),
             ),
             N,
             N,
         )
     }
+}
+
+pub fn permute_symmetric<'out, I: Index, E: Entity>(
+    new_values: SliceGroupMut<'out, E>,
+    new_col_ptrs: &'out mut [I],
+    new_row_indices: &'out mut [I],
+    A: SparseColMatRef<'_, I, E>,
+    perm: PermutationRef<'_, I>,
+    stack: PodStack<'_>,
+) -> SparseColMatRef<'out, I, E> {
+    ghost::with_size(A.nrows(), |N| {
+        assert!(A.nrows() == A.ncols());
+        assert!(A.nrows() == A.ncols());
+        *ghost_permute_symmetric(
+            new_values,
+            new_col_ptrs,
+            new_row_indices,
+            ghost::SparseColMatRef::new(A, N, N),
+            ghost::PermutationRef::new(perm, N),
+            stack,
+        )
+    })
 }
 
 #[cfg(test)]
