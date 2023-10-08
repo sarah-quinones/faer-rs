@@ -56,14 +56,14 @@ macro_rules! impl_deref {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
-pub enum FaerSparseError {
+pub enum FaerError {
     IndexOverflow,
     OutOfMemory,
 }
 
 #[inline]
 #[track_caller]
-fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerSparseError> {
+fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerError> {
     let mut v = Vec::new();
     v.try_reserve_exact(n).map_err(nomem)?;
     unsafe {
@@ -75,7 +75,7 @@ fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerSparseError> {
 
 #[inline]
 #[track_caller]
-fn try_collect<I: IntoIterator>(iter: I) -> Result<Vec<I::Item>, FaerSparseError>
+fn try_collect<I: IntoIterator>(iter: I) -> Result<Vec<I::Item>, FaerError>
 where
     I::IntoIter: ExactSizeIterator,
 {
@@ -87,8 +87,8 @@ where
 }
 
 #[inline]
-fn nomem<T>(_: T) -> FaerSparseError {
-    FaerSparseError::OutOfMemory
+fn nomem<T>(_: T) -> FaerError {
+    FaerError::OutOfMemory
 }
 
 fn make_raw_req<E: Entity>(size: usize) -> Result<StackReq, SizeOverflow> {

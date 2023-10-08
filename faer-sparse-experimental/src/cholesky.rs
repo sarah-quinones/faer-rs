@@ -5,8 +5,8 @@ use crate::{
     ghost::{self, Array, Idx, MaybeIdx},
     ghost_permute_hermitian, ghost_permute_hermitian_symbolic, make_raw_req, mem,
     mem::NONE,
-    nomem, try_collect, try_zeroed, windows2, FaerSparseError, Index, PermutationRef, Side,
-    SliceGroup, SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
+    nomem, try_collect, try_zeroed, windows2, FaerError, Index, PermutationRef, Side, SliceGroup,
+    SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
 };
 use assert2::{assert, debug_assert};
 use core::{cell::Cell, iter::zip};
@@ -27,7 +27,7 @@ enum Ordering<'a, I> {
             &mut [I],                       // perm_inv
             SymbolicSparseColMatRef<'_, I>, // A
             PodStack<'_>,
-        ) -> Result<(), FaerSparseError>,
+        ) -> Result<(), FaerError>,
     ),
 }
 
@@ -218,7 +218,7 @@ pub fn factorize_simplicial_symbolic<'n, I: Index>(
     etree: EtreeRef<'_, I>,
     col_counts: &[I],
     stack: PodStack<'_>,
-) -> Result<SymbolicSimplicialCholesky<I>, FaerSparseError> {
+) -> Result<SymbolicSimplicialCholesky<I>, FaerError> {
     let n = A.nrows();
     assert!(A.nrows() == A.ncols());
     assert!(etree.inner.len() == n);
@@ -239,7 +239,7 @@ fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
     etree: &Array<'n, MaybeIdx<'n, I>>,
     col_counts: &Array<'n, I>,
     stack: PodStack<'_>,
-) -> Result<SymbolicSimplicialCholesky<I>, FaerSparseError> {
+) -> Result<SymbolicSimplicialCholesky<I>, FaerError> {
     let N = A.ncols();
     let n = *N;
 
@@ -944,7 +944,7 @@ pub fn factorize_supernodal_symbolic<'n, I: Index>(
     col_counts: &[I],
     stack: PodStack<'_>,
     params: CholeskySymbolicSupernodalParams<'_>,
-) -> Result<SymbolicSupernodalCholesky<I>, FaerSparseError> {
+) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
     let n = A.nrows();
     assert!(A.nrows() == A.ncols());
     assert!(etree.inner().len() == n);
@@ -966,7 +966,7 @@ fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     col_counts: &Array<'n, I>,
     stack: PodStack<'_>,
     params: CholeskySymbolicSupernodalParams<'_>,
-) -> Result<SymbolicSupernodalCholesky<I>, FaerSparseError> {
+) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
     let to_wide = |i: I| i.zx() as u128;
     let from_wide = |i: u128| I::truncate(i as usize);
     let from_wide_checked =
@@ -1028,7 +1028,7 @@ fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     // last n elements contain supernode degrees
     let supernode_begin__ = ghost::with_size(
         n_fundamental_supernodes,
-        |N_FUNDAMENTAL_SUPERNODES| -> Result<Vec<I>, FaerSparseError> {
+        |N_FUNDAMENTAL_SUPERNODES| -> Result<Vec<I>, FaerError> {
             let supernode_sizes = Array::from_mut(
                 &mut supernode_sizes__[..n_fundamental_supernodes],
                 N_FUNDAMENTAL_SUPERNODES,
@@ -1274,7 +1274,7 @@ fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     let (supernode_begin__, col_ptrs_for_row_indices__, col_ptrs_for_values__, row_indices__) =
         ghost::with_size(
             n_supernodes,
-            |N_SUPERNODES| -> Result<(Vec<I>, Vec<I>, Vec<I>, Vec<I>), FaerSparseError> {
+            |N_SUPERNODES| -> Result<(Vec<I>, Vec<I>, Vec<I>, Vec<I>), FaerError> {
                 let supernode_sizes =
                     Array::from_mut(&mut supernode_sizes__[..n_supernodes], N_SUPERNODES);
 
@@ -1341,7 +1341,7 @@ fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
                     }
                     col_ptrs_for_row_indices__[n_supernodes] = row_ptr;
                     col_ptrs_for_values__[n_supernodes] = val_ptr;
-                    from_wide_checked(wide_val_count).ok_or(FaerSparseError::IndexOverflow)?;
+                    from_wide_checked(wide_val_count).ok_or(FaerError::IndexOverflow)?;
 
                     try_zeroed::<I>(row_ptr.zx())?
                 };
@@ -1707,7 +1707,7 @@ pub fn factorize_symbolic<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     side: Side,
     params: CholeskySymbolicParams<'_>,
-) -> Result<SymbolicCholesky<I>, FaerSparseError> {
+) -> Result<SymbolicCholesky<I>, FaerError> {
     let n = A.nrows();
     let A_nnz = A.compute_nnz();
 
@@ -1777,7 +1777,7 @@ pub fn factorize_symbolic<I: Index>(
         let etree = Array::from_mut(&mut etree, N);
         let col_counts = Array::from_mut(&mut col_counts, N);
         let etree = &*ghost_prefactorize_symbolic(etree, col_counts, A, stack.rb_mut());
-        let L_nnz = I::sum_nonnegative(col_counts).ok_or(FaerSparseError::IndexOverflow)?;
+        let L_nnz = I::sum_nonnegative(col_counts).ok_or(FaerError::IndexOverflow)?;
 
         let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold {
             SymbolicCholeskyRaw::Supernodal(ghost_factorize_supernodal_symbolic(

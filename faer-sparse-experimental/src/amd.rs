@@ -35,7 +35,7 @@
 use crate::{
     ghost::{self, Array, Idx, MaybeIdx},
     mem::{self, NONE},
-    windows2, FaerSparseError, Index, SymbolicSparseColMatRef,
+    windows2, FaerError, Index, SymbolicSparseColMatRef,
 };
 use assert2::assert;
 use core::{cell::Cell, iter::zip};
@@ -947,7 +947,7 @@ fn aat<I: Index>(
     len: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
     stack: PodStack<'_>,
-) -> Result<usize, FaerSparseError> {
+) -> Result<usize, FaerError> {
     ghost::with_size(A.nrows(), |N| {
         let I = I::truncate;
         let zero = I(0);
@@ -1005,7 +1005,7 @@ fn aat<I: Index>(
         }
     });
     let nzaat = I::sum_nonnegative(len);
-    nzaat.ok_or(FaerSparseError::IndexOverflow).map(I::zx)
+    nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
 
 pub fn order_sorted_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
@@ -1055,7 +1055,7 @@ pub fn order_sorted<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     control: Control,
     stack: PodStack<'_>,
-) -> Result<FlopCount, FaerSparseError> {
+) -> Result<FlopCount, FaerError> {
     let n = perm.len();
 
     if n == 0 {
@@ -1071,7 +1071,7 @@ pub fn order_sorted<I: Index>(
     let iwlen = nzaat
         .checked_add(nzaat / 5)
         .and_then(|x| x.checked_add(n))
-        .ok_or(FaerSparseError::IndexOverflow)?;
+        .ok_or(FaerError::IndexOverflow)?;
     Ok(amd_1(perm, perm_inv, A, &mut len, iwlen, control, stack))
 }
 
@@ -1081,7 +1081,7 @@ pub fn order_maybe_unsorted<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     control: Control,
     stack: PodStack<'_>,
-) -> Result<FlopCount, FaerSparseError> {
+) -> Result<FlopCount, FaerError> {
     let n = perm.len();
 
     if n == 0 {
