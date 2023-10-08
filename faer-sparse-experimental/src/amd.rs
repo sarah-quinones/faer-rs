@@ -240,7 +240,8 @@ fn amd_2<I: Index>(
         (alpha * (n as f64).sqrt()) as usize
     };
 
-    let dense = Ord::clamp(dense, 16, n);
+    let dense = Ord::max(dense, 16);
+    let dense = Ord::min(dense, n);
 
     let (mut w, stack) = stack.make_raw::<I>(n);
     let (mut nv, stack) = stack.make_raw::<I>(n);
@@ -416,7 +417,7 @@ fn amd_2<I: Index>(
                                 }
 
                                 let p1 = pdst;
-                                iw.copy_within(pme1.zx()..pfree, psrc);
+                                iw.copy_within(pme1.zx()..pfree, pdst);
                                 pdst += pfree - pme1.zx();
 
                                 pme1 = I(p1);
