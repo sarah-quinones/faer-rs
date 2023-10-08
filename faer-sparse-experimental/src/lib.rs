@@ -7,10 +7,11 @@
 
 use crate::mem::{__get_checked, __get_unchecked};
 pub use __core::*;
-use bytemuck::Pod;
+use bytemuck::{Pod, Zeroable};
 use core::{cell::Cell, iter::zip, ops::Range};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{transmute_unchecked, ComplexField, Entity};
+use faer_entity::RealField;
 use mem::NONE;
 use reborrow::*;
 
@@ -955,52 +956,475 @@ pub enum Side {
     Upper,
 }
 
-#[inline(always)]
-fn permute_symmetric_common<'n, I: Index>(
-    new_col_ptrs: &mut [I],
-    current_row_position: &mut ghost::Array<'n, I>,
-    A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
-    perm: ghost::PermutationRef<'n, '_, I>,
-) {
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *N + 1);
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Symbolic;
+impl Symbolic {
+    #[inline(always)]
+    fn materialize(n: usize) -> &'static mut [Self] {
+        unsafe {
+            core::slice::from_raw_parts_mut(core::ptr::NonNull::<Symbolic>::dangling().as_ptr(), n)
+        }
+    }
+}
+unsafe impl Zeroable for Symbolic {}
+unsafe impl Pod for Symbolic {}
+unsafe impl faer_core::Entity for Symbolic {
+    type Unit = Symbolic;
+    type Index = usize;
+    type SimdUnit<S: pulp::Simd> = Symbolic;
+    type SimdMask<S: pulp::Simd> = bool;
+    type SimdIndex<S: pulp::Simd> = usize;
+    type Group<T> = T;
+    type GroupCopy<T: Copy> = T;
+    type Iter<I: Iterator> = I;
+    const N_COMPONENTS: usize = 1;
+    const UNIT: Self::GroupCopy<()> = ();
 
-    mem::fill_zero(current_row_position);
-    let col_counts = current_row_position;
-    let (_, perm_inv) = perm.fwd_inv();
-    for old_j in N.indices() {
-        let new_j = perm_inv[old_j].zx();
-        for old_i in A.row_indices_of_col(old_j) {
-            if old_i <= old_j {
-                let new_i = perm_inv[old_i].zx();
-                let new_max = Ord::max(new_i, new_j);
-                // cannot overflow because A.compute_nnz() <= I::MAX
-                // col_counts[new_max] always >= 0
-                col_counts[new_max].incr();
-            }
+    #[inline(always)]
+    fn from_units(group: Self::Group<Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn into_units(self) -> Self::Group<Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+        group
+    }
+
+    #[inline(always)]
+    fn as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn map<T, U>(group: Self::Group<T>, mut f: impl FnMut(T) -> U) -> Self::Group<U> {
+        f(group)
+    }
+
+    #[inline(always)]
+    fn zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+        (first, second)
+    }
+
+    #[inline(always)]
+    fn unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: Self::Group<T>,
+        mut f: impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, Self::Group<U>) {
+        f(ctx, group)
+    }
+
+    #[inline(always)]
+    fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+}
+type SimdGroup<E, S> = <E as Entity>::Group<<E as Entity>::SimdUnit<S>>;
+
+unsafe impl faer_core::Conjugate for Symbolic {
+    type Conj = Symbolic;
+    type Canonical = Symbolic;
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+
+impl RealField for Symbolic {
+    #[inline(always)]
+    fn epsilon() -> Option<Self> {
+        Some(Self)
+    }
+
+    #[inline(always)]
+    fn zero_threshold() -> Option<Self> {
+        Some(Self)
+    }
+
+    #[inline(always)]
+    fn div(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn usize_to_index(a: usize) -> Self::Index {
+        a
+    }
+
+    #[inline(always)]
+    fn index_to_usize(a: Self::Index) -> usize {
+        a
+    }
+
+    #[inline(always)]
+    fn max_index() -> Self::Index {
+        usize::MAX
+    }
+
+    #[inline(always)]
+    fn simd_less_than<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroup<Self, S>,
+        _b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        false
+    }
+
+    #[inline(always)]
+    fn simd_less_than_or_equal<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroup<Self, S>,
+        _b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        true
+    }
+
+    #[inline(always)]
+    fn simd_greater_than<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroup<Self, S>,
+        _b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        false
+    }
+
+    #[inline(always)]
+    fn simd_greater_than_or_equal<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroup<Self, S>,
+        _b: SimdGroup<Self, S>,
+    ) -> Self::SimdMask<S> {
+        true
+    }
+
+    #[inline(always)]
+    fn simd_select<S: pulp::Simd>(
+        _simd: S,
+        _mask: Self::SimdMask<S>,
+        _if_true: SimdGroup<Self, S>,
+        _if_false: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_index_select<S: pulp::Simd>(
+        _simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: Self::SimdIndex<S>,
+        if_false: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        if mask {
+            if_true
+        } else {
+            if_false
         }
     }
 
-    // col_counts[_] >= 0
-    // cumulative sum cannot overflow because it is <= A.compute_nnz()
-
-    // SAFETY: new_col_ptrs.len() == n + 1 > 0
-    new_col_ptrs[0] = I::truncate(0);
-    let new_col_ptrs = Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptrs));
-    for (count, [ci0, ci1]) in zip(&mut **col_counts, windows2(new_col_ptrs)) {
-        let ci0 = ci0.get();
-        ci1.set(ci0 + *count);
-        *count = ci0;
+    #[inline(always)]
+    fn simd_index_seq<S: pulp::Simd>(_simd: S) -> Self::SimdIndex<S> {
+        0
     }
-    // new_col_ptrs is non-decreasing
+
+    #[inline(always)]
+    fn simd_index_splat<S: pulp::Simd>(_simd: S, value: Self::Index) -> Self::SimdIndex<S> {
+        value
+    }
+
+    #[inline(always)]
+    fn simd_index_add<S: pulp::Simd>(
+        _simd: S,
+        a: Self::SimdIndex<S>,
+        b: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        a.wrapping_add(b)
+    }
 }
 
-fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
+impl ComplexField for Symbolic {
+    type Real = Symbolic;
+    type Simd = faer_entity::NoSimd;
+    type ScalarSimd = faer_entity::NoSimd;
+
+    #[inline(always)]
+    fn from_f64(_value: f64) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn add(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn sub(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn mul(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn neg(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn inv(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn conj(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn scale_real(self, _rhs: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn scale_power_of_two(self, _rhs: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn score(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn abs(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn abs2(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn nan() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn from_real(_real: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn real(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn imag(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn zero() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn one() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn slice_as_simd<S: pulp::Simd>(slice: &[Self::Unit]) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        (slice, &[])
+    }
+
+    #[inline(always)]
+    fn slice_as_mut_simd<S: pulp::Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        (slice, &mut [])
+    }
+
+    #[inline(always)]
+    fn partial_load_unit<S: pulp::Simd>(_simd: S, _slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn partial_store_unit<S: pulp::Simd>(
+        _simd: S,
+        _slice: &mut [Self::Unit],
+        _values: Self::SimdUnit<S>,
+    ) {
+    }
+
+    #[inline(always)]
+    fn partial_load_last_unit<S: pulp::Simd>(_simd: S, _slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn partial_store_last_unit<S: pulp::Simd>(
+        _simd: S,
+        _slice: &mut [Self::Unit],
+        _values: Self::SimdUnit<S>,
+    ) {
+    }
+
+    #[inline(always)]
+    fn simd_splat_unit<S: pulp::Simd>(_simd: S, _unit: Self::Unit) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_scalar_mul<S: pulp::Simd>(_simd: S, _lhs: Self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_scalar_conj_mul<S: pulp::Simd>(_simd: S, _lhs: Self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_scalar_mul_adde<S: pulp::Simd>(_simd: S, _lhs: Self, _rhs: Self, _acc: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_scalar_conj_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: Self,
+        _rhs: Self,
+        _acc: Self,
+    ) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_neg<S: pulp::Simd>(_simd: S, _values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_conj<S: pulp::Simd>(_simd: S, _values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_add<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_sub<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_mul<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_scale_real<S: pulp::Simd>(
+        _simd: S,
+        _lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
+        _rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+        _acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_conj_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroup<Self, S>,
+        _rhs: SimdGroup<Self, S>,
+        _acc: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_abs2_adde<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroup<Self, S>,
+        _acc: SimdGroup<Self::Real, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_abs2<S: pulp::Simd>(_simd: S, _values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn simd_score<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroup<Self, S>,
+    ) -> SimdGroup<Self::Real, S> {
+        Self
+    }
+}
+
+fn ghost_permute_hermitian<'n, 'out, I: Index, E: Entity>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
     perm: ghost::PermutationRef<'n, '_, I>,
+    in_side: Side,
+    out_side: Side,
     stack: PodStack<'_>,
 ) -> ghost::SparseColMatRef<'n, 'n, 'out, I, E> {
     let N = A.ncols();
@@ -1012,7 +1436,82 @@ fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
 
     let (mut current_row_position, _) = stack.make_raw::<I>(n);
     let current_row_position = ghost::Array::from_mut(&mut current_row_position, N);
-    permute_symmetric_common(new_col_ptrs, current_row_position, A.symbolic(), perm);
+
+    mem::fill_zero(current_row_position);
+    let col_counts = &mut *current_row_position;
+    match (in_side, out_side) {
+        (Side::Lower, Side::Lower) => {
+            for old_j in N.indices() {
+                let new_j = perm_inv[old_j].zx();
+                for old_i in A.row_indices_of_col(old_j) {
+                    if old_i >= old_j {
+                        let new_i = perm_inv[old_i].zx();
+                        let new_min = Ord::min(new_i, new_j);
+                        // cannot overflow because A.compute_nnz() <= I::MAX
+                        // col_counts[new_max] always >= 0
+                        col_counts[new_min].incr();
+                    }
+                }
+            }
+        }
+        (Side::Lower, Side::Upper) => {
+            for old_j in N.indices() {
+                let new_j = perm_inv[old_j].zx();
+                for old_i in A.row_indices_of_col(old_j) {
+                    if old_i >= old_j {
+                        let new_i = perm_inv[old_i].zx();
+                        let new_max = Ord::max(new_i, new_j);
+                        // cannot overflow because A.compute_nnz() <= I::MAX
+                        // col_counts[new_max] always >= 0
+                        col_counts[new_max].incr();
+                    }
+                }
+            }
+        }
+        (Side::Upper, Side::Lower) => {
+            for old_j in N.indices() {
+                let new_j = perm_inv[old_j].zx();
+                for old_i in A.row_indices_of_col(old_j) {
+                    if old_i <= old_j {
+                        let new_i = perm_inv[old_i].zx();
+                        let new_min = Ord::min(new_i, new_j);
+                        // cannot overflow because A.compute_nnz() <= I::MAX
+                        // col_counts[new_max] always >= 0
+                        col_counts[new_min].incr();
+                    }
+                }
+            }
+        }
+        (Side::Upper, Side::Upper) => {
+            for old_j in N.indices() {
+                let new_j = perm_inv[old_j].zx();
+                for old_i in A.row_indices_of_col(old_j) {
+                    if old_i <= old_j {
+                        let new_i = perm_inv[old_i].zx();
+                        let new_max = Ord::max(new_i, new_j);
+                        // cannot overflow because A.compute_nnz() <= I::MAX
+                        // col_counts[new_max] always >= 0
+                        col_counts[new_max].incr();
+                    }
+                }
+            }
+        }
+    }
+
+    // col_counts[_] >= 0
+    // cumulative sum cannot overflow because it is <= A.compute_nnz()
+
+    // SAFETY: new_col_ptrs.len() == n + 1 > 0
+    new_col_ptrs[0] = I::truncate(0);
+    for (count, [ci0, ci1]) in zip(
+        &mut **col_counts,
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptrs))),
+    ) {
+        let ci0 = ci0.get();
+        ci1.set(ci0 + *count);
+        *count = ci0;
+    }
+    // new_col_ptrs is non-decreasing
 
     let nnz = new_col_ptrs[n].zx();
     let new_row_indices = &mut new_row_indices[..nnz];
@@ -1024,28 +1523,114 @@ fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
         |NNZ| {
             let mut new_values = ghost::ArrayGroupMut::new(new_values.rb_mut(), NNZ);
             let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
-            for old_j in N.indices() {
-                let new_j_ = perm_inv[old_j];
-                let new_j = new_j_.zx();
 
-                for (old_i, val) in zip(
-                    A.row_indices_of_col(old_j),
-                    A.values_of_col(old_j).into_iter(),
-                ) {
-                    if old_i <= old_j {
-                        let new_i_ = perm_inv[old_i];
-                        let new_i = new_i_.zx();
+            match (in_side, out_side) {
+                (Side::Lower, Side::Lower) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
 
-                        let new_max = Ord::max(new_i, new_j);
-                        let new_min = Ord::min(new_i_, new_j_);
-                        let current_row_pos = &mut current_row_position[new_max];
-                        // SAFETY: current_row_pos < NNZ
-                        let row_pos =
-                            unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                        current_row_pos.incr();
-                        new_values.write(row_pos, val.read());
-                        // (2)
-                        new_row_indices[row_pos] = *new_min;
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            A.values_of_col(old_j).into_iter(),
+                        ) {
+                            if old_i >= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i_, new_j_);
+                                let new_min = Ord::min(new_i, new_j);
+                                let current_row_pos = &mut current_row_position[new_min];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                current_row_pos.incr();
+                                new_values.write(row_pos, val.read());
+                                // (2)
+                                new_row_indices[row_pos] = *new_max;
+                            }
+                        }
+                    }
+                }
+                (Side::Lower, Side::Upper) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            A.values_of_col(old_j).into_iter(),
+                        ) {
+                            if old_i >= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i, new_j);
+                                let new_min = Ord::min(new_i_, new_j_);
+                                let current_row_pos = &mut current_row_position[new_max];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                current_row_pos.incr();
+                                new_values.write(row_pos, val.read());
+                                // (2)
+                                new_row_indices[row_pos] = *new_min;
+                            }
+                        }
+                    }
+                }
+                (Side::Upper, Side::Lower) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            A.values_of_col(old_j).into_iter(),
+                        ) {
+                            if old_i <= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i_, new_j_);
+                                let new_min = Ord::min(new_i, new_j);
+                                let current_row_pos = &mut current_row_position[new_min];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                current_row_pos.incr();
+                                new_values.write(row_pos, val.read());
+                                // (2)
+                                new_row_indices[row_pos] = *new_max;
+                            }
+                        }
+                    }
+                }
+                (Side::Upper, Side::Upper) => {
+                    for old_j in N.indices() {
+                        let new_j_ = perm_inv[old_j];
+                        let new_j = new_j_.zx();
+
+                        for (old_i, val) in zip(
+                            A.row_indices_of_col(old_j),
+                            A.values_of_col(old_j).into_iter(),
+                        ) {
+                            if old_i <= old_j {
+                                let new_i_ = perm_inv[old_i];
+                                let new_i = new_i_.zx();
+
+                                let new_max = Ord::max(new_i, new_j);
+                                let new_min = Ord::min(new_i_, new_j_);
+                                let current_row_pos = &mut current_row_position[new_max];
+                                // SAFETY: current_row_pos < NNZ
+                                let row_pos =
+                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                                current_row_pos.incr();
+                                new_values.write(row_pos, val.read());
+                                // (2)
+                                new_row_indices[row_pos] = *new_min;
+                            }
+                        }
                     }
                 }
             }
@@ -1068,86 +1653,55 @@ fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
     }
 }
 
-fn ghost_permute_symmetric_symbolic<'n, 'out, I: Index>(
+fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     perm: ghost::PermutationRef<'n, '_, I>,
+    in_side: Side,
+    out_side: Side,
     stack: PodStack<'_>,
 ) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
-    let N = A.ncols();
-    let n = *A.ncols();
-
-    // (1)
-    assert!(new_col_ptrs.len() == n + 1);
-    let (_, perm_inv) = perm.fwd_inv();
-
-    let (mut current_row_position, _) = stack.make_raw::<I>(n);
-    let current_row_position = ghost::Array::from_mut(&mut current_row_position, N);
-    permute_symmetric_common(new_col_ptrs, current_row_position, A, perm);
-
-    let nnz = new_col_ptrs[n].zx();
-    let new_row_indices = &mut new_row_indices[..nnz];
-
-    ghost::with_size(
-        nnz,
-        #[inline(always)]
-        |NNZ| {
-            let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
-            for old_j in N.indices() {
-                let new_j_ = perm_inv[old_j];
-                let new_j = new_j_.zx();
-
-                for old_i in A.row_indices_of_col(old_j) {
-                    if old_i <= old_j {
-                        let new_i_ = perm_inv[old_i];
-                        let new_i = new_i_.zx();
-
-                        let new_max = Ord::max(new_i, new_j);
-                        let new_min = Ord::min(new_i_, new_j_);
-                        let current_row_pos = &mut current_row_position[new_max];
-                        // SAFETY: current_row_pos < NNZ
-                        let row_pos =
-                            unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                        current_row_pos.incr();
-                        // (2)
-                        new_row_indices[row_pos] = *new_min;
-                    }
-                }
-            }
-            debug_assert!(**current_row_position == new_col_ptrs[1..]);
-        },
-    );
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
-    // 1. new_values.len() == new_row_indices.len()
-    // 2. all written row indices are less than n
-    unsafe {
-        ghost::SymbolicSparseColMatRef::new(
-            SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
-            N,
-            N,
-        )
-    }
+    let old_values = &*Symbolic::materialize(A.row_indices().len());
+    let new_values = Symbolic::materialize(new_row_indices.len());
+    ghost_permute_hermitian(
+        SliceGroupMut::<'_, Symbolic>::new(new_values),
+        new_col_ptrs,
+        new_row_indices,
+        ghost::SparseColMatRef::new(
+            SparseColMatRef::new(*A, SliceGroup::new(old_values)),
+            A.nrows(),
+            A.ncols(),
+        ),
+        perm,
+        in_side,
+        out_side,
+        stack,
+    )
+    .symbolic()
 }
 
-pub fn permute_symmetric<'out, I: Index, E: Entity>(
+pub fn permute_hermitian<'out, I: Index, E: Entity>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: SparseColMatRef<'_, I, E>,
     perm: PermutationRef<'_, I>,
+    in_side: Side,
+    out_side: Side,
     stack: PodStack<'_>,
 ) -> SparseColMatRef<'out, I, E> {
     ghost::with_size(A.nrows(), |N| {
         assert!(A.nrows() == A.ncols());
         assert!(A.nrows() == A.ncols());
-        *ghost_permute_symmetric(
+        *ghost_permute_hermitian(
             new_values,
             new_col_ptrs,
             new_row_indices,
             ghost::SparseColMatRef::new(A, N, N),
             ghost::PermutationRef::new(perm, N),
+            in_side,
+            out_side,
             stack,
         )
     })
@@ -1159,68 +1713,20 @@ fn ghost_adjoint_symbolic<'m, 'n, 'a, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
     stack: PodStack<'_>,
 ) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (mut col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = ghost::Array::from_mut(&mut col_count, M);
-    mem::fill_zero(col_count);
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    let col_count = &mut *col_count;
-    if A.nnz_per_col().is_some() {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i].incr();
-            }
-        }
-    } else {
-        for i in A.compressed_row_indices() {
-            col_count[i].incr();
-        }
-    }
-
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
-        for i in A.row_indices_of_col(j) {
-            let ci = &mut current_row_position[i];
-
-            // SAFETY: see below
-            *unsafe { new_row_indices.get_unchecked_mut(ci.zx()) } = *j_;
-            ci.incr();
-        }
-    }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
-
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
-    // 1. all written row indices are less than n
-    ghost::SymbolicSparseColMatRef::new(
-        unsafe {
-            SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices)
-        },
-        N,
-        M,
+    let old_values = &*Symbolic::materialize(A.row_indices().len());
+    let new_values = Symbolic::materialize(new_row_indices.len());
+    ghost_adjoint(
+        new_col_ptrs,
+        new_row_indices,
+        SliceGroupMut::<'_, Symbolic>::new(new_values),
+        ghost::SparseColMatRef::new(
+            SparseColMatRef::new(*A, SliceGroup::new(old_values)),
+            A.nrows(),
+            A.ncols(),
+        ),
+        stack,
     )
+    .symbolic()
 }
 
 fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
@@ -1239,7 +1745,6 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     mem::fill_zero(col_count);
 
     // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    let col_count = &mut *col_count;
     if A.nnz_per_col().is_some() {
         for j in N.indices() {
             for i in A.row_indices_of_col(j) {
@@ -1299,6 +1804,44 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
         N,
         M,
     )
+}
+
+pub fn adjoint<'a, I: Index, E: ComplexField>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    new_values: SliceGroupMut<'a, E>,
+    A: SparseColMatRef<'_, I, E>,
+    stack: PodStack<'_>,
+) -> SparseColMatRef<'a, I, E> {
+    ghost::with_size(A.nrows(), |M| {
+        ghost::with_size(A.ncols(), |N| {
+            *ghost_adjoint(
+                new_col_ptrs,
+                new_row_indices,
+                new_values,
+                ghost::SparseColMatRef::new(A, M, N),
+                stack,
+            )
+        })
+    })
+}
+
+pub fn adjoint_symbolic<'a, I: Index>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    A: SymbolicSparseColMatRef<'_, I>,
+    stack: PodStack<'_>,
+) -> SymbolicSparseColMatRef<'a, I> {
+    ghost::with_size(A.nrows(), |M| {
+        ghost::with_size(A.ncols(), |N| {
+            *ghost_adjoint_symbolic(
+                new_col_ptrs,
+                new_row_indices,
+                ghost::SymbolicSparseColMatRef::new(A, M, N),
+                stack,
+            )
+        })
+    })
 }
 
 #[cfg(test)]

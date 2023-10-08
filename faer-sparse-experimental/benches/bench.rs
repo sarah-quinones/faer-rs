@@ -9,7 +9,7 @@ use faer_sparse_experimental::{
 };
 use matrix_market_rs::MtxData;
 use reborrow::*;
-use std::{ffi::OsStr, time::Instant};
+use std::ffi::OsStr;
 
 fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, Vec<I>, Vec<I>, Vec<f64>) {
     let I = I::truncate;
@@ -80,7 +80,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
             SymbolicCholeskyRaw::Supernodal(_) => "supernodal",
         };
         println!("picked {symbolic_type} method for {file}");
-        let simplicial = {
+        {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
@@ -93,17 +93,14 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let parallelism = Parallelism::None;
             let mut mem = GlobalPodBuffer::new(
                 symbolic
-                    .factorize_numeric_ldlt_req::<f64>(side, parallelism)
+                    .factorize_numeric_ldlt_req::<f64>(parallelism)
                     .unwrap(),
             );
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            let start = Instant::now();
-            let mut n = 0u32;
             criterion.bench_function(&format!("simplicial-st-{file}"), |bench| {
                 bench.iter(|| {
-                    n += 1;
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
                         A,
@@ -113,9 +110,8 @@ fn bench_ldlt(criterion: &mut Criterion) {
                     );
                 });
             });
-            start.elapsed() / n.max(1)
-        };
-        let supernodal = {
+        }
+        {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
@@ -128,17 +124,14 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let parallelism = Parallelism::None;
             let mut mem = GlobalPodBuffer::new(
                 symbolic
-                    .factorize_numeric_ldlt_req::<f64>(side, parallelism)
+                    .factorize_numeric_ldlt_req::<f64>(parallelism)
                     .unwrap(),
             );
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            let start = Instant::now();
-            let mut n = 0u32;
             criterion.bench_function(&format!("supernodal-st-{file}"), |bench| {
                 bench.iter(|| {
-                    n += 1;
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
                         A,
@@ -148,9 +141,8 @@ fn bench_ldlt(criterion: &mut Criterion) {
                     );
                 });
             });
-            start.elapsed() / n.max(1)
-        };
-        let _supernodal_threaded = {
+        }
+        {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
@@ -163,17 +155,14 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let parallelism = Parallelism::Rayon(0);
             let mut mem = GlobalPodBuffer::new(
                 symbolic
-                    .factorize_numeric_ldlt_req::<f64>(side, parallelism)
+                    .factorize_numeric_ldlt_req::<f64>(parallelism)
                     .unwrap(),
             );
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            let start = Instant::now();
-            let mut n = 0u32;
             criterion.bench_function(&format!("supernodal-mt-{file}"), |bench| {
                 bench.iter(|| {
-                    n += 1;
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
                         A,
@@ -183,14 +172,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
                     );
                 });
             });
-            start.elapsed() / n.max(1)
-        };
-        if (symbolic_type == "supernodal") == (supernodal <= simplicial) {
-            println!("GOOD");
-        } else {
-            println!("BAD");
         }
-        println!();
     }
 }
 

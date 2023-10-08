@@ -3,8 +3,7 @@
 use crate::{
     amd::{self, Control},
     ghost::{self, Array, Idx, MaybeIdx},
-    ghost_adjoint, ghost_adjoint_symbolic, ghost_permute_symmetric,
-    ghost_permute_symmetric_symbolic, make_raw_req, mem,
+    ghost_permute_hermitian, ghost_permute_hermitian_symbolic, make_raw_req, mem,
     mem::NONE,
     nomem, try_collect, try_zeroed, windows2, FaerSparseError, Index, PermutationRef, Side,
     SliceGroup, SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
@@ -617,8 +616,8 @@ impl<I: Index> SymbolicCholesky<I> {
     #[inline]
     pub fn nrows(&self) -> usize {
         match &self.raw {
-            &SymbolicCholeskyRaw::Simplicial(ref this) => this.nrows(),
-            &SymbolicCholeskyRaw::Supernodal(ref this) => this.nrows(),
+            SymbolicCholeskyRaw::Simplicial(this) => this.nrows(),
+            SymbolicCholeskyRaw::Supernodal(this) => this.nrows(),
         }
     }
 
@@ -640,15 +639,14 @@ impl<I: Index> SymbolicCholesky<I> {
     #[inline]
     pub fn len_values(&self) -> usize {
         match &self.raw {
-            &SymbolicCholeskyRaw::Simplicial(ref this) => this.len_values(),
-            &SymbolicCholeskyRaw::Supernodal(ref this) => this.len_values(),
+            SymbolicCholeskyRaw::Simplicial(this) => this.len_values(),
+            SymbolicCholeskyRaw::Supernodal(this) => this.len_values(),
         }
     }
 
     #[inline]
     pub fn factorize_numeric_ldlt_req<E: Entity>(
         &self,
-        side: Side,
         parallelism: Parallelism,
     ) -> Result<StackReq, SizeOverflow> {
         let n = self.nrows();
@@ -660,33 +658,18 @@ impl<I: Index> SymbolicCholesky<I> {
             StackReq::try_new::<I>(n + 1)?,
             StackReq::try_new::<I>(A_nnz)?,
         ])?;
-        let A_req2 = if side == Side::Lower {
-            A_req
-        } else {
-            StackReq::empty()
-        };
         let permute_req = n_req;
 
         match &self.raw {
-            &SymbolicCholeskyRaw::Simplicial(_) => {
+            SymbolicCholeskyRaw::Simplicial(_) => {
                 let simplicial_req = factorize_simplicial_numeric_ldlt_req::<I, E>(n)?;
-                StackReq::try_all_of([
-                    A_req2,
-                    A_req,
-                    StackReq::try_or(permute_req, simplicial_req)?,
-                ])
+                StackReq::try_all_of([A_req, StackReq::try_or(permute_req, simplicial_req)?])
             }
-            &SymbolicCholeskyRaw::Supernodal(ref this) => {
-                let transpose_req = n_req;
+            SymbolicCholeskyRaw::Supernodal(this) => {
                 let supernodal_req =
                     factorize_supernodal_numeric_ldlt_req::<I, E>(this, parallelism)?;
 
-                StackReq::try_all_of([
-                    A_req2,
-                    A_req,
-                    A_req,
-                    StackReq::try_or(transpose_req, supernodal_req)?,
-                ])
+                StackReq::try_all_of([A_req, StackReq::try_or(permute_req, supernodal_req)?])
             }
         }
     }
@@ -702,7 +685,6 @@ impl<I: Index> SymbolicCholesky<I> {
     ) {
         assert!(A.nrows() == A.ncols());
         let n = A.nrows();
-        let lower = (side == Side::Lower) as usize;
 
         ghost::with_size(n, |N| {
             let A_nnz = self.A_nnz;
@@ -710,60 +692,33 @@ impl<I: Index> SymbolicCholesky<I> {
 
             let perm = ghost::PermutationRef::new(self.perm(), N);
 
-            let (mut new_values, stack) = crate::make_raw::<E>(lower * (A_nnz), stack);
-            let (mut new_col_ptr, stack) = stack.make_raw::<I>(lower * (n + 1));
-            let (mut new_row_ind, mut stack) = stack.make_raw::<I>(lower * (A_nnz));
-
-            let A = if side == Side::Lower {
-                let new_values =
-                    SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
-                        &mut **val
-                    }));
-                ghost_adjoint(
-                    &mut new_col_ptr,
-                    &mut new_row_ind,
-                    new_values,
-                    A,
-                    stack.rb_mut(),
-                )
-            } else {
-                A
-            };
-
             let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
             let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
             let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
             let mut new_values =
                 SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| &mut **val));
 
-            let A = ghost_permute_symmetric(
+            let out_side = match &self.raw {
+                SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
+                SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
+            };
+
+            let A = ghost_permute_hermitian(
                 new_values.rb_mut(),
                 &mut new_col_ptr,
                 &mut new_row_ind,
                 A,
                 perm,
+                side,
+                out_side,
                 stack.rb_mut(),
             );
 
             match &self.raw {
-                &SymbolicCholeskyRaw::Simplicial(ref this) => {
+                SymbolicCholeskyRaw::Simplicial(this) => {
                     factorize_simplicial_numeric_ldlt(L_values, *A, this, stack);
                 }
-                &SymbolicCholeskyRaw::Supernodal(ref this) => {
-                    let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
-                    let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-                    let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-                    let mut new_values =
-                        SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
-                            &mut **val
-                        }));
-                    let A = ghost_adjoint(
-                        &mut new_col_ptr,
-                        &mut new_row_ind,
-                        new_values.rb_mut(),
-                        A,
-                        stack.rb_mut(),
-                    );
+                SymbolicCholeskyRaw::Supernodal(this) => {
                     factorize_supernodal_numeric_ldlt(L_values, *A, this, parallelism, stack);
                 }
             }
@@ -1757,8 +1712,6 @@ pub fn factorize_symbolic<I: Index>(
     let A_nnz = A.compute_nnz();
 
     assert!(A.nrows() == A.ncols());
-    let lower = (side == Side::Lower) as usize;
-
     ghost::with_size(n, |N| {
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
@@ -1770,17 +1723,11 @@ pub fn factorize_symbolic<I: Index>(
                 // new_row_ind
                 StackReq::try_new::<I>(A_nnz)?,
             )?;
-            let A_req2 = if side == Side::Lower {
-                A_req
-            } else {
-                StackReq::empty()
-            };
 
             StackReq::try_or(
                 amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
                 StackReq::try_all_of([
                     A_req,
-                    A_req2,
                     // permute_symmetric | etree
                     n_req,
                     // col_counts
@@ -1813,22 +1760,15 @@ pub fn factorize_symbolic<I: Index>(
         let perm_ =
             ghost::PermutationRef::new(PermutationRef::new_checked(&perm_fwd, &perm_inv), N);
 
-        let (mut new_col_ptr, stack) = stack.make_raw::<I>(lower * (n + 1));
-        let (mut new_row_ind, mut stack) = stack.make_raw::<I>(lower * (A_nnz));
-
-        let A = if side == Side::Lower {
-            ghost_adjoint_symbolic(&mut new_col_ptr, &mut new_row_ind, A, stack.rb_mut())
-        } else {
-            A
-        };
-
         let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
         let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-        let A = ghost_permute_symmetric_symbolic(
+        let A = ghost_permute_hermitian_symbolic(
             &mut new_col_ptr,
             &mut new_row_ind,
             A,
             perm_,
+            side,
+            Side::Upper,
             stack.rb_mut(),
         );
 
@@ -2119,7 +2059,7 @@ mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
-            let A_lower = ghost_adjoint(
+            let A_lower = crate::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
