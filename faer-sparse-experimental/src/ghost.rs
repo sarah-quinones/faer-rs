@@ -88,13 +88,34 @@ impl<'n> Size<'n> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Idx<'n, I = usize>(Branded<'n, I>);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct MaybeIdx<'n, I = usize>(Branded<'n, I>);
+pub struct MaybeIdx<'n, I: Pod = usize>(Branded<'n, I>);
+
+impl<I: core::fmt::Debug> core::fmt::Debug for Idx<'_, I> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        (**self).fmt(f)
+    }
+}
+
+impl<I: Pod + core::fmt::Debug> core::fmt::Debug for MaybeIdx<'_, I> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        #[derive(Debug)]
+        struct None;
+
+        if bytemuck::bytes_of(&**self).iter().all(|&b| b == NONE_BYTE) {
+            None.fmt(f)
+        } else {
+            (**self).fmt(f)
+        }
+    }
+}
 
 impl<'n, I: Index> MaybeIdx<'n, I> {
     #[inline]
@@ -191,7 +212,7 @@ impl<'n> MaybeIdx<'n> {
         }
     }
 }
-impl<'n, I> MaybeIdx<'n, I> {
+impl<'n, I: Pod> MaybeIdx<'n, I> {
     #[inline]
     pub fn from_index(value: Idx<'n, I>) -> Self {
         Self(value.0)
@@ -691,7 +712,7 @@ impl_copy!(<><I> <SymbolicSparseColMatRef<'_, '_, '_, I>>);
 impl_copy!(<><I, E: Entity> <SparseColMatRef<'_, '_, '_, I, E>>);
 impl_deref!(<><><Target = usize><Size<'_>>);
 impl_deref!(<><I><Target = I><Idx<'_, I>>);
-impl_deref!(<><I><Target = I><MaybeIdx<'_, I>>);
+impl_deref!(<><I: Pod><Target = I><MaybeIdx<'_, I>>);
 impl_deref!(<><I><Target = I><IdxInclusive<'_, I>>);
 impl_deref!(<'n, 'a><I><Target = crate::PermutationRef<'a, I>><PermutationRef<'n, 'a, I>>);
 impl_deref!(<'m, 'n, 'a><I><Target = crate::SymbolicSparseColMatRef<'a, I>><SymbolicSparseColMatRef<'m, 'n, 'a, I>>);

@@ -1,7 +1,10 @@
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
 use super::*;
-use crate::ghost::{Array, Idx, MaybeIdx};
+use crate::{
+    amd::Control,
+    ghost::{Array, Idx, MaybeIdx},
+};
 use assert2::{assert, debug_assert};
 use core::cell::Cell;
 use dyn_stack::PodStack;
@@ -156,27 +159,34 @@ fn ereach_super<'n, 'nsuper, I: Index>(
     }
 }
 
-pub fn ghost_factorize_simplicial_numeric<'n, I: Index, E: ComplexField>(
-    L_values: SliceGroupMut<'_, E>,
-    L_row_indices: &mut [Idx<'n, I>],
-    L_col_ptrs: &[I],
+pub fn factorize_simplicial_symbolic_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
+    let n_req = StackReq::try_new::<I>(n)?;
+    StackReq::try_all_of([n_req, n_req, n_req])
+}
 
+pub fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
+    A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
-    A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
-
+    col_counts: &Array<'n, I>,
     stack: PodStack<'_>,
-) {
+) -> Result<SymbolicSimplicialCholesky<I>, FaerSparseError> {
     let N = A.ncols();
     let n = *N;
-    assert!(L_values.rb().len() == L_row_indices.len());
-    assert!(L_col_ptrs.len() == n + 1);
+
+    let mut L_col_ptrs = try_zeroed::<I>(n + 1)?;
+    for (&count, [p, p_next]) in zip(
+        &**col_counts,
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut L_col_ptrs))),
+    ) {
+        p_next.set(p.get() + count);
+    }
     let l_nnz = L_col_ptrs[n].zx();
+    let mut L_row_ind = try_zeroed::<I>(l_nnz)?;
 
     ghost::with_size(
         l_nnz,
         #[inline(always)]
         move |L_NNZ| {
-            let (mut x, stack) = crate::make_raw::<E>(n, stack);
             let (mut current_row_index, stack) = stack.make_raw::<I>(n);
             let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
             let (mut marked, _) = stack.make_raw::<I>(n);
@@ -184,71 +194,247 @@ pub fn ghost_factorize_simplicial_numeric<'n, I: Index, E: ComplexField>(
             let ereach_stack = Array::from_mut(&mut ereach_stack, N);
             let etree = Array::from_ref(etree, N);
             let visited = Array::from_mut(&mut marked, N);
-            let mut x = ghost::ArrayGroupMut::new(
-                SliceGroupMut::new(E::map(E::as_mut(&mut x), |x| &mut **x)),
-                N,
-            );
 
-            x.rb_mut().into_slice().fill_zero();
-            mem::fill_zero(visited);
-
-            let mut L_values = ghost::ArrayGroupMut::new(L_values, L_NNZ);
-            let L_row_indices = Array::from_mut(L_row_indices, L_NNZ);
-
+            mem::fill_none(visited);
+            let L_row_indices = Array::from_mut(&mut L_row_ind, L_NNZ);
             let L_col_ptrs_start =
                 Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
-
             let current_row_index = Array::from_mut(
                 ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
                 N,
             );
 
             for k in N.indices() {
-                let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
-
-                for (i, aik) in zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter()) {
-                    x.write(i, aik.read().conj());
-                }
-
-                let mut d = x.read(k).real();
-                x.write(k, E::zero());
-
+                let reach = ereach(ereach_stack, A, etree, k, visited);
                 for &j in reach {
                     let j = j.zx();
-
-                    let j_start = L_col_ptrs_start[j].zx();
                     let cj = &mut current_row_index[j];
                     let row_idx = L_NNZ.check(*cj.zx() + 1);
                     *cj = row_idx.truncate();
-
-                    let xj = x.read(j);
-                    x.write(j, E::zero());
-
-                    let dj = L_values.read(j_start).real();
-                    let lkj = xj.scale_real(dj.inv());
-
-                    let range = j_start.next()..row_idx.to_inclusive();
-                    for (i, lij) in zip(
-                        &L_row_indices[range.clone()],
-                        L_values.rb().subslice(range).into_iter(),
-                    ) {
-                        let i = i.zx();
-                        let mut xi = x.read(i);
-                        let prod = lij.read().conj().mul(xj);
-                        xi = xi.sub(prod);
-                        x.write(i, xi);
-                    }
-
-                    d = d.sub(lkj.mul(xj.conj()).real());
-
-                    L_row_indices[row_idx] = k.truncate();
-                    L_values.write(row_idx, lkj);
+                    L_row_indices[row_idx] = *k.truncate();
                 }
-
                 let k_start = L_col_ptrs_start[k].zx();
-                L_row_indices[k_start] = k.truncate();
-                L_values.write(k_start, E::from_real(d));
+                L_row_indices[k_start] = *k.truncate();
             }
+
+            let etree = try_collect(MaybeIdx::as_inner_slice_ref(etree).iter().copied())?;
+
+            Ok(SymbolicSimplicialCholesky {
+                dimension: n,
+                col_ptrs: L_col_ptrs,
+                row_indices: L_row_ind,
+                etree,
+            })
+        },
+    )
+}
+
+pub fn factorize_simplicial_numeric<I: Index, E: ComplexField>(
+    L_values: SliceGroupMut<'_, E>,
+    A: SparseColMatRef<'_, I, E>,
+    symbolic: &SymbolicSimplicialCholesky<I>,
+    stack: PodStack<'_>,
+) {
+    let n = A.ncols();
+    let L_row_indices = &*symbolic.row_indices;
+    let L_col_ptrs = &*symbolic.col_ptrs;
+    let etree = &*symbolic.etree;
+
+    assert!(L_values.rb().len() == L_row_indices.len());
+    assert!(L_col_ptrs.len() == n + 1);
+    let l_nnz = L_col_ptrs[n].zx();
+
+    ghost::with_size(
+        n,
+        #[inline(always)]
+        |N| {
+            let etree = Array::from_ref(MaybeIdx::slice_ref_checked(etree, N), N);
+            let A = ghost::SparseColMatRef::new(A, N, N);
+
+            ghost::with_size(
+                l_nnz,
+                #[inline(always)]
+                move |L_NNZ| {
+                    let (mut x, stack) = crate::make_raw::<E>(n, stack);
+                    let (mut current_row_index, stack) = stack.make_raw::<I>(n);
+                    let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
+                    let (mut marked, _) = stack.make_raw::<I>(n);
+
+                    let ereach_stack = Array::from_mut(&mut ereach_stack, N);
+                    let etree = Array::from_ref(etree, N);
+                    let visited = Array::from_mut(&mut marked, N);
+                    let mut x = ghost::ArrayGroupMut::new(
+                        SliceGroupMut::new(E::map(E::as_mut(&mut x), |x| &mut **x)),
+                        N,
+                    );
+
+                    x.rb_mut().into_slice().fill_zero();
+                    mem::fill_none(visited);
+
+                    let mut L_values = ghost::ArrayGroupMut::new(L_values, L_NNZ);
+                    let L_row_indices = Array::from_ref(L_row_indices, L_NNZ);
+
+                    let L_col_ptrs_start =
+                        Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
+
+                    let current_row_index = Array::from_mut(
+                        ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
+                        N,
+                    );
+
+                    for k in N.indices() {
+                        let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
+
+                        for (i, aik) in zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
+                        {
+                            x.write(i, aik.read().conj());
+                        }
+
+                        let mut d = x.read(k).real();
+                        x.write(k, E::zero());
+
+                        for &j in reach {
+                            let j = j.zx();
+
+                            let j_start = L_col_ptrs_start[j].zx();
+                            let cj = &mut current_row_index[j];
+                            let row_idx = L_NNZ.check(*cj.zx() + 1);
+                            *cj = row_idx.truncate();
+
+                            let xj = x.read(j);
+                            x.write(j, E::zero());
+
+                            let dj = L_values.read(j_start).real();
+                            let lkj = xj.scale_real(dj.inv());
+
+                            let range = j_start.next()..row_idx.to_inclusive();
+                            for (i, lij) in zip(
+                                &L_row_indices[range.clone()],
+                                L_values.rb().subslice(range).into_iter(),
+                            ) {
+                                let i = N.check(i.zx());
+                                let mut xi = x.read(i);
+                                let prod = lij.read().conj().mul(xj);
+                                xi = xi.sub(prod);
+                                x.write(i, xi);
+                            }
+
+                            d = d.sub(lkj.mul(xj.conj()).real());
+
+                            L_values.write(row_idx, lkj);
+                        }
+
+                        let k_start = L_col_ptrs_start[k].zx();
+                        L_values.write(k_start, E::from_real(d));
+                    }
+                },
+            )
+        },
+    )
+}
+
+pub fn factorize_simplicial_numeric_with_row_indices<I: Index, E: ComplexField>(
+    L_values: SliceGroupMut<'_, E>,
+    L_row_indices: &mut [I],
+    L_col_ptrs: &[I],
+
+    etree: &[I],
+    A: SparseColMatRef<'_, I, E>,
+
+    stack: PodStack<'_>,
+) {
+    let n = A.ncols();
+    assert!(L_values.rb().len() == L_row_indices.len());
+    assert!(L_col_ptrs.len() == n + 1);
+    let l_nnz = L_col_ptrs[n].zx();
+
+    ghost::with_size(
+        n,
+        #[inline(always)]
+        |N| {
+            let etree = Array::from_ref(MaybeIdx::slice_ref_checked(etree, N), N);
+            let A = ghost::SparseColMatRef::new(A, N, N);
+
+            ghost::with_size(
+                l_nnz,
+                #[inline(always)]
+                move |L_NNZ| {
+                    let (mut x, stack) = crate::make_raw::<E>(n, stack);
+                    let (mut current_row_index, stack) = stack.make_raw::<I>(n);
+                    let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
+                    let (mut marked, _) = stack.make_raw::<I>(n);
+
+                    let ereach_stack = Array::from_mut(&mut ereach_stack, N);
+                    let etree = Array::from_ref(etree, N);
+                    let visited = Array::from_mut(&mut marked, N);
+                    let mut x = ghost::ArrayGroupMut::new(
+                        SliceGroupMut::new(E::map(E::as_mut(&mut x), |x| &mut **x)),
+                        N,
+                    );
+
+                    x.rb_mut().into_slice().fill_zero();
+                    mem::fill_none(visited);
+
+                    let mut L_values = ghost::ArrayGroupMut::new(L_values, L_NNZ);
+                    let L_row_indices = Array::from_mut(L_row_indices, L_NNZ);
+
+                    let L_col_ptrs_start =
+                        Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
+
+                    let current_row_index = Array::from_mut(
+                        ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
+                        N,
+                    );
+
+                    for k in N.indices() {
+                        let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
+
+                        for (i, aik) in zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
+                        {
+                            x.write(i, aik.read().conj());
+                        }
+
+                        let mut d = x.read(k).real();
+                        x.write(k, E::zero());
+
+                        for &j in reach {
+                            let j = j.zx();
+
+                            let j_start = L_col_ptrs_start[j].zx();
+                            let cj = &mut current_row_index[j];
+                            let row_idx = L_NNZ.check(*cj.zx() + 1);
+                            *cj = row_idx.truncate();
+
+                            let xj = x.read(j);
+                            x.write(j, E::zero());
+
+                            let dj = L_values.read(j_start).real();
+                            let lkj = xj.scale_real(dj.inv());
+
+                            let range = j_start.next()..row_idx.to_inclusive();
+                            for (i, lij) in zip(
+                                &L_row_indices[range.clone()],
+                                L_values.rb().subslice(range).into_iter(),
+                            ) {
+                                let i = N.check(i.zx());
+                                let mut xi = x.read(i);
+                                let prod = lij.read().conj().mul(xj);
+                                xi = xi.sub(prod);
+                                x.write(i, xi);
+                            }
+
+                            d = d.sub(lkj.mul(xj.conj()).real());
+
+                            L_row_indices[row_idx] = *k.truncate();
+                            L_values.write(row_idx, lkj);
+                        }
+
+                        let k_start = L_col_ptrs_start[k].zx();
+                        L_row_indices[k_start] = *k.truncate();
+                        L_values.write(k_start, E::from_real(d));
+                    }
+                },
+            )
         },
     )
 }
@@ -321,25 +507,220 @@ impl ComputationModel {
 
 #[derive(Debug)]
 pub struct SymbolicSupernodalCholesky<I> {
-    supernode_etree__: Vec<I>,
-    supernode_postorder__: Vec<I>,
-    supernode_postorder_inv__: Vec<I>,
-    descendent_count__: Vec<I>,
+    dimension: usize,
+    supernode_postorder: Vec<I>,
+    supernode_postorder_inv: Vec<I>,
+    descendent_count: Vec<I>,
 
-    supernode_begin__: Vec<I>,
-    col_ptrs_for_row_indices__: Vec<I>,
-    col_ptrs_for_values__: Vec<I>,
-    row_indices__: Vec<I>,
+    supernode_begin: Vec<I>,
+    col_ptrs_for_row_indices: Vec<I>,
+    col_ptrs_for_values: Vec<I>,
+    row_indices: Vec<I>,
 }
 
 #[derive(Debug)]
-pub struct SupernodalCholeskyRef<'a, I, E: Entity> {
+pub struct SymbolicSimplicialCholesky<I> {
+    dimension: usize,
+    col_ptrs: Vec<I>,
+    row_indices: Vec<I>,
+    etree: Vec<I>,
+}
+
+#[derive(Debug)]
+pub enum SymbolicCholeskyRaw<I> {
+    Simplicial(SymbolicSimplicialCholesky<I>),
+    Supernodal(SymbolicSupernodalCholesky<I>),
+}
+
+#[derive(Debug)]
+pub struct SymbolicCholesky<I> {
+    raw: SymbolicCholeskyRaw<I>,
+    perm_fwd: Vec<I>,
+    perm_inv: Vec<I>,
+    A_nnz: usize,
+}
+
+impl<I: Index> SymbolicCholesky<I> {
+    #[inline]
+    pub fn nrows(&self) -> usize {
+        match &self.raw {
+            &SymbolicCholeskyRaw::Simplicial(ref this) => this.nrows(),
+            &SymbolicCholeskyRaw::Supernodal(ref this) => this.nrows(),
+        }
+    }
+
+    #[inline]
+    pub fn ncols(&self) -> usize {
+        self.nrows()
+    }
+
+    #[inline]
+    pub fn raw(&self) -> &SymbolicCholeskyRaw<I> {
+        &self.raw
+    }
+
+    #[inline]
+    pub fn perm(&self) -> PermutationRef<'_, I> {
+        unsafe { PermutationRef::new_unchecked(&self.perm_fwd, &self.perm_inv) }
+    }
+
+    #[inline]
+    pub fn len_values(&self) -> usize {
+        match &self.raw {
+            &SymbolicCholeskyRaw::Simplicial(ref this) => this.len_values(),
+            &SymbolicCholeskyRaw::Supernodal(ref this) => this.len_values(),
+        }
+    }
+
+    #[inline]
+    pub fn factorize_numeric_ldlt_req<E: Entity>(
+        &self,
+        side: Side,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n = self.nrows();
+        let A_nnz = self.A_nnz;
+
+        let n_req = StackReq::try_new::<I>(n)?;
+        let A_req = StackReq::try_all_of([
+            make_raw_req::<E>(A_nnz)?,
+            StackReq::try_new::<I>(n + 1)?,
+            StackReq::try_new::<I>(A_nnz)?,
+        ])?;
+        let A_req2 = if side == Side::Lower {
+            A_req
+        } else {
+            StackReq::empty()
+        };
+        let permute_req = n_req;
+
+        match &self.raw {
+            &SymbolicCholeskyRaw::Simplicial(_) => {
+                let simplicial_req =
+                    StackReq::try_all_of([make_raw_req::<E>(n)?, n_req, n_req, n_req])?;
+                StackReq::try_all_of([
+                    A_req2,
+                    A_req,
+                    StackReq::try_or(permute_req, simplicial_req)?,
+                ])
+            }
+            &SymbolicCholeskyRaw::Supernodal(ref this) => {
+                let transpose_req = n_req;
+                let supernodal_req =
+                    factorize_supernodal_numeric_ldlt_req::<I, E>(this, parallelism)?;
+
+                StackReq::try_all_of([
+                    A_req2,
+                    A_req,
+                    A_req,
+                    StackReq::try_or(transpose_req, supernodal_req)?,
+                ])
+            }
+        }
+    }
+
+    #[inline]
+    pub fn factorize_numeric_ldlt<E: ComplexField>(
+        &self,
+        L_values: SliceGroupMut<'_, E>,
+        A: SparseColMatRef<'_, I, E>,
+        side: Side,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) {
+        assert!(A.nrows() == A.ncols());
+        let n = A.nrows();
+        let lower = (side == Side::Lower) as usize;
+
+        ghost::with_size(n, |N| {
+            let A_nnz = self.A_nnz;
+            let A = ghost::SparseColMatRef::new(A, N, N);
+
+            let perm = ghost::PermutationRef::new(self.perm(), N);
+
+            let (mut new_values, stack) = crate::make_raw::<E>(lower * (A_nnz), stack);
+            let (mut new_col_ptr, stack) = stack.make_raw::<I>(lower * (n + 1));
+            let (mut new_row_ind, mut stack) = stack.make_raw::<I>(lower * (A_nnz));
+
+            let A = if side == Side::Lower {
+                let new_values =
+                    SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
+                        &mut **val
+                    }));
+                ghost_transpose(
+                    &mut new_col_ptr,
+                    &mut new_row_ind,
+                    new_values,
+                    A,
+                    stack.rb_mut(),
+                )
+            } else {
+                A
+            };
+
+            let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
+            let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+            let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+            let mut new_values =
+                SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| &mut **val));
+
+            let A = ghost_permute_symmetric(
+                new_values.rb_mut(),
+                &mut new_col_ptr,
+                &mut new_row_ind,
+                A,
+                perm,
+                stack.rb_mut(),
+            );
+
+            match &self.raw {
+                &SymbolicCholeskyRaw::Simplicial(ref this) => {
+                    factorize_simplicial_numeric(L_values, *A, this, stack);
+                }
+                &SymbolicCholeskyRaw::Supernodal(ref this) => {
+                    let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
+                    let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+                    let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+                    let mut new_values =
+                        SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| {
+                            &mut **val
+                        }));
+                    let A = ghost_transpose(
+                        &mut new_col_ptr,
+                        &mut new_row_ind,
+                        new_values.rb_mut(),
+                        A,
+                        stack.rb_mut(),
+                    );
+                    factorize_supernodal_numeric(L_values, *A, this, parallelism, stack);
+                }
+            }
+        });
+    }
+}
+
+#[derive(Debug)]
+pub struct SupernodalLdltRef<'a, I, E: Entity> {
     symbolic: &'a SymbolicSupernodalCholesky<I>,
     values: SliceGroup<'a, E>,
 }
-impl_copy!(<'a><I, E: Entity><SupernodalCholeskyRef<'a, I, E>>);
+#[derive(Debug)]
+pub struct SimplicialLdltRef<'a, I, E: Entity> {
+    symbolic: &'a SymbolicSimplicialCholesky<I>,
+    values: SliceGroup<'a, E>,
+}
 
-impl<'a, I: Index, E: Entity> SupernodalCholeskyRef<'a, I, E> {
+#[derive(Debug)]
+pub enum LdltRef<'a, I, E: Entity> {
+    Simplicial(SimplicialLdltRef<'a, I, E>),
+    Supernodal(SupernodalLdltRef<'a, I, E>),
+}
+
+impl_copy!(<'a><I, E: Entity><SupernodalLdltRef<'a, I, E>>);
+impl_copy!(<'a><I, E: Entity><SimplicialLdltRef<'a, I, E>>);
+impl_copy!(<'a><I, E: Entity><LdltRef<'a, I, E>>);
+
+impl<'a, I: Index, E: Entity> SupernodalLdltRef<'a, I, E> {
     #[inline]
     pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: SliceGroup<'a, E>) -> Self {
         assert!(values.len() == symbolic.len_values());
@@ -357,15 +738,33 @@ impl<'a, I: Index, E: Entity> SupernodalCholeskyRef<'a, I, E> {
     }
 }
 
+impl<'a, I: Index, E: Entity> SimplicialLdltRef<'a, I, E> {
+    #[inline]
+    pub fn new(symbolic: &'a SymbolicSimplicialCholesky<I>, values: SliceGroup<'a, E>) -> Self {
+        assert!(values.len() == symbolic.len_values());
+        Self { symbolic, values }
+    }
+
+    #[inline]
+    pub fn symbolic(self) -> &'a SymbolicSimplicialCholesky<I> {
+        self.symbolic
+    }
+
+    #[inline]
+    pub fn values(self) -> SliceGroup<'a, E> {
+        self.values
+    }
+}
+
 impl<I: Index> SymbolicSupernodalCholesky<I> {
     #[inline]
     pub fn n_supernodes(&self) -> usize {
-        self.supernode_begin__.len() - 1
+        self.supernode_postorder.len()
     }
 
     #[inline]
     pub fn nrows(&self) -> usize {
-        self.supernode_begin__[self.n_supernodes()].zx()
+        self.dimension
     }
     #[inline]
     pub fn ncols(&self) -> usize {
@@ -379,27 +778,53 @@ impl<I: Index> SymbolicSupernodalCholesky<I> {
 
     #[inline]
     pub fn supernode_begin(&self) -> &[I] {
-        &self.supernode_begin__[..self.n_supernodes()]
+        &self.supernode_begin[..self.n_supernodes()]
     }
 
     #[inline]
     pub fn supernode_end(&self) -> &[I] {
-        &self.supernode_begin__[1..]
+        &self.supernode_begin[1..]
     }
 
     #[inline]
     pub fn col_ptrs_for_row_indices(&self) -> &[I] {
-        &self.col_ptrs_for_row_indices__
+        &self.col_ptrs_for_row_indices
     }
 
     #[inline]
     pub fn col_ptrs_for_values(&self) -> &[I] {
-        &self.col_ptrs_for_values__
+        &self.col_ptrs_for_values
     }
 
     #[inline]
     pub fn row_indices(&self) -> &[I] {
-        &self.row_indices__
+        &self.row_indices
+    }
+}
+
+impl<I: Index> SymbolicSimplicialCholesky<I> {
+    #[inline]
+    pub fn nrows(&self) -> usize {
+        self.dimension
+    }
+    #[inline]
+    pub fn ncols(&self) -> usize {
+        self.nrows()
+    }
+
+    #[inline]
+    pub fn len_values(&self) -> usize {
+        self.row_indices.len()
+    }
+
+    #[inline]
+    pub fn col_ptrs(&self) -> &[I] {
+        &self.col_ptrs
+    }
+
+    #[inline]
+    pub fn row_indices(&self) -> &[I] {
+        &self.row_indices
     }
 }
 
@@ -481,10 +906,15 @@ pub fn ghost_postorder<'n, I: Index>(
     }
 }
 
+pub fn factorize_supernodal_symbolic_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
+    let n_req = StackReq::try_new::<I>(n)?;
+    StackReq::try_all_of([n_req, n_req, n_req, n_req])
+}
+
 pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
-    col_count: &Array<'n, I>,
+    col_counts: &Array<'n, I>,
     stack: PodStack<'_>,
     params: CholeskySymbolicSupernodalParams<'_>,
 ) -> Result<SymbolicSupernodalCholesky<I>, FaerSparseError> {
@@ -503,15 +933,15 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     if n == 0 {
         // would be funny if this allocation failed
         return Ok(SymbolicSupernodalCholesky {
-            supernode_etree__: Vec::new(),
-            supernode_postorder__: Vec::new(),
-            supernode_postorder_inv__: Vec::new(),
-            descendent_count__: Vec::new(),
+            dimension: n,
+            supernode_postorder: Vec::new(),
+            supernode_postorder_inv: Vec::new(),
+            descendent_count: Vec::new(),
 
-            supernode_begin__: try_collect([zero])?,
-            col_ptrs_for_row_indices__: try_collect([zero])?,
-            col_ptrs_for_values__: try_collect([zero])?,
-            row_indices__: Vec::new(),
+            supernode_begin: try_collect([zero])?,
+            col_ptrs_for_row_indices: try_collect([zero])?,
+            col_ptrs_for_values: try_collect([zero])?,
+            row_indices: Vec::new(),
         });
     }
     let mut original_stack = stack;
@@ -519,7 +949,7 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     let (mut index_to_super__, stack) = original_stack.rb_mut().make_raw::<I>(n);
     let (mut super_etree__, stack) = stack.make_raw::<I>(n);
     let (mut supernode_sizes__, stack) = stack.make_raw::<I>(n);
-    let (mut child_count__, stack) = stack.make_raw::<I>(n);
+    let (mut child_count__, _) = stack.make_raw::<I>(n);
 
     let child_count = Array::from_mut(&mut child_count__, N);
     let index_to_super = Array::from_mut(&mut index_to_super__, N);
@@ -537,7 +967,7 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
     for (j_prev, j) in zip(N.indices().take(n - 1), N.indices().skip(1)) {
         let is_parent_of_prev = (*etree[j_prev]).sx() == *j;
         let is_parent_of_only_prev = child_count[j] == one;
-        let same_pattern_as_prev = col_count[j_prev] == col_count[j] + one;
+        let same_pattern_as_prev = col_counts[j_prev] == col_counts[j] + one;
 
         if !(is_parent_of_prev && is_parent_of_only_prev && same_pattern_as_prev) {
             current_supernode += 1;
@@ -590,6 +1020,14 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
             );
 
             if let Some(relax) = params.relax {
+                let req = || -> Result<StackReq, SizeOverflow> {
+                    let req = StackReq::try_new::<I>(n_fundamental_supernodes)?;
+                    StackReq::try_all_of([req; 5])
+                };
+                let mut mem =
+                    dyn_stack::GlobalPodBuffer::try_new(req().map_err(nomem)?).map_err(nomem)?;
+                let stack = PodStack::new(&mut mem);
+
                 let child_lists = &mut (**child_count)[..n_fundamental_supernodes];
                 let (mut child_list_heads, stack) = stack.make_raw::<I>(n_fundamental_supernodes);
                 let (mut last_merged_children, stack) =
@@ -623,7 +1061,7 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
                 for s in N_FUNDAMENTAL_SUPERNODES.indices() {
                     let size = supernode_sizes[s].zx();
                     fundamental_supernode_degrees[s] =
-                        col_count[N.check(supernode_begin + size - 1)] - one;
+                        col_counts[N.check(supernode_begin + size - 1)] - one;
                     supernode_begin += size;
                 }
 
@@ -773,7 +1211,7 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
                 for s in N_FUNDAMENTAL_SUPERNODES.indices() {
                     let size = supernode_sizes[s].zx();
                     supernode_begin__[*s + 1] =
-                        col_count[N.check(supernode_begin + size - 1)] - one;
+                        col_counts[N.check(supernode_begin + size - 1)] - one;
                     supernode_begin += size;
                 }
 
@@ -897,9 +1335,8 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
             },
         )?;
 
-    let supernode_etree__ = try_collect(super_etree__[..n_supernodes].iter().copied())?;
+    let mut supernode_etree__ = try_collect(super_etree__[..n_supernodes].iter().copied())?;
     let mut supernode_postorder__ = try_zeroed::<I>(n_supernodes)?;
-    let mut supernode_postorder_inv__ = try_zeroed::<I>(n_supernodes)?;
 
     drop(super_etree__);
     drop(child_count__);
@@ -910,17 +1347,11 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
 
     ghost::with_size(n_supernodes, |N_SUPERNODES| {
         let post = Array::from_mut(&mut supernode_postorder__, N_SUPERNODES);
-        let post_inv = Array::from_mut(&mut supernode_postorder_inv__, N_SUPERNODES);
         let desc_count = Array::from_mut(&mut descendent_count__, N_SUPERNODES);
         let etree = Array::from_ref(
             MaybeIdx::slice_ref_checked(&supernode_etree__, N_SUPERNODES),
             N_SUPERNODES,
         );
-
-        ghost_postorder(post, etree, original_stack);
-        for i in N_SUPERNODES.indices() {
-            post_inv[N_SUPERNODES.check(post[i].zx())] = *i.truncate();
-        }
 
         for s in N_SUPERNODES.indices() {
             if let Some(parent) = etree[s].idx() {
@@ -928,17 +1359,23 @@ pub fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
                 desc_count[parent] = desc_count[parent] + desc_count[s] + one;
             }
         }
+
+        ghost_postorder(post, etree, original_stack);
+        let post_inv = Array::from_mut(&mut supernode_etree__, N_SUPERNODES);
+        for i in N_SUPERNODES.indices() {
+            post_inv[N_SUPERNODES.check(post[i].zx())] = *i.truncate();
+        }
     });
 
     Ok(SymbolicSupernodalCholesky {
-        supernode_etree__,
-        supernode_postorder__,
-        supernode_postorder_inv__,
-        descendent_count__,
-        supernode_begin__,
-        col_ptrs_for_row_indices__,
-        col_ptrs_for_values__,
-        row_indices__,
+        dimension: n,
+        supernode_postorder: supernode_postorder__,
+        supernode_postorder_inv: supernode_etree__,
+        descendent_count: descendent_count__,
+        supernode_begin: supernode_begin__,
+        col_ptrs_for_row_indices: col_ptrs_for_row_indices__,
+        col_ptrs_for_values: col_ptrs_for_values__,
+        row_indices: row_indices__,
     })
 }
 
@@ -952,20 +1389,20 @@ pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
     symbolic: &SymbolicSupernodalCholesky<I>,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    let n_supernodes = symbolic.supernode_etree__.len();
-    let n = symbolic.supernode_begin__[n_supernodes].zx();
-    let post = &*symbolic.supernode_postorder__;
-    let post_inv = &*symbolic.supernode_postorder_inv__;
+    let n_supernodes = symbolic.n_supernodes();
+    let n = symbolic.nrows();
+    let post = &*symbolic.supernode_postorder;
+    let post_inv = &*symbolic.supernode_postorder_inv;
 
-    let desc_count = &*symbolic.descendent_count__;
+    let desc_count = &*symbolic.descendent_count;
 
-    let col_ptr_row = &*symbolic.col_ptrs_for_row_indices__;
-    let row_ind = &*symbolic.row_indices__;
+    let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
+    let row_ind = &*symbolic.row_indices;
 
     let mut req = StackReq::empty();
     for s in 0..n_supernodes {
-        let s_start = symbolic.supernode_begin__[s].zx();
-        let s_end = symbolic.supernode_begin__[s + 1].zx();
+        let s_start = symbolic.supernode_begin[s].zx();
+        let s_end = symbolic.supernode_begin[s + 1].zx();
 
         let s_ncols = s_end - s_start;
 
@@ -975,8 +1412,8 @@ pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
             let mut d_req = StackReq::empty();
 
             let d = d.zx();
-            let d_start = symbolic.supernode_begin__[d].zx();
-            let d_end = symbolic.supernode_begin__[d + 1].zx();
+            let d_start = symbolic.supernode_begin[d].zx();
+            let d_end = symbolic.supernode_begin[d + 1].zx();
 
             let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
 
@@ -1005,14 +1442,14 @@ pub fn factorize_supernodal_numeric_ldlt_req<I: Index, E: Entity>(
 }
 
 pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
-    A_lower: SparseColMatRef<'_, I, E>,
     L_values: SliceGroupMut<'_, E>,
+    A_lower: SparseColMatRef<'_, I, E>,
     symbolic: &SymbolicSupernodalCholesky<I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    let n_supernodes = symbolic.supernode_etree__.len();
-    let n = symbolic.supernode_begin__[n_supernodes].zx();
+    let n_supernodes = symbolic.n_supernodes();
+    let n = symbolic.nrows();
     let mut L_values = L_values;
 
     assert!(A_lower.nrows() == n);
@@ -1021,22 +1458,22 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
 
     let none = I::truncate(NONE);
 
-    let post = &*symbolic.supernode_postorder__;
-    let post_inv = &*symbolic.supernode_postorder_inv__;
+    let post = &*symbolic.supernode_postorder;
+    let post_inv = &*symbolic.supernode_postorder_inv;
 
-    let desc_count = &*symbolic.descendent_count__;
+    let desc_count = &*symbolic.descendent_count;
 
-    let col_ptr_row = &*symbolic.col_ptrs_for_row_indices__;
-    let col_ptr_val = &*symbolic.col_ptrs_for_values__;
-    let row_ind = &*symbolic.row_indices__;
+    let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
+    let col_ptr_val = &*symbolic.col_ptrs_for_values;
+    let row_ind = &*symbolic.row_indices;
 
     // mapping from global indices to local
     let (mut global_to_local, mut stack) = stack.make_raw::<I>(n);
     mem::fill_none(&mut global_to_local);
 
     for s in 0..n_supernodes {
-        let s_start = symbolic.supernode_begin__[s].zx();
-        let s_end = symbolic.supernode_begin__[s + 1].zx();
+        let s_start = symbolic.supernode_begin[s].zx();
+        let s_end = symbolic.supernode_begin[s + 1].zx();
 
         let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
         let s_ncols = s_end - s_start;
@@ -1074,8 +1511,8 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
         let desc_count = desc_count[s].zx();
         for d in &post[s_postordered - desc_count..s_postordered] {
             let d = d.zx();
-            let d_start = symbolic.supernode_begin__[d].zx();
-            let d_end = symbolic.supernode_begin__[d + 1].zx();
+            let d_start = symbolic.supernode_begin[d].zx();
+            let d_end = symbolic.supernode_begin[d + 1].zx();
 
             let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
             let d_ncols = d_end - d_start;
@@ -1192,7 +1629,7 @@ pub fn factorize_supernodal_numeric<I: Index, E: ComplexField>(
     }
 }
 
-pub fn ghost_symbolic_transpose<'m, 'n, 'a, I: Index>(
+pub fn ghost_transpose_symbolic<'m, 'n, 'a, I: Index>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
     A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
@@ -1340,6 +1777,140 @@ pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
     )
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct CholeskySymbolicParams<'a> {
+    pub amd_params: Control,
+    pub supernodal_flop_ratio_threshold: f64,
+    pub supernodal_params: CholeskySymbolicSupernodalParams<'a>,
+}
+
+impl Default for CholeskySymbolicParams<'_> {
+    fn default() -> Self {
+        Self {
+            supernodal_flop_ratio_threshold: 40.0,
+            amd_params: Default::default(),
+            supernodal_params: Default::default(),
+        }
+    }
+}
+
+pub fn factorize_symbolic<I: Index>(
+    A: SymbolicSparseColMatRef<'_, I>,
+    side: Side,
+    params: CholeskySymbolicParams<'_>,
+) -> Result<SymbolicCholesky<I>, FaerSparseError> {
+    let n = A.nrows();
+    let A_nnz = A.compute_nnz();
+
+    assert!(A.nrows() == A.ncols());
+    let lower = (side == Side::Lower) as usize;
+
+    ghost::with_size(n, |N| {
+        let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+
+        let req = || -> Result<StackReq, SizeOverflow> {
+            let n_req = StackReq::try_new::<I>(n)?;
+            let A_req = StackReq::try_and(
+                // new_col_ptr
+                StackReq::try_new::<I>(n + 1)?,
+                // new_row_ind
+                StackReq::try_new::<I>(A_nnz)?,
+            )?;
+            let A_req2 = if side == Side::Lower {
+                A_req
+            } else {
+                StackReq::empty()
+            };
+
+            StackReq::try_or(
+                amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
+                StackReq::try_all_of([
+                    A_req,
+                    A_req2,
+                    // permute_symmetric | etree
+                    n_req,
+                    // col_counts
+                    n_req,
+                    // ghost_prefactorize_symbolic
+                    n_req,
+                    // ghost_factorize_*_symbolic
+                    StackReq::try_or(
+                        factorize_supernodal_symbolic_req::<I>(n)?,
+                        factorize_simplicial_symbolic_req::<I>(n)?,
+                    )?,
+                ])?,
+            )
+        };
+
+        let req = req().map_err(nomem)?;
+        let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
+        let mut stack = PodStack::new(&mut mem);
+
+        let mut perm_fwd = try_zeroed(n)?;
+        let mut perm_inv = try_zeroed(n)?;
+        let flops = amd::order_maybe_unsorted(
+            &mut perm_fwd,
+            &mut perm_inv,
+            *A,
+            params.amd_params,
+            stack.rb_mut(),
+        )?;
+        let flops = flops.n_div + flops.n_mult_subs_ldl;
+        let perm_ =
+            ghost::PermutationRef::new(PermutationRef::new_checked(&perm_fwd, &perm_inv), N);
+
+        let (mut new_col_ptr, stack) = stack.make_raw::<I>(lower * (n + 1));
+        let (mut new_row_ind, mut stack) = stack.make_raw::<I>(lower * (A_nnz));
+
+        let A = if side == Side::Lower {
+            ghost_transpose_symbolic(&mut new_col_ptr, &mut new_row_ind, A, stack.rb_mut())
+        } else {
+            A
+        };
+
+        let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+        let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+        let A = ghost_permute_symmetric_symbolic(
+            &mut new_col_ptr,
+            &mut new_row_ind,
+            A,
+            perm_,
+            stack.rb_mut(),
+        );
+
+        let (mut etree, stack) = stack.make_raw::<I>(n);
+        let (mut col_counts, mut stack) = stack.make_raw::<I>(n);
+        let etree = Array::from_mut(&mut etree, N);
+        let col_counts = Array::from_mut(&mut col_counts, N);
+        let etree = &*ghost_prefactorize_symbolic(etree, col_counts, A, stack.rb_mut());
+        let L_nnz = I::sum_nonnegative(col_counts).ok_or(FaerSparseError::IndexOverflow)?;
+
+        let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold {
+            SymbolicCholeskyRaw::Supernodal(ghost_factorize_supernodal_symbolic(
+                A,
+                etree,
+                col_counts,
+                stack.rb_mut(),
+                params.supernodal_params,
+            )?)
+        } else {
+            SymbolicCholeskyRaw::Simplicial(ghost_factorize_simplicial_symbolic(
+                A,
+                etree,
+                col_counts,
+                stack.rb_mut(),
+            )?)
+        };
+
+        Ok(SymbolicCholesky {
+            raw,
+            perm_fwd,
+            perm_inv,
+            A_nnz,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1466,17 +2037,17 @@ mod tests {
         symbolic: &SymbolicSupernodalCholesky<I>,
         L_values: SliceGroup<'_, E>,
     ) -> Mat<E> {
-        let n_supernodes = symbolic.supernode_etree__.len();
-        let n = symbolic.supernode_begin__[n_supernodes].zx();
+        let n_supernodes = symbolic.n_supernodes();
+        let n = symbolic.nrows();
         let mut dense = Mat::<E>::zeros(n, n);
 
-        let col_ptr_row = &*symbolic.col_ptrs_for_row_indices__;
-        let col_ptr_val = &*symbolic.col_ptrs_for_values__;
-        let row_ind = &*symbolic.row_indices__;
+        let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
+        let col_ptr_val = &*symbolic.col_ptrs_for_values;
+        let row_ind = &*symbolic.row_indices;
 
         for s in 0..n_supernodes {
-            let s_start = symbolic.supernode_begin__[s].zx();
-            let s_end = symbolic.supernode_begin__[s + 1].zx();
+            let s_start = symbolic.supernode_begin[s].zx();
+            let s_end = symbolic.supernode_begin[s + 1].zx();
 
             let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
             let s_ncols = s_end - s_start;
@@ -1562,8 +2133,8 @@ mod tests {
             let mut values = SliceGroupMut::new(values.col_mut(0));
 
             factorize_supernodal_numeric(
-                *A_lower,
                 values.rb_mut(),
+                *A_lower,
                 &symbolic,
                 Parallelism::None,
                 PodStack::new(&mut GlobalPodBuffer::new(

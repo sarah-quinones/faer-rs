@@ -90,6 +90,18 @@ fn nomem<T>(_: T) -> FaerSparseError {
     FaerSparseError::OutOfMemory
 }
 
+fn make_raw_req<E: Entity>(size: usize) -> Result<StackReq, SizeOverflow> {
+    let req = Ok(StackReq::empty());
+    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), |req, ()| {
+        let req = match (req, StackReq::try_new::<E::Unit>(size)) {
+            (Ok(req), Ok(additional)) => req.try_and(additional),
+            _ => Err(SizeOverflow),
+        };
+        (req, ())
+    });
+    req
+}
+
 fn make_raw<E: Entity>(
     size: usize,
     stack: PodStack<'_>,
@@ -943,6 +955,12 @@ fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
         .map(|window| unsafe { &*(window.as_ptr() as *const [I; 2]) })
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Side {
+    Lower,
+    Upper,
+}
+
 #[inline(always)]
 fn permute_symmetric_common<'n, I: Index>(
     new_col_ptrs: &mut [I],
@@ -1050,6 +1068,69 @@ pub fn ghost_permute_symmetric<'n, 'out, I: Index, E: Entity>(
                 SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
                 new_values.into_const(),
             ),
+            N,
+            N,
+        )
+    }
+}
+
+pub fn ghost_permute_symmetric_symbolic<'n, 'out, I: Index>(
+    new_col_ptrs: &'out mut [I],
+    new_row_indices: &'out mut [I],
+    A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
+    perm: ghost::PermutationRef<'n, '_, I>,
+    stack: PodStack<'_>,
+) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
+    let N = A.ncols();
+    let n = *A.ncols();
+
+    // (1)
+    assert!(new_col_ptrs.len() == n + 1);
+    let (_, perm_inv) = perm.fwd_inv();
+
+    let (mut current_row_position, _) = stack.make_raw::<I>(n);
+    let current_row_position = ghost::Array::from_mut(&mut current_row_position, N);
+    permute_symmetric_common(new_col_ptrs, current_row_position, A, perm);
+
+    let nnz = new_col_ptrs[n].zx();
+    let new_row_indices = &mut new_row_indices[..nnz];
+
+    ghost::with_size(
+        nnz,
+        #[inline(always)]
+        |NNZ| {
+            let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
+            for old_j in N.indices() {
+                let new_j_ = perm_inv[old_j];
+                let new_j = new_j_.zx();
+
+                for old_i in A.row_indices_of_col(old_j) {
+                    if old_i <= old_j {
+                        let new_i_ = perm_inv[old_i];
+                        let new_i = new_i_.zx();
+
+                        let new_max = Ord::max(new_i, new_j);
+                        let new_min = Ord::min(new_i_, new_j_);
+                        let current_row_pos = &mut current_row_position[new_max];
+                        // SAFETY: current_row_pos < NNZ
+                        let row_pos =
+                            unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
+                        current_row_pos.incr();
+                        // (2)
+                        new_row_indices[row_pos] = *new_min;
+                    }
+                }
+            }
+            debug_assert!(**current_row_position == new_col_ptrs[1..]);
+        },
+    );
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. new_values.len() == new_row_indices.len()
+    // 2. all written row indices are less than n
+    unsafe {
+        ghost::SymbolicSparseColMatRef::new(
+            SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
             N,
             N,
         )
