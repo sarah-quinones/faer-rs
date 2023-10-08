@@ -1417,7 +1417,7 @@ impl ComplexField for Symbolic {
     }
 }
 
-fn ghost_permute_hermitian<'n, 'out, I: Index, E: Entity>(
+fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
@@ -1572,7 +1572,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: Entity>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read());
+                                new_values.write(row_pos, val.read().conj());
                                 // (2)
                                 new_row_indices[row_pos] = *new_min;
                             }
@@ -1599,7 +1599,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: Entity>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read());
+                                new_values.write(row_pos, val.read().conj());
                                 // (2)
                                 new_row_indices[row_pos] = *new_max;
                             }
@@ -1681,7 +1681,7 @@ fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
     .symbolic()
 }
 
-pub fn permute_hermitian<'out, I: Index, E: Entity>(
+pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],

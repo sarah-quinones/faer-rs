@@ -99,7 +99,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            criterion.bench_function(&format!("simplicial-st-{file}"), |bench| {
+            criterion.bench_function(&format!("simplicial-st"), |bench| {
                 bench.iter(|| {
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
@@ -130,7 +130,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            criterion.bench_function(&format!("supernodal-st-{file}"), |bench| {
+            criterion.bench_function(&format!("supernodal-st"), |bench| {
                 bench.iter(|| {
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
@@ -142,7 +142,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
                 });
             });
         }
-        {
+        if false {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
@@ -161,7 +161,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            criterion.bench_function(&format!("supernodal-mt-{file}"), |bench| {
+            criterion.bench_function(&format!("supernodal-mt"), |bench| {
                 bench.iter(|| {
                     symbolic.factorize_numeric_ldlt(
                         L_values.rb_mut(),
