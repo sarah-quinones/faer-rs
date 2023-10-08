@@ -97,11 +97,13 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
+    regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
-    params: LdltDiagParams<'_, E>,
+    params: LdltDiagParams,
 ) -> usize {
     let mut matrix = matrix;
     let _ = parallelism;
+    let _ = params;
 
     debug_assert!(
         matrix.ncols() == matrix.nrows(),
@@ -117,8 +119,8 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     let mut idx = 0;
     let arch = E::Simd::default();
 
-    let eps = params.dynamic_regularization_epsilon.real().abs();
-    let delta = params.dynamic_regularization_delta.real().abs();
+    let eps = regularization.dynamic_regularization_epsilon.abs();
+    let delta = regularization.dynamic_regularization_delta.abs();
     let has_eps = delta > E::Real::zero();
     let mut dynamic_regularization_count = 0usize;
     loop {
@@ -165,7 +167,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
         // dynamic regularization code taken from clarabel.rs with modifications
         if has_eps {
-            if let Some(signs) = params.dynamic_regularization_signs {
+            if let Some(signs) = regularization.dynamic_regularization_signs {
                 if signs[idx] > 0 && d <= delta {
                     d = eps;
                     dynamic_regularization_count += 1;
@@ -220,31 +222,16 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     dynamic_regularization_count
 }
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 #[non_exhaustive]
-pub struct LdltDiagParams<'a, E> {
-    pub dynamic_regularization_epsilon: E,
-    pub dynamic_regularization_delta: E,
-    pub dynamic_regularization_signs: Option<&'a [i8]>,
-}
-
-impl<E: Entity> Default for LdltDiagParams<'_, E> {
-    #[inline(always)]
-    fn default() -> Self {
-        Self {
-            dynamic_regularization_epsilon: E::zeroed(),
-            dynamic_regularization_delta: E::zeroed(),
-            dynamic_regularization_signs: Default::default(),
-        }
-    }
-}
+pub struct LdltDiagParams {}
 
 /// Computes the size and alignment of required workspace for performing a Cholesky
 /// decomposition with partial pivoting.
 pub fn raw_cholesky_in_place_req<E: Entity>(
     dim: usize,
     parallelism: Parallelism,
-    params: LdltDiagParams<'_, E>,
+    params: LdltDiagParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     let _ = params;
@@ -253,9 +240,10 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
 
 fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
+    regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: LdltDiagParams<'_, E>,
+    params: LdltDiagParams,
 ) -> usize {
     // right looking cholesky
 
@@ -265,13 +253,19 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_impl(matrix, parallelism, params)
+        cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)
     } else {
         let block_size = Ord::min(n / 2, 128);
         let rem = n - block_size;
         let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
 
-        let count0 = cholesky_in_place_impl(l00.rb_mut(), parallelism, stack.rb_mut(), params);
+        let count0 = cholesky_in_place_impl(
+            l00.rb_mut(),
+            regularization,
+            parallelism,
+            stack.rb_mut(),
+            params,
+        );
 
         let l00 = l00.into_const();
         let d0 = l00.diagonal();
@@ -314,7 +308,37 @@ fn cholesky_in_place_impl<E: ComplexField>(
             );
         }
 
-        count0 + cholesky_in_place_impl(a11, parallelism, stack, params)
+        count0
+            + cholesky_in_place_impl(
+                a11,
+                LdltRegularization {
+                    dynamic_regularization_signs: regularization
+                        .dynamic_regularization_signs
+                        .map(|signs| &signs[block_size..]),
+                    dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                    dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+                },
+                parallelism,
+                stack,
+                params,
+            )
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct LdltRegularization<'a, E: ComplexField> {
+    pub dynamic_regularization_signs: Option<&'a [i8]>,
+    pub dynamic_regularization_delta: E::Real,
+    pub dynamic_regularization_epsilon: E::Real,
+}
+
+impl<E: ComplexField> Default for LdltRegularization<'_, E> {
+    fn default() -> Self {
+        Self {
+            dynamic_regularization_signs: None,
+            dynamic_regularization_delta: E::Real::zero(),
+            dynamic_regularization_epsilon: E::Real::zero(),
+        }
     }
 }
 
@@ -349,13 +373,14 @@ fn cholesky_in_place_impl<E: ComplexField>(
 #[inline]
 pub fn raw_cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
+    regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: LdltDiagParams<'_, E>,
+    params: LdltDiagParams,
 ) -> usize {
     assert!(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    cholesky_in_place_impl(matrix, parallelism, stack, params)
+    cholesky_in_place_impl(matrix, regularization, parallelism, stack, params)
 }

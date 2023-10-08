@@ -468,6 +468,7 @@ pub mod solvers {
 
             faer_cholesky::llt::compute::cholesky_in_place(
                 factors.as_mut(),
+                Default::default(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::compute::cholesky_in_place_req::<E>(

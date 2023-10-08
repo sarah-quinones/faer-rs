@@ -67,6 +67,7 @@ mod tests {
             let a_orig = a.clone();
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -126,6 +127,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -205,6 +207,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -234,6 +237,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -262,6 +266,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -290,6 +295,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),
@@ -329,6 +335,7 @@ mod tests {
 
             cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut []),
                 Default::default(),

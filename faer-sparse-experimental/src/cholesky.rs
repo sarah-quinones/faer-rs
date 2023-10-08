@@ -1611,6 +1611,7 @@ pub fn factorize_supernodal_numeric_ldlt<I: Index, E: ComplexField>(
         let params = Default::default();
         faer_cholesky::ldlt_diagonal::compute::raw_cholesky_in_place(
             Ls_top.rb_mut(),
+            Default::default(),
             parallelism,
             stack.rb_mut(),
             params,
