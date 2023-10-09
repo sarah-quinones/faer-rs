@@ -26,6 +26,9 @@ rayon = "1.7"
 pulp = { version = "0.14", default-features = false }
 bytemuck = "1"
 
+criterion = { path = "../criterion.rs" }
+# criterion = { git = "https://github.com/sarah-ek/criterion.rs" }
+
 [profile.dev]
 opt-level = 3
 debug = true
@@ -36,3 +39,7 @@ panic = 'unwind'
 incremental = true
 codegen-units = 256
 rpath = false
+
+[profile.bench]
+inherits = "release"
+debug = true

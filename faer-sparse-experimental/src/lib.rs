@@ -532,8 +532,7 @@ mod __core {
         #[inline]
         #[track_caller]
         pub fn values_of_col(&self, j: usize) -> SliceGroup<'a, E> {
-            let range = self.col_range(j);
-            self.values.subslice(range)
+            self.values.subslice(self.col_range(j))
         }
 
         #[inline]
@@ -857,6 +856,26 @@ impl<'a, E: Entity> SliceGroup<'a, E> {
     pub fn into_iter(self) -> impl Iterator<Item = RefGroup<'a, E>> {
         E::into_iter(self.into_inner()).map(RefGroup::new)
     }
+
+    #[inline(always)]
+    pub fn into_chunks(self, chunk_size: usize) -> (impl Iterator<Item = SliceGroup<'a, E>>, Self) {
+        let len = self.len();
+        let mid = len / chunk_size * chunk_size;
+        let (head, tail) = E::unzip(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.split_at(mid),
+        ));
+        let head = E::map(
+            head,
+            #[inline(always)]
+            |head| head.chunks_exact(chunk_size),
+        );
+        (
+            E::into_iter(head).map(SliceGroup::new),
+            SliceGroup::new(tail),
+        )
+    }
 }
 
 impl<'a, E: Entity> SliceGroupMut<'a, E> {
@@ -939,6 +958,29 @@ impl<'a, E: Entity> SliceGroupMut<'a, E> {
             |slice| slice.split_at_mut(idx),
         ));
         (Self::new(head), Self::new(tail))
+    }
+
+    #[inline(always)]
+    pub fn into_chunks(
+        self,
+        chunk_size: usize,
+    ) -> (impl Iterator<Item = SliceGroupMut<'a, E>>, Self) {
+        let len = self.len();
+        let mid = len % chunk_size * chunk_size;
+        let (head, tail) = E::unzip(E::map(
+            self.into_inner(),
+            #[inline(always)]
+            |slice| slice.split_at_mut(mid),
+        ));
+        let head = E::map(
+            head,
+            #[inline(always)]
+            |head| head.chunks_exact_mut(chunk_size),
+        );
+        (
+            E::into_iter(head).map(SliceGroupMut::new),
+            SliceGroupMut::new(tail),
+        )
     }
 }
 

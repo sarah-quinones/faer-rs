@@ -71,7 +71,7 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
             {
                 let mut acc_ = E::from_units(E::deref(E::rb(E::as_ref(&acc))));
                 let l20 = E::from_units(E::deref(l20));
-                acc_ = acc_.add(E::mul(l10_, l20));
+                acc_ = E::simd_scalar_mul_adde(simd, l10_, l20, acc_);
                 E::map(
                     E::zip(acc, acc_.into_units()),
                     #[inline(always)]

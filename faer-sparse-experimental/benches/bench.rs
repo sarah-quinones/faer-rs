@@ -1,7 +1,6 @@
 #![allow(non_snake_case)]
 
 use core::iter::zip;
-use criterion::*;
 use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_core::Parallelism;
 use faer_sparse_experimental::{
@@ -9,7 +8,9 @@ use faer_sparse_experimental::{
 };
 use matrix_market_rs::MtxData;
 use reborrow::*;
+use regex::Regex;
 use std::{
+    env::args,
     ffi::OsStr,
     time::{Duration, Instant},
 };
@@ -49,16 +50,48 @@ fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, Vec<I>, Vec<I>, Vec<f64>) {
 }
 
 fn time(mut f: impl FnMut()) -> Duration {
-    let start = Instant::now();
+    let now = Instant::now();
     f();
-    start.elapsed()
+    now.elapsed()
 }
 
-fn bench_ldlt(criterion: &mut Criterion) {
+fn timeit(mut f: impl FnMut(), time_limit: Duration) -> Duration {
+    let mut n_iters: u32 = 1;
+    loop {
+        let t = time(|| {
+            for _ in 0..n_iters {
+                f();
+            }
+        });
+
+        if t >= time_limit || n_iters > 1_000_000_000 {
+            return t / n_iters;
+        }
+
+        n_iters = 10 * (time_limit.as_secs_f64() / t.as_secs_f64()) as u32;
+    }
+}
+
+fn main() {
+    let regexes = args()
+        .skip(1)
+        .filter(|x| !x.trim().starts_with("-"))
+        .map(|s| Regex::new(&s).unwrap())
+        .collect::<Vec<_>>();
+
+    let matches = |s: &str| regexes.is_empty() || regexes.iter().any(|regex| regex.is_match(s));
+
+    let methods = [
+        ("simplicial", f64::INFINITY, Parallelism::None),
+        ("supernodal", 0.0, Parallelism::None),
+    ];
+
+    let time_limit = Duration::from_secs_f64(0.1);
+
     type I = i64;
     let mut files = Vec::new();
 
-    for file in std::fs::read_dir(".").unwrap() {
+    for file in std::fs::read_dir("./bench_data").unwrap() {
         let file = file.unwrap();
         if file.path().extension() == Some(OsStr::new("mtx")) {
             let name = file
@@ -74,7 +107,14 @@ fn bench_ldlt(criterion: &mut Criterion) {
     files.sort_by(|(f0, _), (f1, _)| str::cmp(f0, f1));
 
     for (file, side) in files {
-        let Ok(data) = MtxData::<f64>::from_file("./".to_string() + &*file + ".mtx") else {
+        if !matches(&format!("{file}")) {
+            continue;
+        }
+        if file.starts_with("chain") {
+            continue;
+        }
+        let path = "./bench_data/".to_string() + &*file + ".mtx";
+        let Ok(data) = MtxData::<f64>::from_file(path) else {
             continue;
         };
 
@@ -84,18 +124,18 @@ fn bench_ldlt(criterion: &mut Criterion) {
             SliceGroup::new(&*values),
         );
 
-        let symbolic = factorize_symbolic(A.symbolic(), side, Default::default()).unwrap();
-        let symbolic_type = match symbolic.raw() {
-            SymbolicCholeskyRaw::Simplicial(_) => "simplicial",
-            SymbolicCholeskyRaw::Supernodal(_) => "supernodal",
-        };
-        let timeout = Duration::from_secs(1);
-        println!("picked {symbolic_type} method for {file}");
+        let mut auto = "";
+        time(|| {
+            let symbolic_cholesky =
+                &factorize_symbolic(A.symbolic(), side, Default::default()).unwrap();
+            auto = match symbolic_cholesky.raw() {
+                SymbolicCholeskyRaw::Simplicial(_) => "simplicial",
+                SymbolicCholeskyRaw::Supernodal(_) => "supernodal",
+            };
+            println!("picked {auto} method for {file}");
+        });
 
-        for (method, supernodal_flop_ratio_threshold, parallelism) in [
-            ("simplicial-st", f64::INFINITY, Parallelism::None),
-            ("supernodal-st", 0.0, Parallelism::None),
-        ] {
+        let times = methods.map(|(method, supernodal_flop_ratio_threshold, parallelism)| {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
@@ -105,36 +145,38 @@ fn bench_ldlt(criterion: &mut Criterion) {
                 },
             )
             .unwrap();
+
             let mut mem = GlobalPodBuffer::new(
                 symbolic
-                    .factorize_numeric_ldlt_req::<f64>(parallelism)
+                    .factorize_numeric_ldlt_req::<f64>(false, parallelism)
                     .unwrap(),
             );
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            let mut f = || {
+            let f = || {
                 symbolic.factorize_numeric_ldlt(
                     L_values.rb_mut(),
                     A,
                     side,
+                    Default::default(),
                     parallelism,
                     PodStack::new(&mut mem),
                 );
             };
 
-            let dt = time(&mut f);
-            if dt > timeout {
-                let dt = dt.as_secs_f64();
-                println!("{method}           time:   [--- ms {dt:.2} s --- ms]");
-            } else {
-                criterion.bench_function(&format!("{method}"), |bench| {
-                    bench.iter(&mut f);
-                });
-            }
+            let time = timeit(f, time_limit);
+            println!("{method}: {time:>35?}");
+            (method, time)
+        });
+        let best = times.iter().min_by_key(|(_, time)| time).unwrap();
+        let worst = times.iter().max_by_key(|(_, time)| time).unwrap();
+
+        if best.0 == auto {
+            println!("good: {}", worst.1.as_secs_f64() / best.1.as_secs_f64());
+        } else {
+            println!("bad: {}", best.1.as_secs_f64() / worst.1.as_secs_f64());
         }
+        println!();
     }
 }
-
-criterion_group!(benches, bench_ldlt);
-criterion_main!(benches);
