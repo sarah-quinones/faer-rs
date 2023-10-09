@@ -2177,8 +2177,112 @@ mod tests {
         });
     }
 
+    fn test_solver<I: Index>() {
+        type E = num_complex::Complex<Double<f64>>;
+        let truncate = I::truncate;
+
+        for (_, col_ptr, row_ind, values) in [SMALL, MEDIUM] {
+            let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+            let mut complexify = |e: E| {
+                let i = E::one().neg().sqrt();
+                if e == E::from_f64(1.0) {
+                    e.add(i.mul(E::from_f64(gen.gen())))
+                } else {
+                    e
+                }
+            };
+
+            let n = col_ptr.len() - 1;
+            let nnz = values.len();
+            let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+            let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+            let values_mat =
+                faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
+            let values = SliceGroup::new(values_mat.col_ref(0));
+
+            let A_upper = SparseColMatRef::<'_, I, E>::new(
+                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                values,
+            );
+
+            let mut A_lower_col_ptr = col_ptr.to_vec();
+            let mut A_lower_values = values_mat.clone();
+            let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower = crate::adjoint(
+                &mut A_lower_col_ptr,
+                &mut A_lower_row_ind,
+                A_lower_values,
+                A_upper,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            );
+
+            let mut A_dense = sparse_to_dense(A_upper);
+            for j in 0..n {
+                for i in j + 1..n {
+                    A_dense.write(i, j, A_dense.read(j, i).conj());
+                }
+            }
+
+            for (A, in_side, supernodal_flop_ratio_threshold, parallelism) in [
+                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
+                (A_upper, Side::Upper, 0.0, Parallelism::None),
+                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
+                (A_lower, Side::Lower, 0.0, Parallelism::None),
+            ] {
+                let symbolic = factorize_symbolic(
+                    A.symbolic(),
+                    in_side,
+                    CholeskySymbolicParams {
+                        supernodal_flop_ratio_threshold,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let mut mem = GlobalPodBuffer::new(
+                    symbolic
+                        .factorize_numeric_ldlt_req::<E>(parallelism)
+                        .unwrap(),
+                );
+                let mut L_values = Mat::<E>::zeros(symbolic.len_values(), 1);
+                let mut L_values = SliceGroupMut::new(L_values.col_mut(0));
+
+                symbolic.factorize_numeric_ldlt(
+                    L_values.rb_mut(),
+                    A,
+                    in_side,
+                    parallelism,
+                    PodStack::new(&mut mem),
+                );
+                let A_reconstructed = match symbolic.raw() {
+                    SymbolicCholeskyRaw::Simplicial(symbolic) => {
+                        reconstruct_from_simplicial(&symbolic, L_values.rb())
+                    }
+                    SymbolicCholeskyRaw::Supernodal(symbolic) => {
+                        reconstruct_from_supernodal(&symbolic, L_values.rb())
+                    }
+                };
+
+                let perm = symbolic.perm().fwd_inv().0;
+
+                let mut max = <E as ComplexField>::Real::zero();
+                for j in 0..n {
+                    for i in 0..n {
+                        let x = (A_reconstructed
+                            .read(i, j)
+                            .sub(A_dense.read(perm[i].zx(), perm[j].zx())))
+                        .abs();
+                        max = if max > x { max } else { x }
+                    }
+                }
+                assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+            }
+        }
+    }
+
     monomorphize_test!(test_amd);
     monomorphize_test!(test_counts);
     monomorphize_test!(test_supernodal, i32);
     monomorphize_test!(test_simplicial, i32);
+    monomorphize_test!(test_solver, i32);
 }

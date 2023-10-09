@@ -234,7 +234,7 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>);
 
     fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter>;
@@ -1383,10 +1383,9 @@ unsafe impl Entity for f32 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1456,10 +1455,9 @@ unsafe impl Entity for f64 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1547,11 +1545,10 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
-        let (ctx, im) = E::map_with_context(ctx, group.im, &mut f);
+        let (ctx, re) = E::map_with_context(ctx, group.re, f);
+        let (ctx, im) = E::map_with_context(ctx, group.im, f);
         (ctx, Complex { re, im })
     }
 
@@ -1638,11 +1635,10 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
-        let (ctx, neg_im) = E::map_with_context(ctx, group.neg_im, &mut f);
+        let (ctx, re) = E::map_with_context(ctx, group.re, f);
+        let (ctx, neg_im) = E::map_with_context(ctx, group.neg_im, f);
         (ctx, ComplexConj { re, neg_im })
     }
 

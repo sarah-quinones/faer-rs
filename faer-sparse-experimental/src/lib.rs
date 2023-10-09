@@ -7,6 +7,7 @@
 
 use crate::mem::{__get_checked, __get_unchecked};
 pub use __core::*;
+use assert2::assert;
 use bytemuck::{Pod, Zeroable};
 use core::{cell::Cell, iter::zip, ops::Range};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -93,12 +94,16 @@ fn nomem<T>(_: T) -> FaerError {
 
 fn make_raw_req<E: Entity>(size: usize) -> Result<StackReq, SizeOverflow> {
     let req = Ok(StackReq::empty());
-    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), |req, ()| {
-        let req = match (req, StackReq::try_new::<E::Unit>(size)) {
-            (Ok(req), Ok(additional)) => req.try_and(additional),
-            _ => Err(SizeOverflow),
-        };
-        (req, ())
+    let additional = StackReq::try_new::<E::Unit>(size)?;
+    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), &mut {
+        #[inline(always)]
+        |req, ()| {
+            let req = match req {
+                Ok(req) => req.try_and(additional),
+                _ => Err(SizeOverflow),
+            };
+            (req, ())
+        }
     });
     req
 }
@@ -107,15 +112,13 @@ fn make_raw<E: Entity>(
     size: usize,
     stack: PodStack<'_>,
 ) -> (E::Group<dyn_stack::DynArray<'_, E::Unit>>, PodStack<'_>) {
-    let (stack, array) = E::map_with_context(
-        stack,
-        E::from_copy(E::UNIT),
+    let (stack, array) = E::map_with_context(stack, E::from_copy(E::UNIT), &mut {
         #[inline(always)]
         |stack, ()| {
             let (alloc, stack) = stack.make_raw::<E::Unit>(size);
             (stack, alloc)
-        },
-    );
+        }
+    });
     (array, stack)
 }
 
@@ -1019,9 +1022,9 @@ unsafe impl faer_core::Entity for Symbolic {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        mut f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1524,6 +1527,14 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
             let mut new_values = ghost::ArrayGroupMut::new(new_values.rb_mut(), NNZ);
             let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
 
+            let conj_if = |cond: bool, x: E| {
+                if !coe::is_same::<E, E::Real>() && cond {
+                    x.conj()
+                } else {
+                    x
+                }
+            };
+
             match (in_side, out_side) {
                 (Side::Lower, Side::Lower) => {
                     for old_j in N.indices() {
@@ -1545,7 +1556,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read());
+                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
                                 // (2)
                                 new_row_indices[row_pos] = *new_max;
                             }
@@ -1572,7 +1583,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read().conj());
+                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
                                 // (2)
                                 new_row_indices[row_pos] = *new_min;
                             }
@@ -1599,7 +1610,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read().conj());
+                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
                                 // (2)
                                 new_row_indices[row_pos] = *new_max;
                             }
@@ -1626,7 +1637,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
                                 let row_pos =
                                     unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
                                 current_row_pos.incr();
-                                new_values.write(row_pos, val.read());
+                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
                                 // (2)
                                 new_row_indices[row_pos] = *new_min;
                             }
@@ -2280,10 +2291,10 @@ pub(crate) mod qd {
             fn map_with_context<Ctx, T, U>(
                 ctx: Ctx,
                 group: Self::Group<T>,
-                mut f: impl FnMut(Ctx, T) -> (Ctx, U),
+                f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
             ) -> (Ctx, Self::Group<U>) {
-                let (ctx, x0) = f(ctx, group.0);
-                let (ctx, x1) = f(ctx, group.1);
+                let (ctx, x0) = (*f)(ctx, group.0);
+                let (ctx, x1) = (*f)(ctx, group.1);
                 (ctx, Double(x0, x1))
             }
 

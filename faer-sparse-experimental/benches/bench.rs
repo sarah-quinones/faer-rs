@@ -9,7 +9,10 @@ use faer_sparse_experimental::{
 };
 use matrix_market_rs::MtxData;
 use reborrow::*;
-use std::ffi::OsStr;
+use std::{
+    ffi::OsStr,
+    time::{Duration, Instant},
+};
 
 fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, Vec<I>, Vec<I>, Vec<f64>) {
     let I = I::truncate;
@@ -45,6 +48,12 @@ fn load_mtx<I: Index>(data: MtxData<f64>) -> (usize, Vec<I>, Vec<I>, Vec<f64>) {
     (n, col_ptr, row_ind, values)
 }
 
+fn time(mut f: impl FnMut()) -> Duration {
+    let start = Instant::now();
+    f();
+    start.elapsed()
+}
+
 fn bench_ldlt(criterion: &mut Criterion) {
     type I = i64;
     let mut files = Vec::new();
@@ -68,6 +77,7 @@ fn bench_ldlt(criterion: &mut Criterion) {
         let Ok(data) = MtxData::<f64>::from_file("./".to_string() + &*file + ".mtx") else {
             continue;
         };
+
         let (n, col_ptr, row_ind, values) = load_mtx::<I>(data);
         let A = SparseColMatRef::<_, f64>::new(
             SymbolicSparseColMatRef::new_checked(n, n, &col_ptr, None, &row_ind),
@@ -79,18 +89,22 @@ fn bench_ldlt(criterion: &mut Criterion) {
             SymbolicCholeskyRaw::Simplicial(_) => "simplicial",
             SymbolicCholeskyRaw::Supernodal(_) => "supernodal",
         };
+        let timeout = Duration::from_secs(1);
         println!("picked {symbolic_type} method for {file}");
-        {
+
+        for (method, supernodal_flop_ratio_threshold, parallelism) in [
+            ("simplicial-st", f64::INFINITY, Parallelism::None),
+            ("supernodal-st", 0.0, Parallelism::None),
+        ] {
             let symbolic = factorize_symbolic(
                 A.symbolic(),
                 side,
                 CholeskySymbolicParams {
-                    supernodal_flop_ratio_threshold: f64::INFINITY,
+                    supernodal_flop_ratio_threshold,
                     ..Default::default()
                 },
             )
             .unwrap();
-            let parallelism = Parallelism::None;
             let mut mem = GlobalPodBuffer::new(
                 symbolic
                     .factorize_numeric_ldlt_req::<f64>(parallelism)
@@ -99,79 +113,25 @@ fn bench_ldlt(criterion: &mut Criterion) {
             let mut L_values = vec![0.0f64; symbolic.len_values()];
             let mut L_values = SliceGroupMut::new(&mut *L_values);
 
-            criterion.bench_function(&format!("simplicial-st"), |bench| {
-                bench.iter(|| {
-                    symbolic.factorize_numeric_ldlt(
-                        L_values.rb_mut(),
-                        A,
-                        side,
-                        parallelism,
-                        PodStack::new(&mut mem),
-                    );
-                });
-            });
-        }
-        {
-            let symbolic = factorize_symbolic(
-                A.symbolic(),
-                side,
-                CholeskySymbolicParams {
-                    supernodal_flop_ratio_threshold: 0.0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let parallelism = Parallelism::None;
-            let mut mem = GlobalPodBuffer::new(
-                symbolic
-                    .factorize_numeric_ldlt_req::<f64>(parallelism)
-                    .unwrap(),
-            );
-            let mut L_values = vec![0.0f64; symbolic.len_values()];
-            let mut L_values = SliceGroupMut::new(&mut *L_values);
+            let mut f = || {
+                symbolic.factorize_numeric_ldlt(
+                    L_values.rb_mut(),
+                    A,
+                    side,
+                    parallelism,
+                    PodStack::new(&mut mem),
+                );
+            };
 
-            criterion.bench_function(&format!("supernodal-st"), |bench| {
-                bench.iter(|| {
-                    symbolic.factorize_numeric_ldlt(
-                        L_values.rb_mut(),
-                        A,
-                        side,
-                        parallelism,
-                        PodStack::new(&mut mem),
-                    );
+            let dt = time(&mut f);
+            if dt > timeout {
+                let dt = dt.as_secs_f64();
+                println!("{method}           time:   [--- ms {dt:.2} s --- ms]");
+            } else {
+                criterion.bench_function(&format!("{method}"), |bench| {
+                    bench.iter(&mut f);
                 });
-            });
-        }
-        if false {
-            let symbolic = factorize_symbolic(
-                A.symbolic(),
-                side,
-                CholeskySymbolicParams {
-                    supernodal_flop_ratio_threshold: 0.0,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let parallelism = Parallelism::Rayon(0);
-            let mut mem = GlobalPodBuffer::new(
-                symbolic
-                    .factorize_numeric_ldlt_req::<f64>(parallelism)
-                    .unwrap(),
-            );
-            let mut L_values = vec![0.0f64; symbolic.len_values()];
-            let mut L_values = SliceGroupMut::new(&mut *L_values);
-
-            criterion.bench_function(&format!("supernodal-mt"), |bench| {
-                bench.iter(|| {
-                    symbolic.factorize_numeric_ldlt(
-                        L_values.rb_mut(),
-                        A,
-                        side,
-                        parallelism,
-                        PodStack::new(&mut mem),
-                    );
-                });
-            });
+            }
         }
     }
 }
