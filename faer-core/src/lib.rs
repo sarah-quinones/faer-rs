@@ -939,7 +939,7 @@ impl ComplexField for c32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c32s_mul_adde(lhs, rhs, acc)
+        simd.c32s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -949,7 +949,7 @@ impl ComplexField for c32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c32s_conj_mul_adde(lhs, rhs, acc)
+        simd.c32s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -987,11 +987,11 @@ impl ComplexField for c32 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c32_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c32_scalar_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c32_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c32_scalar_conj_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
 }
 impl ComplexField for c64 {
@@ -1251,7 +1251,7 @@ impl ComplexField for c64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c64s_mul_adde(lhs, rhs, acc)
+        simd.c64s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1261,7 +1261,7 @@ impl ComplexField for c64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c64s_conj_mul_adde(lhs, rhs, acc)
+        simd.c64s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1299,11 +1299,11 @@ impl ComplexField for c64 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c64_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c64_scalar_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c64_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c64_scalar_conj_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
 }
 

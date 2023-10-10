@@ -474,8 +474,8 @@ macro_rules! best_in_col_simd {
 
                 let rhs_v = simd.[<$scalar s_splat>](pulp::cast(rhs));
                 for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
-                    let new_dst0 = simd.[<$scalar s_mul_adde>](*lhs0, rhs_v, *dst0);
-                    let new_dst1 = simd.[<$scalar s_mul_adde>](*lhs1, rhs_v, *dst1);
+                    let new_dst0 = simd.[<$scalar s_mul_add_e>](*lhs0, rhs_v, *dst0);
+                    let new_dst1 = simd.[<$scalar s_mul_add_e>](*lhs1, rhs_v, *dst1);
                     *dst0 = new_dst0;
                     *dst1 = new_dst1;
 
@@ -494,7 +494,7 @@ macro_rules! best_in_col_simd {
                     .iter_mut()
                     .zip(lhs_tail2)
                 {
-                    let new_dst = simd.[<$scalar s_mul_adde>](*lhs, rhs_v, *dst);
+                    let new_dst = simd.[<$scalar s_mul_add_e>](*lhs, rhs_v, *dst);
                     *dst = new_dst;
                     (best_value0, best_indices0) =
                         [<best_ $scalar>](simd, best_value0, best_indices0, new_dst, indices0);
@@ -502,7 +502,7 @@ macro_rules! best_in_col_simd {
                 }
 
                 {
-                    let new_dst = simd.[<$scalar s_mul_adde>](
+                    let new_dst = simd.[<$scalar s_mul_add_e>](
                         simd.[<$scalar s_partial_load>](lhs_tail),
                         rhs_v,
                         simd.[<$scalar s_partial_load>](dst_tail),
