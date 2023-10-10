@@ -238,13 +238,15 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
     temp_mat_req::<E>(dim, dim)
 }
 
+// uses an out parameter for tail recursion
 fn cholesky_in_place_impl<E: ComplexField>(
+    count: &mut usize,
     matrix: MatMut<'_, E>,
     regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: LdltDiagParams,
-) -> usize {
+) {
     // right looking cholesky
 
     debug_assert!(matrix.nrows() == matrix.ncols());
@@ -253,13 +255,14 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)
+        *count += cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)
     } else {
         let block_size = Ord::min(n / 2, 128);
         let rem = n - block_size;
         let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
 
-        let count0 = cholesky_in_place_impl(
+        cholesky_in_place_impl(
+            count,
             l00.rb_mut(),
             regularization,
             parallelism,
@@ -308,20 +311,20 @@ fn cholesky_in_place_impl<E: ComplexField>(
             );
         }
 
-        count0
-            + cholesky_in_place_impl(
-                a11,
-                LdltRegularization {
-                    dynamic_regularization_signs: regularization
-                        .dynamic_regularization_signs
-                        .map(|signs| &signs[block_size..]),
-                    dynamic_regularization_delta: regularization.dynamic_regularization_delta,
-                    dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
-                },
-                parallelism,
-                stack,
-                params,
-            )
+        cholesky_in_place_impl(
+            count,
+            a11,
+            LdltRegularization {
+                dynamic_regularization_signs: regularization
+                    .dynamic_regularization_signs
+                    .map(|signs| &signs[block_size..]),
+                dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+            },
+            parallelism,
+            stack,
+            params,
+        )
     }
 }
 
@@ -382,5 +385,14 @@ pub fn raw_cholesky_in_place<E: ComplexField>(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    cholesky_in_place_impl(matrix, regularization, parallelism, stack, params)
+    let mut count = 0;
+    cholesky_in_place_impl(
+        &mut count,
+        matrix,
+        regularization,
+        parallelism,
+        stack,
+        params,
+    );
+    count
 }

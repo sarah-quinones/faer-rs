@@ -180,8 +180,8 @@ pub fn cholesky(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default()
-        .warm_up_time(Duration::from_secs(1))
-        .measurement_time(Duration::from_secs(1))
+        .warm_up_time(Duration::from_secs(3))
+        .measurement_time(Duration::from_secs(5))
         .sample_size(10);
     targets = cholesky
 );
