@@ -62,6 +62,15 @@ pub enum FaerError {
     OutOfMemory,
 }
 
+impl core::fmt::Display for FaerError {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        core::fmt::Debug::fmt(self, f)
+    }
+}
+
+impl std::error::Error for FaerError {}
+
 #[inline]
 #[track_caller]
 fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerError> {

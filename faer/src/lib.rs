@@ -2491,8 +2491,8 @@ pub trait IntoNdarray {
     fn into_ndarray(self) -> Self::Ndarray;
 }
 
-#[cfg(feature = "nalgebra")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nalgebra")))]
+#[cfg(feature = "ndarray")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ndarray")))]
 const _: () = {
     use faer_core::SimpleEntity;
     use ndarray::{ArrayView, ArrayViewMut, IntoDimension, Ix2, ShapeBuilder};
