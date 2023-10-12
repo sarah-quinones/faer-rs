@@ -11,11 +11,12 @@ use crate::{
 use assert2::assert;
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
-use faer_cholesky::ldlt_diagonal::compute::LdltRegularization;
 use faer_core::{
     temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
+
+pub use faer_cholesky::ldlt_diagonal::compute::LdltRegularization;
 
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
