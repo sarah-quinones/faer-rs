@@ -5,6 +5,7 @@ use crate::{
     mul::triangular::{self, BlockStructure},
     solve, ComplexField, MatMut, MatRef, Parallelism,
 };
+#[cfg(feature = "std")]
 use assert2::assert;
 use reborrow::*;
 

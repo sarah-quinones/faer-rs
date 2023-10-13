@@ -37,6 +37,7 @@ use crate::{
     solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
     Parallelism,
 };
+#[cfg(feature = "std")]
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::SimdCtx;

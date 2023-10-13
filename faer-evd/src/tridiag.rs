@@ -1,4 +1,5 @@
 use crate::tridiag_real_evd::norm2;
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

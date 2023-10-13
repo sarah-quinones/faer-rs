@@ -2,6 +2,7 @@
 #![allow(clippy::len_without_is_empty)]
 
 use crate::{temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef};
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;

@@ -12,6 +12,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
+#[cfg(feature = "std")]
 use assert2::assert;
 use coe::Coerce;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

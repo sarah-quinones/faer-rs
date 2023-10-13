@@ -3,6 +3,7 @@ use crate::{
     ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
     llt::compute::{cholesky_in_place, cholesky_in_place_req},
 };
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::{iter::zip, slice};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

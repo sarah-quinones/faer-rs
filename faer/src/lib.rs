@@ -157,7 +157,6 @@ pub mod prelude {
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 }
 
-pub use dbgf::dbgf;
 pub use faer_core::{
     complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef, Scale,
 };
@@ -173,6 +172,7 @@ pub enum Side {
 /// Matrix solvers and decompositions.
 pub mod solvers {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
     use faer_core::{permutation::PermutationRef, zipped};
 

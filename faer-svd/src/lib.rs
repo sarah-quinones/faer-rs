@@ -11,6 +11,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
+#[cfg(feature = "std")]
 use assert2::assert;
 use bidiag_real_svd::bidiag_real_svd_req;
 use coe::Coerce;

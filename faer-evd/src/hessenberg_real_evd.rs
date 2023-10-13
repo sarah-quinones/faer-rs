@@ -10,6 +10,7 @@ use crate::{
         sqr_norm,
     },
 };
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use dyn_stack::PodStack;
 use faer_core::{
