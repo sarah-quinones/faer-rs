@@ -608,6 +608,8 @@ impl<E: Entity> AsMatMut<E> for &'_ mut Mat<E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -623,6 +625,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
@@ -630,6 +634,8 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for MatMut<'_, E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -645,6 +651,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for MatMut<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
@@ -652,6 +660,8 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -667,6 +677,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {

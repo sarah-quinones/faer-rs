@@ -22,7 +22,7 @@ reborrow = { workspace = true }
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
 
-matrixcompare = "0.3"
+matrixcompare = { version = "0.3", optional = true }
 
 nalgebra = { version = "0.32", optional = true, default-features = false }
 ndarray = { version = "0.15", optional = true, default-features = false }
@@ -40,6 +40,7 @@ std = [
   "faer-svd/std",
   "faer-evd/std",
   "assert2",
+  "matrixcompare",
 ]
 rayon = [
   "std",
@@ -59,6 +60,7 @@ nightly = [
   "faer-evd/nightly",
   "pulp/nightly",
 ]
+matrixcompare = ["dep:matrixcompare"]
 nalgebra = ["dep:nalgebra"]
 ndarray = ["dep:ndarray"]
 polars = ["dep:polars"]
