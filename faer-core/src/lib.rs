@@ -4984,7 +4984,16 @@ pub enum Parallelism {
 /// n >= 2: Rayon(n - 2)
 ///
 /// default: Rayon(0)
-static GLOBAL_PARALLELISM: AtomicUsize = AtomicUsize::new(2);
+static GLOBAL_PARALLELISM: AtomicUsize = {
+    #[cfg(feature = "rayon")]
+    {
+        AtomicUsize::new(2)
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        AtomicUsize::new(1)
+    }
+};
 
 /// Causes functions that access global parallelism settings to panic.
 pub fn disable_global_parallelism() {
