@@ -1,14 +1,14 @@
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
 use core::slice;
 use dyn_stack::{PodStack, StackReq};
 use faer_core::{
-    c32, c64, for_each_raw,
+    c32, c64,
     mul::matmul,
-    par_split_indices, parallelism_degree,
     permutation::{swap_cols, swap_rows, PermutationMut},
-    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, Ptr, RealField, SimdCtx,
+    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
 };
 use paste::paste;
 use pulp::{cast_lossy, Simd};
@@ -1104,7 +1104,10 @@ fn lu_in_place_unblocked<E: ComplexField>(
                     top_right.row(k).rb(),
                 );
             }
+            #[cfg(feature = "rayon")]
             _ => {
+                use faer_core::{for_each_raw, par_split_indices, parallelism_degree, Ptr};
+
                 let n_threads = parallelism_degree(parallelism);
 
                 let mut biggest_vec = vec![(0_usize, 0_usize, E::Real::zero()); n_threads];

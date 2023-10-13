@@ -2,6 +2,7 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{solve, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism};
 use reborrow::*;
 
+#[cfg(feature = "std")]
 use assert2::assert;
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a

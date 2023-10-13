@@ -141,6 +141,7 @@
 //! [`Faer::complex_eigenvalues`], with the same conditions described above.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_cholesky::llt::CholeskyError;
@@ -157,10 +158,11 @@ pub mod prelude {
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 }
 
-pub use dbgf::dbgf;
 pub use faer_core::{
     complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef, Scale,
 };
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use matrixcompare::assert_matrix_eq;
 
 /// Specifies whether the triangular lower or upper part of a matrix should be accessed.
@@ -170,9 +172,13 @@ pub enum Side {
     Upper,
 }
 
+extern crate alloc;
+use alloc::{vec, vec::Vec};
+
 /// Matrix solvers and decompositions.
 pub mod solvers {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
     use faer_core::{permutation::PermutationRef, zipped};
 

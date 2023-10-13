@@ -4,6 +4,7 @@ use crate::{
     c32, c64, simd::*, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
     Parallelism, SimdGroup,
 };
+#[cfg(feature = "std")]
 use assert2::assert;
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use faer_entity::SimdCtx;
@@ -13,6 +14,7 @@ use reborrow::*;
 #[doc(hidden)]
 pub mod inner_prod {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
 
     #[inline(always)]
@@ -392,6 +394,7 @@ pub mod inner_prod {
 
 mod matvec_rowmajor {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
 
     fn matvec_with_conj_impl<E: ComplexField>(
@@ -453,6 +456,7 @@ mod matvec_rowmajor {
 
 mod matvec_colmajor {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
 
     pub struct NoConjImpl<'a, E: ComplexField> {
@@ -686,6 +690,7 @@ pub mod matvec {
 #[doc(hidden)]
 pub mod outer_prod {
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
 
     struct NoConjImpl<'a, E: ComplexField> {
@@ -1676,7 +1681,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     if use_gemm {
         let gemm_parallelism = match parallelism {
             Parallelism::None => gemm::Parallelism::None,
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(0) => gemm::Parallelism::Rayon(rayon::current_num_threads()),
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(n_threads) => gemm::Parallelism::Rayon(n_threads),
         };
         if coe::is_same::<f32, E>() {
@@ -2060,6 +2067,7 @@ macro_rules! stack_mat_16x16_begin {
 pub mod triangular {
     use super::*;
     use crate::{join_raw, zip::Diag};
+    #[cfg(feature = "std")]
     use assert2::{assert, debug_assert};
 
     #[repr(u8)]
@@ -3393,6 +3401,7 @@ mod tests {
         *,
     };
     use crate::Mat;
+    #[cfg(feature = "std")]
     use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use num_complex::Complex32;

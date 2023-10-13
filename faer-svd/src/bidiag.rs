@@ -1,3 +1,4 @@
+#[cfg(feature = "std")]
 use assert2::assert;
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

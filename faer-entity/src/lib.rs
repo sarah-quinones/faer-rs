@@ -1,4 +1,5 @@
 #![allow(clippy::type_complexity)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use bytemuck::Pod;
 use core::{fmt::Debug, mem::ManuallyDrop};
@@ -317,17 +318,6 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     fn sub(self, rhs: Self) -> Self;
     /// Returns `self * rhs`.
     fn mul(self, rhs: Self) -> Self;
-
-    // /// Returns an estimate of `lhs * rhs + acc`.
-    // #[inline(always)]
-    // fn mul_adde(lhs: Self, rhs: Self, acc: Self) -> Self {
-    //     acc.add(lhs.mul(rhs))
-    // }
-    // /// Returns an estimate of `conjugate(lhs) * rhs + acc`.
-    // #[inline(always)]
-    // fn conj_mul_adde(lhs: Self, rhs: Self, acc: Self) -> Self {
-    //     acc.add(lhs.conj().mul(rhs))
-    // }
 
     /// Returns `-self`.
     fn neg(self) -> Self;

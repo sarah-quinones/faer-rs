@@ -1,4 +1,5 @@
 use crate::tridiag_real_evd::norm2;
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -872,8 +873,9 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             let ncols = (n - k - 1) as f64;
             let n_threads = parallelism_degree(parallelism) as f64;
 
-            assert!(ncols < 2.0f64.powi(50)); // to check that integers can be
-                                              // represented exactly as floats
+            const TWO_POW_50: f64 = 1125899906842624.0;
+            assert!(ncols < TWO_POW_50); // to check that integers can be
+                                         // represented exactly as floats
 
             let idx_to_col_start = |idx: usize| {
                 let idx_as_percent = idx as f64 / n_threads;

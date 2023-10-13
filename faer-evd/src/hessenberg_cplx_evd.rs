@@ -21,28 +21,6 @@ use faer_core::{
 };
 use reborrow::*;
 
-#[allow(dead_code)]
-fn dump_sparsity<E: ComplexField>(a: MatRef<'_, E>) {
-    let m = a.nrows();
-    let n = a.ncols();
-
-    println!();
-    for i in 0..m {
-        for j in 0..n {
-            print!(
-                " {}",
-                if a.read(i, j).abs() < E::Real::from_f64(1e-10) {
-                    " "
-                } else {
-                    "x"
-                }
-            );
-        }
-        println!();
-    }
-    println!();
-}
-
 fn max<T: PartialOrd>(a: T, b: T) -> T {
     if a > b {
         a
@@ -677,7 +655,14 @@ pub fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize
     } else if n < 150 {
         10
     } else if n < 590 {
-        (n as f64 / (n as f64).log2()) as usize
+        #[cfg(feature = "std")]
+        {
+            (n as f64 / (n as f64).log2()) as usize
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::log2(n as f64 / (n as f64)) as usize
+        }
     } else if n < 3000 {
         96
     } else if n < 6000 {

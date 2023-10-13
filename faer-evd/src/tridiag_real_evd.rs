@@ -1,3 +1,4 @@
+#[cfg(feature = "std")]
 use assert2::debug_assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{

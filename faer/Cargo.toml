@@ -10,21 +10,25 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.12.0", path = "../faer-core" }
-faer-cholesky = { version = "0.12.0", path = "../faer-cholesky" }
-faer-lu = { version = "0.12.0", path = "../faer-lu" }
-faer-qr = { version = "0.12.0", path = "../faer-qr" }
-faer-svd = { version = "0.12.0", path = "../faer-svd" }
-faer-evd = { version = "0.12.0", path = "../faer-evd" }
-dyn-stack.workspace = true
-assert2.workspace = true
-reborrow.workspace = true
-coe-rs.workspace = true
-matrixcompare = "0.3"
-dbgf = "0.1.0"
+faer-core = { version = "0.12.0", path = "../faer-core", default-features = false }
+faer-cholesky = { version = "0.12.0", path = "../faer-cholesky", default-features = false }
+faer-lu = { version = "0.12.0", path = "../faer-lu", default-features = false }
+faer-qr = { version = "0.12.0", path = "../faer-qr", default-features = false }
+faer-svd = { version = "0.12.0", path = "../faer-svd", default-features = false }
+faer-evd = { version = "0.12.0", path = "../faer-evd", default-features = false }
+
+coe-rs = { workspace = true }
+reborrow = { workspace = true }
+pulp = { workspace = true, default-features = false }
+dyn-stack = { workspace = true, default-features = false }
+
+matrixcompare = { version = "0.3", optional = true }
+
 nalgebra = { version = "0.32", optional = true, default-features = false }
 ndarray = { version = "0.15", optional = true, default-features = false }
 polars = { version = "0.33", optional = true, features = ["lazy"] }
+
+assert2 = { workspace = true, optional = true }
 
 [features]
 default = ["std"]
@@ -35,6 +39,17 @@ std = [
   "faer-qr/std",
   "faer-svd/std",
   "faer-evd/std",
+  "assert2",
+  "matrixcompare",
+]
+rayon = [
+  "std",
+  "faer-core/rayon",
+  "faer-cholesky/rayon",
+  "faer-lu/rayon",
+  "faer-qr/rayon",
+  "faer-svd/rayon",
+  "faer-evd/rayon",
 ]
 nightly = [
   "faer-core/nightly",
@@ -43,7 +58,9 @@ nightly = [
   "faer-qr/nightly",
   "faer-svd/nightly",
   "faer-evd/nightly",
+  "pulp/nightly",
 ]
+matrixcompare = ["dep:matrixcompare"]
 nalgebra = ["dep:nalgebra"]
 ndarray = ["dep:ndarray"]
 polars = ["dep:polars"]

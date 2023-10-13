@@ -1,6 +1,7 @@
 //! Triangular solve module.
 
 use crate::{join_raw, ComplexField, Conj, Conjugate, MatMut, MatRef, Parallelism};
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use faer_entity::SimdCtx;
 use reborrow::*;

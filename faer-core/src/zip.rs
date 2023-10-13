@@ -1,6 +1,7 @@
 //! Matrix zipping module.
 
 use crate::{seal::Seal, Entity, MatMut, MatRef};
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::mem::MaybeUninit;
 use reborrow::*;

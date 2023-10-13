@@ -12,15 +12,17 @@ keywords = ["math", "matrix", "linear-algebra"]
 [dependencies]
 faer-core = { version = "0.12.0", default-features = false, path = "../faer-core" }
 faer-qr = { version = "0.12.0", default-features = false, path = "../faer-qr" }
-pulp = { workspace = true, default-features = false }
-reborrow = { workspace = true }
-dyn-stack = { workspace = true }
-assert2 = { workspace = true }
-num-traits = { workspace = true }
-num-complex = { workspace = true }
-rayon = { workspace = true }
-bytemuck = { workspace = true }
+
 coe-rs = { workspace = true }
+reborrow = { workspace = true }
+pulp = { workspace = true, default-features = false }
+dyn-stack = { workspace = true, default-features = false }
+
+num-traits = { workspace = true, default-features = false }
+num-complex = { workspace = true, default-features = false }
+bytemuck = { workspace = true }
+
+assert2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -30,9 +32,24 @@ assert_approx_eq = "1.1.0"
 dbgf = "0.1.0"
 
 [features]
-default = ["std"]
-std = ["faer-core/std", "faer-qr/std", "pulp/std"]
-nightly = ["faer-core/nightly", "faer-qr/nightly", "pulp/nightly"]
+default = ["std", "rayon"]
+std = [
+  "faer-core/std",
+  "faer-qr/std",
+  "pulp/std",
+  "assert2",
+]
+rayon = [
+  "std",
+  "faer-core/rayon",
+  "faer-qr/rayon",
+]
+assert2 = ["dep:assert2"]
+nightly = [
+  "faer-core/nightly",
+  "faer-qr/nightly",
+  "pulp/nightly",
+]
 
 [[bench]]
 name = "bench"

@@ -76,10 +76,13 @@
 
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use faer_entity::NoSimd;
 pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimdCtx, SimpleEntity};
 
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use coe::Coerce;
 use core::{
@@ -484,7 +487,7 @@ unsafe impl bytemuck::Pod for c64 {}
 unsafe impl bytemuck::Pod for c64conj {}
 
 impl Debug for c32 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" + ")?;
         self.im.fmt(f)?;
@@ -492,7 +495,7 @@ impl Debug for c32 {
     }
 }
 impl Debug for c64 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" + ")?;
         self.im.fmt(f)?;
@@ -500,7 +503,7 @@ impl Debug for c64 {
     }
 }
 impl Debug for c32conj {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" - ")?;
         self.neg_im.fmt(f)?;
@@ -508,7 +511,7 @@ impl Debug for c32conj {
     }
 }
 impl Debug for c64conj {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" - ")?;
         self.neg_im.fmt(f)?;
@@ -605,6 +608,8 @@ impl<E: Entity> AsMatMut<E> for &'_ mut Mat<E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -620,6 +625,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
@@ -627,6 +634,8 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for MatMut<'_, E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -642,6 +651,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for MatMut<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
@@ -649,6 +660,8 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
     #[inline]
     fn rows(&self) -> usize {
@@ -664,6 +677,8 @@ impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
     }
 }
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
@@ -759,7 +774,7 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         let this: num_complex::Complex32 = self.into();
-        num_complex::ComplexFloat::sqrt(this).into()
+        ComplexField::sqrt(this).into()
     }
 
     #[inline(always)]
@@ -1071,7 +1086,7 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         let this: num_complex::Complex64 = self.into();
-        num_complex::ComplexFloat::sqrt(this).into()
+        ComplexField::sqrt(this).into()
     }
 
     #[inline(always)]
@@ -2152,7 +2167,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`std::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
+    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
     /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
     /// accessible by the matrix must be initialized at some point before they are read, or
     /// references to them are formed.
@@ -2819,6 +2834,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ///
     /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// columns.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn into_par_col_chunks(
@@ -2840,6 +2857,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ///
     /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// rows.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn into_par_row_chunks(
@@ -2993,7 +3012,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`std::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
+    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
     /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
     /// accessible by the matrix must be initialized at some point before they are read, or
     /// references to them are formed.
@@ -3629,6 +3648,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ///
     /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// columns.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn into_par_col_chunks(
@@ -3646,6 +3667,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ///
     /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// rows.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn into_par_row_chunks(
@@ -3818,13 +3841,51 @@ pub fn is_vectorizable<T: 'static>() -> bool {
         || coe::is_same::<c64conj, T>()
 }
 
+// https://rust-lang.github.io/hashbrown/src/crossbeam_utils/cache_padded.rs.html#128-130
+const CACHELINE_ALIGN: usize = {
+    #[cfg(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "powerpc64",
+    ))]
+    {
+        128
+    }
+    #[cfg(any(
+        target_arch = "arm",
+        target_arch = "mips",
+        target_arch = "mips64",
+        target_arch = "riscv64",
+    ))]
+    {
+        32
+    }
+    #[cfg(target_arch = "s390x")]
+    {
+        256
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "powerpc64",
+        target_arch = "arm",
+        target_arch = "mips",
+        target_arch = "mips64",
+        target_arch = "riscv64",
+        target_arch = "s390x",
+    )))]
+    {
+        64
+    }
+};
+
 #[doc(hidden)]
 #[inline(always)]
 pub fn align_for<T: 'static>() -> usize {
     if is_vectorizable::<T>() {
         Ord::max(
             core::mem::size_of::<T>(),
-            Ord::max(core::mem::align_of::<T>(), aligned_vec::CACHELINE_ALIGN),
+            Ord::max(core::mem::align_of::<T>(), CACHELINE_ALIGN),
         )
     } else {
         core::mem::align_of::<T>()
@@ -4741,6 +4802,8 @@ impl<E: Entity> Mat<E> {
     ///
     /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// columns.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_col_chunks(
@@ -4755,6 +4818,8 @@ impl<E: Entity> Mat<E> {
     ///
     /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// columns.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_col_chunks_mut(
@@ -4797,6 +4862,8 @@ impl<E: Entity> Mat<E> {
     ///
     /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// rows.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_row_chunks(
@@ -4811,6 +4878,8 @@ impl<E: Entity> Mat<E> {
     ///
     /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
     /// rows.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_row_chunks_mut(
@@ -4905,6 +4974,8 @@ pub enum Parallelism {
     /// use, but there is no way to guarantee how many or which threads will be used.
     ///
     /// A value of `0` treated as equivalent to `rayon::current_num_threads()`.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     Rayon(usize),
 }
 
@@ -4913,7 +4984,16 @@ pub enum Parallelism {
 /// n >= 2: Rayon(n - 2)
 ///
 /// default: Rayon(0)
-static GLOBAL_PARALLELISM: AtomicUsize = AtomicUsize::new(2);
+static GLOBAL_PARALLELISM: AtomicUsize = {
+    #[cfg(feature = "rayon")]
+    {
+        AtomicUsize::new(2)
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        AtomicUsize::new(1)
+    }
+};
 
 /// Causes functions that access global parallelism settings to panic.
 pub fn disable_global_parallelism() {
@@ -4924,6 +5004,7 @@ pub fn disable_global_parallelism() {
 pub fn set_global_parallelism(parallelism: Parallelism) {
     let value = match parallelism {
         Parallelism::None => 1,
+        #[cfg(feature = "rayon")]
         Parallelism::Rayon(n) => n.saturating_add(2),
     };
     GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
@@ -4939,7 +5020,10 @@ pub fn get_global_parallelism() -> Parallelism {
     match value {
         0 => panic!("Global parallelism is disabled."),
         1 => Parallelism::None,
+        #[cfg(feature = "rayon")]
         n => Parallelism::Rayon(n - 2),
+        #[cfg(not(feature = "rayon"))]
+        _ => unreachable!(),
     }
 }
 
@@ -4957,6 +5041,7 @@ pub fn join_raw(
     ) {
         match parallelism {
             Parallelism::None => (op_a(parallelism), op_b(parallelism)),
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(n_threads) => {
                 if n_threads == 1 {
                     (op_a(Parallelism::None), op_b(Parallelism::None))
@@ -4991,6 +5076,7 @@ pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelis
     ) {
         match parallelism {
             Parallelism::None => (0..n_tasks).for_each(op),
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(n_threads) => {
                 let n_threads = if n_threads > 0 {
                     n_threads
@@ -5027,7 +5113,9 @@ impl<T> Clone for Ptr<T> {
 pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     match parallelism {
         Parallelism::None => 1,
+        #[cfg(feature = "rayon")]
         Parallelism::Rayon(0) => rayon::current_num_threads(),
+        #[cfg(feature = "rayon")]
         Parallelism::Rayon(n_threads) => n_threads,
     }
 }
@@ -5362,6 +5450,7 @@ mod tests {
     }
 
     use super::*;
+    #[cfg(feature = "std")]
     use assert2::assert;
 
     #[test]

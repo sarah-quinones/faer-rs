@@ -1,4 +1,5 @@
-use assert2::assert as fancy_assert;
+#[cfg(feature = "std")]
+use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,
@@ -29,10 +30,10 @@ pub fn invert<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    fancy_assert!(qr_factors.nrows() == qr_factors.ncols());
-    fancy_assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
-    fancy_assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
-    fancy_assert!(householder_factor.nrows() > 0);
+    assert!(qr_factors.nrows() == qr_factors.ncols());
+    assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
+    assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
+    assert!(householder_factor.nrows() > 0);
 
     let mut dst = dst;
     let mut stack = stack;
@@ -124,6 +125,7 @@ pub fn invert_in_place_req<E: Entity>(
 mod tests {
     use super::*;
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c64, mul::matmul, Mat};
     use rand::prelude::*;

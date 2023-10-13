@@ -13,6 +13,7 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::jacobi::{jacobi_svd, Skip};
+#[cfg(feature = "std")]
 use assert2::assert;
 use coe::Coerce;
 use core::{iter::zip, mem::swap};
@@ -1593,7 +1594,7 @@ fn bidiag_svd_impl<E: RealField>(
         }
     }
 
-    let v_is_none = v.is_none();
+    let _v_is_none = v.is_none();
 
     let mut update_v = |parallelism, stack: PodStack<'_>| {
         let (mut combined_v, _) = temp_mat_uninit::<E>(n, allocate_vm * n, stack);
@@ -1726,7 +1727,8 @@ fn bidiag_svd_impl<E: RealField>(
         }
     } else {
         match parallelism {
-            Parallelism::Rayon(_) if !v_is_none => {
+            #[cfg(feature = "rayon")]
+            Parallelism::Rayon(_) if !_v_is_none => {
                 let req_v = faer_core::temp_mat_req::<E>(n, n).unwrap();
                 let (mut mem_v, stack_u) =
                     stack.make_aligned_raw::<u8>(req_v.size_bytes(), req_v.align_bytes());

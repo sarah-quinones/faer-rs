@@ -1,14 +1,14 @@
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    c32, c64, for_each_raw,
+    c32, c64,
     householder::upgrade_householder_factor,
     mul::inner_prod::{self, inner_prod_with_conj_arch},
-    par_split_indices, parallelism_degree,
     permutation::{swap_cols, PermutationMut},
     simd, transmute_unchecked, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
-    Ptr, SimdCtx,
+    SimdCtx,
 };
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
@@ -460,7 +460,9 @@ fn qr_in_place_colmajor<E: ComplexField>(
                     &mut biggest_col_idx,
                 );
             }
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(_) => {
+                use faer_core::{for_each_raw, par_split_indices, parallelism_degree, Ptr};
                 let n_threads = parallelism_degree(parallelism);
 
                 let mut biggest_col = vec![(E::Real::zero(), 0_usize); n_threads];
@@ -758,6 +760,7 @@ pub fn qr_in_place<'out, E: ComplexField>(
 
         match parallelism {
             Parallelism::None => (0..n_blocks).for_each(func),
+            #[cfg(feature = "rayon")]
             Parallelism::Rayon(_) => {
                 use rayon::prelude::*;
                 (0..n_blocks).into_par_iter().for_each(func)

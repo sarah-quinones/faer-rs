@@ -1,4 +1,5 @@
 use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
+#[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
 use core::{iter::zip, slice};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
