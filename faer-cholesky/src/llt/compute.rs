@@ -28,9 +28,15 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
     let mut idx = 0;
     let arch = E::Simd::default();
-    let eps = regularization.dynamic_regularization_epsilon.real().abs();
-    let delta = regularization.dynamic_regularization_delta.real().abs();
-    let has_eps = delta > E::Real::zero();
+    let eps = regularization
+        .dynamic_regularization_epsilon
+        .faer_real()
+        .faer_abs();
+    let delta = regularization
+        .dynamic_regularization_delta
+        .faer_real()
+        .faer_abs();
+    let has_eps = delta > E::Real::faer_zero();
     let mut dynamic_regularization_count = 0usize;
     loop {
         let block_size = 1;
@@ -60,20 +66,24 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // L20×L00^H  L20×L10^H + L21×L11^H  L20×L20^H + L21×L21^H + L22×L22^H
 
         // A11 -= L10 × L10^H
-        let mut dot = E::Real::zero();
+        let mut dot = E::Real::faer_zero();
         for j in 0..idx {
-            dot = dot.add(l10.read(0, j).abs2());
+            dot = dot.faer_add(l10.read(0, j).faer_abs2());
         }
-        a11.write(0, 0, E::from_real(a11.read(0, 0).real().sub(dot)));
+        a11.write(
+            0,
+            0,
+            E::faer_from_real(a11.read(0, 0).faer_real().faer_sub(dot)),
+        );
 
-        let mut real = a11.read(0, 0).real();
-        if has_eps && real >= E::Real::zero() && real <= delta {
+        let mut real = a11.read(0, 0).faer_real();
+        if has_eps && real >= E::Real::faer_zero() && real <= delta {
             real = eps;
             dynamic_regularization_count += 1;
         }
 
-        if real > E::Real::zero() {
-            a11.write(0, 0, E::from_real(real.sqrt()));
+        if real > E::Real::faer_zero() {
+            a11.write(0, 0, E::faer_from_real(real.faer_sqrt()));
         } else {
             return Err(CholeskyError);
         };
@@ -94,10 +104,11 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         } else {
             for j in 0..idx {
                 let l20_col = l20.col(j);
-                let l10_conj = l10.read(0, j).conj();
+                let l10_conj = l10.read(0, j).faer_conj();
 
-                zipped!(a21.rb_mut(), l20_col)
-                    .for_each(|mut dst, src| dst.write(dst.read().sub(src.read().mul(l10_conj))));
+                zipped!(a21.rb_mut(), l20_col).for_each(|mut dst, src| {
+                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
+                });
             }
         }
 
@@ -106,8 +117,8 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         //
         // conj(L11) L21^T = A21^T
 
-        let r = l11.real().inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(r)));
+        let r = l11.faer_real().faer_inv();
+        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(r)));
 
         idx += block_size;
     }
@@ -127,8 +138,8 @@ pub struct LltRegularization<E: ComplexField> {
 impl<E: ComplexField> Default for LltRegularization<E> {
     fn default() -> Self {
         Self {
-            dynamic_regularization_delta: E::Real::zero(),
-            dynamic_regularization_epsilon: E::Real::zero(),
+            dynamic_regularization_delta: E::Real::faer_zero(),
+            dynamic_regularization_epsilon: E::Real::faer_zero(),
         }
     }
 }
@@ -193,8 +204,8 @@ fn cholesky_in_place_impl<E: ComplexField>(
             BlockStructure::Rectangular,
             a10.rb().adjoint(),
             BlockStructure::Rectangular,
-            Some(E::one()),
-            E::one().neg(),
+            Some(E::faer_one()),
+            E::faer_one().faer_neg(),
             parallelism,
         );
 

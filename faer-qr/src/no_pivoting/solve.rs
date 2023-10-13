@@ -267,7 +267,7 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::faer_zero());
         qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
@@ -303,13 +303,16 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::None,
             );
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
+                    assert!(
+                        (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                            < epsilon
+                    )
                 }
             }
         }
@@ -327,7 +330,7 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::faer_zero());
         qr_in_place(
             qr.as_mut(),
             householder.as_mut(),
@@ -363,13 +366,16 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::None,
             );
 
             for j in 0..k {
                 for i in 0..n {
-                    assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
+                    assert!(
+                        (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                            < epsilon
+                    )
                 }
             }
         }

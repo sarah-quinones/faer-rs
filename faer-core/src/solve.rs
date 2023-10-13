@@ -13,7 +13,7 @@ fn identity<E: Clone>(x: E) -> E {
 
 #[inline(always)]
 fn conj<E: ComplexField>(x: E) -> E {
-    x.conj()
+    x.faer_conj()
 }
 
 #[inline(always)]
@@ -26,20 +26,20 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
     match n {
         0 | 1 => (),
         2 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_neg();
 
             let [_, x0, _, x1] = rhs.split_at(1, 0);
             let x0 = x0.subrows(0, 1);
             let x1 = x1.subrows(0, 1);
 
             x0.cwise().zip_unchecked(x1).for_each(|x0, mut x1| {
-                x1.write(x1.read().add(nl10_div_l11.mul(x0.read())));
+                x1.write(x1.read().faer_add(nl10_div_l11.faer_mul(x0.read())));
             });
         }
         3 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
-            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).neg();
-            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).faer_neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).faer_neg();
 
             let [_, x0, _, x1_2] = rhs.split_at(1, 0);
             let [_, x1, _, x2] = x1_2.split_at(1, 0);
@@ -54,20 +54,22 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
                     let y0 = x0.read();
                     let mut y1 = x1.read();
                     let mut y2 = x2.read();
-                    y1 = y1.add(nl10_div_l11.mul(y0));
-                    y2 = y2.add(nl20_div_l22.mul(y0)).add(nl21_div_l22.mul(y1));
+                    y1 = y1.faer_add(nl10_div_l11.faer_mul(y0));
+                    y2 = y2
+                        .faer_add(nl20_div_l22.faer_mul(y0))
+                        .faer_add(nl21_div_l22.faer_mul(y1));
                     x0.write(y0);
                     x1.write(y1);
                     x2.write(y2);
                 });
         }
         4 => {
-            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).neg();
-            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).neg();
-            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).neg();
-            let nl30_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 0)).neg();
-            let nl31_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 1)).neg();
-            let nl32_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 2)).neg();
+            let nl10_div_l11 = maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_neg();
+            let nl20_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 0)).faer_neg();
+            let nl21_div_l22 = maybe_conj_lhs(tril.read_unchecked(2, 1)).faer_neg();
+            let nl30_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 0)).faer_neg();
+            let nl31_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 1)).faer_neg();
+            let nl32_div_l33 = maybe_conj_lhs(tril.read_unchecked(3, 2)).faer_neg();
 
             let [_, x0, _, x1_2_3] = rhs.split_at(1, 0);
             let [_, x1, _, x2_3] = x1_2_3.split_at(1, 0);
@@ -86,10 +88,17 @@ unsafe fn solve_unit_lower_triangular_in_place_base_case_generic_unchecked<E: Co
                     let mut y1 = x1.read();
                     let mut y2 = x2.read();
                     let mut y3 = x3.read();
-                    y1 = y1.add(nl10_div_l11.mul(y0));
-                    y2 = y2.add(nl20_div_l22.mul(y0).add(nl21_div_l22.mul(y1)));
-                    y3 = (y3.add(nl30_div_l33.mul(y0)))
-                        .add(nl31_div_l33.mul(y1).add(nl32_div_l33.mul(y2)));
+                    y1 = y1.faer_add(nl10_div_l11.faer_mul(y0));
+                    y2 = y2.faer_add(
+                        nl20_div_l22
+                            .faer_mul(y0)
+                            .faer_add(nl21_div_l22.faer_mul(y1)),
+                    );
+                    y3 = (y3.faer_add(nl30_div_l33.faer_mul(y0))).faer_add(
+                        nl31_div_l33
+                            .faer_mul(y1)
+                            .faer_add(nl32_div_l33.faer_mul(y2)),
+                    );
                     x0.write(y0);
                     x1.write(y1);
                     x2.write(y2);
@@ -110,31 +119,40 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
     match n {
         0 => (),
         1 => {
-            let inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
+            let inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
             let x0 = rhs.subrows(0, 1);
-            x0.cwise().for_each(|mut x0| x0.write(x0.read().mul(inv)));
+            x0.cwise()
+                .for_each(|mut x0| x0.write(x0.read().faer_mul(inv)));
         }
         2 => {
-            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(l11_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).faer_inv();
+            let nl10_div_l11 =
+                (maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_mul(l11_inv)).faer_neg();
 
             let [_, x0, _, x1] = rhs.split_at(1, 0);
             let x0 = x0.subrows(0, 1);
             let x1 = x1.subrows(0, 1);
 
             x0.cwise().zip_unchecked(x1).for_each(|mut x0, mut x1| {
-                x0.write(x0.read().mul(l00_inv));
-                x1.write(x1.read().mul(l11_inv).add(nl10_div_l11.mul(x0.read())));
+                x0.write(x0.read().faer_mul(l00_inv));
+                x1.write(
+                    x1.read()
+                        .faer_mul(l11_inv)
+                        .faer_add(nl10_div_l11.faer_mul(x0.read())),
+                );
             });
         }
         3 => {
-            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(l11_inv)).neg();
-            let nl20_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 0)).mul(l22_inv)).neg();
-            let nl21_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 1)).mul(l22_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).faer_inv();
+            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).faer_inv();
+            let nl10_div_l11 =
+                (maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_mul(l11_inv)).faer_neg();
+            let nl20_div_l22 =
+                (maybe_conj_lhs(tril.read_unchecked(2, 0)).faer_mul(l22_inv)).faer_neg();
+            let nl21_div_l22 =
+                (maybe_conj_lhs(tril.read_unchecked(2, 1)).faer_mul(l22_inv)).faer_neg();
 
             let [_, x0, _, x1_2] = rhs.split_at(1, 0);
             let [_, x1, _, x2] = x1_2.split_at(1, 0);
@@ -149,28 +167,34 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
                     let mut y0 = x0.read();
                     let mut y1 = x1.read();
                     let mut y2 = x2.read();
-                    y0 = y0.mul(l00_inv);
-                    y1 = y1.mul(l11_inv).add(nl10_div_l11.mul(y0));
+                    y0 = y0.faer_mul(l00_inv);
+                    y1 = y1.faer_mul(l11_inv).faer_add(nl10_div_l11.faer_mul(y0));
                     y2 = y2
-                        .mul(l22_inv)
-                        .add(nl20_div_l22.mul(y0))
-                        .add(nl21_div_l22.mul(y1));
+                        .faer_mul(l22_inv)
+                        .faer_add(nl20_div_l22.faer_mul(y0))
+                        .faer_add(nl21_div_l22.faer_mul(y1));
                     x0.write(y0);
                     x1.write(y1);
                     x2.write(y2);
                 });
         }
         4 => {
-            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).inv();
-            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).inv();
-            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).inv();
-            let l33_inv = maybe_conj_lhs(tril.read_unchecked(3, 3)).inv();
-            let nl10_div_l11 = (maybe_conj_lhs(tril.read_unchecked(1, 0)).mul(l11_inv)).neg();
-            let nl20_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 0)).mul(l22_inv)).neg();
-            let nl21_div_l22 = (maybe_conj_lhs(tril.read_unchecked(2, 1)).mul(l22_inv)).neg();
-            let nl30_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 0)).mul(l33_inv)).neg();
-            let nl31_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 1)).mul(l33_inv)).neg();
-            let nl32_div_l33 = (maybe_conj_lhs(tril.read_unchecked(3, 2)).mul(l33_inv)).neg();
+            let l00_inv = maybe_conj_lhs(tril.read_unchecked(0, 0)).faer_inv();
+            let l11_inv = maybe_conj_lhs(tril.read_unchecked(1, 1)).faer_inv();
+            let l22_inv = maybe_conj_lhs(tril.read_unchecked(2, 2)).faer_inv();
+            let l33_inv = maybe_conj_lhs(tril.read_unchecked(3, 3)).faer_inv();
+            let nl10_div_l11 =
+                (maybe_conj_lhs(tril.read_unchecked(1, 0)).faer_mul(l11_inv)).faer_neg();
+            let nl20_div_l22 =
+                (maybe_conj_lhs(tril.read_unchecked(2, 0)).faer_mul(l22_inv)).faer_neg();
+            let nl21_div_l22 =
+                (maybe_conj_lhs(tril.read_unchecked(2, 1)).faer_mul(l22_inv)).faer_neg();
+            let nl30_div_l33 =
+                (maybe_conj_lhs(tril.read_unchecked(3, 0)).faer_mul(l33_inv)).faer_neg();
+            let nl31_div_l33 =
+                (maybe_conj_lhs(tril.read_unchecked(3, 1)).faer_mul(l33_inv)).faer_neg();
+            let nl32_div_l33 =
+                (maybe_conj_lhs(tril.read_unchecked(3, 2)).faer_mul(l33_inv)).faer_neg();
 
             let [_, x0, _, x1_2_3] = rhs.split_at(1, 0);
             let [_, x1, _, x2_3] = x1_2_3.split_at(1, 0);
@@ -189,13 +213,18 @@ unsafe fn solve_lower_triangular_in_place_base_case_generic_unchecked<E: Complex
                     let mut y1 = x1.read();
                     let mut y2 = x2.read();
                     let mut y3 = x3.read();
-                    y0 = y0.mul(l00_inv);
-                    y1 = y1.mul(l11_inv).add(nl10_div_l11.mul(y0));
-                    y2 = y2
-                        .mul(l22_inv)
-                        .add(nl20_div_l22.mul(y0).add(nl21_div_l22.mul(y1)));
-                    y3 = (y3.mul(l33_inv).add(nl30_div_l33.mul(y0)))
-                        .add(nl31_div_l33.mul(y1).add(nl32_div_l33.mul(y2)));
+                    y0 = y0.faer_mul(l00_inv);
+                    y1 = y1.faer_mul(l11_inv).faer_add(nl10_div_l11.faer_mul(y0));
+                    y2 = y2.faer_mul(l22_inv).faer_add(
+                        nl20_div_l22
+                            .faer_mul(y0)
+                            .faer_add(nl21_div_l22.faer_mul(y1)),
+                    );
+                    y3 = (y3.faer_mul(l33_inv).faer_add(nl30_div_l33.faer_mul(y0))).faer_add(
+                        nl31_div_l33
+                            .faer_mul(y1)
+                            .faer_add(nl32_div_l33.faer_mul(y2)),
+                    );
                     x0.write(y0);
                     x1.write(y1);
                     x2.write(y2);
@@ -632,8 +661,8 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
         conj_lhs,
         rhs_top.into_const(),
         Conj::No,
-        Some(E::one()),
-        E::one().neg(),
+        Some(E::faer_one()),
+        E::faer_one().faer_neg(),
         parallelism,
     );
 
@@ -726,8 +755,8 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
         conj_lhs,
         rhs_top.into_const(),
         Conj::No,
-        Some(E::one()),
-        E::one().neg(),
+        Some(E::faer_one()),
+        E::faer_one().faer_neg(),
         parallelism,
     );
 

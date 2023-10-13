@@ -32,23 +32,25 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
     let mut u = u;
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(u.rb_mut()).for_each(|mut u| u.write(E::zero()));
-        zipped!(u.rb_mut().diagonal()).for_each(|mut u| u.write(E::one()));
+        zipped!(u.rb_mut()).for_each(|mut u| u.write(E::faer_zero()));
+        zipped!(u.rb_mut().diagonal()).for_each(|mut u| u.write(E::faer_one()));
     }
 
     let arch = E::Simd::default();
 
     while end > 0 {
         for i in start..end {
-            if (offdiag[i].abs() < consider_zero_threshold)
-                || (offdiag[i].abs()
-                    <= epsilon.mul(E::add(diag[i].abs(), diag[i + 1].abs()).sqrt()))
+            if (offdiag[i].faer_abs() < consider_zero_threshold)
+                || (offdiag[i].faer_abs()
+                    <= epsilon.faer_mul(
+                        E::faer_add(diag[i].faer_abs(), diag[i + 1].faer_abs()).faer_sqrt(),
+                    ))
             {
-                offdiag[i] = E::zero();
+                offdiag[i] = E::faer_zero();
             }
         }
 
-        while end > 0 && offdiag[end - 1] == E::zero() {
+        while end > 0 && offdiag[end - 1] == E::faer_zero() {
             end -= 1;
         }
 
@@ -59,7 +61,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         iter += 1;
 
         start = end - 1;
-        while start > 0 && offdiag[start - 1] != E::zero() {
+        while start > 0 && offdiag[start - 1] != E::faer_zero() {
             start -= 1;
         }
 
@@ -70,45 +72,54 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
             let mut mu = diag[end];
 
-            if td == E::zero() {
-                mu = mu.sub(e.abs());
-            } else if e != E::zero() {
-                let e2 = e.abs2();
-                let h = (td.abs2().add(e.abs2())).sqrt();
+            if td == E::faer_zero() {
+                mu = mu.faer_sub(e.faer_abs());
+            } else if e != E::faer_zero() {
+                let e2 = e.faer_abs2();
+                let h = (td.faer_abs2().faer_add(e.faer_abs2())).faer_sqrt();
 
-                let h = if td > E::zero() { h } else { h.neg() };
-                if e2 == E::zero() {
-                    mu = mu.sub(e.div(td.add(h).div(e)));
+                let h = if td > E::faer_zero() { h } else { h.faer_neg() };
+                if e2 == E::faer_zero() {
+                    mu = mu.faer_sub(e.faer_div(td.faer_add(h).faer_div(e)));
                 } else {
-                    mu = mu.sub(e2.div(td.add(h)));
+                    mu = mu.faer_sub(e2.faer_div(td.faer_add(h)));
                 }
             }
 
-            let mut x = diag[start].sub(mu);
+            let mut x = diag[start].faer_sub(mu);
             let mut z = offdiag[start];
 
             let mut k = start;
-            while k < end && z != E::zero() {
+            while k < end && z != E::faer_zero() {
                 let rot = JacobiRotation::make_givens(x, z);
                 // do T = G' T G
-                let sdk = rot.s.mul(diag[k]).add(rot.c.mul(offdiag[k]));
-                let dkp1 = rot.s.mul(offdiag[k]).add(rot.c.mul(diag[k + 1]));
+                let sdk = rot.s.faer_mul(diag[k]).faer_add(rot.c.faer_mul(offdiag[k]));
+                let dkp1 = rot
+                    .s
+                    .faer_mul(offdiag[k])
+                    .faer_add(rot.c.faer_mul(diag[k + 1]));
 
                 diag[k] = rot
                     .c
-                    .mul(rot.c.mul(diag[k]).sub(rot.s.mul(offdiag[k])))
-                    .sub(rot.s.mul(rot.c.mul(offdiag[k]).sub(rot.s.mul(diag[k + 1]))));
-                diag[k + 1] = rot.s.mul(sdk).add(rot.c.mul(dkp1));
-                offdiag[k] = rot.c.mul(sdk).sub(rot.s.mul(dkp1));
+                    .faer_mul(rot.c.faer_mul(diag[k]).faer_sub(rot.s.faer_mul(offdiag[k])))
+                    .faer_sub(
+                        rot.s.faer_mul(
+                            rot.c
+                                .faer_mul(offdiag[k])
+                                .faer_sub(rot.s.faer_mul(diag[k + 1])),
+                        ),
+                    );
+                diag[k + 1] = rot.s.faer_mul(sdk).faer_add(rot.c.faer_mul(dkp1));
+                offdiag[k] = rot.c.faer_mul(sdk).faer_sub(rot.s.faer_mul(dkp1));
 
                 if k > start {
-                    offdiag[k - 1] = rot.c.mul(offdiag[k - 1]).sub(rot.s.mul(z));
+                    offdiag[k - 1] = rot.c.faer_mul(offdiag[k - 1]).faer_sub(rot.s.faer_mul(z));
                 }
 
                 x = offdiag[k];
                 if k < end - 1 {
-                    z = rot.s.neg().mul(offdiag[k + 1]);
-                    offdiag[k + 1] = rot.c.mul(offdiag[k + 1]);
+                    z = rot.s.faer_neg().faer_mul(offdiag[k + 1]);
+                    offdiag[k + 1] = rot.c.faer_mul(offdiag[k + 1]);
                 }
 
                 // apply the givens rotation to the unit matrix Q = Q * G

@@ -37,7 +37,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
             first_col_tail.rb(),
             Conj::No,
         )
-        .real();
+        .faer_real();
 
         let (tau, beta) = make_householder_in_place(
             Some(first_col_tail.rb_mut()),
@@ -45,7 +45,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
             tail_squared_norm,
         );
         householder_factor.write(k, 0, tau);
-        let tau_inv = tau.inv();
+        let tau_inv = tau.faer_inv();
 
         first_col_head.write(0, 0, beta);
 
@@ -80,14 +80,14 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
                     let prefix = m % lane_count;
 
-                    let first_col_tail = E::map(
+                    let first_col_tail = E::faer_map(
                         first_col_tail.as_ptr(),
                         #[inline(always)]
                         |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
                     );
 
-                    let (first_col_tail_scalar, first_col_tail_simd) = E::unzip(E::map(
-                        E::copy(&first_col_tail),
+                    let (first_col_tail_scalar, first_col_tail_simd) = E::faer_unzip(E::faer_map(
+                        E::faer_copy(&first_col_tail),
                         #[inline(always)]
                         |slice| slice.split_at(prefix),
                     ));
@@ -99,24 +99,24 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         let [mut col_head, col_tail] = col.split_at_row(1);
 
                         let col_head_ = col_head.read(0, 0);
-                        let col_tail = E::map(
+                        let col_tail = E::faer_map(
                             col_tail.as_ptr(),
                             #[inline(always)]
                             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
                         );
 
-                        let dot = col_head_.add(
+                        let dot = col_head_.faer_add(
                             inner_prod::AccConjAxB::<'_, E> {
-                                a: E::rb(E::as_ref(&first_col_tail)),
-                                b: E::rb(E::as_ref(&col_tail)),
+                                a: E::faer_rb(E::faer_as_ref(&first_col_tail)),
+                                b: E::faer_rb(E::faer_as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(k));
+                        let k = (dot.faer_mul(tau_inv)).faer_neg();
+                        col_head.write(0, 0, col_head_.faer_add(k));
 
-                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                        let (col_tail_scalar, col_tail_simd) = E::faer_unzip(E::faer_map(
                             col_tail,
                             #[inline(always)]
                             |slice| slice.split_at_mut(prefix),
@@ -124,30 +124,32 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         let col_tail_simd =
                             faer_core::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
 
-                        for (a, b) in E::into_iter(col_tail_scalar)
-                            .zip(E::into_iter(E::copy(&first_col_tail_scalar)))
+                        for (a, b) in E::faer_into_iter(col_tail_scalar)
+                            .zip(E::faer_into_iter(E::faer_copy(&first_col_tail_scalar)))
                         {
-                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
-                            let b = E::from_units(E::deref(b));
-                            a_ = a_.add(k.mul(b));
+                            let mut a_ =
+                                E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
+                            let b = E::faer_from_units(E::faer_deref(b));
+                            a_ = a_.faer_add(k.faer_mul(b));
 
-                            E::map(
-                                E::zip(a, a_.into_units()),
+                            E::faer_map(
+                                E::faer_zip(a, a_.faer_into_units()),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
                         }
 
-                        let k = E::simd_splat(simd, k);
-                        for (a, b) in E::into_iter(col_tail_simd)
-                            .zip(E::into_iter(E::copy(&first_col_tail_simd)))
+                        let k = E::faer_simd_splat(simd, k);
+                        for (a, b) in E::faer_into_iter(col_tail_simd)
+                            .zip(E::faer_into_iter(E::faer_copy(&first_col_tail_simd)))
                         {
-                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
-                            let b = E::deref(b);
-                            a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+                            let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
+                            let b = E::faer_deref(b);
+                            a_ =
+                                E::faer_simd_mul_adde(simd, E::faer_copy(&k), E::faer_copy(&b), a_);
 
-                            E::map(
-                                E::zip(a, a_),
+                            E::faer_map(
+                                E::faer_zip(a, a_),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
@@ -167,17 +169,17 @@ fn qr_in_place_unblocked<E: ComplexField>(
                 let [mut col_head, col_tail] = col.split_at_row(1);
                 let col_head_ = col_head.read(0, 0);
 
-                let dot = col_head_.add(inner_prod_with_conj_arch(
+                let dot = col_head_.faer_add(inner_prod_with_conj_arch(
                     arch,
                     first_col_tail.rb(),
                     Conj::Yes,
                     col_tail.rb(),
                     Conj::No,
                 ));
-                let k = (dot.mul(tau_inv)).neg();
-                col_head.write(0, 0, col_head_.add(k));
+                let k = (dot.faer_mul(tau_inv)).faer_neg();
+                col_head.write(0, 0, col_head_.faer_add(k));
                 zipped!(col_tail, first_col_tail.rb())
-                    .for_each(|mut a, b| a.write(a.read().add(k.mul(b.read()))));
+                    .for_each(|mut a, b| a.write(a.read().faer_add(k.faer_mul(b.read()))));
             }
         }
     }
@@ -434,7 +436,7 @@ mod tests {
         q.as_mut()
             .diagonal()
             .cwise()
-            .for_each(|mut a| a.write(E::one()));
+            .for_each(|mut a| a.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
             qr_factors,
@@ -477,7 +479,7 @@ mod tests {
                 q.as_ref(),
                 r.as_ref(),
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
             matmul(
@@ -485,13 +487,20 @@ mod tests {
                 q.as_ref().adjoint(),
                 q.as_ref(),
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
 
             for i in 0..m {
                 for j in 0..m {
-                    assert_approx_eq!(qhq.read(i, j), if i == j { E::one() } else { E::zero() });
+                    assert_approx_eq!(
+                        qhq.read(i, j),
+                        if i == j {
+                            E::faer_one()
+                        } else {
+                            E::faer_zero()
+                        }
+                    );
                 }
             }
             for i in 0..m {
@@ -543,7 +552,7 @@ mod tests {
                     q.as_ref(),
                     r.as_ref(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::Rayon(8),
                 );
                 matmul(
@@ -551,7 +560,7 @@ mod tests {
                     q.as_ref().adjoint(),
                     q.as_ref(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::Rayon(8),
                 );
 
@@ -559,7 +568,11 @@ mod tests {
                     for j in 0..m {
                         assert_approx_eq!(
                             qhq.read(i, j),
-                            if i == j { E::one() } else { E::zero() }
+                            if i == j {
+                                E::faer_one()
+                            } else {
+                                E::faer_zero()
+                            }
                         );
                     }
                 }
@@ -606,7 +619,7 @@ mod tests {
                     q.as_ref(),
                     r.as_ref(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::Rayon(8),
                 );
                 matmul(
@@ -614,7 +627,7 @@ mod tests {
                     q.as_ref().adjoint(),
                     q.as_ref(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::Rayon(8),
                 );
 
@@ -622,7 +635,11 @@ mod tests {
                     for j in 0..m {
                         assert_approx_eq!(
                             qhq.read(i, j),
-                            if i == j { E::one() } else { E::zero() }
+                            if i == j {
+                                E::faer_one()
+                            } else {
+                                E::faer_zero()
+                            }
                         );
                     }
                 }

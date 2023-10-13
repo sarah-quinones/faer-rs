@@ -40,7 +40,9 @@ pub fn invert<E: ComplexField>(
     // zero bottom part
     dst.rb_mut()
         .cwise()
-        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| dst.write(E::zero()));
+        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+            dst.write(E::faer_zero())
+        });
 
     apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj(
         qr_factors,
@@ -182,13 +184,17 @@ mod tests {
                 inv.as_ref(),
                 mat.as_ref(),
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::None,
             );
 
             for i in 0..n {
                 for j in 0..n {
-                    let target = if i == j { E::one() } else { E::zero() };
+                    let target = if i == j {
+                        E::faer_one()
+                    } else {
+                        E::faer_zero()
+                    };
                     assert_approx_eq!(eye.read(i, j), target);
                 }
             }

@@ -82,43 +82,43 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
             let u_ = u;
             let x_ = x;
 
-            let w = E::map(
+            let w = E::faer_map(
                 w.rb_mut().as_ptr(),
                 #[inline(always)]
                 |ptr| slice::from_raw_parts_mut(ptr, m),
             );
-            let u = E::map(
+            let u = E::faer_map(
                 u.as_ptr(),
                 #[inline(always)]
                 |ptr| slice::from_raw_parts(ptr, m),
             );
-            let z = E::map(
+            let z = E::faer_map(
                 z.as_ptr(),
                 #[inline(always)]
                 |ptr| slice::from_raw_parts(ptr, m),
             );
-            let x = E::map(
+            let x = E::faer_map(
                 x.as_ptr(),
                 #[inline(always)]
                 |ptr| slice::from_raw_parts(ptr, m),
             );
 
-            let (mut w_prefix, w_suffix) = E::unzip(E::map(
+            let (mut w_prefix, w_suffix) = E::faer_unzip(E::faer_map(
                 w,
                 #[inline(always)]
                 |slice| slice.split_at_mut(prefix),
             ));
-            let (u_prefix, u_suffix) = E::unzip(E::map(
+            let (u_prefix, u_suffix) = E::faer_unzip(E::faer_map(
                 u,
                 #[inline(always)]
                 |slice| slice.split_at(prefix),
             ));
-            let (z_prefix, z_suffix) = E::unzip(E::map(
+            let (z_prefix, z_suffix) = E::faer_unzip(E::faer_map(
                 z,
                 #[inline(always)]
                 |slice| slice.split_at(prefix),
             ));
-            let (x_prefix, x_suffix) = E::unzip(E::map(
+            let (x_prefix, x_suffix) = E::faer_unzip(E::faer_map(
                 x,
                 #[inline(always)]
                 |slice| slice.split_at(prefix),
@@ -129,86 +129,114 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
             let z_suffix = faer_core::simd::slice_as_simd::<E, S>(z_suffix).0;
             let x_suffix = faer_core::simd::slice_as_simd::<E, S>(x_suffix).0;
 
-            let (mut w_head, mut w_tail) = E::as_arrays_mut::<4, _>(w_suffix);
-            let (u_head, u_tail) = E::as_arrays::<4, _>(u_suffix);
-            let (z_head, z_tail) = E::as_arrays::<4, _>(z_suffix);
-            let (x_head, x_tail) = E::as_arrays::<4, _>(x_suffix);
+            let (mut w_head, mut w_tail) = E::faer_as_arrays_mut::<4, _>(w_suffix);
+            let (u_head, u_tail) = E::faer_as_arrays::<4, _>(u_suffix);
+            let (z_head, z_tail) = E::faer_as_arrays::<4, _>(z_suffix);
+            let (x_head, x_tail) = E::faer_as_arrays::<4, _>(x_suffix);
 
-            let zero = E::zero();
+            let zero = E::faer_zero();
 
             for j in 0..n {
-                let a = E::map(
+                let a = E::faer_map(
                     a.rb_mut().ptr_at(0, j),
                     #[inline(always)]
                     |ptr| slice::from_raw_parts_mut(ptr, m),
                 );
 
-                let (a_prefix, a_suffix) = E::unzip(E::map(
+                let (a_prefix, a_suffix) = E::faer_unzip(E::faer_map(
                     a,
                     #[inline(always)]
                     |slice| slice.split_at_mut(prefix),
                 ));
                 let a_suffix = faer_core::simd::slice_as_mut_simd::<E, S>(a_suffix).0;
-                let (a_head, a_tail) = E::as_arrays_mut::<4, _>(a_suffix);
+                let (a_head, a_tail) = E::faer_as_arrays_mut::<4, _>(a_suffix);
 
-                let y_rhs = E::simd_splat(simd, y.read(j, 0).conj().neg());
-                let u_rhs = E::simd_splat(simd, u_.read(j, 0).conj().neg());
-                let x_rhs = E::simd_splat(simd, x_.read(j, 0));
+                let y_rhs = E::faer_simd_splat(simd, y.read(j, 0).faer_conj().faer_neg());
+                let u_rhs = E::faer_simd_splat(simd, u_.read(j, 0).faer_conj().faer_neg());
+                let x_rhs = E::faer_simd_splat(simd, x_.read(j, 0));
 
-                let mut sum0 = E::simd_splat(simd, zero);
-                let mut sum1 = E::simd_splat(simd, zero);
-                let mut sum2 = E::simd_splat(simd, zero);
-                let mut sum3 = E::simd_splat(simd, zero);
+                let mut sum0 = E::faer_simd_splat(simd, zero);
+                let mut sum1 = E::faer_simd_splat(simd, zero);
+                let mut sum2 = E::faer_simd_splat(simd, zero);
+                let mut sum3 = E::faer_simd_splat(simd, zero);
 
-                let mut a_prefix_ = E::partial_load_last(simd, E::rb(E::as_ref(&a_prefix)));
-                let u_prefix = E::partial_load_last(simd, E::copy(&u_prefix));
-                let z_prefix = E::partial_load_last(simd, E::copy(&z_prefix));
+                let mut a_prefix_ =
+                    E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&a_prefix)));
+                let u_prefix = E::faer_partial_load_last(simd, E::faer_copy(&u_prefix));
+                let z_prefix = E::faer_partial_load_last(simd, E::faer_copy(&z_prefix));
 
-                a_prefix_ = E::simd_mul_adde(simd, E::copy(&u_prefix), E::copy(&y_rhs), a_prefix_);
-                a_prefix_ = E::simd_mul_adde(simd, E::copy(&z_prefix), E::copy(&u_rhs), a_prefix_);
+                a_prefix_ = E::faer_simd_mul_adde(
+                    simd,
+                    E::faer_copy(&u_prefix),
+                    E::faer_copy(&y_rhs),
+                    a_prefix_,
+                );
+                a_prefix_ = E::faer_simd_mul_adde(
+                    simd,
+                    E::faer_copy(&z_prefix),
+                    E::faer_copy(&u_rhs),
+                    a_prefix_,
+                );
 
-                E::partial_store_last(simd, a_prefix, E::copy(&a_prefix_));
+                E::faer_partial_store_last(simd, a_prefix, E::faer_copy(&a_prefix_));
 
-                let mut w_prefix_ = E::partial_load_last(simd, E::rb(E::as_ref(&w_prefix)));
-                w_prefix_ = E::simd_mul_adde(simd, E::copy(&a_prefix_), E::copy(&x_rhs), w_prefix_);
-                E::partial_store_last(simd, E::rb_mut(E::as_mut(&mut w_prefix)), w_prefix_);
+                let mut w_prefix_ =
+                    E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&w_prefix)));
+                w_prefix_ = E::faer_simd_mul_adde(
+                    simd,
+                    E::faer_copy(&a_prefix_),
+                    E::faer_copy(&x_rhs),
+                    w_prefix_,
+                );
+                E::faer_partial_store_last(
+                    simd,
+                    E::faer_rb_mut(E::faer_as_mut(&mut w_prefix)),
+                    w_prefix_,
+                );
 
-                let x_prefix = E::partial_load_last(simd, E::copy(&x_prefix));
-                sum0 = E::simd_conj_mul_adde(simd, E::copy(&a_prefix_), E::copy(&x_prefix), sum0);
+                let x_prefix = E::faer_partial_load_last(simd, E::faer_copy(&x_prefix));
+                sum0 = E::simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&a_prefix_),
+                    E::faer_copy(&x_prefix),
+                    sum0,
+                );
 
-                for ((((a, w), x), u), z) in E::into_iter(a_head)
-                    .zip(E::into_iter(E::rb_mut(E::as_mut(&mut w_head))))
-                    .zip(E::into_iter(E::copy(&x_head)))
-                    .zip(E::into_iter(E::copy(&u_head)))
-                    .zip(E::into_iter(E::copy(&z_head)))
+                for ((((a, w), x), u), z) in E::faer_into_iter(a_head)
+                    .zip(E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(
+                        &mut w_head,
+                    ))))
+                    .zip(E::faer_into_iter(E::faer_copy(&x_head)))
+                    .zip(E::faer_into_iter(E::faer_copy(&u_head)))
+                    .zip(E::faer_into_iter(E::faer_copy(&z_head)))
                 {
                     let [mut a0, mut a1, mut a2, mut a3] =
-                        E::unzip4(E::deref(E::rb(E::as_ref(&a))));
+                        E::faer_unzip4(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
                     let [mut w0, mut w1, mut w2, mut w3] =
-                        E::unzip4(E::deref(E::rb(E::as_ref(&w))));
+                        E::faer_unzip4(E::faer_deref(E::faer_rb(E::faer_as_ref(&w))));
 
-                    let [x0, x1, x2, x3] = E::unzip4(E::deref(x));
-                    let [u0, u1, u2, u3] = E::unzip4(E::deref(u));
-                    let [z0, z1, z2, z3] = E::unzip4(E::deref(z));
+                    let [x0, x1, x2, x3] = E::faer_unzip4(E::faer_deref(x));
+                    let [u0, u1, u2, u3] = E::faer_unzip4(E::faer_deref(u));
+                    let [z0, z1, z2, z3] = E::faer_unzip4(E::faer_deref(z));
 
-                    a0 = E::simd_mul_adde(simd, E::copy(&u0), E::copy(&y_rhs), a0);
-                    a0 = E::simd_mul_adde(simd, E::copy(&z0), E::copy(&u_rhs), a0);
+                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&u0), E::faer_copy(&y_rhs), a0);
+                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&z0), E::faer_copy(&u_rhs), a0);
 
-                    a1 = E::simd_mul_adde(simd, E::copy(&u1), E::copy(&y_rhs), a1);
-                    a1 = E::simd_mul_adde(simd, E::copy(&z1), E::copy(&u_rhs), a1);
+                    a1 = E::faer_simd_mul_adde(simd, E::faer_copy(&u1), E::faer_copy(&y_rhs), a1);
+                    a1 = E::faer_simd_mul_adde(simd, E::faer_copy(&z1), E::faer_copy(&u_rhs), a1);
 
-                    a2 = E::simd_mul_adde(simd, E::copy(&u2), E::copy(&y_rhs), a2);
-                    a2 = E::simd_mul_adde(simd, E::copy(&z2), E::copy(&u_rhs), a2);
+                    a2 = E::faer_simd_mul_adde(simd, E::faer_copy(&u2), E::faer_copy(&y_rhs), a2);
+                    a2 = E::faer_simd_mul_adde(simd, E::faer_copy(&z2), E::faer_copy(&u_rhs), a2);
 
-                    a3 = E::simd_mul_adde(simd, E::copy(&u3), E::copy(&y_rhs), a3);
-                    a3 = E::simd_mul_adde(simd, E::copy(&z3), E::copy(&u_rhs), a3);
+                    a3 = E::faer_simd_mul_adde(simd, E::faer_copy(&u3), E::faer_copy(&y_rhs), a3);
+                    a3 = E::faer_simd_mul_adde(simd, E::faer_copy(&z3), E::faer_copy(&u_rhs), a3);
 
-                    E::map(
-                        E::zip(
+                    E::faer_map(
+                        E::faer_zip(
                             a,
-                            E::zip(
-                                E::zip(E::copy(&a0), E::copy(&a1)),
-                                E::zip(E::copy(&a2), E::copy(&a3)),
+                            E::faer_zip(
+                                E::faer_zip(E::faer_copy(&a0), E::faer_copy(&a1)),
+                                E::faer_zip(E::faer_copy(&a2), E::faer_copy(&a3)),
                             ),
                         ),
                         #[inline(always)]
@@ -220,17 +248,17 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         },
                     );
 
-                    w0 = E::simd_mul_adde(simd, E::copy(&a0), E::copy(&x_rhs), w0);
-                    w1 = E::simd_mul_adde(simd, E::copy(&a1), E::copy(&x_rhs), w1);
-                    w2 = E::simd_mul_adde(simd, E::copy(&a2), E::copy(&x_rhs), w2);
-                    w3 = E::simd_mul_adde(simd, E::copy(&a3), E::copy(&x_rhs), w3);
+                    w0 = E::faer_simd_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x_rhs), w0);
+                    w1 = E::faer_simd_mul_adde(simd, E::faer_copy(&a1), E::faer_copy(&x_rhs), w1);
+                    w2 = E::faer_simd_mul_adde(simd, E::faer_copy(&a2), E::faer_copy(&x_rhs), w2);
+                    w3 = E::faer_simd_mul_adde(simd, E::faer_copy(&a3), E::faer_copy(&x_rhs), w3);
 
-                    E::map(
-                        E::zip(
+                    E::faer_map(
+                        E::faer_zip(
                             w,
-                            E::zip(
-                                E::zip(E::copy(&w0), E::copy(&w1)),
-                                E::zip(E::copy(&w2), E::copy(&w3)),
+                            E::faer_zip(
+                                E::faer_zip(E::faer_copy(&w0), E::faer_copy(&w1)),
+                                E::faer_zip(E::faer_copy(&w2), E::faer_copy(&w3)),
                             ),
                         ),
                         #[inline(always)]
@@ -242,51 +270,53 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         },
                     );
 
-                    sum0 = E::simd_conj_mul_adde(simd, E::copy(&a0), E::copy(&x0), sum0);
-                    sum1 = E::simd_conj_mul_adde(simd, E::copy(&a1), E::copy(&x1), sum1);
-                    sum2 = E::simd_conj_mul_adde(simd, E::copy(&a2), E::copy(&x2), sum2);
-                    sum3 = E::simd_conj_mul_adde(simd, E::copy(&a3), E::copy(&x3), sum3);
+                    sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x0), sum0);
+                    sum1 = E::simd_conj_mul_adde(simd, E::faer_copy(&a1), E::faer_copy(&x1), sum1);
+                    sum2 = E::simd_conj_mul_adde(simd, E::faer_copy(&a2), E::faer_copy(&x2), sum2);
+                    sum3 = E::simd_conj_mul_adde(simd, E::faer_copy(&a3), E::faer_copy(&x3), sum3);
                 }
 
-                sum0 = E::simd_add(simd, sum0, sum1);
-                sum2 = E::simd_add(simd, sum2, sum3);
+                sum0 = E::faer_simd_add(simd, sum0, sum1);
+                sum2 = E::faer_simd_add(simd, sum2, sum3);
 
-                sum0 = E::simd_add(simd, sum0, sum2);
+                sum0 = E::faer_simd_add(simd, sum0, sum2);
 
-                for ((((a, w), x), u), z) in E::into_iter(a_tail)
-                    .zip(E::into_iter(E::rb_mut(E::as_mut(&mut w_tail))))
-                    .zip(E::into_iter(E::copy(&x_tail)))
-                    .zip(E::into_iter(E::copy(&u_tail)))
-                    .zip(E::into_iter(E::copy(&z_tail)))
+                for ((((a, w), x), u), z) in E::faer_into_iter(a_tail)
+                    .zip(E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(
+                        &mut w_tail,
+                    ))))
+                    .zip(E::faer_into_iter(E::faer_copy(&x_tail)))
+                    .zip(E::faer_into_iter(E::faer_copy(&u_tail)))
+                    .zip(E::faer_into_iter(E::faer_copy(&z_tail)))
                 {
-                    let mut a0 = E::deref(E::rb(E::as_ref(&a)));
-                    let mut w0 = E::deref(E::rb(E::as_ref(&w)));
+                    let mut a0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
+                    let mut w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w)));
 
-                    let x0 = E::deref(x);
-                    let u0 = E::deref(u);
-                    let z0 = E::deref(z);
+                    let x0 = E::faer_deref(x);
+                    let u0 = E::faer_deref(u);
+                    let z0 = E::faer_deref(z);
 
-                    a0 = E::simd_mul_adde(simd, E::copy(&u0), E::copy(&y_rhs), a0);
-                    a0 = E::simd_mul_adde(simd, E::copy(&z0), E::copy(&u_rhs), a0);
+                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&u0), E::faer_copy(&y_rhs), a0);
+                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&z0), E::faer_copy(&u_rhs), a0);
 
-                    E::map(
-                        E::zip(a, E::copy(&a0)),
+                    E::faer_map(
+                        E::faer_zip(a, E::faer_copy(&a0)),
                         #[inline(always)]
                         |(a, a0)| *a = a0,
                     );
 
-                    w0 = E::simd_mul_adde(simd, E::copy(&a0), E::copy(&x_rhs), w0);
+                    w0 = E::faer_simd_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x_rhs), w0);
 
-                    E::map(
-                        E::zip(w, E::copy(&w0)),
+                    E::faer_map(
+                        E::faer_zip(w, E::faer_copy(&w0)),
                         #[inline(always)]
                         |(w, w0)| *w = w0,
                     );
 
-                    sum0 = E::simd_conj_mul_adde(simd, E::copy(&a0), E::copy(&x0), sum0);
+                    sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x0), sum0);
                 }
 
-                let sum = E::simd_reduce_add(simd, sum0);
+                let sum = E::faer_simd_reduce_add(simd, sum0);
                 v.write(j, 0, sum);
             }
         }
@@ -353,20 +383,25 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                 a11.write(
                     0,
                     0,
-                    a11.read(0, 0)
-                        .sub((nu.mul(psi.conj())).add(zeta.mul(nu.conj()))),
+                    a11.read(0, 0).faer_sub(
+                        (nu.faer_mul(psi.faer_conj())).faer_add(zeta.faer_mul(nu.faer_conj())),
+                    ),
                 );
                 zipped!(a12.rb_mut(), y21.rb().transpose(), u21.rb().transpose()).for_each(
                     |mut a, y, u| {
                         let y = y.read();
                         let u = u.read();
-                        a.write(a.read().sub((nu.mul(y.conj())).add(zeta.mul(u.conj()))));
+                        a.write(a.read().faer_sub(
+                            (nu.faer_mul(y.faer_conj())).faer_add(zeta.faer_mul(u.faer_conj())),
+                        ));
                     },
                 );
                 zipped!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|mut a, u, z| {
                     let z = z.read();
                     let u = u.read();
-                    a.write(a.read().sub((u.mul(psi.conj())).add(z.mul(nu.conj()))));
+                    a.write(a.read().faer_sub(
+                        (u.faer_mul(psi.faer_conj())).faer_add(z.faer_mul(nu.faer_conj())),
+                    ));
                 });
             }
 
@@ -375,8 +410,8 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                 let norm2 = norm2(tail.rb());
                 make_householder_in_place(Some(tail), head.read(0, 0), norm2)
             };
-            a21.write(0, 0, E::one());
-            let tau_inv = tau.inv();
+            a21.write(0, 0, E::faer_one());
+            let tau_inv = tau.faer_inv();
             householder.write(k, 0, tau);
 
             if k > 0 {
@@ -399,7 +434,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                     a22.rb().adjoint(),
                     a21.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 matmul(
@@ -407,7 +442,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                     a22.rb(),
                     a21.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
             }
@@ -416,16 +451,24 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             a21.write(0, 0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
-                .scale_power_of_two(E::Real::from_f64(0.5));
+                .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
 
             zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
                 let u = u.read();
-                let beta = beta.conj();
-                y.write(y.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
+                let beta = beta.faer_conj();
+                y.write(
+                    y.read()
+                        .faer_sub(beta.faer_mul(u.faer_mul(tau_inv)))
+                        .faer_mul(tau_inv),
+                );
             });
             zipped!(z21.rb_mut(), u21.rb()).for_each(|mut z, u| {
                 let u = u.read();
-                z.write(z.read().sub(beta.mul(u.mul(tau_inv))).mul(tau_inv));
+                z.write(
+                    z.read()
+                        .faer_sub(beta.faer_mul(u.faer_mul(tau_inv)))
+                        .faer_mul(tau_inv),
+                );
             });
         }
     }
@@ -460,10 +503,10 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
 
             let mut a21 = unsafe { a.rb().col(k).subrows(k + 1, n - k - 1).const_cast() };
             let old_head = a21.read(0, 0);
-            a21.write(0, 0, E::one());
+            a21.write(0, 0, E::faer_one());
 
             let mut a_right = unsafe { a.rb().submatrix(0, k + 1, k + 1, n - k - 1).const_cast() };
-            let tau_inv = householder.read(k_local, k_local).inv();
+            let tau_inv = householder.read(k_local, k_local).faer_inv();
 
             let nrows = k_local + 1;
             let (mut dot, _) = temp_mat_uninit::<E>(nrows, 1, stack.rb_mut());
@@ -473,15 +516,15 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                 a_right.rb().subrows(k_base, nrows),
                 a21.rb(),
                 None,
-                tau_inv.neg(),
+                tau_inv.faer_neg(),
                 parallelism,
             );
             matmul(
                 a_right.rb_mut().subrows(k_base, nrows),
                 dot.rb(),
                 a21.rb().adjoint(),
-                Some(E::one()),
-                E::one(),
+                Some(E::faer_one()),
+                E::faer_one(),
                 parallelism,
             );
 
@@ -586,7 +629,7 @@ mod tests {
 
                 for j in 0..n {
                     for i in j + 2..n {
-                        assert_approx_eq!(copy.read(i, j), c64::zero());
+                        assert_approx_eq!(copy.read(i, j), c64::faer_zero());
                     }
                 }
             }

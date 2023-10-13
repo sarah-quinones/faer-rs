@@ -20,7 +20,7 @@ pub fn matmul<E: ComplexField>(criterion: &mut Criterion) {
                     b.as_ref(),
                     Conj::No,
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::None,
                     false,
                 );
@@ -35,7 +35,7 @@ pub fn matmul<E: ComplexField>(criterion: &mut Criterion) {
                     b.as_ref(),
                     Conj::No,
                     None,
-                    E::one(),
+                    E::faer_one(),
                     Parallelism::Rayon(0),
                     false,
                 );
@@ -52,7 +52,7 @@ pub fn matmul<E: ComplexField>(criterion: &mut Criterion) {
                         b.as_ref(),
                         Conj::No,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         Parallelism::Rayon(0),
                         true,
                     );
@@ -67,7 +67,7 @@ pub fn matmul<E: ComplexField>(criterion: &mut Criterion) {
                         b.as_ref(),
                         Conj::No,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         Parallelism::None,
                         true,
                     );

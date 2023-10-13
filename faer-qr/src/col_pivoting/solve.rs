@@ -250,7 +250,7 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::faer_zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 
@@ -292,14 +292,15 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                T::one(),
+                T::faer_one(),
                 Parallelism::None,
             );
 
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                            < epsilon
                     )
                 }
             }
@@ -318,7 +319,7 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::zero());
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::faer_zero());
         let mut perm = vec![0; n];
         let mut perm_inv = vec![0; n];
 
@@ -360,14 +361,15 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                T::one(),
+                T::faer_one(),
                 Parallelism::None,
             );
 
             for j in 0..k {
                 for i in 0..n {
                     fancy_assert!(
-                        (rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon
+                        (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                            < epsilon
                     )
                 }
             }

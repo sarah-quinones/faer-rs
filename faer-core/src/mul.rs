@@ -27,7 +27,7 @@ pub mod inner_prod {
         if CONJ_A {
             E::simd_conj_mul_adde(simd, a, b, acc)
         } else {
-            E::simd_mul_adde(simd, a, b, acc)
+            E::faer_simd_mul_adde(simd, a, b, acc)
         }
     }
 
@@ -39,12 +39,17 @@ pub mod inner_prod {
     ) -> SimdGroup<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
-        E::map(E::as_ref(&a), |slice| len = (**slice).len());
+        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
 
-        let zero = E::simd_splat(simd, E::zero());
-        let mut acc = E::copy(&zero);
-        for (a, b) in zip(E::into_iter(a), E::into_iter(b)) {
-            acc = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, E::deref(a), E::deref(b), acc);
+        let zero = E::faer_simd_splat(simd, E::faer_zero());
+        let mut acc = E::faer_copy(&zero);
+        for (a, b) in zip(E::faer_into_iter(a), E::faer_into_iter(b)) {
+            acc = conditional_conj_mul_adde::<CONJ_A, E, S>(
+                simd,
+                E::faer_deref(a),
+                E::faer_deref(b),
+                acc,
+            );
         }
         acc
     }
@@ -57,26 +62,31 @@ pub mod inner_prod {
     ) -> SimdGroup<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
-        E::map(E::as_ref(&a), |slice| len = (**slice).len());
+        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
 
-        let zero = E::simd_splat(simd, E::zero());
+        let zero = E::faer_simd_splat(simd, E::faer_zero());
 
-        let mut acc0 = E::copy(&zero);
-        let mut acc1 = E::copy(&zero);
+        let mut acc0 = E::faer_copy(&zero);
+        let mut acc1 = E::faer_copy(&zero);
 
-        let (a_head, a_tail) = E::as_arrays::<2, _>(a);
-        let (b_head, b_tail) = E::as_arrays::<2, _>(b);
+        let (a_head, a_tail) = E::faer_as_arrays::<2, _>(a);
+        let (b_head, b_tail) = E::faer_as_arrays::<2, _>(b);
 
-        for (a, b) in zip(E::into_iter(a_head), E::into_iter(b_head)) {
-            let [a0, a1] = E::unzip2(E::deref(a));
-            let [b0, b1] = E::unzip2(E::deref(b));
+        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
+            let [a0, a1] = E::faer_unzip2(E::faer_deref(a));
+            let [b0, b1] = E::faer_unzip2(E::faer_deref(b));
             acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
             acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
         }
-        acc0 = E::simd_add(simd, acc0, acc1);
+        acc0 = E::faer_simd_add(simd, acc0, acc1);
 
-        for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, E::deref(a), E::deref(b), acc0);
+        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
+            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
+                simd,
+                E::faer_deref(a),
+                E::faer_deref(b),
+                acc0,
+            );
         }
 
         acc0
@@ -90,33 +100,38 @@ pub mod inner_prod {
     ) -> SimdGroup<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
-        E::map(E::as_ref(&a), |slice| len = (**slice).len());
+        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
 
-        let zero = E::simd_splat(simd, E::zero());
+        let zero = E::faer_simd_splat(simd, E::faer_zero());
 
-        let mut acc0 = E::copy(&zero);
-        let mut acc1 = E::copy(&zero);
-        let mut acc2 = E::copy(&zero);
-        let mut acc3 = E::copy(&zero);
+        let mut acc0 = E::faer_copy(&zero);
+        let mut acc1 = E::faer_copy(&zero);
+        let mut acc2 = E::faer_copy(&zero);
+        let mut acc3 = E::faer_copy(&zero);
 
-        let (a_head, a_tail) = E::as_arrays::<4, _>(a);
-        let (b_head, b_tail) = E::as_arrays::<4, _>(b);
+        let (a_head, a_tail) = E::faer_as_arrays::<4, _>(a);
+        let (b_head, b_tail) = E::faer_as_arrays::<4, _>(b);
 
-        for (a, b) in zip(E::into_iter(a_head), E::into_iter(b_head)) {
-            let [a0, a1, a2, a3] = E::unzip4(E::deref(a));
-            let [b0, b1, b2, b3] = E::unzip4(E::deref(b));
+        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
+            let [a0, a1, a2, a3] = E::faer_unzip4(E::faer_deref(a));
+            let [b0, b1, b2, b3] = E::faer_unzip4(E::faer_deref(b));
             acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
             acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
             acc2 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a2, b2, acc2);
             acc3 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a3, b3, acc3);
         }
-        acc0 = E::simd_add(simd, acc0, acc1);
-        acc2 = E::simd_add(simd, acc2, acc3);
+        acc0 = E::faer_simd_add(simd, acc0, acc1);
+        acc2 = E::faer_simd_add(simd, acc2, acc3);
 
-        acc0 = E::simd_add(simd, acc0, acc2);
+        acc0 = E::faer_simd_add(simd, acc0, acc2);
 
-        for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, E::deref(a), E::deref(b), acc0);
+        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
+            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
+                simd,
+                E::faer_deref(a),
+                E::faer_deref(b),
+                acc0,
+            );
         }
 
         acc0
@@ -130,25 +145,25 @@ pub mod inner_prod {
     ) -> SimdGroup<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
-        E::map(E::as_ref(&a), |slice| len = (**slice).len());
+        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
 
-        let zero = E::simd_splat(simd, E::zero());
+        let zero = E::faer_simd_splat(simd, E::faer_zero());
 
-        let mut acc0 = E::copy(&zero);
-        let mut acc1 = E::copy(&zero);
-        let mut acc2 = E::copy(&zero);
-        let mut acc3 = E::copy(&zero);
-        let mut acc4 = E::copy(&zero);
-        let mut acc5 = E::copy(&zero);
-        let mut acc6 = E::copy(&zero);
-        let mut acc7 = E::copy(&zero);
+        let mut acc0 = E::faer_copy(&zero);
+        let mut acc1 = E::faer_copy(&zero);
+        let mut acc2 = E::faer_copy(&zero);
+        let mut acc3 = E::faer_copy(&zero);
+        let mut acc4 = E::faer_copy(&zero);
+        let mut acc5 = E::faer_copy(&zero);
+        let mut acc6 = E::faer_copy(&zero);
+        let mut acc7 = E::faer_copy(&zero);
 
-        let (a_head, a_tail) = E::as_arrays::<8, _>(a);
-        let (b_head, b_tail) = E::as_arrays::<8, _>(b);
+        let (a_head, a_tail) = E::faer_as_arrays::<8, _>(a);
+        let (b_head, b_tail) = E::faer_as_arrays::<8, _>(b);
 
-        for (a, b) in zip(E::into_iter(a_head), E::into_iter(b_head)) {
-            let [a0, a1, a2, a3, a4, a5, a6, a7] = E::unzip8(E::deref(a));
-            let [b0, b1, b2, b3, b4, b5, b6, b7] = E::unzip8(E::deref(b));
+        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
+            let [a0, a1, a2, a3, a4, a5, a6, a7] = E::faer_unzip8(E::faer_deref(a));
+            let [b0, b1, b2, b3, b4, b5, b6, b7] = E::faer_unzip8(E::faer_deref(b));
             acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
             acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
             acc2 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a2, b2, acc2);
@@ -158,18 +173,23 @@ pub mod inner_prod {
             acc6 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a6, b6, acc6);
             acc7 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a7, b7, acc7);
         }
-        acc0 = E::simd_add(simd, acc0, acc1);
-        acc2 = E::simd_add(simd, acc2, acc3);
-        acc4 = E::simd_add(simd, acc4, acc5);
-        acc6 = E::simd_add(simd, acc6, acc7);
+        acc0 = E::faer_simd_add(simd, acc0, acc1);
+        acc2 = E::faer_simd_add(simd, acc2, acc3);
+        acc4 = E::faer_simd_add(simd, acc4, acc5);
+        acc6 = E::faer_simd_add(simd, acc6, acc7);
 
-        acc0 = E::simd_add(simd, acc0, acc2);
-        acc4 = E::simd_add(simd, acc4, acc6);
+        acc0 = E::faer_simd_add(simd, acc0, acc2);
+        acc4 = E::faer_simd_add(simd, acc4, acc6);
 
-        acc0 = E::simd_add(simd, acc0, acc4);
+        acc0 = E::faer_simd_add(simd, acc0, acc4);
 
-        for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, E::deref(a), E::deref(b), acc0);
+        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
+            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
+                simd,
+                E::faer_deref(a),
+                E::faer_deref(b),
+                acc0,
+            );
         }
 
         acc0
@@ -183,7 +203,7 @@ pub mod inner_prod {
     ) -> E {
         {
             let mut len = 0;
-            E::map(E::as_ref(&a), |slice| len = slice.len());
+            E::faer_map(E::faer_as_ref(&a), |slice| len = slice.len());
 
             let (a_head, a_tail) = slice_as_simd::<E, S>(a);
             let (b_head, b_tail) = slice_as_simd::<E, S>(b);
@@ -198,23 +218,24 @@ pub mod inner_prod {
             };
 
             let mut rem = 0;
-            E::map(E::as_ref(&a_tail), |slice| rem = slice.len());
+            E::faer_map(E::faer_as_ref(&a_tail), |slice| rem = slice.len());
 
             let mut acc = if len > rem {
-                E::simd_reduce_add(simd, prologue)
+                E::faer_simd_reduce_add(simd, prologue)
             } else {
-                E::zero()
+                E::faer_zero()
             };
 
             let a = {
                 #[inline(always)]
                 |i: usize| unsafe {
-                    let a = E::from_units(E::deref(E::map(E::copy(&a_tail), |slice| {
-                        slice.get_unchecked(i)
-                    })));
+                    let a = E::faer_from_units(E::faer_deref(E::faer_map(
+                        E::faer_copy(&a_tail),
+                        |slice| slice.get_unchecked(i),
+                    )));
 
                     if CONJ_A {
-                        a.conj()
+                        a.faer_conj()
                     } else {
                         a
                     }
@@ -224,7 +245,7 @@ pub mod inner_prod {
             let b = {
                 #[inline(always)]
                 |i: usize| unsafe {
-                    E::from_units(E::deref(E::map(E::copy(&b_tail), |slice| {
+                    E::faer_from_units(E::faer_deref(E::faer_map(E::faer_copy(&b_tail), |slice| {
                         slice.get_unchecked(i)
                     })))
                 }
@@ -233,63 +254,66 @@ pub mod inner_prod {
             match rem {
                 0 => {}
                 1 => {
-                    acc = acc.add(a(0).mul(b(0)));
+                    acc = acc.faer_add(a(0).faer_mul(b(0)));
                 }
                 2 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
 
-                    acc = acc.add(x0.add(x1));
+                    acc = acc.faer_add(x0.faer_add(x1));
                 }
                 3 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
-                    let x2 = a(2).mul(b(2));
-                    acc = acc.add(x0.add(x1).add(x2));
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
+                    let x2 = a(2).faer_mul(b(2));
+                    acc = acc.faer_add(x0.faer_add(x1).faer_add(x2));
                 }
                 4 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
-                    let x2 = a(2).mul(b(2));
-                    let x3 = a(3).mul(b(3));
-                    acc = acc.add(E::add(x0.add(x1), x2.add(x3)));
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
+                    let x2 = a(2).faer_mul(b(2));
+                    let x3 = a(3).faer_mul(b(3));
+                    acc = acc.faer_add(E::faer_add(x0.faer_add(x1), x2.faer_add(x3)));
                 }
                 5 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
-                    let x2 = a(2).mul(b(2));
-                    let x3 = a(3).mul(b(3));
-                    let x4 = a(4).mul(b(4));
-                    acc = acc.add(E::add(x0.add(x1), x2.add(x3).add(x4)));
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
+                    let x2 = a(2).faer_mul(b(2));
+                    let x3 = a(3).faer_mul(b(3));
+                    let x4 = a(4).faer_mul(b(4));
+                    acc = acc.faer_add(E::faer_add(x0.faer_add(x1), x2.faer_add(x3).faer_add(x4)));
                 }
                 6 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
-                    let x2 = a(2).mul(b(2));
-                    let x3 = a(3).mul(b(3));
-                    let x4 = a(4).mul(b(4));
-                    let x5 = a(5).mul(b(5));
-                    acc = acc.add(E::add(x0.add(x1).add(x2), x3.add(x4).add(x5)));
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
+                    let x2 = a(2).faer_mul(b(2));
+                    let x3 = a(3).faer_mul(b(3));
+                    let x4 = a(4).faer_mul(b(4));
+                    let x5 = a(5).faer_mul(b(5));
+                    acc = acc.faer_add(E::faer_add(
+                        x0.faer_add(x1).faer_add(x2),
+                        x3.faer_add(x4).faer_add(x5),
+                    ));
                 }
                 7 => {
-                    let x0 = a(0).mul(b(0));
-                    let x1 = a(1).mul(b(1));
-                    let x2 = a(2).mul(b(2));
-                    let x3 = a(3).mul(b(3));
-                    let x4 = a(4).mul(b(4));
-                    let x5 = a(5).mul(b(5));
-                    let x6 = a(6).mul(b(6));
-                    acc = acc.add(E::add(
-                        E::add(E::add(x0, x1), E::add(x2, x3)),
-                        x4.add(x5).add(x6),
+                    let x0 = a(0).faer_mul(b(0));
+                    let x1 = a(1).faer_mul(b(1));
+                    let x2 = a(2).faer_mul(b(2));
+                    let x3 = a(3).faer_mul(b(3));
+                    let x4 = a(4).faer_mul(b(4));
+                    let x5 = a(5).faer_mul(b(5));
+                    let x6 = a(6).faer_mul(b(6));
+                    acc = acc.faer_add(E::faer_add(
+                        E::faer_add(E::faer_add(x0, x1), E::faer_add(x2, x3)),
+                        x4.faer_add(x5).faer_add(x6),
                     ));
                 }
                 _ => {
-                    for (a, b) in zip(E::into_iter(a_tail), E::into_iter(b_tail)) {
-                        let a = E::from_units(E::deref(a));
-                        let a = if CONJ_A { a.conj() } else { a };
-                        let b = E::from_units(E::deref(b));
-                        acc = E::add(acc, E::mul(a, b));
+                    for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
+                        let a = E::faer_from_units(E::faer_deref(a));
+                        let a = if CONJ_A { a.faer_conj() } else { a };
+                        let b = E::faer_from_units(E::faer_deref(b));
+                        acc = E::faer_add(acc, E::faer_mul(a, b));
                     }
                 }
             }
@@ -344,10 +368,10 @@ pub mod inner_prod {
         }
 
         let res = if a.row_stride() == 1 && b.row_stride() == 1 {
-            let a = E::map(a.as_ptr(), |ptr| unsafe {
+            let a = E::faer_map(a.as_ptr(), |ptr| unsafe {
                 core::slice::from_raw_parts(ptr, nrows)
             });
-            let b = E::map(b.as_ptr(), |ptr| unsafe {
+            let b = E::faer_map(b.as_ptr(), |ptr| unsafe {
                 core::slice::from_raw_parts(ptr, nrows)
             });
 
@@ -358,15 +382,16 @@ pub mod inner_prod {
             }
         } else {
             unsafe {
-                let mut acc = E::zero();
+                let mut acc = E::faer_zero();
                 if conj_lhs == conj_rhs {
                     for i in 0..nrows {
-                        acc = acc.add(E::mul(a.read_unchecked(i, 0), b.read_unchecked(i, 0)));
+                        acc = acc
+                            .faer_add(E::faer_mul(a.read_unchecked(i, 0), b.read_unchecked(i, 0)));
                     }
                 } else {
                     for i in 0..nrows {
-                        acc = acc.add(E::mul(
-                            a.read_unchecked(i, 0).conj(),
+                        acc = acc.faer_add(E::faer_mul(
+                            a.read_unchecked(i, 0).faer_conj(),
                             b.read_unchecked(i, 0),
                         ));
                     }
@@ -376,7 +401,7 @@ pub mod inner_prod {
         };
 
         match conj_rhs {
-            Conj::Yes => res.conj(),
+            Conj::Yes => res.faer_conj(),
             Conj::No => res,
         }
     }
@@ -423,8 +448,12 @@ mod matvec_rowmajor {
             let a = a.submatrix(i, 0, 1, n);
             let res = inner_prod::inner_prod_with_conj(a.transpose(), conj_a, b, conj_b);
             match alpha {
-                Some(alpha) => acc.write(i, 0, E::add(alpha.mul(acc.read(i, 0)), beta.mul(res))),
-                None => acc.write(i, 0, beta.mul(res)),
+                Some(alpha) => acc.write(
+                    i,
+                    0,
+                    E::faer_add(alpha.faer_mul(acc.read(i, 0)), beta.faer_mul(res)),
+                ),
+                None => acc.write(i, 0, beta.faer_mul(res)),
             }
         }
     }
@@ -478,23 +507,23 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b);
+                let b = E::faer_simd_splat(simd, self.b);
 
-                for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                    let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
-                    let a = E::deref(a);
-                    acc = E::simd_mul_adde(simd, E::copy(&b), a, acc);
-                    E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head)) {
+                    let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
+                    let a = E::faer_deref(a);
+                    acc = E::faer_simd_mul_adde(simd, E::faer_copy(&b), a, acc);
+                    E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                 }
             }
 
             let b = self.b;
-            for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
-                let a = E::from_units(E::deref(a));
-                acc = acc.add(E::mul(b, a));
-                let acc = E::into_units(acc);
-                E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+            for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
+                let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_))));
+                let a = E::faer_from_units(E::faer_deref(a));
+                acc = acc.faer_add(E::faer_mul(b, a));
+                let acc = E::faer_into_units(acc);
+                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
             }
         }
     }
@@ -507,23 +536,23 @@ mod matvec_colmajor {
             let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
             let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
             {
-                let b = E::simd_splat(simd, self.b);
+                let b = E::faer_simd_splat(simd, self.b);
 
-                for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                    let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
-                    let a = E::deref(a);
-                    acc = E::simd_conj_mul_adde(simd, a, E::copy(&b), acc);
-                    E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head)) {
+                    let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
+                    let a = E::faer_deref(a);
+                    acc = E::simd_conj_mul_adde(simd, a, E::faer_copy(&b), acc);
+                    E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                 }
             }
 
             let b = self.b;
-            for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
-                let a = E::from_units(E::deref(a));
-                acc = acc.add(a.conj().mul(b));
-                let acc = E::into_units(acc);
-                E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+            for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
+                let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_))));
+                let a = E::faer_from_units(E::faer_deref(a));
+                acc = acc.faer_add(a.faer_conj().faer_mul(b));
+                let acc = E::faer_into_units(acc);
+                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
             }
         }
     }
@@ -547,7 +576,7 @@ mod matvec_colmajor {
         assert!(a.row_stride() == 1);
         assert!(acc.row_stride() == 1);
 
-        let mut acc = E::map(
+        let mut acc = E::faer_map(
             acc.as_ptr(),
             #[inline(always)]
             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
@@ -556,19 +585,19 @@ mod matvec_colmajor {
         let arch = E::Simd::default();
         for j in 0..n {
             let a = a.submatrix(0, j, m, 1);
-            let acc = E::rb_mut(E::as_mut(&mut acc));
+            let acc = E::faer_rb_mut(E::faer_as_mut(&mut acc));
 
-            let a = E::map(
+            let a = E::faer_map(
                 a.as_ptr(),
                 #[inline(always)]
                 |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
             );
             let b = b.read(j, 0);
             let b = match conj_b {
-                Conj::Yes => b.conj(),
+                Conj::Yes => b.faer_conj(),
                 Conj::No => b,
             };
-            let b = b.mul(beta);
+            let b = b.faer_mul(beta);
 
             match conj_a {
                 Conj::Yes => arch.dispatch(ConjImpl { acc, a, b }),
@@ -590,15 +619,15 @@ mod matvec_colmajor {
         let mut acc = acc;
         if acc.row_stride() == 1 {
             match alpha {
-                Some(alpha) if alpha == E::one() => {}
+                Some(alpha) if alpha == E::faer_one() => {}
                 Some(alpha) => {
                     for i in 0..m {
-                        acc.write(i, 0, acc.read(i, 0).mul(alpha));
+                        acc.write(i, 0, acc.read(i, 0).faer_mul(alpha));
                     }
                 }
                 None => {
                     for i in 0..m {
-                        acc.write(i, 0, E::zero());
+                        acc.write(i, 0, E::faer_zero());
                     }
                 }
             }
@@ -610,7 +639,11 @@ mod matvec_colmajor {
             match alpha {
                 Some(alpha) => {
                     for i in 0..m {
-                        acc.write(i, 0, (acc.read(i, 0).mul(alpha)).add(tmp.read(i, 0)))
+                        acc.write(
+                            i,
+                            0,
+                            (acc.read(i, 0).faer_mul(alpha)).faer_add(tmp.read(i, 0)),
+                        )
                     }
                 }
                 None => {
@@ -662,12 +695,12 @@ pub mod matvec {
         match alpha {
             Some(alpha) => {
                 for i in 0..m {
-                    acc.write(i, 0, acc.read(i, 0).mul(alpha));
+                    acc.write(i, 0, acc.read(i, 0).faer_mul(alpha));
                 }
             }
             None => {
                 for i in 0..m {
-                    acc.write(i, 0, E::zero());
+                    acc.write(i, 0, E::faer_zero());
                 }
             }
         }
@@ -675,13 +708,13 @@ pub mod matvec {
         for j in 0..n {
             let b = b.read(j, 0);
             let b = match conj_rhs {
-                Conj::Yes => b.conj(),
+                Conj::Yes => b.faer_conj(),
                 Conj::No => b,
             };
-            let b = b.mul(beta);
+            let b = b.faer_mul(beta);
             for i in 0..m {
-                let mul = a.read(i, j).mul(b);
-                acc.write(i, 0, acc.read(i, 0).add(mul));
+                let mul = a.read(i, j).faer_mul(b);
+                acc.write(i, 0, acc.read(i, 0).faer_add(mul));
             }
         }
     }
@@ -713,7 +746,7 @@ pub mod outer_prod {
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             match self.alpha {
                 Some(alpha) => {
-                    if alpha == E::one() {
+                    if alpha == E::faer_one() {
                         matvec_colmajor::NoConjImpl {
                             acc: self.acc,
                             a: self.a,
@@ -724,29 +757,34 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha);
-                            let b = E::simd_splat(simd, self.b);
+                            let alpha = E::faer_simd_splat(simd, alpha);
+                            let b = E::faer_simd_splat(simd, self.b);
 
-                            for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                                let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
-                                let a = E::deref(a);
-                                acc = E::simd_mul_adde(
+                            for (acc_, a) in
+                                zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
+                            {
+                                let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
+                                let a = E::faer_deref(a);
+                                acc = E::faer_simd_mul_adde(
                                     simd,
-                                    E::copy(&b),
+                                    E::faer_copy(&b),
                                     a,
-                                    E::simd_mul(simd, E::copy(&alpha), acc),
+                                    E::faer_simd_mul(simd, E::faer_copy(&alpha), acc),
                                 );
-                                E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                             }
                         }
 
                         let b = self.b;
-                        for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                            let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
-                            let a = E::from_units(E::deref(a));
-                            acc = E::add(E::mul(a, b), E::mul(alpha, acc));
-                            let acc = E::into_units(acc);
-                            E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                        for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail))
+                        {
+                            let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(
+                                E::faer_as_ref(&acc_),
+                            )));
+                            let a = E::faer_from_units(E::faer_deref(a));
+                            acc = E::faer_add(E::faer_mul(a, b), E::faer_mul(alpha, acc));
+                            let acc = E::faer_into_units(acc);
+                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
                     }
                 }
@@ -754,21 +792,22 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b);
+                        let b = E::faer_simd_splat(simd, self.b);
 
-                        for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                            let a = E::deref(a);
-                            let acc = E::simd_mul(simd, E::copy(&b), a);
-                            E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                        for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
+                        {
+                            let a = E::faer_deref(a);
+                            let acc = E::faer_simd_mul(simd, E::faer_copy(&b), a);
+                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
                     }
 
                     let b = self.b;
-                    for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                        let a = E::from_units(E::deref(a));
-                        let acc = E::mul(b, a);
-                        let acc = E::into_units(acc);
-                        E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                    for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
+                        let a = E::faer_from_units(E::faer_deref(a));
+                        let acc = E::faer_mul(b, a);
+                        let acc = E::faer_into_units(acc);
+                        E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                     }
                 }
             }
@@ -782,7 +821,7 @@ pub mod outer_prod {
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             match self.alpha {
                 Some(alpha) => {
-                    if alpha == E::one() {
+                    if alpha == E::faer_one() {
                         matvec_colmajor::ConjImpl {
                             acc: self.acc,
                             a: self.a,
@@ -793,29 +832,34 @@ pub mod outer_prod {
                         let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                         let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                         {
-                            let alpha = E::simd_splat(simd, alpha);
-                            let b = E::simd_splat(simd, self.b);
+                            let alpha = E::faer_simd_splat(simd, alpha);
+                            let b = E::faer_simd_splat(simd, self.b);
 
-                            for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                                let mut acc = E::deref(E::rb(E::as_ref(&acc_)));
-                                let a = E::deref(a);
+                            for (acc_, a) in
+                                zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
+                            {
+                                let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
+                                let a = E::faer_deref(a);
                                 acc = E::simd_conj_mul_adde(
                                     simd,
                                     a,
-                                    E::copy(&b),
-                                    E::simd_mul(simd, E::copy(&alpha), acc),
+                                    E::faer_copy(&b),
+                                    E::faer_simd_mul(simd, E::faer_copy(&alpha), acc),
                                 );
-                                E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                             }
                         }
 
                         let b = self.b;
-                        for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                            let mut acc = E::from_units(E::deref(E::rb(E::as_ref(&acc_))));
-                            let a = E::from_units(E::deref(a));
-                            acc = E::add(a.conj().mul(b), alpha.mul(acc));
-                            let acc = E::into_units(acc);
-                            E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                        for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail))
+                        {
+                            let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(
+                                E::faer_as_ref(&acc_),
+                            )));
+                            let a = E::faer_from_units(E::faer_deref(a));
+                            acc = E::faer_add(a.faer_conj().faer_mul(b), alpha.faer_mul(acc));
+                            let acc = E::faer_into_units(acc);
+                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
                     }
                 }
@@ -823,21 +867,22 @@ pub mod outer_prod {
                     let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
                     let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
                     {
-                        let b = E::simd_splat(simd, self.b);
+                        let b = E::faer_simd_splat(simd, self.b);
 
-                        for (acc_, a) in zip(E::into_iter(acc_head), E::into_iter(a_head)) {
-                            let a = E::deref(a);
-                            let acc = E::simd_conj_mul(simd, a, E::copy(&b));
-                            E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                        for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
+                        {
+                            let a = E::faer_deref(a);
+                            let acc = E::faer_simd_conj_mul(simd, a, E::faer_copy(&b));
+                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                         }
                     }
 
                     let b = self.b;
-                    for (acc_, a) in zip(E::into_iter(acc_tail), E::into_iter(a_tail)) {
-                        let a = E::from_units(E::deref(a));
-                        let acc = E::mul(a.conj(), b);
-                        let acc = E::into_units(acc);
-                        E::map(E::zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
+                    for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
+                        let a = E::faer_from_units(E::faer_deref(a));
+                        let acc = E::faer_mul(a.faer_conj(), b);
+                        let acc = E::faer_into_units(acc);
+                        E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                     }
                 }
             }
@@ -868,7 +913,7 @@ pub mod outer_prod {
 
         let arch = E::Simd::default();
 
-        let a = E::map(
+        let a = E::faer_map(
             a.as_ptr(),
             #[inline(always)]
             |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
@@ -876,19 +921,19 @@ pub mod outer_prod {
 
         for j in 0..n {
             let acc = acc.rb_mut();
-            let acc = E::map(
+            let acc = E::faer_map(
                 acc.ptr_at(0, j),
                 #[inline(always)]
                 |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
             );
 
-            let a = E::copy(&a);
+            let a = E::faer_copy(&a);
             let b = b.read(j, 0);
             let b = match conj_b {
-                Conj::Yes => b.conj(),
+                Conj::Yes => b.faer_conj(),
                 Conj::No => b,
             };
-            let b = b.mul(beta);
+            let b = b.faer_mul(beta);
             match conj_a {
                 Conj::Yes => arch.dispatch(ConjImpl { acc, a, b, alpha }),
                 Conj::No => arch.dispatch(NoConjImpl { acc, a, b, alpha }),
@@ -948,21 +993,29 @@ pub mod outer_prod {
                     for j in 0..n {
                         let b = b.read(j, 0);
                         let b = match conj_b {
-                            Conj::Yes => b.conj(),
+                            Conj::Yes => b.faer_conj(),
                             Conj::No => b,
                         };
-                        let b = b.mul(beta);
+                        let b = b.faer_mul(beta);
                         match conj_a {
                             Conj::Yes => {
                                 for i in 0..m {
-                                    let ab = a.read(i, 0).conj().mul(b);
-                                    acc.write(i, j, E::add(acc.read(i, j).mul(alpha), ab));
+                                    let ab = a.read(i, 0).faer_conj().faer_mul(b);
+                                    acc.write(
+                                        i,
+                                        j,
+                                        E::faer_add(acc.read(i, j).faer_mul(alpha), ab),
+                                    );
                                 }
                             }
                             Conj::No => {
                                 for i in 0..m {
-                                    let ab = a.read(i, 0).mul(b);
-                                    acc.write(i, j, E::add(acc.read(i, j).mul(alpha), ab));
+                                    let ab = a.read(i, 0).faer_mul(b);
+                                    acc.write(
+                                        i,
+                                        j,
+                                        E::faer_add(acc.read(i, j).faer_mul(alpha), ab),
+                                    );
                                 }
                             }
                         }
@@ -972,19 +1025,19 @@ pub mod outer_prod {
                     for j in 0..n {
                         let b = b.read(j, 0);
                         let b = match conj_b {
-                            Conj::Yes => b.conj(),
+                            Conj::Yes => b.faer_conj(),
                             Conj::No => b,
                         };
-                        let b = b.mul(beta);
+                        let b = b.faer_mul(beta);
                         match conj_a {
                             Conj::Yes => {
                                 for i in 0..m {
-                                    acc.write(i, j, a.read(i, 0).conj().mul(b));
+                                    acc.write(i, j, a.read(i, 0).faer_conj().faer_mul(b));
                                 }
                             }
                             Conj::No => {
                                 for i in 0..m {
-                                    acc.write(i, j, a.read(i, 0).mul(b));
+                                    acc.write(i, j, a.read(i, 0).faer_mul(b));
                                 }
                             }
                         }
@@ -1040,7 +1093,8 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
         assert!(acc.row_stride() == 1);
 
         let k = a.ncols();
-        let mut local_acc = [[E::into_copy(E::simd_splat(simd, E::zero())); MR_DIV_N]; NR];
+        let mut local_acc =
+            [[E::faer_into_copy(E::faer_simd_splat(simd, E::faer_zero())); MR_DIV_N]; NR];
 
         unsafe {
             let mut one_iter = {
@@ -1056,8 +1110,8 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                         if i == MR_DIV_N {
                             break;
                         }
-                        a_uninit[i] = MaybeUninit::new(E::into_copy(E::map(
-                            E::copy(&a),
+                        a_uninit[i] = MaybeUninit::new(E::faer_into_copy(E::faer_map(
+                            E::faer_copy(&a),
                             #[inline(always)]
                             |ptr| *(ptr.add(i * lane_count) as *const E::SimdUnit<S>),
                         )));
@@ -1070,10 +1124,10 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                         if j == NR {
                             break;
                         }
-                        let b = E::map(
+                        let b = E::faer_map(
                             b.ptr_at(depth, j),
                             #[inline(always)]
-                            |ptr| E::simd_splat_unit(simd, *ptr),
+                            |ptr| E::faer_simd_splat_unit(simd, *ptr),
                         );
                         let mut i = 0;
                         loop {
@@ -1082,14 +1136,16 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                             }
                             let local_acc = &mut local_acc[j][i];
                             *local_acc =
-                                E::into_copy(
-                                    inner_prod::conditional_conj_mul_adde::<CONJ_B, E, S>(
-                                        simd,
-                                        E::copy(&b),
-                                        E::copy(&a[i]),
-                                        E::from_copy(*local_acc),
-                                    ),
-                                );
+                                E::faer_into_copy(inner_prod::conditional_conj_mul_adde::<
+                                    CONJ_B,
+                                    E,
+                                    S,
+                                >(
+                                    simd,
+                                    E::faer_copy(&b),
+                                    E::faer_copy(&a[i]),
+                                    E::faer_from_copy(*local_acc),
+                                ));
                             i += 1;
                         }
                         j += 1;
@@ -1122,9 +1178,10 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                     }
                     let acc = acc.rb_mut().ptr_inbounds_at(i * lane_count, j);
                     let mut acc_value =
-                        E::map(E::copy(&acc), |acc| *(acc as *const E::SimdUnit<S>));
-                    acc_value = E::simd_add(simd, acc_value, E::from_copy(local_acc[j][i]));
-                    E::map(E::zip(acc, acc_value), |(acc, new_acc)| {
+                        E::faer_map(E::faer_copy(&acc), |acc| *(acc as *const E::SimdUnit<S>));
+                    acc_value =
+                        E::faer_simd_add(simd, acc_value, E::faer_from_copy(local_acc[j][i]));
+                    E::faer_map(E::faer_zip(acc, acc_value), |(acc, new_acc)| {
                         *(acc as *mut E::SimdUnit<S>) = new_acc
                     });
                     i += 1;
@@ -1198,7 +1255,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
                 Conj::No,
                 b,
                 Conj::No,
-                Some(E::Real::one()),
+                Some(E::Real::faer_one()),
                 beta,
                 parallelism,
             )
@@ -1206,16 +1263,16 @@ fn matmul_with_conj_impl<E: ComplexField>(
 
         match conj_b {
             Conj::Yes => {
-                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
-                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one());
-                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one().neg());
-                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::faer_one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::faer_one());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::faer_one().faer_neg());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::faer_one());
             }
             Conj::No => {
-                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
-                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one().neg());
-                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one());
-                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::faer_one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::faer_one().faer_neg());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::faer_one());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::faer_one());
             }
         }
 
@@ -1388,10 +1445,14 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         let ab = inner_prod::inner_prod_with_conj(lhs.transpose(), conj_lhs, rhs, conj_rhs);
         match alpha {
             Some(alpha) => {
-                acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), ab.mul(beta)));
+                acc.write(
+                    0,
+                    0,
+                    E::faer_add(acc.read(0, 0).faer_mul(alpha), ab.faer_mul(beta)),
+                );
             }
             None => {
-                acc.write(0, 0, ab.mul(beta));
+                acc.write(0, 0, ab.faer_mul(beta));
             }
         }
         return;
@@ -1439,7 +1500,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            acc.read_unchecked(i, j).mul(alpha),
+                                            acc.read_unchecked(i, j).faer_mul(alpha),
                                         )
                                     }
                                 }
@@ -1447,7 +1508,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        acc.write_unchecked(i, j, E::zero())
+                                        acc.write_unchecked(i, j, E::faer_zero())
                                     }
                                 }
                             }
@@ -1460,9 +1521,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1472,7 +1533,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                                 for i in 0..m {
                                     for j in 0..n {
                                         let dot = term(i, j, 0);
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1481,13 +1542,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = term(i, j, 0).add(term(i, j, 1));
+                                        let dot = term(i, j, 0).faer_add(term(i, j, 1));
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1496,8 +1557,8 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = term(i, j, 0).add(term(i, j, 1));
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        let dot = term(i, j, 0).faer_add(term(i, j, 1));
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1506,14 +1567,15 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot =
-                                            term(i, j, 0).add(term(i, j, 1)).add(term(i, j, 2));
+                                        let dot = term(i, j, 0)
+                                            .faer_add(term(i, j, 1))
+                                            .faer_add(term(i, j, 2));
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1522,9 +1584,10 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot =
-                                            term(i, j, 0).add(term(i, j, 1)).add(term(i, j, 2));
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        let dot = term(i, j, 0)
+                                            .faer_add(term(i, j, 1))
+                                            .faer_add(term(i, j, 2));
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1533,17 +1596,17 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)),
-                                            E::add(term(i, j, 2), term(i, j, 3)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1)),
+                                            E::faer_add(term(i, j, 2), term(i, j, 3)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1552,11 +1615,11 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)),
-                                            E::add(term(i, j, 2), term(i, j, 3)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1)),
+                                            E::faer_add(term(i, j, 2), term(i, j, 3)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1565,17 +1628,18 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
-                                            E::add(term(i, j, 3), term(i, j, 4)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1))
+                                                .faer_add(term(i, j, 2)),
+                                            E::faer_add(term(i, j, 3), term(i, j, 4)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1584,11 +1648,12 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
-                                            E::add(term(i, j, 3), term(i, j, 4)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1))
+                                                .faer_add(term(i, j, 2)),
+                                            E::faer_add(term(i, j, 3), term(i, j, 4)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1597,17 +1662,19 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             Some(alpha) => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
-                                            E::add(term(i, j, 3), term(i, j, 4)).add(term(i, j, 5)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1))
+                                                .faer_add(term(i, j, 2)),
+                                            E::faer_add(term(i, j, 3), term(i, j, 4))
+                                                .faer_add(term(i, j, 5)),
                                         );
 
                                         acc.write_unchecked(
                                             i,
                                             j,
-                                            E::add(
-                                                acc.read_unchecked(i, j).mul(alpha),
-                                                dot.mul(beta),
+                                            E::faer_add(
+                                                acc.read_unchecked(i, j).faer_mul(alpha),
+                                                dot.faer_mul(beta),
                                             ),
                                         )
                                     }
@@ -1616,11 +1683,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                             None => {
                                 for i in 0..m {
                                     for j in 0..n {
-                                        let dot = E::add(
-                                            E::add(term(i, j, 0), term(i, j, 1)).add(term(i, j, 2)),
-                                            E::add(term(i, j, 3), term(i, j, 4)).add(term(i, j, 5)),
+                                        let dot = E::faer_add(
+                                            E::faer_add(term(i, j, 0), term(i, j, 1))
+                                                .faer_add(term(i, j, 2)),
+                                            E::faer_add(term(i, j, 3), term(i, j, 4))
+                                                .faer_add(term(i, j, 5)),
                                         );
-                                        acc.write_unchecked(i, j, dot.mul(beta))
+                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
                                     }
                                 }
                             }
@@ -1636,8 +1705,8 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             (lhs.read_unchecked(i, depth)
-                                .mul(rhs.read_unchecked(depth, j)))
-                            .conj()
+                                .faer_mul(rhs.read_unchecked(depth, j)))
+                            .faer_conj()
                         }
                     };
                     small_gemm!(term);
@@ -1647,8 +1716,8 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
-                                .conj()
-                                .mul(rhs.read_unchecked(depth, j))
+                                .faer_conj()
+                                .faer_mul(rhs.read_unchecked(depth, j))
                         }
                     };
                     small_gemm!(term);
@@ -1658,7 +1727,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
-                                .mul(rhs.read_unchecked(depth, j).conj())
+                                .faer_mul(rhs.read_unchecked(depth, j).faer_conj())
                         }
                     };
                     small_gemm!(term);
@@ -1668,7 +1737,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                         #[inline(always)]
                         |i, j, depth| {
                             lhs.read_unchecked(i, depth)
-                                .mul(rhs.read_unchecked(depth, j))
+                                .faer_mul(rhs.read_unchecked(depth, j))
                         }
                     };
                     small_gemm!(term);
@@ -1839,7 +1908,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let padded_m = div_ceil(m, lane_count).checked_mul(lane_count).unwrap();
 
     let mut a_copy = a.to_owned();
-    a_copy.resize_with(padded_m, k, |_, _| E::zero());
+    a_copy.resize_with(padded_m, k, |_, _| E::faer_zero());
     let a_copy = a_copy.as_ref();
     let mut tmp = crate::Mat::<E>::zeros(padded_m, n);
     let tmp_conj_b = match (conj_a, conj_b) {
@@ -1858,18 +1927,25 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     match alpha {
         Some(alpha) => match conj_a {
             Conj::Yes => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                acc.write(E::add(acc.read().mul(alpha), tmp.read().conj().mul(beta)))
+                acc.write(E::faer_add(
+                    acc.read().faer_mul(alpha),
+                    tmp.read().faer_conj().faer_mul(beta),
+                ))
             }),
             Conj::No => zipped!(acc, tmp).for_each(|mut acc, tmp| {
-                acc.write(E::add(acc.read().mul(alpha), tmp.read().mul(beta)))
+                acc.write(E::faer_add(
+                    acc.read().faer_mul(alpha),
+                    tmp.read().faer_mul(beta),
+                ))
             }),
         },
         None => match conj_a {
             Conj::Yes => {
-                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().conj().mul(beta)));
+                zipped!(acc, tmp)
+                    .for_each(|mut acc, tmp| acc.write(tmp.read().faer_conj().faer_mul(beta)));
             }
             Conj::No => {
-                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().mul(beta)));
+                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().faer_mul(beta)));
             }
         },
     }
@@ -2025,8 +2101,8 @@ macro_rules! stack_mat_16x16_begin {
     ($name: ident, $nrows: expr, $ncols: expr, $ty: ty) => {
         let __nrows = $nrows;
         let __ncols = $ncols;
-        let mut __data = <$ty as $crate::Entity>::map(
-            <$ty as $crate::Entity>::from_copy(<$ty as $crate::Entity>::UNIT),
+        let mut __data = <$ty as $crate::Entity>::faer_map(
+            <$ty as $crate::Entity>::faer_from_copy(<$ty as $crate::Entity>::UNIT),
             #[inline(always)]
             |()| unsafe {
                 $crate::transmute_unchecked::<
@@ -2038,10 +2114,10 @@ macro_rules! stack_mat_16x16_begin {
             },
         );
 
-        <$ty as $crate::Entity>::map(
-            <$ty as $crate::Entity>::zip(
-                <$ty as $crate::Entity>::as_mut(&mut __data),
-                <$ty as $crate::Entity>::into_units(<$ty as $crate::ComplexField>::zero()),
+        <$ty as $crate::Entity>::faer_map(
+            <$ty as $crate::Entity>::faer_zip(
+                <$ty as $crate::Entity>::faer_as_mut(&mut __data),
+                <$ty as $crate::Entity>::faer_into_units(<$ty as $crate::ComplexField>::faer_zero()),
             ),
             #[inline(always)]
             |(__data, zero)| {
@@ -2051,7 +2127,7 @@ macro_rules! stack_mat_16x16_begin {
             },
         );
         let mut __data =
-            <$ty as $crate::Entity>::map(<$ty as $crate::Entity>::as_mut(&mut __data), |__data| {
+            <$ty as $crate::Entity>::faer_map(<$ty as $crate::Entity>::faer_as_mut(&mut __data), |__data| {
                 (__data as *mut [::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; 16 * 16]
                     as *mut <$ty as $crate::Entity>::Unit)
             });
@@ -2092,20 +2168,21 @@ pub mod triangular {
         let strict = match src_diag {
             DiagonalKind::Zero => {
                 for j in 0..n {
-                    dst.write_unchecked(j, j, E::zero());
+                    dst.write_unchecked(j, j, E::faer_zero());
                 }
                 true
             }
             DiagonalKind::Unit => {
                 for j in 0..n {
-                    dst.write_unchecked(j, j, E::one());
+                    dst.write_unchecked(j, j, E::faer_one());
                 }
                 true
             }
             DiagonalKind::Generic => false,
         };
 
-        zipped!(dst.rb_mut()).for_each_triangular_upper(Diag::Skip, |mut dst| dst.write(E::zero()));
+        zipped!(dst.rb_mut())
+            .for_each_triangular_upper(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
         zipped!(dst, src).for_each_triangular_lower(
             if strict { Diag::Skip } else { Diag::Include },
             |mut dst, src| dst.write(src.read()),
@@ -2128,7 +2205,7 @@ pub mod triangular {
             Some(alpha) => {
                 zipped!(dst, src).for_each_triangular_lower(
                     if skip_diag { Diag::Skip } else { Diag::Include },
-                    |mut dst, src| dst.write(alpha.mul(dst.read().add(src.read()))),
+                    |mut dst, src| dst.write(alpha.faer_mul(dst.read().faer_add(src.read()))),
                 );
             }
             None => {
@@ -2259,7 +2336,7 @@ pub mod triangular {
                 skip_diag,
                 lhs_top_right,
                 rhs_bot_left,
-                Some(E::one()),
+                Some(E::faer_one()),
                 beta,
                 conj_lhs,
                 conj_rhs,
@@ -2270,7 +2347,7 @@ pub mod triangular {
                 lhs_bot_left,
                 rhs_top_left,
                 rhs_diag,
-                Some(E::one()),
+                Some(E::faer_one()),
                 beta,
                 conj_lhs,
                 conj_rhs,
@@ -2369,7 +2446,7 @@ pub mod triangular {
                 dst_left,
                 lhs_right,
                 rhs_bot_left,
-                Some(E::one()),
+                Some(E::faer_one()),
                 beta,
                 conj_lhs,
                 conj_rhs,
@@ -2465,7 +2542,7 @@ pub mod triangular {
                 rhs_bot_left.reverse_rows_and_cols().transpose(),
                 lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
-                Some(E::one()),
+                Some(E::faer_one()),
                 beta,
                 conj_rhs,
                 conj_lhs,
@@ -2563,7 +2640,7 @@ pub mod triangular {
                         lhs_diag,
                         rhs_top_left,
                         rhs_diag,
-                        Some(E::one()),
+                        Some(E::faer_one()),
                         beta,
                         conj_lhs,
                         conj_rhs,
@@ -2699,7 +2776,7 @@ pub mod triangular {
                         lhs_diag,
                         rhs_top_left,
                         rhs_diag,
-                        Some(E::one()),
+                        Some(E::faer_one()),
                         beta,
                         conj_lhs,
                         conj_rhs,
@@ -3198,12 +3275,12 @@ pub mod triangular {
         let clear_upper = |acc: MatMut<'_, E>, skip_diag: bool| match &alpha {
             Some(alpha) => zipped!(acc).for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |mut acc| acc.write(alpha.mul(acc.read())),
+                |mut acc| acc.write(alpha.faer_mul(acc.read())),
             ),
 
             None => zipped!(acc).for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |mut acc| acc.write(E::zero()),
+                |mut acc| acc.write(E::faer_zero()),
             ),
         };
 
@@ -3360,15 +3437,16 @@ pub mod triangular {
                             zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
                                 .for_each(|mut acc, lhs, rhs| {
                                     acc.write(
-                                        (alpha.mul(acc.read()))
-                                            .add(beta.mul(lhs.read().mul(rhs.read()))),
+                                        (alpha.faer_mul(acc.read())).faer_add(
+                                            beta.faer_mul(lhs.read().faer_mul(rhs.read())),
+                                        ),
                                     )
                                 });
                         }
                         None => {
                             zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
                                 .for_each(|mut acc, lhs, rhs| {
-                                    acc.write(beta.mul(lhs.read().mul(rhs.read())))
+                                    acc.write(beta.faer_mul(lhs.read().faer_mul(rhs.read())))
                                 });
                         }
                     }
@@ -3425,15 +3503,15 @@ mod tests {
 
         let alphas = [
             None,
-            Some(c32::one()),
-            Some(c32::zero()),
+            Some(c32::faer_one()),
+            Some(c32::faer_zero()),
             Some(random(0, 0)),
         ];
 
         #[cfg(not(miri))]
         let bools = [false, true];
         #[cfg(not(miri))]
-        let betas = [c32::one(), c32::zero(), random(0, 0)];
+        let betas = [c32::faer_one(), c32::faer_zero(), random(0, 0)];
         #[cfg(not(miri))]
         let par = [Parallelism::None, Parallelism::Rayon(0)];
         #[cfg(not(miri))]
@@ -3583,26 +3661,28 @@ mod tests {
             let acc = acc.rb().submatrix(i, j, 1, 1);
             let mut acc = unsafe { acc.const_cast() };
 
-            let mut local_acc = E::zero();
+            let mut local_acc = E::faer_zero();
             for depth in 0..k {
                 let a = a.read(i, depth);
                 let b = b.read(depth, j);
-                local_acc = local_acc.add(E::mul(
+                local_acc = local_acc.faer_add(E::faer_mul(
                     match conj_a {
-                        Conj::Yes => a.conj(),
+                        Conj::Yes => a.faer_conj(),
                         Conj::No => a,
                     },
                     match conj_b {
-                        Conj::Yes => b.conj(),
+                        Conj::Yes => b.faer_conj(),
                         Conj::No => b,
                     },
                 ))
             }
             match alpha {
-                Some(alpha) => {
-                    acc.write(0, 0, E::add(acc.read(0, 0).mul(alpha), local_acc.mul(beta)))
-                }
-                None => acc.write(0, 0, local_acc.mul(beta)),
+                Some(alpha) => acc.write(
+                    0,
+                    0,
+                    E::faer_add(acc.read(0, 0).faer_mul(alpha), local_acc.faer_mul(beta)),
+                ),
+                None => acc.write(0, 0, local_acc.faer_mul(beta)),
             }
         };
 
@@ -3670,7 +3750,8 @@ mod tests {
             for i in 0..m {
                 let acc: Complex32 = acc.read(i, j).into();
                 let target: Complex32 = target.read(i, j).into();
-                assert_approx_eq!(acc, target, 1e-3);
+                assert_approx_eq!(acc.re, target.re, 1e-3);
+                assert_approx_eq!(acc.im, target.im, 1e-3);
             }
         }
     }

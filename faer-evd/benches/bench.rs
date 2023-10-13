@@ -52,7 +52,7 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().add(y.read())));
+            .for_each(|mut x, y| x.write(x.read().faer_add(y.read())));
 
         let mut trid = mat.clone();
         let mut tau_left = Mat::zeros(n - 1, 1);
@@ -164,7 +164,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().add(y.read())));
+            .for_each(|mut x, y| x.write(x.read().faer_add(y.read())));
 
         let mut s = Mat::zeros(n, n);
         let mut u = Mat::zeros(n, n);
@@ -270,8 +270,8 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
                         .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
-                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_cplx_evd::multishift_qr(
                         true,
@@ -308,8 +308,8 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
                         .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
-                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_cplx_evd::multishift_qr(
                         true,
@@ -357,8 +357,8 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
                         .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
-                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_real_evd::multishift_qr(
                         true,
@@ -396,8 +396,8 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
                         .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::zero()));
-                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::one()));
+                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal()).for_each(|mut x| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_real_evd::multishift_qr(
                         true,

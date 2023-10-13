@@ -44,18 +44,18 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
 }
 
 fn sign<E: RealField>(a: E) -> E {
-    let zero = E::zero();
+    let zero = E::faer_zero();
     if a == zero {
         zero
     } else if a > zero {
-        E::one()
+        E::faer_one()
     } else {
-        E::one().neg()
+        E::faer_one().faer_neg()
     }
 }
 
 fn abs1<E: RealField>(a: E) -> E::Real {
-    a.abs()
+    a.faer_abs()
 }
 
 fn rot<E: RealField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E, s: E) {
@@ -63,7 +63,10 @@ fn rot<E: RealField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E, s: E) {
         let mut x_ = x.read();
         let mut y_ = y.read();
 
-        (x_, y_) = (c.mul(x_).add(s.mul(y_)), c.mul(y_).sub(s.mul(x_)));
+        (x_, y_) = (
+            c.faer_mul(x_).faer_add(s.faer_mul(y_)),
+            c.faer_mul(y_).faer_sub(s.faer_mul(x_)),
+        );
 
         x.write(x_);
         y.write(y_);
@@ -79,15 +82,15 @@ fn lahqr_schur22<E: RealField>(
     eps: E,
     zero_threshold: E,
 ) -> ((E, E, E, E), (E, E), (E, E), (E, E)) {
-    let zero = E::zero();
+    let zero = E::faer_zero();
 
-    let half = E::from_f64(0.5);
-    let one = E::one();
-    let multpl = E::from_f64(4.0);
+    let half = E::faer_from_f64(0.5);
+    let one = E::faer_one();
+    let multpl = E::faer_from_f64(4.0);
 
     let safmin = zero_threshold;
-    let safmn2 = safmin.div(eps).sqrt();
-    let safmx2 = safmn2.inv();
+    let safmn2 = safmin.faer_div(eps).faer_sqrt();
+    let safmx2 = safmn2.faer_inv();
 
     let mut cs;
     let mut sn;
@@ -102,112 +105,116 @@ fn lahqr_schur22<E: RealField>(
         sn = one;
 
         core::mem::swap(&mut d, &mut a);
-        b = c.neg();
+        b = c.faer_neg();
         c = zero;
-    } else if a.sub(d) == zero && sign(b) != sign(c) {
+    } else if a.faer_sub(d) == zero && sign(b) != sign(c) {
         cs = one;
         sn = zero;
     } else {
-        let mut temp = a.sub(d);
-        let mut p = temp.scale_power_of_two(half);
+        let mut temp = a.faer_sub(d);
+        let mut p = temp.faer_scale_power_of_two(half);
 
-        let bcmax = max(b.abs(), c.abs());
-        let bcmin = min(b.abs(), c.abs()).mul(sign(b).mul(sign(c)));
+        let bcmax = max(b.faer_abs(), c.faer_abs());
+        let bcmin = min(b.faer_abs(), c.faer_abs()).faer_mul(sign(b).faer_mul(sign(c)));
 
-        let mut scale = max(p.abs(), bcmax);
+        let mut scale = max(p.faer_abs(), bcmax);
 
-        let mut z = ((p.div(scale)).mul(p)).add(bcmax.div(scale).mul(bcmin));
+        let mut z =
+            ((p.faer_div(scale)).faer_mul(p)).faer_add(bcmax.faer_div(scale).faer_mul(bcmin));
 
         // if z is positive, we should have real eigenvalues
         // however, is z is very small, but positive, we postpone the decision
-        if z >= multpl.mul(eps) {
+        if z >= multpl.faer_mul(eps) {
             // Real eigenvalues.
 
             // Compute a and d.
 
-            z = p.add(sign(p).mul(scale.sqrt().mul(z.sqrt())));
-            a = d.add(z);
-            d = d.sub((bcmax.div(z)).mul(bcmin));
+            z = p.faer_add(sign(p).faer_mul(scale.faer_sqrt().faer_mul(z.faer_sqrt())));
+            a = d.faer_add(z);
+            d = d.faer_sub((bcmax.faer_div(z)).faer_mul(bcmin));
             // Compute b and the rotation matrix
-            let tau = (c.abs2().add(z.abs2())).sqrt();
-            cs = z.div(tau);
-            sn = c.div(tau);
-            b = b.sub(c);
+            let tau = (c.faer_abs2().faer_add(z.faer_abs2())).faer_sqrt();
+            cs = z.faer_div(tau);
+            sn = c.faer_div(tau);
+            b = b.faer_sub(c);
             c = zero;
         } else {
             // Complex eigenvalues, or real (almost) equal eigenvalues.
 
             // Make diagonal elements equal.
 
-            let mut sigma = b.add(c);
+            let mut sigma = b.faer_add(c);
             for _ in 0..20 {
-                scale = max(temp.abs(), sigma.abs());
+                scale = max(temp.faer_abs(), sigma.faer_abs());
                 if scale >= safmx2 {
-                    sigma = sigma.mul(safmn2);
-                    temp = temp.mul(safmn2);
+                    sigma = sigma.faer_mul(safmn2);
+                    temp = temp.faer_mul(safmn2);
                     continue;
                 }
                 if scale <= safmn2 {
-                    sigma = sigma.mul(safmx2);
-                    temp = temp.mul(safmx2);
+                    sigma = sigma.faer_mul(safmx2);
+                    temp = temp.faer_mul(safmx2);
                     continue;
                 }
                 break;
             }
 
-            p = temp.scale_power_of_two(half);
-            let mut tau = (sigma.abs2().add(temp.abs2())).sqrt();
-            cs = ((one.add(sigma.abs().div(tau))).scale_power_of_two(half)).sqrt();
-            sn = (p.div(tau.mul(cs))).neg().mul(sign(sigma));
+            p = temp.faer_scale_power_of_two(half);
+            let mut tau = (sigma.faer_abs2().faer_add(temp.faer_abs2())).faer_sqrt();
+            cs = ((one.faer_add(sigma.faer_abs().faer_div(tau))).faer_scale_power_of_two(half))
+                .faer_sqrt();
+            sn = (p.faer_div(tau.faer_mul(cs)))
+                .faer_neg()
+                .faer_mul(sign(sigma));
             //
             // Compute [aa bb] = [a b][cs -sn]
             //         [cc dd] = [c d][sn  cs]
             //
-            let aa = a.mul(cs).add(b.mul(sn));
-            let bb = a.neg().mul(sn).add(b.mul(cs));
-            let cc = c.mul(cs).add(d.mul(sn));
-            let dd = c.neg().mul(sn).add(d.mul(cs));
+            let aa = a.faer_mul(cs).faer_add(b.faer_mul(sn));
+            let bb = a.faer_neg().faer_mul(sn).faer_add(b.faer_mul(cs));
+            let cc = c.faer_mul(cs).faer_add(d.faer_mul(sn));
+            let dd = c.faer_neg().faer_mul(sn).faer_add(d.faer_mul(cs));
             //
             // Compute [a b] = [ cs sn][aa bb]
             //         [c d] = [-sn cs][cc dd]
             //
-            a = aa.mul(cs).add(cc.mul(sn));
-            b = bb.mul(cs).add(dd.mul(sn));
-            c = aa.neg().mul(sn).add(cc.mul(cs));
-            d = bb.neg().mul(sn).add(dd.mul(cs));
+            a = aa.faer_mul(cs).faer_add(cc.faer_mul(sn));
+            b = bb.faer_mul(cs).faer_add(dd.faer_mul(sn));
+            c = aa.faer_neg().faer_mul(sn).faer_add(cc.faer_mul(cs));
+            d = bb.faer_neg().faer_mul(sn).faer_add(dd.faer_mul(cs));
 
-            temp = (a.add(d)).scale_power_of_two(half);
+            temp = (a.faer_add(d)).faer_scale_power_of_two(half);
             a = temp;
             d = temp;
 
             if c != zero && b != zero && sign(b) == sign(c) {
                 // Real eigenvalues: reduce to upper triangular form
-                let sab = b.abs().sqrt();
-                let sac = c.abs().sqrt();
+                let sab = b.faer_abs().faer_sqrt();
+                let sac = c.faer_abs().faer_sqrt();
                 p = if c > zero {
-                    sab.mul(sac)
+                    sab.faer_mul(sac)
                 } else {
-                    sab.neg().mul(sac)
+                    sab.faer_neg().faer_mul(sac)
                 };
-                tau = (b.add(c)).abs().sqrt().inv();
-                a = temp.add(p);
-                d = temp.sub(p);
-                b = b.sub(c);
+                tau = (b.faer_add(c)).faer_abs().faer_sqrt().faer_inv();
+                a = temp.faer_add(p);
+                d = temp.faer_sub(p);
+                b = b.faer_sub(c);
                 c = zero;
-                let cs1 = sab.mul(tau);
-                let sn1 = sac.mul(tau);
-                temp = cs.mul(cs1).sub(sn.mul(sn1));
-                sn = cs.mul(sn1).add(sn.mul(cs1));
+                let cs1 = sab.faer_mul(tau);
+                let sn1 = sac.faer_mul(tau);
+                temp = cs.faer_mul(cs1).faer_sub(sn.faer_mul(sn1));
+                sn = cs.faer_mul(sn1).faer_add(sn.faer_mul(cs1));
                 cs = temp;
             }
         }
     }
 
     let (s1, s2) = if c != zero {
-        let temp = b.abs().sqrt().mul(c.abs().sqrt());
-        ((a, temp), (d, temp.neg()))
+        let temp = b.faer_abs().faer_sqrt().faer_mul(c.faer_abs().faer_sqrt());
+        ((a, temp), (d, temp.faer_neg()))
     } else {
-        ((a, E::zero()), (d, E::zero()))
+        ((a, E::faer_zero()), (d, E::faer_zero()))
     };
 
     ((a, b, c, d), s1, s2, (cs, sn))
@@ -215,30 +222,37 @@ fn lahqr_schur22<E: RealField>(
 
 // ret: (eig1_re eig1_im) (eig2_re eig2_im)
 fn lahqr_eig22<E: RealField>(mut a00: E, mut a01: E, mut a10: E, mut a11: E) -> ((E, E), (E, E)) {
-    let zero = E::zero();
-    let half = E::from_f64(0.5);
+    let zero = E::faer_zero();
+    let half = E::faer_from_f64(0.5);
 
-    let s = a00.abs().add(a01.abs()).add(a10.abs()).add(a11.abs());
+    let s = a00
+        .faer_abs()
+        .faer_add(a01.faer_abs())
+        .faer_add(a10.faer_abs())
+        .faer_add(a11.faer_abs());
     if s == zero {
         return ((zero, zero), (zero, zero));
     }
 
-    a00 = a00.div(s);
-    a01 = a01.div(s);
-    a10 = a10.div(s);
-    a11 = a11.div(s);
+    a00 = a00.faer_div(s);
+    a01 = a01.faer_div(s);
+    a10 = a10.faer_div(s);
+    a11 = a11.faer_div(s);
 
-    let tr = (a00.add(a11)).scale_power_of_two(half);
-    let det = (a00.sub(tr)).abs2().add(a01.mul(a10));
+    let tr = (a00.faer_add(a11)).faer_scale_power_of_two(half);
+    let det = (a00.faer_sub(tr)).faer_abs2().faer_add(a01.faer_mul(a10));
 
     if det >= zero {
-        let rtdisc = det.sqrt();
-        ((s.mul(tr.add(rtdisc)), zero), (s.mul(tr.sub(rtdisc)), zero))
+        let rtdisc = det.faer_sqrt();
+        (
+            (s.faer_mul(tr.faer_add(rtdisc)), zero),
+            (s.faer_mul(tr.faer_sub(rtdisc)), zero),
+        )
     } else {
-        let rtdisc = det.neg().sqrt();
-        let re = s.mul(tr);
-        let im = s.mul(rtdisc);
-        ((re, im), (re, im.neg()))
+        let rtdisc = det.faer_neg().faer_sqrt();
+        let re = s.faer_mul(tr);
+        let im = s.faer_mul(rtdisc);
+        ((re, im), (re, im.faer_neg()))
     }
 }
 
@@ -250,46 +264,65 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
     debug_assert!(v.ncols() == 1);
 
     if n == 2 {
-        let s = (h.read(0, 0).sub(s2.0))
-            .abs()
-            .add(s2.1.abs())
-            .add(h.read(1, 0).abs());
+        let s = (h.read(0, 0).faer_sub(s2.0))
+            .faer_abs()
+            .faer_add(s2.1.faer_abs())
+            .faer_add(h.read(1, 0).faer_abs());
 
-        if s == E::zero() {
-            v.write(0, 0, E::zero());
-            v.write(1, 0, E::zero());
+        if s == E::faer_zero() {
+            v.write(0, 0, E::faer_zero());
+            v.write(1, 0, E::faer_zero());
         } else {
-            let h10s = h.read(1, 0).div(s);
+            let h10s = h.read(1, 0).faer_div(s);
 
-            let v0 = (h10s.mul(h.read(0, 1)))
-                .add((h.read(0, 0).sub(s1.0)).mul((h.read(0, 0).sub(s2.0)).div(s)))
-                .sub(s1.1.mul(s2.1.div(s)));
-            let v1 = h10s.mul(h.read(0, 0).add(h.read(1, 1)).sub(s1.0).sub(s2.0));
+            let v0 = (h10s.faer_mul(h.read(0, 1)))
+                .faer_add(
+                    (h.read(0, 0).faer_sub(s1.0))
+                        .faer_mul((h.read(0, 0).faer_sub(s2.0)).faer_div(s)),
+                )
+                .faer_sub(s1.1.faer_mul(s2.1.faer_div(s)));
+            let v1 = h10s.faer_mul(
+                h.read(0, 0)
+                    .faer_add(h.read(1, 1))
+                    .faer_sub(s1.0)
+                    .faer_sub(s2.0),
+            );
             v.write(0, 0, v0);
             v.write(1, 0, v1);
         }
     } else {
-        let s = (h.read(0, 0).sub(s2.0))
-            .abs()
-            .add(s2.1.abs())
-            .add(h.read(1, 0).abs())
-            .add(h.read(2, 0).abs());
+        let s = (h.read(0, 0).faer_sub(s2.0))
+            .faer_abs()
+            .faer_add(s2.1.faer_abs())
+            .faer_add(h.read(1, 0).faer_abs())
+            .faer_add(h.read(2, 0).faer_abs());
 
-        if s == E::zero() {
-            v.write(0, 0, E::zero());
-            v.write(1, 0, E::zero());
-            v.write(2, 0, E::zero());
+        if s == E::faer_zero() {
+            v.write(0, 0, E::faer_zero());
+            v.write(1, 0, E::faer_zero());
+            v.write(2, 0, E::faer_zero());
         } else {
-            let h10s = h.read(1, 0).div(s);
-            let h20s = h.read(2, 0).div(s);
-            let v0 = ((h.read(0, 0).sub(s1.0)).mul((h.read(0, 0).sub(s2.0)).div(s)))
-                .sub(s1.1.mul(s2.1.div(s)))
-                .add(h.read(0, 1).mul(h10s))
-                .add(h.read(0, 2).mul(h20s));
-            let v1 = (h10s.mul(h.read(0, 0).add(h.read(1, 1)).sub(s1.0).sub(s2.0)))
-                .add(h.read(1, 2).mul(h20s));
-            let v2 = (h20s.mul(h.read(0, 0).add(h.read(2, 2)).sub(s1.0).sub(s2.0)))
-                .add(h10s.mul(h.read(2, 1)));
+            let h10s = h.read(1, 0).faer_div(s);
+            let h20s = h.read(2, 0).faer_div(s);
+            let v0 = ((h.read(0, 0).faer_sub(s1.0))
+                .faer_mul((h.read(0, 0).faer_sub(s2.0)).faer_div(s)))
+            .faer_sub(s1.1.faer_mul(s2.1.faer_div(s)))
+            .faer_add(h.read(0, 1).faer_mul(h10s))
+            .faer_add(h.read(0, 2).faer_mul(h20s));
+            let v1 = (h10s.faer_mul(
+                h.read(0, 0)
+                    .faer_add(h.read(1, 1))
+                    .faer_sub(s1.0)
+                    .faer_sub(s2.0),
+            ))
+            .faer_add(h.read(1, 2).faer_mul(h20s));
+            let v2 = (h20s.faer_mul(
+                h.read(0, 0)
+                    .faer_add(h.read(2, 2))
+                    .faer_sub(s1.0)
+                    .faer_sub(s2.0),
+            ))
+            .faer_add(h10s.faer_mul(h.read(2, 1)));
 
             v.write(0, 0, v0);
             v.write(1, 0, v1);
@@ -300,30 +333,32 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
 
 fn rotg<E: RealField>(a: E, b: E, zero_threshold: E::Real) -> (E::Real, E, E) {
     let safmin = zero_threshold;
-    let safmax = zero_threshold.inv();
+    let safmax = zero_threshold.faer_inv();
 
     let (c, s, r);
 
-    let anorm = a.abs();
-    let bnorm = b.abs();
+    let anorm = a.faer_abs();
+    let bnorm = b.faer_abs();
 
     // quick return
-    if bnorm == E::zero() {
-        c = E::one();
-        s = E::zero();
-        r = E::one();
-    } else if anorm == E::zero() {
-        c = E::zero();
-        s = E::one();
+    if bnorm == E::faer_zero() {
+        c = E::faer_one();
+        s = E::faer_zero();
+        r = E::faer_one();
+    } else if anorm == E::faer_zero() {
+        c = E::faer_zero();
+        s = E::faer_one();
         r = b;
     } else {
         let scl = min(safmax, max(safmin, max(anorm, bnorm)));
         let sigma = if anorm > bnorm { sign(a) } else { sign(b) };
-        r = sigma
-            .mul(scl)
-            .mul(E::sqrt((a.div(scl)).abs2().add((b.div(scl)).abs2())));
-        c = a.div(r);
-        s = b.div(r);
+        r = sigma.faer_mul(scl).faer_mul(E::faer_sqrt(
+            (a.faer_div(scl))
+                .faer_abs2()
+                .faer_add((b.faer_div(scl)).faer_abs2()),
+        ));
+        c = a.faer_div(r);
+        s = b.faer_div(r);
     }
 
     (c, s, r)
@@ -342,15 +377,17 @@ fn lasy2<E: RealField>(
     let n2 = tr.nrows();
 
     let eps = epsilon;
-    let small_num = zero_threshold.div(eps);
+    let small_num = zero_threshold.faer_div(eps);
 
     debug_assert!(n1 == 2);
     debug_assert!(n2 == 2);
 
-    let mut btmp = E::map(E::zero().into_units(), |zero| [zero, zero, zero, zero]);
+    let mut btmp = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
+        [zero, zero, zero, zero]
+    });
     let mut btmp = unsafe {
         MatMut::<E>::from_raw_parts(
-            E::map(E::as_mut(&mut btmp), |array| array.as_mut_ptr()),
+            E::faer_map(E::faer_as_mut(&mut btmp), |array| array.as_mut_ptr()),
             4,
             1,
             1,
@@ -358,10 +395,12 @@ fn lasy2<E: RealField>(
         )
     };
 
-    let mut tmp = E::map(E::zero().into_units(), |zero| [zero, zero, zero, zero]);
+    let mut tmp = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
+        [zero, zero, zero, zero]
+    });
     let mut tmp = unsafe {
         MatMut::<E>::from_raw_parts(
-            E::map(E::as_mut(&mut tmp), |array| array.as_mut_ptr()),
+            E::faer_map(E::faer_as_mut(&mut tmp), |array| array.as_mut_ptr()),
             4,
             1,
             1,
@@ -369,7 +408,7 @@ fn lasy2<E: RealField>(
         )
     };
 
-    let mut t16 = E::map(E::zero().into_units(), |zero| {
+    let mut t16 = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
         [
             zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero,
             zero, zero,
@@ -377,7 +416,7 @@ fn lasy2<E: RealField>(
     });
     let mut t16 = unsafe {
         MatMut::<E>::from_raw_parts(
-            E::map(E::as_mut(&mut t16), |array| array.as_mut_ptr()),
+            E::faer_map(E::faer_as_mut(&mut t16), |array| array.as_mut_ptr()),
             4,
             4,
             1,
@@ -398,22 +437,22 @@ fn lasy2<E: RealField>(
             max(abs1(tl.read(1, 0)), abs1(tl.read(1, 1))),
         ),
     );
-    smin = max(eps.mul(smin), small_num);
+    smin = max(eps.faer_mul(smin), small_num);
 
-    t16.write(0, 0, tl.read(0, 0).sub(tr.read(0, 0)));
-    t16.write(1, 1, tl.read(1, 1).sub(tr.read(0, 0)));
-    t16.write(2, 2, tl.read(0, 0).sub(tr.read(1, 1)));
-    t16.write(3, 3, tl.read(1, 1).sub(tr.read(1, 1)));
+    t16.write(0, 0, tl.read(0, 0).faer_sub(tr.read(0, 0)));
+    t16.write(1, 1, tl.read(1, 1).faer_sub(tr.read(0, 0)));
+    t16.write(2, 2, tl.read(0, 0).faer_sub(tr.read(1, 1)));
+    t16.write(3, 3, tl.read(1, 1).faer_sub(tr.read(1, 1)));
 
     t16.write(0, 1, tl.read(0, 1));
     t16.write(1, 0, tl.read(1, 0));
     t16.write(2, 3, tl.read(0, 1));
     t16.write(3, 2, tl.read(1, 0));
 
-    t16.write(0, 2, tr.read(1, 0).neg());
-    t16.write(1, 3, tr.read(1, 0).neg());
-    t16.write(2, 0, tr.read(0, 1).neg());
-    t16.write(3, 1, tr.read(0, 1).neg());
+    t16.write(0, 2, tr.read(1, 0).faer_neg());
+    t16.write(1, 3, tr.read(1, 0).faer_neg());
+    t16.write(2, 0, tr.read(0, 1).faer_neg());
+    t16.write(3, 1, tr.read(0, 1).faer_neg());
 
     btmp.write(0, 0, b.read(0, 0));
     btmp.write(1, 0, b.read(1, 0));
@@ -427,7 +466,7 @@ fn lasy2<E: RealField>(
         ipsv = i;
         jpsv = i;
         // Do pivoting to get largest pivot element
-        let mut xmax = E::zero();
+        let mut xmax = E::faer_zero();
         for ip in i..4 {
             for jp in i..4 {
                 if abs1(t16.read(ip, jp)) >= xmax {
@@ -453,14 +492,20 @@ fn lasy2<E: RealField>(
             t16.write(i, i, smin);
         }
         for j in i + 1..4 {
-            t16.write(j, i, t16.read(j, i).div(t16.read(i, i)));
+            t16.write(j, i, t16.read(j, i).faer_div(t16.read(i, i)));
             btmp.write(
                 j,
                 0,
-                btmp.read(j, 0).sub(t16.read(j, i).mul(btmp.read(i, 0))),
+                btmp.read(j, 0)
+                    .faer_sub(t16.read(j, i).faer_mul(btmp.read(i, 0))),
             );
             for k in i + 1..4 {
-                t16.write(j, k, t16.read(j, k).sub(t16.read(j, i).mul(t16.read(i, k))));
+                t16.write(
+                    j,
+                    k,
+                    t16.read(j, k)
+                        .faer_sub(t16.read(j, i).faer_mul(t16.read(i, k))),
+                );
             }
         }
     }
@@ -469,33 +514,33 @@ fn lasy2<E: RealField>(
         info = 1;
         t16.write(3, 3, smin);
     }
-    let mut scale = E::one();
-    let eight = E::from_f64(8.0);
+    let mut scale = E::faer_one();
+    let eight = E::faer_from_f64(8.0);
 
-    if (eight.mul(small_num)).mul(abs1(btmp.read(0, 0))) > abs1(t16.read(0, 0))
-        || (eight.mul(small_num)).mul(abs1(btmp.read(1, 0))) > abs1(t16.read(1, 1))
-        || (eight.mul(small_num)).mul(abs1(btmp.read(2, 0))) > abs1(t16.read(2, 2))
-        || (eight.mul(small_num)).mul(abs1(btmp.read(3, 0))) > abs1(t16.read(3, 3))
+    if (eight.faer_mul(small_num)).faer_mul(abs1(btmp.read(0, 0))) > abs1(t16.read(0, 0))
+        || (eight.faer_mul(small_num)).faer_mul(abs1(btmp.read(1, 0))) > abs1(t16.read(1, 1))
+        || (eight.faer_mul(small_num)).faer_mul(abs1(btmp.read(2, 0))) > abs1(t16.read(2, 2))
+        || (eight.faer_mul(small_num)).faer_mul(abs1(btmp.read(3, 0))) > abs1(t16.read(3, 3))
     {
-        scale = eight.inv().div(max(
+        scale = eight.faer_inv().faer_div(max(
             max(abs1(btmp.read(0, 0)), abs1(btmp.read(1, 0))),
             max(abs1(btmp.read(2, 0)), abs1(btmp.read(3, 0))),
         ));
-        btmp.write(0, 0, btmp.read(0, 0).mul(scale));
-        btmp.write(1, 0, btmp.read(1, 0).mul(scale));
-        btmp.write(2, 0, btmp.read(2, 0).mul(scale));
-        btmp.write(3, 0, btmp.read(3, 0).mul(scale));
+        btmp.write(0, 0, btmp.read(0, 0).faer_mul(scale));
+        btmp.write(1, 0, btmp.read(1, 0).faer_mul(scale));
+        btmp.write(2, 0, btmp.read(2, 0).faer_mul(scale));
+        btmp.write(3, 0, btmp.read(3, 0).faer_mul(scale));
     }
     for i in 0..4 {
         let k = 3 - i;
-        let temp = t16.read(k, k).inv();
-        tmp.write(k, 0, btmp.read(k, 0).mul(temp));
+        let temp = t16.read(k, k).faer_inv();
+        tmp.write(k, 0, btmp.read(k, 0).faer_mul(temp));
         for j in k + 1..4 {
             tmp.write(
                 k,
                 0,
                 tmp.read(k, 0)
-                    .sub(temp.mul(t16.read(k, j)).mul(tmp.read(j, 0))),
+                    .faer_sub(temp.faer_mul(t16.read(k, j)).faer_mul(tmp.read(j, 0))),
             );
         }
     }
@@ -531,24 +576,24 @@ fn schur_move<E: RealField>(
     }
 
     // Check if ifst points to the middle of a 2x2 block
-    if ifst > 0 && (a.read(ifst, ifst - 1) != E::zero()) {
+    if ifst > 0 && (a.read(ifst, ifst - 1) != E::faer_zero()) {
         ifst -= 1;
     }
 
     // Size of the current block, can be either 1, 2
     let mut nbf = 1;
-    if ifst < n - 1 && (a.read(ifst + 1, ifst) != E::zero()) {
+    if ifst < n - 1 && (a.read(ifst + 1, ifst) != E::faer_zero()) {
         nbf = 2;
     }
 
     // Check if ilst points to the middle of a 2x2 block
-    if *ilst > 0 && (a.read(*ilst, *ilst - 1) != E::zero()) {
+    if *ilst > 0 && (a.read(*ilst, *ilst - 1) != E::faer_zero()) {
         *ilst -= 1;
     }
 
     // Size of the final block, can be either 1, 2
     let mut nbl = 1;
-    if (*ilst < n - 1) && (a.read(*ilst + 1, *ilst) != E::zero()) {
+    if (*ilst < n - 1) && (a.read(*ilst + 1, *ilst) != E::faer_zero()) {
         nbl = 2;
     }
 
@@ -564,7 +609,7 @@ fn schur_move<E: RealField>(
         while here != *ilst {
             // Size of the next eigenvalue block
             let mut nbnext = 1;
-            if (here + nbf + 1 < n) && (a.read(here + nbf + 1, here + nbf) != E::zero()) {
+            if (here + nbf + 1 < n) && (a.read(here + nbf + 1, here + nbf) != E::faer_zero()) {
                 nbnext = 2;
             }
 
@@ -588,7 +633,7 @@ fn schur_move<E: RealField>(
         while here != *ilst {
             // Size of the next eigenvalue block
             let mut nbnext = 1;
-            if here > 1 && (a.read(here - 1, here - 2) != E::zero()) {
+            if here > 1 && (a.read(here - 1, here - 2) != E::faer_zero()) {
                 nbnext = 2;
             }
 
@@ -630,13 +675,13 @@ fn schur_swap<E: RealField>(
 
     // Check if the 2x2 eigenvalue blocks consist of 2 1x1 blocks
     // If so, treat them separately
-    if n1 == 2 && (a.read(j1, j0) == E::zero()) {
+    if n1 == 2 && (a.read(j1, j0) == E::faer_zero()) {
         // only 2x2 swaps can fail, so we don't need to check for error
         schur_swap(a.rb_mut(), q.rb_mut(), j1, 1, n2, epsilon, zero_threshold);
         schur_swap(a.rb_mut(), q.rb_mut(), j0, 1, n2, epsilon, zero_threshold);
         return 0;
     }
-    if n2 == 2 && a.read(j0 + n1 + 1, j0 + n1) == E::zero() {
+    if n2 == 2 && a.read(j0 + n1 + 1, j0 + n1) == E::faer_zero() {
         // only 2x2 swaps can fail, so we don't need to check for error
         schur_swap(a.rb_mut(), q.rb_mut(), j0, n1, 1, epsilon, zero_threshold);
         schur_swap(a.rb_mut(), q.rb_mut(), j1, n1, 1, epsilon, zero_threshold);
@@ -653,7 +698,7 @@ fn schur_swap<E: RealField>(
         // Determine the transformation to perform the interchange
         //
         let temp = a.read(j0, j1);
-        let temp2 = t11.sub(t00);
+        let temp2 = t11.faer_sub(t00);
         let (cs, sn, _) = rotg(temp, temp2, zero_threshold);
 
         a.write(j1, j1, t00);
@@ -681,45 +726,56 @@ fn schur_swap<E: RealField>(
         //
         // Swap 1-by-1 block with 2-by-2 block
         //
-        let mut b_storage = E::map(E::zero().into_units(), |zero| {
+        let mut b_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
             [zero, zero, zero, zero, zero, zero]
         });
-        let b_ptr = E::map(E::as_mut(&mut b_storage), |array| array.as_mut_ptr());
+        let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
         let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j0, j1));
-        b.write(1, 0, a.read(j1, j1).sub(a.read(j0, j0)));
+        b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j0, j0)));
         b.write(2, 0, a.read(j2, j1));
         b.write(0, 1, a.read(j0, j2));
         b.write(1, 1, a.read(j1, j2));
-        b.write(2, 1, a.read(j2, j2).sub(a.read(j0, j0)));
+        b.write(2, 1, a.read(j2, j2).faer_sub(a.read(j0, j0)));
 
         // Make B upper triangular
         let mut v1 = b.rb_mut().col(0);
         let head = v1.read(0, 0);
         let tail = v1.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail.read(0, 0).abs2().add(tail.read(1, 0).abs2());
+        let tail_sqr_norm = tail
+            .read(0, 0)
+            .faer_abs2()
+            .faer_add(tail.read(1, 0).faer_abs2());
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau1 = tau1.inv();
+        let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = b.read(1, 0);
         let v12 = b.read(2, 0);
 
         let sum = b
             .read(0, 1)
-            .add(v11.mul(b.read(1, 1)))
-            .add(v12.mul(b.read(2, 1)));
+            .faer_add(v11.faer_mul(b.read(1, 1)))
+            .faer_add(v12.faer_mul(b.read(2, 1)));
 
-        b.write(0, 1, b.read(0, 1).sub(sum.mul(tau1)));
-        b.write(1, 1, b.read(1, 1).sub(sum.mul(tau1).mul(v11)));
-        b.write(2, 1, b.read(2, 1).sub(sum.mul(tau1).mul(v12)));
+        b.write(0, 1, b.read(0, 1).faer_sub(sum.faer_mul(tau1)));
+        b.write(
+            1,
+            1,
+            b.read(1, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+        );
+        b.write(
+            2,
+            1,
+            b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+        );
 
         let mut v2 = b.rb_mut().col(1).subrows(1, 2);
         let head = v2.read(0, 0);
         let tail = v2.rb_mut().subrows(1, 1);
-        let tail_sqr_norm = tail.read(0, 0).abs2();
+        let tail_sqr_norm = tail.read(0, 0).faer_abs2();
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau2 = tau2.inv();
+        let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
         let v21 = v2.read(1, 0);
 
@@ -731,49 +787,85 @@ fn schur_swap<E: RealField>(
         for j in j0..n {
             let sum = a
                 .read(j0, j)
-                .add(v11.mul(a.read(j1, j)))
-                .add(v12.mul(a.read(j2, j)));
-            a.write(j0, j, a.read(j0, j).sub(sum.mul(tau1)));
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau1).mul(v11)));
-            a.write(j2, j, a.read(j2, j).sub(sum.mul(tau1).mul(v12)));
+                .faer_add(v11.faer_mul(a.read(j1, j)))
+                .faer_add(v12.faer_mul(a.read(j2, j)));
+            a.write(j0, j, a.read(j0, j).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j1,
+                j,
+                a.read(j1, j).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j2,
+                j,
+                a.read(j2, j).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
 
-            let sum = a.read(j1, j).add(v21.mul(a.read(j2, j)));
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau2)));
-            a.write(j2, j, a.read(j2, j).sub(sum.mul(tau2).mul(v21)));
+            let sum = a.read(j1, j).faer_add(v21.faer_mul(a.read(j2, j)));
+            a.write(j1, j, a.read(j1, j).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j2,
+                j,
+                a.read(j2, j).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
         }
         // Reflections from the right
         for j in 0..j3 {
             let sum = a
                 .read(j, j0)
-                .add(v11.mul(a.read(j, j1)))
-                .add(v12.mul(a.read(j, j2)));
-            a.write(j, j0, a.read(j, j0).sub(sum.mul(tau1)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-            a.write(j, j2, a.read(j, j2).sub(sum.mul(tau1).mul(v12)));
+                .faer_add(v11.faer_mul(a.read(j, j1)))
+                .faer_add(v12.faer_mul(a.read(j, j2)));
+            a.write(j, j0, a.read(j, j0).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j,
+                j1,
+                a.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j,
+                j2,
+                a.read(j, j2).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
 
-            let sum = a.read(j, j1).add(v21.mul(a.read(j, j2)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau2)));
-            a.write(j, j2, a.read(j, j2).sub(sum.mul(tau2).mul(v21)));
+            let sum = a.read(j, j1).faer_add(v21.faer_mul(a.read(j, j2)));
+            a.write(j, j1, a.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j,
+                j2,
+                a.read(j, j2).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
         }
 
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
                 let sum = q
                     .read(j, j0)
-                    .add(v11.mul(q.read(j, j1)))
-                    .add(v12.mul(q.read(j, j2)));
-                q.write(j, j0, q.read(j, j0).sub(sum.mul(tau1)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-                q.write(j, j2, q.read(j, j2).sub(sum.mul(tau1).mul(v12)));
+                    .faer_add(v11.faer_mul(q.read(j, j1)))
+                    .faer_add(v12.faer_mul(q.read(j, j2)));
+                q.write(j, j0, q.read(j, j0).faer_sub(sum.faer_mul(tau1)));
+                q.write(
+                    j,
+                    j1,
+                    q.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+                );
+                q.write(
+                    j,
+                    j2,
+                    q.read(j, j2).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+                );
 
-                let sum = q.read(j, j1).add(v21.mul(q.read(j, j2)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau2)));
-                q.write(j, j2, q.read(j, j2).sub(sum.mul(tau2).mul(v21)));
+                let sum = q.read(j, j1).faer_add(v21.faer_mul(q.read(j, j2)));
+                q.write(j, j1, q.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+                q.write(
+                    j,
+                    j2,
+                    q.read(j, j2).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+                );
             }
         }
 
-        a.write(j2, j0, E::zero());
-        a.write(j2, j1, E::zero());
+        a.write(j2, j0, E::faer_zero());
+        a.write(j2, j1, E::faer_zero());
     }
 
     if n1 == 2 && n2 == 1 {
@@ -781,45 +873,56 @@ fn schur_swap<E: RealField>(
         // Swap 2-by-2 block with 1-by-1 block
         //
 
-        let mut b_storage = E::map(E::zero().into_units(), |zero| {
+        let mut b_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
             [zero, zero, zero, zero, zero, zero]
         });
-        let b_ptr = E::map(E::as_mut(&mut b_storage), |array| array.as_mut_ptr());
+        let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
         let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j1, j2));
-        b.write(1, 0, a.read(j1, j1).sub(a.read(j2, j2)));
+        b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j2, j2)));
         b.write(2, 0, a.read(j1, j0));
         b.write(0, 1, a.read(j0, j2));
         b.write(1, 1, a.read(j0, j1));
-        b.write(2, 1, a.read(j0, j0).sub(a.read(j2, j2)));
+        b.write(2, 1, a.read(j0, j0).faer_sub(a.read(j2, j2)));
 
         // Make B upper triangular
         let mut v1 = b.rb_mut().col(0);
         let head = v1.read(0, 0);
         let tail = v1.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail.read(0, 0).abs2().add(tail.read(1, 0).abs2());
+        let tail_sqr_norm = tail
+            .read(0, 0)
+            .faer_abs2()
+            .faer_add(tail.read(1, 0).faer_abs2());
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau1 = tau1.inv();
+        let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = v1.read(1, 0);
         let v12 = v1.read(2, 0);
 
         let sum = b
             .read(0, 1)
-            .add(v11.mul(b.read(1, 1)))
-            .add(v12.mul(b.read(2, 1)));
+            .faer_add(v11.faer_mul(b.read(1, 1)))
+            .faer_add(v12.faer_mul(b.read(2, 1)));
 
-        b.write(0, 1, b.read(0, 1).sub(sum.mul(tau1)));
-        b.write(1, 1, b.read(1, 1).sub(sum.mul(tau1).mul(v11)));
-        b.write(2, 1, b.read(2, 1).sub(sum.mul(tau1).mul(v12)));
+        b.write(0, 1, b.read(0, 1).faer_sub(sum.faer_mul(tau1)));
+        b.write(
+            1,
+            1,
+            b.read(1, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+        );
+        b.write(
+            2,
+            1,
+            b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+        );
 
         let mut v2 = b.rb_mut().col(1).subrows(1, 2);
         let head = v2.read(0, 0);
         let tail = v2.rb_mut().subrows(1, 1);
-        let tail_sqr_norm = tail.read(0, 0).abs2();
+        let tail_sqr_norm = tail.read(0, 0).faer_abs2();
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau2 = tau2.inv();
+        let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
         let v21 = v2.read(1, 0);
 
@@ -831,74 +934,113 @@ fn schur_swap<E: RealField>(
         for j in j0..n {
             let sum = a
                 .read(j2, j)
-                .add(v11.mul(a.read(j1, j)))
-                .add(v12.mul(a.read(j0, j)));
-            a.write(j2, j, a.read(j2, j).sub(sum.mul(tau1)));
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau1).mul(v11)));
-            a.write(j0, j, a.read(j0, j).sub(sum.mul(tau1).mul(v12)));
+                .faer_add(v11.faer_mul(a.read(j1, j)))
+                .faer_add(v12.faer_mul(a.read(j0, j)));
+            a.write(j2, j, a.read(j2, j).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j1,
+                j,
+                a.read(j1, j).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j0,
+                j,
+                a.read(j0, j).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
 
-            let sum = a.read(j1, j).add(v21.mul(a.read(j0, j)));
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau2)));
-            a.write(j0, j, a.read(j0, j).sub(sum.mul(tau2).mul(v21)));
+            let sum = a.read(j1, j).faer_add(v21.faer_mul(a.read(j0, j)));
+            a.write(j1, j, a.read(j1, j).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j0,
+                j,
+                a.read(j0, j).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
         }
         // Reflections from the right
         for j in 0..j3 {
             let sum = a
                 .read(j, j2)
-                .add(v11.mul(a.read(j, j1)))
-                .add(v12.mul(a.read(j, j0)));
-            a.write(j, j2, a.read(j, j2).sub(sum.mul(tau1)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-            a.write(j, j0, a.read(j, j0).sub(sum.mul(tau1).mul(v12)));
+                .faer_add(v11.faer_mul(a.read(j, j1)))
+                .faer_add(v12.faer_mul(a.read(j, j0)));
+            a.write(j, j2, a.read(j, j2).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j,
+                j1,
+                a.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j,
+                j0,
+                a.read(j, j0).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
 
-            let sum = a.read(j, j1).add(v21.mul(a.read(j, j0)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau2)));
-            a.write(j, j0, a.read(j, j0).sub(sum.mul(tau2).mul(v21)));
+            let sum = a.read(j, j1).faer_add(v21.faer_mul(a.read(j, j0)));
+            a.write(j, j1, a.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j,
+                j0,
+                a.read(j, j0).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
         }
 
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
                 let sum = q
                     .read(j, j2)
-                    .add(v11.mul(q.read(j, j1)))
-                    .add(v12.mul(q.read(j, j0)));
-                q.write(j, j2, q.read(j, j2).sub(sum.mul(tau1)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-                q.write(j, j0, q.read(j, j0).sub(sum.mul(tau1).mul(v12)));
+                    .faer_add(v11.faer_mul(q.read(j, j1)))
+                    .faer_add(v12.faer_mul(q.read(j, j0)));
+                q.write(j, j2, q.read(j, j2).faer_sub(sum.faer_mul(tau1)));
+                q.write(
+                    j,
+                    j1,
+                    q.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+                );
+                q.write(
+                    j,
+                    j0,
+                    q.read(j, j0).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+                );
 
-                let sum = q.read(j, j1).add(v21.mul(q.read(j, j0)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau2)));
-                q.write(j, j0, q.read(j, j0).sub(sum.mul(tau2).mul(v21)));
+                let sum = q.read(j, j1).faer_add(v21.faer_mul(q.read(j, j0)));
+                q.write(j, j1, q.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+                q.write(
+                    j,
+                    j0,
+                    q.read(j, j0).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+                );
             }
         }
 
-        a.write(j1, j0, E::zero());
-        a.write(j2, j0, E::zero());
+        a.write(j1, j0, E::faer_zero());
+        a.write(j2, j0, E::faer_zero());
     }
 
     if n1 == 2 && n2 == 2 {
-        let mut d_storage = E::map(E::zero().into_units(), |zero| {
+        let mut d_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
             [
                 zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero, zero,
                 zero, zero,
             ]
         });
-        let d_ptr = E::map(E::as_mut(&mut d_storage), |array| array.as_mut_ptr());
+        let d_ptr = E::faer_map(E::faer_as_mut(&mut d_storage), |array| array.as_mut_ptr());
         let mut d = unsafe { MatMut::from_raw_parts(d_ptr, 4, 4, 1, 4) };
 
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
         d.clone_from(ad_slice);
-        let mut dnorm = E::zero();
-        zipped!(d.rb()).for_each(|d| dnorm = max(dnorm, d.read().abs()));
+        let mut dnorm = E::faer_zero();
+        zipped!(d.rb()).for_each(|d| dnorm = max(dnorm, d.read().faer_abs()));
 
         let eps = epsilon;
-        let small_num = zero_threshold.div(eps);
-        let thresh = max(E::from_f64(10.0).mul(eps).mul(dnorm), small_num);
+        let small_num = zero_threshold.faer_div(eps);
+        let thresh = max(
+            E::faer_from_f64(10.0).faer_mul(eps).faer_mul(dnorm),
+            small_num,
+        );
 
-        let mut v_storage = E::map(E::zero().into_units(), |zero| {
+        let mut v_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero| {
             [zero, zero, zero, zero, zero, zero, zero, zero]
         });
-        let v_ptr = E::map(E::as_mut(&mut v_storage), |array| array.as_mut_ptr());
+        let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
         let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 4, 2, 1, 4) };
 
         let mut x = v.rb_mut().submatrix(0, 0, 2, 2);
@@ -906,10 +1048,10 @@ fn schur_swap<E: RealField>(
 
         let scale = lasy2(tl, tr, b, x.rb_mut(), epsilon, zero_threshold);
 
-        v.write(2, 0, scale.neg());
-        v.write(2, 1, E::zero());
-        v.write(3, 0, E::zero());
-        v.write(3, 1, scale.neg());
+        v.write(2, 0, scale.faer_neg());
+        v.write(2, 1, E::faer_zero());
+        v.write(3, 0, E::faer_zero());
+        v.write(3, 1, scale.faer_neg());
 
         // Make V upper triangular
         let mut v1 = v.rb_mut().col(0);
@@ -917,11 +1059,11 @@ fn schur_swap<E: RealField>(
         let tail = v1.rb_mut().subrows(1, 3);
         let tail_sqr_norm = tail
             .read(0, 0)
-            .abs2()
-            .add(tail.read(1, 0).abs2())
-            .add(tail.read(2, 0).abs2());
+            .faer_abs2()
+            .faer_add(tail.read(1, 0).faer_abs2())
+            .faer_add(tail.read(2, 0).faer_abs2());
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau1 = tau1.inv();
+        let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = v1.read(1, 0);
         let v12 = v1.read(2, 0);
@@ -929,21 +1071,36 @@ fn schur_swap<E: RealField>(
 
         let sum = v
             .read(0, 1)
-            .add(v11.mul(v.read(1, 1)))
-            .add(v12.mul(v.read(2, 1)))
-            .add(v13.mul(v.read(3, 1)));
+            .faer_add(v11.faer_mul(v.read(1, 1)))
+            .faer_add(v12.faer_mul(v.read(2, 1)))
+            .faer_add(v13.faer_mul(v.read(3, 1)));
 
-        v.write(0, 1, v.read(0, 1).sub(sum.mul(tau1)));
-        v.write(1, 1, v.read(1, 1).sub(sum.mul(tau1).mul(v11)));
-        v.write(2, 1, v.read(2, 1).sub(sum.mul(tau1).mul(v12)));
-        v.write(3, 1, v.read(3, 1).sub(sum.mul(tau1).mul(v13)));
+        v.write(0, 1, v.read(0, 1).faer_sub(sum.faer_mul(tau1)));
+        v.write(
+            1,
+            1,
+            v.read(1, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+        );
+        v.write(
+            2,
+            1,
+            v.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+        );
+        v.write(
+            3,
+            1,
+            v.read(3, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+        );
 
         let mut v2 = v.rb_mut().col(1).subrows(1, 3);
         let head = v2.read(0, 0);
         let tail = v2.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail.read(0, 0).abs2().add(tail.read(1, 0).abs2());
+        let tail_sqr_norm = tail
+            .read(0, 0)
+            .faer_abs2()
+            .faer_add(tail.read(1, 0).faer_abs2());
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        let tau2 = tau2.inv();
+        let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
 
         let v21 = v2.read(1, 0);
@@ -953,46 +1110,86 @@ fn schur_swap<E: RealField>(
         for j in 0..4 {
             let sum = d
                 .read(0, j)
-                .add(v11.mul(d.read(1, j)))
-                .add(v12.mul(d.read(2, j)))
-                .add(v13.mul(d.read(3, j)));
-            d.write(0, j, d.read(0, j).sub(sum.mul(tau1)));
-            d.write(1, j, d.read(1, j).sub(sum.mul(tau1).mul(v11)));
-            d.write(2, j, d.read(2, j).sub(sum.mul(tau1).mul(v12)));
-            d.write(3, j, d.read(3, j).sub(sum.mul(tau1).mul(v13)));
+                .faer_add(v11.faer_mul(d.read(1, j)))
+                .faer_add(v12.faer_mul(d.read(2, j)))
+                .faer_add(v13.faer_mul(d.read(3, j)));
+            d.write(0, j, d.read(0, j).faer_sub(sum.faer_mul(tau1)));
+            d.write(
+                1,
+                j,
+                d.read(1, j).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            d.write(
+                2,
+                j,
+                d.read(2, j).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
+            d.write(
+                3,
+                j,
+                d.read(3, j).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+            );
 
             let sum = d
                 .read(1, j)
-                .add(v21.mul(d.read(2, j)))
-                .add(v22.mul(d.read(3, j)));
+                .faer_add(v21.faer_mul(d.read(2, j)))
+                .faer_add(v22.faer_mul(d.read(3, j)));
 
-            d.write(1, j, d.read(1, j).sub(sum.mul(tau2)));
-            d.write(2, j, d.read(2, j).sub(sum.mul(tau2).mul(v21)));
-            d.write(3, j, d.read(3, j).sub(sum.mul(tau2).mul(v22)));
+            d.write(1, j, d.read(1, j).faer_sub(sum.faer_mul(tau2)));
+            d.write(
+                2,
+                j,
+                d.read(2, j).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
+            d.write(
+                3,
+                j,
+                d.read(3, j).faer_sub(sum.faer_mul(tau2).faer_mul(v22)),
+            );
         }
         for j in 0..4 {
             let sum = d
                 .read(j, 0)
-                .add(v11.mul(d.read(j, 1)))
-                .add(v12.mul(d.read(j, 2)))
-                .add(v13.mul(d.read(j, 3)));
-            d.write(j, 0, d.read(j, 0).sub(sum.mul(tau1)));
-            d.write(j, 1, d.read(j, 1).sub(sum.mul(tau1).mul(v11)));
-            d.write(j, 2, d.read(j, 2).sub(sum.mul(tau1).mul(v12)));
-            d.write(j, 3, d.read(j, 3).sub(sum.mul(tau1).mul(v13)));
+                .faer_add(v11.faer_mul(d.read(j, 1)))
+                .faer_add(v12.faer_mul(d.read(j, 2)))
+                .faer_add(v13.faer_mul(d.read(j, 3)));
+            d.write(j, 0, d.read(j, 0).faer_sub(sum.faer_mul(tau1)));
+            d.write(
+                j,
+                1,
+                d.read(j, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            d.write(
+                j,
+                2,
+                d.read(j, 2).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
+            d.write(
+                j,
+                3,
+                d.read(j, 3).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+            );
 
             let sum = d
                 .read(j, 1)
-                .add(v21.mul(d.read(j, 2)))
-                .add(v22.mul(d.read(j, 3)));
-            d.write(j, 1, d.read(j, 1).sub(sum.mul(tau2)));
-            d.write(j, 2, d.read(j, 2).sub(sum.mul(tau2).mul(v21)));
-            d.write(j, 3, d.read(j, 3).sub(sum.mul(tau2).mul(v22)));
+                .faer_add(v21.faer_mul(d.read(j, 2)))
+                .faer_add(v22.faer_mul(d.read(j, 3)));
+            d.write(j, 1, d.read(j, 1).faer_sub(sum.faer_mul(tau2)));
+            d.write(
+                j,
+                2,
+                d.read(j, 2).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
+            d.write(
+                j,
+                3,
+                d.read(j, 3).faer_sub(sum.faer_mul(tau2).faer_mul(v22)),
+            );
         }
 
         if max(
-            max(d.read(2, 0).abs(), d.read(2, 1).abs()),
-            max(d.read(3, 0).abs(), d.read(3, 1).abs()),
+            max(d.read(2, 0).faer_abs(), d.read(2, 1).faer_abs()),
+            max(d.read(3, 0).faer_abs(), d.read(3, 1).faer_abs()),
         ) > thresh
         {
             return 1;
@@ -1002,71 +1199,131 @@ fn schur_swap<E: RealField>(
         for j in j0..n {
             let sum = a
                 .read(j0, j)
-                .add(v11.mul(a.read(j1, j)))
-                .add(v12.mul(a.read(j2, j)))
-                .add(v13.mul(a.read(j3, j)));
+                .faer_add(v11.faer_mul(a.read(j1, j)))
+                .faer_add(v12.faer_mul(a.read(j2, j)))
+                .faer_add(v13.faer_mul(a.read(j3, j)));
 
-            a.write(j0, j, a.read(j0, j).sub(sum.mul(tau1)));
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau1).mul(v11)));
-            a.write(j2, j, a.read(j2, j).sub(sum.mul(tau1).mul(v12)));
-            a.write(j3, j, a.read(j3, j).sub(sum.mul(tau1).mul(v13)));
+            a.write(j0, j, a.read(j0, j).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j1,
+                j,
+                a.read(j1, j).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j2,
+                j,
+                a.read(j2, j).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
+            a.write(
+                j3,
+                j,
+                a.read(j3, j).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+            );
 
             let sum = a
                 .read(j1, j)
-                .add(v21.mul(a.read(j2, j)))
-                .add(v22.mul(a.read(j3, j)));
+                .faer_add(v21.faer_mul(a.read(j2, j)))
+                .faer_add(v22.faer_mul(a.read(j3, j)));
 
-            a.write(j1, j, a.read(j1, j).sub(sum.mul(tau2)));
-            a.write(j2, j, a.read(j2, j).sub(sum.mul(tau2).mul(v21)));
-            a.write(j3, j, a.read(j3, j).sub(sum.mul(tau2).mul(v22)));
+            a.write(j1, j, a.read(j1, j).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j2,
+                j,
+                a.read(j2, j).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
+            a.write(
+                j3,
+                j,
+                a.read(j3, j).faer_sub(sum.faer_mul(tau2).faer_mul(v22)),
+            );
         }
         // Reflections from the right
         for j in 0..j0 + 4 {
             let sum = a
                 .read(j, j0)
-                .add(v11.mul(a.read(j, j1)))
-                .add(v12.mul(a.read(j, j2)))
-                .add(v13.mul(a.read(j, j3)));
-            a.write(j, j0, a.read(j, j0).sub(sum.mul(tau1)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-            a.write(j, j2, a.read(j, j2).sub(sum.mul(tau1).mul(v12)));
-            a.write(j, j3, a.read(j, j3).sub(sum.mul(tau1).mul(v13)));
+                .faer_add(v11.faer_mul(a.read(j, j1)))
+                .faer_add(v12.faer_mul(a.read(j, j2)))
+                .faer_add(v13.faer_mul(a.read(j, j3)));
+            a.write(j, j0, a.read(j, j0).faer_sub(sum.faer_mul(tau1)));
+            a.write(
+                j,
+                j1,
+                a.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+            );
+            a.write(
+                j,
+                j2,
+                a.read(j, j2).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+            );
+            a.write(
+                j,
+                j3,
+                a.read(j, j3).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+            );
 
             let sum = a
                 .read(j, j1)
-                .add(v21.mul(a.read(j, j2)))
-                .add(v22.mul(a.read(j, j3)));
-            a.write(j, j1, a.read(j, j1).sub(sum.mul(tau2)));
-            a.write(j, j2, a.read(j, j2).sub(sum.mul(tau2).mul(v21)));
-            a.write(j, j3, a.read(j, j3).sub(sum.mul(tau2).mul(v22)));
+                .faer_add(v21.faer_mul(a.read(j, j2)))
+                .faer_add(v22.faer_mul(a.read(j, j3)));
+            a.write(j, j1, a.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+            a.write(
+                j,
+                j2,
+                a.read(j, j2).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+            );
+            a.write(
+                j,
+                j3,
+                a.read(j, j3).faer_sub(sum.faer_mul(tau2).faer_mul(v22)),
+            );
         }
 
         if let Some(mut q) = q.rb_mut() {
             for j in 0..n {
                 let sum = q
                     .read(j, j0)
-                    .add(v11.mul(q.read(j, j1)))
-                    .add(v12.mul(q.read(j, j2)))
-                    .add(v13.mul(q.read(j, j3)));
-                q.write(j, j0, q.read(j, j0).sub(sum.mul(tau1)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau1).mul(v11)));
-                q.write(j, j2, q.read(j, j2).sub(sum.mul(tau1).mul(v12)));
-                q.write(j, j3, q.read(j, j3).sub(sum.mul(tau1).mul(v13)));
+                    .faer_add(v11.faer_mul(q.read(j, j1)))
+                    .faer_add(v12.faer_mul(q.read(j, j2)))
+                    .faer_add(v13.faer_mul(q.read(j, j3)));
+                q.write(j, j0, q.read(j, j0).faer_sub(sum.faer_mul(tau1)));
+                q.write(
+                    j,
+                    j1,
+                    q.read(j, j1).faer_sub(sum.faer_mul(tau1).faer_mul(v11)),
+                );
+                q.write(
+                    j,
+                    j2,
+                    q.read(j, j2).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
+                );
+                q.write(
+                    j,
+                    j3,
+                    q.read(j, j3).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
+                );
 
                 let sum = q
                     .read(j, j1)
-                    .add(v21.mul(q.read(j, j2)))
-                    .add(v22.mul(q.read(j, j3)));
-                q.write(j, j1, q.read(j, j1).sub(sum.mul(tau2)));
-                q.write(j, j2, q.read(j, j2).sub(sum.mul(tau2).mul(v21)));
-                q.write(j, j3, q.read(j, j3).sub(sum.mul(tau2).mul(v22)));
+                    .faer_add(v21.faer_mul(q.read(j, j2)))
+                    .faer_add(v22.faer_mul(q.read(j, j3)));
+                q.write(j, j1, q.read(j, j1).faer_sub(sum.faer_mul(tau2)));
+                q.write(
+                    j,
+                    j2,
+                    q.read(j, j2).faer_sub(sum.faer_mul(tau2).faer_mul(v21)),
+                );
+                q.write(
+                    j,
+                    j3,
+                    q.read(j, j3).faer_sub(sum.faer_mul(tau2).faer_mul(v22)),
+                );
             }
         }
 
-        a.write(j2, j0, E::zero());
-        a.write(j2, j1, E::zero());
-        a.write(j3, j0, E::zero());
-        a.write(j3, j1, E::zero());
+        a.write(j2, j0, E::faer_zero());
+        a.write(j2, j1, E::faer_zero());
+        a.write(j3, j0, E::faer_zero());
+        a.write(j3, j1, E::faer_zero());
     }
 
     // Standardize the 2x2 Schur blocks (if any)
@@ -1166,7 +1423,9 @@ fn aggressive_early_deflation<E: RealField>(
     // We have a maximum window size
     let nw_max = (n - 3) / 3;
     let eps = epsilon;
-    let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
+    let small_num = zero_threshold
+        .faer_div(eps)
+        .faer_mul(E::Real::faer_from_f64(n as f64));
 
     // Size of the deflation window
     let jw = Ord::min(Ord::min(nw, ihi - ilo), nw_max);
@@ -1176,7 +1435,7 @@ fn aggressive_early_deflation<E: RealField>(
     // s is the value just outside the window. It determines the spike
     // together with the orthogonal schur factors.
     let mut s_spike = if kwtop == ilo {
-        E::zero()
+        E::faer_zero()
     } else {
         a.read(kwtop, kwtop - 1)
     };
@@ -1184,14 +1443,14 @@ fn aggressive_early_deflation<E: RealField>(
     if kwtop + 1 == ihi {
         // 1x1 deflation window, not much to do
         s_re.write(kwtop, 0, a.read(kwtop, kwtop));
-        s_im.write(kwtop, 0, E::zero());
+        s_im.write(kwtop, 0, E::faer_zero());
         let mut ns = 1;
         let mut nd = 0;
-        if s_spike.abs() <= max(small_num, eps.mul(a.read(kwtop, kwtop).abs())) {
+        if s_spike.faer_abs() <= max(small_num, eps.faer_mul(a.read(kwtop, kwtop).faer_abs())) {
             ns = 0;
             nd = 1;
             if kwtop > ilo {
-                a.write(kwtop, kwtop - 1, E::zero());
+                a.write(kwtop, kwtop - 1, E::faer_zero());
             }
         }
         return (ns, nd);
@@ -1219,14 +1478,14 @@ fn aggressive_early_deflation<E: RealField>(
     let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
     let mut s_re_window = unsafe { s_re.rb().subrows(kwtop, ihi - kwtop).const_cast() };
     let mut s_im_window = unsafe { s_im.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-    zipped!(tw.rb_mut()).for_each_triangular_lower(Diag::Include, |mut x| x.write(E::zero()));
+    zipped!(tw.rb_mut()).for_each_triangular_lower(Diag::Include, |mut x| x.write(E::faer_zero()));
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
             tw.write(i, j, a_window.read(i, j));
         }
     }
     v.fill_zeros();
-    v.rb_mut().diagonal().fill(E::one());
+    v.rb_mut().diagonal().fill(E::faer_one());
 
     let infqr = if jw
         < params
@@ -1262,7 +1521,7 @@ fn aggressive_early_deflation<E: RealField>(
         .0;
         for j in 0..jw {
             for i in j + 2..jw {
-                tw.write(i, j, E::zero());
+                tw.write(i, j, E::faer_zero());
             }
         }
         infqr
@@ -1278,18 +1537,20 @@ fn aggressive_early_deflation<E: RealField>(
     let mut ilst = infqr;
     while ilst < ns {
         let mut bulge = false;
-        if ns > 1 && tw.read(ns - 1, ns - 2) != E::zero() {
+        if ns > 1 && tw.read(ns - 1, ns - 2) != E::faer_zero() {
             bulge = true;
         }
 
         if !bulge {
             // 1x1 eigenvalue block
             #[allow(clippy::disallowed_names)]
-            let mut foo = tw.read(ns - 1, ns - 1).abs();
-            if foo == E::zero() {
-                foo = s_spike.abs();
+            let mut foo = tw.read(ns - 1, ns - 1).faer_abs();
+            if foo == E::faer_zero() {
+                foo = s_spike.faer_abs();
             }
-            if s_spike.abs().mul(v.read(0, ns - 1).abs()) <= max(small_num, eps.mul(foo)) {
+            if s_spike.faer_abs().faer_mul(v.read(0, ns - 1).faer_abs())
+                <= max(small_num, eps.faer_mul(foo))
+            {
                 // Eigenvalue is deflatable
                 ns -= 1;
             } else {
@@ -1309,19 +1570,19 @@ fn aggressive_early_deflation<E: RealField>(
         } else {
             // 2x2 eigenvalue block
             #[allow(clippy::disallowed_names)]
-            let mut foo = tw.read(ns - 1, ns - 1).abs().add(
+            let mut foo = tw.read(ns - 1, ns - 1).faer_abs().faer_add(
                 tw.read(ns - 1, ns - 2)
-                    .abs()
-                    .sqrt()
-                    .mul(tw.read(ns - 2, ns - 1).abs().sqrt()),
+                    .faer_abs()
+                    .faer_sqrt()
+                    .faer_mul(tw.read(ns - 2, ns - 1).faer_abs().faer_sqrt()),
             );
-            if foo == E::zero() {
-                foo = s_spike.abs();
+            if foo == E::faer_zero() {
+                foo = s_spike.faer_abs();
             }
             if max(
-                (s_spike.mul(v.read(0, ns - 1))).abs(),
-                (s_spike.mul(v.read(0, ns - 2))).abs(),
-            ) <= max(small_num, eps.mul(foo))
+                (s_spike.faer_mul(v.read(0, ns - 1))).faer_abs(),
+                (s_spike.faer_mul(v.read(0, ns - 2))).faer_abs(),
+            ) <= max(small_num, eps.faer_mul(foo))
             {
                 // Eigenvalue pair is deflatable
                 ns -= 2;
@@ -1343,7 +1604,7 @@ fn aggressive_early_deflation<E: RealField>(
     }
 
     if ns == 0 {
-        s_spike = E::zero();
+        s_spike = E::faer_zero();
     }
 
     if ns == jw {
@@ -1371,7 +1632,7 @@ fn aggressive_early_deflation<E: RealField>(
         while i1 as isize + 1 < sorting_window_size {
             // Size of the first block
             let mut n1 = 1;
-            if tw.read(i1 + 1, i1) != E::zero() {
+            if tw.read(i1 + 1, i1) != E::faer_zero() {
                 n1 = 2;
             }
 
@@ -1386,26 +1647,26 @@ fn aggressive_early_deflation<E: RealField>(
 
             // Size of the second block
             let mut n2 = 1;
-            if i2 + 1 < jw && tw.read(i2 + 1, i2) != E::zero() {
+            if i2 + 1 < jw && tw.read(i2 + 1, i2) != E::faer_zero() {
                 n2 = 2;
             }
 
             let (ev1, ev2);
             if n1 == 1 {
-                ev1 = tw.read(i1, i1).abs();
+                ev1 = tw.read(i1, i1).faer_abs();
             } else {
-                ev1 = tw
-                    .read(i1, i1)
-                    .abs()
-                    .add((tw.read(i1 + 1, i1).abs().sqrt()).mul(tw.read(i1, i1 + 1).abs().sqrt()));
+                ev1 = tw.read(i1, i1).faer_abs().faer_add(
+                    (tw.read(i1 + 1, i1).faer_abs().faer_sqrt())
+                        .faer_mul(tw.read(i1, i1 + 1).faer_abs().faer_sqrt()),
+                );
             }
             if n2 == 1 {
-                ev2 = tw.read(i2, i2).abs();
+                ev2 = tw.read(i2, i2).faer_abs();
             } else {
-                ev2 = tw
-                    .read(i2, i2)
-                    .abs()
-                    .add((tw.read(i2 + 1, i2).abs().sqrt()).mul(tw.read(i2, i2 + 1).abs().sqrt()));
+                ev2 = tw.read(i2, i2).faer_abs().faer_add(
+                    (tw.read(i2 + 1, i2).faer_abs().faer_sqrt())
+                        .faer_mul(tw.read(i2, i2 + 1).faer_abs().faer_sqrt()),
+                );
             }
 
             if ev1 > ev2 {
@@ -1436,13 +1697,13 @@ fn aggressive_early_deflation<E: RealField>(
     let mut i = 0;
     while i < jw {
         let mut n1 = 1;
-        if i + 1 < jw && tw.read(i + 1, i) != E::zero() {
+        if i + 1 < jw && tw.read(i + 1, i) != E::faer_zero() {
             n1 = 2;
         }
 
         if n1 == 1 {
             s_re.write(kwtop + i, 0, tw.read(i, i));
-            s_im.write(kwtop + i, 0, E::zero());
+            s_im.write(kwtop + i, 0, E::faer_zero());
         } else {
             let ((s1_re, s1_im), (s2_re, s2_im)) = lahqr_eig22(
                 tw.read(i, i),
@@ -1460,19 +1721,19 @@ fn aggressive_early_deflation<E: RealField>(
     }
 
     // Reduce A back to Hessenberg form (if neccesary)
-    if s_spike != E::zero() {
+    if s_spike != E::faer_zero() {
         // Reflect spike back
         {
             let mut vv = wv.rb_mut().col(0).subrows(0, ns);
             for i in 0..ns {
-                vv.write(i, 0, v.read(0, i).conj());
+                vv.write(i, 0, v.read(0, i).faer_conj());
             }
             let head = vv.read(0, 0);
             let tail = vv.rb_mut().subrows(1, ns - 1);
             let tail_sqr_norm = sqr_norm(tail.rb());
             let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-            vv.write(0, 0, E::one());
-            let tau = tau.inv();
+            vv.write(0, 0, E::faer_one());
+            let tau = tau.faer_inv();
 
             {
                 let mut tw_slice = tw.rb_mut().submatrix(0, 0, ns, jw);
@@ -1481,8 +1742,8 @@ fn aggressive_early_deflation<E: RealField>(
                     tw_slice.rb_mut(),
                     vv.rb(),
                     tmp.as_ref(),
-                    Some(E::one()),
-                    tau.neg(),
+                    Some(E::faer_one()),
+                    tau.faer_neg(),
                     parallelism,
                 );
             }
@@ -1494,8 +1755,8 @@ fn aggressive_early_deflation<E: RealField>(
                     tw_slice2.rb_mut(),
                     tmp.as_ref(),
                     vv.rb().adjoint(),
-                    Some(E::one()),
-                    tau.neg(),
+                    Some(E::faer_one()),
+                    tau.faer_neg(),
                     parallelism,
                 );
             }
@@ -1507,8 +1768,8 @@ fn aggressive_early_deflation<E: RealField>(
                     v_slice.rb_mut(),
                     tmp.as_ref(),
                     vv.rb().adjoint(),
-                    Some(E::one()),
-                    tau.neg(),
+                    Some(E::faer_one()),
+                    tau.faer_neg(),
                     parallelism,
                 );
             }
@@ -1545,7 +1806,7 @@ fn aggressive_early_deflation<E: RealField>(
 
     // Copy the deflation window back into place
     if kwtop > 0 {
-        a.write(kwtop, kwtop - 1, s_spike.mul(v.read(0, 0).conj()));
+        a.write(kwtop, kwtop - 1, s_spike.faer_mul(v.read(0, 0).faer_conj()));
     }
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
@@ -1583,7 +1844,7 @@ fn aggressive_early_deflation<E: RealField>(
                 v.rb().adjoint(),
                 a_slice.rb(),
                 None,
-                E::one(),
+                E::faer_one(),
                 parallelism,
             );
             a_slice.clone_from(wh_slice.rb());
@@ -1605,7 +1866,7 @@ fn aggressive_early_deflation<E: RealField>(
                 a_slice.rb(),
                 v.rb(),
                 None,
-                E::one(),
+                E::faer_one(),
                 parallelism,
             );
             a_slice.clone_from(wv_slice.rb());
@@ -1626,7 +1887,7 @@ fn aggressive_early_deflation<E: RealField>(
                 z_slice.rb(),
                 v.rb(),
                 None,
-                E::one(),
+                E::faer_one(),
                 parallelism,
             );
             z_slice.clone_from(wv_slice.rb());
@@ -1646,14 +1907,14 @@ fn move_bulge<E: RealField>(
 ) {
     // Perform delayed update of row below the bulge
     // Assumes the first two elements of the row are zero
-    let v0 = v.read(0, 0).real();
+    let v0 = v.read(0, 0).faer_real();
     let v1 = v.read(1, 0);
     let v2 = v.read(2, 0);
-    let refsum = v2.scale_real(v0).mul(h.read(3, 2));
+    let refsum = v2.faer_scale_real(v0).faer_mul(h.read(3, 2));
 
-    h.write(3, 0, refsum.neg());
-    h.write(3, 1, refsum.neg().mul(v1.conj()));
-    h.write(3, 2, h.read(3, 2).sub(refsum.mul(v2.conj())));
+    h.write(3, 0, refsum.faer_neg());
+    h.write(3, 1, refsum.faer_neg().faer_mul(v1.faer_conj()));
+    h.write(3, 2, h.read(3, 2).faer_sub(refsum.faer_mul(v2.faer_conj())));
 
     // Generate reflector to move bulge down
     v.write(0, 0, h.read(1, 0));
@@ -1664,21 +1925,24 @@ fn move_bulge<E: RealField>(
     let tail = v.rb_mut().subrows(1, 2);
     let tail_sqr_norm = sqr_norm(tail.rb());
     let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-    v.write(0, 0, tau.inv());
+    v.write(0, 0, tau.faer_inv());
 
     // Check for bulge collapse
-    if h.read(3, 0) != E::zero() || h.read(3, 1) != E::zero() || h.read(3, 2) != E::zero() {
+    if h.read(3, 0) != E::faer_zero()
+        || h.read(3, 1) != E::faer_zero()
+        || h.read(3, 2) != E::faer_zero()
+    {
         // The bulge hasn't collapsed, typical case
         h.write(1, 0, beta);
-        h.write(2, 0, E::zero());
-        h.write(3, 0, E::zero());
+        h.write(2, 0, E::faer_zero());
+        h.write(3, 0, E::faer_zero());
     } else {
         // The bulge has collapsed, attempt to reintroduce using
         // 2-small-subdiagonals trick
-        let mut vt_storage = E::map(E::zero().into_units(), |zero_unit| {
+        let mut vt_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero_unit| {
             [zero_unit, zero_unit, zero_unit]
         });
-        let vt_ptr = E::map(E::as_mut(&mut vt_storage), |array| array.as_mut_ptr());
+        let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
         let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
@@ -1688,30 +1952,31 @@ fn move_bulge<E: RealField>(
         let tail = vt.rb_mut().subrows(1, 2);
         let tail_sqr_norm = sqr_norm(tail.rb());
         let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-        vt.write(0, 0, tau.inv());
+        vt.write(0, 0, tau.faer_inv());
         let vt0 = vt.read(0, 0);
         let vt1 = vt.read(1, 0);
         let vt2 = vt.read(2, 0);
 
-        let refsum = (vt0.conj().mul(h.read(1, 0))).add(vt1.conj().mul(h.read(2, 0)));
+        let refsum = (vt0.faer_conj().faer_mul(h.read(1, 0)))
+            .faer_add(vt1.faer_conj().faer_mul(h.read(2, 0)));
 
-        if abs1(h.read(2, 0).sub(refsum.mul(vt1))).add(abs1(refsum.mul(vt2)))
-            > epsilon.mul(
+        if abs1(h.read(2, 0).faer_sub(refsum.faer_mul(vt1))).faer_add(abs1(refsum.faer_mul(vt2)))
+            > epsilon.faer_mul(
                 abs1(h.read(0, 0))
-                    .add(abs1(h.read(1, 1)))
-                    .add(abs1(h.read(2, 2))),
+                    .faer_add(abs1(h.read(1, 1)))
+                    .faer_add(abs1(h.read(2, 2))),
             )
         {
             // Starting a new bulge here would create non-negligible fill. Use
             // the old one.
             h.write(1, 0, beta);
-            h.write(2, 0, E::zero());
-            h.write(3, 0, E::zero());
+            h.write(2, 0, E::faer_zero());
+            h.write(3, 0, E::faer_zero());
         } else {
             // Fill-in is negligible, use the new reflector.
-            h.write(1, 0, h.read(1, 0).sub(refsum));
-            h.write(2, 0, E::zero());
-            h.write(3, 0, E::zero());
+            h.write(1, 0, h.read(1, 0).faer_sub(refsum));
+            h.write(2, 0, E::faer_zero());
+            h.write(3, 0, E::faer_zero());
             v.write(0, 0, vt.read(0, 0));
             v.write(1, 0, vt.read(1, 0));
             v.write(2, 0, vt.read(2, 0));
@@ -1735,7 +2000,9 @@ fn multishift_qr_sweep<E: RealField>(
     let n = a.nrows();
 
     let eps = epsilon;
-    let small_num = zero_threshold.div(eps).mul(E::Real::from_f64(n as f64));
+    let small_num = zero_threshold
+        .faer_div(eps)
+        .faer_mul(E::Real::faer_from_f64(n as f64));
     assert!(n >= 12);
 
     let (mut v, _stack) = faer_core::temp_mat_zeroed::<E>(3, s_re.nrows() / 2, stack);
@@ -1802,7 +2069,7 @@ fn multishift_qr_sweep<E: RealField>(
         let mut istop_m = ilo + n_block;
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
         u2.fill_zeros();
-        u2.rb_mut().diagonal().fill(E::one());
+        u2.rb_mut().diagonal().fill(E::faer_one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
             // The number of bulges that are in the pencil
@@ -1826,7 +2093,7 @@ fn multishift_qr_sweep<E: RealField>(
                     let tail = v.rb_mut().subrows(1, 2);
                     let tail_sqr_norm = sqr_norm(tail.rb());
                     let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-                    v.write(0, 0, tau.inv());
+                    v.write(0, 0, tau.faer_inv());
                 } else {
                     // Chase bulge down
                     let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
@@ -1847,25 +2114,27 @@ fn multishift_qr_sweep<E: RealField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
                 for j in istart_m..i_pos + 3 {
                     let sum = a
                         .read(j, i_pos)
-                        .add(v1.mul(a.read(j, i_pos + 1)))
-                        .add(v2.mul(a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, a.read(j, i_pos).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_mul(a.read(j, i_pos + 1)))
+                        .faer_add(v2.faer_mul(a.read(j, i_pos + 2)));
+                    a.write(j, i_pos, a.read(j, i_pos).faer_sub(sum.faer_scale_real(v0)));
                     a.write(
                         j,
                         i_pos + 1,
-                        a.read(j, i_pos + 1).sub(sum.scale_real(v0).mul(v1.conj())),
+                        a.read(j, i_pos + 1)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        a.read(j, i_pos + 2).sub(sum.scale_real(v0).mul(v2.conj())),
+                        a.read(j, i_pos + 2)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
 
@@ -1873,45 +2142,51 @@ fn multishift_qr_sweep<E: RealField>(
                 // We only update a single column, the rest is updated later
                 let sum = a
                     .read(i_pos, i_pos)
-                    .add(v1.conj().mul(a.read(i_pos + 1, i_pos)))
-                    .add(v2.conj().mul(a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(sum.scale_real(v0)));
+                    .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, i_pos)))
+                    .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, i_pos)));
+                a.write(
+                    i_pos,
+                    i_pos,
+                    a.read(i_pos, i_pos).faer_sub(sum.faer_scale_real(v0)),
+                );
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    a.read(i_pos + 1, i_pos).sub(sum.scale_real(v0).mul(v1)),
+                    a.read(i_pos + 1, i_pos)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    a.read(i_pos + 2, i_pos).sub(sum.scale_real(v0).mul(v2)),
+                    a.read(i_pos + 2, i_pos)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                 );
 
                 // Test for deflation.
-                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::faer_zero() {
                     let mut tst1 =
-                        abs1(a.read(i_pos - 1, i_pos - 1)).add(abs1(a.read(i_pos, i_pos)));
-                    if tst1 == E::Real::zero() {
+                        abs1(a.read(i_pos - 1, i_pos - 1)).faer_add(abs1(a.read(i_pos, i_pos)));
+                    if tst1 == E::Real::faer_zero() {
                         if i_pos > ilo + 1 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 2)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 2)));
                         }
                         if i_pos > ilo + 2 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 3)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 3)));
                         }
                         if i_pos > ilo + 3 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 4)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 4)));
                         }
                         if i_pos < ihi - 1 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 1, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 1, i_pos)));
                         }
                         if i_pos < ihi - 2 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 2, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 2, i_pos)));
                         }
                         if i_pos < ihi - 3 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.faer_mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -1922,15 +2197,17 @@ fn multishift_qr_sweep<E: RealField>(
                         );
                         let aa = max(
                             abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let bb = min(
                             abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                         );
-                        let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
-                            a.write(i_pos, i_pos - 1, E::zero());
+                        let s = aa.faer_add(ab);
+                        if ba.faer_mul(ab.faer_div(s))
+                            <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
+                        {
+                            a.write(i_pos, i_pos - 1, E::faer_zero());
                         }
                     }
                 }
@@ -1941,25 +2218,27 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
                         .read(i_pos, j)
-                        .add(v1.conj().mul(a.read(i_pos + 1, j)))
-                        .add(v2.conj().mul(a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)))
+                        .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, j)));
+                    a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_scale_real(v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(sum.scale_real(v0).mul(v1)),
+                        a.read(i_pos + 1, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(sum.scale_real(v0).mul(v2)),
+                        a.read(i_pos + 2, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                     );
                 }
             }
@@ -1969,7 +2248,7 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -1979,25 +2258,25 @@ fn multishift_qr_sweep<E: RealField>(
                 for j in i1..i2 {
                     let sum = u2
                         .read(j, i_pos - ilo)
-                        .add(v1.mul(u2.read(j, i_pos - ilo + 1)))
-                        .add(v2.mul(u2.read(j, i_pos - ilo + 2)));
+                        .faer_add(v1.faer_mul(u2.read(j, i_pos - ilo + 1)))
+                        .faer_add(v2.faer_mul(u2.read(j, i_pos - ilo + 2)));
 
                     u2.write(
                         j,
                         i_pos - ilo,
-                        u2.read(j, i_pos - ilo).sub(sum.scale_real(v0)),
+                        u2.read(j, i_pos - ilo).faer_sub(sum.faer_scale_real(v0)),
                     );
                     u2.write(
                         j,
                         i_pos - ilo + 1,
                         u2.read(j, i_pos - ilo + 1)
-                            .sub(sum.scale_real(v0).mul(v1.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     u2.write(
                         j,
                         i_pos - ilo + 2,
                         u2.read(j, i_pos - ilo + 2)
-                            .sub(sum.scale_real(v0).mul(v2.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
             }
@@ -2026,7 +2305,7 @@ fn multishift_qr_sweep<E: RealField>(
                     u2.rb().adjoint(),
                     a_slice.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
@@ -2047,7 +2326,7 @@ fn multishift_qr_sweep<E: RealField>(
                     a_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
@@ -2068,7 +2347,7 @@ fn multishift_qr_sweep<E: RealField>(
                     z_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
@@ -2091,7 +2370,7 @@ fn multishift_qr_sweep<E: RealField>(
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
         u2.fill_zeros();
-        u2.rb_mut().diagonal().fill(E::one());
+        u2.rb_mut().diagonal().fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2123,25 +2402,27 @@ fn multishift_qr_sweep<E: RealField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
                 for j in istart_m..i_pos + 3 {
                     let sum = a
                         .read(j, i_pos)
-                        .add(v1.mul(a.read(j, i_pos + 1)))
-                        .add(v2.mul(a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, a.read(j, i_pos).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_mul(a.read(j, i_pos + 1)))
+                        .faer_add(v2.faer_mul(a.read(j, i_pos + 2)));
+                    a.write(j, i_pos, a.read(j, i_pos).faer_sub(sum.faer_scale_real(v0)));
                     a.write(
                         j,
                         i_pos + 1,
-                        a.read(j, i_pos + 1).sub(sum.scale_real(v0).mul(v1.conj())),
+                        a.read(j, i_pos + 1)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     a.write(
                         j,
                         i_pos + 2,
-                        a.read(j, i_pos + 2).sub(sum.scale_real(v0).mul(v2.conj())),
+                        a.read(j, i_pos + 2)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
 
@@ -2149,45 +2430,51 @@ fn multishift_qr_sweep<E: RealField>(
                 // We only update a single column, the rest is updated later
                 let sum = a
                     .read(i_pos, i_pos)
-                    .add(v1.conj().mul(a.read(i_pos + 1, i_pos)))
-                    .add(v2.conj().mul(a.read(i_pos + 2, i_pos)));
-                a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(sum.scale_real(v0)));
+                    .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, i_pos)))
+                    .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, i_pos)));
+                a.write(
+                    i_pos,
+                    i_pos,
+                    a.read(i_pos, i_pos).faer_sub(sum.faer_scale_real(v0)),
+                );
                 a.write(
                     i_pos + 1,
                     i_pos,
-                    a.read(i_pos + 1, i_pos).sub(sum.scale_real(v0).mul(v1)),
+                    a.read(i_pos + 1, i_pos)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                 );
                 a.write(
                     i_pos + 2,
                     i_pos,
-                    a.read(i_pos + 2, i_pos).sub(sum.scale_real(v0).mul(v2)),
+                    a.read(i_pos + 2, i_pos)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                 );
 
                 // Test for deflation.
-                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::faer_zero() {
                     let mut tst1 =
-                        abs1(a.read(i_pos - 1, i_pos - 1)).add(abs1(a.read(i_pos, i_pos)));
-                    if tst1 == E::Real::zero() {
+                        abs1(a.read(i_pos - 1, i_pos - 1)).faer_add(abs1(a.read(i_pos, i_pos)));
+                    if tst1 == E::Real::faer_zero() {
                         if i_pos > ilo + 1 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 2)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 2)));
                         }
                         if i_pos > ilo + 2 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 3)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 3)));
                         }
                         if i_pos > ilo + 3 {
-                            tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 4)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 4)));
                         }
                         if i_pos < ihi - 1 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 1, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 1, i_pos)));
                         }
                         if i_pos < ihi - 2 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 2, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 2, i_pos)));
                         }
                         if i_pos < ihi - 3 {
-                            tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
+                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 3, i_pos)));
                         }
                     }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
+                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.faer_mul(tst1)) {
                         let ab = max(
                             abs1(a.read(i_pos, i_pos - 1)),
                             abs1(a.read(i_pos - 1, i_pos)),
@@ -2198,15 +2485,17 @@ fn multishift_qr_sweep<E: RealField>(
                         );
                         let aa = max(
                             abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                         );
                         let bb = min(
                             abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                         );
-                        let s = aa.add(ab);
-                        if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
-                            a.write(i_pos, i_pos - 1, E::zero());
+                        let s = aa.faer_add(ab);
+                        if ba.faer_mul(ab.faer_div(s))
+                            <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
+                        {
+                            a.write(i_pos, i_pos - 1, E::faer_zero());
                         }
                     }
                 }
@@ -2217,25 +2506,27 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
                         .read(i_pos, j)
-                        .add(v1.conj().mul(a.read(i_pos + 1, j)))
-                        .add(v2.conj().mul(a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)))
+                        .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, j)));
+                    a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_scale_real(v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(sum.scale_real(v0).mul(v1)),
+                        a.read(i_pos + 1, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(sum.scale_real(v0).mul(v2)),
+                        a.read(i_pos + 2, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                     );
                 }
             }
@@ -2245,7 +2536,7 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -2258,25 +2549,26 @@ fn multishift_qr_sweep<E: RealField>(
                 for j in i1..i2 {
                     let sum = u2
                         .read(j, i_pos - i_pos_block)
-                        .add(v1.mul(u2.read(j, i_pos - i_pos_block + 1)))
-                        .add(v2.mul(u2.read(j, i_pos - i_pos_block + 2)));
+                        .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)))
+                        .faer_add(v2.faer_mul(u2.read(j, i_pos - i_pos_block + 2)));
 
                     u2.write(
                         j,
                         i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block).sub(sum.scale_real(v0)),
+                        u2.read(j, i_pos - i_pos_block)
+                            .faer_sub(sum.faer_scale_real(v0)),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 1,
                         u2.read(j, i_pos - i_pos_block + 1)
-                            .sub(sum.scale_real(v0).mul(v1.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 2,
                         u2.read(j, i_pos - i_pos_block + 2)
-                            .sub(sum.scale_real(v0).mul(v2.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
             }
@@ -2305,7 +2597,7 @@ fn multishift_qr_sweep<E: RealField>(
                     u2.rb().adjoint(),
                     a_slice.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
@@ -2327,7 +2619,7 @@ fn multishift_qr_sweep<E: RealField>(
                     a_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
@@ -2348,7 +2640,7 @@ fn multishift_qr_sweep<E: RealField>(
                     z_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
@@ -2367,7 +2659,7 @@ fn multishift_qr_sweep<E: RealField>(
 
         let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
         u2.fill_zeros();
-        u2.rb_mut().diagonal().fill(E::one());
+        u2.rb_mut().diagonal().fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
         // The calculations are initially limited to the window:
@@ -2394,25 +2686,39 @@ fn multishift_qr_sweep<E: RealField>(
                     let tail = h.rb_mut().subrows(1, 1);
                     let tail_sqr_norm = sqr_norm(tail.rb());
                     let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-                    v.write(0, 0, tau.inv());
+                    v.write(0, 0, tau.faer_inv());
                     v.write(1, 0, h.read(1, 0));
                     h.write(0, 0, beta);
-                    h.write(1, 0, E::zero());
+                    h.write(1, 0, E::faer_zero());
 
-                    let t0 = v.read(0, 0).conj();
+                    let t0 = v.read(0, 0).faer_conj();
                     let v1 = v.read(1, 0);
-                    let t1 = t0.mul(v1);
+                    let t1 = t0.faer_mul(v1);
                     // Apply the reflector we just calculated from the right
                     for j in istart_m..i_pos + 2 {
-                        let sum = a.read(j, i_pos).add(v1.mul(a.read(j, i_pos + 1)));
-                        a.write(j, i_pos, a.read(j, i_pos).sub(sum.mul(t0.conj())));
-                        a.write(j, i_pos + 1, a.read(j, i_pos + 1).sub(sum.mul(t1.conj())));
+                        let sum = a.read(j, i_pos).faer_add(v1.faer_mul(a.read(j, i_pos + 1)));
+                        a.write(
+                            j,
+                            i_pos,
+                            a.read(j, i_pos).faer_sub(sum.faer_mul(t0.faer_conj())),
+                        );
+                        a.write(
+                            j,
+                            i_pos + 1,
+                            a.read(j, i_pos + 1).faer_sub(sum.faer_mul(t1.faer_conj())),
+                        );
                     }
                     // Apply the reflector we just calculated from the left
                     for j in i_pos..istop_m {
-                        let sum = a.read(i_pos, j).add(v1.conj().mul(a.read(i_pos + 1, j)));
-                        a.write(i_pos, j, a.read(i_pos, j).sub(sum.mul(t0)));
-                        a.write(i_pos + 1, j, a.read(i_pos + 1, j).sub(sum.mul(t1)));
+                        let sum = a
+                            .read(i_pos, j)
+                            .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)));
+                        a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_mul(t0)));
+                        a.write(
+                            i_pos + 1,
+                            j,
+                            a.read(i_pos + 1, j).faer_sub(sum.faer_mul(t1)),
+                        );
                     }
                     // Accumulate the reflector into U
                     // The loop bounds should be changed to reflect the fact
@@ -2420,16 +2726,18 @@ fn multishift_qr_sweep<E: RealField>(
                     for j in 0..u2.nrows() {
                         let sum = u2
                             .read(j, i_pos - i_pos_block)
-                            .add(v1.mul(u2.read(j, i_pos - i_pos_block + 1)));
+                            .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)));
                         u2.write(
                             j,
                             i_pos - i_pos_block,
-                            u2.read(j, i_pos - i_pos_block).sub(sum.mul(t0.conj())),
+                            u2.read(j, i_pos - i_pos_block)
+                                .faer_sub(sum.faer_mul(t0.faer_conj())),
                         );
                         u2.write(
                             j,
                             i_pos - i_pos_block + 1,
-                            u2.read(j, i_pos - i_pos_block + 1).sub(sum.mul(t1.conj())),
+                            u2.read(j, i_pos - i_pos_block + 1)
+                                .faer_sub(sum.faer_mul(t1.faer_conj())),
                         );
                     }
                 } else {
@@ -2448,70 +2756,88 @@ fn multishift_qr_sweep<E: RealField>(
                     );
 
                     {
-                        let t0 = v.read(0, 0).conj();
+                        let t0 = v.read(0, 0).faer_conj();
                         let v1 = v.read(1, 0);
-                        let t1 = t0.mul(v1);
+                        let t1 = t0.faer_mul(v1);
                         let v2 = v.read(2, 0);
-                        let t2 = t0.mul(v2);
+                        let t2 = t0.faer_mul(v2);
                         // Apply the reflector we just calculated from the right
                         // (but leave the last row for later)
                         for j in istart_m..i_pos + 3 {
                             let sum = a
                                 .read(j, i_pos)
-                                .add(v1.mul(a.read(j, i_pos + 1)))
-                                .add(v2.mul(a.read(j, i_pos + 2)));
-                            a.write(j, i_pos, a.read(j, i_pos).sub(sum.mul(t0.conj())));
-                            a.write(j, i_pos + 1, a.read(j, i_pos + 1).sub(sum.mul(t1.conj())));
-                            a.write(j, i_pos + 2, a.read(j, i_pos + 2).sub(sum.mul(t2.conj())));
+                                .faer_add(v1.faer_mul(a.read(j, i_pos + 1)))
+                                .faer_add(v2.faer_mul(a.read(j, i_pos + 2)));
+                            a.write(
+                                j,
+                                i_pos,
+                                a.read(j, i_pos).faer_sub(sum.faer_mul(t0.faer_conj())),
+                            );
+                            a.write(
+                                j,
+                                i_pos + 1,
+                                a.read(j, i_pos + 1).faer_sub(sum.faer_mul(t1.faer_conj())),
+                            );
+                            a.write(
+                                j,
+                                i_pos + 2,
+                                a.read(j, i_pos + 2).faer_sub(sum.faer_mul(t2.faer_conj())),
+                            );
                         }
                     }
 
-                    let v0 = v.read(0, 0).real();
+                    let v0 = v.read(0, 0).faer_real();
                     let v1 = v.read(1, 0);
                     let v2 = v.read(2, 0);
                     // Apply the reflector we just calculated from the left
                     // We only update a single column, the rest is updated later
                     let sum = a
                         .read(i_pos, i_pos)
-                        .add(v1.conj().mul(a.read(i_pos + 1, i_pos)))
-                        .add(v2.conj().mul(a.read(i_pos + 2, i_pos)));
-                    a.write(i_pos, i_pos, a.read(i_pos, i_pos).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, i_pos)))
+                        .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, i_pos)));
+                    a.write(
+                        i_pos,
+                        i_pos,
+                        a.read(i_pos, i_pos).faer_sub(sum.faer_scale_real(v0)),
+                    );
                     a.write(
                         i_pos + 1,
                         i_pos,
-                        a.read(i_pos + 1, i_pos).sub(sum.scale_real(v0).mul(v1)),
+                        a.read(i_pos + 1, i_pos)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                     );
                     a.write(
                         i_pos + 2,
                         i_pos,
-                        a.read(i_pos + 2, i_pos).sub(sum.scale_real(v0).mul(v2)),
+                        a.read(i_pos + 2, i_pos)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                     );
 
                     // Test for deflation.
-                    if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::zero() {
+                    if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::faer_zero() {
                         let mut tst1 =
-                            abs1(a.read(i_pos - 1, i_pos - 1)).add(abs1(a.read(i_pos, i_pos)));
-                        if tst1 == E::Real::zero() {
+                            abs1(a.read(i_pos - 1, i_pos - 1)).faer_add(abs1(a.read(i_pos, i_pos)));
+                        if tst1 == E::Real::faer_zero() {
                             if i_pos > ilo + 1 {
-                                tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 2)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 2)));
                             }
                             if i_pos > ilo + 2 {
-                                tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 3)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 3)));
                             }
                             if i_pos > ilo + 3 {
-                                tst1 = tst1.add(abs1(a.read(i_pos - 1, i_pos - 4)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 4)));
                             }
                             if i_pos < ihi - 1 {
-                                tst1 = tst1.add(abs1(a.read(i_pos + 1, i_pos)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos + 1, i_pos)));
                             }
                             if i_pos < ihi - 2 {
-                                tst1 = tst1.add(abs1(a.read(i_pos + 2, i_pos)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos + 2, i_pos)));
                             }
                             if i_pos < ihi - 3 {
-                                tst1 = tst1.add(abs1(a.read(i_pos + 3, i_pos)));
+                                tst1 = tst1.faer_add(abs1(a.read(i_pos + 3, i_pos)));
                             }
                         }
-                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.mul(tst1)) {
+                        if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.faer_mul(tst1)) {
                             let ab = max(
                                 abs1(a.read(i_pos, i_pos - 1)),
                                 abs1(a.read(i_pos - 1, i_pos)),
@@ -2522,15 +2848,17 @@ fn multishift_qr_sweep<E: RealField>(
                             );
                             let aa = max(
                                 abs1(a.read(i_pos, i_pos)),
-                                abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                                abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                             );
                             let bb = min(
                                 abs1(a.read(i_pos, i_pos)),
-                                abs1(a.read(i_pos, i_pos).sub(a.read(i_pos - 1, i_pos - 1))),
+                                abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
                             );
-                            let s = aa.add(ab);
-                            if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
-                                a.write(i_pos, i_pos - 1, E::zero());
+                            let s = aa.faer_add(ab);
+                            if ba.faer_mul(ab.faer_div(s))
+                                <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
+                            {
+                                a.write(i_pos, i_pos - 1, E::faer_zero());
                             }
                         }
                     }
@@ -2548,25 +2876,27 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
                         .read(i_pos, j)
-                        .add(v1.conj().mul(a.read(i_pos + 1, j)))
-                        .add(v2.conj().mul(a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).sub(sum.scale_real(v0)));
+                        .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)))
+                        .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, j)));
+                    a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_scale_real(v0)));
                     a.write(
                         i_pos + 1,
                         j,
-                        a.read(i_pos + 1, j).sub(sum.scale_real(v0).mul(v1)),
+                        a.read(i_pos + 1, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                     );
                     a.write(
                         i_pos + 2,
                         j,
-                        a.read(i_pos + 2, j).sub(sum.scale_real(v0).mul(v2)),
+                        a.read(i_pos + 2, j)
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                     );
                 }
             }
@@ -2576,7 +2906,7 @@ fn multishift_qr_sweep<E: RealField>(
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let v = v.rb_mut().col(i_bulge);
 
-                let v0 = v.read(0, 0).real();
+                let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
@@ -2589,25 +2919,26 @@ fn multishift_qr_sweep<E: RealField>(
                 for j in i1..i2 {
                     let sum = u2
                         .read(j, i_pos - i_pos_block)
-                        .add(v1.mul(u2.read(j, i_pos - i_pos_block + 1)))
-                        .add(v2.mul(u2.read(j, i_pos - i_pos_block + 2)));
+                        .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)))
+                        .faer_add(v2.faer_mul(u2.read(j, i_pos - i_pos_block + 2)));
 
                     u2.write(
                         j,
                         i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block).sub(sum.scale_real(v0)),
+                        u2.read(j, i_pos - i_pos_block)
+                            .faer_sub(sum.faer_scale_real(v0)),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 1,
                         u2.read(j, i_pos - i_pos_block + 1)
-                            .sub(sum.scale_real(v0).mul(v1.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     u2.write(
                         j,
                         i_pos - i_pos_block + 2,
                         u2.read(j, i_pos - i_pos_block + 2)
-                            .sub(sum.scale_real(v0).mul(v2.conj())),
+                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
             }
@@ -2638,7 +2969,7 @@ fn multishift_qr_sweep<E: RealField>(
                     u2.rb().adjoint(),
                     a_slice.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wh_slice.rb());
@@ -2660,7 +2991,7 @@ fn multishift_qr_sweep<E: RealField>(
                     a_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 a_slice.clone_from(wv_slice.rb());
@@ -2681,7 +3012,7 @@ fn multishift_qr_sweep<E: RealField>(
                     z_slice.rb(),
                     u2.rb(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 z_slice.clone_from(wv_slice.rb());
@@ -2750,8 +3081,8 @@ pub fn multishift_qr<E: RealField>(
 
     let non_convergence_limit_window = 5;
     let non_convergence_limit_shift = 6;
-    let dat1 = E::Real::from_f64(0.75);
-    let dat2 = E::Real::from_f64(-0.4375);
+    let dat1 = E::Real::faer_from_f64(0.75);
+    let dat2 = E::Real::faer_from_f64(-0.4375);
 
     // This routine uses the space below the subdiagonal as workspace
     // For small matrices, this is not enough
@@ -2816,7 +3147,7 @@ pub fn multishift_qr<E: RealField>(
         if ilo + 1 >= istop {
             if ilo + 1 == istop {
                 w_re.write(ilo, 0, a.read(ilo, ilo));
-                w_im.write(ilo, 0, E::zero());
+                w_im.write(ilo, 0, E::faer_zero());
             }
             // All eigenvalues have been found, exit and return 0.
             break;
@@ -2829,7 +3160,7 @@ pub fn multishift_qr<E: RealField>(
 
         // Find active block
         for i in (ilo + 1..istop).rev() {
-            if a.read(i, i - 1) == E::zero() {
+            if a.read(i, i - 1) == E::faer_zero() {
                 istart = i;
                 break;
             }
@@ -2904,10 +3235,10 @@ pub fn multishift_qr<E: RealField>(
             // TODO: compare with original fortran impl
             // unsure about this part
             for i in (i_shifts + 1..istop - 1).step_by(2) {
-                let ss = abs1(a.read(i, i - 1)).add(abs1(a.read(i - 1, i - 2)));
-                let aa = E::from_real(dat1.mul(ss)).add(a.read(i, i));
-                let bb = E::from_real(ss);
-                let cc = E::from_real(dat2.mul(ss));
+                let ss = abs1(a.read(i, i - 1)).faer_add(abs1(a.read(i - 1, i - 2)));
+                let aa = E::faer_from_real(dat1.faer_mul(ss)).faer_add(a.read(i, i));
+                let bb = E::faer_from_real(ss);
+                let cc = E::faer_from_real(dat2.faer_mul(ss));
                 let dd = aa;
                 let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
                 w_re.write(i, 0, s1.0);
@@ -2961,8 +3292,14 @@ pub fn multishift_qr<E: RealField>(
             while !sorted && k > i_shifts {
                 sorted = true;
                 for i in i_shifts..k - 1 {
-                    if w_re.read(i, 0).abs().add(w_im.read(i, 0).abs())
-                        < w_re.read(i + 1, 0).abs().add(w_im.read(i + 1, 0).abs())
+                    if w_re
+                        .read(i, 0)
+                        .faer_abs()
+                        .faer_add(w_im.read(i, 0).faer_abs())
+                        < w_re
+                            .read(i + 1, 0)
+                            .faer_abs()
+                            .faer_add(w_im.read(i + 1, 0).faer_abs())
                     {
                         sorted = false;
                         let wi = (w_re.read(i, 0), w_im.read(i, 0));
@@ -2982,7 +3319,7 @@ pub fn multishift_qr<E: RealField>(
             // already adjacent to one another. (Yes,
             // they are.)
             for i in (i_shifts + 2..istop).rev().step_by(2) {
-                if w_im.read(i, 0) != w_im.read(i - 1, 0).neg() {
+                if w_im.read(i, 0) != w_im.read(i - 1, 0).faer_neg() {
                     let tmp = (w_re.read(i, 0), w_im.read(i, 0));
                     w_re.write(i, 0, w_re.read(i - 1, 0));
                     w_im.write(i, 0, w_im.read(i - 1, 0));
@@ -3003,9 +3340,15 @@ pub fn multishift_qr<E: RealField>(
 
         // If there are only two shifts and both are real
         // then use only one (helps avoid interference)
-        if ns == 2 && w_im.read(i_shifts, 0) == E::zero() {
-            if (w_re.read(i_shifts, 0).sub(a.read(istop - 1, istop - 1))).abs()
-                < (w_re.read(i_shifts + 1, 0).sub(a.read(istop - 1, istop - 1))).abs()
+        if ns == 2 && w_im.read(i_shifts, 0) == E::faer_zero() {
+            if (w_re
+                .read(i_shifts, 0)
+                .faer_sub(a.read(istop - 1, istop - 1)))
+            .faer_abs()
+                < (w_re
+                    .read(i_shifts + 1, 0)
+                    .faer_sub(a.read(istop - 1, istop - 1)))
+                .faer_abs()
             {
                 w_re.write(i_shifts + 1, 0, w_re.read(i_shifts, 0));
                 w_im.write(i_shifts + 1, 0, w_im.read(i_shifts, 0));
@@ -3069,13 +3412,13 @@ pub fn lahqr<E: RealField>(
     let mut w_re = w_re;
     let mut w_im = w_im;
 
-    let zero = E::zero();
-    let one = E::one();
+    let zero = E::faer_zero();
+    let one = E::faer_one();
     let eps = epsilon;
-    let small_num = zero_threshold.div(eps);
+    let small_num = zero_threshold.faer_div(eps);
     let non_convergence_limit = 10;
-    let dat1 = E::from_f64(0.75);
-    let dat2 = E::from_f64(-0.4375);
+    let dat1 = E::faer_from_f64(0.75);
+    let dat2 = E::faer_from_f64(-0.4375);
 
     if nh == 0 {
         return 0;
@@ -3083,7 +3426,7 @@ pub fn lahqr<E: RealField>(
 
     if nh == 1 {
         w_re.write(ilo, 0, a.read(ilo, ilo));
-        w_im.write(ilo, 0, E::zero());
+        w_im.write(ilo, 0, E::faer_zero());
     }
 
     // itmax is the total number of QR iterations allowed.
@@ -3104,10 +3447,10 @@ pub fn lahqr<E: RealField>(
     // that we can treat this subblock separately.
     let mut istart = ilo;
 
-    let mut v_storage = E::map(E::zero().into_units(), |zero_unit| {
+    let mut v_storage = E::faer_map(E::faer_zero().faer_into_units(), |zero_unit| {
         [zero_unit, zero_unit, zero_unit]
     });
-    let v_ptr = E::map(E::as_mut(&mut v_storage), |array| array.as_mut_ptr());
+    let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
     let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 3, 1, 1, 3) };
     for iter in 0..itmax + 1 {
         if iter == itmax {
@@ -3117,7 +3460,7 @@ pub fn lahqr<E: RealField>(
         if istart + 1 >= istop {
             if istart + 1 == istop {
                 w_re.write(istart, 0, a.read(istart, istart));
-                w_im.write(istart, 0, E::zero());
+                w_im.write(istart, 0, E::faer_zero());
             }
             // All eigenvalues have been found, exit and return 0.
             break;
@@ -3136,24 +3479,27 @@ pub fn lahqr<E: RealField>(
 
         // Check if active subblock has split
         for i in (istart + 1..istop).rev() {
-            if a.read(i, i - 1).abs() < small_num {
+            if a.read(i, i - 1).faer_abs() < small_num {
                 // A(i,i-1) is negligible, take i as new istart.
                 a.write(i, i - 1, zero);
                 istart = i;
                 break;
             }
 
-            let mut tst = a.read(i - 1, i - 1).abs().add(a.read(i, i).abs());
+            let mut tst = a
+                .read(i - 1, i - 1)
+                .faer_abs()
+                .faer_add(a.read(i, i).faer_abs());
             if tst == zero {
                 if i >= ilo + 2 {
-                    tst = tst.add(a.read(i - 1, i - 2).abs());
+                    tst = tst.faer_add(a.read(i - 1, i - 2).faer_abs());
                 }
                 if i + 1 < ihi {
-                    tst = tst.add(a.read(i + 1, i).abs());
+                    tst = tst.faer_add(a.read(i + 1, i).faer_abs());
                 }
             }
 
-            if a.read(i, i - 1).abs() <= eps.mul(tst) {
+            if a.read(i, i - 1).faer_abs() <= eps.faer_mul(tst) {
                 //
                 // The elementwise deflation test has passed
                 // The following performs second deflation test due
@@ -3166,18 +3512,20 @@ pub fn lahqr<E: RealField>(
                 // so we do some scaling first.
                 //
 
-                let ab = max(a.read(i, i - 1).abs(), a.read(i - 1, i).abs());
-                let ba = min(a.read(i, i - 1).abs(), a.read(i - 1, i).abs());
+                let ab = max(a.read(i, i - 1).faer_abs(), a.read(i - 1, i).faer_abs());
+                let ba = min(a.read(i, i - 1).faer_abs(), a.read(i - 1, i).faer_abs());
                 let aa = max(
-                    a.read(i, i).abs(),
-                    (a.read(i, i).sub(a.read(i - 1, i - 1))).abs(),
+                    a.read(i, i).faer_abs(),
+                    (a.read(i, i).faer_sub(a.read(i - 1, i - 1))).faer_abs(),
                 );
                 let bb = min(
-                    a.read(i, i).abs(),
-                    (a.read(i, i).sub(a.read(i - 1, i - 1))).abs(),
+                    a.read(i, i).faer_abs(),
+                    (a.read(i, i).faer_sub(a.read(i - 1, i - 1))).faer_abs(),
                 );
-                let s = aa.add(ab);
-                if ba.mul(ab.div(s)) <= max(small_num, eps.mul(bb.mul(aa.div(s)))) {
+                let s = aa.faer_add(ab);
+                if ba.faer_mul(ab.faer_div(s))
+                    <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
+                {
                     // A(i,i-1) is negligible, take i as new istart.
                     a.write(i, i - 1, zero);
                     istart = i;
@@ -3277,12 +3625,12 @@ pub fn lahqr<E: RealField>(
 
         if k_defl % non_convergence_limit == 0 {
             // Exceptional shift
-            let mut s = a.read(istop - 1, istop - 2).abs();
+            let mut s = a.read(istop - 1, istop - 2).faer_abs();
             if istop > ilo + 2 {
-                s = s.add(a.read(istop - 2, istop - 3).abs());
+                s = s.faer_add(a.read(istop - 2, istop - 3).faer_abs());
             };
-            a00 = dat1.mul(s).add(a.read(istop - 1, istop - 1));
-            a01 = dat2.mul(s);
+            a00 = dat1.faer_mul(s).faer_add(a.read(istop - 1, istop - 1));
+            a01 = dat2.faer_mul(s);
             a10 = s;
             a11 = a00;
         } else {
@@ -3297,8 +3645,8 @@ pub fn lahqr<E: RealField>(
         if s1.1 == zero && s2.1 == zero {
             // The eigenvalues are not complex conjugate, keep only the one
             // closest to A(istop-1, istop-1)
-            if (s1.0.sub(a.read(istop - 1, istop - 1))).abs()
-                <= (s2.0.sub(a.read(istop - 1, istop - 1))).abs()
+            if (s1.0.faer_sub(a.read(istop - 1, istop - 1))).faer_abs()
+                <= (s2.0.faer_sub(a.read(istop - 1, istop - 1))).faer_abs()
             {
                 s2 = s1;
             } else {
@@ -3316,24 +3664,25 @@ pub fn lahqr<E: RealField>(
                 let h = a.rb().submatrix(i, i, 3, 3);
                 lahqr_shiftcolumn(h, v.rb_mut(), s1, s2);
                 let head = v.read(0, 0);
-                let tail_sqr_norm = v.read(1, 0).abs2().add(v.read(2, 0).abs2());
+                let tail_sqr_norm = v.read(1, 0).faer_abs2().faer_add(v.read(2, 0).faer_abs2());
                 let (tau, _) =
                     make_householder_in_place(Some(v.rb_mut().subrows(1, 2)), head, tail_sqr_norm);
-                let tau = tau.inv();
+                let tau = tau.faer_inv();
 
                 let v0 = tau;
                 let v1 = v.read(1, 0);
                 let v2 = v.read(2, 0);
 
-                let refsum = (v0.mul(a.read(i, i - 1))).add(v1.mul(a.read(i + 1, i - 1)));
-                if (a.read(i + 1, i - 1).sub(refsum.mul(v1)))
-                    .abs()
-                    .add(refsum.mul(v2).abs())
-                    <= eps.mul(
+                let refsum =
+                    (v0.faer_mul(a.read(i, i - 1))).faer_add(v1.faer_mul(a.read(i + 1, i - 1)));
+                if (a.read(i + 1, i - 1).faer_sub(refsum.faer_mul(v1)))
+                    .faer_abs()
+                    .faer_add(refsum.faer_mul(v2).faer_abs())
+                    <= eps.faer_mul(
                         a.read(i, i - 1)
-                            .abs()
-                            .add(a.read(i, i + 1).abs())
-                            .add(a.read(i + 1, i + 2).abs()),
+                            .faer_abs()
+                            .faer_add(a.read(i, i + 1).faer_abs())
+                            .faer_add(a.read(i + 1, i + 2).faer_abs()),
                     )
                 {
                     istart2 = i;
@@ -3355,9 +3704,9 @@ pub fn lahqr<E: RealField>(
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
                 v.write(0, 0, beta);
-                t1 = t1.inv();
+                t1 = t1.faer_inv();
                 if i > istart {
-                    a.write(i, i - 1, a.read(i, i - 1).mul(one.sub(t1)));
+                    a.write(i, i - 1, a.read(i, i - 1).faer_mul(one.faer_sub(t1)));
                 }
             } else {
                 v.write(0, 0, a.read(i, i - 1));
@@ -3370,12 +3719,12 @@ pub fn lahqr<E: RealField>(
                 let tail_sqr_norm = inner_prod_with_conj(tail.rb(), Conj::No, tail.rb(), Conj::No);
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
-                t1 = t1.inv();
+                t1 = t1.faer_inv();
                 v.write(0, 0, beta);
                 a.write(i, i - 1, beta);
-                a.write(i + 1, i - 1, E::zero());
+                a.write(i + 1, i - 1, E::faer_zero());
                 if nr == 3 {
-                    a.write(i + 2, i - 1, E::zero());
+                    a.write(i + 2, i - 1, E::faer_zero());
                 }
             }
 
@@ -3383,63 +3732,63 @@ pub fn lahqr<E: RealField>(
             // We write this out instead of using larf because a direct loop is
             // more efficient for small reflectors.
             let v2 = v.read(1, 0);
-            let t2 = t1.mul(v2);
+            let t2 = t1.faer_mul(v2);
 
             if nr == 3 {
                 let v3 = v.read(2, 0);
-                let t3 = t1.mul(v.read(2, 0));
+                let t3 = t1.faer_mul(v.read(2, 0));
 
                 // Apply G from the left to A
                 for j in i..istop_m {
                     let sum = a
                         .read(i, j)
-                        .add(v2.mul(a.read(i + 1, j)))
-                        .add(v3.mul(a.read(i + 2, j)));
-                    a.write(i, j, a.read(i, j).sub(sum.mul(t1)));
-                    a.write(i + 1, j, a.read(i + 1, j).sub(sum.mul(t2)));
-                    a.write(i + 2, j, a.read(i + 2, j).sub(sum.mul(t3)));
+                        .faer_add(v2.faer_mul(a.read(i + 1, j)))
+                        .faer_add(v3.faer_mul(a.read(i + 2, j)));
+                    a.write(i, j, a.read(i, j).faer_sub(sum.faer_mul(t1)));
+                    a.write(i + 1, j, a.read(i + 1, j).faer_sub(sum.faer_mul(t2)));
+                    a.write(i + 2, j, a.read(i + 2, j).faer_sub(sum.faer_mul(t3)));
                 }
                 // Apply G from the right to A
                 for j in istart_m..Ord::min(i + 4, istop) {
                     let sum = a
                         .read(j, i)
-                        .add(v2.mul(a.read(j, i + 1)))
-                        .add(v3.mul(a.read(j, i + 2)));
-                    a.write(j, i, a.read(j, i).sub(sum.mul(t1)));
-                    a.write(j, i + 1, a.read(j, i + 1).sub(sum.mul(t2)));
-                    a.write(j, i + 2, a.read(j, i + 2).sub(sum.mul(t3)));
+                        .faer_add(v2.faer_mul(a.read(j, i + 1)))
+                        .faer_add(v3.faer_mul(a.read(j, i + 2)));
+                    a.write(j, i, a.read(j, i).faer_sub(sum.faer_mul(t1)));
+                    a.write(j, i + 1, a.read(j, i + 1).faer_sub(sum.faer_mul(t2)));
+                    a.write(j, i + 2, a.read(j, i + 2).faer_sub(sum.faer_mul(t3)));
                 }
                 if let Some(mut z) = z.rb_mut() {
                     // Apply G to Z from the right
                     for j in 0..n {
                         let sum = z
                             .read(j, i)
-                            .add(v2.mul(z.read(j, i + 1)))
-                            .add(v3.mul(z.read(j, i + 2)));
-                        z.write(j, i, z.read(j, i).sub(sum.mul(t1)));
-                        z.write(j, i + 1, z.read(j, i + 1).sub(sum.mul(t2)));
-                        z.write(j, i + 2, z.read(j, i + 2).sub(sum.mul(t3)));
+                            .faer_add(v2.faer_mul(z.read(j, i + 1)))
+                            .faer_add(v3.faer_mul(z.read(j, i + 2)));
+                        z.write(j, i, z.read(j, i).faer_sub(sum.faer_mul(t1)));
+                        z.write(j, i + 1, z.read(j, i + 1).faer_sub(sum.faer_mul(t2)));
+                        z.write(j, i + 2, z.read(j, i + 2).faer_sub(sum.faer_mul(t3)));
                     }
                 }
             } else {
                 // Apply G from the left to A
                 for j in i..istop_m {
-                    let sum = a.read(i, j).add(v2.mul(a.read(i + 1, j)));
-                    a.write(i, j, a.read(i, j).sub(sum.mul(t1)));
-                    a.write(i + 1, j, a.read(i + 1, j).sub(sum.mul(t2)));
+                    let sum = a.read(i, j).faer_add(v2.faer_mul(a.read(i + 1, j)));
+                    a.write(i, j, a.read(i, j).faer_sub(sum.faer_mul(t1)));
+                    a.write(i + 1, j, a.read(i + 1, j).faer_sub(sum.faer_mul(t2)));
                 }
                 // Apply G from the right to A
                 for j in istart_m..Ord::min(i + 3, istop) {
-                    let sum = a.read(j, i).add(v2.mul(a.read(j, i + 1)));
-                    a.write(j, i, a.read(j, i).sub(sum.mul(t1)));
-                    a.write(j, i + 1, a.read(j, i + 1).sub(sum.mul(t2)));
+                    let sum = a.read(j, i).faer_add(v2.faer_mul(a.read(j, i + 1)));
+                    a.write(j, i, a.read(j, i).faer_sub(sum.faer_mul(t1)));
+                    a.write(j, i + 1, a.read(j, i + 1).faer_sub(sum.faer_mul(t2)));
                 }
                 if let Some(mut z) = z.rb_mut() {
                     // Apply G to Z from the right
                     for j in 0..n {
-                        let sum = z.read(j, i).add(v2.mul(z.read(j, i + 1)));
-                        z.write(j, i, z.read(j, i).sub(sum.mul(t1)));
-                        z.write(j, i + 1, z.read(j, i + 1).sub(sum.mul(t2)));
+                        let sum = z.read(j, i).faer_add(v2.faer_mul(z.read(j, i + 1)));
+                        z.write(j, i, z.read(j, i).faer_sub(sum.faer_mul(t1)));
+                        z.write(j, i + 1, z.read(j, i + 1).faer_sub(sum.faer_mul(t2)));
                     }
                 }
             }
@@ -3603,8 +3952,13 @@ mod tests {
                     }
                 }
 
-                let mut q =
-                    Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+                let mut q = Mat::from_fn(n, n, |i, j| {
+                    if i == j {
+                        f64::faer_one()
+                    } else {
+                        f64::faer_zero()
+                    }
+                });
 
                 let mut w_re = Mat::zeros(n, 1);
                 let mut w_im = Mat::zeros(n, 1);
@@ -3640,7 +3994,7 @@ mod tests {
                 );
                 for j in 0..n {
                     for i in j + 2..n {
-                        t.write(i, j, f64::zero());
+                        t.write(i, j, f64::faer_zero());
                     }
                 }
 
@@ -3727,7 +4081,13 @@ mod tests {
             ],
         ];
 
-        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                f64::faer_one()
+            } else {
+                f64::faer_zero()
+            }
+        });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -3760,7 +4120,7 @@ mod tests {
         );
         for j in 0..n {
             for i in j + 2..n {
-                t.write(i, j, f64::zero());
+                t.write(i, j, f64::faer_zero());
             }
         }
 
@@ -4068,7 +4428,13 @@ mod tests {
         ];
         let h = Mat::<f64>::from_fn(n, n, |i, j| h[i][j]);
 
-        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                f64::faer_one()
+            } else {
+                f64::faer_zero()
+            }
+        });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -4104,7 +4470,7 @@ mod tests {
         );
         for j in 0..n {
             for i in j + 2..n {
-                t.write(i, j, f64::zero());
+                t.write(i, j, f64::faer_zero());
             }
         }
 
@@ -4315,7 +4681,13 @@ mod tests {
             ],
         ];
 
-        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                f64::faer_one()
+            } else {
+                f64::faer_zero()
+            }
+        });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -4348,7 +4720,7 @@ mod tests {
         );
         for j in 0..n {
             for i in j + 2..n {
-                t.write(i, j, f64::zero());
+                t.write(i, j, f64::faer_zero());
             }
         }
 
@@ -4997,7 +5369,13 @@ mod tests {
         ];
         let n = h.nrows();
 
-        let mut q = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+        let mut q = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                f64::faer_one()
+            } else {
+                f64::faer_zero()
+            }
+        });
 
         let mut w_re = Mat::zeros(n, 1);
         let mut w_im = Mat::zeros(n, 1);
@@ -5034,7 +5412,7 @@ mod tests {
 
         for j in 0..n {
             for i in j + 2..n {
-                t.write(i, j, f64::zero());
+                t.write(i, j, f64::faer_zero());
             }
         }
 

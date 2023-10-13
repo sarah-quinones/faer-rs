@@ -53,7 +53,7 @@ mod tests {
             a.as_ref().adjoint(),
             a.as_ref(),
             None,
-            E::one(),
+            E::faer_one(),
             Parallelism::Rayon(8),
         );
 
@@ -86,8 +86,8 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..j {
-                    a_reconstructed.write(i, j, a_reconstructed.read(j, i).conj());
-                    inv.write(i, j, inv.read(j, i).conj());
+                    a_reconstructed.write(i, j, a_reconstructed.read(j, i).faer_conj());
+                    inv.write(i, j, inv.read(j, i).faer_conj());
                 }
             }
 
@@ -97,7 +97,7 @@ mod tests {
                 a_reconstructed.as_ref(),
                 inv.as_ref(),
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::Rayon(0),
             );
 
@@ -109,7 +109,11 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..n {
-                    let target = if i == j { E::one() } else { E::zero() };
+                    let target = if i == j {
+                        E::faer_one()
+                    } else {
+                        E::faer_zero()
+                    };
                     assert_approx_eq!(prod.read(i, j), target);
                 }
             }
@@ -151,7 +155,7 @@ mod tests {
                 rhs.as_ref(),
                 Rectangular,
                 None,
-                E::one(),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
 
@@ -162,8 +166,8 @@ mod tests {
                 StrictTriangularUpper,
                 rhs.as_ref(),
                 Rectangular,
-                Some(E::one()),
-                E::one(),
+                Some(E::faer_one()),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
 
@@ -183,13 +187,13 @@ mod tests {
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
             let mut w = Mat::from_fn(n, k, |_, _| random());
-            let mut alpha = Mat::from_fn(k, 1, |_, _| E::from_real(rand::random()));
+            let mut alpha = Mat::from_fn(k, 1, |_, _| E::faer_from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).mul(w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j, 0).faer_mul(w.read(i, j)));
                 }
             }
 
@@ -200,8 +204,8 @@ mod tests {
                 Rectangular,
                 w.as_ref().adjoint(),
                 Rectangular,
-                Some(E::one()),
-                E::one(),
+                Some(E::faer_one()),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
 

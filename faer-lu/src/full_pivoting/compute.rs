@@ -164,11 +164,12 @@ fn best2d<E: RealField, S: Simd>(
     row_indices: E::SimdIndex<S>,
     col_indices: E::SimdIndex<S>,
 ) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>, E::SimdIndex<S>) {
-    let is_better = E::simd_greater_than(simd, E::copy(&value), E::copy(&best_value));
+    let is_better =
+        E::faer_simd_greater_than(simd, E::faer_copy(&value), E::faer_copy(&best_value));
     (
-        E::simd_select(simd, is_better, value, best_value),
-        E::simd_index_select(simd, is_better, row_indices, best_row_indices),
-        E::simd_index_select(simd, is_better, col_indices, best_col_indices),
+        E::faer_simd_select(simd, is_better, value, best_value),
+        E::faer_simd_index_select(simd, is_better, row_indices, best_row_indices),
+        E::faer_simd_index_select(simd, is_better, col_indices, best_col_indices),
     )
 }
 
@@ -183,12 +184,15 @@ fn best_value<E: ComplexField, S: Simd>(
     <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
     <E::Real as Entity>::SimdIndex<S>,
 ) {
-    let value = E::simd_score(simd, data);
-    let is_better =
-        E::Real::simd_greater_than(simd, E::Real::copy(&value), E::Real::copy(&best_value));
+    let value = E::faer_simd_score(simd, data);
+    let is_better = E::Real::faer_simd_greater_than(
+        simd,
+        E::Real::faer_copy(&value),
+        E::Real::faer_copy(&best_value),
+    );
     (
-        E::Real::simd_select(simd, is_better, value, best_value),
-        E::Real::simd_index_select(simd, is_better, indices, best_indices),
+        E::Real::faer_simd_select(simd, is_better, value, best_value),
+        E::Real::faer_simd_index_select(simd, is_better, indices, best_indices),
     )
 }
 
@@ -200,11 +204,14 @@ fn best_score<E: RealField, S: Simd>(
     value: E::Group<E::SimdUnit<S>>,
     indices: E::SimdIndex<S>,
 ) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>) {
-    let is_better =
-        E::Real::simd_greater_than(simd, E::Real::copy(&value), E::Real::copy(&best_value));
+    let is_better = E::Real::faer_simd_greater_than(
+        simd,
+        E::Real::faer_copy(&value),
+        E::Real::faer_copy(&best_value),
+    );
     (
-        E::Real::simd_select(simd, is_better, value, best_value),
-        E::Real::simd_index_select(simd, is_better, indices, best_indices),
+        E::Real::faer_simd_select(simd, is_better, value, best_value),
+        E::Real::faer_simd_index_select(simd, is_better, indices, best_indices),
     )
 }
 
@@ -218,29 +225,30 @@ fn best_in_col<E: ComplexField, S: Simd>(
 ) {
     let (head, tail) = simd::slice_as_simd::<E, S>(data);
 
-    let iota = E::Real::simd_index_seq(simd);
+    let iota = E::Real::faer_simd_index_seq(simd);
     let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
-    let increment1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(lane_count));
-    let increment4 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(4 * lane_count));
+    let increment1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(lane_count));
+    let increment4 =
+        E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(4 * lane_count));
 
-    let mut best_value0 = E::Real::simd_splat(simd, E::Real::zero());
-    let mut best_value1 = E::Real::simd_splat(simd, E::Real::zero());
-    let mut best_value2 = E::Real::simd_splat(simd, E::Real::zero());
-    let mut best_value3 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value0 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+    let mut best_value1 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+    let mut best_value2 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+    let mut best_value3 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
 
-    let mut best_indices0 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-    let mut best_indices1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-    let mut best_indices2 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-    let mut best_indices3 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices0 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+    let mut best_indices1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+    let mut best_indices2 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+    let mut best_indices3 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
 
     let mut indices0 = iota;
-    let mut indices1 = E::Real::simd_index_add(simd, indices0, increment1);
-    let mut indices2 = E::Real::simd_index_add(simd, indices1, increment1);
-    let mut indices3 = E::Real::simd_index_add(simd, indices2, increment1);
+    let mut indices1 = E::Real::faer_simd_index_add(simd, indices0, increment1);
+    let mut indices2 = E::Real::faer_simd_index_add(simd, indices1, increment1);
+    let mut indices3 = E::Real::faer_simd_index_add(simd, indices2, increment1);
 
-    let (head4, tail4) = E::as_arrays::<4, _>(head);
-    for data in E::into_iter(head4) {
-        let [data0, data1, data2, data3] = E::unzip4(E::deref(data));
+    let (head4, tail4) = E::faer_as_arrays::<4, _>(head);
+    for data in E::faer_into_iter(head4) {
+        let [data0, data1, data2, data3] = E::faer_unzip4(E::faer_deref(data));
         (best_value0, best_indices0) =
             best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
         (best_value1, best_indices1) =
@@ -250,10 +258,10 @@ fn best_in_col<E: ComplexField, S: Simd>(
         (best_value3, best_indices3) =
             best_value::<E, S>(simd, best_value3, best_indices3, data3, indices3);
 
-        indices0 = E::Real::simd_index_add(simd, indices0, increment4);
-        indices1 = E::Real::simd_index_add(simd, indices1, increment4);
-        indices2 = E::Real::simd_index_add(simd, indices2, increment4);
-        indices3 = E::Real::simd_index_add(simd, indices3, increment4);
+        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment4);
+        indices1 = E::Real::faer_simd_index_add(simd, indices1, increment4);
+        indices2 = E::Real::faer_simd_index_add(simd, indices2, increment4);
+        indices3 = E::Real::faer_simd_index_add(simd, indices3, increment4);
     }
 
     (best_value0, best_indices0) =
@@ -264,18 +272,18 @@ fn best_in_col<E: ComplexField, S: Simd>(
     (best_value0, best_indices0) =
         best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value2, best_indices2);
 
-    for data in E::into_iter(tail4) {
-        let data0 = E::deref(data);
+    for data in E::faer_into_iter(tail4) {
+        let data0 = E::faer_deref(data);
         (best_value0, best_indices0) =
             best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
-        indices0 = E::Real::simd_index_add(simd, indices0, increment1);
+        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment1);
     }
 
     best_value::<E, S>(
         simd,
         best_value0,
         best_indices0,
-        E::partial_load(simd, tail),
+        E::faer_partial_load(simd, tail),
         indices0,
     )
 }
@@ -291,53 +299,54 @@ fn update_and_best_in_col<E: ComplexField, S: Simd>(
     <E::Real as Entity>::SimdIndex<S>,
 ) {
     let mut len = 0;
-    E::map(
-        E::as_ref(&data),
+    E::faer_map(
+        E::faer_as_ref(&data),
         #[inline(always)]
         |slice| len = slice.len(),
     );
 
-    let iota = E::Real::simd_index_seq(simd);
+    let iota = E::Real::faer_simd_index_seq(simd);
     let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
 
-    let rhs = E::simd_splat(simd, rhs);
+    let rhs = E::faer_simd_splat(simd, rhs);
 
     if len <= lane_count {
-        let dst0 = E::partial_load(simd, E::rb(E::as_ref(&data)));
-        let lhs0 = E::partial_load(simd, lhs);
-        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
-        E::partial_store(simd, data, E::copy(&dst0));
+        let dst0 = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&data)));
+        let lhs0 = E::faer_partial_load(simd, lhs);
+        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
+        E::faer_partial_store(simd, data, E::faer_copy(&dst0));
 
-        return (E::simd_score(simd, dst0), iota);
+        return (E::faer_simd_score(simd, dst0), iota);
     }
 
     let (dst_head, dst_tail) = simd::slice_as_mut_simd::<E, S>(data);
     let (lhs_head, lhs_tail) = simd::slice_as_simd::<E, S>(lhs);
 
-    let increment1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(lane_count));
-    let increment2 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(2 * lane_count));
+    let increment1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(lane_count));
+    let increment2 =
+        E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(2 * lane_count));
 
-    let mut best_value0 = E::Real::simd_splat(simd, E::Real::zero());
-    let mut best_value1 = E::Real::simd_splat(simd, E::Real::zero());
+    let mut best_value0 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+    let mut best_value1 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
 
-    let mut best_indices0 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-    let mut best_indices1 = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
+    let mut best_indices0 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+    let mut best_indices1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
 
     let mut indices0 = iota;
-    let mut indices1 = E::Real::simd_index_add(simd, indices0, increment1);
+    let mut indices1 = E::Real::faer_simd_index_add(simd, indices0, increment1);
 
-    let (dst_head2, dst_tail2) = E::as_arrays_mut::<2, _>(dst_head);
-    let (lhs_head2, lhs_tail2) = E::as_arrays::<2, _>(lhs_head);
+    let (dst_head2, dst_tail2) = E::faer_as_arrays_mut::<2, _>(dst_head);
+    let (lhs_head2, lhs_tail2) = E::faer_as_arrays::<2, _>(lhs_head);
 
-    for (dst, lhs) in E::into_iter(dst_head2).zip(E::into_iter(lhs_head2)) {
-        let [dst0, dst1] = E::unzip2(E::deref(E::rb(E::as_ref(&dst))));
-        let [lhs0, lhs1] = E::unzip2(E::deref(lhs));
+    for (dst, lhs) in E::faer_into_iter(dst_head2).zip(E::faer_into_iter(lhs_head2)) {
+        let [dst0, dst1] = E::faer_unzip2(E::faer_deref(E::faer_rb(E::faer_as_ref(&dst))));
+        let [lhs0, lhs1] = E::faer_unzip2(E::faer_deref(lhs));
 
-        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
-        let dst1 = E::simd_mul_adde(simd, lhs1, E::copy(&rhs), dst1);
+        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
+        let dst1 = E::faer_simd_mul_adde(simd, lhs1, E::faer_copy(&rhs), dst1);
 
-        E::map(
-            E::zip(dst, E::zip(E::copy(&dst0), E::copy(&dst1))),
+        E::faer_map(
+            E::faer_zip(dst, E::faer_zip(E::faer_copy(&dst0), E::faer_copy(&dst1))),
             #[inline(always)]
             |(dst, (dst0, dst1))| {
                 dst[0] = dst0;
@@ -350,21 +359,21 @@ fn update_and_best_in_col<E: ComplexField, S: Simd>(
         (best_value1, best_indices1) =
             best_value::<E, S>(simd, best_value1, best_indices1, dst1, indices1);
 
-        indices0 = E::Real::simd_index_add(simd, indices0, increment2);
-        indices1 = E::Real::simd_index_add(simd, indices1, increment2);
+        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment2);
+        indices1 = E::Real::faer_simd_index_add(simd, indices1, increment2);
     }
 
     (best_value0, best_indices0) =
         best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value1, best_indices1);
 
-    for (dst, lhs) in E::into_iter(dst_tail2).zip(E::into_iter(lhs_tail2)) {
-        let dst0 = E::deref(E::rb(E::as_ref(&dst)));
-        let lhs0 = E::deref(lhs);
+    for (dst, lhs) in E::faer_into_iter(dst_tail2).zip(E::faer_into_iter(lhs_tail2)) {
+        let dst0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&dst)));
+        let lhs0 = E::faer_deref(lhs);
 
-        let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
+        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
 
-        E::map(
-            E::zip(dst, E::copy(&dst0)),
+        E::faer_map(
+            E::faer_zip(dst, E::faer_copy(&dst0)),
             #[inline(always)]
             |(dst, dst0)| *dst = dst0,
         );
@@ -372,13 +381,13 @@ fn update_and_best_in_col<E: ComplexField, S: Simd>(
         (best_value0, best_indices0) =
             best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0);
 
-        indices0 = E::Real::simd_index_add(simd, indices0, increment1);
+        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment1);
     }
 
-    let dst0 = E::partial_load(simd, E::rb(E::as_ref(&dst_tail)));
-    let lhs0 = E::partial_load(simd, lhs_tail);
-    let dst0 = E::simd_mul_adde(simd, lhs0, E::copy(&rhs), dst0);
-    E::partial_store(simd, dst_tail, E::copy(&dst0));
+    let dst0 = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&dst_tail)));
+    let lhs0 = E::faer_partial_load(simd, lhs_tail);
+    let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
+    E::faer_partial_store(simd, dst_tail, E::faer_copy(&dst0));
 
     best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0)
 }
@@ -530,14 +539,17 @@ fn reduce2d<E: RealField>(
     best_row: &[E::Index],
     best_col: &[E::Index],
 ) -> (E, E::Index, E::Index) {
-    let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) =
-        (E::zero(), E::usize_to_index(0), E::usize_to_index(0));
-    for ((value, &row), &col) in E::into_iter(best_value)
+    let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) = (
+        E::faer_zero(),
+        E::faer_usize_to_index(0),
+        E::faer_usize_to_index(0),
+    );
+    for ((value, &row), &col) in E::faer_into_iter(best_value)
         .zip(best_row)
         .zip(best_col)
         .take(len)
     {
-        let value = E::from_units(E::deref(value));
+        let value = E::faer_from_units(E::faer_deref(value));
         (best_value_scalar, best_row_scalar, best_col_scalar) = {
             if value > best_value_scalar {
                 (value, row, col)
@@ -641,13 +653,15 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-            let mut best_col = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-            let mut best_value = E::Real::simd_splat(simd, E::Real::zero());
+            let mut best_row =
+                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+            let mut best_col =
+                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+            let mut best_value = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
 
             for j in 0..n {
                 let ptr = matrix.col(j).as_ptr();
-                let col = E::map(
+                let col = E::faer_map(
                     ptr,
                     #[inline(always)]
                     |ptr| unsafe { slice::from_raw_parts(ptr, m) },
@@ -660,7 +674,7 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    E::Real::simd_index_splat(simd, E::Real::usize_to_index(j)),
+                    E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(j)),
                 );
             }
 
@@ -670,14 +684,14 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,
-                simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(&best_value)),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
 
             (
-                E::Real::index_to_usize(best_row),
-                E::Real::index_to_usize(best_col),
+                E::Real::faer_index_to_usize(best_row),
+                E::Real::faer_index_to_usize(best_col),
                 best_value,
             )
         }
@@ -702,28 +716,30 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-            let mut best_col = E::Real::simd_index_splat(simd, E::Real::usize_to_index(0));
-            let mut best_value = E::Real::simd_splat(simd, E::Real::zero());
+            let mut best_row =
+                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+            let mut best_col =
+                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+            let mut best_value = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
 
-            let lhs = E::map(
+            let lhs = E::faer_map(
                 lhs.as_ptr(),
                 #[inline(always)]
                 |ptr| unsafe { slice::from_raw_parts(ptr, m) },
             );
 
             for j in 0..n {
-                let rhs = rhs.read(0, j).neg();
+                let rhs = rhs.read(0, j).faer_neg();
 
                 let ptr = matrix.rb_mut().col(j).as_ptr();
-                let dst = E::map(
+                let dst = E::faer_map(
                     ptr,
                     #[inline(always)]
                     |ptr| unsafe { slice::from_raw_parts_mut(ptr, m) },
                 );
 
                 let (best_value_in_col, best_index_in_col) =
-                    update_and_best_in_col(simd, dst, E::copy(&lhs), rhs);
+                    update_and_best_in_col(simd, dst, E::faer_copy(&lhs), rhs);
 
                 (best_value, best_row, best_col) = best2d::<E::Real, S>(
                     simd,
@@ -732,7 +748,7 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    E::Real::simd_index_splat(simd, E::Real::usize_to_index(j)),
+                    E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(j)),
                 );
             }
 
@@ -742,14 +758,14 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,
-                simd::one_simd_as_slice::<E::Real, S>(E::Real::as_ref(&best_value)),
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(&best_value)),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
 
             (
-                E::Real::index_to_usize(best_row),
-                E::Real::index_to_usize(best_col),
+                E::Real::faer_index_to_usize(best_row),
+                E::Real::faer_index_to_usize(best_col),
                 best_value,
             )
         }
@@ -968,13 +984,13 @@ fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::R
         let m = matrix.nrows();
         let n = matrix.ncols();
 
-        let mut max = E::Real::zero();
+        let mut max = E::Real::faer_zero();
         let mut max_row = 0;
         let mut max_col = 0;
 
         for j in 0..n {
             for i in 0..m {
-                let abs = matrix.read(i, j).score();
+                let abs = matrix.read(i, j).faer_score();
                 if abs > max {
                     max_row = i;
                     max_col = j;
@@ -1017,8 +1033,8 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
             dst.rb_mut(),
             lhs,
             rhs,
-            Some(E::one()),
-            E::one().neg(),
+            Some(E::faer_one()),
+            E::faer_one().faer_neg(),
             Parallelism::None,
         );
         best_in_matrix(dst.rb())
@@ -1050,7 +1066,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
     let (mut max_row, mut max_col, mut biggest) = best_in_matrix(matrix.rb());
 
     for k in 0..size {
-        if biggest < E::Real::zero_threshold().unwrap() {
+        if biggest < E::Real::faer_zero_threshold().unwrap() {
             for idx in k..size {
                 row_transpositions[idx] = idx;
                 col_transpositions[idx] = idx;
@@ -1071,16 +1087,16 @@ fn lu_in_place_unblocked<E: ComplexField>(
             swap_cols(matrix.rb_mut(), k, max_col);
         }
 
-        let inv = matrix.read(k, k).inv();
+        let inv = matrix.read(k, k).faer_inv();
         if !transposed {
             for i in k + 1..m {
                 let elem = matrix.read(i, k);
-                matrix.write(i, k, elem.mul(inv));
+                matrix.write(i, k, elem.faer_mul(inv));
             }
         } else {
             for i in k + 1..n {
                 let elem = matrix.read(k, i);
-                matrix.write(k, i, elem.mul(inv));
+                matrix.write(k, i, elem.faer_mul(inv));
             }
         }
 
@@ -1110,7 +1126,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
                 let n_threads = parallelism_degree(parallelism);
 
-                let mut biggest_vec = vec![(0_usize, 0_usize, E::Real::zero()); n_threads];
+                let mut biggest_vec = vec![(0_usize, 0_usize, E::Real::faer_zero()); n_threads];
 
                 let lhs = bottom_left.col(k).into_const();
                 let rhs = top_right.row(k).into_const();
@@ -1136,7 +1152,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
                 max_row = 0;
                 max_col = 0;
-                let mut biggest_value = E::Real::zero();
+                let mut biggest_value = E::Real::faer_zero();
                 for (row, col, value) in biggest_vec {
                     if value > biggest_value {
                         max_row = row;
@@ -1369,7 +1385,8 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
+                                < epsilon
                         );
                     }
                 }
@@ -1425,7 +1442,8 @@ mod tests {
                 for i in 0..m {
                     for j in 0..n {
                         assert!(
-                            (mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < epsilon
+                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
+                                < epsilon
                         );
                     }
                 }
@@ -1473,7 +1491,7 @@ mod tests {
             (40, 20),
             (20, 40),
         ] {
-            let mat = Mat::from_fn(m, n, |_i, _j| c32::zero());
+            let mat = Mat::from_fn(m, n, |_i, _j| c32::faer_zero());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = mat.clone();
                 let mat_orig = mat.clone();
@@ -1505,7 +1523,10 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!(
+                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
+                                < 1e-4
+                        );
                     }
                 }
             }
@@ -1527,7 +1548,7 @@ mod tests {
             (40, 20),
             (20, 40),
         ] {
-            let mat = Mat::from_fn(m, n, |_i, _j| c32::one());
+            let mat = Mat::from_fn(m, n, |_i, _j| c32::faer_one());
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = mat.clone();
                 let mat_orig = mat.clone();
@@ -1559,7 +1580,10 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!(
+                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
+                                < 1e-4
+                        );
                     }
                 }
             }
@@ -1618,7 +1642,10 @@ mod tests {
 
                 for i in 0..m {
                     for j in 0..n {
-                        assert!((mat_orig.read(i, j).sub(reconstructed.read(i, j))).abs() < 1e-4);
+                        assert!(
+                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
+                                < 1e-4
+                        );
                     }
                 }
             }

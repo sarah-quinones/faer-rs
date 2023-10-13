@@ -38,8 +38,9 @@ pub fn reconstruct<E: ComplexField>(
         });
 
     // zero bottom part
-    zipped!(dst.rb_mut())
-        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| dst.write(E::zero()));
+    zipped!(dst.rb_mut()).for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+        dst.write(E::faer_zero())
+    });
 
     apply_block_householder_sequence_on_the_left_in_place_with_conj(
         qr_factors,
