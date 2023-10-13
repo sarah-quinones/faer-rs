@@ -85,6 +85,7 @@ mod tests {
             let a_orig = a.clone();
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -114,6 +115,7 @@ mod tests {
         let rhs_orig = rhs.clone();
         raw_cholesky_in_place(
             a.as_mut(),
+            Default::default(),
             Parallelism::Rayon(8),
             PodStack::new(&mut GlobalPodBuffer::new(
                 raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -196,6 +198,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -228,6 +231,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -258,6 +262,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -288,6 +293,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -356,6 +362,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -426,6 +433,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
@@ -496,6 +504,7 @@ mod tests {
 
             raw_cholesky_in_place(
                 a.as_mut(),
+                Default::default(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
                     raw_cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())

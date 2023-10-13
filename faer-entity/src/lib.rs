@@ -234,7 +234,7 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>);
 
     fn into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter>;
@@ -787,7 +787,7 @@ impl ComplexField for f32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.f32s_mul_adde(lhs, rhs, acc)
+        simd.f32s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -797,7 +797,7 @@ impl ComplexField for f32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.f32s_mul_adde(lhs, rhs, acc)
+        simd.f32s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -815,7 +815,7 @@ impl ComplexField for f32 {
         values: SimdGroup<Self, S>,
         acc: SimdGroup<Self::Real, S>,
     ) -> SimdGroup<Self::Real, S> {
-        simd.f32s_mul_adde(values, values, acc)
+        simd.f32s_mul_add_e(values, values, acc)
     }
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
@@ -834,11 +834,11 @@ impl ComplexField for f32 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        simd.f32_scalar_mul_adde(lhs, rhs, acc)
+        simd.f32_scalar_mul_add_e(lhs, rhs, acc)
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        simd.f32_scalar_mul_adde(lhs, rhs, acc)
+        simd.f32_scalar_mul_add_e(lhs, rhs, acc)
     }
 }
 impl ComplexField for f64 {
@@ -1042,7 +1042,7 @@ impl ComplexField for f64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.f64s_mul_adde(lhs, rhs, acc)
+        simd.f64s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1052,7 +1052,7 @@ impl ComplexField for f64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.f64s_mul_adde(lhs, rhs, acc)
+        simd.f64s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1070,7 +1070,7 @@ impl ComplexField for f64 {
         values: SimdGroup<Self, S>,
         acc: SimdGroup<Self::Real, S>,
     ) -> SimdGroup<Self::Real, S> {
-        simd.f64s_mul_adde(values, values, acc)
+        simd.f64s_mul_add_e(values, values, acc)
     }
     #[inline(always)]
     fn simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
@@ -1089,11 +1089,11 @@ impl ComplexField for f64 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        simd.f64_scalar_mul_adde(lhs, rhs, acc)
+        simd.f64_scalar_mul_add_e(lhs, rhs, acc)
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        simd.f64_scalar_mul_adde(lhs, rhs, acc)
+        simd.f64_scalar_mul_add_e(lhs, rhs, acc)
     }
 }
 impl RealField for f32 {
@@ -1383,10 +1383,9 @@ unsafe impl Entity for f32 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1456,10 +1455,9 @@ unsafe impl Entity for f64 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1547,11 +1545,10 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
-        let (ctx, im) = E::map_with_context(ctx, group.im, &mut f);
+        let (ctx, re) = E::map_with_context(ctx, group.re, f);
+        let (ctx, im) = E::map_with_context(ctx, group.im, f);
         (ctx, Complex { re, im })
     }
 
@@ -1638,11 +1635,10 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        let (ctx, re) = E::map_with_context(ctx, group.re, &mut f);
-        let (ctx, neg_im) = E::map_with_context(ctx, group.neg_im, &mut f);
+        let (ctx, re) = E::map_with_context(ctx, group.re, f);
+        let (ctx, neg_im) = E::map_with_context(ctx, group.neg_im, f);
         (ctx, ComplexConj { re, neg_im })
     }
 

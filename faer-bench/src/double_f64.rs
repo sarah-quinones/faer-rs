@@ -513,10 +513,10 @@ mod faer_impl {
         fn map_with_context<Ctx, T, U>(
             ctx: Ctx,
             group: Self::Group<T>,
-            mut f: impl FnMut(Ctx, T) -> (Ctx, U),
+            f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
         ) -> (Ctx, Self::Group<U>) {
-            let (ctx, x0) = f(ctx, group.0);
-            let (ctx, x1) = f(ctx, group.1);
+            let (ctx, x0) = (*f)(ctx, group.0);
+            let (ctx, x1) = (*f)(ctx, group.1);
             (ctx, Double(x0, x1))
         }
 

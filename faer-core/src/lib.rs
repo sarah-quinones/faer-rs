@@ -939,7 +939,7 @@ impl ComplexField for c32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c32s_mul_adde(lhs, rhs, acc)
+        simd.c32s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -949,7 +949,7 @@ impl ComplexField for c32 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c32s_conj_mul_adde(lhs, rhs, acc)
+        simd.c32s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -987,11 +987,11 @@ impl ComplexField for c32 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c32_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c32_scalar_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c32_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c32_scalar_conj_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
 }
 impl ComplexField for c64 {
@@ -1251,7 +1251,7 @@ impl ComplexField for c64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c64s_mul_adde(lhs, rhs, acc)
+        simd.c64s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1261,7 +1261,7 @@ impl ComplexField for c64 {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S> {
-        simd.c64s_conj_mul_adde(lhs, rhs, acc)
+        simd.c64s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
@@ -1299,11 +1299,11 @@ impl ComplexField for c64 {
     }
     #[inline(always)]
     fn simd_scalar_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c64_scalar_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c64_scalar_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
     #[inline(always)]
     fn simd_scalar_conj_mul_adde<S: Simd>(simd: S, lhs: Self, rhs: Self, acc: Self) -> Self {
-        cast(simd.c64_scalar_conj_mul_adde(cast(lhs), cast(rhs), cast(acc)))
+        cast(simd.c64_scalar_conj_mul_add_e(cast(lhs), cast(rhs), cast(acc)))
     }
 }
 
@@ -1353,10 +1353,9 @@ unsafe impl Entity for c32 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1426,10 +1425,9 @@ unsafe impl Entity for c32conj {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1500,10 +1498,9 @@ unsafe impl Entity for c64 {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -1573,10 +1570,9 @@ unsafe impl Entity for c64conj {
     fn map_with_context<Ctx, T, U>(
         ctx: Ctx,
         group: Self::Group<T>,
-        f: impl FnMut(Ctx, T) -> (Ctx, U),
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
     ) -> (Ctx, Self::Group<U>) {
-        let mut f = f;
-        f(ctx, group)
+        (*f)(ctx, group)
     }
 
     #[inline(always)]
@@ -5094,32 +5090,9 @@ pub fn temp_mat_constant<E: ComplexField>(
     value: E,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
-
-    let value = value.into_units();
-
-    let (stack, alloc) = E::map_with_context(stack, value, |stack, value| {
-        let (alloc, stack) =
-            stack.make_aligned_with(ncols * col_stride, align_for::<E::Unit>(), |_| value);
-        (stack, alloc)
-    });
-
-    (
-        DynMat {
-            inner: E::map(alloc, DynMatUnitImpl::Init),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
+    let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
+    mat.as_mut().fill(value);
+    (mat, stack)
 }
 
 /// Creates a temporary matrix of zero values, from the given memory stack.
@@ -5128,41 +5101,9 @@ pub fn temp_mat_zeroed<E: ComplexField>(
     ncols: usize,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
-
-    let value = E::into_units(E::zero());
-
-    let (stack, alloc) = E::map_with_context(
-        stack,
-        value,
-        #[inline(always)]
-        |stack, value| {
-            let (alloc, stack) = stack.make_aligned_with(
-                ncols * col_stride,
-                align_for::<E::Unit>(),
-                #[inline(always)]
-                |_| value,
-            );
-            (stack, alloc)
-        },
-    );
-
-    (
-        DynMat {
-            inner: E::map(alloc, DynMatUnitImpl::Init),
-            nrows,
-            ncols,
-            col_stride,
-        },
-        stack,
-    )
+    let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
+    mat.as_mut().fill_zeros();
+    (mat, stack)
 }
 
 /// Creates a temporary matrix of untouched values, from the given memory stack.
@@ -5171,25 +5112,17 @@ pub fn temp_mat_uninit<E: ComplexField>(
     ncols: usize,
     stack: PodStack<'_>,
 ) -> (DynMat<'_, E>, PodStack<'_>) {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
+    let col_stride = col_stride::<E::Unit>(nrows);
+    let alloc_size = ncols.checked_mul(col_stride).unwrap();
 
-    let (stack, alloc) = E::map_with_context(
-        stack,
-        E::from_copy(E::UNIT),
+    let (stack, alloc) = E::map_with_context(stack, E::from_copy(E::UNIT), &mut {
         #[inline(always)]
         |stack, ()| {
             let (alloc, stack) =
-                stack.make_aligned_raw::<E::Unit>(ncols * col_stride, align_for::<E::Unit>());
+                stack.make_aligned_raw::<E::Unit>(alloc_size, align_for::<E::Unit>());
             (stack, alloc)
-        },
-    );
+        }
+    });
     (
         DynMat {
             inner: E::map(alloc, DynMatUnitImpl::Init),
@@ -5201,29 +5134,33 @@ pub fn temp_mat_uninit<E: ComplexField>(
     )
 }
 
+#[inline]
+fn col_stride<Unit: 'static>(nrows: usize) -> usize {
+    if !is_vectorizable::<Unit>() || nrows >= isize::MAX as usize {
+        nrows
+    } else {
+        round_up_to(nrows, align_for::<Unit>() / core::mem::size_of::<Unit>())
+    }
+}
+
 /// Returns the stack requirements for creating a temporary matrix with the given dimensions.
 #[inline]
 pub fn temp_mat_req<E: Entity>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
-    let col_stride = if is_vectorizable::<E::Unit>() {
-        round_up_to(
-            nrows,
-            align_for::<E::Unit>() / core::mem::size_of::<E::Unit>(),
-        )
-    } else {
-        nrows
-    };
+    let col_stride = col_stride::<E::Unit>(nrows);
+    let alloc_size = ncols.checked_mul(col_stride).ok_or(SizeOverflow)?;
+    let additional = StackReq::try_new_aligned::<E::Unit>(alloc_size, align_for::<E::Unit>())?;
 
     let req = Ok(StackReq::empty());
-    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), |req, ()| {
-        let req = match (
-            req,
-            StackReq::try_new_aligned::<E::Unit>(ncols * col_stride, align_for::<E::Unit>()),
-        ) {
-            (Ok(req), Ok(additional)) => req.try_and(additional),
-            _ => Err(SizeOverflow),
-        };
+    let (req, _) = E::map_with_context(req, E::from_copy(E::UNIT), &mut {
+        #[inline(always)]
+        |req, ()| {
+            let req = match req {
+                Ok(req) => req.try_and(additional),
+                _ => Err(SizeOverflow),
+            };
 
-        (req, ())
+            (req, ())
+        }
     });
 
     req
@@ -5392,10 +5329,9 @@ mod tests {
                 fn map_with_context<Ctx, T, U>(
                     ctx: Ctx,
                     group: Self::Group<T>,
-                    f: impl FnMut(Ctx, T) -> (Ctx, U),
+                    f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
                 ) -> (Ctx, Self::Group<U>) {
-                    let mut f = f;
-                    f(ctx, group)
+                    (*f)(ctx, group)
                 }
 
                 #[inline(always)]

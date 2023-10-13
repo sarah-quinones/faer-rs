@@ -468,6 +468,7 @@ pub mod solvers {
 
             faer_cholesky::llt::compute::cholesky_in_place(
                 factors.as_mut(),
+                Default::default(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::compute::cholesky_in_place_req::<E>(
@@ -2490,8 +2491,8 @@ pub trait IntoNdarray {
     fn into_ndarray(self) -> Self::Ndarray;
 }
 
-#[cfg(feature = "nalgebra")]
-#[cfg_attr(docsrs, doc(cfg(feature = "nalgebra")))]
+#[cfg(feature = "ndarray")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ndarray")))]
 const _: () = {
     use faer_core::SimpleEntity;
     use ndarray::{ArrayView, ArrayViewMut, IntoDimension, Ix2, ShapeBuilder};

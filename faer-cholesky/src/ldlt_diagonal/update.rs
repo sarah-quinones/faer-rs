@@ -941,6 +941,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
 
     raw_cholesky_in_place(
         ld11.rb_mut(),
+        Default::default(),
         parallelism,
         stack.rb_mut(),
         Default::default(),

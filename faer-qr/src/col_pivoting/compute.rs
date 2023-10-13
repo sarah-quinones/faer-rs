@@ -156,38 +156,38 @@ fn update_and_norm2_simd_impl_c32<'a, S: Simd>(
             let norm2: c32 = bytemuck::cast(simd.c32s_abs2(a));
             bytemuck::cast(norm2.re)
         } else {
-            simd.f32s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
+            simd.f32s_mul_add_e(bytemuck::cast(a), bytemuck::cast(a), acc)
         }
     }
 
     for (a, b) in a.iter_mut().zip(b.iter()) {
-        a[0] = simd.c32s_mul_adde(vk, b[0], a[0]);
+        a[0] = simd.c32s_mul_add_e(vk, b[0], a[0]);
         acc0 = accumulate(simd, acc0, a[0]);
 
-        a[1] = simd.c32s_mul_adde(vk, b[1], a[1]);
+        a[1] = simd.c32s_mul_add_e(vk, b[1], a[1]);
         acc1 = accumulate(simd, acc1, a[1]);
 
-        a[2] = simd.c32s_mul_adde(vk, b[2], a[2]);
+        a[2] = simd.c32s_mul_add_e(vk, b[2], a[2]);
         acc2 = accumulate(simd, acc2, a[2]);
 
-        a[3] = simd.c32s_mul_adde(vk, b[3], a[3]);
+        a[3] = simd.c32s_mul_add_e(vk, b[3], a[3]);
         acc3 = accumulate(simd, acc3, a[3]);
 
-        a[4] = simd.c32s_mul_adde(vk, b[4], a[4]);
+        a[4] = simd.c32s_mul_add_e(vk, b[4], a[4]);
         acc4 = accumulate(simd, acc4, a[4]);
 
-        a[5] = simd.c32s_mul_adde(vk, b[5], a[5]);
+        a[5] = simd.c32s_mul_add_e(vk, b[5], a[5]);
         acc5 = accumulate(simd, acc5, a[5]);
 
-        a[6] = simd.c32s_mul_adde(vk, b[6], a[6]);
+        a[6] = simd.c32s_mul_add_e(vk, b[6], a[6]);
         acc6 = accumulate(simd, acc6, a[6]);
 
-        a[7] = simd.c32s_mul_adde(vk, b[7], a[7]);
+        a[7] = simd.c32s_mul_add_e(vk, b[7], a[7]);
         acc7 = accumulate(simd, acc7, a[7]);
     }
 
     for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
-        *a = simd.c32s_mul_adde(vk, *b, *a);
+        *a = simd.c32s_mul_add_e(vk, *b, *a);
         acc0 = accumulate(simd, acc0, *a);
     }
 
@@ -242,38 +242,38 @@ fn update_and_norm2_simd_impl_c64<'a, S: Simd>(
             let norm2: c64 = bytemuck::cast(simd.c64s_abs2(a));
             bytemuck::cast(norm2.re)
         } else {
-            simd.f64s_mul_adde(bytemuck::cast(a), bytemuck::cast(a), acc)
+            simd.f64s_mul_add_e(bytemuck::cast(a), bytemuck::cast(a), acc)
         }
     }
 
     for (a, b) in a.iter_mut().zip(b.iter()) {
-        a[0] = simd.c64s_mul_adde(vk, b[0], a[0]);
+        a[0] = simd.c64s_mul_add_e(vk, b[0], a[0]);
         acc0 = accumulate(simd, acc0, a[0]);
 
-        a[1] = simd.c64s_mul_adde(vk, b[1], a[1]);
+        a[1] = simd.c64s_mul_add_e(vk, b[1], a[1]);
         acc1 = accumulate(simd, acc1, a[1]);
 
-        a[2] = simd.c64s_mul_adde(vk, b[2], a[2]);
+        a[2] = simd.c64s_mul_add_e(vk, b[2], a[2]);
         acc2 = accumulate(simd, acc2, a[2]);
 
-        a[3] = simd.c64s_mul_adde(vk, b[3], a[3]);
+        a[3] = simd.c64s_mul_add_e(vk, b[3], a[3]);
         acc3 = accumulate(simd, acc3, a[3]);
 
-        a[4] = simd.c64s_mul_adde(vk, b[4], a[4]);
+        a[4] = simd.c64s_mul_add_e(vk, b[4], a[4]);
         acc4 = accumulate(simd, acc4, a[4]);
 
-        a[5] = simd.c64s_mul_adde(vk, b[5], a[5]);
+        a[5] = simd.c64s_mul_add_e(vk, b[5], a[5]);
         acc5 = accumulate(simd, acc5, a[5]);
 
-        a[6] = simd.c64s_mul_adde(vk, b[6], a[6]);
+        a[6] = simd.c64s_mul_add_e(vk, b[6], a[6]);
         acc6 = accumulate(simd, acc6, a[6]);
 
-        a[7] = simd.c64s_mul_adde(vk, b[7], a[7]);
+        a[7] = simd.c64s_mul_add_e(vk, b[7], a[7]);
         acc7 = accumulate(simd, acc7, a[7]);
     }
 
     for (a, b) in a_remv.iter_mut().zip(b_remv.iter()) {
-        *a = simd.c64s_mul_adde(vk, *b, *a);
+        *a = simd.c64s_mul_add_e(vk, *b, *a);
         acc0 = accumulate(simd, acc0, *a);
     }
 

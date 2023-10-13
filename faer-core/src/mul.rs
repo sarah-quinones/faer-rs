@@ -1160,7 +1160,7 @@ impl<E: ComplexField> MicroKernelShape<E> {
 
 /// acc += a * maybe_conj(b)
 ///
-/// acc, a, b are colmaajor
+/// acc, a, b are colmajor
 /// m is a multiple of simd lane count
 fn matmul_with_conj_impl<E: ComplexField>(
     acc: MatMut<'_, E>,
@@ -1199,10 +1199,20 @@ fn matmul_with_conj_impl<E: ComplexField>(
             )
         };
 
-        real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
-        real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one().neg());
-        real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one());
-        real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+        match conj_b {
+            Conj::Yes => {
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one().neg());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+            }
+            Conj::No => {
+                real_matmul(acc_re.rb_mut(), a_re, b_re, E::Real::one());
+                real_matmul(acc_re.rb_mut(), a_im, b_im, E::Real::one().neg());
+                real_matmul(acc_im.rb_mut(), a_re, b_im, E::Real::one());
+                real_matmul(acc_im.rb_mut(), a_im, b_re, E::Real::one());
+            }
+        }
 
         return;
     }
@@ -1346,7 +1356,7 @@ fn div_ceil(a: usize, b: usize) -> usize {
 
 #[doc(hidden)]
 pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
-    acc: MatMut<'_, E>,
+    mut acc: MatMut<'_, E>,
     lhs: MatRef<'_, E>,
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
@@ -1363,8 +1373,6 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let m = acc.nrows();
     let n = acc.ncols();
     let k = lhs.ncols();
-
-    let mut acc = acc;
 
     if m == 0 || n == 0 {
         return;
@@ -1806,7 +1814,6 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let mut b = rhs;
     let mut conj_a = conj_lhs;
     let mut conj_b = conj_rhs;
-    let mut acc = acc;
 
     if n < m {
         (a, b) = (b.transpose(), a.transpose());

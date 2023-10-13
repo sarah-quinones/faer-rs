@@ -75,6 +75,7 @@ pub fn faer<T: faer_core::ComplexField>(
                     .for_each(|mut dst, src| dst.write(src.read()));
                 faer_cholesky::llt::compute::cholesky_in_place(
                     chol.as_mut(),
+                    Default::default(),
                     parallelism,
                     stack.rb_mut(),
                     Default::default(),

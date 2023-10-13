@@ -10,23 +10,25 @@ use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
-    _parallelism: Parallelism,
-    params: LltParams<E>,
+    regularization: LltRegularization<E>,
+    parallelism: Parallelism,
+    params: LltParams,
 ) -> Result<usize, CholeskyError> {
     let mut matrix = matrix;
+    let _ = params;
+    let _ = parallelism;
     assert_eq!(matrix.ncols(), matrix.nrows());
 
     let n = matrix.nrows();
 
-    match n {
-        0 => return Ok(0),
-        _ => (),
-    };
+    if n == 0 {
+        return Ok(0);
+    }
 
     let mut idx = 0;
     let arch = E::Simd::default();
-    let eps = params.dynamic_regularization_epsilon.real().abs();
-    let delta = params.dynamic_regularization_delta.real().abs();
+    let eps = regularization.dynamic_regularization_epsilon.real().abs();
+    let delta = regularization.dynamic_regularization_delta.real().abs();
     let has_eps = delta > E::Real::zero();
     let mut dynamic_regularization_count = 0usize;
     loop {
@@ -111,19 +113,21 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     Ok(dynamic_regularization_count)
 }
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 #[non_exhaustive]
-pub struct LltParams<E> {
-    pub dynamic_regularization_epsilon: E,
-    pub dynamic_regularization_delta: E,
+pub struct LltParams {}
+
+#[derive(Copy, Clone, Debug)]
+pub struct LltRegularization<E: ComplexField> {
+    pub dynamic_regularization_delta: E::Real,
+    pub dynamic_regularization_epsilon: E::Real,
 }
 
-impl<E: Entity> Default for LltParams<E> {
-    #[inline(always)]
+impl<E: ComplexField> Default for LltRegularization<E> {
     fn default() -> Self {
         Self {
-            dynamic_regularization_epsilon: E::zeroed(),
-            dynamic_regularization_delta: E::zeroed(),
+            dynamic_regularization_delta: E::Real::zero(),
+            dynamic_regularization_epsilon: E::Real::zero(),
         }
     }
 }
@@ -133,7 +137,7 @@ impl<E: Entity> Default for LltParams<E> {
 pub fn cholesky_in_place_req<E: Entity>(
     dim: usize,
     parallelism: Parallelism,
-    params: LltParams<E>,
+    params: LltParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = dim;
     let _ = parallelism;
@@ -141,12 +145,15 @@ pub fn cholesky_in_place_req<E: Entity>(
     Ok(StackReq::default())
 }
 
+// uses an out parameter for tail recursion
 fn cholesky_in_place_impl<E: ComplexField>(
+    count: &mut usize,
     matrix: MatMut<'_, E>,
+    regularization: LltRegularization<E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: LltParams<E>,
-) -> Result<usize, CholeskyError> {
+    params: LltParams,
+) -> Result<(), CholeskyError> {
     // right looking cholesky
 
     debug_assert!(matrix.nrows() == matrix.ncols());
@@ -155,12 +162,20 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
     let n = matrix.nrows();
     if n < 32 {
-        cholesky_in_place_left_looking_impl(matrix, parallelism, params)
+        *count += cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)?;
+        Ok(())
     } else {
         let block_size = Ord::min(n / 2, 128 * parallelism_degree(parallelism));
         let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
 
-        let count0 = cholesky_in_place_impl(l00.rb_mut(), parallelism, stack.rb_mut(), params)?;
+        cholesky_in_place_impl(
+            count,
+            l00.rb_mut(),
+            regularization,
+            parallelism,
+            stack.rb_mut(),
+            params,
+        )?;
 
         let l00 = l00.into_const();
 
@@ -182,7 +197,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
             parallelism,
         );
 
-        Ok(count0 + cholesky_in_place_impl(a11, parallelism, stack, params)?)
+        cholesky_in_place_impl(count, a11, regularization, parallelism, stack, params)
     }
 }
 
@@ -208,14 +223,24 @@ fn cholesky_in_place_impl<E: ComplexField>(
 #[inline]
 pub fn cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
+    regularization: LltRegularization<E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: LltParams<E>,
+    params: LltParams,
 ) -> Result<usize, CholeskyError> {
     let _ = params;
     assert!(
         matrix.ncols() == matrix.nrows(),
         "only square matrices can be decomposed into cholesky factors",
     );
-    cholesky_in_place_impl(matrix, parallelism, stack, params)
+    let mut count = 0;
+    cholesky_in_place_impl(
+        &mut count,
+        matrix,
+        regularization,
+        parallelism,
+        stack,
+        params,
+    )?;
+    Ok(count)
 }
