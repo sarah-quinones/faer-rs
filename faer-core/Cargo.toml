@@ -20,7 +20,7 @@ reborrow = { workspace = true }
 
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
-gemm = { version = "0.16.5", default-features = false }
+gemm = { version = "0.16.6", default-features = false }
 
 
 num-traits = { workspace = true, default-features = false }
