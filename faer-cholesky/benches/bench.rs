@@ -115,7 +115,13 @@ pub fn cholesky(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-st-cplx-llt-{n}"), |b| {
-            let mut mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mut mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    c64::faer_one()
+                } else {
+                    c64::faer_zero()
+                }
+            });
 
             let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(
@@ -140,7 +146,13 @@ pub fn cholesky(c: &mut Criterion) {
         });
 
         c.bench_function(&format!("faer-mt-cplx-llt-{n}"), |b| {
-            let mut mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mut mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    c64::faer_one()
+                } else {
+                    c64::faer_zero()
+                }
+            });
 
             let mut mem = GlobalPodBuffer::new(
                 llt::compute::cholesky_in_place_req::<c64>(

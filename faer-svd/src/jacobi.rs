@@ -19,20 +19,26 @@ fn compute_2x2<E: RealField>(
     m10: E,
     m11: E,
 ) -> (JacobiRotation<E>, JacobiRotation<E>) {
-    let t = m00.add(m11);
-    let d = m10.sub(m01);
+    let t = m00.faer_add(m11);
+    let d = m10.faer_sub(m01);
 
-    let rot1 = if d == E::zero() {
+    let rot1 = if d == E::faer_zero() {
         JacobiRotation {
-            c: E::one(),
-            s: E::zero(),
+            c: E::faer_one(),
+            s: E::faer_zero(),
         }
     } else {
-        let u = t.mul(d.inv());
-        let tmp = (E::one().add(u.mul(u))).sqrt().inv();
-        let tmp = if tmp == E::zero() { u.abs().inv() } else { tmp };
+        let u = t.faer_mul(d.faer_inv());
+        let tmp = (E::faer_one().faer_add(u.faer_mul(u)))
+            .faer_sqrt()
+            .faer_inv();
+        let tmp = if tmp == E::faer_zero() {
+            u.faer_abs().faer_inv()
+        } else {
+            tmp
+        };
         JacobiRotation {
-            c: u.mul(tmp),
+            c: u.faer_mul(tmp),
             s: tmp,
         }
     };
@@ -77,11 +83,11 @@ pub fn jacobi_svd<E: RealField>(
     if let Some(mut u) = u.rb_mut() {
         for j in 0..n {
             for i in 0..j {
-                u.rb_mut().write(i, j, E::zero());
+                u.rb_mut().write(i, j, E::faer_zero());
             }
-            u.rb_mut().write(j, j, E::one());
+            u.rb_mut().write(j, j, E::faer_one());
             for i in j + 1..n {
-                u.rb_mut().write(i, j, E::zero());
+                u.rb_mut().write(i, j, E::faer_zero());
             }
         }
     }
@@ -89,7 +95,7 @@ pub fn jacobi_svd<E: RealField>(
     if let Some(mut v) = v.rb_mut() {
         if matches!(skip, Skip::First) {
             for i in 0..n - 1 {
-                v.rb_mut().write(i, 0, E::zero());
+                v.rb_mut().write(i, 0, E::faer_zero());
             }
             v = v.submatrix(0, 1, n - 1, n - 1);
         }
@@ -98,40 +104,42 @@ pub fn jacobi_svd<E: RealField>(
         let n = v.ncols();
         for j in 0..n {
             for i in 0..j {
-                v.rb_mut().write(i, j, E::zero());
+                v.rb_mut().write(i, j, E::faer_zero());
             }
             if j == m {
                 break;
             }
-            v.rb_mut().write(j, j, E::one());
+            v.rb_mut().write(j, j, E::faer_one());
             for i in j + 1..m {
-                v.rb_mut().write(i, j, E::zero());
+                v.rb_mut().write(i, j, E::faer_zero());
             }
         }
     }
 
-    let mut max_diag = E::zero();
+    let mut max_diag = E::faer_zero();
     {
         let diag = matrix.rb().diagonal();
         for idx in 0..diag.nrows() {
-            let d = diag.read(idx, 0).abs();
+            let d = diag.read(idx, 0).faer_abs();
             max_diag = if d > max_diag { d } else { max_diag };
         }
     }
 
-    let precision = epsilon.scale_power_of_two(E::one().add(E::one()));
+    let precision = epsilon.faer_scale_power_of_two(E::faer_one().faer_add(E::faer_one()));
     loop {
         let mut failed = false;
         for p in 1..n {
             for q in 0..p {
-                let threshold = precision.mul(max_diag);
+                let threshold = precision.faer_mul(max_diag);
                 let threshold = if threshold > consider_zero_threshold {
                     threshold
                 } else {
                     consider_zero_threshold
                 };
 
-                if (matrix.read(p, q).abs() > threshold) || (matrix.read(q, p).abs() > threshold) {
+                if (matrix.read(p, q).faer_abs() > threshold)
+                    || (matrix.read(q, p).faer_abs() > threshold)
+                {
                     failed = true;
                     let (j_left, j_right) = compute_2x2(
                         matrix.read(p, p),
@@ -157,7 +165,7 @@ pub fn jacobi_svd<E: RealField>(
                     }
 
                     for idx in [p, q] {
-                        let d = matrix.read(idx, idx).abs();
+                        let d = matrix.read(idx, idx).faer_abs();
                         max_diag = if d > max_diag { d } else { max_diag };
                     }
                 }
@@ -171,11 +179,11 @@ pub fn jacobi_svd<E: RealField>(
     // make diagonal elements positive
     for j in 0..n {
         let d = matrix.read(j, j);
-        if d < E::zero() {
-            matrix.write(j, j, d.neg());
+        if d < E::faer_zero() {
+            matrix.write(j, j, d.faer_neg());
             if let Some(mut u) = u.rb_mut() {
                 for i in 0..n {
-                    u.write(i, j, u.read(i, j).neg());
+                    u.write(i, j, u.read(i, j).faer_neg());
                 }
             }
         }
@@ -198,7 +206,7 @@ pub fn jacobi_svd<E: RealField>(
     let n = new_n;
     let mut nnz_count = n;
     for i in 0..n {
-        let mut largest_elem = E::zero();
+        let mut largest_elem = E::faer_zero();
         let mut largest_pos = i;
 
         for j in i..n {
@@ -210,7 +218,7 @@ pub fn jacobi_svd<E: RealField>(
             };
         }
 
-        if largest_elem == E::zero() {
+        if largest_elem == E::faer_zero() {
             nnz_count = i;
         }
 

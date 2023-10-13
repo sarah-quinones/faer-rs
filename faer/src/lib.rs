@@ -159,7 +159,8 @@ pub mod prelude {
 }
 
 pub use faer_core::{
-    complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef, Scale,
+    complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef,
+    Parallelism, Scale,
 };
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
@@ -497,7 +498,7 @@ pub mod solvers {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
             factor
         }
@@ -519,7 +520,7 @@ pub mod solvers {
 
             for j in 0..self.dim() {
                 for i in 0..j {
-                    inv.write(i, j, inv.read(j, i).conj());
+                    inv.write(i, j, inv.read(j, i).faer_conj());
                 }
             }
 
@@ -542,7 +543,7 @@ pub mod solvers {
 
             for j in 0..self.dim() {
                 for i in 0..j {
-                    rec.write(i, j, rec.read(j, i).conj());
+                    rec.write(i, j, rec.read(j, i).faer_conj());
                 }
             }
 
@@ -640,7 +641,7 @@ pub mod solvers {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
             factor
         }
@@ -648,9 +649,9 @@ pub mod solvers {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
-            factor.as_mut().diagonal().fill(E::one());
+            factor.as_mut().diagonal().fill(E::faer_one());
             factor
         }
     }
@@ -819,7 +820,7 @@ pub mod solvers {
                 .to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
             factor
         }
@@ -832,9 +833,9 @@ pub mod solvers {
                 .to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
-            factor.as_mut().diagonal().fill(E::one());
+            factor.as_mut().diagonal().fill(E::faer_one());
             factor
         }
     }
@@ -992,7 +993,7 @@ pub mod solvers {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
             factor
         }
@@ -1006,7 +1007,7 @@ pub mod solvers {
             let m = factors.nrows();
 
             let mut q = Mat::<E>::zeros(m, m);
-            q.as_mut().diagonal().fill(E::one());
+            q.as_mut().diagonal().fill(E::faer_one());
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                 factors,
@@ -1196,7 +1197,7 @@ pub mod solvers {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
-                    dst.write(E::zero())
+                    dst.write(E::faer_zero())
                 });
             factor
         }
@@ -1362,8 +1363,8 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().conj()));
-                zipped!(v.as_mut()).for_each(|mut x| x.write(x.read().conj()));
+                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(v.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
             }
 
             Self { s, u, v }
@@ -1387,8 +1388,9 @@ pub mod solvers {
     fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: MatRef<'_, E>) {
         let mut rhs = rhs;
         for j in 0..rhs.ncols() {
-            zipped!(rhs.rb_mut().col(j), s)
-                .for_each(|mut rhs, s| rhs.write(rhs.read().scale_real(s.read().real().inv())));
+            zipped!(rhs.rb_mut().col(j), s).for_each(|mut rhs, s| {
+                rhs.write(rhs.read().faer_scale_real(s.read().faer_real().faer_inv()))
+            });
         }
     }
     impl<E: ComplexField> SolverCore<E> for Svd<E> {
@@ -1407,7 +1409,7 @@ pub mod solvers {
 
             let thin_u = self.u.as_ref().submatrix(0, 0, m, size);
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).mul(s.read(j, 0)));
+            let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).faer_mul(s.read(j, 0)));
 
             us * self.v.adjoint()
         }
@@ -1420,7 +1422,9 @@ pub mod solvers {
             let v = self.v.as_ref();
             let s = self.s.as_ref();
 
-            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).mul(s.read(j, 0).inv()));
+            let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
+                v.read(i, j).faer_mul(s.read(j, 0).faer_inv())
+            });
 
             vs_inv * u.adjoint()
         }
@@ -1554,7 +1558,7 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().conj()));
+                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
             }
 
             Self { s, u }
@@ -1586,7 +1590,7 @@ pub mod solvers {
 
             let u = self.u.as_ref();
             let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).mul(s.read(j, 0)));
+            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).faer_mul(s.read(j, 0)));
 
             us * u.adjoint()
         }
@@ -1597,7 +1601,9 @@ pub mod solvers {
             let u = self.u.as_ref();
             let s = self.s.as_ref();
 
-            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).mul(s.read(j, 0).inv()));
+            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
+                u.read(i, j).faer_mul(s.read(j, 0).faer_inv())
+            });
 
             us_inv * u.adjoint()
         }
@@ -1682,9 +1688,9 @@ pub mod solvers {
                 params,
             );
 
-            let imag = E::from_f64(-1.0).sqrt();
+            let imag = E::faer_from_f64(-1.0).faer_sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(imag.mul(E::from_real(im)))
+                E::faer_from_real(re).faer_add(imag.faer_mul(E::faer_from_real(im)))
             };
 
             (0..dim)
@@ -1727,7 +1733,7 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().conj()));
+                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
             }
 
             (0..dim).map(|i| s.read(i, 0)).collect()
@@ -1770,9 +1776,9 @@ pub mod solvers {
                 params,
             );
 
-            let imag = E::from_f64(-1.0).sqrt();
+            let imag = E::faer_from_f64(-1.0).faer_sqrt();
             let cplx = |re: E::Real, im: E::Real| -> E {
-                E::from_real(re).add(imag.mul(E::from_real(im)))
+                E::faer_from_real(re).faer_add(imag.faer_mul(E::faer_from_real(im)))
             };
 
             let s = Mat::<E>::from_fn(dim, 1, |i, j| cplx(s_re.read(i, j), s_im.read(i, j)));
@@ -1781,9 +1787,9 @@ pub mod solvers {
 
             let mut j = 0usize;
             while j < dim {
-                if s_im.read(j, 0) == E::Real::zero() {
+                if s_im.read(j, 0) == E::Real::faer_zero() {
                     zipped!(u.as_mut().col(j), u_real.col(j))
-                        .for_each(|mut dst, src| dst.write(E::from_real(src.read())));
+                        .for_each(|mut dst, src| dst.write(E::faer_from_real(src.read())));
                     j += 1;
                 } else {
                     let [u_left, u_right] = u.as_mut().split_at_col(j + 1);
@@ -1797,7 +1803,7 @@ pub mod solvers {
                     .for_each(|mut dst, mut dst_conj, re, im| {
                         let re = re.read();
                         let im = im.read();
-                        dst_conj.write(cplx(re, im.neg()));
+                        dst_conj.write(cplx(re, im.faer_neg()));
                         dst.write(cplx(re, im));
                     });
 
@@ -1844,8 +1850,8 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().conj()));
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().conj()));
+                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
             }
 
             Self { s, u }
@@ -2068,14 +2074,14 @@ where
     fn determinant(&self) -> E::Canonical {
         assert!(self.nrows() == self.ncols());
         let lu = self.partial_piv_lu();
-        let mut det = E::Canonical::one();
+        let mut det = E::Canonical::faer_one();
         for i in 0..self.nrows() {
-            det = det.mul(lu.factors.read(i, i));
+            det = det.faer_mul(lu.factors.read(i, i));
         }
         if lu.transposition_count() % 2 == 0 {
             det
         } else {
-            det.neg()
+            det.faer_neg()
         }
     }
 
@@ -2109,7 +2115,7 @@ where
             params,
         );
 
-        (0..dim).map(|i| s.read(i, 0).real()).collect()
+        (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
     }
 
     #[track_caller]
@@ -2139,7 +2145,7 @@ where
             params,
         );
 
-        (0..dim).map(|i| s.read(i, 0).real()).collect()
+        (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
     }
 
     #[track_caller]
@@ -2395,7 +2401,7 @@ const _: () = {
             let ptr = self.as_ptr();
             unsafe {
                 MatRef::<'_, T>::from_raw_parts(
-                    T::to_group(ptr),
+                    T::faer_to_group(ptr),
                     nrows,
                     ncols,
                     strides.0.try_into().unwrap(),
@@ -2418,7 +2424,7 @@ const _: () = {
             let ptr = { self }.as_mut_ptr();
             unsafe {
                 MatMut::<'_, T>::from_raw_parts(
-                    T::to_group(ptr),
+                    T::faer_to_group(ptr),
                     nrows,
                     ncols,
                     strides.0.try_into().unwrap(),
@@ -2437,7 +2443,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
-            let ptr = T::from_group(self.as_ptr());
+            let ptr = T::faer_from_group(self.as_ptr());
             unsafe {
                 MatrixView::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorage::<
                     '_,
@@ -2467,7 +2473,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
-            let ptr = T::from_group(self.as_ptr());
+            let ptr = T::faer_from_group(self.as_ptr());
             unsafe {
                 MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
@@ -2514,7 +2520,7 @@ const _: () = {
             let ptr = self.as_ptr();
             unsafe {
                 MatRef::<'_, T>::from_raw_parts(
-                    T::to_group(ptr),
+                    T::faer_to_group(ptr),
                     nrows,
                     ncols,
                     strides[0],
@@ -2535,7 +2541,7 @@ const _: () = {
             let ptr = { self }.as_mut_ptr();
             unsafe {
                 MatMut::<'_, T>::from_raw_parts(
-                    T::to_group(ptr),
+                    T::faer_to_group(ptr),
                     nrows,
                     ncols,
                     strides[0],
@@ -2554,7 +2560,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride: usize = self.row_stride().try_into().unwrap();
             let col_stride: usize = self.col_stride().try_into().unwrap();
-            let ptr = T::from_group(self.as_ptr());
+            let ptr = T::faer_from_group(self.as_ptr());
             unsafe {
                 ArrayView::<'_, T, Ix2>::from_shape_ptr(
                     (nrows, ncols)
@@ -2575,7 +2581,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride: usize = self.row_stride().try_into().unwrap();
             let col_stride: usize = self.col_stride().try_into().unwrap();
-            let ptr = T::from_group(self.as_ptr());
+            let ptr = T::faer_from_group(self.as_ptr());
             unsafe {
                 ArrayViewMut::<'_, T, Ix2>::from_shape_ptr(
                     (nrows, ncols)
@@ -2932,7 +2938,7 @@ mod tests {
     fn assert_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
         let a = a.as_mat_ref();
         let b = b.as_mat_ref();
-        let eps = E::Real::epsilon().unwrap().sqrt();
+        let eps = E::Real::faer_epsilon().unwrap().faer_sqrt();
 
         assert!(a.nrows() == b.nrows());
         assert!(a.ncols() == b.ncols());
@@ -2942,7 +2948,7 @@ mod tests {
 
         for j in 0..n {
             for i in 0..m {
-                assert!((a.read(i, j).sub(b.read(i, j))).abs() < eps);
+                assert!((a.read(i, j).faer_sub(b.read(i, j))).faer_abs() < eps);
             }
         }
     }
@@ -2955,7 +2961,13 @@ mod tests {
         let random = |_, _| c64::new(rand::random(), rand::random());
         let rhs = Mat::from_fn(n, k, random);
 
-        let I = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+        let I = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                c64::faer_one()
+            } else {
+                c64::faer_zero()
+            }
+        });
 
         let sol = decomp.solve(&rhs);
         assert_approx_eq(H * &sol, &rhs);
@@ -3146,10 +3158,10 @@ mod tests {
         let eigen_det = H
             .complex_eigenvalues()
             .into_iter()
-            .fold(c64::one(), |a, b| a * b);
+            .fold(c64::faer_one(), |a, b| a * b);
 
         dbg!(det, eigen_det);
-        assert!((det - eigen_det).abs() < 1e-8);
+        assert!((det - eigen_det).faer_abs() < 1e-8);
     }
 
     #[test]

@@ -228,7 +228,8 @@ fn compute_real_svd_small<E: RealField>(
             stack.rb_mut(),
             Default::default(),
         );
-        zipped!(r.rb_mut()).for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::zero()));
+        zipped!(r.rb_mut())
+            .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
         zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
             .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
 
@@ -247,11 +248,12 @@ fn compute_real_svd_small<E: RealField>(
     // matrix = q u s v
     if let Some(mut u) = u.rb_mut() {
         let ncols = u.ncols();
-        zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::zero()));
-        zipped!(u.rb_mut().submatrix(0, n, m, ncols - n)).for_each(|mut dst| dst.write(E::zero()));
+        zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix(0, n, m, ncols - n))
+            .for_each(|mut dst| dst.write(E::faer_zero()));
         if ncols == m {
             zipped!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
-                .for_each(|mut dst| dst.write(E::one()));
+                .for_each(|mut dst| dst.write(E::faer_one()));
         }
 
         faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -282,30 +284,30 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     let mut u_real = u_real.as_mut();
     let (mut v_real, stack) = temp_mat_uninit::<E::Real>(n, if v.is_some() { n } else { 0 }, stack);
     let mut v_real = v_real.as_mut();
-    let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.abs()));
-    let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.abs()));
+    let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.faer_abs()));
+    let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.faer_abs()));
 
-    let (mut col_mul, stack) = stack.make_with(n, |_| E::zero());
-    let (mut row_mul, stack) = stack.make_with(n - 1, |_| E::zero());
+    let (mut col_mul, stack) = stack.make_with(n, |_| E::faer_zero());
+    let (mut row_mul, stack) = stack.make_with(n - 1, |_| E::faer_zero());
 
     let normalized = |x: E| {
-        if x == E::zero() {
-            E::one()
+        if x == E::faer_zero() {
+            E::faer_one()
         } else {
-            let re = x.real().abs();
-            let im = x.imag().abs();
+            let re = x.faer_real().faer_abs();
+            let im = x.faer_imag().faer_abs();
             let max = if re > im { re } else { im };
-            let x = x.scale_real(max.inv());
-            x.scale_real(x.abs().inv())
+            let x = x.faer_scale_real(max.faer_inv());
+            x.faer_scale_real(x.faer_abs().faer_inv())
         }
     };
 
-    let mut col_normalized = normalized(diag[0]).conj();
+    let mut col_normalized = normalized(diag[0]).faer_conj();
     col_mul[0] = col_normalized;
     for i in 1..n {
-        let row_normalized = normalized(subdiag[i - 1].mul(col_normalized)).conj();
-        row_mul[i - 1] = row_normalized.conj();
-        col_normalized = normalized(diag[i].mul(row_normalized)).conj();
+        let row_normalized = normalized(subdiag[i - 1].faer_mul(col_normalized)).faer_conj();
+        row_mul[i - 1] = row_normalized.faer_conj();
+        col_normalized = normalized(diag[i].faer_mul(row_normalized)).faer_conj();
         col_mul[i] = col_normalized;
     }
 
@@ -322,7 +324,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     );
 
     for i in 0..n {
-        diag[i] = E::from_real(diag_real[i]);
+        diag[i] = E::faer_from_real(diag_real[i]);
     }
 
     let u_real = u_real.rb();
@@ -330,9 +332,9 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
 
     if let Some(mut u) = u.rb_mut() {
         zipped!(u.rb_mut().row(0), u_real.row(0))
-            .for_each(|mut u, u_real| u.write(E::from_real(u_real.read())));
+            .for_each(|mut u, u_real| u.write(E::faer_from_real(u_real.read())));
         zipped!(u.rb_mut().row(n), u_real.row(n))
-            .for_each(|mut u, u_real| u.write(E::from_real(u_real.read())));
+            .for_each(|mut u, u_real| u.write(E::faer_from_real(u_real.read())));
 
         for col_idx in 0..u.ncols() {
             let mut u = u.rb_mut().col(col_idx).subrows(1, n - 1);
@@ -341,7 +343,11 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(row_mul.len() == n - 1);
             unsafe {
                 for i in 0..n - 1 {
-                    u.write_unchecked(i, 0, row_mul[i].scale_real(u_real.read_unchecked(i, 0)));
+                    u.write_unchecked(
+                        i,
+                        0,
+                        row_mul[i].faer_scale_real(u_real.read_unchecked(i, 0)),
+                    );
                 }
             }
         }
@@ -354,7 +360,11 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
             assert!(col_mul.len() == n);
             unsafe {
                 for i in 0..n {
-                    v.write_unchecked(i, 0, col_mul[i].scale_real(v_real.read_unchecked(i, 0)));
+                    v.write_unchecked(
+                        i,
+                        0,
+                        col_mul[i].faer_scale_real(v_real.read_unchecked(i, 0)),
+                    );
                 }
             }
         }
@@ -435,12 +445,12 @@ fn compute_svd_big<E: ComplexField>(
 
     let bid = bid.into_const();
 
-    let (mut diag, stack) = stack.make_with(n, |i| bid.read(i, i).conj());
+    let (mut diag, stack) = stack.make_with(n, |i| bid.read(i, i).faer_conj());
     let (mut subdiag, stack) = stack.make_with(n, |i| {
         if i < n - 1 {
-            bid.read(i, i + 1).conj()
+            bid.read(i, i + 1).faer_conj()
         } else {
-            E::zero()
+            E::faer_zero()
         }
     });
 
@@ -497,10 +507,10 @@ fn compute_svd_big<E: ComplexField>(
         )
         .for_each(|mut dst, src| dst.write(src.read()));
 
-        zipped!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|mut x| x.write(E::zero()));
-        zipped!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|mut x| x.write(E::zero()));
+        zipped!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|mut x| x.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|mut x| x.write(E::faer_zero()));
         zipped!(u.rb_mut().submatrix(n, n, ncols - n, ncols - n).diagonal())
-            .for_each(|mut x| x.write(E::one()));
+            .for_each(|mut x| x.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
             bid,
@@ -667,8 +677,8 @@ pub fn compute_svd<E: ComplexField>(
         s,
         u,
         v,
-        E::Real::epsilon().unwrap(),
-        E::Real::zero_threshold().unwrap(),
+        E::Real::faer_epsilon().unwrap(),
+        E::Real::faer_zero_threshold().unwrap(),
         parallelism,
         stack,
         params,
@@ -708,12 +718,12 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.fill(E::nan());
+        { s }.fill(E::faer_nan());
         if let Some(mut u) = u {
-            u.fill(E::nan());
+            u.fill(E::faer_nan());
         }
         if let Some(mut v) = v {
-            v.fill(E::nan());
+            v.fill(E::faer_nan());
         }
         return;
     }
@@ -732,8 +742,9 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
 
     if n == 0 {
         if let Some(mut u) = u {
-            zipped!(u.rb_mut()).for_each(|mut dst| dst.write(E::zero()));
-            zipped!(u.submatrix(0, 0, n, n).diagonal()).for_each(|mut dst| dst.write(E::one()));
+            zipped!(u.rb_mut()).for_each(|mut dst| dst.write(E::faer_zero()));
+            zipped!(u.submatrix(0, 0, n, n).diagonal())
+                .for_each(|mut dst| dst.write(E::faer_one()));
         }
 
         return;
@@ -776,7 +787,7 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
                 Default::default(),
             );
             zipped!(r.rb_mut())
-                .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::zero()));
+                .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
             zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
                 .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
 
@@ -796,12 +807,13 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
         // matrix = q u s v
         if let Some(mut u) = u.rb_mut() {
             let ncols = u.ncols();
-            zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::zero()));
+            zipped!(u.rb_mut().submatrix(n, 0, m - n, n))
+                .for_each(|mut dst| dst.write(E::faer_zero()));
             zipped!(u.rb_mut().submatrix(0, n, m, ncols - n))
-                .for_each(|mut dst| dst.write(E::zero()));
+                .for_each(|mut dst| dst.write(E::faer_zero()));
             if ncols == m {
                 zipped!(u.rb_mut().submatrix(n, n, m - n, m - n).diagonal())
-                    .for_each(|mut dst| dst.write(E::one()));
+                    .for_each(|mut dst| dst.write(E::faer_one()));
             }
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -818,10 +830,10 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     if do_transpose {
         // conjugate u and v
         if let Some(u) = u {
-            zipped!(u).for_each(|mut x| x.write(x.read().conj()))
+            zipped!(u).for_each(|mut x| x.write(x.read().faer_conj()))
         }
         if let Some(v) = v {
-            zipped!(v).for_each(|mut x| x.write(x.read().conj()))
+            zipped!(v).for_each(|mut x| x.write(x.read().faer_conj()))
         }
     }
 }
@@ -1402,7 +1414,7 @@ mod tests {
             let mut mat = Mat::zeros(m, n);
             let size = m.min(n);
             for i in 0..size {
-                mat.write(i, i, c64::one());
+                mat.write(i, i, c64::faer_one());
             }
 
             let mut s = Mat::zeros(m, n);

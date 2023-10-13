@@ -25,7 +25,7 @@ use faer_core::{
 use reborrow::*;
 
 fn norm<E: RealField>(v: MatRef<'_, E>) -> E {
-    faer_core::mul::inner_prod::inner_prod_with_conj(v, Conj::No, v, Conj::No).sqrt()
+    faer_core::mul::inner_prod::inner_prod_with_conj(v, Conj::No, v, Conj::No).faer_sqrt()
 }
 
 fn compute_svd_of_m<E: RealField>(
@@ -40,19 +40,19 @@ fn compute_svd_of_m<E: RealField>(
 ) {
     let n = diag.len();
 
-    diag[0] = E::zero();
+    diag[0] = E::faer_zero();
     let mut actual_n = n;
-    while actual_n > 1 && diag[actual_n - 1] == E::zero() {
+    while actual_n > 1 && diag[actual_n - 1] == E::faer_zero() {
         actual_n -= 1;
-        assert!(col0[actual_n] == E::zero());
+        assert!(col0[actual_n] == E::faer_zero());
     }
 
     let (perm, stack) = stack.collect(
         col0.iter()
             .take(actual_n)
-            .map(|x| x.abs())
+            .map(|x| x.faer_abs())
             .enumerate()
-            .filter(|(_, x)| *x != E::zero())
+            .filter(|(_, x)| *x != E::faer_zero())
             .map(|(i, _)| i),
     );
     let perm = &*perm;
@@ -156,12 +156,12 @@ fn compute_singular_vectors<E: RealField>(
         let mut u = um.rb_mut().map(|u| u.col(actual_k));
         let mut v = vm.rb_mut().map(|v| v.col(actual_k));
 
-        if zhat.read(k, 0) == E::zero() {
+        if zhat.read(k, 0) == E::faer_zero() {
             if let Some(mut u) = u.rb_mut() {
-                u.write(outer_perm[k], 0, E::one());
+                u.write(outer_perm[k], 0, E::faer_one());
             }
             if let Some(mut v) = v.rb_mut() {
-                v.write(outer_perm[k], 0, E::one());
+                v.write(outer_perm[k], 0, E::faer_one());
             }
             continue;
         }
@@ -178,13 +178,13 @@ fn compute_singular_vectors<E: RealField>(
                     outer_perm[i],
                     0,
                     zhat.read(i, 0)
-                        .div(diag[i].sub(shift).sub(mu))
-                        .div(diag[i].add(shift.add(mu))),
+                        .faer_div(diag[i].faer_sub(shift).faer_sub(mu))
+                        .faer_div(diag[i].faer_add(shift.faer_add(mu))),
                 );
             }
-            u.write(n, 0, E::zero());
-            let norm_inv = norm(u.rb()).inv();
-            zipped!(u.rb_mut()).for_each(|mut x| x.write(x.read().mul(norm_inv)));
+            u.write(n, 0, E::faer_zero());
+            let norm_inv = norm(u.rb()).faer_inv();
+            zipped!(u.rb_mut()).for_each(|mut x| x.write(x.read().faer_mul(norm_inv)));
         }
 
         if let Some(mut v) = v {
@@ -194,18 +194,18 @@ fn compute_singular_vectors<E: RealField>(
                     outer_perm[i],
                     0,
                     diag[i]
-                        .mul(zhat.read(i, 0))
-                        .div(diag[i].sub(shift).sub(mu))
-                        .div(diag[i].add(shift.add(mu))),
+                        .faer_mul(zhat.read(i, 0))
+                        .faer_div(diag[i].faer_sub(shift).faer_sub(mu))
+                        .faer_div(diag[i].faer_add(shift.faer_add(mu))),
                 );
             }
-            v.write(outer_perm[0], 0, E::one().neg());
-            let norm_inv = norm(v.rb()).inv();
-            zipped!(v.rb_mut()).for_each(|mut x| x.write(x.read().mul(norm_inv)));
+            v.write(outer_perm[0], 0, E::faer_one().faer_neg());
+            let norm_inv = norm(v.rb()).faer_inv();
+            zipped!(v.rb_mut()).for_each(|mut x| x.write(x.read().faer_mul(norm_inv)));
         }
     }
     if let Some(mut um) = um {
-        um.write(n, n, E::one());
+        um.write(n, n, E::faer_one());
     }
 }
 
@@ -221,20 +221,22 @@ fn perturb_col0<E: RealField>(
     let n = diag.len();
     let m = perm.len();
     if m == 0 {
-        zipped!(zhat).for_each(|mut x| x.write(E::zero()));
+        zipped!(zhat).for_each(|mut x| x.write(E::faer_zero()));
         return;
     }
 
     let last_idx = perm[m - 1];
     for k in 0..n {
-        if col0[k] == E::zero() {
-            zhat.write(k, 0, E::zero());
+        if col0[k] == E::faer_zero() {
+            zhat.write(k, 0, E::faer_zero());
             continue;
         }
 
         let dk = diag[k];
-        let mut prod = (s.read(last_idx, 0).add(dk))
-            .mul(mus.read(last_idx, 0).add(shifts.read(last_idx, 0).sub(dk)));
+        let mut prod = (s.read(last_idx, 0).faer_add(dk)).faer_mul(
+            mus.read(last_idx, 0)
+                .faer_add(shifts.read(last_idx, 0).faer_sub(dk)),
+        );
 
         for l in 0..m {
             let i = perm[l];
@@ -242,7 +244,7 @@ fn perturb_col0<E: RealField>(
                 continue;
             }
             if i >= k && l == 0 {
-                prod = E::zero();
+                prod = E::faer_zero();
                 break;
             }
             let j = if i < k {
@@ -253,16 +255,18 @@ fn perturb_col0<E: RealField>(
                 i
             };
 
-            let term = ((s.read(j, 0).add(dk)).div(diag[i].add(dk)))
-                .mul((mus.read(j, 0).add(shifts.read(j, 0).sub(dk))).div(diag[i].sub(dk)));
-            prod = prod.mul(term);
+            let term = ((s.read(j, 0).faer_add(dk)).faer_div(diag[i].faer_add(dk))).faer_mul(
+                (mus.read(j, 0).faer_add(shifts.read(j, 0).faer_sub(dk)))
+                    .faer_div(diag[i].faer_sub(dk)),
+            );
+            prod = prod.faer_mul(term);
         }
 
-        let tmp = prod.sqrt();
-        if col0[k] > E::zero() {
+        let tmp = prod.faer_sqrt();
+        if col0[k] > E::faer_zero() {
             zhat.write(k, 0, tmp);
         } else {
-            zhat.write(k, 0, tmp.neg());
+            zhat.write(k, 0, tmp.faer_neg());
         }
     }
 }
@@ -393,61 +397,63 @@ fn compute_singular_values_generic<E: RealField>(
         || {
             let n = diag.len();
             let mut actual_n = n;
-            while actual_n > 1 && col0[actual_n - 1] == E::zero() {
+            while actual_n > 1 && col0[actual_n - 1] == E::faer_zero() {
                 actual_n -= 1;
             }
             let actual_n = actual_n;
 
-            let two = E::one().add(E::one());
-            let eight = two.scale_power_of_two(two).scale_power_of_two(two);
-            let one_half = two.inv();
+            let two = E::faer_one().faer_add(E::faer_one());
+            let eight = two
+                .faer_scale_power_of_two(two)
+                .faer_scale_power_of_two(two);
+            let one_half = two.faer_inv();
 
             'kth_value: for k in 0..n {
-                s.write(k, 0, E::zero());
-                shifts.write(k, 0, E::zero());
-                mus.write(k, 0, E::zero());
+                s.write(k, 0, E::faer_zero());
+                shifts.write(k, 0, E::faer_zero());
+                mus.write(k, 0, E::faer_zero());
 
-                if col0[k] == E::zero() || actual_n == 1 {
+                if col0[k] == E::faer_zero() || actual_n == 1 {
                     s.write(k, 0, if k == 0 { col0[0] } else { diag[k] });
                     shifts.write(k, 0, s.read(k, 0));
-                    mus.write(k, 0, E::zero());
+                    mus.write(k, 0, E::faer_zero());
                     continue 'kth_value;
                 }
 
                 let last_k = k == actual_n - 1;
                 let left = diag[k];
                 let right = if last_k {
-                    let mut norm2 = E::zero();
+                    let mut norm2 = E::faer_zero();
                     for &x in col0 {
-                        norm2 = norm2.add(x.mul(x));
+                        norm2 = norm2.faer_add(x.faer_mul(x));
                     }
-                    diag[actual_n - 1].add(norm2.sqrt())
+                    diag[actual_n - 1].faer_add(norm2.faer_sqrt())
                 } else {
                     let mut l = k + 1;
-                    while col0[l] == E::zero() {
+                    while col0[l] == E::faer_zero() {
                         l += 1;
                     }
                     diag[l]
                 };
 
-                let mid = left.add(right.sub(left).scale_power_of_two(one_half));
+                let mid = left.faer_add(right.faer_sub(left).faer_scale_power_of_two(one_half));
                 let [mut f_mid, f_max, f_mid_left_shift, f_mid_right_shift] = secular_eq_multi_fast(
                     [
                         mid,
                         if last_k {
-                            right.sub(left)
+                            right.faer_sub(left)
                         } else {
-                            (right.sub(left)).scale_power_of_two(one_half)
+                            (right.faer_sub(left)).faer_scale_power_of_two(one_half)
                         },
-                        one_half.mul(right.sub(left)),
-                        one_half.mul(right.sub(left)).neg(),
+                        one_half.faer_mul(right.faer_sub(left)),
+                        one_half.faer_mul(right.faer_sub(left)).faer_neg(),
                     ],
                     col0_perm,
                     diag_perm,
-                    [E::zero(), left, left, right],
+                    [E::faer_zero(), left, left, right],
                 );
 
-                let mut shift = if last_k || f_mid > E::zero() {
+                let mut shift = if last_k || f_mid > E::faer_zero() {
                     left
                 } else {
                     right
@@ -455,11 +461,11 @@ fn compute_singular_values_generic<E: RealField>(
 
                 if !last_k {
                     if shift == left {
-                        if f_mid_left_shift < E::zero() {
+                        if f_mid_left_shift < E::faer_zero() {
                             shift = right;
                             f_mid = f_mid_right_shift;
                         }
-                    } else if f_mid_right_shift > E::zero() {
+                    } else if f_mid_right_shift > E::faer_zero() {
                         shift = left;
                         f_mid = f_mid_left_shift;
                     }
@@ -473,7 +479,7 @@ fn compute_singular_values_generic<E: RealField>(
                 let secant = {
                     #[inline(always)]
                     |mut mu_cur: E, mut mu_prev: E, mut f_cur: E, mut f_prev: E| {
-                        if f_prev.abs() < f_cur.abs() {
+                        if f_prev.faer_abs() < f_cur.faer_abs() {
                             swap(&mut f_prev, &mut f_cur);
                             swap(&mut mu_prev, &mut mu_cur);
                         }
@@ -482,7 +488,7 @@ fn compute_singular_values_generic<E: RealField>(
                         let mut right_candidate = None;
 
                         let mut use_bisection = false;
-                        let same_sign = f_prev.mul(f_cur) > E::zero();
+                        let same_sign = f_prev.faer_mul(f_cur) > E::faer_zero();
                         if !same_sign {
                             let (min, max) = if mu_cur < mu_prev {
                                 (mu_cur, mu_prev)
@@ -495,27 +501,29 @@ fn compute_singular_values_generic<E: RealField>(
 
                         let mut err = SecantError::PrecisionLimitReached;
 
-                        while f_cur != E::zero()
-                            && ((mu_cur.sub(mu_prev)).abs()
-                                > eight.mul(epsilon).mul(if mu_cur.abs() > mu_prev.abs() {
-                                    mu_cur.abs()
-                                } else {
-                                    mu_prev.abs()
-                                }))
-                            && ((f_cur.sub(f_prev)).abs() > epsilon)
+                        while f_cur != E::faer_zero()
+                            && ((mu_cur.faer_sub(mu_prev)).faer_abs()
+                                > eight.faer_mul(epsilon).faer_mul(
+                                    if mu_cur.faer_abs() > mu_prev.faer_abs() {
+                                        mu_cur.faer_abs()
+                                    } else {
+                                        mu_prev.faer_abs()
+                                    },
+                                ))
+                            && ((f_cur.faer_sub(f_prev)).faer_abs() > epsilon)
                             && !use_bisection
                         {
                             // rational interpolation: fit a function of the form a / mu + b through
                             // the two previous iterates and use its
                             // zero to compute the next iterate
-                            let a = (f_cur.sub(f_prev))
-                                .mul(mu_prev.mul(mu_cur))
-                                .div(mu_prev.sub(mu_cur));
-                            let b = f_cur.sub(a.div(mu_cur));
-                            let mu_zero = a.div(b).neg();
+                            let a = (f_cur.faer_sub(f_prev))
+                                .faer_mul(mu_prev.faer_mul(mu_cur))
+                                .faer_div(mu_prev.faer_sub(mu_cur));
+                            let b = f_cur.faer_sub(a.faer_div(mu_cur));
+                            let mu_zero = a.faer_div(b).faer_neg();
                             let f_zero = secular_eq(mu_zero, col0_perm, diag_perm, shift);
 
-                            if f_zero < E::zero() {
+                            if f_zero < E::faer_zero() {
                                 left_candidate = Some(mu_zero);
                             } else {
                                 right_candidate = Some(mu_zero);
@@ -526,35 +534,41 @@ fn compute_singular_values_generic<E: RealField>(
                             mu_cur = mu_zero;
                             f_cur = f_zero;
 
-                            if shift == left && (mu_cur < E::zero() || mu_cur > (right.sub(left))) {
-                                err = SecantError::OutOfBounds;
-                                use_bisection = true;
-                            }
-                            if shift == right
-                                && (mu_cur < (right.sub(left)).neg() || mu_cur > E::zero())
+                            if shift == left
+                                && (mu_cur < E::faer_zero() || mu_cur > (right.faer_sub(left)))
                             {
                                 err = SecantError::OutOfBounds;
                                 use_bisection = true;
                             }
-                            if f_cur.abs() > f_prev.abs() {
+                            if shift == right
+                                && (mu_cur < (right.faer_sub(left)).faer_neg()
+                                    || mu_cur > E::faer_zero())
+                            {
+                                err = SecantError::OutOfBounds;
+                                use_bisection = true;
+                            }
+                            if f_cur.faer_abs() > f_prev.faer_abs() {
                                 // find mu such that a / mu + b = -k * f_zero
                                 // a / mu = -f_zero - b
                                 // mu = -a / (f_zero + b)
-                                let mut k = E::one();
+                                let mut k = E::faer_one();
                                 for _ in 0..4 {
-                                    let mu_opposite = a.neg().div(k.mul(f_zero).add(b));
+                                    let mu_opposite =
+                                        a.faer_neg().faer_div(k.faer_mul(f_zero).faer_add(b));
                                     let f_opposite =
                                         secular_eq(mu_opposite, col0_perm, diag_perm, shift);
-                                    if f_zero < E::zero() && f_opposite >= E::zero() {
+                                    if f_zero < E::faer_zero() && f_opposite >= E::faer_zero() {
                                         // this will be our right candidate
                                         right_candidate = Some(mu_opposite);
                                         break;
-                                    } else if f_zero > E::zero() && f_opposite <= E::zero() {
+                                    } else if f_zero > E::faer_zero()
+                                        && f_opposite <= E::faer_zero()
+                                    {
                                         // this will be our left candidate
                                         left_candidate = Some(mu_opposite);
                                         break;
                                     }
-                                    k = k.scale_power_of_two(two);
+                                    k = k.faer_scale_power_of_two(two);
                                 }
                                 use_bisection = true;
                             }
@@ -566,30 +580,32 @@ fn compute_singular_values_generic<E: RealField>(
                 let (mut left_shifted, mut f_left, mut right_shifted, mut f_right) =
                     if shift == left {
                         (
-                            E::zero(),
-                            E::zero().inv().neg(),
+                            E::faer_zero(),
+                            E::faer_zero().faer_inv().faer_neg(),
                             if last_k {
-                                right.sub(left)
+                                right.faer_sub(left)
                             } else {
-                                (right.sub(left)).mul(one_half)
+                                (right.faer_sub(left)).faer_mul(one_half)
                             },
                             if last_k { f_max } else { f_mid },
                         )
                     } else {
                         (
-                            (right.sub(left)).neg().scale_power_of_two(one_half),
+                            (right.faer_sub(left))
+                                .faer_neg()
+                                .faer_scale_power_of_two(one_half),
                             f_mid,
-                            E::zero(),
-                            E::zero().inv(),
+                            E::faer_zero(),
+                            E::faer_zero().faer_inv(),
                         )
                     };
 
                 assert!(
-                    PartialOrd::partial_cmp(&f_left, &E::zero())
+                    PartialOrd::partial_cmp(&f_left, &E::faer_zero())
                         != Some(core::cmp::Ordering::Greater)
                 );
                 assert!(
-                    PartialOrd::partial_cmp(&f_right, &E::zero())
+                    PartialOrd::partial_cmp(&f_right, &E::faer_zero())
                         != Some(core::cmp::Ordering::Less)
                 );
 
@@ -598,35 +614,35 @@ fn compute_singular_values_generic<E: RealField>(
                 // try to find non zero starting bounds
 
                 let half0 = one_half;
-                let half1 = half0.scale_power_of_two(half0);
-                let half2 = half1.scale_power_of_two(half1);
-                let half3 = half2.scale_power_of_two(half2);
-                let half4 = half3.scale_power_of_two(half3);
-                let half5 = half4.scale_power_of_two(half4);
-                let half6 = half5.scale_power_of_two(half5);
-                let half7 = half6.scale_power_of_two(half6);
+                let half1 = half0.faer_scale_power_of_two(half0);
+                let half2 = half1.faer_scale_power_of_two(half1);
+                let half3 = half2.faer_scale_power_of_two(half2);
+                let half4 = half3.faer_scale_power_of_two(half3);
+                let half5 = half4.faer_scale_power_of_two(half4);
+                let half6 = half5.faer_scale_power_of_two(half5);
+                let half7 = half6.faer_scale_power_of_two(half6);
 
                 let mu_values = if shift == left {
                     [
-                        right_shifted.scale_power_of_two(half7),
-                        right_shifted.scale_power_of_two(half6),
-                        right_shifted.scale_power_of_two(half5),
-                        right_shifted.scale_power_of_two(half4),
-                        right_shifted.scale_power_of_two(half3),
-                        right_shifted.scale_power_of_two(half2),
-                        right_shifted.scale_power_of_two(half1),
-                        right_shifted.scale_power_of_two(half0),
+                        right_shifted.faer_scale_power_of_two(half7),
+                        right_shifted.faer_scale_power_of_two(half6),
+                        right_shifted.faer_scale_power_of_two(half5),
+                        right_shifted.faer_scale_power_of_two(half4),
+                        right_shifted.faer_scale_power_of_two(half3),
+                        right_shifted.faer_scale_power_of_two(half2),
+                        right_shifted.faer_scale_power_of_two(half1),
+                        right_shifted.faer_scale_power_of_two(half0),
                     ]
                 } else {
                     [
-                        left_shifted.scale_power_of_two(half7),
-                        left_shifted.scale_power_of_two(half6),
-                        left_shifted.scale_power_of_two(half5),
-                        left_shifted.scale_power_of_two(half4),
-                        left_shifted.scale_power_of_two(half3),
-                        left_shifted.scale_power_of_two(half2),
-                        left_shifted.scale_power_of_two(half1),
-                        left_shifted.scale_power_of_two(half0),
+                        left_shifted.faer_scale_power_of_two(half7),
+                        left_shifted.faer_scale_power_of_two(half6),
+                        left_shifted.faer_scale_power_of_two(half5),
+                        left_shifted.faer_scale_power_of_two(half4),
+                        left_shifted.faer_scale_power_of_two(half3),
+                        left_shifted.faer_scale_power_of_two(half2),
+                        left_shifted.faer_scale_power_of_two(half1),
+                        left_shifted.faer_scale_power_of_two(half0),
                     ]
                 };
                 let f_values =
@@ -635,7 +651,7 @@ fn compute_singular_values_generic<E: RealField>(
                 if shift == left {
                     let mut i = 0;
                     for (mu, f) in zip(mu_values, f_values) {
-                        if f < E::zero() {
+                        if f < E::faer_zero() {
                             left_shifted = mu;
                             f_left = f;
                             i += 1;
@@ -648,7 +664,7 @@ fn compute_singular_values_generic<E: RealField>(
                 } else {
                     let mut i = 0;
                     for (mu, f) in zip(mu_values, f_values) {
-                        if f > E::zero() {
+                        if f > E::faer_zero() {
                             right_shifted = mu;
                             f_right = f;
                             i += 1;
@@ -661,35 +677,37 @@ fn compute_singular_values_generic<E: RealField>(
                 }
 
                 // try bisection just to get a good guess for secant
-                while right_shifted.sub(left_shifted)
-                    > two
-                        .mul(epsilon)
-                        .mul(if left_shifted.abs() > right_shifted.abs() {
-                            left_shifted.abs()
+                while right_shifted.faer_sub(left_shifted)
+                    > two.faer_mul(epsilon).faer_mul(
+                        if left_shifted.faer_abs() > right_shifted.faer_abs() {
+                            left_shifted.faer_abs()
                         } else {
-                            right_shifted.abs()
-                        })
+                            right_shifted.faer_abs()
+                        },
+                    )
                 {
                     let mid_shifted_arithmetic =
-                        (left_shifted.add(right_shifted)).scale_power_of_two(one_half);
-                    let mut mid_shifted_geometric =
-                        left_shifted.abs().sqrt().mul(right_shifted.abs().sqrt());
-                    if left_shifted < E::zero() {
-                        mid_shifted_geometric = mid_shifted_geometric.neg();
+                        (left_shifted.faer_add(right_shifted)).faer_scale_power_of_two(one_half);
+                    let mut mid_shifted_geometric = left_shifted
+                        .faer_abs()
+                        .faer_sqrt()
+                        .faer_mul(right_shifted.faer_abs().faer_sqrt());
+                    if left_shifted < E::faer_zero() {
+                        mid_shifted_geometric = mid_shifted_geometric.faer_neg();
                     }
-                    let mid_shifted = if mid_shifted_geometric == E::zero() {
+                    let mid_shifted = if mid_shifted_geometric == E::faer_zero() {
                         mid_shifted_arithmetic
                     } else {
                         mid_shifted_geometric
                     };
                     let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
 
-                    if f_mid == E::zero() {
-                        s.write(k, 0, shift.add(mid_shifted));
+                    if f_mid == E::faer_zero() {
+                        s.write(k, 0, shift.faer_add(mid_shifted));
                         shifts.write(k, 0, shift);
                         mus.write(k, 0, mid_shifted);
                         continue 'kth_value;
-                    } else if f_mid > E::zero() {
+                    } else if f_mid > E::faer_zero() {
                         right_shifted = mid_shifted;
                         f_prev = f_right;
                         f_right = f_mid;
@@ -707,15 +725,20 @@ fn compute_singular_values_generic<E: RealField>(
                 }
 
                 // try secant with the guess from bisection
-                let args = if left_shifted == E::zero() {
+                let args = if left_shifted == E::faer_zero() {
                     (
-                        right_shifted.add(right_shifted),
+                        right_shifted.faer_add(right_shifted),
                         right_shifted,
                         f_prev,
                         f_right,
                     )
-                } else if right_shifted == E::zero() {
-                    (left_shifted.add(left_shifted), left_shifted, f_prev, f_left)
+                } else if right_shifted == E::faer_zero() {
+                    (
+                        left_shifted.faer_add(left_shifted),
+                        left_shifted,
+                        f_prev,
+                        f_left,
+                    )
                 } else {
                     (left_shifted, right_shifted, f_left, f_right)
                 };
@@ -737,32 +760,32 @@ fn compute_singular_values_generic<E: RealField>(
 
                 // secant failed, use bisection again
                 if use_bisection {
-                    while (right_shifted.sub(left_shifted))
-                        > two
-                            .mul(epsilon)
-                            .mul(if left_shifted.abs() > right_shifted.abs() {
-                                left_shifted.abs()
+                    while (right_shifted.faer_sub(left_shifted))
+                        > two.faer_mul(epsilon).faer_mul(
+                            if left_shifted.faer_abs() > right_shifted.faer_abs() {
+                                left_shifted.faer_abs()
                             } else {
-                                right_shifted.abs()
-                            })
+                                right_shifted.faer_abs()
+                            },
+                        )
                     {
-                        let mid_shifted =
-                            (left_shifted.add(right_shifted)).scale_power_of_two(one_half);
+                        let mid_shifted = (left_shifted.faer_add(right_shifted))
+                            .faer_scale_power_of_two(one_half);
                         let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
 
-                        if f_mid == E::zero() {
+                        if f_mid == E::faer_zero() {
                             break;
-                        } else if f_mid > E::zero() {
+                        } else if f_mid > E::faer_zero() {
                             right_shifted = mid_shifted;
                         } else {
                             left_shifted = mid_shifted;
                         }
                     }
 
-                    mu_cur = (left_shifted.add(right_shifted)).mul(one_half);
+                    mu_cur = (left_shifted.faer_add(right_shifted)).faer_mul(one_half);
                 }
 
-                s.write(k, 0, shift.add(mu_cur));
+                s.write(k, 0, shift.faer_add(mu_cur));
                 shifts.write(k, 0, shift);
                 mus.write(k, 0, mu_cur);
             }
@@ -777,15 +800,16 @@ fn secular_eq_multi_fast<const N: usize, E: RealField>(
     diag_perm: &[E],
     shift: [E; N],
 ) -> [E; N] {
-    let mut res0 = [(); N].map(|_| E::one());
+    let mut res0 = [(); N].map(|_| E::faer_one());
     for (c0, d0) in col0_perm.iter().cloned().zip(diag_perm.iter().cloned()) {
         for ((res0, mu), shift) in res0
             .iter_mut()
             .zip(mu.iter().cloned())
             .zip(shift.iter().cloned())
         {
-            *res0 =
-                (*res0).add((c0.mul(c0)).div((d0.sub(shift).sub(mu)).mul(d0.add(shift).add(mu))));
+            *res0 = (*res0).faer_add((c0.faer_mul(c0)).faer_div(
+                (d0.faer_sub(shift).faer_sub(mu)).faer_mul(d0.faer_add(shift).faer_add(mu)),
+            ));
         }
     }
     res0
@@ -793,51 +817,97 @@ fn secular_eq_multi_fast<const N: usize, E: RealField>(
 
 #[inline(always)]
 fn secular_eq<E: RealField>(mu: E, col0_perm: &[E], diag_perm: &[E], shift: E) -> E {
-    let mut res0 = E::one();
-    let mut res1 = E::zero();
-    let mut res2 = E::zero();
-    let mut res3 = E::zero();
-    let mut res4 = E::zero();
-    let mut res5 = E::zero();
-    let mut res6 = E::zero();
-    let mut res7 = E::zero();
+    let mut res0 = E::faer_one();
+    let mut res1 = E::faer_zero();
+    let mut res2 = E::faer_zero();
+    let mut res3 = E::faer_zero();
+    let mut res4 = E::faer_zero();
+    let mut res5 = E::faer_zero();
+    let mut res6 = E::faer_zero();
+    let mut res7 = E::faer_zero();
 
     let (col0_head, col0_perm) = pulp::as_arrays::<8, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<8, _>(diag_perm);
     for ([c0, c1, c2, c3, c4, c5, c6, c7], [d0, d1, d2, d3, d4, d5, d6, d7]) in
         col0_head.iter().zip(diag_head)
     {
-        res0 = res0.add((c0.div(d0.sub(shift).sub(mu))).mul(c0.div(d0.add(shift).add(mu))));
-        res1 = res1.add((c1.div(d1.sub(shift).sub(mu))).mul(c1.div(d1.add(shift).add(mu))));
-        res2 = res2.add((c2.div(d2.sub(shift).sub(mu))).mul(c2.div(d2.add(shift).add(mu))));
-        res3 = res3.add((c3.div(d3.sub(shift).sub(mu))).mul(c3.div(d3.add(shift).add(mu))));
-        res4 = res4.add((c4.div(d4.sub(shift).sub(mu))).mul(c4.div(d4.add(shift).add(mu))));
-        res5 = res5.add((c5.div(d5.sub(shift).sub(mu))).mul(c5.div(d5.add(shift).add(mu))));
-        res6 = res6.add((c6.div(d6.sub(shift).sub(mu))).mul(c6.div(d6.add(shift).add(mu))));
-        res7 = res7.add((c7.div(d7.sub(shift).sub(mu))).mul(c7.div(d7.add(shift).add(mu))));
+        res0 = res0.faer_add(
+            (c0.faer_div(d0.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c0.faer_div(d0.faer_add(shift).faer_add(mu))),
+        );
+        res1 = res1.faer_add(
+            (c1.faer_div(d1.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c1.faer_div(d1.faer_add(shift).faer_add(mu))),
+        );
+        res2 = res2.faer_add(
+            (c2.faer_div(d2.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c2.faer_div(d2.faer_add(shift).faer_add(mu))),
+        );
+        res3 = res3.faer_add(
+            (c3.faer_div(d3.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c3.faer_div(d3.faer_add(shift).faer_add(mu))),
+        );
+        res4 = res4.faer_add(
+            (c4.faer_div(d4.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c4.faer_div(d4.faer_add(shift).faer_add(mu))),
+        );
+        res5 = res5.faer_add(
+            (c5.faer_div(d5.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c5.faer_div(d5.faer_add(shift).faer_add(mu))),
+        );
+        res6 = res6.faer_add(
+            (c6.faer_div(d6.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c6.faer_div(d6.faer_add(shift).faer_add(mu))),
+        );
+        res7 = res7.faer_add(
+            (c7.faer_div(d7.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c7.faer_div(d7.faer_add(shift).faer_add(mu))),
+        );
     }
 
     let (col0_head, col0_perm) = pulp::as_arrays::<4, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<4, _>(diag_perm);
     for ([c0, c1, c2, c3], [d0, d1, d2, d3]) in col0_head.iter().zip(diag_head) {
-        res0 = res0.add((c0.div(d0.sub(shift).sub(mu))).mul(c0.div(d0.add(shift).add(mu))));
-        res1 = res1.add((c1.div(d1.sub(shift).sub(mu))).mul(c1.div(d1.add(shift).add(mu))));
-        res2 = res2.add((c2.div(d2.sub(shift).sub(mu))).mul(c2.div(d2.add(shift).add(mu))));
-        res3 = res3.add((c3.div(d3.sub(shift).sub(mu))).mul(c3.div(d3.add(shift).add(mu))));
+        res0 = res0.faer_add(
+            (c0.faer_div(d0.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c0.faer_div(d0.faer_add(shift).faer_add(mu))),
+        );
+        res1 = res1.faer_add(
+            (c1.faer_div(d1.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c1.faer_div(d1.faer_add(shift).faer_add(mu))),
+        );
+        res2 = res2.faer_add(
+            (c2.faer_div(d2.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c2.faer_div(d2.faer_add(shift).faer_add(mu))),
+        );
+        res3 = res3.faer_add(
+            (c3.faer_div(d3.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c3.faer_div(d3.faer_add(shift).faer_add(mu))),
+        );
     }
 
     let (col0_head, col0_perm) = pulp::as_arrays::<2, _>(col0_perm);
     let (diag_head, diag_perm) = pulp::as_arrays::<2, _>(diag_perm);
     for ([c0, c1], [d0, d1]) in col0_head.iter().zip(diag_head) {
-        res0 = res0.add((c0.div(d0.sub(shift).sub(mu))).mul(c0.div(d0.add(shift).add(mu))));
-        res1 = res1.add((c1.div(d1.sub(shift).sub(mu))).mul(c1.div(d1.add(shift).add(mu))));
+        res0 = res0.faer_add(
+            (c0.faer_div(d0.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c0.faer_div(d0.faer_add(shift).faer_add(mu))),
+        );
+        res1 = res1.faer_add(
+            (c1.faer_div(d1.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c1.faer_div(d1.faer_add(shift).faer_add(mu))),
+        );
     }
 
     for (c0, d0) in col0_perm.iter().zip(diag_perm) {
-        res0 = res0.add((c0.div(d0.sub(shift).sub(mu))).mul(c0.div(d0.add(shift).add(mu))));
+        res0 = res0.faer_add(
+            (c0.faer_div(d0.faer_sub(shift).faer_sub(mu)))
+                .faer_mul(c0.faer_div(d0.faer_add(shift).faer_add(mu))),
+        );
     }
 
-    ((res0.add(res1)).add(res2.add(res3))).add((res4.add(res5)).add(res6.add(res7)))
+    ((res0.faer_add(res1)).faer_add(res2.faer_add(res3)))
+        .faer_add((res4.faer_add(res5)).faer_add(res6.faer_add(res7)))
 }
 
 fn deflate<E: RealField>(
@@ -858,33 +928,35 @@ fn deflate<E: RealField>(
     let mut jacobi_0i = 0;
     let mut jacobi_ij = 0;
 
-    let mut max_diag = E::zero();
-    let mut max_col0 = E::zero();
+    let mut max_diag = E::faer_zero();
+    let mut max_col0 = E::faer_zero();
     for d in diag[1..].iter() {
-        max_diag = if d.abs() > max_diag {
-            d.abs()
+        max_diag = if d.faer_abs() > max_diag {
+            d.faer_abs()
         } else {
             max_diag
         };
     }
     for d in col0.iter() {
-        max_col0 = if d.abs() > max_col0 {
-            d.abs()
+        max_col0 = if d.faer_abs() > max_col0 {
+            d.faer_abs()
         } else {
             max_col0
         };
     }
 
-    let epsilon_strict = epsilon.mul(max_diag);
+    let epsilon_strict = epsilon.faer_mul(max_diag);
     let epsilon_strict = if epsilon_strict > consider_zero_threshold {
         &epsilon_strict
     } else {
         &consider_zero_threshold
     };
 
-    let two = E::one().add(E::one());
-    let eight = two.scale_power_of_two(two).scale_power_of_two(two);
-    let epsilon_coarse = eight.mul(epsilon).mul(if max_diag > max_col0 {
+    let two = E::faer_one().faer_add(E::faer_one());
+    let eight = two
+        .faer_scale_power_of_two(two)
+        .faer_scale_power_of_two(two);
+    let epsilon_coarse = eight.faer_mul(epsilon).faer_mul(if max_diag > max_col0 {
         max_diag
     } else {
         max_col0
@@ -898,8 +970,8 @@ fn deflate<E: RealField>(
 
     // condition 4.2
     for x in &mut col0[1..] {
-        if x.abs() < *epsilon_strict {
-            *x = E::zero();
+        if x.faer_abs() < *epsilon_strict {
+            *x = E::faer_zero();
         }
     }
 
@@ -916,7 +988,7 @@ fn deflate<E: RealField>(
 
     let mut total_deflation = true;
     for c in col0[1..].iter() {
-        if PartialOrd::partial_cmp(&c.abs(), &consider_zero_threshold)
+        if PartialOrd::partial_cmp(&c.faer_abs(), &consider_zero_threshold)
             != Some(core::cmp::Ordering::Less)
         {
             total_deflation = false;
@@ -927,7 +999,7 @@ fn deflate<E: RealField>(
     let mut p = 1;
 
     for (d, i) in diag[1..].iter().zip(1..n) {
-        if d.abs() < consider_zero_threshold {
+        if d.faer_abs() < consider_zero_threshold {
             perm[p] = i;
             p += 1;
         }
@@ -955,7 +1027,7 @@ fn deflate<E: RealField>(
     if total_deflation {
         for i in 1..n {
             let pi = perm[i];
-            if diag[pi].abs() < consider_zero_threshold || diag[pi] > diag[0] {
+            if diag[pi].faer_abs() < consider_zero_threshold || diag[pi] > diag[0] {
                 perm[i - 1] = perm[i];
             } else {
                 perm[i - 1] = 0;
@@ -996,12 +1068,13 @@ fn deflate<E: RealField>(
     // condition 4.4
     let mut i = n - 1;
     while i > 0
-        && (diag[i].abs() < consider_zero_threshold || col0[i].abs() < consider_zero_threshold)
+        && (diag[i].faer_abs() < consider_zero_threshold
+            || col0[i].faer_abs() < consider_zero_threshold)
     {
         i -= 1;
     }
     while i > 1 {
-        if diag[i].sub(diag[i - 1]) < *epsilon_strict {
+        if diag[i].faer_sub(diag[i - 1]) < *epsilon_strict {
             if let Some(rot) = deflation44(diag, col0, u.rb_mut(), v.rb_mut(), i - 1, i) {
                 jacobi_coeffs[jacobi_0i + jacobi_ij] = rot;
                 jacobi_indices[jacobi_0i + jacobi_ij] = i;
@@ -1022,20 +1095,20 @@ fn deflation43<E: RealField>(
 ) -> Option<JacobiRotation<E>> {
     let c = col0[0];
     let s = col0[i];
-    let r = ((c.mul(c)).add(s.mul(s))).sqrt();
-    if r == E::zero() {
-        diag[i] = E::zero();
+    let r = ((c.faer_mul(c)).faer_add(s.faer_mul(s))).faer_sqrt();
+    if r == E::faer_zero() {
+        diag[i] = E::faer_zero();
         return None;
     }
 
     col0[0] = r;
     diag[0] = r;
-    col0[i] = E::zero();
-    diag[i] = E::zero();
+    col0[i] = E::faer_zero();
+    diag[i] = E::faer_zero();
 
     let rot = JacobiRotation {
-        c: c.div(r),
-        s: s.neg().div(r),
+        c: c.faer_div(r),
+        s: s.faer_neg().faer_div(r),
     };
     Some(rot)
 }
@@ -1050,17 +1123,17 @@ fn deflation44<E: RealField>(
 ) -> Option<JacobiRotation<E>> {
     let c = col0[i];
     let s = col0[j];
-    let r = ((c.mul(c)).add(s.mul(s))).sqrt();
-    if r == E::zero() {
+    let r = ((c.faer_mul(c)).faer_add(s.faer_mul(s))).faer_sqrt();
+    if r == E::faer_zero() {
         diag[i] = diag[j];
         return None;
     }
 
-    let c = c.div(r);
-    let s = s.neg().div(r);
+    let c = c.faer_div(r);
+    let s = s.faer_neg().faer_div(r);
     col0[i] = r;
     diag[j] = diag[i];
-    col0[j] = E::zero();
+    col0[j] = E::faer_zero();
 
     let rot = JacobiRotation { c, s };
     Some(rot)
@@ -1104,9 +1177,9 @@ pub fn compute_bidiag_real_svd<E: RealField>(
             *diag = s.read(i, i);
         }
         if let Some(mut u) = u {
-            zipped!(u.rb_mut().row(n)).for_each(|mut x| x.write(E::zero()));
-            zipped!(u.rb_mut().col(n)).for_each(|mut x| x.write(E::zero()));
-            u.write(n, n, E::one());
+            zipped!(u.rb_mut().row(n)).for_each(|mut x| x.write(E::faer_zero()));
+            zipped!(u.rb_mut().col(n)).for_each(|mut x| x.write(E::faer_zero()));
+            u.write(n, n, E::faer_one());
         }
     } else {
         match u {
@@ -1157,41 +1230,41 @@ fn bidiag_svd_impl<E: RealField>(
 ) {
     let n = diag.len();
 
-    let mut max_val = E::zero();
+    let mut max_val = E::faer_zero();
 
     for x in &*diag {
-        let val = x.abs();
+        let val = x.faer_abs();
         if val > max_val {
             max_val = val;
         }
     }
     for x in &*subdiag {
-        let val = x.abs();
+        let val = x.faer_abs();
         if val > max_val {
             max_val = val;
         }
     }
 
-    if max_val == E::zero() {
+    if max_val == E::faer_zero() {
         u.fill_zeros();
         if u.nrows() == n + 1 {
             u.diagonal().fill_zeros();
         } else {
-            u.write(0, 0, E::one());
-            u.write(1, n, E::one());
+            u.write(0, 0, E::faer_one());
+            u.write(1, n, E::faer_one());
         }
         if let Some(mut v) = v {
             v.fill_zeros();
-            v.diagonal().fill(E::one());
+            v.diagonal().fill(E::faer_one());
         };
         return;
     }
 
     for x in &mut *diag {
-        *x = (*x).div(max_val);
+        *x = (*x).faer_div(max_val);
     }
     for x in &mut *subdiag {
-        *x = (*x).div(max_val);
+        *x = (*x).faer_div(max_val);
     }
 
     assert!(subdiag.len() == n);
@@ -1264,7 +1337,7 @@ fn bidiag_svd_impl<E: RealField>(
         for j in 0..matrix1.ncols() {
             for i in 0..matrix1.nrows() {
                 if i != j {
-                    matrix1.write(i, j, E::zero());
+                    matrix1.write(i, j, E::faer_zero());
                 }
             }
         }
@@ -1279,17 +1352,17 @@ fn bidiag_svd_impl<E: RealField>(
         for j in 0..matrix2.ncols() {
             for i in 0..matrix1.nrows() {
                 if i != j {
-                    matrix1.write(i, j, E::zero());
+                    matrix1.write(i, j, E::faer_zero());
                 }
             }
         }
 
         if cfg!(debug_assertions) {
             if let Some(v1) = v1 {
-                zipped!(v1.col(k)).for_each(|mut x| x.write(E::nan()));
+                zipped!(v1.col(k)).for_each(|mut x| x.write(E::faer_nan()));
             }
             if let Some(v2) = v2 {
-                zipped!(v2.col(0)).for_each(|mut x| x.write(E::nan()));
+                zipped!(v2.col(0)).for_each(|mut x| x.write(E::faer_nan()));
             }
         }
 
@@ -1336,7 +1409,7 @@ fn bidiag_svd_impl<E: RealField>(
                 right.write(left.read());
 
                 if cfg!(debug_assertions) {
-                    left.write(E::nan());
+                    left.write(E::faer_nan());
                 }
             });
         }
@@ -1413,7 +1486,7 @@ fn bidiag_svd_impl<E: RealField>(
     }
 
     if let Some(mut v) = v.rb_mut() {
-        v.write(k, 0, E::one());
+        v.write(k, 0, E::faer_one());
     };
 
     let lambda = if compact_u == 0 {
@@ -1428,14 +1501,14 @@ fn bidiag_svd_impl<E: RealField>(
         u.read(0, n)
     };
 
-    let al = alpha.mul(lambda);
-    let bp = beta.mul(phi);
+    let al = alpha.faer_mul(lambda);
+    let bp = beta.faer_mul(phi);
 
-    let r0 = ((al.mul(al)).add(bp.mul(bp))).sqrt();
-    let (c0, s0) = if r0 == E::zero() {
-        (E::one(), E::zero())
+    let r0 = ((al.faer_mul(al)).faer_add(bp.faer_mul(bp))).faer_sqrt();
+    let (c0, s0) = if r0 == E::faer_zero() {
+        (E::faer_one(), E::faer_zero())
     } else {
-        (al.div(r0), bp.div(r0))
+        (al.faer_div(r0), bp.faer_div(r0))
     };
 
     let col0 = subdiag;
@@ -1457,52 +1530,52 @@ fn bidiag_svd_impl<E: RealField>(
         let [u2, mut un_bot] = u2.split_at_col(n - 1);
 
         for j in 0..k {
-            col0[j + 1] = alpha.mul(u1.read(k, j));
+            col0[j + 1] = alpha.faer_mul(u1.read(k, j));
         }
         for j in 0..rem {
-            col0[j + 1 + k] = beta.mul(u2.read(0, j + k));
+            col0[j + 1 + k] = beta.faer_mul(u2.read(0, j + k));
         }
 
         zipped!(u0_top.rb_mut().col(0), un_top.rb_mut().col(0), u1.col(k),).for_each(
             |mut dst0, mut dstn, mut src| {
                 let src_ = src.read();
-                dst0.write(c0.mul(src_));
-                dstn.write(s0.neg().mul(src_));
+                dst0.write(c0.faer_mul(src_));
+                dstn.write(s0.faer_neg().faer_mul(src_));
                 if cfg!(debug_assertions) {
-                    src.write(E::nan());
+                    src.write(E::faer_nan());
                 }
             },
         );
 
         zipped!(u0_bot.rb_mut().col(0), un_bot.rb_mut().col(0),).for_each(|mut dst0, mut dstn| {
             let src_ = dstn.read();
-            dst0.write(s0.mul(src_));
-            dstn.write(c0.mul(src_));
+            dst0.write(s0.faer_mul(src_));
+            dstn.write(c0.faer_mul(src_));
         });
     } else {
         for j in 0..k {
-            col0[j + 1] = alpha.mul(u.read(1, j + 1));
-            u.write(1, j + 1, E::zero());
+            col0[j + 1] = alpha.faer_mul(u.read(1, j + 1));
+            u.write(1, j + 1, E::faer_zero());
         }
         for j in 0..rem {
-            col0[j + 1 + k] = beta.mul(u.read(0, j + k + 1));
-            u.write(0, j + k + 1, E::zero());
+            col0[j + 1 + k] = beta.faer_mul(u.read(0, j + k + 1));
+            u.write(0, j + k + 1, E::faer_zero());
         }
 
         let q10 = u.read(0, 0);
         let q21 = u.read(1, n);
 
-        u.write(0, 0, c0.mul(q10));
-        u.write(0, n, s0.neg().mul(q10));
-        u.write(1, 0, s0.mul(q21));
-        u.write(1, n, c0.mul(q21));
+        u.write(0, 0, c0.faer_mul(q10));
+        u.write(0, n, s0.faer_neg().faer_mul(q10));
+        u.write(1, 0, s0.faer_mul(q21));
+        u.write(1, n, c0.faer_mul(q21));
     }
 
     let (mut perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
     let perm = &mut *perm;
     let (mut jacobi_coeffs, stack) = stack.make_with(n, |_| JacobiRotation {
-        c: E::zero(),
-        s: E::zero(),
+        c: E::faer_zero(),
+        s: E::faer_zero(),
     });
     let (mut jacobi_indices, mut stack) = stack.make_with(n, |_| 0);
 
@@ -1618,7 +1691,7 @@ fn bidiag_svd_impl<E: RealField>(
                         v_lhs1,
                         v_rhs1,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         parallelism,
                     )
                 },
@@ -1628,7 +1701,7 @@ fn bidiag_svd_impl<E: RealField>(
                         v_lhs2,
                         v_rhs2,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         parallelism,
                     )
                 },
@@ -1640,7 +1713,7 @@ fn bidiag_svd_impl<E: RealField>(
                 v_lhs.submatrix(k, 0, 1, 1),
                 v_rhs.submatrix(0, 0, 1, n),
                 None,
-                E::one(),
+                E::faer_one(),
                 parallelism,
             );
 
@@ -1670,7 +1743,7 @@ fn bidiag_svd_impl<E: RealField>(
                         u_lhs1,
                         u_rhs1,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         parallelism,
                     );
                     // rank 1 update
@@ -1678,8 +1751,8 @@ fn bidiag_svd_impl<E: RealField>(
                         combined_u1.rb_mut(),
                         u_lhs.col(n).subrows(0, k + 1),
                         u_rhs2.row(rem),
-                        Some(E::one()),
-                        E::one(),
+                        Some(E::faer_one()),
+                        E::faer_one(),
                         parallelism,
                     );
                 },
@@ -1690,7 +1763,7 @@ fn bidiag_svd_impl<E: RealField>(
                         u_lhs2,
                         u_rhs2,
                         None,
-                        E::one(),
+                        E::faer_one(),
                         parallelism,
                     );
                     // rank 1 update
@@ -1698,8 +1771,8 @@ fn bidiag_svd_impl<E: RealField>(
                         combined_u2.rb_mut(),
                         u_lhs.col(0).subrows(k + 1, rem + 1),
                         u_rhs1.row(0),
-                        Some(E::one()),
-                        E::one(),
+                        Some(E::faer_one()),
+                        E::faer_one(),
                         parallelism,
                     );
                 },
@@ -1720,7 +1793,7 @@ fn bidiag_svd_impl<E: RealField>(
                 u.rb(),
                 um.rb(),
                 None,
-                E::one(),
+                E::faer_one(),
                 parallelism,
             );
             zipped!(u.rb_mut(), combined_u.rb()).for_each(|mut dst, src| dst.write(src.read()));
@@ -1747,7 +1820,7 @@ fn bidiag_svd_impl<E: RealField>(
     }
 
     for x in &mut *diag {
-        *x = (*x).mul(max_val);
+        *x = (*x).faer_mul(max_val);
     }
 }
 

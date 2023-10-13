@@ -366,13 +366,16 @@ mod tests {
                     sol.rb(),
                     Conj::No,
                     None,
-                    T::one(),
+                    T::faer_one(),
                     parallelism,
                 );
 
                 for j in 0..k {
                     for i in 0..n {
-                        assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
+                        assert!(
+                            (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                                < epsilon
+                        )
                     }
                 }
             }
@@ -432,13 +435,16 @@ mod tests {
                     sol.rb(),
                     Conj::No,
                     None,
-                    T::one(),
+                    T::faer_one(),
                     parallelism,
                 );
 
                 for j in 0..k {
                     for i in 0..n {
-                        assert!((rhs_reconstructed.read(i, j).sub(rhs.read(i, j))).abs() < epsilon)
+                        assert!(
+                            (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
+                                < epsilon
+                        )
                     }
                 }
             }

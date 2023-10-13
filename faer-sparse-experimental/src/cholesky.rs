@@ -205,9 +205,9 @@ pub mod simplicial {
                         let etree = Array::from_ref(MaybeIdx::slice_ref_checked(etree, N), N);
                         let A = ghost::SparseColMatRef::new(A, N, N);
 
-                        let eps = regularization.dynamic_regularization_epsilon.abs();
-                        let delta = regularization.dynamic_regularization_delta.abs();
-                        let has_eps = delta > E::Real::zero();
+                        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+                        let delta = regularization.dynamic_regularization_delta.faer_abs();
+                        let has_eps = delta > E::Real::faer_zero();
                         let mut dynamic_regularization_count = 0usize;
 
                         let (mut x, stack) = crate::make_raw::<E>(n, stack);
@@ -219,7 +219,7 @@ pub mod simplicial {
                         let etree = Array::from_ref(etree, N);
                         let visited = Array::from_mut(&mut marked, N);
                         let mut x = ghost::ArrayGroupMut::new(
-                            SliceGroupMut::new(E::map(E::as_mut(&mut x), |x| &mut **x)),
+                            SliceGroupMut::new(E::faer_map(E::faer_as_mut(&mut x), |x| &mut **x)),
                             N,
                         );
 
@@ -243,11 +243,11 @@ pub mod simplicial {
                             for (i, aik) in
                                 zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
                             {
-                                x.write(i, aik.read().conj());
+                                x.write(i, aik.read().faer_conj());
                             }
 
-                            let mut d = x.read(k).real();
-                            x.write(k, E::zero());
+                            let mut d = x.read(k).faer_real();
+                            x.write(k, E::faer_zero());
 
                             for &j in reach {
                                 let j = j.zx();
@@ -258,10 +258,10 @@ pub mod simplicial {
                                 *cj = row_idx.truncate();
 
                                 let xj = x.read(j);
-                                x.write(j, E::zero());
+                                x.write(j, E::faer_zero());
 
-                                let dj = L_values.read(j_start).real();
-                                let lkj = xj.scale_real(dj.inv());
+                                let dj = L_values.read(j_start).faer_real();
+                                let lkj = xj.faer_scale_real(dj.faer_inv());
 
                                 let range = j_start.next()..row_idx.to_inclusive();
                                 for (i, lij) in zip(
@@ -270,12 +270,12 @@ pub mod simplicial {
                                 ) {
                                     let i = N.check(i.zx());
                                     let mut xi = x.read(i);
-                                    let prod = lij.read().conj().mul(xj);
-                                    xi = xi.sub(prod);
+                                    let prod = lij.read().faer_conj().faer_mul(xj);
+                                    xi = xi.faer_sub(prod);
                                     x.write(i, xi);
                                 }
 
-                                d = d.sub(lkj.mul(xj.conj()).real());
+                                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
 
                                 L_values.write(row_idx, lkj);
                             }
@@ -287,13 +287,13 @@ pub mod simplicial {
                                     if signs[*k] > 0 && d <= delta {
                                         d = eps;
                                         dynamic_regularization_count += 1;
-                                    } else if signs[*k] < 0 && d >= delta.neg() {
-                                        d = eps.neg();
+                                    } else if signs[*k] < 0 && d >= delta.faer_neg() {
+                                        d = eps.faer_neg();
                                         dynamic_regularization_count += 1;
                                     }
-                                } else if d.abs() <= delta {
-                                    if d < E::Real::zero() {
-                                        d = eps.neg();
+                                } else if d.faer_abs() <= delta {
+                                    if d < E::Real::faer_zero() {
+                                        d = eps.faer_neg();
                                         dynamic_regularization_count += 1;
                                     } else {
                                         d = eps;
@@ -301,7 +301,7 @@ pub mod simplicial {
                                     }
                                 }
                             }
-                            L_values.write(k_start, E::from_real(d));
+                            L_values.write(k_start, E::faer_from_real(d));
                         }
                         dynamic_regularization_count
                     },
@@ -346,7 +346,7 @@ pub mod simplicial {
                         let etree = Array::from_ref(etree, N);
                         let visited = Array::from_mut(&mut marked, N);
                         let mut x = ghost::ArrayGroupMut::new(
-                            SliceGroupMut::new(E::map(E::as_mut(&mut x), |x| &mut **x)),
+                            SliceGroupMut::new(E::faer_map(E::faer_as_mut(&mut x), |x| &mut **x)),
                             N,
                         );
 
@@ -370,11 +370,11 @@ pub mod simplicial {
                             for (i, aik) in
                                 zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
                             {
-                                x.write(i, aik.read().conj());
+                                x.write(i, aik.read().faer_conj());
                             }
 
-                            let mut d = x.read(k).real();
-                            x.write(k, E::zero());
+                            let mut d = x.read(k).faer_real();
+                            x.write(k, E::faer_zero());
 
                             for &j in reach {
                                 let j = j.zx();
@@ -385,10 +385,10 @@ pub mod simplicial {
                                 *cj = row_idx.truncate();
 
                                 let xj = x.read(j);
-                                x.write(j, E::zero());
+                                x.write(j, E::faer_zero());
 
-                                let dj = L_values.read(j_start).real();
-                                let lkj = xj.scale_real(dj.inv());
+                                let dj = L_values.read(j_start).faer_real();
+                                let lkj = xj.faer_scale_real(dj.faer_inv());
 
                                 let range = j_start.next()..row_idx.to_inclusive();
                                 for (i, lij) in zip(
@@ -397,12 +397,12 @@ pub mod simplicial {
                                 ) {
                                     let i = N.check(i.zx());
                                     let mut xi = x.read(i);
-                                    let prod = lij.read().conj().mul(xj);
-                                    xi = xi.sub(prod);
+                                    let prod = lij.read().faer_conj().faer_mul(xj);
+                                    xi = xi.faer_sub(prod);
                                     x.write(i, xi);
                                 }
 
-                                d = d.sub(lkj.mul(xj.conj()).real());
+                                d = d.faer_sub(lkj.faer_mul(xj.faer_conj()).faer_real());
 
                                 L_row_indices[row_idx] = *k.truncate();
                                 L_values.write(row_idx, lkj);
@@ -410,7 +410,7 @@ pub mod simplicial {
 
                             let k_start = L_col_ptrs_start[k].zx();
                             L_row_indices[k_start] = *k.truncate();
-                            L_values.write(k_start, E::from_real(d));
+                            L_values.write(k_start, E::faer_from_real(d));
                         }
                     },
                 )
@@ -461,8 +461,12 @@ pub mod simplicial {
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::Yes { lij.conj() } else { lij };
-                                x.write(i, 0, x.read(i, 0).sub(lij.mul(xj0)));
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
                             }
                         }
                     }
@@ -475,9 +479,13 @@ pub mod simplicial {
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::Yes { lij.conj() } else { lij };
-                                x.write(i, 0, x.read(i, 0).sub(lij.mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).sub(lij.mul(xj1)));
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
+                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
                             }
                         }
                     }
@@ -491,10 +499,14 @@ pub mod simplicial {
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::Yes { lij.conj() } else { lij };
-                                x.write(i, 0, x.read(i, 0).sub(lij.mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).sub(lij.mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).sub(lij.mul(xj2)));
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
+                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
+                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
                             }
                         }
                     }
@@ -509,11 +521,15 @@ pub mod simplicial {
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::Yes { lij.conj() } else { lij };
-                                x.write(i, 0, x.read(i, 0).sub(lij.mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).sub(lij.mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).sub(lij.mul(xj2)));
-                                x.write(i, 3, x.read(i, 3).sub(lij.mul(xj3)));
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
+                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
+                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
+                                x.write(i, 3, x.read(i, 3).faer_sub(lij.faer_mul(xj3)));
                             }
                         }
                     }
@@ -523,8 +539,8 @@ pub mod simplicial {
 
             for mut x in x.rb_mut().into_col_chunks(1) {
                 for j in 0..n {
-                    let d_inv = ld.values_of_col(j).read(0).real().inv();
-                    x.write(j, 0, x.read(j, 0).scale_real(d_inv));
+                    let d_inv = ld.values_of_col(j).read(0).faer_real().faer_inv();
+                    x.write(j, 0, x.read(j, 0).faer_scale_real(d_inv));
                 }
             }
 
@@ -532,10 +548,10 @@ pub mod simplicial {
                 match x.ncols() {
                     1 => {
                         for j in (0..n).rev() {
-                            let mut acc0a = E::zero();
-                            let mut acc0b = E::zero();
-                            let mut acc0c = E::zero();
-                            let mut acc0d = E::zero();
+                            let mut acc0a = E::faer_zero();
+                            let mut acc0b = E::faer_zero();
+                            let mut acc0c = E::faer_zero();
+                            let mut acc0d = E::faer_zero();
 
                             let a = 0;
                             let b = 1;
@@ -553,35 +569,57 @@ pub mod simplicial {
                                 let lijb = lij.read(b);
                                 let lijc = lij.read(c);
                                 let lijd = lij.read(d);
-                                let lija = if conj == Conj::No { lija.conj() } else { lija };
-                                let lijb = if conj == Conj::No { lijb.conj() } else { lijb };
-                                let lijc = if conj == Conj::No { lijc.conj() } else { lijc };
-                                let lijd = if conj == Conj::No { lijd.conj() } else { lijd };
-                                acc0a = acc0a.add(lija.mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.add(lijb.mul(x.read(i[b].zx(), 0)));
-                                acc0c = acc0c.add(lijc.mul(x.read(i[c].zx(), 0)));
-                                acc0d = acc0d.add(lijd.mul(x.read(i[d].zx(), 0)));
+                                let lija = if conj == Conj::No {
+                                    lija.faer_conj()
+                                } else {
+                                    lija
+                                };
+                                let lijb = if conj == Conj::No {
+                                    lijb.faer_conj()
+                                } else {
+                                    lijb
+                                };
+                                let lijc = if conj == Conj::No {
+                                    lijc.faer_conj()
+                                } else {
+                                    lijc
+                                };
+                                let lijd = if conj == Conj::No {
+                                    lijd.faer_conj()
+                                } else {
+                                    lijd
+                                };
+                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
+                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
+                                acc0c = acc0c.faer_add(lijc.faer_mul(x.read(i[c].zx(), 0)));
+                                acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), 0)));
                             }
 
                             for (i, lij) in zip(rows_tail, values_tail.into_iter()) {
                                 let lija = lij.read();
-                                let lija = if conj == Conj::No { lija.conj() } else { lija };
-                                acc0a = acc0a.add(lija.mul(x.read(i.zx(), 0)));
+                                let lija = if conj == Conj::No {
+                                    lija.faer_conj()
+                                } else {
+                                    lija
+                                };
+                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
                             }
 
                             x.write(
                                 j,
                                 0,
-                                x.read(j, 0).sub(acc0a.add(acc0b).add(acc0c.add(acc0d))),
+                                x.read(j, 0).faer_sub(
+                                    acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)),
+                                ),
                             );
                         }
                     }
                     2 => {
                         for j in (0..n).rev() {
-                            let mut acc0a = E::zero();
-                            let mut acc0b = E::zero();
-                            let mut acc1a = E::zero();
-                            let mut acc1b = E::zero();
+                            let mut acc0a = E::faer_zero();
+                            let mut acc0b = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+                            let mut acc1b = E::faer_zero();
 
                             let a = 0;
                             let b = 1;
@@ -595,70 +633,90 @@ pub mod simplicial {
                             for (i, lij) in zip(rows_head, values_head) {
                                 let lija = lij.read(a);
                                 let lijb = lij.read(b);
-                                let lija = if conj == Conj::No { lija.conj() } else { lija };
-                                let lijb = if conj == Conj::No { lijb.conj() } else { lijb };
-                                acc0a = acc0a.add(lija.mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.add(lijb.mul(x.read(i[b].zx(), 0)));
-                                acc1a = acc1a.add(lija.mul(x.read(i[a].zx(), 1)));
-                                acc1b = acc1b.add(lijb.mul(x.read(i[b].zx(), 1)));
+                                let lija = if conj == Conj::No {
+                                    lija.faer_conj()
+                                } else {
+                                    lija
+                                };
+                                let lijb = if conj == Conj::No {
+                                    lijb.faer_conj()
+                                } else {
+                                    lijb
+                                };
+                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
+                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
+                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i[a].zx(), 1)));
+                                acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 1)));
                             }
 
                             for (i, lij) in zip(rows_tail, values_tail.into_iter()) {
                                 let lija = lij.read();
-                                let lija = if conj == Conj::No { lija.conj() } else { lija };
-                                acc0a = acc0a.add(lija.mul(x.read(i.zx(), 0)));
-                                acc1a = acc1a.add(lija.mul(x.read(i.zx(), 1)));
+                                let lija = if conj == Conj::No {
+                                    lija.faer_conj()
+                                } else {
+                                    lija
+                                };
+                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
+                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i.zx(), 1)));
                             }
 
-                            x.write(j, 0, x.read(j, 0).sub(acc0a.add(acc0b)));
-                            x.write(j, 1, x.read(j, 1).sub(acc1a.add(acc1b)));
+                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a.faer_add(acc0b)));
+                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a.faer_add(acc1b)));
                         }
                     }
                     3 => {
                         for j in (0..n).rev() {
-                            let mut acc0a = E::zero();
-                            let mut acc1a = E::zero();
-                            let mut acc2a = E::zero();
+                            let mut acc0a = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+                            let mut acc2a = E::faer_zero();
 
                             for (i, lij) in
                                 zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::No { lij.conj() } else { lij };
-                                acc0a = acc0a.add(lij.mul(x.read(i, 0)));
-                                acc1a = acc1a.add(lij.mul(x.read(i, 1)));
-                                acc2a = acc2a.add(lij.mul(x.read(i, 2)));
+                                let lij = if conj == Conj::No {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
+                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
                             }
 
-                            x.write(j, 0, x.read(j, 0).sub(acc0a));
-                            x.write(j, 1, x.read(j, 1).sub(acc1a));
-                            x.write(j, 2, x.read(j, 2).sub(acc2a));
+                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a));
+                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a));
+                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a));
                         }
                     }
                     4 => {
                         for j in (0..n).rev() {
-                            let mut acc0a = E::zero();
-                            let mut acc1a = E::zero();
-                            let mut acc2a = E::zero();
-                            let mut acc3a = E::zero();
+                            let mut acc0a = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+                            let mut acc2a = E::faer_zero();
+                            let mut acc3a = E::faer_zero();
 
                             for (i, lij) in
                                 zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
                                     .skip(1)
                             {
                                 let lij = lij.read();
-                                let lij = if conj == Conj::No { lij.conj() } else { lij };
-                                acc0a = acc0a.add(lij.mul(x.read(i, 0)));
-                                acc1a = acc1a.add(lij.mul(x.read(i, 1)));
-                                acc2a = acc2a.add(lij.mul(x.read(i, 2)));
-                                acc3a = acc3a.add(lij.mul(x.read(i, 3)));
+                                let lij = if conj == Conj::No {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
+                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
+                                acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, 3)));
                             }
 
-                            x.write(j, 0, x.read(j, 0).sub(acc0a));
-                            x.write(j, 1, x.read(j, 1).sub(acc1a));
-                            x.write(j, 2, x.read(j, 2).sub(acc2a));
-                            x.write(j, 3, x.read(j, 3).sub(acc3a));
+                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a));
+                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a));
+                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a));
+                            x.write(j, 3, x.read(j, 3).faer_sub(acc3a));
                         }
                     }
                     _ => unreachable!(),
@@ -895,14 +953,14 @@ pub mod supernodal {
                     x_top.rb(),
                     Conj::No,
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
 
                 for j in 0..k {
                     for (idx, i) in s.pattern().iter().enumerate() {
                         let i = i.zx();
-                        x.write(i, j, x.read(i, j).sub(tmp.read(idx, j)))
+                        x.write(i, j, x.read(i, j).faer_sub(tmp.read(idx, j)))
                     }
                 }
             }
@@ -912,9 +970,9 @@ pub mod supernodal {
                 let Ds = s.matrix.diagonal();
                 for j in 0..k {
                     for idx in 0..size {
-                        let d_inv = Ds.read(idx, 0).real().inv();
+                        let d_inv = Ds.read(idx, 0).faer_real().faer_inv();
                         let i = idx + s.start();
-                        x.write(i, j, x.read(i, j).scale_real(d_inv))
+                        x.write(i, j, x.read(i, j).faer_scale_real(d_inv))
                     }
                 }
             }
@@ -940,8 +998,8 @@ pub mod supernodal {
                     conj.compose(Conj::Yes),
                     tmp.rb(),
                     Conj::No,
-                    Some(E::one()),
-                    E::one().neg(),
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
                     parallelism,
                 );
                 faer_core::solve::solve_unit_upper_triangular_in_place_with_conj(
@@ -1694,7 +1752,11 @@ pub mod supernodal {
 
                 for i in 0..d_pattern_mid_len {
                     for j in 0..d_ncols {
-                        Ld_mid_x_D.write(i, j, Ld_mid.read(i, j).scale_real(D.read(j, 0).real()));
+                        Ld_mid_x_D.write(
+                            i,
+                            j,
+                            Ld_mid.read(i, j).faer_scale_real(D.read(j, 0).faer_real()),
+                        );
                     }
                 }
 
@@ -1709,7 +1771,7 @@ pub mod supernodal {
                     Ld_mid_x_D.rb().adjoint(),
                     triangular::BlockStructure::Rectangular,
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 mul::matmul(
@@ -1717,7 +1779,7 @@ pub mod supernodal {
                     Ld_bot,
                     Ld_mid_x_D.rb().adjoint(),
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 for (j_idx, j) in d_pattern[d_pattern_start..d_pattern_mid].iter().enumerate() {
@@ -1739,7 +1801,7 @@ pub mod supernodal {
                                 i_s,
                                 j_s,
                                 Ls.read_unchecked(i_s, j_s)
-                                    .sub(tmp_top.read_unchecked(i_idx, j_idx)),
+                                    .faer_sub(tmp_top.read_unchecked(i_idx, j_idx)),
                             )
                         };
                     }
@@ -1756,7 +1818,7 @@ pub mod supernodal {
                                 i_s,
                                 j_s,
                                 Ls.read_unchecked(i_s, j_s)
-                                    .sub(tmp_bot.read_unchecked(i_idx, j_idx)),
+                                    .faer_sub(tmp_bot.read_unchecked(i_idx, j_idx)),
                             )
                         };
                     }
@@ -1780,16 +1842,18 @@ pub mod supernodal {
                     params,
                 );
             zipped!(Ls_top.rb_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| x.write(E::zero()));
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| {
+                    x.write(E::faer_zero())
+                });
             faer_core::solve::solve_unit_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),
                 Ls_bot.rb_mut().transpose(),
                 parallelism,
             );
             for j in 0..s_ncols {
-                let d = Ls_top.read(j, j).real().inv();
+                let d = Ls_top.read(j, j).faer_real().faer_inv();
                 for i in 0..s_pattern.len() {
-                    Ls_bot.write(i, j, Ls_bot.read(i, j).scale_real(d));
+                    Ls_bot.write(i, j, Ls_bot.read(i, j).faer_scale_real(d));
                 }
             }
 
@@ -2116,7 +2180,9 @@ impl<I: Index> SymbolicCholesky<I> {
             let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
             let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
             let mut new_values =
-                SliceGroupMut::<'_, E>::new(E::map(E::as_mut(&mut new_values), |val| &mut **val));
+                SliceGroupMut::<'_, E>::new(E::faer_map(E::faer_as_mut(&mut new_values), |val| {
+                    &mut **val
+                }));
 
             let out_side = match &self.raw {
                 SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -2588,7 +2654,7 @@ mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
-        dense.as_mut().diagonal().fill(E::one());
+        dense.as_mut().diagonal().fill(E::faer_one());
         &dense * D * &dense.adjoint()
     }
 
@@ -2618,7 +2684,7 @@ mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
-        dense.as_mut().diagonal().fill(E::one());
+        dense.as_mut().diagonal().fill(E::faer_one());
 
         &dense * D * &dense.adjoint()
     }
@@ -2631,9 +2697,9 @@ mod tests {
 
         let mut gen = rand::rngs::StdRng::seed_from_u64(0);
         let mut complexify = |e: E| {
-            let i = E::one().neg().sqrt();
-            if e == E::from_f64(1.0) {
-                e.add(i.mul(E::from_f64(gen.gen())))
+            let i = E::faer_one().faer_neg().faer_sqrt();
+            if e == E::faer_from_f64(1.0) {
+                e.faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
             } else {
                 e
             }
@@ -2644,7 +2710,7 @@ mod tests {
         let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat =
-            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
         let values = SliceGroup::new(values_mat.col_ref(0));
 
         let A = SparseColMatRef::<'_, I, E>::new(
@@ -2703,19 +2769,19 @@ mod tests {
             let mut A = sparse_to_dense(*A);
             for j in 0..n {
                 for i in j + 1..n {
-                    A.write(i, j, A.read(j, i).conj());
+                    A.write(i, j, A.read(j, i).faer_conj());
                 }
             }
 
             let err = reconstruct_from_supernodal(&symbolic, values.rb()) - A;
-            let mut max = <E as ComplexField>::Real::zero();
+            let mut max = <E as ComplexField>::Real::faer_zero();
             for j in 0..n {
                 for i in 0..n {
-                    let x = err.read(i, j).abs();
+                    let x = err.read(i, j).faer_abs();
                     max = if max > x { max } else { x }
                 }
             }
-            assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
         });
     }
 
@@ -2727,9 +2793,9 @@ mod tests {
 
         let mut gen = rand::rngs::StdRng::seed_from_u64(0);
         let mut complexify = |e: E| {
-            let i = E::one().neg().sqrt();
-            if e == E::from_f64(1.0) {
-                e.add(i.mul(E::from_f64(gen.gen())))
+            let i = E::faer_one().faer_neg().faer_sqrt();
+            if e == E::faer_from_f64(1.0) {
+                e.faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
             } else {
                 e
             }
@@ -2740,7 +2806,7 @@ mod tests {
         let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat =
-            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
         let values = SliceGroup::new(values_mat.col_ref(0));
 
         let A = SparseColMatRef::<'_, I, E>::new(
@@ -2782,20 +2848,20 @@ mod tests {
             let mut A = sparse_to_dense(*A);
             for j in 0..n {
                 for i in j + 1..n {
-                    A.write(i, j, A.read(j, i).conj());
+                    A.write(i, j, A.read(j, i).faer_conj());
                 }
             }
 
             let err = reconstruct_from_simplicial(&symbolic, values.rb()) - &A;
 
-            let mut max = <E as ComplexField>::Real::zero();
+            let mut max = <E as ComplexField>::Real::faer_zero();
             for j in 0..n {
                 for i in 0..n {
-                    let x = err.read(i, j).abs();
+                    let x = err.read(i, j).faer_abs();
                     max = if max > x { max } else { x }
                 }
             }
-            assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+            assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
         });
     }
 
@@ -2805,10 +2871,10 @@ mod tests {
 
         for (_, col_ptr, row_ind, values) in [SMALL, MEDIUM] {
             let mut gen = rand::rngs::StdRng::seed_from_u64(0);
-            let i = E::one().neg().sqrt();
+            let i = E::faer_one().faer_neg().faer_sqrt();
             let mut complexify = |e: E| {
-                if e == E::from_f64(1.0) {
-                    e.add(i.mul(E::from_f64(gen.gen())))
+                if e == E::faer_from_f64(1.0) {
+                    e.faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
                 } else {
                     e
                 }
@@ -2818,8 +2884,9 @@ mod tests {
             let nnz = values.len();
             let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
             let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
-            let values_mat =
-                faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::from_f64(values[i])));
+            let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| {
+                complexify(E::faer_from_f64(values[i]))
+            });
             let values = SliceGroup::new(values_mat.col_ref(0));
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
@@ -2842,7 +2909,7 @@ mod tests {
             let mut A_dense = sparse_to_dense(A_upper);
             for j in 0..n {
                 for i in j + 1..n {
-                    A_dense.write(i, j, A_dense.read(j, i).conj());
+                    A_dense.write(i, j, A_dense.read(j, i).faer_conj());
                 }
             }
 
@@ -2889,21 +2956,22 @@ mod tests {
 
                 let (perm_fwd, _) = symbolic.perm().fwd_inv();
 
-                let mut max = <E as ComplexField>::Real::zero();
+                let mut max = <E as ComplexField>::Real::faer_zero();
                 for j in 0..n {
                     for i in 0..n {
                         let x = (A_reconstructed
                             .read(i, j)
-                            .sub(A_dense.read(perm_fwd[i].zx(), perm_fwd[j].zx())))
-                        .abs();
+                            .faer_sub(A_dense.read(perm_fwd[i].zx(), perm_fwd[j].zx())))
+                        .faer_abs();
                         max = if max > x { max } else { x }
                     }
                 }
-                assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
 
                 for k in (0..16).chain(128..132) {
                     let rhs = Mat::<E>::from_fn(n, k, |_, _| {
-                        E::from_f64(gen.gen()).add(i.mul(E::from_f64(gen.gen())))
+                        E::faer_from_f64(gen.gen())
+                            .faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
                     });
                     for conj in [Conj::Yes, Conj::No] {
                         let mut x = rhs.clone();
@@ -2922,14 +2990,17 @@ mod tests {
                         } else {
                             A_dense.conjugate() * &x
                         };
-                        let mut max = <E as ComplexField>::Real::zero();
+                        let mut max = <E as ComplexField>::Real::faer_zero();
                         for j in 0..k {
                             for i in 0..n {
-                                let x = rhs_reconstructed.read(i, j).sub(rhs.read(i, j)).abs();
+                                let x = rhs_reconstructed
+                                    .read(i, j)
+                                    .faer_sub(rhs.read(i, j))
+                                    .faer_abs();
                                 max = if max > x { max } else { x }
                             }
                         }
-                        assert!(max < <E as ComplexField>::Real::from_f64(1e-25));
+                        assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
                     }
                 }
             }
@@ -2975,7 +3046,7 @@ mod tests {
             for j in 0..n {
                 A_dense.write(j, j, signs[j] as f64 * dynamic_regularization_epsilon);
                 for i in j + 1..n {
-                    A_dense.write(i, j, A_dense.read(j, i).conj());
+                    A_dense.write(i, j, A_dense.read(j, i).faer_conj());
                 }
             }
 
@@ -3026,12 +3097,12 @@ mod tests {
                 };
 
                 let (perm_fwd, _) = symbolic.perm().fwd_inv();
-                let mut max = <E as ComplexField>::Real::zero();
+                let mut max = <E as ComplexField>::Real::faer_zero();
                 for j in 0..n {
                     for i in 0..n {
                         let x = (A_reconstructed
                             .read(i, j)
-                            .sub(A_dense.read(perm_fwd[i].zx(), perm_fwd[j].zx())))
+                            .faer_sub(A_dense.read(perm_fwd[i].zx(), perm_fwd[j].zx())))
                         .abs();
                         max = if max > x { max } else { x }
                     }

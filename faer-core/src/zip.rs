@@ -28,8 +28,8 @@ pub struct ReadWrite<'a, E: Entity> {
 impl<E: Entity> Read<'_, E> {
     #[inline(always)]
     pub fn read(&self) -> E {
-        E::from_units(E::map(
-            E::as_ref(&self.ptr),
+        E::faer_from_units(E::faer_map(
+            E::faer_as_ref(&self.ptr),
             #[inline(always)]
             |ptr| unsafe { ptr.assume_init_read() },
         ))
@@ -39,8 +39,8 @@ impl<E: Entity> Read<'_, E> {
 impl<E: Entity> ReadWrite<'_, E> {
     #[inline(always)]
     pub fn read(&self) -> E {
-        E::from_units(E::map(
-            E::as_ref(&self.ptr),
+        E::faer_from_units(E::faer_map(
+            E::faer_as_ref(&self.ptr),
             #[inline(always)]
             |ptr| unsafe { *ptr.assume_init_ref() },
         ))
@@ -48,9 +48,9 @@ impl<E: Entity> ReadWrite<'_, E> {
 
     #[inline(always)]
     pub fn write(&mut self, value: E) {
-        let value = E::into_units(value);
-        E::map(
-            E::zip(E::as_mut(&mut self.ptr), value),
+        let value = E::faer_into_units(value);
+        E::faer_map(
+            E::faer_zip(E::faer_as_mut(&mut self.ptr), value),
             #[inline(always)]
             |(ptr, value)| unsafe { *ptr.assume_init_mut() = value },
         );
@@ -129,7 +129,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
     #[inline(always)]
     unsafe fn get(&mut self, i: usize, j: usize) -> Self::Item {
         Read {
-            ptr: E::map(
+            ptr: E::faer_map(
                 self.ptr_inbounds_at(i, j),
                 #[inline(always)]
                 |ptr| &*(ptr as *const MaybeUninit<E::Unit>),
@@ -139,7 +139,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
 
     #[inline(always)]
     unsafe fn get_column_slice(&mut self, i: usize, j: usize, n_elems: usize) -> Self::RawSlice {
-        E::map(
+        E::faer_map(
             self.ptr_at(i, j),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts(ptr as *const MaybeUninit<E::Unit>, n_elems),
@@ -149,8 +149,8 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
     #[inline(always)]
     unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item {
         Read {
-            ptr: E::map(
-                E::as_mut(slice),
+            ptr: E::faer_map(
+                E::faer_as_mut(slice),
                 #[inline(always)]
                 |slice| slice.get_unchecked(idx),
             ),
@@ -199,7 +199,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
     #[inline(always)]
     unsafe fn get(&mut self, i: usize, j: usize) -> Self::Item {
         ReadWrite {
-            ptr: E::map(
+            ptr: E::faer_map(
                 self.rb_mut().ptr_inbounds_at(i, j),
                 #[inline(always)]
                 |ptr| &mut *(ptr as *mut MaybeUninit<E::Unit>),
@@ -209,7 +209,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
 
     #[inline(always)]
     unsafe fn get_column_slice(&mut self, i: usize, j: usize, n_elems: usize) -> Self::RawSlice {
-        E::map(
+        E::faer_map(
             self.rb_mut().ptr_at(i, j),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<E::Unit>, n_elems),
@@ -219,8 +219,8 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
     #[inline(always)]
     unsafe fn get_slice_elem(slice: &mut Self::RawSlice, idx: usize) -> Self::Item {
         ReadWrite {
-            ptr: E::map(
-                E::as_mut(slice),
+            ptr: E::faer_map(
+                E::faer_as_mut(slice),
                 #[inline(always)]
                 |slice| &mut *(slice.get_unchecked_mut(idx) as *mut _),
             ),
@@ -252,16 +252,16 @@ mod tests {
                                 let mut dst = Mat::from_fn(
                                     if transpose_dst { n } else { m },
                                     if transpose_dst { m } else { n },
-                                    |_, _| f64::zero(),
+                                    |_, _| f64::faer_zero(),
                                 );
                                 let src = Mat::from_fn(
                                     if transpose_src { n } else { m },
                                     if transpose_src { m } else { n },
-                                    |_, _| f64::one(),
+                                    |_, _| f64::faer_one(),
                                 );
 
-                                let mut target = Mat::from_fn(m, n, |_, _| f64::zero());
-                                let target_src = Mat::from_fn(m, n, |_, _| f64::one());
+                                let mut target = Mat::from_fn(m, n, |_, _| f64::faer_zero());
+                                let target_src = Mat::from_fn(m, n, |_, _| f64::faer_one());
 
                                 zipped!(target.as_mut(), target_src.as_ref())
                                     .for_each_triangular_lower(diag, |mut dst, src| {

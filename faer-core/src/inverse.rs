@@ -20,11 +20,11 @@ unsafe fn invert_lower_triangular_impl_small<E: ComplexField>(
     };
     match m {
         0 => {}
-        1 => dst.write_unchecked(0, 0, src(0, 0).inv()),
+        1 => dst.write_unchecked(0, 0, src(0, 0).faer_inv()),
         2 => {
-            let dst00 = src(0, 0).inv();
-            let dst11 = src(1, 1).inv();
-            let dst10 = (dst11.mul(src(1, 0)).mul(dst00)).neg();
+            let dst00 = src(0, 0).faer_inv();
+            let dst11 = src(1, 1).faer_inv();
+            let dst10 = (dst11.faer_mul(src(1, 0)).faer_mul(dst00)).faer_neg();
 
             dst.write_unchecked(0, 0, dst00);
             dst.write_unchecked(1, 1, dst11);
@@ -43,7 +43,7 @@ unsafe fn invert_unit_lower_triangular_impl_small<E: ComplexField>(
     match m {
         0 | 1 => {}
         2 => {
-            dst.write_unchecked(1, 0, src(1, 0).neg());
+            dst.write_unchecked(1, 0, src(1, 0).faer_neg());
         }
         _ => unreachable!(),
     }
@@ -83,7 +83,7 @@ unsafe fn invert_lower_triangular_impl<E: ComplexField>(
         dst_tl.rb(),
         BlockStructure::TriangularLower,
         None,
-        E::one().neg(),
+        E::faer_one().faer_neg(),
         parallelism,
     );
     solve::solve_lower_triangular_in_place(src_br, dst_bl, parallelism);
@@ -123,7 +123,7 @@ unsafe fn invert_unit_lower_triangular_impl<E: ComplexField>(
         dst_tl.rb(),
         BlockStructure::UnitTriangularLower,
         None,
-        E::one().neg(),
+        E::faer_one().faer_neg(),
         parallelism,
     );
     solve::solve_unit_lower_triangular_in_place(src_br, dst_bl, parallelism);

@@ -48,150 +48,155 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
         let (w3_head, w3_tail) = slice_as_mut_simd::<E, S>(w3);
 
         {
-            let neg_wj_over_ljj0 = E::simd_splat(simd, neg_wj_over_ljj0);
-            let neg_wj_over_ljj1 = E::simd_splat(simd, neg_wj_over_ljj1);
-            let neg_wj_over_ljj2 = E::simd_splat(simd, neg_wj_over_ljj2);
-            let neg_wj_over_ljj3 = E::simd_splat(simd, neg_wj_over_ljj3);
-            let nljj_over_ljj0 = E::simd_splat(simd, nljj_over_ljj0);
-            let nljj_over_ljj1 = E::simd_splat(simd, nljj_over_ljj1);
-            let nljj_over_ljj2 = E::simd_splat(simd, nljj_over_ljj2);
-            let nljj_over_ljj3 = E::simd_splat(simd, nljj_over_ljj3);
-            let alpha_wj_over_nljj0 = E::simd_splat(simd, alpha_wj_over_nljj0);
-            let alpha_wj_over_nljj1 = E::simd_splat(simd, alpha_wj_over_nljj1);
-            let alpha_wj_over_nljj2 = E::simd_splat(simd, alpha_wj_over_nljj2);
-            let alpha_wj_over_nljj3 = E::simd_splat(simd, alpha_wj_over_nljj3);
+            let neg_wj_over_ljj0 = E::faer_simd_splat(simd, neg_wj_over_ljj0);
+            let neg_wj_over_ljj1 = E::faer_simd_splat(simd, neg_wj_over_ljj1);
+            let neg_wj_over_ljj2 = E::faer_simd_splat(simd, neg_wj_over_ljj2);
+            let neg_wj_over_ljj3 = E::faer_simd_splat(simd, neg_wj_over_ljj3);
+            let nljj_over_ljj0 = E::faer_simd_splat(simd, nljj_over_ljj0);
+            let nljj_over_ljj1 = E::faer_simd_splat(simd, nljj_over_ljj1);
+            let nljj_over_ljj2 = E::faer_simd_splat(simd, nljj_over_ljj2);
+            let nljj_over_ljj3 = E::faer_simd_splat(simd, nljj_over_ljj3);
+            let alpha_wj_over_nljj0 = E::faer_simd_splat(simd, alpha_wj_over_nljj0);
+            let alpha_wj_over_nljj1 = E::faer_simd_splat(simd, alpha_wj_over_nljj1);
+            let alpha_wj_over_nljj2 = E::faer_simd_splat(simd, alpha_wj_over_nljj2);
+            let alpha_wj_over_nljj3 = E::faer_simd_splat(simd, alpha_wj_over_nljj3);
 
             for (l, (w0, (w1, (w2, w3)))) in zip(
-                E::into_iter(l_head),
+                E::faer_into_iter(l_head),
                 zip(
-                    E::into_iter(w0_head),
+                    E::faer_into_iter(w0_head),
                     zip(
-                        E::into_iter(w1_head),
-                        zip(E::into_iter(w2_head), E::into_iter(w3_head)),
+                        E::faer_into_iter(w1_head),
+                        zip(E::faer_into_iter(w2_head), E::faer_into_iter(w3_head)),
                     ),
                 ),
             ) {
-                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
-                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
-                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
-                let mut local_w2 = E::deref(E::rb(E::as_ref(&w2)));
-                let mut local_w3 = E::deref(E::rb(E::as_ref(&w3)));
+                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
+                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
+                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
+                let mut local_w2 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w2)));
+                let mut local_w3 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w3)));
 
-                local_w0 = E::simd_mul_adde(
+                local_w0 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj0),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj0),
+                    E::faer_copy(&local_l),
                     local_w0,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj0),
-                    E::copy(&local_w0),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj0), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj0),
+                    E::faer_copy(&local_w0),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj0), local_l),
                 );
 
-                local_w1 = E::simd_mul_adde(
+                local_w1 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj1),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj1),
+                    E::faer_copy(&local_l),
                     local_w1,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj1),
-                    E::copy(&local_w1),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj1), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj1),
+                    E::faer_copy(&local_w1),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj1), local_l),
                 );
 
-                local_w2 = E::simd_mul_adde(
+                local_w2 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj2),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj2),
+                    E::faer_copy(&local_l),
                     local_w2,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj2),
-                    E::copy(&local_w2),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj2), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj2),
+                    E::faer_copy(&local_w2),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj2), local_l),
                 );
 
-                local_w3 = E::simd_mul_adde(
+                local_w3 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj3),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj3),
+                    E::faer_copy(&local_l),
                     local_w3,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj3),
-                    E::copy(&local_w3),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj3), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj3),
+                    E::faer_copy(&local_w3),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj3), local_l),
                 );
 
-                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
-                E::map(E::zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
-                E::map(E::zip(w3, local_w3), |(w3, local_w3)| *w3 = local_w3);
+                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+                E::faer_map(E::faer_zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
+                E::faer_map(E::faer_zip(w3, local_w3), |(w3, local_w3)| *w3 = local_w3);
             }
         }
 
         for (l, (w0, (w1, (w2, w3)))) in zip(
-            E::into_iter(l_tail),
+            E::faer_into_iter(l_tail),
             zip(
-                E::into_iter(w0_tail),
+                E::faer_into_iter(w0_tail),
                 zip(
-                    E::into_iter(w1_tail),
-                    zip(E::into_iter(w2_tail), E::into_iter(w3_tail)),
+                    E::faer_into_iter(w1_tail),
+                    zip(E::faer_into_iter(w2_tail), E::faer_into_iter(w3_tail)),
                 ),
             ),
         ) {
-            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
-            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
-            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
-            let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
-            let mut local_w3 = E::from_units(E::deref(E::rb(E::as_ref(&w3))));
+            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
+            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
+            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
+            let mut local_w2 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w2))));
+            let mut local_w3 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w3))));
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
 
-            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj2, local_w2),
-                E::mul(nljj_over_ljj2, local_l),
+            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj2, local_w2),
+                E::faer_mul(nljj_over_ljj2, local_l),
             );
 
-            local_w3 = local_w3.add(E::mul(neg_wj_over_ljj3, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj3, local_w3),
-                E::mul(nljj_over_ljj3, local_l),
+            local_w3 = local_w3.faer_add(E::faer_mul(neg_wj_over_ljj3, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj3, local_w3),
+                E::faer_mul(nljj_over_ljj3, local_l),
             );
 
-            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
-                *l = local_l
-            });
-            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
-                *w0 = local_w0
-            });
-            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
-                *w1 = local_w1
-            });
-            E::map(E::zip(w2, E::into_units(local_w2)), |(w2, local_w2)| {
-                *w2 = local_w2
-            });
-            E::map(E::zip(w3, E::into_units(local_w3)), |(w3, local_w3)| {
-                *w3 = local_w3
-            });
+            E::faer_map(
+                E::faer_zip(l, E::faer_into_units(local_l)),
+                |(l, local_l)| *l = local_l,
+            );
+            E::faer_map(
+                E::faer_zip(w0, E::faer_into_units(local_w0)),
+                |(w0, local_w0)| *w0 = local_w0,
+            );
+            E::faer_map(
+                E::faer_zip(w1, E::faer_into_units(local_w1)),
+                |(w1, local_w1)| *w1 = local_w1,
+            );
+            E::faer_map(
+                E::faer_zip(w2, E::faer_into_units(local_w2)),
+                |(w2, local_w2)| *w2 = local_w2,
+            );
+            E::faer_map(
+                E::faer_zip(w3, E::faer_into_units(local_w3)),
+                |(w3, local_w3)| *w3 = local_w3,
+            );
         }
     }
 }
@@ -221,116 +226,120 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 3> {
         let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
 
         {
-            let neg_wj_over_ljj0 = E::simd_splat(simd, neg_wj_over_ljj0);
-            let neg_wj_over_ljj1 = E::simd_splat(simd, neg_wj_over_ljj1);
-            let neg_wj_over_ljj2 = E::simd_splat(simd, neg_wj_over_ljj2);
-            let nljj_over_ljj0 = E::simd_splat(simd, nljj_over_ljj0);
-            let nljj_over_ljj1 = E::simd_splat(simd, nljj_over_ljj1);
-            let nljj_over_ljj2 = E::simd_splat(simd, nljj_over_ljj2);
-            let alpha_wj_over_nljj0 = E::simd_splat(simd, alpha_wj_over_nljj0);
-            let alpha_wj_over_nljj1 = E::simd_splat(simd, alpha_wj_over_nljj1);
-            let alpha_wj_over_nljj2 = E::simd_splat(simd, alpha_wj_over_nljj2);
+            let neg_wj_over_ljj0 = E::faer_simd_splat(simd, neg_wj_over_ljj0);
+            let neg_wj_over_ljj1 = E::faer_simd_splat(simd, neg_wj_over_ljj1);
+            let neg_wj_over_ljj2 = E::faer_simd_splat(simd, neg_wj_over_ljj2);
+            let nljj_over_ljj0 = E::faer_simd_splat(simd, nljj_over_ljj0);
+            let nljj_over_ljj1 = E::faer_simd_splat(simd, nljj_over_ljj1);
+            let nljj_over_ljj2 = E::faer_simd_splat(simd, nljj_over_ljj2);
+            let alpha_wj_over_nljj0 = E::faer_simd_splat(simd, alpha_wj_over_nljj0);
+            let alpha_wj_over_nljj1 = E::faer_simd_splat(simd, alpha_wj_over_nljj1);
+            let alpha_wj_over_nljj2 = E::faer_simd_splat(simd, alpha_wj_over_nljj2);
 
             for (l, (w0, (w1, w2))) in zip(
-                E::into_iter(l_head),
+                E::faer_into_iter(l_head),
                 zip(
-                    E::into_iter(w0_head),
-                    zip(E::into_iter(w1_head), E::into_iter(w2_head)),
+                    E::faer_into_iter(w0_head),
+                    zip(E::faer_into_iter(w1_head), E::faer_into_iter(w2_head)),
                 ),
             ) {
-                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
-                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
-                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
-                let mut local_w2 = E::deref(E::rb(E::as_ref(&w2)));
+                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
+                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
+                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
+                let mut local_w2 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w2)));
 
-                local_w0 = E::simd_mul_adde(
+                local_w0 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj0),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj0),
+                    E::faer_copy(&local_l),
                     local_w0,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj0),
-                    E::copy(&local_w0),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj0), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj0),
+                    E::faer_copy(&local_w0),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj0), local_l),
                 );
 
-                local_w1 = E::simd_mul_adde(
+                local_w1 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj1),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj1),
+                    E::faer_copy(&local_l),
                     local_w1,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj1),
-                    E::copy(&local_w1),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj1), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj1),
+                    E::faer_copy(&local_w1),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj1), local_l),
                 );
 
-                local_w2 = E::simd_mul_adde(
+                local_w2 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj2),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj2),
+                    E::faer_copy(&local_l),
                     local_w2,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj2),
-                    E::copy(&local_w2),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj2), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj2),
+                    E::faer_copy(&local_w2),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj2), local_l),
                 );
 
-                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
-                E::map(E::zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
+                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+                E::faer_map(E::faer_zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
             }
         }
 
         for (l, (w0, (w1, w2))) in zip(
-            E::into_iter(l_tail),
+            E::faer_into_iter(l_tail),
             zip(
-                E::into_iter(w0_tail),
-                zip(E::into_iter(w1_tail), E::into_iter(w2_tail)),
+                E::faer_into_iter(w0_tail),
+                zip(E::faer_into_iter(w1_tail), E::faer_into_iter(w2_tail)),
             ),
         ) {
-            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
-            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
-            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
-            let mut local_w2 = E::from_units(E::deref(E::rb(E::as_ref(&w2))));
+            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
+            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
+            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
+            let mut local_w2 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w2))));
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
 
-            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj2, local_w2),
-                E::mul(nljj_over_ljj2, local_l),
+            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj2, local_w2),
+                E::faer_mul(nljj_over_ljj2, local_l),
             );
 
-            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
-                *l = local_l
-            });
-            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
-                *w0 = local_w0
-            });
-            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
-                *w1 = local_w1
-            });
-            E::map(E::zip(w2, E::into_units(local_w2)), |(w2, local_w2)| {
-                *w2 = local_w2
-            });
+            E::faer_map(
+                E::faer_zip(l, E::faer_into_units(local_l)),
+                |(l, local_l)| *l = local_l,
+            );
+            E::faer_map(
+                E::faer_zip(w0, E::faer_into_units(local_w0)),
+                |(w0, local_w0)| *w0 = local_w0,
+            );
+            E::faer_map(
+                E::faer_zip(w1, E::faer_into_units(local_w1)),
+                |(w1, local_w1)| *w1 = local_w1,
+            );
+            E::faer_map(
+                E::faer_zip(w2, E::faer_into_units(local_w2)),
+                |(w2, local_w2)| *w2 = local_w2,
+            );
         }
     }
 }
@@ -358,82 +367,85 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 2> {
         let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
 
         {
-            let neg_wj_over_ljj0 = E::simd_splat(simd, neg_wj_over_ljj0);
-            let neg_wj_over_ljj1 = E::simd_splat(simd, neg_wj_over_ljj1);
-            let nljj_over_ljj0 = E::simd_splat(simd, nljj_over_ljj0);
-            let nljj_over_ljj1 = E::simd_splat(simd, nljj_over_ljj1);
-            let alpha_wj_over_nljj0 = E::simd_splat(simd, alpha_wj_over_nljj0);
-            let alpha_wj_over_nljj1 = E::simd_splat(simd, alpha_wj_over_nljj1);
+            let neg_wj_over_ljj0 = E::faer_simd_splat(simd, neg_wj_over_ljj0);
+            let neg_wj_over_ljj1 = E::faer_simd_splat(simd, neg_wj_over_ljj1);
+            let nljj_over_ljj0 = E::faer_simd_splat(simd, nljj_over_ljj0);
+            let nljj_over_ljj1 = E::faer_simd_splat(simd, nljj_over_ljj1);
+            let alpha_wj_over_nljj0 = E::faer_simd_splat(simd, alpha_wj_over_nljj0);
+            let alpha_wj_over_nljj1 = E::faer_simd_splat(simd, alpha_wj_over_nljj1);
 
             for (l, (w0, w1)) in zip(
-                E::into_iter(l_head),
-                zip(E::into_iter(w0_head), E::into_iter(w1_head)),
+                E::faer_into_iter(l_head),
+                zip(E::faer_into_iter(w0_head), E::faer_into_iter(w1_head)),
             ) {
-                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
-                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
-                let mut local_w1 = E::deref(E::rb(E::as_ref(&w1)));
+                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
+                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
+                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
 
-                local_w0 = E::simd_mul_adde(
+                local_w0 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj0),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj0),
+                    E::faer_copy(&local_l),
                     local_w0,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj0),
-                    E::copy(&local_w0),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj0), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj0),
+                    E::faer_copy(&local_w0),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj0), local_l),
                 );
 
-                local_w1 = E::simd_mul_adde(
+                local_w1 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj1),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj1),
+                    E::faer_copy(&local_l),
                     local_w1,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj1),
-                    E::copy(&local_w1),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj1), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj1),
+                    E::faer_copy(&local_w1),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj1), local_l),
                 );
 
-                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::map(E::zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
+                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
             }
         }
 
         for (l, (w0, w1)) in zip(
-            E::into_iter(l_tail),
-            zip(E::into_iter(w0_tail), E::into_iter(w1_tail)),
+            E::faer_into_iter(l_tail),
+            zip(E::faer_into_iter(w0_tail), E::faer_into_iter(w1_tail)),
         ) {
-            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
-            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
-            let mut local_w1 = E::from_units(E::deref(E::rb(E::as_ref(&w1))));
+            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
+            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
+            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
 
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
 
-            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
-                *l = local_l
-            });
-            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
-                *w0 = local_w0
-            });
-            E::map(E::zip(w1, E::into_units(local_w1)), |(w1, local_w1)| {
-                *w1 = local_w1
-            });
+            E::faer_map(
+                E::faer_zip(l, E::faer_into_units(local_l)),
+                |(l, local_l)| *l = local_l,
+            );
+            E::faer_map(
+                E::faer_zip(w0, E::faer_into_units(local_w0)),
+                |(w0, local_w0)| *w0 = local_w0,
+            );
+            E::faer_map(
+                E::faer_zip(w1, E::faer_into_units(local_w1)),
+                |(w1, local_w1)| *w1 = local_w1,
+            );
         }
     }
 }
@@ -460,48 +472,50 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
         let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
 
         {
-            let neg_wj_over_ljj0 = E::simd_splat(simd, neg_wj_over_ljj0);
-            let nljj_over_ljj0 = E::simd_splat(simd, nljj_over_ljj0);
-            let alpha_wj_over_nljj0 = E::simd_splat(simd, alpha_wj_over_nljj0);
+            let neg_wj_over_ljj0 = E::faer_simd_splat(simd, neg_wj_over_ljj0);
+            let nljj_over_ljj0 = E::faer_simd_splat(simd, nljj_over_ljj0);
+            let alpha_wj_over_nljj0 = E::faer_simd_splat(simd, alpha_wj_over_nljj0);
 
-            for (l, w0) in zip(E::into_iter(l_head), E::into_iter(w0_head)) {
-                let mut local_l = E::deref(E::rb(E::as_ref(&l)));
-                let mut local_w0 = E::deref(E::rb(E::as_ref(&w0)));
+            for (l, w0) in zip(E::faer_into_iter(l_head), E::faer_into_iter(w0_head)) {
+                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
+                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
 
-                local_w0 = E::simd_mul_adde(
+                local_w0 = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&neg_wj_over_ljj0),
-                    E::copy(&local_l),
+                    E::faer_copy(&neg_wj_over_ljj0),
+                    E::faer_copy(&local_l),
                     local_w0,
                 );
-                local_l = E::simd_mul_adde(
+                local_l = E::faer_simd_mul_adde(
                     simd,
-                    E::copy(&alpha_wj_over_nljj0),
-                    E::copy(&local_w0),
-                    E::simd_mul(simd, E::copy(&nljj_over_ljj0), local_l),
+                    E::faer_copy(&alpha_wj_over_nljj0),
+                    E::faer_copy(&local_w0),
+                    E::faer_simd_mul(simd, E::faer_copy(&nljj_over_ljj0), local_l),
                 );
 
-                E::map(E::zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::map(E::zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
+                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
+                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
             }
         }
 
-        for (l, w0) in zip(E::into_iter(l_tail), E::into_iter(w0_tail)) {
-            let mut local_l = E::from_units(E::deref(E::rb(E::as_ref(&l))));
-            let mut local_w0 = E::from_units(E::deref(E::rb(E::as_ref(&w0))));
+        for (l, w0) in zip(E::faer_into_iter(l_tail), E::faer_into_iter(w0_tail)) {
+            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
+            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
 
-            E::map(E::zip(l, E::into_units(local_l)), |(l, local_l)| {
-                *l = local_l
-            });
-            E::map(E::zip(w0, E::into_units(local_w0)), |(w0, local_w0)| {
-                *w0 = local_w0
-            });
+            E::faer_map(
+                E::faer_zip(l, E::faer_into_units(local_l)),
+                |(l, local_l)| *l = local_l,
+            );
+            E::faer_map(
+                E::faer_zip(w0, E::faer_into_units(local_w0)),
+                |(w0, local_w0)| *w0 = local_w0,
+            );
         }
     }
 }
@@ -522,13 +536,13 @@ fn rank_update_step_impl4<E: ComplexField>(
     let w3 = unsafe { w.col(3).const_cast() };
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 4> {
-            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
                 [
-                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w3.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w3.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
                 ]
             },
             neg_wj_over_ljj_array,
@@ -549,25 +563,25 @@ fn rank_update_step_impl4<E: ComplexField>(
             let mut local_w2 = w2.read();
             let mut local_w3 = w3.read();
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
-            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj2, local_w2),
-                E::mul(nljj_over_ljj2, local_l),
+            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj2, local_w2),
+                E::faer_mul(nljj_over_ljj2, local_l),
             );
-            local_w3 = local_w3.add(E::mul(neg_wj_over_ljj3, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj3, local_w3),
-                E::mul(nljj_over_ljj3, local_l),
+            local_w3 = local_w3.faer_add(E::faer_mul(neg_wj_over_ljj3, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj3, local_w3),
+                E::faer_mul(nljj_over_ljj3, local_l),
             );
 
             l.write(local_l);
@@ -599,12 +613,12 @@ fn rank_update_step_impl3<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
-            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
                 [
-                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
                 ]
             },
             neg_wj_over_ljj_array,
@@ -623,20 +637,20 @@ fn rank_update_step_impl3<E: ComplexField>(
             let mut local_w1 = w1.read();
             let mut local_w2 = w2.read();
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
-            local_w2 = local_w2.add(E::mul(neg_wj_over_ljj2, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj2, local_w2),
-                E::mul(nljj_over_ljj2, local_l),
+            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj2, local_w2),
+                E::faer_mul(nljj_over_ljj2, local_l),
             );
 
             l.write(local_l);
@@ -665,11 +679,11 @@ fn rank_update_step_impl2<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 2> {
-            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
             w: unsafe {
                 [
-                    E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
+                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
                 ]
             },
             neg_wj_over_ljj_array,
@@ -686,15 +700,15 @@ fn rank_update_step_impl2<E: ComplexField>(
             let mut local_w0 = w0.read();
             let mut local_w1 = w1.read();
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
-            local_w1 = local_w1.add(E::mul(neg_wj_over_ljj1, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj1, local_w1),
-                E::mul(nljj_over_ljj1, local_l),
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
             );
 
             l.write(local_l);
@@ -722,8 +736,12 @@ fn rank_update_step_impl1<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w_rs == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 1> {
-            l_col: unsafe { E::map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
-            w: unsafe { [E::map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m))] },
+            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
+            w: unsafe {
+                [E::faer_map(w0.as_ptr(), |ptr| {
+                    slice::from_raw_parts_mut(ptr, m)
+                })]
+            },
             neg_wj_over_ljj_array,
             alpha_wj_over_nljj_array,
             nljj_over_ljj_array,
@@ -737,10 +755,10 @@ fn rank_update_step_impl1<E: ComplexField>(
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
 
-            local_w0 = local_w0.add(E::mul(neg_wj_over_ljj0, local_l));
-            local_l = E::add(
-                E::mul(alpha_wj_over_nljj0, local_w0),
-                E::mul(nljj_over_ljj0, local_l),
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
             );
 
             l.write(local_l);
@@ -783,9 +801,24 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                 let mut r_idx = 0;
                 while r_idx < r {
                     let r_chunk = Ord::min(r - r_idx, 4);
-                    let mut neg_wj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
-                    let mut alpha_wj_over_nljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
-                    let mut nljj_over_ljj_array = [E::zero(), E::zero(), E::zero(), E::zero()];
+                    let mut neg_wj_over_ljj_array = [
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                    ];
+                    let mut alpha_wj_over_nljj_array = [
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                    ];
+                    let mut nljj_over_ljj_array = [
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                        E::faer_zero(),
+                    ];
 
                     let mut ljj = l.read_unchecked(j, j);
                     for k in 0..r_chunk {
@@ -795,25 +828,27 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 
                         let local_alpha = alpha.read_unchecked(r_idx + k, 0);
                         let wj = w.read_unchecked(j, r_idx + k);
-                        let alpha_conj_wj = local_alpha.mul(wj.conj());
+                        let alpha_conj_wj = local_alpha.faer_mul(wj.faer_conj());
 
-                        let sqr_nljj = ljj.mul(ljj).add(alpha_conj_wj.mul(wj));
-                        match PartialOrd::partial_cmp(&sqr_nljj.real(), &E::Real::zero()) {
+                        let sqr_nljj = ljj.faer_mul(ljj).faer_add(alpha_conj_wj.faer_mul(wj));
+                        match PartialOrd::partial_cmp(&sqr_nljj.faer_real(), &E::Real::faer_zero())
+                        {
                             Some(core::cmp::Ordering::Greater) => (),
                             _ => return Err(CholeskyError),
                         }
-                        let nljj = E::from_real(sqr_nljj.real().sqrt());
-                        let inv_ljj = ljj.inv();
-                        let inv_nljj = nljj.inv();
+                        let nljj = E::faer_from_real(sqr_nljj.faer_real().faer_sqrt());
+                        let inv_ljj = ljj.faer_inv();
+                        let inv_nljj = nljj.faer_inv();
 
-                        *neg_wj_over_ljj = (wj.mul(inv_ljj)).neg();
-                        *nljj_over_ljj = nljj.mul(inv_ljj);
-                        *alpha_conj_wj_over_nljj = alpha_conj_wj.mul(inv_nljj);
+                        *neg_wj_over_ljj = (wj.faer_mul(inv_ljj)).faer_neg();
+                        *nljj_over_ljj = nljj.faer_mul(inv_ljj);
+                        *alpha_conj_wj_over_nljj = alpha_conj_wj.faer_mul(inv_nljj);
                         alpha.write_unchecked(
                             r_idx + k,
                             0,
-                            local_alpha.sub(
-                                (*alpha_conj_wj_over_nljj).mul((*alpha_conj_wj_over_nljj).conj()),
+                            local_alpha.faer_sub(
+                                (*alpha_conj_wj_over_nljj)
+                                    .faer_mul((*alpha_conj_wj_over_nljj).faer_conj()),
                             ),
                         );
 
@@ -980,7 +1015,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                alpha.write_unchecked(k, 0, E::one());
+                alpha.write_unchecked(k, 0, E::faer_one());
             }
 
             for chunk_i in k..r {
@@ -1102,7 +1137,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     for j in 0..insertion_index {
         for i in 0..r {
             unsafe {
-                l10.write_unchecked(i, j, a10.read_unchecked(i, j).conj());
+                l10.write_unchecked(i, j, a10.read_unchecked(i, j).faer_conj());
             }
         }
     }
@@ -1122,8 +1157,8 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         BlockStructure::Rectangular,
         a01.rb(),
         BlockStructure::Rectangular,
-        Some(E::one()),
-        E::one().neg(),
+        Some(E::faer_one()),
+        E::faer_one().faer_neg(),
         parallelism,
     );
 
@@ -1150,8 +1185,8 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         l21.rb_mut(),
         l20.rb(),
         a01.rb(),
-        Some(E::one()),
-        E::one().neg(),
+        Some(E::faer_one()),
+        E::faer_one().faer_neg(),
         parallelism,
     );
 
@@ -1162,7 +1197,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            alpha.write_unchecked(j, 0, E::one().neg());
+            alpha.write_unchecked(j, 0, E::faer_one().faer_neg());
 
             for i in 0..rem {
                 w.write_unchecked(i, j, l21.read_unchecked(i, j));

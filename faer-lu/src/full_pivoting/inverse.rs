@@ -56,7 +56,7 @@ fn invert_impl<T: ComplexField>(
         l_inv,
         BlockStructure::UnitTriangularLower,
         None,
-        T::one(),
+        T::faer_one(),
         parallelism,
     );
 

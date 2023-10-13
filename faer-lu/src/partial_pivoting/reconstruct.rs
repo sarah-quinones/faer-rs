@@ -41,7 +41,7 @@ fn reconstruct_impl<E: ComplexField>(
         u_left,
         BlockStructure::TriangularUpper,
         None,
-        E::one(),
+        E::faer_one(),
         parallelism,
     );
     triangular::matmul(
@@ -52,7 +52,7 @@ fn reconstruct_impl<E: ComplexField>(
         u_right,
         BlockStructure::Rectangular,
         None,
-        E::one(),
+        E::faer_one(),
         parallelism,
     );
     triangular::matmul(
@@ -63,7 +63,7 @@ fn reconstruct_impl<E: ComplexField>(
         u_left,
         BlockStructure::TriangularUpper,
         None,
-        E::one(),
+        E::faer_one(),
         parallelism,
     );
 

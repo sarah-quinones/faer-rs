@@ -33,7 +33,7 @@ mod tests {
             let dj = cholesky_factors.read(j, j);
             lxd.write(j, j, dj);
             for i in j + 1..n {
-                lxd.write(i, j, cholesky_factors.read(i, j).mul(dj));
+                lxd.write(i, j, cholesky_factors.read(i, j).faer_mul(dj));
             }
         }
 
@@ -47,7 +47,7 @@ mod tests {
             cholesky_factors.adjoint(),
             BlockStructure::UnitTriangularUpper,
             None,
-            E::one(),
+            E::faer_one(),
             Parallelism::Rayon(8),
         );
 
@@ -70,7 +70,7 @@ mod tests {
             a.as_ref().adjoint(),
             a.as_ref(),
             None,
-            E::one(),
+            E::faer_one(),
             Parallelism::Rayon(8),
         );
 
@@ -141,7 +141,7 @@ mod tests {
             rhs.as_ref(),
             Rectangular,
             None,
-            E::one(),
+            E::faer_one(),
             Parallelism::Rayon(8),
         );
 
@@ -152,8 +152,8 @@ mod tests {
             StrictTriangularUpper,
             rhs.as_ref(),
             Rectangular,
-            Some(E::one()),
-            E::one(),
+            Some(E::faer_one()),
+            E::faer_one(),
             Parallelism::Rayon(8),
         );
 
@@ -174,13 +174,13 @@ mod tests {
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
             let mut w = Mat::from_fn(n, k, |_, _| random());
-            let mut alpha = Mat::from_fn(k, 1, |_, _| E::from_real(rand::random()));
+            let mut alpha = Mat::from_fn(k, 1, |_, _| E::faer_from_real(rand::random()));
             let alpha = alpha.as_mut().col(0);
 
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).mul(w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j, 0).faer_mul(w.read(i, j)));
                 }
             }
 
@@ -191,8 +191,8 @@ mod tests {
                 Rectangular,
                 w.as_ref().adjoint(),
                 Rectangular,
-                Some(E::one()),
-                E::one(),
+                Some(E::faer_one()),
+                E::faer_one(),
                 Parallelism::Rayon(8),
             );
 
@@ -340,11 +340,11 @@ mod tests {
                     ..w.read(3, 1)
                 },
             );
-            w.write(2, 1, w.read(3, 0).conj());
+            w.write(2, 1, w.read(3, 0).faer_conj());
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::faer_conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), w(0, 0), w(0, 1), a(0, 2), a(0, 3)],
@@ -371,7 +371,7 @@ mod tests {
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| E::zero());
+            a.resize_with(n + r, n + r, |_, _| E::faer_zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
@@ -411,11 +411,11 @@ mod tests {
                     ..w.read(1, 1)
                 },
             );
-            w.write(0, 1, w.read(1, 0).conj());
+            w.write(0, 1, w.read(1, 0).faer_conj());
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::faer_conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [w(0, 0), w(0, 1), wc(2, 0), wc(3, 0), wc(4, 0), wc(5, 0)],
@@ -442,7 +442,7 @@ mod tests {
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| E::zero());
+            a.resize_with(n + r, n + r, |_, _| E::faer_zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,
@@ -482,11 +482,11 @@ mod tests {
                     ..w.read(5, 1)
                 },
             );
-            w.write(4, 1, w.read(5, 0).conj());
+            w.write(4, 1, w.read(5, 0).faer_conj());
 
             let a_new = {
                 let w = |i, j| w.read(i, j);
-                let wc = |i, j| ComplexField::conj(w(i, j));
+                let wc = |i, j| ComplexField::faer_conj(w(i, j));
                 let a = |i, j| a.read(i, j);
                 mat![
                     [a(0, 0), a(0, 1), a(0, 2), a(0, 3), w(0, 0), w(0, 1)],
@@ -513,7 +513,7 @@ mod tests {
                 Default::default(),
             );
 
-            a.resize_with(n + r, n + r, |_, _| E::zero());
+            a.resize_with(n + r, n + r, |_, _| E::faer_zero());
             insert_rows_and_cols_clobber(
                 a.as_mut(),
                 position,

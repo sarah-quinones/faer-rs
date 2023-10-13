@@ -130,8 +130,8 @@ pub fn compute_hermitian_evd<E: ComplexField>(
         matrix,
         s,
         u,
-        E::Real::epsilon().unwrap(),
-        E::Real::zero_threshold().unwrap(),
+        E::Real::faer_epsilon().unwrap(),
+        E::Real::faer_zero_threshold().unwrap(),
         parallelism,
         stack,
         params,
@@ -169,13 +169,13 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
 
     let mut all_finite = true;
     zipped!(matrix).for_each_triangular_lower(faer_core::zip::Diag::Include, |x| {
-        all_finite &= x.read().is_finite();
+        all_finite &= x.read().faer_is_finite();
     });
 
     if !all_finite {
-        { s }.fill(E::nan());
+        { s }.fill(E::faer_nan());
         if let Some(mut u) = u {
-            u.fill(E::nan());
+            u.fill(E::faer_nan());
         }
         return;
     }
@@ -207,8 +207,8 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     let mut u = match u {
         Some(u) => u,
         None => {
-            let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).real());
-            let (mut offdiag, _) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
+            let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
+            let (mut offdiag, _) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
             tridiag_qr_algorithm::compute_tridiag_real_evd_qr_algorithm(
                 &mut diag,
                 &mut offdiag,
@@ -217,7 +217,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 zero_threshold,
             );
             for i in 0..n {
-                s.write(i, 0, E::from_real(diag[i]));
+                s.write(i, 0, E::faer_from_real(diag[i]));
             }
 
             return;
@@ -238,10 +238,10 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     }
 
     {
-        let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).real());
+        let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
 
         if coe::is_same::<E::Real, E>() {
-            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).real());
+            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_real());
 
             tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(
                 &mut diag,
@@ -253,25 +253,25 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 stack,
             );
         } else {
-            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).abs());
+            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
 
             let (mut u_real, stack) = temp_mat_uninit::<E::Real>(n, n, stack);
-            let (mut mul, stack) = stack.make_with(n, |_| E::zero());
+            let (mut mul, stack) = stack.make_with(n, |_| E::faer_zero());
 
             let normalized = |x: E| {
-                if x == E::zero() {
-                    E::one()
+                if x == E::faer_zero() {
+                    E::faer_one()
                 } else {
-                    x.scale_real(x.abs().inv())
+                    x.faer_scale_real(x.faer_abs().faer_inv())
                 }
             };
 
-            mul[0] = E::one();
+            mul[0] = E::faer_one();
 
-            let mut x = E::one();
+            let mut x = E::faer_one();
             for i in 1..n {
-                x = normalized(trid.read(i, i - 1).mul(x.conj())).conj();
-                mul[i] = x.conj();
+                x = normalized(trid.read(i, i - 1).faer_mul(x.faer_conj())).faer_conj();
+                mul[i] = x.faer_conj();
             }
 
             let mut u_real = u_real.as_mut();
@@ -289,14 +289,14 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
             for j in 0..n {
                 for i in 0..n {
                     unsafe {
-                        u.write_unchecked(i, j, mul[i].scale_real(u_real.read_unchecked(i, j)))
+                        u.write_unchecked(i, j, mul[i].faer_scale_real(u_real.read_unchecked(i, j)))
                     };
                 }
             }
         }
 
         for i in 0..n {
-            s.write(i, 0, E::from_real(diag[i]));
+            s.write(i, 0, E::faer_from_real(diag[i]));
         }
     }
 
@@ -350,8 +350,8 @@ pub fn compute_evd_real<E: RealField>(
         s_re,
         s_im,
         u,
-        E::epsilon().unwrap(),
-        E::zero_threshold().unwrap(),
+        E::faer_epsilon().unwrap(),
+        E::faer_zero_threshold().unwrap(),
         parallelism,
         stack,
         params,
@@ -394,10 +394,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     }
 
     if !matrix.is_all_finite() {
-        { s_re }.fill(E::nan());
-        { s_im }.fill(E::nan());
+        { s_re }.fill(E::faer_nan());
+        { s_im }.fill(E::faer_nan());
         if let Some(mut u) = u {
-            u.fill(E::nan());
+            u.fill(E::faer_nan());
         }
         return;
     }
@@ -415,7 +415,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill(E::one());
+    z.rb_mut().diagonal().fill(E::faer_one());
 
     {
         let (mut householder, mut stack) =
@@ -441,7 +441,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
         for j in 0..n {
             for i in j + 2..n {
-                h.write(i, j, E::zero());
+                h.write(i, j, E::faer_zero());
             }
         }
     }
@@ -467,11 +467,11 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
         let mut norm = zero_threshold;
         zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
-            norm = norm.add(x.read().abs());
+            norm = norm.faer_add(x.read().faer_abs());
         });
         // subdiagonal
         zipped!(h.rb().submatrix(1, 0, n - 1, n - 1).diagonal()).for_each(|x| {
-            norm = norm.add(x.read().abs());
+            norm = norm.faer_add(x.read().faer_abs());
         });
 
         {
@@ -482,16 +482,16 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                 }
                 k -= 1;
 
-                if k == 0 || h.read(k, k - 1) == E::zero() {
+                if k == 0 || h.read(k, k - 1) == E::faer_zero() {
                     // real eigenvalue
                     let p = h.read(k, k);
 
-                    x.write(k, k, E::one());
+                    x.write(k, k, E::faer_one());
 
                     // solve (h[:k, :k] - p I) X = -h[:i, i]
                     // form RHS
                     for i in 0..k {
-                        x.write(i, k, h.read(i, k).neg());
+                        x.write(i, k, h.read(i, k).faer_neg());
                     }
 
                     // solve in place
@@ -502,7 +502,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         }
                         i -= 1;
 
-                        if i == 0 || h.read(i, i - 1) == E::zero() {
+                        if i == 0 || h.read(i, i - 1) == E::faer_zero() {
                             // 1x1 block
                             let dot = inner_prod_with_conj(
                                 h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
@@ -511,15 +511,15 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 Conj::No,
                             );
 
-                            x.write(i, k, x.read(i, k).sub(dot));
-                            let mut z = h.read(i, i).sub(p);
-                            if z == E::zero() {
-                                z = epsilon.mul(norm);
+                            x.write(i, k, x.read(i, k).faer_sub(dot));
+                            let mut z = h.read(i, i).faer_sub(p);
+                            if z == E::faer_zero() {
+                                z = epsilon.faer_mul(norm);
                             }
-                            let z_inv = z.inv();
+                            let z_inv = z.faer_inv();
                             let x_ = x.read(i, k);
-                            if x_ != E::zero() {
-                                x.write(i, k, x.read(i, k).mul(z_inv));
+                            if x_ != E::faer_zero() {
+                                x.write(i, k, x.read(i, k).faer_mul(z_inv));
                             }
                         } else {
                             // 2x2 block
@@ -536,8 +536,8 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 Conj::No,
                             );
 
-                            x.write(i - 1, k, x.read(i - 1, k).sub(dot0));
-                            x.write(i, k, x.read(i, k).sub(dot1));
+                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0));
+                            x.write(i, k, x.read(i, k).faer_sub(dot1));
 
                             // solve
                             // [a b  [x0    [r0
@@ -545,17 +545,17 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             //
                             //  [x0    [a  -b  [r0
                             //   x1] =  -c  a]× r1] / det
-                            let a = h.read(i, i).sub(p);
+                            let a = h.read(i, i).faer_sub(p);
                             let b = h.read(i - 1, i);
                             let c = h.read(i, i - 1);
 
                             let r0 = x.read(i - 1, k);
                             let r1 = x.read(i, k);
 
-                            let inv_det = (a.mul(a).sub(b.mul(c))).inv();
+                            let inv_det = (a.faer_mul(a).faer_sub(b.faer_mul(c))).faer_inv();
 
-                            let x0 = a.mul(r0).sub(b.mul(r1)).mul(inv_det);
-                            let x1 = a.mul(r1).sub(c.mul(r0)).mul(inv_det);
+                            let x0 = a.faer_mul(r0).faer_sub(b.faer_mul(r1)).faer_mul(inv_det);
+                            let x1 = a.faer_mul(r1).faer_sub(c.faer_mul(r0)).faer_mul(inv_det);
 
                             x.write(i - 1, k, x0);
                             x.write(i, k, x1);
@@ -568,25 +568,29 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                     let p = h.read(k, k);
                     let q = h
                         .read(k, k - 1)
-                        .abs()
-                        .sqrt()
-                        .mul(h.read(k - 1, k).abs().sqrt());
+                        .faer_abs()
+                        .faer_sqrt()
+                        .faer_mul(h.read(k - 1, k).faer_abs().faer_sqrt());
 
-                    if h.read(k - 1, k).abs() >= h.read(k, k - 1) {
-                        x.write(k - 1, k - 1, E::one());
-                        x.write(k, k, q.div(h.read(k - 1, k)));
+                    if h.read(k - 1, k).faer_abs() >= h.read(k, k - 1) {
+                        x.write(k - 1, k - 1, E::faer_one());
+                        x.write(k, k, q.faer_div(h.read(k - 1, k)));
                     } else {
-                        x.write(k - 1, k - 1, q.neg().div(h.read(k, k - 1)));
-                        x.write(k, k, E::one());
+                        x.write(k - 1, k - 1, q.faer_neg().faer_div(h.read(k, k - 1)));
+                        x.write(k, k, E::faer_one());
                     }
-                    x.write(k - 1, k, E::zero());
-                    x.write(k, k - 1, E::zero());
+                    x.write(k - 1, k, E::faer_zero());
+                    x.write(k, k - 1, E::faer_zero());
 
                     // solve (h[:k-1, :k-1] - (p + iq) I) X = RHS
                     // form RHS
                     for i in 0..k - 1 {
-                        x.write(i, k - 1, x.read(k - 1, k - 1).neg().mul(h.read(i, k - 1)));
-                        x.write(i, k, x.read(k, k).neg().mul(h.read(i, k)));
+                        x.write(
+                            i,
+                            k - 1,
+                            x.read(k - 1, k - 1).faer_neg().faer_mul(h.read(i, k - 1)),
+                        );
+                        x.write(i, k, x.read(k, k).faer_neg().faer_mul(h.read(i, k)));
                     }
 
                     // solve in place
@@ -599,65 +603,65 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         }
                         i -= 1;
 
-                        if i == 0 || h.read(i, i - 1) == E::zero() {
+                        if i == 0 || h.read(i, i - 1) == E::faer_zero() {
                             // 1x1 block
-                            let mut dot = Complex::<E>::zero();
+                            let mut dot = Complex::<E>::faer_zero();
                             for j in i + 1..k - 1 {
-                                dot = dot.add(
+                                dot = dot.faer_add(
                                     Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(h.read(i, j)),
+                                    .faer_scale_real(h.read(i, j)),
                                 );
                             }
 
-                            x.write(i, k - 1, x.read(i, k - 1).sub(dot.re));
-                            x.write(i, k, x.read(i, k).sub(dot.im));
+                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot.re));
+                            x.write(i, k, x.read(i, k).faer_sub(dot.im));
 
                             let z = Complex {
-                                re: h.read(i, i).sub(p),
-                                im: q.neg(),
+                                re: h.read(i, i).faer_sub(p),
+                                im: q.faer_neg(),
                             };
-                            let z_inv = z.inv();
+                            let z_inv = z.faer_inv();
                             let x_ = Complex {
                                 re: x.read(i, k - 1),
                                 im: x.read(i, k),
                             };
-                            if x_ != Complex::<E>::zero() {
-                                let x_ = z_inv.mul(x_);
+                            if x_ != Complex::<E>::faer_zero() {
+                                let x_ = z_inv.faer_mul(x_);
                                 x.write(i, k - 1, x_.re);
                                 x.write(i, k, x_.im);
                             }
                         } else {
                             // 2x2 block
-                            let mut dot0 = Complex::<E>::zero();
-                            let mut dot1 = Complex::<E>::zero();
+                            let mut dot0 = Complex::<E>::faer_zero();
+                            let mut dot1 = Complex::<E>::faer_zero();
                             for j in i + 1..k - 1 {
-                                dot0 = dot0.add(
+                                dot0 = dot0.faer_add(
                                     Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(h.read(i - 1, j)),
+                                    .faer_scale_real(h.read(i - 1, j)),
                                 );
-                                dot1 = dot1.add(
+                                dot1 = dot1.faer_add(
                                     Complex {
                                         re: x.read(j, k - 1),
                                         im: x.read(j, k),
                                     }
-                                    .scale_real(h.read(i, j)),
+                                    .faer_scale_real(h.read(i, j)),
                                 );
                             }
 
-                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).sub(dot0.re));
-                            x.write(i - 1, k, x.read(i - 1, k).sub(dot0.im));
-                            x.write(i, k - 1, x.read(i, k - 1).sub(dot1.re));
-                            x.write(i, k, x.read(i, k).sub(dot1.im));
+                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).faer_sub(dot0.re));
+                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0.im));
+                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot1.re));
+                            x.write(i, k, x.read(i, k).faer_sub(dot1.im));
 
                             let a = Complex {
-                                re: h.read(i, i).sub(p),
-                                im: q.neg(),
+                                re: h.read(i, i).faer_sub(p),
+                                im: q.faer_neg(),
                             };
                             let b = h.read(i - 1, i);
                             let c = h.read(i, i - 1);
@@ -671,10 +675,19 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 im: x.read(i, k),
                             };
 
-                            let inv_det = (a.mul(a).sub(Complex::<E>::from_real(b.mul(c)))).inv();
+                            let inv_det = (a
+                                .faer_mul(a)
+                                .faer_sub(Complex::<E>::faer_from_real(b.faer_mul(c))))
+                            .faer_inv();
 
-                            let x0 = a.mul(r0).sub(r1.scale_real(b)).mul(inv_det);
-                            let x1 = a.mul(r1).sub(r0.scale_real(c)).mul(inv_det);
+                            let x0 = a
+                                .faer_mul(r0)
+                                .faer_sub(r1.faer_scale_real(b))
+                                .faer_mul(inv_det);
+                            let x1 = a
+                                .faer_mul(r1)
+                                .faer_sub(r0.faer_scale_real(c))
+                                .faer_mul(inv_det);
 
                             x.write(i - 1, k - 1, x0.re);
                             x.write(i - 1, k, x0.im);
@@ -698,7 +711,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             x.rb(),
             BlockStructure::TriangularUpper,
             None,
-            E::one(),
+            E::faer_one(),
             parallelism,
         );
     } else {
@@ -793,8 +806,8 @@ pub fn compute_evd_complex<E: ComplexField>(
         matrix,
         s,
         u,
-        E::Real::epsilon().unwrap(),
-        E::Real::zero_threshold().unwrap(),
+        E::Real::faer_epsilon().unwrap(),
+        E::Real::faer_zero_threshold().unwrap(),
         parallelism,
         stack,
         params,
@@ -835,9 +848,9 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     }
 
     if !matrix.is_all_finite() {
-        { s }.fill(E::nan());
+        { s }.fill(E::faer_nan());
         if let Some(mut u) = u {
-            u.fill(E::nan());
+            u.fill(E::faer_nan());
         }
         return;
     }
@@ -854,7 +867,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill(E::one());
+    z.rb_mut().diagonal().fill(E::faer_one());
 
     {
         let (mut householder, mut stack) =
@@ -880,7 +893,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
         for j in 0..n {
             for i in j + 2..n {
-                h.write(i, j, E::zero());
+                h.write(i, j, E::faer_zero());
             }
         }
     }
@@ -905,14 +918,14 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
         let mut norm = zero_threshold;
         zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
-            norm = norm.add(x.read().abs2());
+            norm = norm.faer_add(x.read().faer_abs2());
         });
-        let norm = norm.sqrt();
+        let norm = norm.faer_sqrt();
 
         for k in (0..n).rev() {
-            x.write(k, k, E::zero());
+            x.write(k, k, E::faer_zero());
             for i in (0..k).rev() {
-                x.write(i, k, h.read(i, k).neg());
+                x.write(i, k, h.read(i, k).faer_neg());
                 if k > i + 1 {
                     let dot = inner_prod_with_conj(
                         h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
@@ -920,17 +933,17 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
                         x.rb().col(k).subrows(i + 1, k - i - 1),
                         Conj::No,
                     );
-                    x.write(i, k, x.read(i, k).sub(dot));
+                    x.write(i, k, x.read(i, k).faer_sub(dot));
                 }
 
-                let mut z = h.read(i, i).sub(h.read(k, k));
-                if z == E::zero() {
-                    z = E::from_real(epsilon.mul(norm));
+                let mut z = h.read(i, i).faer_sub(h.read(k, k));
+                if z == E::faer_zero() {
+                    z = E::faer_from_real(epsilon.faer_mul(norm));
                 }
-                let z_inv = z.inv();
+                let z_inv = z.faer_inv();
                 let x_ = x.read(i, k);
-                if x_ != E::zero() {
-                    x.write(i, k, x.read(i, k).mul(z_inv));
+                if x_ != E::faer_zero() {
+                    x.write(i, k, x.read(i, k).faer_mul(z_inv));
                 }
             }
         }
@@ -943,7 +956,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
             x.rb(),
             BlockStructure::UnitTriangularUpper,
             None,
-            E::one(),
+            E::faer_one(),
             parallelism,
         );
     } else {
@@ -1046,7 +1059,13 @@ mod herm_tests {
     #[test]
     fn test_real_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    f64::faer_one()
+                } else {
+                    f64::faer_zero()
+                }
+            });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1078,7 +1097,13 @@ mod herm_tests {
     #[test]
     fn test_cplx_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    c64::faer_one()
+                } else {
+                    c64::faer_zero()
+                }
+            });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1111,7 +1136,7 @@ mod herm_tests {
     #[test]
     fn test_real_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |_, _| f64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| f64::faer_zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1143,7 +1168,7 @@ mod herm_tests {
     #[test]
     fn test_cplx_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |_, _| c64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| c64::faer_zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1244,7 +1269,8 @@ mod tests {
 
                 for j in 0..n {
                     for i in 0..n {
-                        assert_approx_eq!(left.read(i, j), right.read(i, j), 1e-10);
+                        assert_approx_eq!(left.read(i, j).re, right.read(i, j).re, 1e-10);
+                        assert_approx_eq!(left.read(i, j).im, right.read(i, j).im, 1e-10);
                     }
                 }
             }
@@ -1254,7 +1280,13 @@ mod tests {
     #[test]
     fn test_real_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |i, j| if i == j { f64::one() } else { f64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    f64::faer_one()
+                } else {
+                    f64::faer_zero()
+                }
+            });
 
             let n = mat.nrows();
 
@@ -1306,7 +1338,8 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..n {
-                    assert_approx_eq!(left.read(i, j), right.read(i, j), 1e-10);
+                    assert_approx_eq!(left.read(i, j).re, right.read(i, j).re, 1e-10);
+                    assert_approx_eq!(left.read(i, j).im, right.read(i, j).im, 1e-10);
                 }
             }
         }
@@ -1367,7 +1400,8 @@ mod tests {
 
             for j in 0..n {
                 for i in 0..n {
-                    assert_approx_eq!(left.read(i, j), right.read(i, j), 1e-10);
+                    assert_approx_eq!(left.read(i, j).re, right.read(i, j).re, 1e-10);
+                    assert_approx_eq!(left.read(i, j).im, right.read(i, j).im, 1e-10);
                 }
             }
         }
@@ -1411,7 +1445,13 @@ mod tests {
     #[test]
     fn test_cplx_identity() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |i, j| if i == j { c64::one() } else { c64::zero() });
+            let mat = Mat::from_fn(n, n, |i, j| {
+                if i == j {
+                    c64::faer_one()
+                } else {
+                    c64::faer_zero()
+                }
+            });
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);
@@ -1444,7 +1484,7 @@ mod tests {
     #[test]
     fn test_cplx_zero() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
-            let mat = Mat::from_fn(n, n, |_, _| c64::zero());
+            let mat = Mat::from_fn(n, n, |_, _| c64::faer_zero());
 
             let mut s = Mat::zeros(n, n);
             let mut u = Mat::zeros(n, n);

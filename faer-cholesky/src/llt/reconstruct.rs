@@ -53,7 +53,7 @@ pub fn reconstruct_lower<E: ComplexField>(
         cholesky_factor.adjoint(),
         BlockStructure::TriangularUpper,
         None,
-        E::one(),
+        E::faer_one(),
         parallelism,
     );
 }

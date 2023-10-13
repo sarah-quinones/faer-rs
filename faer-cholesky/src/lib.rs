@@ -38,8 +38,8 @@ pub fn compute_cholesky_permutation<'a, E: ComplexField>(
     }
 
     perm_indices.sort_unstable_by(move |&i, &j| {
-        let lhs = matrix.read(i, i).abs();
-        let rhs = matrix.read(j, j).abs();
+        let lhs = matrix.read(i, i).faer_abs();
+        let rhs = matrix.read(j, j).faer_abs();
         let cmp = rhs.partial_cmp(&lhs);
         if let Some(cmp) = cmp {
             cmp

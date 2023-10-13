@@ -38,13 +38,13 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
         let prefix = m % lane_count;
 
         let acc = a21.as_ptr();
-        let acc = E::map(
+        let acc = E::faer_map(
             acc,
             #[inline(always)]
             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
         );
 
-        let (mut acc_head, acc_tail) = E::unzip(E::map(
+        let (mut acc_head, acc_tail) = E::faer_unzip(E::faer_map(
             acc,
             #[inline(always)]
             |slice| slice.split_at_mut(prefix),
@@ -52,42 +52,42 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
         let mut acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
 
         for j in 0..n {
-            let l10_ = unsafe { l10.read_unchecked(0, j).neg().conj() };
-            let l10 = E::simd_splat(simd, l10_);
+            let l10_ = unsafe { l10.read_unchecked(0, j).faer_neg().faer_conj() };
+            let l10 = E::faer_simd_splat(simd, l10_);
 
-            let l20 = E::map(
+            let l20 = E::faer_map(
                 l20.ptr_at(0, j),
                 #[inline(always)]
                 |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
             );
-            let (l20_head, l20_tail) = E::unzip(E::map(
+            let (l20_head, l20_tail) = E::faer_unzip(E::faer_map(
                 l20,
                 #[inline(always)]
                 |slice| slice.split_at(prefix),
             ));
             let l20_tail = faer_core::simd::slice_as_simd::<E, S>(l20_tail).0;
 
-            for (acc, l20) in
-                E::into_iter(E::rb_mut(E::as_mut(&mut acc_head))).zip(E::into_iter(l20_head))
+            for (acc, l20) in E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(&mut acc_head)))
+                .zip(E::faer_into_iter(l20_head))
             {
-                let mut acc_ = E::from_units(E::deref(E::rb(E::as_ref(&acc))));
-                let l20 = E::from_units(E::deref(l20));
-                acc_ = E::simd_scalar_mul_adde(simd, l10_, l20, acc_);
-                E::map(
-                    E::zip(acc, acc_.into_units()),
+                let mut acc_ = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc))));
+                let l20 = E::faer_from_units(E::faer_deref(l20));
+                acc_ = E::faer_simd_scalar_mul_adde(simd, l10_, l20, acc_);
+                E::faer_map(
+                    E::faer_zip(acc, acc_.faer_into_units()),
                     #[inline(always)]
                     |(acc, acc_)| *acc = acc_,
                 );
             }
 
-            for (acc, l20) in
-                E::into_iter(E::rb_mut(E::as_mut(&mut acc_tail))).zip(E::into_iter(l20_tail))
+            for (acc, l20) in E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(&mut acc_tail)))
+                .zip(E::faer_into_iter(l20_tail))
             {
-                let mut acc_ = E::deref(E::rb(E::as_ref(&acc)));
-                let l20 = E::deref(l20);
-                acc_ = E::simd_mul_adde(simd, E::copy(&l10), E::copy(&l20), acc_);
-                E::map(
-                    E::zip(acc, acc_),
+                let mut acc_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
+                let l20 = E::faer_deref(l20);
+                acc_ = E::faer_simd_mul_adde(simd, E::faer_copy(&l10), E::faer_copy(&l20), acc_);
+                E::faer_map(
+                    E::faer_zip(acc, acc_),
                     #[inline(always)]
                     |(acc, acc_)| *acc = acc_,
                 );
@@ -120,9 +120,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     let mut idx = 0;
     let arch = E::Simd::default();
 
-    let eps = regularization.dynamic_regularization_epsilon.abs();
-    let delta = regularization.dynamic_regularization_delta.abs();
-    let has_eps = delta > E::Real::zero();
+    let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+    let delta = regularization.dynamic_regularization_delta.faer_abs();
+    let has_eps = delta > E::Real::faer_zero();
     let mut dynamic_regularization_count = 0usize;
     loop {
         let block_size = 1;
@@ -151,20 +151,20 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
 
         zipped!(l10xd0.rb_mut(), l10, d0.transpose())
-            .for_each(|mut dst, src, factor| dst.write(src.read().mul(factor.read())));
+            .for_each(|mut dst, src, factor| dst.write(src.read().faer_mul(factor.read())));
 
         let l10xd0 = l10xd0.into_const();
 
         let mut d = a11
             .read(0, 0)
-            .sub(faer_core::mul::inner_prod::inner_prod_with_conj_arch(
+            .faer_sub(faer_core::mul::inner_prod::inner_prod_with_conj_arch(
                 arch,
                 l10xd0.row(0).transpose(),
                 Conj::Yes,
                 l10.row(0).transpose(),
                 Conj::No,
             ))
-            .real();
+            .faer_real();
 
         // dynamic regularization code taken from clarabel.rs with modifications
         if has_eps {
@@ -172,13 +172,13 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 if signs[idx] > 0 && d <= delta {
                     d = eps;
                     dynamic_regularization_count += 1;
-                } else if signs[idx] < 0 && d >= delta.neg() {
-                    d = eps.neg();
+                } else if signs[idx] < 0 && d >= delta.faer_neg() {
+                    d = eps.faer_neg();
                     dynamic_regularization_count += 1;
                 }
-            } else if d.abs() <= delta {
-                if d < E::Real::zero() {
-                    d = eps.neg();
+            } else if d.faer_abs() <= delta {
+                if d < E::Real::faer_zero() {
+                    d = eps.faer_neg();
                     dynamic_regularization_count += 1;
                 } else {
                     d = eps;
@@ -187,7 +187,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             }
         }
 
-        a11.write(0, 0, E::from_real(d));
+        a11.write(0, 0, E::faer_from_real(d));
 
         if idx + block_size == n {
             break;
@@ -208,15 +208,16 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         } else {
             for j in 0..idx {
                 let l20_col = l20.col(j);
-                let l10_conj = l10xd0.read(0, j).conj();
+                let l10_conj = l10xd0.read(0, j).faer_conj();
 
-                zipped!(a21.rb_mut(), l20_col)
-                    .for_each(|mut dst, src| dst.write(dst.read().sub(src.read().mul(l10_conj))));
+                zipped!(a21.rb_mut(), l20_col).for_each(|mut dst, src| {
+                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
+                });
             }
         }
 
-        let r = l11.read(0, 0).real().inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().scale_real(r)));
+        let r = l11.read(0, 0).faer_real().faer_inv();
+        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(r)));
 
         idx += block_size;
     }
@@ -290,11 +291,11 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 let a10_col = a10.rb_mut().col(j);
                 let d0_elem = d0.read(j, 0);
 
-                let d0_elem_inv = d0_elem.inv();
+                let d0_elem_inv = d0_elem.faer_inv();
 
                 zipped!(l10xd0_col, a10_col).for_each(|mut l10xd0_elem, mut a10_elem| {
                     let a10_elem_read = a10_elem.read();
-                    a10_elem.write(a10_elem_read.mul(d0_elem_inv));
+                    a10_elem.write(a10_elem_read.faer_mul(d0_elem_inv));
                     l10xd0_elem.write(a10_elem_read);
                 });
             }
@@ -306,8 +307,8 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 BlockStructure::Rectangular,
                 l10xd0.adjoint().into_const(),
                 BlockStructure::Rectangular,
-                Some(E::one()),
-                E::one().neg(),
+                Some(E::faer_one()),
+                E::faer_one().faer_neg(),
                 parallelism,
             );
         }
@@ -340,8 +341,8 @@ impl<E: ComplexField> Default for LdltRegularization<'_, E> {
     fn default() -> Self {
         Self {
             dynamic_regularization_signs: None,
-            dynamic_regularization_delta: E::Real::zero(),
-            dynamic_regularization_epsilon: E::Real::zero(),
+            dynamic_regularization_delta: E::Real::faer_zero(),
+            dynamic_regularization_epsilon: E::Real::faer_zero(),
         }
     }
 }

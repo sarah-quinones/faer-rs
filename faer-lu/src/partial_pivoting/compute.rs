@@ -31,35 +31,35 @@ fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j:
     unsafe {
         let ptr = m.rb_mut().as_ptr();
 
-        let ptr_a = E::map(
-            E::copy(&ptr),
+        let ptr_a = E::faer_map(
+            E::faer_copy(&ptr),
             #[inline(always)]
             |ptr| ptr.add(i),
         );
-        let ptr_b = E::map(
-            E::copy(&ptr),
+        let ptr_b = E::faer_map(
+            E::faer_copy(&ptr),
             #[inline(always)]
             |ptr| ptr.add(j),
         );
 
-        let a = E::map(
-            E::copy(&ptr_a),
+        let a = E::faer_map(
+            E::faer_copy(&ptr_a),
             #[inline(always)]
             |ptr| (*ptr),
         );
-        let b = E::map(
-            E::copy(&ptr_b),
+        let b = E::faer_map(
+            E::faer_copy(&ptr_b),
             #[inline(always)]
             |ptr| (*ptr),
         );
 
-        E::map(
-            E::zip(ptr_b, a),
+        E::faer_map(
+            E::faer_zip(ptr_b, a),
             #[inline(always)]
             |(ptr, val)| *ptr = val,
         );
-        E::map(
-            E::zip(ptr_a, b),
+        E::faer_map(
+            E::faer_zip(ptr_a, b),
             #[inline(always)]
             |(ptr, val)| *ptr = val,
         );
@@ -103,14 +103,14 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
             let mut imax0 = 0;
             let mut imax1 = 0;
-            let mut max0 = E::Real::zero();
-            let mut max1 = E::Real::zero();
+            let mut max0 = E::Real::faer_zero();
+            let mut max1 = E::Real::faer_zero();
 
             for i in 0..m / 2 {
                 let i = 2 * i;
 
-                let abs0 = unsafe { col.read_unchecked(i, 0) }.score();
-                let abs1 = unsafe { col.read_unchecked(i + 1, 0) }.score();
+                let abs0 = unsafe { col.read_unchecked(i, 0) }.faer_score();
+                let abs1 = unsafe { col.read_unchecked(i + 1, 0) }.faer_score();
 
                 if abs0 > max0 {
                     imax0 = i;
@@ -124,7 +124,7 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
             if m % 2 != 0 {
                 let i = m - 1;
-                let abs0 = unsafe { col.read_unchecked(i, 0) }.score();
+                let abs0 = unsafe { col.read_unchecked(i, 0) }.faer_score();
                 if abs0 > max0 {
                     imax0 = i;
                     max0 = abs0;
@@ -179,10 +179,10 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
         debug_assert_eq!(matrix.row_stride(), 1);
 
         let m = matrix.nrows();
-        let inv = matrix.read(j, j).inv();
+        let inv = matrix.read(j, j).faer_inv();
         for i in j + 1..m {
             unsafe {
-                matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).mul(inv));
+                matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).faer_mul(inv));
             }
         }
         let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
@@ -191,7 +191,7 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
         let mut mat = bottom_right;
 
         let m = mat.nrows();
-        let lhs = E::map(
+        let lhs = E::faer_map(
             lhs.as_ptr(),
             #[inline(always)]
             |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
@@ -201,7 +201,7 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
 
         let prefix = m % lane_count;
 
-        let (lhs_head, lhs_tail) = E::unzip(E::map(
+        let (lhs_head, lhs_tail) = E::faer_unzip(E::faer_map(
             lhs,
             #[inline(always)]
             |slice| slice.split_at(prefix),
@@ -209,35 +209,38 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
         let lhs_tail = faer_core::simd::slice_as_simd::<E, S>(lhs_tail).0;
 
         for k in 0..mat.ncols() {
-            let acc = E::map(
+            let acc = E::faer_map(
                 mat.rb_mut().ptr_at(0, k),
                 #[inline(always)]
                 |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
             );
-            let (acc_head, acc_tail) = E::unzip(E::map(
+            let (acc_head, acc_tail) = E::faer_unzip(E::faer_map(
                 acc,
                 #[inline(always)]
                 |slice| slice.split_at_mut(prefix),
             ));
             let acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
 
-            let rhs = E::simd_splat(simd, unsafe { rhs.read_unchecked(0, k).neg() });
+            let rhs = E::faer_simd_splat(simd, unsafe { rhs.read_unchecked(0, k).faer_neg() });
 
-            let mut acc_head_ = E::partial_load_last(simd, E::rb(E::as_ref(&acc_head)));
-            acc_head_ = E::simd_mul_adde(
+            let mut acc_head_ =
+                E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_head)));
+            acc_head_ = E::faer_simd_mul_adde(
                 simd,
-                E::copy(&rhs),
-                E::partial_load_last(simd, E::copy(&lhs_head)),
+                E::faer_copy(&rhs),
+                E::faer_partial_load_last(simd, E::faer_copy(&lhs_head)),
                 acc_head_,
             );
-            E::partial_store_last(simd, acc_head, acc_head_);
+            E::faer_partial_store_last(simd, acc_head, acc_head_);
 
-            for (acc, lhs) in E::into_iter(acc_tail).zip(E::into_iter(E::copy(&lhs_tail))) {
-                let mut acc_ = E::deref(E::rb(E::as_ref(&acc)));
-                let lhs = E::deref(lhs);
-                acc_ = E::simd_mul_adde(simd, E::copy(&rhs), lhs, acc_);
-                E::map(
-                    E::zip(acc, acc_),
+            for (acc, lhs) in
+                E::faer_into_iter(acc_tail).zip(E::faer_into_iter(E::faer_copy(&lhs_tail)))
+            {
+                let mut acc_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
+                let lhs = E::faer_deref(lhs);
+                acc_ = E::faer_simd_mul_adde(simd, E::faer_copy(&rhs), lhs, acc_);
+                E::faer_map(
+                    E::faer_zip(acc, acc_),
                     #[inline(always)]
                     |(acc, acc_)| *acc = acc_,
                 );
@@ -251,9 +254,9 @@ fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
         arch.dispatch(Update { matrix, j });
     } else {
         let m = matrix.nrows();
-        let inv = matrix.read(j, j).inv();
+        let inv = matrix.read(j, j).faer_inv();
         for i in j + 1..m {
-            matrix.write(i, j, matrix.read(i, j).mul(inv));
+            matrix.write(i, j, matrix.read(i, j).faer_mul(inv));
         }
         let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
         let lhs = bottom_left.rb().col(j);
@@ -263,7 +266,8 @@ fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
         for k in 0..mat.ncols() {
             let col = mat.rb_mut().col(k);
             let rhs = rhs.read(0, k);
-            zipped!(col, lhs).for_each(|mut x, lhs| x.write(x.read().sub(lhs.read().mul(rhs))));
+            zipped!(col, lhs)
+                .for_each(|mut x, lhs| x.write(x.read().faer_sub(lhs.read().faer_mul(rhs))));
         }
     }
 }
@@ -354,8 +358,8 @@ fn lu_in_place_impl<E: ComplexField>(
         mat_bot_right.rb_mut(),
         mat_bot_left.rb(),
         mat_top_right.rb(),
-        Some(E::one()),
-        E::one().neg(),
+        Some(E::faer_one()),
+        E::faer_one().faer_neg(),
         parallelism,
     );
 

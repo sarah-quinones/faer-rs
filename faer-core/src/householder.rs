@@ -50,35 +50,40 @@ pub fn make_householder_in_place<E: ComplexField>(
     head: E,
     tail_squared_norm: E::Real,
 ) -> (E, E) {
-    if tail_squared_norm == E::Real::zero() {
-        return (E::from_real(E::Real::zero().inv()), head);
+    if tail_squared_norm == E::Real::faer_zero() {
+        return (E::faer_from_real(E::Real::faer_zero().faer_inv()), head);
     }
 
-    let one_half = E::Real::from_f64(0.5);
+    let one_half = E::Real::faer_from_f64(0.5);
 
-    let head_squared_norm = head.mul(head.conj()).real();
-    let norm = head_squared_norm.add(tail_squared_norm).sqrt();
+    let head_squared_norm = head.faer_mul(head.faer_conj()).faer_real();
+    let norm = head_squared_norm.faer_add(tail_squared_norm).faer_sqrt();
 
-    let sign = if head_squared_norm != E::Real::zero() {
-        head.scale_real(head_squared_norm.sqrt().inv())
+    let sign = if head_squared_norm != E::Real::faer_zero() {
+        head.faer_scale_real(head_squared_norm.faer_sqrt().faer_inv())
     } else {
-        E::one()
+        E::faer_one()
     };
 
-    let signed_norm = sign.mul(E::from_real(norm));
-    let head_with_beta = head.add(signed_norm);
-    let head_with_beta_inv = head_with_beta.inv();
+    let signed_norm = sign.faer_mul(E::faer_from_real(norm));
+    let head_with_beta = head.faer_add(signed_norm);
+    let head_with_beta_inv = head_with_beta.faer_inv();
 
-    if head_with_beta != E::zero() {
+    if head_with_beta != E::faer_zero() {
         if let Some(essential) = essential {
             assert!(essential.ncols() == 1);
-            zipped!(essential).for_each(|mut e| e.write(e.read().mul(head_with_beta_inv)));
+            zipped!(essential).for_each(|mut e| e.write(e.read().faer_mul(head_with_beta_inv)));
         }
-        let tau =
-            one_half.mul(E::Real::one().add(tail_squared_norm.mul(head_with_beta_inv.abs2())));
-        (E::from_real(tau), signed_norm.neg())
+        let tau = one_half.faer_mul(
+            E::Real::faer_one()
+                .faer_add(tail_squared_norm.faer_mul(head_with_beta_inv.faer_abs2())),
+        );
+        (E::faer_from_real(tau), signed_norm.faer_neg())
     } else {
-        (E::from_real(E::Real::zero().inv()), E::zero())
+        (
+            E::faer_from_real(E::Real::faer_zero().faer_inv()),
+            E::faer_zero(),
+        )
     }
 }
 
@@ -151,7 +156,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
             basis_top,
             BlockStructure::UnitTriangularLower,
             None,
-            E::one(),
+            E::faer_one(),
             parallelism,
         );
         triangular::matmul(
@@ -161,8 +166,8 @@ pub fn upgrade_householder_factor<E: ComplexField>(
             BlockStructure::Rectangular,
             basis_bot,
             BlockStructure::Rectangular,
-            Some(E::one()),
-            E::one(),
+            Some(E::faer_one()),
+            E::faer_one(),
             parallelism,
         );
     } else {
@@ -212,15 +217,15 @@ pub fn upgrade_householder_factor<E: ComplexField>(
                     basis_right_top,
                     BlockStructure::UnitTriangularLower,
                     None,
-                    E::one(),
+                    E::faer_one(),
                     parallelism,
                 );
                 matmul(
                     tau_tr.rb_mut(),
                     basis_left_bot.adjoint(),
                     basis_right_bot,
-                    Some(E::one()),
-                    E::one(),
+                    Some(E::faer_one()),
+                    E::faer_one(),
                     parallelism,
                 );
             },
@@ -366,14 +371,14 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
                     let prefix = m % lane_count;
 
-                    let essential = E::map(
+                    let essential = E::faer_map(
                         essential.as_ptr(),
                         #[inline(always)]
                         |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
                     );
 
-                    let (essential_scalar, essential_simd) = E::unzip(E::map(
-                        E::copy(&essential),
+                    let (essential_scalar, essential_simd) = E::faer_unzip(E::faer_map(
+                        E::faer_copy(&essential),
                         #[inline(always)]
                         |slice| slice.split_at(prefix),
                     ));
@@ -384,54 +389,56 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         let [mut col_head, col_tail] = col.split_at_row(1);
 
                         let col_head_ = col_head.read(0, 0);
-                        let col_tail = E::map(
+                        let col_tail = E::faer_map(
                             col_tail.as_ptr(),
                             #[inline(always)]
                             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
                         );
 
-                        let dot = col_head_.add(
+                        let dot = col_head_.faer_add(
                             inner_prod::AccConjAxB::<'_, E> {
-                                a: E::rb(E::as_ref(&essential)),
-                                b: E::rb(E::as_ref(&col_tail)),
+                                a: E::faer_rb(E::faer_as_ref(&essential)),
+                                b: E::faer_rb(E::faer_as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(k));
+                        let k = (dot.faer_mul(tau_inv)).faer_neg();
+                        col_head.write(0, 0, col_head_.faer_add(k));
 
-                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                        let (col_tail_scalar, col_tail_simd) = E::faer_unzip(E::faer_map(
                             col_tail,
                             #[inline(always)]
                             |slice| slice.split_at_mut(prefix),
                         ));
                         let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
 
-                        for (a, b) in E::into_iter(col_tail_scalar)
-                            .zip(E::into_iter(E::copy(&essential_scalar)))
+                        for (a, b) in E::faer_into_iter(col_tail_scalar)
+                            .zip(E::faer_into_iter(E::faer_copy(&essential_scalar)))
                         {
-                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
-                            let b = E::from_units(E::deref(b));
-                            a_ = a_.add(k.mul(b));
+                            let mut a_ =
+                                E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
+                            let b = E::faer_from_units(E::faer_deref(b));
+                            a_ = a_.faer_add(k.faer_mul(b));
 
-                            E::map(
-                                E::zip(a, a_.into_units()),
+                            E::faer_map(
+                                E::faer_zip(a, a_.faer_into_units()),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
                         }
 
-                        let k = E::simd_splat(simd, k);
-                        for (a, b) in
-                            E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
+                        let k = E::faer_simd_splat(simd, k);
+                        for (a, b) in E::faer_into_iter(col_tail_simd)
+                            .zip(E::faer_into_iter(E::faer_copy(&essential_simd)))
                         {
-                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
-                            let b = E::deref(b);
-                            a_ = E::simd_mul_adde(simd, E::copy(&k), E::copy(&b), a_);
+                            let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
+                            let b = E::faer_deref(b);
+                            a_ =
+                                E::faer_simd_mul_adde(simd, E::faer_copy(&k), E::faer_copy(&b), a_);
 
-                            E::map(
-                                E::zip(a, a_),
+                            E::faer_map(
+                                E::faer_zip(a, a_),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
@@ -441,7 +448,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             }
 
             arch.dispatch(ApplyOnLeftNoConj {
-                tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
+                tau_inv: E::faer_from_real(householder_factor.read(0, 0).faer_real().faer_inv()),
                 essential: householder_basis.split_at_row(1)[1],
                 rhs: matrix,
             });
@@ -476,14 +483,14 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
                     let prefix = m % lane_count;
 
-                    let essential = E::map(
+                    let essential = E::faer_map(
                         essential.as_ptr(),
                         #[inline(always)]
                         |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
                     );
 
-                    let (essential_scalar, essential_simd) = E::unzip(E::map(
-                        E::copy(&essential),
+                    let (essential_scalar, essential_simd) = E::faer_unzip(E::faer_map(
+                        E::faer_copy(&essential),
                         #[inline(always)]
                         |slice| slice.split_at(prefix),
                     ));
@@ -494,54 +501,56 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         let [mut col_head, col_tail] = col.split_at_row(1);
 
                         let col_head_ = col_head.read(0, 0);
-                        let col_tail = E::map(
+                        let col_tail = E::faer_map(
                             col_tail.as_ptr(),
                             #[inline(always)]
                             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
                         );
 
-                        let dot = col_head_.add(
+                        let dot = col_head_.faer_add(
                             inner_prod::AccNoConjAxB::<'_, E> {
-                                a: E::rb(E::as_ref(&essential)),
-                                b: E::rb(E::as_ref(&col_tail)),
+                                a: E::faer_rb(E::faer_as_ref(&essential)),
+                                b: E::faer_rb(E::faer_as_ref(&col_tail)),
                             }
                             .with_simd(simd),
                         );
 
-                        let k = (dot.mul(tau_inv)).neg();
-                        col_head.write(0, 0, col_head_.add(k));
+                        let k = (dot.faer_mul(tau_inv)).faer_neg();
+                        col_head.write(0, 0, col_head_.faer_add(k));
 
-                        let (col_tail_scalar, col_tail_simd) = E::unzip(E::map(
+                        let (col_tail_scalar, col_tail_simd) = E::faer_unzip(E::faer_map(
                             col_tail,
                             #[inline(always)]
                             |slice| slice.split_at_mut(prefix),
                         ));
                         let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
 
-                        for (a, b) in E::into_iter(col_tail_scalar)
-                            .zip(E::into_iter(E::copy(&essential_scalar)))
+                        for (a, b) in E::faer_into_iter(col_tail_scalar)
+                            .zip(E::faer_into_iter(E::faer_copy(&essential_scalar)))
                         {
-                            let mut a_ = E::from_units(E::deref(E::rb(E::as_ref(&a))));
-                            let b = E::from_units(E::deref(b));
-                            a_ = a_.add(k.mul(b.conj()));
+                            let mut a_ =
+                                E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
+                            let b = E::faer_from_units(E::faer_deref(b));
+                            a_ = a_.faer_add(k.faer_mul(b.faer_conj()));
 
-                            E::map(
-                                E::zip(a, a_.into_units()),
+                            E::faer_map(
+                                E::faer_zip(a, a_.faer_into_units()),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
                         }
 
-                        let k = E::simd_splat(simd, k);
-                        for (a, b) in
-                            E::into_iter(col_tail_simd).zip(E::into_iter(E::copy(&essential_simd)))
+                        let k = E::faer_simd_splat(simd, k);
+                        for (a, b) in E::faer_into_iter(col_tail_simd)
+                            .zip(E::faer_into_iter(E::faer_copy(&essential_simd)))
                         {
-                            let mut a_ = E::deref(E::rb(E::as_ref(&a)));
-                            let b = E::deref(b);
-                            a_ = E::simd_conj_mul_adde(simd, E::copy(&b), E::copy(&k), a_);
+                            let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
+                            let b = E::faer_deref(b);
+                            a_ =
+                                E::simd_conj_mul_adde(simd, E::faer_copy(&b), E::faer_copy(&k), a_);
 
-                            E::map(
-                                E::zip(a, a_),
+                            E::faer_map(
+                                E::faer_zip(a, a_),
                                 #[inline(always)]
                                 |(a, a_)| *a = a_,
                             );
@@ -551,7 +560,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             }
 
             arch.dispatch(ApplyOnLeftConj {
-                tau_inv: E::from_real(householder_factor.read(0, 0).real().inv()),
+                tau_inv: E::faer_from_real(householder_factor.read(0, 0).faer_real().faer_inv()),
                 essential: householder_basis.split_at_row(1)[1],
                 rhs: matrix,
             });
@@ -576,7 +585,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             BlockStructure::Rectangular,
             Conj::No,
             None,
-            E::one(),
+            E::faer_one(),
             parallelism,
         );
         matmul_with_conj(
@@ -585,8 +594,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             Conj::Yes.compose(conj_lhs),
             matrix_bot.rb(),
             Conj::No,
-            Some(E::one()),
-            E::one(),
+            Some(E::faer_one()),
+            E::faer_one(),
             parallelism,
         );
 
@@ -617,8 +626,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             tmp.rb(),
             BlockStructure::Rectangular,
             Conj::No,
-            Some(E::one()),
-            E::one().neg(),
+            Some(E::faer_one()),
+            E::faer_one().faer_neg(),
             parallelism,
         );
         matmul_with_conj(
@@ -627,8 +636,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             Conj::No.compose(conj_lhs),
             tmp.rb(),
             Conj::No,
-            Some(E::one()),
-            E::one().neg(),
+            Some(E::faer_one()),
+            E::faer_one().faer_neg(),
             parallelism,
         );
     }

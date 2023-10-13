@@ -35,7 +35,7 @@ fn invert_lower_impl<E: ComplexField>(
         tmp.rb(),
         BlockStructure::TriangularLower,
         None,
-        E::one(),
+        E::faer_one(),
         parallelism,
     );
 }
