@@ -655,7 +655,14 @@ pub fn default_recommended_deflation_window(dim: usize, _active_block_dim: usize
     } else if n < 150 {
         10
     } else if n < 590 {
-        (n as f64 / (n as f64).log2()) as usize
+        #[cfg(feature = "std")]
+        {
+            (n as f64 / (n as f64).log2()) as usize
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::log2(n as f64 / (n as f64)) as usize
+        }
     } else if n < 3000 {
         96
     } else if n < 6000 {

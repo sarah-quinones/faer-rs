@@ -873,7 +873,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             let ncols = (n - k - 1) as f64;
             let n_threads = parallelism_degree(parallelism) as f64;
 
-            assert!(ncols < 2.0f64.powi(50)); // to check that integers can be
+            const TWO_POW_50: f64 = 1125899906842624.0;
+            assert!(ncols < TWO_POW_50); // to check that integers can be
                                               // represented exactly as floats
 
             let idx_to_col_start = |idx: usize| {
