@@ -141,6 +141,7 @@
 //! [`Faer::complex_eigenvalues`], with the same conditions described above.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer_cholesky::llt::CholeskyError;
@@ -168,6 +169,9 @@ pub enum Side {
     Lower,
     Upper,
 }
+
+extern crate alloc;
+use alloc::{vec, vec::Vec};
 
 /// Matrix solvers and decompositions.
 pub mod solvers {

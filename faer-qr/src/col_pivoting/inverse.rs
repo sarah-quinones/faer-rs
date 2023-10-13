@@ -1,5 +1,5 @@
 #[cfg(feature = "std")]
-use assert2::assert as assert;
+use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,

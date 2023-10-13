@@ -101,7 +101,7 @@ fn lahqr_schur22<E: RealField>(
         cs = zero;
         sn = one;
 
-        std::mem::swap(&mut d, &mut a);
+        core::mem::swap(&mut d, &mut a);
         b = c.neg();
         c = zero;
     } else if a.sub(d) == zero && sign(b) != sign(c) {

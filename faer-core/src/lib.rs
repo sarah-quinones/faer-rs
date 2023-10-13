@@ -77,6 +77,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use faer_entity::NoSimd;
 pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimdCtx, SimpleEntity};
@@ -486,7 +487,7 @@ unsafe impl bytemuck::Pod for c64 {}
 unsafe impl bytemuck::Pod for c64conj {}
 
 impl Debug for c32 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" + ")?;
         self.im.fmt(f)?;
@@ -494,7 +495,7 @@ impl Debug for c32 {
     }
 }
 impl Debug for c64 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" + ")?;
         self.im.fmt(f)?;
@@ -502,7 +503,7 @@ impl Debug for c64 {
     }
 }
 impl Debug for c32conj {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" - ")?;
         self.neg_im.fmt(f)?;
@@ -510,7 +511,7 @@ impl Debug for c32conj {
     }
 }
 impl Debug for c64conj {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
         f.write_str(" - ")?;
         self.neg_im.fmt(f)?;
@@ -2154,7 +2155,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`std::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
+    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
     /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
     /// accessible by the matrix must be initialized at some point before they are read, or
     /// references to them are formed.
@@ -2999,7 +3000,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`std::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
+    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
     /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
     /// accessible by the matrix must be initialized at some point before they are read, or
     /// references to them are formed.

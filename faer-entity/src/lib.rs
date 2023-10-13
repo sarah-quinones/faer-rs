@@ -1,4 +1,5 @@
 #![allow(clippy::type_complexity)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use bytemuck::Pod;
 use core::{fmt::Debug, mem::ManuallyDrop};
