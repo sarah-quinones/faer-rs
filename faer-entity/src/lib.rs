@@ -500,7 +500,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         rhs: SimdGroup<Self, S>,
         acc: SimdGroup<Self, S>,
     ) -> SimdGroup<Self, S>;
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
@@ -798,7 +798,7 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
@@ -1057,7 +1057,7 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
@@ -2080,7 +2080,7 @@ impl<E: RealField> ComplexField for Complex<E> {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,

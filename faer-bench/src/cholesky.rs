@@ -54,7 +54,7 @@ pub fn faer<T: faer_core::ComplexField>(
         .map(|n| {
             let mut c = Mat::<T>::zeros(n, n);
             for i in 0..n {
-                c.write(i, i, T::one());
+                c.write(i, i, T::faer_one());
             }
             let mut chol = Mat::<T>::zeros(n, n);
 

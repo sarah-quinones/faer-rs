@@ -63,7 +63,7 @@ pub fn faer<T: faer_core::ComplexField>(
                     a.as_ref(),
                     b.as_ref(),
                     None,
-                    T::one(),
+                    T::faer_one(),
                     parallelism,
                 );
             });

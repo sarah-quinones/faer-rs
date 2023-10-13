@@ -195,7 +195,7 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 );
 
                 let x_prefix = E::faer_partial_load_last(simd, E::faer_copy(&x_prefix));
-                sum0 = E::simd_conj_mul_adde(
+                sum0 = E::faer_simd_conj_mul_adde(
                     simd,
                     E::faer_copy(&a_prefix_),
                     E::faer_copy(&x_prefix),
@@ -270,10 +270,30 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         },
                     );
 
-                    sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x0), sum0);
-                    sum1 = E::simd_conj_mul_adde(simd, E::faer_copy(&a1), E::faer_copy(&x1), sum1);
-                    sum2 = E::simd_conj_mul_adde(simd, E::faer_copy(&a2), E::faer_copy(&x2), sum2);
-                    sum3 = E::simd_conj_mul_adde(simd, E::faer_copy(&a3), E::faer_copy(&x3), sum3);
+                    sum0 = E::faer_simd_conj_mul_adde(
+                        simd,
+                        E::faer_copy(&a0),
+                        E::faer_copy(&x0),
+                        sum0,
+                    );
+                    sum1 = E::faer_simd_conj_mul_adde(
+                        simd,
+                        E::faer_copy(&a1),
+                        E::faer_copy(&x1),
+                        sum1,
+                    );
+                    sum2 = E::faer_simd_conj_mul_adde(
+                        simd,
+                        E::faer_copy(&a2),
+                        E::faer_copy(&x2),
+                        sum2,
+                    );
+                    sum3 = E::faer_simd_conj_mul_adde(
+                        simd,
+                        E::faer_copy(&a3),
+                        E::faer_copy(&x3),
+                        sum3,
+                    );
                 }
 
                 sum0 = E::faer_simd_add(simd, sum0, sum1);
@@ -313,7 +333,12 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         |(w, w0)| *w = w0,
                     );
 
-                    sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x0), sum0);
+                    sum0 = E::faer_simd_conj_mul_adde(
+                        simd,
+                        E::faer_copy(&a0),
+                        E::faer_copy(&x0),
+                        sum0,
+                    );
                 }
 
                 let sum = E::faer_simd_reduce_add(simd, sum0);

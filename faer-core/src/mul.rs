@@ -25,7 +25,7 @@ pub mod inner_prod {
         acc: SimdGroup<E, S>,
     ) -> SimdGroup<E, S> {
         if CONJ_A {
-            E::simd_conj_mul_adde(simd, a, b, acc)
+            E::faer_simd_conj_mul_adde(simd, a, b, acc)
         } else {
             E::faer_simd_mul_adde(simd, a, b, acc)
         }
@@ -541,7 +541,7 @@ mod matvec_colmajor {
                 for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head)) {
                     let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
                     let a = E::faer_deref(a);
-                    acc = E::simd_conj_mul_adde(simd, a, E::faer_copy(&b), acc);
+                    acc = E::faer_simd_conj_mul_adde(simd, a, E::faer_copy(&b), acc);
                     E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
                 }
             }
@@ -840,7 +840,7 @@ pub mod outer_prod {
                             {
                                 let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
                                 let a = E::faer_deref(a);
-                                acc = E::simd_conj_mul_adde(
+                                acc = E::faer_simd_conj_mul_adde(
                                     simd,
                                     a,
                                     E::faer_copy(&b),

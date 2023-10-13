@@ -328,7 +328,7 @@ impl<E: ComplexField> pulp::WithSimd for Rot<'_, E> {
             let mut ai_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&ai)));
             let mut aj_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&aj)));
 
-            let tmp = E::simd_conj_mul_adde(
+            let tmp = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&s),
                 E::faer_copy(&aj_),
@@ -358,7 +358,7 @@ impl<E: ComplexField> pulp::WithSimd for Rot<'_, E> {
         let mut ai_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&ai_tail)));
         let mut aj_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&aj_tail)));
 
-        let tmp = E::simd_conj_mul_adde(
+        let tmp = E::faer_simd_conj_mul_adde(
             simd,
             E::faer_copy(&s),
             E::faer_copy(&aj_),

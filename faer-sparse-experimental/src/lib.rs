@@ -1449,7 +1449,7 @@ impl ComplexField for Symbolic {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: pulp::Simd>(
+    fn faer_simd_conj_mul_adde<S: pulp::Simd>(
         _simd: S,
         _lhs: SimdGroup<Self, S>,
         _rhs: SimdGroup<Self, S>,
@@ -2704,7 +2704,7 @@ pub(crate) mod qd {
             }
 
             #[inline(always)]
-            fn simd_conj_mul_adde<S: Simd>(
+            fn faer_simd_conj_mul_adde<S: Simd>(
                 simd: S,
                 lhs: SimdGroup<Self, S>,
                 rhs: SimdGroup<Self, S>,

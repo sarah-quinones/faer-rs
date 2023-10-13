@@ -193,9 +193,9 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&lhs_prefix)));
 
             lhs_prefix_ =
-                E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y_prefix, lhs_prefix_);
+                E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y_prefix, lhs_prefix_);
             lhs_prefix_ =
-                E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u_prefix, lhs_prefix_);
+                E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u_prefix, lhs_prefix_);
 
             E::faer_partial_store_last(simd, lhs_prefix, E::faer_copy(&lhs_prefix_));
 
@@ -212,7 +212,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             );
             E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
 
-            sum0 = E::simd_conj_mul_adde(
+            sum0 = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&lhs_prefix_),
                 E::faer_copy(&rhs_prefix),
@@ -241,14 +241,14 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let [u0, u1, u2, u3] = E::faer_unzip4(E::faer_deref(u));
                 let [y0, y1, y2, y3] = E::faer_unzip4(E::faer_deref(y));
 
-                lhs0 = E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
-                lhs0 = E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
-                lhs1 = E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y1, lhs1);
-                lhs1 = E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u1, lhs1);
-                lhs2 = E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y2, lhs2);
-                lhs2 = E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u2, lhs2);
-                lhs3 = E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y3, lhs3);
-                lhs3 = E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u3, lhs3);
+                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
+                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
+                lhs1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y1, lhs1);
+                lhs1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u1, lhs1);
+                lhs2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y2, lhs2);
+                lhs2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u2, lhs2);
+                lhs3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y3, lhs3);
+                lhs3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u3, lhs3);
 
                 E::faer_map(
                     E::faer_zip(
@@ -307,10 +307,10 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         acc[3] = acc3;
                     },
                 );
-                sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
-                sum1 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
-                sum2 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
-                sum3 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
+                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
+                sum2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
+                sum3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
             }
 
             sum0 = E::faer_simd_add(simd, sum0, sum1);
@@ -331,8 +331,8 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut lhs0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&lhs)));
                 let u0 = E::faer_deref(u);
                 let y0 = E::faer_deref(y);
-                lhs0 = E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
-                lhs0 = E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
+                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
+                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
 
                 E::faer_map(
                     E::faer_zip(lhs, E::faer_copy(&lhs0)),
@@ -357,7 +357,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         *acc = acc0;
                     },
                 );
-                sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
             }
 
             let sum = E::faer_simd_reduce_add(simd, sum0);
@@ -531,26 +531,26 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             let mut lhs1_prefix_ =
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&lhs1_prefix)));
 
-            lhs0_prefix_ = E::simd_conj_mul_adde(
+            lhs0_prefix_ = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&u_single_j0),
                 E::faer_copy(&y_prefix),
                 lhs0_prefix_,
             );
-            lhs0_prefix_ = E::simd_conj_mul_adde(
+            lhs0_prefix_ = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&y_single_j0),
                 E::faer_copy(&u_prefix),
                 lhs0_prefix_,
             );
 
-            lhs1_prefix_ = E::simd_conj_mul_adde(
+            lhs1_prefix_ = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&y_single_j1),
                 E::faer_copy(&u_prefix),
                 lhs1_prefix_,
             );
-            lhs1_prefix_ = E::simd_conj_mul_adde(
+            lhs1_prefix_ = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&u_single_j1),
                 E::faer_copy(&y_prefix),
@@ -588,13 +588,13 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
             }
 
-            sum0 = E::simd_conj_mul_adde(
+            sum0 = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&lhs0_prefix_),
                 E::faer_copy(&rhs_prefix),
                 sum0,
             );
-            sum1 = E::simd_conj_mul_adde(
+            sum1 = E::faer_simd_conj_mul_adde(
                 simd,
                 E::faer_copy(&lhs1_prefix_),
                 E::faer_copy(&rhs_prefix),
@@ -618,14 +618,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut lhs1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&lhs_j1)));
                 let u = E::faer_deref(u);
                 let y = E::faer_deref(y);
-                lhs0 =
-                    E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j0), E::faer_copy(&y), lhs0);
-                lhs0 =
-                    E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j0), E::faer_copy(&u), lhs0);
-                lhs1 =
-                    E::simd_conj_mul_adde(simd, E::faer_copy(&u_single_j1), E::faer_copy(&y), lhs1);
-                lhs1 =
-                    E::simd_conj_mul_adde(simd, E::faer_copy(&y_single_j1), E::faer_copy(&u), lhs1);
+                lhs0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&u_single_j0),
+                    E::faer_copy(&y),
+                    lhs0,
+                );
+                lhs0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&y_single_j0),
+                    E::faer_copy(&u),
+                    lhs0,
+                );
+                lhs1 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&u_single_j1),
+                    E::faer_copy(&y),
+                    lhs1,
+                );
+                lhs1 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&y_single_j1),
+                    E::faer_copy(&u),
+                    lhs1,
+                );
 
                 E::faer_map(
                     E::faer_zip(lhs_j0, E::faer_copy(&lhs0)),
@@ -663,8 +679,10 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         *acc = acc_;
                     },
                 );
-                sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs0), E::faer_copy(&rhs), sum0);
-                sum1 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs1), E::faer_copy(&rhs), sum1);
+                sum0 =
+                    E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), E::faer_copy(&rhs), sum0);
+                sum1 =
+                    E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), E::faer_copy(&rhs), sum1);
             }
 
             {
@@ -789,7 +807,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
             );
             E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
 
-            sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs_prefix), rhs_prefix, sum0);
+            sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs_prefix), rhs_prefix, sum0);
 
             let (acc_head, acc_tail) = E::faer_as_arrays_mut::<4, _>(acc_suffix);
             let (lhs_head, lhs_tail) = E::faer_as_arrays::<4, _>(lhs_suffix);
@@ -840,10 +858,10 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                         acc[3] = acc3;
                     },
                 );
-                sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
-                sum1 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
-                sum2 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
-                sum3 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
+                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
+                sum2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
+                sum3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
             }
 
             sum0 = E::faer_simd_add(simd, sum0, sum1);
@@ -871,7 +889,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                         *acc = acc0;
                     },
                 );
-                sum0 = E::simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
             }
 
             let mut sum = E::faer_simd_reduce_add(simd, sum0);

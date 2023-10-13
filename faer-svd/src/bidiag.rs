@@ -352,10 +352,10 @@ fn bidiag_fused_op_step0<E: ComplexField>(
                     E::faer_copy(&u_rhs_v),
                     E::faer_simd_mul_adde(simd, zi3, E::faer_copy(&z_rhs_v), aij3),
                 );
-                sum_v0 = E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new0), ui0, sum_v0);
-                sum_v1 = E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new1), ui1, sum_v1);
-                sum_v2 = E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new2), ui2, sum_v2);
-                sum_v3 = E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new3), ui3, sum_v3);
+                sum_v0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new0), ui0, sum_v0);
+                sum_v1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new1), ui1, sum_v1);
+                sum_v2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new2), ui2, sum_v2);
+                sum_v3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new3), ui3, sum_v3);
 
                 E::faer_map(
                     E::faer_zip(
@@ -395,8 +395,12 @@ fn bidiag_fused_op_step0<E: ComplexField>(
                         E::faer_deref(E::faer_rb(E::faer_as_ref(&aij))),
                     ),
                 );
-                sum_v0 =
-                    E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new), E::faer_deref(ui), sum_v0);
+                sum_v0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    E::faer_copy(&aij_new),
+                    E::faer_deref(ui),
+                    sum_v0,
+                );
                 E::faer_map(
                     E::faer_zip(aij, aij_new),
                     #[inline(always)]
@@ -416,7 +420,7 @@ fn bidiag_fused_op_step0<E: ComplexField>(
                 E::faer_simd_mul_adde(simd, zi, z_rhs_v, aij_load),
             );
 
-            sum_v0 = E::simd_conj_mul_adde(simd, E::faer_copy(&aij_new), ui, sum_v0);
+            sum_v0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new), ui, sum_v0);
             E::faer_partial_store(simd, a_j_tail, aij_new);
 
             E::faer_simd_reduce_add(simd, sum_v0)

@@ -27,6 +27,8 @@ coe-rs = "0.1.2"
 num-complex = "0.4.3"
 pulp = "0.16"
 bytemuck = "1"
+rayon = "1.8"
+core_affinity = "0.8"
 
 [build-dependencies]
 cc = "1.0.79"

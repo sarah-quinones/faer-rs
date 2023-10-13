@@ -546,8 +546,12 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                         {
                             let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
                             let b = E::faer_deref(b);
-                            a_ =
-                                E::simd_conj_mul_adde(simd, E::faer_copy(&b), E::faer_copy(&k), a_);
+                            a_ = E::faer_simd_conj_mul_adde(
+                                simd,
+                                E::faer_copy(&b),
+                                E::faer_copy(&k),
+                                a_,
+                            );
 
                             E::faer_map(
                                 E::faer_zip(a, a_),

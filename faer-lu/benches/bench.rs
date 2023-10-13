@@ -11,7 +11,7 @@ use reborrow::*;
 pub fn lu(c: &mut Criterion) {
     use faer_lu::{full_pivoting, partial_pivoting};
 
-    for n in [4, 6, 8, 12, 32, 64, 128, 256, 512, 1023, 1024, 4096] {
+    for n in [4, 6, 8, 12, 32, 64, 128, 256, 512, 1023, 1024, 2048, 4096] {
         let partial_params = PartialPivLuComputeParams::default();
         let full_params = FullPivLuComputeParams::default();
 

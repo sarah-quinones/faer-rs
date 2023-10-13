@@ -41,7 +41,8 @@ criterion = "0.5"
 rand = "0.8.5"
 nalgebra = "0.32.2"
 assert_approx_eq = "1.1.0"
-rayon = "1.7"
+rayon = { workspace = true }
+core_affinity = "0.8"
 
 [[bench]]
 name = "bench"

@@ -973,7 +973,7 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
@@ -1290,7 +1290,7 @@ impl ComplexField for c64 {
     }
 
     #[inline(always)]
-    fn simd_conj_mul_adde<S: Simd>(
+    fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
         lhs: SimdGroup<Self, S>,
         rhs: SimdGroup<Self, S>,
