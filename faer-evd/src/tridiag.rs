@@ -875,7 +875,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
             const TWO_POW_50: f64 = 1125899906842624.0;
             assert!(ncols < TWO_POW_50); // to check that integers can be
-                                              // represented exactly as floats
+                                         // represented exactly as floats
 
             let idx_to_col_start = |idx: usize| {
                 let idx_as_percent = idx as f64 / n_threads;
