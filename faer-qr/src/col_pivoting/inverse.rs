@@ -125,6 +125,7 @@ pub fn invert_in_place_req<E: Entity>(
 mod tests {
     use super::*;
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{c64, mul::matmul, Mat};
     use rand::prelude::*;
