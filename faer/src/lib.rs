@@ -161,6 +161,8 @@ pub mod prelude {
 pub use faer_core::{
     complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef, Scale,
 };
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use matrixcompare::assert_matrix_eq;
 
 /// Specifies whether the triangular lower or upper part of a matrix should be accessed.
