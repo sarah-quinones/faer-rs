@@ -117,10 +117,7 @@ fn make_raw_req<E: Entity>(size: usize) -> Result<StackReq, SizeOverflow> {
     req
 }
 
-fn make_raw<E: Entity>(
-    size: usize,
-    stack: PodStack<'_>,
-) -> (E::Group<dyn_stack::DynArray<'_, E::Unit>>, PodStack<'_>) {
+fn make_raw<E: Entity>(size: usize, stack: PodStack<'_>) -> (SliceGroupMut<'_, E>, PodStack<'_>) {
     let (stack, array) = E::faer_map_with_context(stack, E::faer_from_copy(E::UNIT), &mut {
         #[inline(always)]
         |stack, ()| {
@@ -128,7 +125,7 @@ fn make_raw<E: Entity>(
             (stack, alloc)
         }
     });
-    (array, stack)
+    (SliceGroupMut::new(array), stack)
 }
 
 pub mod amd;
@@ -310,6 +307,7 @@ mod __core {
             (self.fwd, self.inv)
         }
 
+        #[allow(clippy::len_without_is_empty)]
         #[inline]
         pub fn len(&self) -> usize {
             self.fwd.len()
@@ -767,7 +765,7 @@ impl<E: Entity> core::fmt::Debug for RefGroupMut<'_, E> {
 }
 impl<E: Entity> core::fmt::Debug for SliceGroup<'_, E> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_list().entries(self.into_iter()).finish()
+        f.debug_list().entries(self.into_ref_iter()).finish()
     }
 }
 impl<E: Entity> core::fmt::Debug for SliceGroupMut<'_, E> {
@@ -800,6 +798,11 @@ impl<'a, E: Entity> RefGroupMut<'a, E> {
 }
 
 impl<'a, E: Entity> SliceGroup<'a, E> {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         let mut len = usize::MAX;
@@ -862,7 +865,7 @@ impl<'a, E: Entity> SliceGroup<'a, E> {
     }
 
     #[inline(always)]
-    pub fn into_iter(self) -> impl Iterator<Item = RefGroup<'a, E>> {
+    pub fn into_ref_iter(self) -> impl Iterator<Item = RefGroup<'a, E>> {
         E::faer_into_iter(self.into_inner()).map(RefGroup::new)
     }
 
@@ -888,6 +891,11 @@ impl<'a, E: Entity> SliceGroup<'a, E> {
 }
 
 impl<'a, E: Entity> SliceGroupMut<'a, E> {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.rb().is_empty()
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.rb().len()
@@ -925,11 +933,7 @@ impl<'a, E: Entity> SliceGroupMut<'a, E> {
 
     #[inline(always)]
     pub fn fill_zero(&mut self) {
-        E::faer_map(
-            self.rb_mut().into_inner(),
-            #[inline(always)]
-            |slice| mem::fill_zero(slice),
-        );
+        E::faer_map(self.rb_mut().into_inner(), mem::fill_zero);
     }
 
     #[inline(always)]
@@ -953,7 +957,7 @@ impl<'a, E: Entity> SliceGroupMut<'a, E> {
     }
 
     #[inline(always)]
-    pub fn into_iter(self) -> impl Iterator<Item = RefGroupMut<'a, E>> {
+    pub fn into_mut_iter(self) -> impl Iterator<Item = RefGroupMut<'a, E>> {
         E::faer_into_iter(self.into_inner()).map(RefGroupMut::new)
     }
 
@@ -1501,8 +1505,8 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
     assert!(new_col_ptrs.len() == n + 1);
     let (_, perm_inv) = perm.fwd_inv();
 
-    let (mut current_row_position, _) = stack.make_raw::<I>(n);
-    let current_row_position = ghost::Array::from_mut(&mut current_row_position, N);
+    let (current_row_position, _) = stack.make_raw::<I>(n);
+    let current_row_position = ghost::Array::from_mut(current_row_position, N);
 
     mem::fill_zero(current_row_position);
     let col_counts = &mut *current_row_position;
@@ -1607,7 +1611,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
 
                         for (old_i, val) in zip(
                             A.row_indices_of_col(old_j),
-                            A.values_of_col(old_j).into_iter(),
+                            A.values_of_col(old_j).into_ref_iter(),
                         ) {
                             if old_i >= old_j {
                                 let new_i_ = perm_inv[old_i];
@@ -1634,7 +1638,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
 
                         for (old_i, val) in zip(
                             A.row_indices_of_col(old_j),
-                            A.values_of_col(old_j).into_iter(),
+                            A.values_of_col(old_j).into_ref_iter(),
                         ) {
                             if old_i >= old_j {
                                 let new_i_ = perm_inv[old_i];
@@ -1661,7 +1665,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
 
                         for (old_i, val) in zip(
                             A.row_indices_of_col(old_j),
-                            A.values_of_col(old_j).into_iter(),
+                            A.values_of_col(old_j).into_ref_iter(),
                         ) {
                             if old_i <= old_j {
                                 let new_i_ = perm_inv[old_i];
@@ -1688,7 +1692,7 @@ fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
 
                         for (old_i, val) in zip(
                             A.row_indices_of_col(old_j),
-                            A.values_of_col(old_j).into_iter(),
+                            A.values_of_col(old_j).into_ref_iter(),
                         ) {
                             if old_i <= old_j {
                                 let new_i_ = perm_inv[old_i];
@@ -1815,8 +1819,8 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     let N = A.ncols();
     assert!(new_col_ptrs.len() == *M + 1);
 
-    let (mut col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = ghost::Array::from_mut(&mut col_count, M);
+    let (col_count, _) = stack.make_raw::<I>(*M);
+    let col_count = ghost::Array::from_mut(col_count, M);
     mem::fill_zero(col_count);
 
     // can't overflow because the total count is A.compute_nnz() <= I::MAX
@@ -1850,7 +1854,7 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     // current_row_position[i] == col_ptr[i]
     for j in N.indices() {
         let j_: ghost::Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_iter()) {
+        for (i, val) in zip(A.row_indices_of_col(j), A.values_of_col(j).into_ref_iter()) {
             let ci = &mut current_row_position[i];
 
             // SAFETY: see below
@@ -1864,7 +1868,7 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
     // so all the unchecked accesses were valid and non-overlapping, which means the entire
     // array is filled
-    debug_assert!(&**current_row_position == &new_col_ptrs[1..]);
+    debug_assert!(**current_row_position == new_col_ptrs[1..]);
 
     // SAFETY:
     // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)

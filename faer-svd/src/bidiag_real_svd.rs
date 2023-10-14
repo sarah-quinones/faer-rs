@@ -78,9 +78,9 @@ fn compute_svd_of_m<E: RealField>(
         mus.rb_mut(),
         s.rb_mut(),
         diag,
-        &diag_perm,
+        diag_perm,
         col0,
-        &col0_perm,
+        col0_perm,
         epsilon,
     );
     perturb_col0(
@@ -93,8 +93,8 @@ fn compute_svd_of_m<E: RealField>(
         mus.rb(),
     );
 
-    let (mut col_perm, stack) = stack.make_with(actual_n, |i| i);
-    let (mut col_perm_inv, _) = stack.make_with(actual_n, |i| i);
+    let (col_perm, stack) = stack.make_with(actual_n, |i| i);
+    let (col_perm_inv, _) = stack.make_with(actual_n, |i| i);
 
     for i in 0..actual_n - 1 {
         if s.read(i, 0) > s.read(i + 1, 0) {
@@ -117,7 +117,7 @@ fn compute_svd_of_m<E: RealField>(
         diag,
         perm,
         outer_perm,
-        &col_perm_inv,
+        col_perm_inv,
         actual_n,
         shifts.rb(),
         mus.rb(),
@@ -1036,8 +1036,8 @@ fn deflate<E: RealField>(
         }
     }
 
-    let (mut real_ind, stack) = stack.make_with(n, |i| i);
-    let (mut real_col, _) = stack.make_with(n, |i| i);
+    let (real_ind, stack) = stack.make_with(n, |i| i);
+    let (real_col, _) = stack.make_with(n, |i| i);
 
     for i in (if total_deflation { 0 } else { 1 })..n {
         let pi = perm[n - (if total_deflation { i + 1 } else { i })];
@@ -1438,8 +1438,8 @@ fn bidiag_svd_impl<E: RealField>(
         };
 
         let stack_bytes = stack.len_bytes();
-        let (mut mem1, stack2) = stack.rb_mut().make_raw::<u8>(stack_bytes / 2);
-        let stack1 = PodStack::new(&mut mem1);
+        let (mem1, stack2) = stack.rb_mut().make_raw::<u8>(stack_bytes / 2);
+        let stack1 = PodStack::new(mem1);
 
         join_raw(
             |parallelism| {
@@ -1571,22 +1571,20 @@ fn bidiag_svd_impl<E: RealField>(
         u.write(1, n, c0.faer_mul(q21));
     }
 
-    let (mut perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
-    let perm = &mut *perm;
-    let (mut jacobi_coeffs, stack) = stack.make_with(n, |_| JacobiRotation {
+    let (perm, stack) = stack.rb_mut().make_with(n, |_| 0usize);
+    let (jacobi_coeffs, stack) = stack.make_with(n, |_| JacobiRotation {
         c: E::faer_zero(),
         s: E::faer_zero(),
     });
-    let (mut jacobi_indices, mut stack) = stack.make_with(n, |_| 0);
+    let (jacobi_indices, mut stack) = stack.make_with(n, |_| 0);
 
     let (jacobi_0i, jacobi_ij) = {
-        let (mut transpositions, stack) = stack.rb_mut().make_with(n, |_| 0usize);
-        let transpositions = &mut *transpositions;
+        let (transpositions, stack) = stack.rb_mut().make_with(n, |_| 0usize);
         deflate(
             diag,
             col0,
-            &mut jacobi_coeffs,
-            &mut jacobi_indices,
+            jacobi_coeffs,
+            jacobi_indices,
             u.rb_mut(),
             v.rb_mut(),
             transpositions,
@@ -1803,9 +1801,9 @@ fn bidiag_svd_impl<E: RealField>(
             #[cfg(feature = "rayon")]
             Parallelism::Rayon(_) if !_v_is_none => {
                 let req_v = faer_core::temp_mat_req::<E>(n, n).unwrap();
-                let (mut mem_v, stack_u) =
+                let (mem_v, stack_u) =
                     stack.make_aligned_raw::<u8>(req_v.size_bytes(), req_v.align_bytes());
-                let stack_v = PodStack::new(&mut mem_v);
+                let stack_v = PodStack::new(mem_v);
                 faer_core::join_raw(
                     |parallelism| update_v(parallelism, stack_v),
                     |parallelism| update_u(parallelism, stack_u),

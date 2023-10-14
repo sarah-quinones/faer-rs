@@ -284,11 +284,11 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     let mut u_real = u_real.as_mut();
     let (mut v_real, stack) = temp_mat_uninit::<E::Real>(n, if v.is_some() { n } else { 0 }, stack);
     let mut v_real = v_real.as_mut();
-    let (mut diag_real, stack) = stack.collect(diag.iter().map(|x| x.faer_abs()));
-    let (mut subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.faer_abs()));
+    let (diag_real, stack) = stack.collect(diag.iter().map(|x| x.faer_abs()));
+    let (subdiag_real, stack) = stack.collect(subdiag.iter().map(|x| x.faer_abs()));
 
-    let (mut col_mul, stack) = stack.make_with(n, |_| E::faer_zero());
-    let (mut row_mul, stack) = stack.make_with(n - 1, |_| E::faer_zero());
+    let (col_mul, stack) = stack.make_with(n, |_| E::faer_zero());
+    let (row_mul, stack) = stack.make_with(n - 1, |_| E::faer_zero());
 
     let normalized = |x: E| {
         if x == E::faer_zero() {
@@ -312,8 +312,8 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     }
 
     compute_bidiag_real_svd(
-        &mut diag_real,
-        &mut subdiag_real,
+        diag_real,
+        subdiag_real,
         u.is_some().then_some(u_real.rb_mut()),
         v.is_some().then_some(v_real.rb_mut()),
         jacobi_fallback_threshold,
@@ -342,12 +342,8 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
 
             assert!(row_mul.len() == n - 1);
             unsafe {
-                for i in 0..n - 1 {
-                    u.write_unchecked(
-                        i,
-                        0,
-                        row_mul[i].faer_scale_real(u_real.read_unchecked(i, 0)),
-                    );
+                for (i, &row_mul) in row_mul.iter().enumerate() {
+                    u.write_unchecked(i, 0, row_mul.faer_scale_real(u_real.read_unchecked(i, 0)));
                 }
             }
         }
@@ -359,12 +355,8 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
 
             assert!(col_mul.len() == n);
             unsafe {
-                for i in 0..n {
-                    v.write_unchecked(
-                        i,
-                        0,
-                        col_mul[i].faer_scale_real(v_real.read_unchecked(i, 0)),
-                    );
+                for (i, &col_mul) in col_mul.iter().enumerate() {
+                    v.write_unchecked(i, 0, col_mul.faer_scale_real(v_real.read_unchecked(i, 0)));
                 }
             }
         }
@@ -445,8 +437,8 @@ fn compute_svd_big<E: ComplexField>(
 
     let bid = bid.into_const();
 
-    let (mut diag, stack) = stack.make_with(n, |i| bid.read(i, i).faer_conj());
-    let (mut subdiag, stack) = stack.make_with(n, |i| {
+    let (diag, stack) = stack.make_with(n, |i| bid.read(i, i).faer_conj());
+    let (subdiag, stack) = stack.make_with(n, |i| {
         if i < n - 1 {
             bid.read(i, i + 1).faer_conj()
         } else {
@@ -484,8 +476,8 @@ fn compute_svd_big<E: ComplexField>(
     let mut v_b = v_b.as_mut();
 
     bidiag_svd(
-        &mut diag,
-        &mut subdiag,
+        diag,
+        subdiag,
         v.is_some().then_some(u_b.rb_mut()),
         u.is_some().then_some(v_b.rb_mut()),
         JACOBI_FALLBACK_THRESHOLD,
@@ -495,8 +487,8 @@ fn compute_svd_big<E: ComplexField>(
         stack.rb_mut(),
     );
 
-    for idx in 0..s.nrows() {
-        s.write(idx, 0, diag[idx]);
+    for (idx, &diag) in diag.iter().enumerate() {
+        s.write(idx, 0, diag);
     }
 
     if let Some(mut u) = u {

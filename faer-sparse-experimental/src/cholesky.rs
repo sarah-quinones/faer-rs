@@ -90,7 +90,7 @@ pub mod simplicial {
         StackReq::try_all_of([n_req, n_req, n_req])
     }
 
-    pub fn factorize_simplicial_symbolic<'n, I: Index>(
+    pub fn factorize_simplicial_symbolic<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
         etree: EtreeRef<'_, I>,
         col_counts: &[I],
@@ -134,22 +134,20 @@ pub mod simplicial {
             l_nnz,
             #[inline(always)]
             move |L_NNZ| {
-                let (mut current_row_index, stack) = stack.make_raw::<I>(n);
-                let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
-                let (mut marked, _) = stack.make_raw::<I>(n);
+                let (current_row_index, stack) = stack.make_raw::<I>(n);
+                let (ereach_stack, stack) = stack.make_raw::<I>(n);
+                let (marked, _) = stack.make_raw::<I>(n);
 
-                let ereach_stack = Array::from_mut(&mut ereach_stack, N);
+                let ereach_stack = Array::from_mut(ereach_stack, N);
                 let etree = Array::from_ref(etree, N);
-                let visited = Array::from_mut(&mut marked, N);
+                let visited = Array::from_mut(marked, N);
 
                 mem::fill_none(visited);
                 let L_row_indices = Array::from_mut(&mut L_row_ind, L_NNZ);
                 let L_col_ptrs_start =
                     Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
-                let current_row_index = Array::from_mut(
-                    ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
-                    N,
-                );
+                let current_row_index =
+                    Array::from_mut(ghost::copy_slice(current_row_index, L_col_ptrs_start), N);
 
                 for k in N.indices() {
                     let reach = ereach(ereach_stack, A, etree, k, visited);
@@ -210,18 +208,15 @@ pub mod simplicial {
                         let has_eps = delta > E::Real::faer_zero();
                         let mut dynamic_regularization_count = 0usize;
 
-                        let (mut x, stack) = crate::make_raw::<E>(n, stack);
-                        let (mut current_row_index, stack) = stack.make_raw::<I>(n);
-                        let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
-                        let (mut marked, _) = stack.make_raw::<I>(n);
+                        let (x, stack) = crate::make_raw::<E>(n, stack);
+                        let (current_row_index, stack) = stack.make_raw::<I>(n);
+                        let (ereach_stack, stack) = stack.make_raw::<I>(n);
+                        let (marked, _) = stack.make_raw::<I>(n);
 
-                        let ereach_stack = Array::from_mut(&mut ereach_stack, N);
+                        let ereach_stack = Array::from_mut(ereach_stack, N);
                         let etree = Array::from_ref(etree, N);
-                        let visited = Array::from_mut(&mut marked, N);
-                        let mut x = ghost::ArrayGroupMut::new(
-                            SliceGroupMut::new(E::faer_map(E::faer_as_mut(&mut x), |x| &mut **x)),
-                            N,
-                        );
+                        let visited = Array::from_mut(marked, N);
+                        let mut x = ghost::ArrayGroupMut::new(x, N);
 
                         x.rb_mut().into_slice().fill_zero();
                         mem::fill_none(visited);
@@ -233,7 +228,7 @@ pub mod simplicial {
                             Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
 
                         let current_row_index = Array::from_mut(
-                            ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
+                            ghost::copy_slice(current_row_index, L_col_ptrs_start),
                             N,
                         );
 
@@ -241,7 +236,7 @@ pub mod simplicial {
                             let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
 
                             for (i, aik) in
-                                zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
+                                zip(A.row_indices_of_col(k), A.values_of_col(k).into_ref_iter())
                             {
                                 x.write(i, aik.read().faer_conj());
                             }
@@ -266,7 +261,7 @@ pub mod simplicial {
                                 let range = j_start.next()..row_idx.to_inclusive();
                                 for (i, lij) in zip(
                                     &L_row_indices[range.clone()],
-                                    L_values.rb().subslice(range).into_iter(),
+                                    L_values.rb().subslice(range).into_ref_iter(),
                                 ) {
                                     let i = N.check(i.zx());
                                     let mut xi = x.read(i);
@@ -337,18 +332,15 @@ pub mod simplicial {
                     l_nnz,
                     #[inline(always)]
                     move |L_NNZ| {
-                        let (mut x, stack) = crate::make_raw::<E>(n, stack);
-                        let (mut current_row_index, stack) = stack.make_raw::<I>(n);
-                        let (mut ereach_stack, stack) = stack.make_raw::<I>(n);
-                        let (mut marked, _) = stack.make_raw::<I>(n);
+                        let (x, stack) = crate::make_raw::<E>(n, stack);
+                        let (current_row_index, stack) = stack.make_raw::<I>(n);
+                        let (ereach_stack, stack) = stack.make_raw::<I>(n);
+                        let (marked, _) = stack.make_raw::<I>(n);
 
-                        let ereach_stack = Array::from_mut(&mut ereach_stack, N);
+                        let ereach_stack = Array::from_mut(ereach_stack, N);
                         let etree = Array::from_ref(etree, N);
-                        let visited = Array::from_mut(&mut marked, N);
-                        let mut x = ghost::ArrayGroupMut::new(
-                            SliceGroupMut::new(E::faer_map(E::faer_as_mut(&mut x), |x| &mut **x)),
-                            N,
-                        );
+                        let visited = Array::from_mut(marked, N);
+                        let mut x = ghost::ArrayGroupMut::new(x, N);
 
                         x.rb_mut().into_slice().fill_zero();
                         mem::fill_none(visited);
@@ -360,7 +352,7 @@ pub mod simplicial {
                             Array::from_ref(Idx::slice_ref_checked(&L_col_ptrs[..n], L_NNZ), N);
 
                         let current_row_index = Array::from_mut(
-                            ghost::copy_slice(&mut current_row_index, L_col_ptrs_start),
+                            ghost::copy_slice(current_row_index, L_col_ptrs_start),
                             N,
                         );
 
@@ -368,7 +360,7 @@ pub mod simplicial {
                             let reach = ereach(ereach_stack, A.symbolic(), etree, k, visited);
 
                             for (i, aik) in
-                                zip(A.row_indices_of_col(k), A.values_of_col(k).into_iter())
+                                zip(A.row_indices_of_col(k), A.values_of_col(k).into_ref_iter())
                             {
                                 x.write(i, aik.read().faer_conj());
                             }
@@ -393,7 +385,7 @@ pub mod simplicial {
                                 let range = j_start.next()..row_idx.to_inclusive();
                                 for (i, lij) in zip(
                                     &L_row_indices[range.clone()],
-                                    L_values.rb().subslice(range).into_iter(),
+                                    L_values.rb().subslice(range).into_ref_iter(),
                                 ) {
                                     let i = N.check(i.zx());
                                     let mut xi = x.read(i);
@@ -456,9 +448,11 @@ pub mod simplicial {
                     1 => {
                         for j in 0..n {
                             let xj0 = x.read(j, 0);
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
@@ -474,9 +468,11 @@ pub mod simplicial {
                         for j in 0..n {
                             let xj0 = x.read(j, 0);
                             let xj1 = x.read(j, 1);
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
@@ -494,9 +490,11 @@ pub mod simplicial {
                             let xj0 = x.read(j, 0);
                             let xj1 = x.read(j, 1);
                             let xj2 = x.read(j, 2);
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
@@ -516,9 +514,11 @@ pub mod simplicial {
                             let xj1 = x.read(j, 1);
                             let xj2 = x.read(j, 2);
                             let xj3 = x.read(j, 3);
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
@@ -595,7 +595,7 @@ pub mod simplicial {
                                 acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), 0)));
                             }
 
-                            for (i, lij) in zip(rows_tail, values_tail.into_iter()) {
+                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
                                 let lija = lij.read();
                                 let lija = if conj == Conj::No {
                                     lija.faer_conj()
@@ -649,7 +649,7 @@ pub mod simplicial {
                                 acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 1)));
                             }
 
-                            for (i, lij) in zip(rows_tail, values_tail.into_iter()) {
+                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
                                 let lija = lij.read();
                                 let lija = if conj == Conj::No {
                                     lija.faer_conj()
@@ -670,9 +670,11 @@ pub mod simplicial {
                             let mut acc1a = E::faer_zero();
                             let mut acc2a = E::faer_zero();
 
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::No {
@@ -697,9 +699,11 @@ pub mod simplicial {
                             let mut acc2a = E::faer_zero();
                             let mut acc3a = E::faer_zero();
 
-                            for (i, lij) in
-                                zip(ld.row_indices_of_col(j), ld.values_of_col(j).into_iter())
-                                    .skip(1)
+                            for (i, lij) in zip(
+                                ld.row_indices_of_col(j),
+                                ld.values_of_col(j).into_ref_iter(),
+                            )
+                            .skip(1)
                             {
                                 let lij = lij.read();
                                 let lij = if conj == Conj::No {
@@ -945,7 +949,6 @@ pub mod supernodal {
                 );
 
                 let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
-                let mut tmp = tmp.as_mut();
                 faer_core::mul::matmul_with_conj(
                     tmp.rb_mut(),
                     Ls_bot,
@@ -983,7 +986,6 @@ pub mod supernodal {
                 let [Ls_top, Ls_bot] = Ls.split_at_row(size);
 
                 let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
-                let mut tmp = tmp.as_mut();
                 for j in 0..k {
                     for (idx, i) in s.pattern().iter().enumerate() {
                         let i = i.zx();
@@ -1085,7 +1087,7 @@ pub mod supernodal {
         StackReq::try_all_of([n_req, n_req, n_req, n_req])
     }
 
-    pub fn factorize_supernodal_symbolic<'n, I: Index>(
+    pub fn factorize_supernodal_symbolic<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
         etree: EtreeRef<'_, I>,
         col_counts: &[I],
@@ -1142,13 +1144,13 @@ pub mod supernodal {
         }
         let mut original_stack = stack;
 
-        let (mut index_to_super__, stack) = original_stack.rb_mut().make_raw::<I>(n);
-        let (mut super_etree__, stack) = stack.make_raw::<I>(n);
-        let (mut supernode_sizes__, stack) = stack.make_raw::<I>(n);
-        let (mut child_count__, _) = stack.make_raw::<I>(n);
+        let (index_to_super__, stack) = original_stack.rb_mut().make_raw::<I>(n);
+        let (super_etree__, stack) = stack.make_raw::<I>(n);
+        let (supernode_sizes__, stack) = stack.make_raw::<I>(n);
+        let (child_count__, _) = stack.make_raw::<I>(n);
 
-        let child_count = Array::from_mut(&mut child_count__, N);
-        let index_to_super = Array::from_mut(&mut index_to_super__, N);
+        let child_count = Array::from_mut(child_count__, N);
+        let index_to_super = Array::from_mut(index_to_super__, N);
 
         mem::fill_zero(child_count);
         for j in N.indices() {
@@ -1157,7 +1159,7 @@ pub mod supernodal {
             }
         }
 
-        mem::fill_zero(&mut supernode_sizes__);
+        mem::fill_zero(supernode_sizes__);
         let mut current_supernode = 0usize;
         supernode_sizes__[0] = one;
         for (j_prev, j) in zip(N.indices().take(n - 1), N.indices().skip(1)) {
@@ -1225,36 +1227,33 @@ pub mod supernodal {
                     let stack = PodStack::new(&mut mem);
 
                     let child_lists = &mut (**child_count)[..n_fundamental_supernodes];
-                    let (mut child_list_heads, stack) =
+                    let (child_list_heads, stack) = stack.make_raw::<I>(n_fundamental_supernodes);
+                    let (last_merged_children, stack) =
                         stack.make_raw::<I>(n_fundamental_supernodes);
-                    let (mut last_merged_children, stack) =
+                    let (merge_parents, stack) = stack.make_raw::<I>(n_fundamental_supernodes);
+                    let (fundamental_supernode_degrees, stack) =
                         stack.make_raw::<I>(n_fundamental_supernodes);
-                    let (mut merge_parents, stack) = stack.make_raw::<I>(n_fundamental_supernodes);
-                    let (mut fundamental_supernode_degrees, stack) =
-                        stack.make_raw::<I>(n_fundamental_supernodes);
-                    let (mut num_zeros, _) = stack.make_raw::<I>(n_fundamental_supernodes);
+                    let (num_zeros, _) = stack.make_raw::<I>(n_fundamental_supernodes);
 
                     let child_lists = Array::from_mut(
                         ghost::fill_none(child_lists, N_FUNDAMENTAL_SUPERNODES),
                         N_FUNDAMENTAL_SUPERNODES,
                     );
                     let child_list_heads = Array::from_mut(
-                        ghost::fill_none(&mut child_list_heads, N_FUNDAMENTAL_SUPERNODES),
+                        ghost::fill_none(child_list_heads, N_FUNDAMENTAL_SUPERNODES),
                         N_FUNDAMENTAL_SUPERNODES,
                     );
                     let last_merged_children = Array::from_mut(
-                        ghost::fill_none(&mut last_merged_children, N_FUNDAMENTAL_SUPERNODES),
+                        ghost::fill_none(last_merged_children, N_FUNDAMENTAL_SUPERNODES),
                         N_FUNDAMENTAL_SUPERNODES,
                     );
                     let merge_parents = Array::from_mut(
-                        ghost::fill_none(&mut merge_parents, N_FUNDAMENTAL_SUPERNODES),
+                        ghost::fill_none(merge_parents, N_FUNDAMENTAL_SUPERNODES),
                         N_FUNDAMENTAL_SUPERNODES,
                     );
-                    let fundamental_supernode_degrees = Array::from_mut(
-                        &mut fundamental_supernode_degrees,
-                        N_FUNDAMENTAL_SUPERNODES,
-                    );
-                    let num_zeros = Array::from_mut(&mut num_zeros, N_FUNDAMENTAL_SUPERNODES);
+                    let fundamental_supernode_degrees =
+                        Array::from_mut(fundamental_supernode_degrees, N_FUNDAMENTAL_SUPERNODES);
+                    let num_zeros = Array::from_mut(num_zeros, N_FUNDAMENTAL_SUPERNODES);
 
                     let mut supernode_begin = 0usize;
                     for s in N_FUNDAMENTAL_SUPERNODES.indices() {
@@ -1543,11 +1542,6 @@ pub mod supernodal {
         let mut supernode_etree__ = try_collect(super_etree__[..n_supernodes].iter().copied())?;
         let mut supernode_postorder__ = try_zeroed::<I>(n_supernodes)?;
 
-        drop(super_etree__);
-        drop(child_count__);
-        drop(supernode_sizes__);
-        drop(index_to_super__);
-
         let mut descendent_count__ = try_zeroed::<I>(n_supernodes)?;
 
         ghost::with_size(n_supernodes, |N_SUPERNODES| {
@@ -1675,8 +1669,8 @@ pub mod supernodal {
         let row_ind = &*symbolic.row_indices;
 
         // mapping from global indices to local
-        let (mut global_to_local, mut stack) = stack.make_raw::<I>(n);
-        mem::fill_none(&mut global_to_local);
+        let (global_to_local, mut stack) = stack.make_raw::<I>(n);
+        mem::fill_none(global_to_local);
 
         for s in 0..n_supernodes {
             let s_start = symbolic.supernode_begin[s].zx();
@@ -1703,7 +1697,7 @@ pub mod supernodal {
                 let j_shifted = j - s_start;
                 for (i, val) in zip(
                     A_lower.row_indices_of_col(j),
-                    A_lower.values_of_col(j).into_iter(),
+                    A_lower.values_of_col(j).into_ref_iter(),
                 ) {
                     let val = val.read();
                     if i >= s_end {
@@ -1744,11 +1738,10 @@ pub mod supernodal {
 
                 let stack = stack.rb_mut();
 
-                let (mut tmp, stack) =
+                let (tmp, stack) =
                     temp_mat_uninit::<E>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack);
-                let tmp = tmp.as_mut();
-                let (mut tmp2, _) = temp_mat_uninit::<E>(Ld_mid.ncols(), Ld_mid.nrows(), stack);
-                let mut Ld_mid_x_D = tmp2.as_mut().transpose();
+                let (tmp2, _) = temp_mat_uninit::<E>(Ld_mid.ncols(), Ld_mid.nrows(), stack);
+                let mut Ld_mid_x_D = tmp2.transpose();
 
                 for i in 0..d_pattern_mid_len {
                     for j in 0..d_ncols {
@@ -1926,9 +1919,9 @@ fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
 ) -> &'out mut Array<'n, MaybeIdx<'n, I>> {
     let N = A.ncols();
     let etree: &mut [I] = etree;
-    let (mut visited, _) = stack.make_raw::<I>(*N);
+    let (visited, _) = stack.make_raw::<I>(*N);
     let etree = Array::from_mut(ghost::fill_none(etree, N), N);
-    let visited = Array::from_mut(&mut visited, N);
+    let visited = Array::from_mut(visited, N);
 
     for j in N.indices() {
         let j_ = j.truncate::<I>();
@@ -1960,7 +1953,7 @@ fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     etree
 }
 
-pub fn prefactorize_symbolic<'n, 'out, I: Index>(
+pub fn prefactorize_symbolic<'out, I: Index>(
     etree: &'out mut [I],
     col_counts: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
@@ -2152,7 +2145,7 @@ impl<I: Index> SymbolicCholesky<I> {
             let A_nnz = self.A_nnz;
             let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let (mut new_signs, stack) =
+            let (new_signs, stack) =
                 stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() {
                     n
                 } else {
@@ -2163,7 +2156,7 @@ impl<I: Index> SymbolicCholesky<I> {
             let fwd = perm.fwd_inv().0;
             let signs = regularization.dynamic_regularization_signs.map(|signs| {
                 {
-                    let new_signs = Array::from_mut(&mut new_signs, N);
+                    let new_signs = Array::from_mut(new_signs, N);
                     let signs = Array::from_ref(signs, N);
                     for i in N.indices() {
                         new_signs[i] = signs[fwd[i].zx()];
@@ -2177,12 +2170,8 @@ impl<I: Index> SymbolicCholesky<I> {
             };
 
             let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
-            let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-            let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-            let mut new_values =
-                SliceGroupMut::<'_, E>::new(E::faer_map(E::faer_as_mut(&mut new_values), |val| {
-                    &mut **val
-                }));
+            let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+            let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
 
             let out_side = match &self.raw {
                 SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
@@ -2191,8 +2180,8 @@ impl<I: Index> SymbolicCholesky<I> {
 
             let A = ghost_permute_hermitian(
                 new_values.rb_mut(),
-                &mut new_col_ptr,
-                &mut new_row_ind,
+                new_col_ptr,
+                new_row_ind,
                 A,
                 perm,
                 side,
@@ -2277,12 +2266,11 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         let mut rhs = rhs;
 
         let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
-        let mut x = x.as_mut();
 
         let (fwd, inv) = self.symbolic.perm().fwd_inv();
         for j in 0..k {
-            for i in 0..n {
-                x.write(i, j, rhs.read(fwd[i].zx(), j));
+            for (i, fwd) in fwd.iter().enumerate() {
+                x.write(i, j, rhs.read(fwd.zx(), j));
             }
         }
 
@@ -2298,8 +2286,8 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         }
 
         for j in 0..k {
-            for i in 0..n {
-                rhs.write(i, j, x.read(inv[i].zx(), j));
+            for (i, inv) in inv.iter().enumerate() {
+                rhs.write(i, j, x.read(inv.zx(), j));
             }
         }
     }
@@ -2348,14 +2336,13 @@ fn ghost_postorder<'n, I: Index>(
         return;
     }
 
-    let (mut stack_, stack) = stack.make_raw::<I>(n);
-    let (mut first_child, stack) = stack.make_raw::<I>(n);
-    let (mut next_child, _) = stack.make_raw::<I>(n);
+    let (stack_, stack) = stack.make_raw::<I>(n);
+    let (first_child, stack) = stack.make_raw::<I>(n);
+    let (next_child, _) = stack.make_raw::<I>(n);
 
-    let stack = Array::from_mut(&mut stack_, N);
-    let next_child = Array::from_mut(&mut next_child, N);
-
-    let first_child = Array::from_mut(ghost::fill_none(&mut first_child, N), N);
+    let stack = Array::from_mut(stack_, N);
+    let next_child = Array::from_mut(next_child, N);
+    let first_child = Array::from_mut(ghost::fill_none(first_child, N), N);
 
     for j in N.indices().rev() {
         let parent = etree[j];
@@ -2457,11 +2444,11 @@ pub fn factorize_symbolic<I: Index>(
         let perm_ =
             ghost::PermutationRef::new(PermutationRef::new_checked(&perm_fwd, &perm_inv), N);
 
-        let (mut new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
-        let (mut new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+        let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
         let A = ghost_permute_hermitian_symbolic(
-            &mut new_col_ptr,
-            &mut new_row_ind,
+            new_col_ptr,
+            new_row_ind,
             A,
             perm_,
             side,
@@ -2469,10 +2456,10 @@ pub fn factorize_symbolic<I: Index>(
             stack.rb_mut(),
         );
 
-        let (mut etree, stack) = stack.make_raw::<I>(n);
-        let (mut col_counts, mut stack) = stack.make_raw::<I>(n);
-        let etree = Array::from_mut(&mut etree, N);
-        let col_counts = Array::from_mut(&mut col_counts, N);
+        let (etree, stack) = stack.make_raw::<I>(n);
+        let (col_counts, mut stack) = stack.make_raw::<I>(n);
+        let etree = Array::from_mut(etree, N);
+        let col_counts = Array::from_mut(col_counts, N);
         let etree = &*ghost_prefactorize_symbolic(etree, col_counts, A, stack.rb_mut());
         let L_nnz = I::sum_nonnegative(col_counts).ok_or(FaerError::IndexOverflow)?;
 
@@ -2616,7 +2603,7 @@ mod tests {
         for j in 0..n {
             for (i, val) in zip(
                 sparse.row_indices_of_col(j),
-                sparse.values_of_col(j).into_iter(),
+                sparse.values_of_col(j).into_ref_iter(),
             ) {
                 dense.write(i, j, val.read());
             }
@@ -2655,7 +2642,7 @@ mod tests {
         let mut D = Mat::<E>::zeros(n, n);
         D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
         dense.as_mut().diagonal().fill(E::faer_one());
-        &dense * D * &dense.adjoint()
+        &dense * D * dense.adjoint()
     }
 
     fn reconstruct_from_simplicial<I: Index, E: ComplexField>(
@@ -2677,7 +2664,7 @@ mod tests {
         );
 
         for j in 0..n {
-            for (i, val) in zip(L.row_indices_of_col(j), L.values_of_col(j).into_iter()) {
+            for (i, val) in zip(L.row_indices_of_col(j), L.values_of_col(j).into_ref_iter()) {
                 dense.write(i, j, val.read());
             }
         }
@@ -2686,7 +2673,7 @@ mod tests {
         D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
         dense.as_mut().diagonal().fill(E::faer_one());
 
-        &dense * D * &dense.adjoint()
+        &dense * D * dense.adjoint()
     }
 
     fn test_supernodal<I: Index>() {
@@ -2947,10 +2934,10 @@ mod tests {
                 let L_values = L_values.rb();
                 let A_reconstructed = match symbolic.raw() {
                     SymbolicCholeskyRaw::Simplicial(symbolic) => {
-                        reconstruct_from_simplicial(&symbolic, L_values)
+                        reconstruct_from_simplicial(symbolic, L_values)
                     }
                     SymbolicCholeskyRaw::Supernodal(symbolic) => {
-                        reconstruct_from_supernodal(&symbolic, L_values)
+                        reconstruct_from_supernodal(symbolic, L_values)
                     }
                 };
 
@@ -3043,8 +3030,8 @@ mod tests {
             );
 
             let mut A_dense = sparse_to_dense(A_upper);
-            for j in 0..n {
-                A_dense.write(j, j, signs[j] as f64 * dynamic_regularization_epsilon);
+            for (j, &sign) in signs.iter().enumerate() {
+                A_dense.write(j, j, sign as f64 * dynamic_regularization_epsilon);
                 for i in j + 1..n {
                     A_dense.write(i, j, A_dense.read(j, i).faer_conj());
                 }
@@ -3089,10 +3076,10 @@ mod tests {
 
                 let A_reconstructed = match symbolic.raw() {
                     SymbolicCholeskyRaw::Simplicial(symbolic) => {
-                        reconstruct_from_simplicial(&symbolic, L_values)
+                        reconstruct_from_simplicial(symbolic, L_values)
                     }
                     SymbolicCholeskyRaw::Supernodal(symbolic) => {
-                        reconstruct_from_supernodal(&symbolic, L_values)
+                        reconstruct_from_supernodal(symbolic, L_values)
                     }
                 };
 

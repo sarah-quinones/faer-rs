@@ -87,15 +87,6 @@ pub fn make_householder_in_place<E: ComplexField>(
     }
 }
 
-fn div_ceil(a: usize, b: usize) -> usize {
-    let (div, rem) = (a / b, a % b);
-    if rem == 0 {
-        div
-    } else {
-        div + 1
-    }
-}
-
 #[doc(hidden)]
 pub fn upgrade_householder_factor<E: ComplexField>(
     mut householder_factor: MatMut<'_, E>,
@@ -110,7 +101,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
 
     assert!(householder_factor.nrows() == householder_factor.ncols());
 
-    let block_count = div_ceil(householder_factor.nrows(), blocksize);
+    let block_count = householder_factor.nrows().div_ceil(blocksize);
 
     if block_count > 1 {
         assert!(blocksize > prev_blocksize);
@@ -171,7 +162,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
             parallelism,
         );
     } else {
-        let prev_block_count = div_ceil(householder_factor.nrows(), prev_blocksize);
+        let prev_block_count = householder_factor.nrows().div_ceil(prev_blocksize);
 
         let idx = (prev_block_count / 2) * prev_blocksize;
         let [tau_tl, mut tau_tr, _, tau_br] = householder_factor.split_at(idx, idx);

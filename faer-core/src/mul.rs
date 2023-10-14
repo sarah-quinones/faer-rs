@@ -1313,8 +1313,8 @@ fn matmul_with_conj_impl<E: ComplexField>(
             let a_panel = a.submatrix(0, depth_outer, m, k_chunk);
             let b_block = b_panel.submatrix(depth_outer, 0, k_chunk, n_chunk);
 
-            let n_job_count = div_ceil(n_chunk, nr);
-            let chunk_count = div_ceil(m, MC);
+            let n_job_count = n_chunk.div_ceil(nr);
+            let chunk_count = m.div_ceil(MC);
 
             let job_count = n_job_count * chunk_count;
 
@@ -1403,16 +1403,6 @@ fn matmul_with_conj_impl<E: ComplexField>(
         }
 
         col_outer += n_chunk;
-    }
-}
-
-fn div_ceil(a: usize, b: usize) -> usize {
-    let d = a / b;
-    let r = a % b;
-    if r > 0 && b > 0 {
-        d + 1
-    } else {
-        d
     }
 }
 
@@ -1905,7 +1895,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let m = acc.nrows();
     let n = acc.ncols();
 
-    let padded_m = div_ceil(m, lane_count).checked_mul(lane_count).unwrap();
+    let padded_m = m.checked_next_multiple_of(lane_count).unwrap();
 
     let mut a_copy = a.to_owned();
     a_copy.resize_with(padded_m, k, |_, _| E::faer_zero());
