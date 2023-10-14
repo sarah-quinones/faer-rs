@@ -269,7 +269,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
             mul[0] = E::faer_one();
 
             let mut x = E::faer_one();
-            for (i, mul) in mul.iter_mut().skip(1).enumerate() {
+            for (i, mul) in mul.iter_mut().enumerate().skip(1) {
                 x = normalized(trid.read(i, i - 1).faer_mul(x.faer_conj())).faer_conj();
                 *mul = x.faer_conj();
             }

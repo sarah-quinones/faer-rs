@@ -2,9 +2,7 @@
 use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::matmul,
-    permutation::{swap_rows, PermutationMut},
-    solve::solve_unit_lower_triangular_in_place,
+    mul::matmul, permutation::PermutationMut, solve::solve_unit_lower_triangular_in_place,
     temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
 use reborrow::*;
@@ -23,14 +21,13 @@ fn swap_two_elems<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j: usize) {
 }
 
 #[inline(always)]
-fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j: usize) {
+fn swap_two_elems_contiguous<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usize) {
     debug_assert!(m.ncols() == 1);
     debug_assert!(m.row_stride() == 1);
     debug_assert!(i < m.nrows());
     debug_assert!(j < m.nrows());
     unsafe {
-        let ptr = m.rb_mut().as_ptr();
-
+        let ptr = m.as_ptr();
         let ptr_a = E::faer_map(
             E::faer_copy(&ptr),
             #[inline(always)]
@@ -42,26 +39,10 @@ fn swap_two_elems_contiguous<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j:
             |ptr| ptr.add(j),
         );
 
-        let a = E::faer_map(
-            E::faer_copy(&ptr_a),
-            #[inline(always)]
-            |ptr| (*ptr),
-        );
-        let b = E::faer_map(
-            E::faer_copy(&ptr_b),
-            #[inline(always)]
-            |ptr| (*ptr),
-        );
-
         E::faer_map(
-            E::faer_zip(ptr_b, a),
+            E::faer_zip(ptr_a, ptr_b),
             #[inline(always)]
-            |(ptr, val)| *ptr = val,
-        );
-        E::faer_map(
-            E::faer_zip(ptr_a, b),
-            #[inline(always)]
-            |(ptr, val)| *ptr = val,
+            |(a, b)| core::ptr::swap(a, b),
         );
     }
 }
@@ -76,7 +57,6 @@ fn lu_in_place_unblocked<E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
-    perm: &mut [usize],
     transpositions: &mut [usize],
     stack: PodStack<'_>,
 ) -> usize {
@@ -84,7 +64,6 @@ fn lu_in_place_unblocked<E: ComplexField>(
     let m = matrix.nrows();
     let ncols = matrix.ncols();
     debug_assert!(m >= n);
-    debug_assert!(perm.len() == m);
 
     if n == 0 {
         return 0;
@@ -142,7 +121,6 @@ fn lu_in_place_unblocked<E: ComplexField>(
 
         if imax != k {
             n_transpositions += 1;
-            perm.swap(k, imax);
         }
 
         if k != imax {
@@ -319,7 +297,6 @@ fn lu_in_place_impl<E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
-    perm: &mut [usize],
     transpositions: &mut [usize],
     parallelism: Parallelism,
     mut stack: PodStack<'_>,
@@ -328,12 +305,12 @@ fn lu_in_place_impl<E: ComplexField>(
     let full_n = matrix.ncols();
 
     debug_assert!(m >= n);
-    debug_assert!(perm.len() == m);
 
     if n <= recursion_threshold::<E>(m) {
-        return lu_in_place_unblocked(matrix, col_start, n, perm, transpositions, stack);
+        return lu_in_place_unblocked(matrix, col_start, n, transpositions, stack);
     }
 
+    // recursing is fine-ish since we halve the blocksize at each recursion step
     let bs = blocksize::<E>(n);
 
     let mut n_transpositions = 0;
@@ -342,7 +319,6 @@ fn lu_in_place_impl<E: ComplexField>(
         matrix.rb_mut().submatrix(0, col_start, m, n),
         0,
         bs,
-        perm,
         &mut transpositions[..bs],
         parallelism,
         stack.rb_mut(),
@@ -363,59 +339,22 @@ fn lu_in_place_impl<E: ComplexField>(
         parallelism,
     );
 
-    {
-        let (tmp_perm, mut stack) = stack.rb_mut().make_with(m - bs, |i| i);
-        n_transpositions += lu_in_place_impl(
-            matrix.rb_mut().submatrix(bs, col_start, m - bs, n),
-            bs,
-            n - bs,
-            tmp_perm,
-            &mut transpositions[bs..],
-            parallelism,
-            stack.rb_mut(),
-        );
+    n_transpositions += lu_in_place_impl(
+        matrix.rb_mut().submatrix(bs, col_start, m - bs, n),
+        bs,
+        n - bs,
+        &mut transpositions[bs..],
+        parallelism,
+        stack.rb_mut(),
+    );
 
-        for tmp in tmp_perm.iter_mut() {
-            *tmp = perm[bs + *tmp];
-        }
-        perm[bs..].copy_from_slice(tmp_perm);
-    }
-
-    let parallelism = if m * (col_start + (full_n - (col_start + n))) > 128 * 128 {
+    let parallelism = if m * (full_n - n) > 128 * 128 {
         parallelism
     } else {
         Parallelism::None
     };
-    if matrix.col_stride().abs() < matrix.row_stride().abs() {
-        for (i, &t) in transpositions[..bs].iter().enumerate() {
-            swap_rows(matrix.rb_mut().submatrix(0, 0, m, col_start), i, t + i);
-        }
-        for (i, &t) in transpositions[bs..].iter().enumerate() {
-            swap_rows(
-                matrix.rb_mut().submatrix(bs, 0, m - bs, col_start),
-                i,
-                t + i,
-            );
-        }
-        for (i, &t) in transpositions[..bs].iter().enumerate() {
-            swap_rows(
-                matrix
-                    .rb_mut()
-                    .submatrix(0, col_start + n, m, full_n - col_start - n),
-                i,
-                t + i,
-            );
-        }
-        for (i, &t) in transpositions[bs..].iter().enumerate() {
-            swap_rows(
-                matrix
-                    .rb_mut()
-                    .submatrix(bs, col_start + n, m - bs, full_n - col_start - n),
-                i,
-                t + i,
-            );
-        }
-    } else if matrix.row_stride() == 1 {
+
+    if matrix.row_stride() == 1 {
         faer_core::for_each_raw(
             col_start + (full_n - (col_start + n)),
             |j| {
@@ -521,19 +460,19 @@ pub fn lu_in_place<'out, E: ComplexField>(
         *p = i;
     }
 
-    let n_transpositions = {
-        let (transpositions, mut stack) = stack.rb_mut().make_with(size, |_| 0);
+    let (transpositions, mut stack) = stack.rb_mut().make_with(size, |_| 0);
+    let n_transpositions = lu_in_place_impl(
+        matrix.rb_mut(),
+        0,
+        size,
+        transpositions,
+        parallelism,
+        stack.rb_mut(),
+    );
 
-        lu_in_place_impl(
-            matrix.rb_mut(),
-            0,
-            size,
-            perm,
-            transpositions,
-            parallelism,
-            stack.rb_mut(),
-        )
-    };
+    for (idx, t) in transpositions.iter().enumerate() {
+        perm.swap(idx, idx + t);
+    }
 
     let [_, _, left, right] = matrix.split_at(0, size);
 
@@ -685,13 +624,14 @@ mod tests {
     #[test]
     fn compute_lu_row_major() {
         for (m, n) in [
-            (10, 10),
-            (4, 4),
-            (2, 4),
-            (2, 20),
+            (3, 3),
             (2, 2),
-            (20, 20),
             (4, 2),
+            (2, 4),
+            (4, 4),
+            (10, 10),
+            (2, 20),
+            (20, 20),
             (20, 2),
             (40, 20),
             (20, 40),
