@@ -75,7 +75,7 @@ fn timeit(mut f: impl FnMut(), time_limit: Duration) -> Duration {
 fn main() {
     let regexes = args()
         .skip(1)
-        .filter(|x| !x.trim().starts_with("-"))
+        .filter(|x| !x.trim().starts_with('-'))
         .map(|s| Regex::new(&s).unwrap())
         .collect::<Vec<_>>();
 
@@ -107,7 +107,7 @@ fn main() {
     files.sort_by(|(f0, _), (f1, _)| str::cmp(f0, f1));
 
     for (file, side) in files {
-        if !matches(&format!("{file}")) {
+        if !matches(&file) {
             continue;
         }
         if file.starts_with("chain") {

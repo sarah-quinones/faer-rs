@@ -1255,14 +1255,14 @@ pub fn lu_in_place<'out, E: ComplexField>(
     assert!(col_perm.len() == n);
     assert!(col_perm_inv.len() == n);
 
-    let (mut row_transpositions, stack) = stack.make_with(size, |_| 0usize);
-    let (mut col_transpositions, _) = stack.make_with(size, |_| 0usize);
+    let (row_transpositions, stack) = stack.make_with(size, |_| 0usize);
+    let (col_transpositions, _) = stack.make_with(size, |_| 0usize);
 
     let n_transpositions = if matrix.row_stride().abs() < matrix.col_stride().abs() {
         lu_in_place_unblocked(
             matrix,
-            &mut row_transpositions,
-            &mut col_transpositions,
+            row_transpositions,
+            col_transpositions,
             parallelism,
             false,
             disable_parallelism,
@@ -1270,8 +1270,8 @@ pub fn lu_in_place<'out, E: ComplexField>(
     } else {
         lu_in_place_unblocked(
             matrix.transpose(),
-            &mut col_transpositions,
-            &mut row_transpositions,
+            col_transpositions,
+            row_transpositions,
             parallelism,
             true,
             disable_parallelism,

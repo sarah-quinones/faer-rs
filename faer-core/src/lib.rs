@@ -88,7 +88,7 @@ use coe::Coerce;
 use core::{
     fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
 };
-use dyn_stack::{DynArray, PodStack, SizeOverflow, StackReq};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use num_complex::Complex;
 use pulp::{cast, Simd};
 use reborrow::*;
@@ -693,17 +693,6 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
     #[inline]
     fn fetch_single(&self, row: usize, col: usize) -> E {
         self.read(row, col)
-    }
-}
-
-#[inline]
-fn div_ceil(a: usize, b: usize) -> usize {
-    let d = a / b;
-    let r = a % b;
-    if r > 0 && b > 0 {
-        d + 1
-    } else {
-        d
     }
 }
 
@@ -2187,10 +2176,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
-    /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
-    /// accessible by the matrix must be initialized at some point before they are read, or
-    /// references to them are formed.
+    /// * The values accessible by the matrix must be initialized at some point before they are
+    /// read, or references to them are formed.
     /// * No mutable aliasing is allowed. In other words, none of the elements accessible by any
     /// matrix unit may be accessed for writes by any other means for the duration of the lifetime
     /// `'a`.
@@ -2828,7 +2815,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         chunk_size: usize,
     ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
         assert!(chunk_size > 0);
-        let chunk_count = div_ceil(self.ncols(), chunk_size);
+        let chunk_count = self.ncols().div_ceil(chunk_size);
         (0..chunk_count).map(move |chunk_idx| {
             let pos = chunk_size * chunk_idx;
             self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
@@ -2869,7 +2856,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         use rayon::prelude::*;
 
         assert!(chunk_size > 0);
-        let chunk_count = div_ceil(self.ncols(), chunk_size);
+        let chunk_count = self.ncols().div_ceil(chunk_size);
         (0..chunk_count).into_par_iter().map(move |chunk_idx| {
             let pos = chunk_size * chunk_idx;
             self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
@@ -3038,9 +3025,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// `ptr`.
     /// * For each matrix unit, the corresponding pointer must be properly aligned,
     /// even for a zero-sized matrix.
-    /// * If [`core::mem::needs_drop::<E::Unit>()`], then all the addresses accessible by each
-    /// matrix unit must point to initialized elements of type `E::Unit`. Otherwise, the values
-    /// accessible by the matrix must be initialized at some point before they are read, or
+    /// * The values accessible by the matrix must be initialized at some point before they are
+    ///   read, or
     /// references to them are formed.
     /// * No aliasing (including self aliasing) is allowed. In other words, none of the elements
     /// accessible by any matrix unit may be accessed for reads or writes by any other means for
@@ -3941,47 +3927,11 @@ impl<E: Entity> RawMat<E> {
 
 impl<E: Entity> Drop for RawMat<E> {
     fn drop(&mut self) {
-        // implicitly dropped
-        let _ = E::faer_map(E::faer_from_copy(self.ptr), |ptr| RawMatUnit {
+        drop(E::faer_map(E::faer_from_copy(self.ptr), |ptr| RawMatUnit {
             ptr,
             row_capacity: self.row_capacity,
             col_capacity: self.col_capacity,
-        });
-    }
-}
-
-struct BlockGuard<E: Entity> {
-    ptr: E::GroupCopy<*mut E::Unit>,
-    nrows: usize,
-    ncols: usize,
-    cs: isize,
-}
-struct ColGuard<E: Entity> {
-    ptr: E::GroupCopy<*mut E::Unit>,
-    nrows: usize,
-}
-
-impl<E: Entity> Drop for BlockGuard<E> {
-    fn drop(&mut self) {
-        for j in 0..self.ncols {
-            E::faer_map(E::faer_from_copy(self.ptr), |ptr| {
-                let ptr_j = ptr.wrapping_offset(j as isize * self.cs);
-                // SAFETY: this is safe because we created these elements and need to
-                // drop them
-                let slice = unsafe { core::slice::from_raw_parts_mut(ptr_j, self.nrows) };
-                unsafe { core::ptr::drop_in_place(slice) };
-            });
-        }
-    }
-}
-impl<E: Entity> Drop for ColGuard<E> {
-    fn drop(&mut self) {
-        E::faer_map(E::faer_from_copy(self.ptr), |ptr| {
-            // SAFETY: this is safe because we created these elements and need to
-            // drop them
-            let slice = unsafe { core::slice::from_raw_parts_mut(ptr, self.nrows) };
-            unsafe { core::ptr::drop_in_place(slice) };
-        });
+        }));
     }
 }
 
@@ -4137,23 +4087,6 @@ impl<T> MatUnit<T> {
     }
 }
 
-impl<T> Drop for MatUnit<T> {
-    fn drop(&mut self) {
-        let mut ptr = self.raw.ptr.as_ptr();
-        let nrows = self.nrows;
-        let ncols = self.ncols;
-        let cs = self.raw.row_capacity;
-
-        for _ in 0..ncols {
-            // SAFETY: these elements were previously created in this storage.
-            unsafe {
-                core::ptr::drop_in_place(core::slice::from_raw_parts_mut(ptr, nrows));
-            }
-            ptr = ptr.wrapping_add(cs);
-        }
-    }
-}
-
 impl<E: Entity> Default for Mat<E> {
     #[inline]
     fn default() -> Self {
@@ -4299,38 +4232,38 @@ impl<E: Entity> Mat<E> {
     fn do_reserve_exact(&mut self, mut new_row_capacity: usize, new_col_capacity: usize) {
         if is_vectorizable::<E::Unit>() {
             let align_factor = align_for::<E::Unit>() / core::mem::size_of::<E::Unit>();
-            new_row_capacity =
-                (new_row_capacity + (align_factor - 1)) / align_factor * align_factor;
+            new_row_capacity = new_row_capacity
+                .checked_next_multiple_of(align_factor)
+                .unwrap();
         }
 
-        use core::mem::swap;
         let nrows = self.nrows;
         let ncols = self.ncols;
         let old_row_capacity = self.raw.row_capacity;
         let old_col_capacity = self.raw.col_capacity;
 
-        let mut this = Self::new();
-        swap(self, &mut this);
+        let mut this = ManuallyDrop::new(core::mem::take(self));
+        {
+            let mut this_group = E::faer_map(E::faer_from_copy(this.raw.ptr), |ptr| MatUnit {
+                raw: RawMatUnit {
+                    ptr,
+                    row_capacity: old_row_capacity,
+                    col_capacity: old_col_capacity,
+                },
+                nrows,
+                ncols,
+            });
 
-        let mut this_group = E::faer_map(E::faer_from_copy(this.raw.ptr), |ptr| MatUnit {
-            raw: RawMatUnit {
-                ptr,
-                row_capacity: old_row_capacity,
-                col_capacity: old_col_capacity,
-            },
-            nrows,
-            ncols,
-        });
+            E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
+                mat_unit.do_reserve_exact(new_row_capacity, new_col_capacity);
+            });
 
-        E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
-            mat_unit.do_reserve_exact(new_row_capacity, new_col_capacity);
-        });
-
-        let this_group = E::faer_map(this_group, ManuallyDrop::new);
-        this.raw.ptr = E::faer_into_copy(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
-        this.raw.row_capacity = new_row_capacity;
-        this.raw.col_capacity = new_col_capacity;
-        swap(self, &mut this);
+            let this_group = E::faer_map(this_group, ManuallyDrop::new);
+            this.raw.ptr = E::faer_into_copy(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
+            this.raw.row_capacity = new_row_capacity;
+            this.raw.col_capacity = new_col_capacity;
+        }
+        *self = ManuallyDrop::into_inner(this);
     }
 
     /// Reserves the minimum capacity for `row_capacity` rows and `col_capacity`
@@ -4350,33 +4283,6 @@ impl<E: Entity> Mat<E> {
         }
     }
 
-    unsafe fn erase_block(
-        &mut self,
-        row_start: usize,
-        row_end: usize,
-        col_start: usize,
-        col_end: usize,
-    ) {
-        debug_assert!(row_start <= row_end);
-        debug_assert!(col_start <= col_end);
-
-        E::faer_map(self.as_mut_ptr(), |ptr| {
-            for j in col_start..col_end {
-                let ptr_j = ptr.wrapping_offset(j as isize * self.col_stride());
-
-                // SAFETY: this points to a valid matrix element at index (_, j), which
-                // is within bounds
-
-                // SAFETY: we drop an object that is within its lifetime since the matrix
-                // contains valid elements at each index within bounds
-                core::ptr::drop_in_place(core::slice::from_raw_parts_mut(
-                    ptr_j.add(row_start),
-                    row_end - row_start,
-                ));
-            }
-        });
-    }
-
     unsafe fn insert_block_with<F: FnMut(usize, usize) -> E>(
         &mut self,
         f: &mut F,
@@ -4390,24 +4296,10 @@ impl<E: Entity> Mat<E> {
 
         let ptr = E::faer_into_copy(self.as_mut_ptr());
 
-        let mut block_guard = BlockGuard::<E> {
-            ptr: E::faer_map_copy(ptr, |ptr| ptr.wrapping_add(row_start)),
-            nrows: row_end - row_start,
-            ncols: 0,
-            cs: self.col_stride(),
-        };
-
         for j in col_start..col_end {
             let ptr_j = E::faer_map_copy(ptr, |ptr| {
                 ptr.wrapping_offset(j as isize * self.col_stride())
             });
-
-            // create a guard for the same purpose as the previous one
-            let mut col_guard = ColGuard::<E> {
-                // SAFETY: same as above
-                ptr: E::faer_map_copy(ptr_j, |ptr_j| ptr_j.wrapping_add(row_start)),
-                nrows: 0,
-            };
 
             for i in row_start..row_end {
                 // SAFETY:
@@ -4421,38 +4313,20 @@ impl<E: Entity> Mat<E> {
                 E::faer_map(E::faer_zip(ptr_ij, value), |(ptr_ij, value)| {
                     core::ptr::write(ptr_ij, value)
                 });
-                col_guard.nrows += 1;
             }
-            core::mem::forget(col_guard);
-            block_guard.ncols += 1;
         }
-        core::mem::forget(block_guard);
     }
 
     fn erase_last_cols(&mut self, new_ncols: usize) {
         let old_ncols = self.ncols();
-
         debug_assert!(new_ncols <= old_ncols);
-
-        // change the size before dropping the elements, since if one of them panics the
-        // matrix drop function will double drop them.
         self.ncols = new_ncols;
-
-        unsafe {
-            self.erase_block(0, self.nrows(), new_ncols, old_ncols);
-        }
     }
 
     fn erase_last_rows(&mut self, new_nrows: usize) {
         let old_nrows = self.nrows();
-
         debug_assert!(new_nrows <= old_nrows);
-
-        // see comment above
         self.nrows = new_nrows;
-        unsafe {
-            self.erase_block(new_nrows, old_nrows, 0, self.ncols());
-        }
     }
 
     unsafe fn insert_last_cols_with<F: FnMut(usize, usize) -> E>(
@@ -4482,8 +4356,8 @@ impl<E: Entity> Mat<E> {
     }
 
     /// Resizes the matrix in-place so that the new dimensions are `(new_nrows, new_ncols)`.
-    /// Elements that are now out of bounds are dropped, while new elements are created with the
-    /// given function `f`, so that elements at indices `(i, j)` are created by calling `f(i, j)`.
+    /// New elements are created with the given function `f`, so that elements at indices `(i, j)`
+    /// are created by calling `f(i, j)`.
     pub fn resize_with(
         &mut self,
         new_nrows: usize,
@@ -5158,64 +5032,13 @@ pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     }
 }
 
-enum DynMatUnitImpl<'a, T> {
-    Init(DynArray<'a, T>),
-}
-
-/// A temporary matrix allocated from a [`PodStack`].
-///
-/// [`PodStack`]: dyn_stack::PodStack
-pub struct DynMat<'a, E: Entity> {
-    inner: E::Group<DynMatUnitImpl<'a, E::Unit>>,
-    nrows: usize,
-    ncols: usize,
-    col_stride: usize,
-}
-
-impl<'a, E: Entity> DynMat<'a, E> {
-    #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, E> {
-        unsafe {
-            MatRef::from_raw_parts(
-                E::faer_map(E::faer_as_ref(&self.inner), |inner| match inner {
-                    DynMatUnitImpl::Init(init) => init.as_ptr(),
-                }),
-                self.nrows,
-                self.ncols,
-                1,
-                self.col_stride as isize,
-            )
-        }
-    }
-    #[inline]
-    pub fn as_mut(&mut self) -> MatMut<'_, E> {
-        unsafe {
-            MatMut::from_raw_parts(
-                E::faer_map(E::faer_as_mut(&mut self.inner), |inner| match inner {
-                    DynMatUnitImpl::Init(init) => init.as_mut_ptr(),
-                }),
-                self.nrows,
-                self.ncols,
-                1,
-                self.col_stride as isize,
-            )
-        }
-    }
-}
-
-#[doc(hidden)]
-#[inline]
-pub fn round_up_to(n: usize, k: usize) -> usize {
-    (n.checked_add(k - 1).unwrap()) / k * k
-}
-
 /// Creates a temporary matrix of constant values, from the given memory stack.
 pub fn temp_mat_constant<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     value: E,
     stack: PodStack<'_>,
-) -> (DynMat<'_, E>, PodStack<'_>) {
+) -> (MatMut<'_, E>, PodStack<'_>) {
     let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
     mat.as_mut().fill(value);
     (mat, stack)
@@ -5226,7 +5049,7 @@ pub fn temp_mat_zeroed<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     stack: PodStack<'_>,
-) -> (DynMat<'_, E>, PodStack<'_>) {
+) -> (MatMut<'_, E>, PodStack<'_>) {
     let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
     mat.as_mut().fill_zeros();
     (mat, stack)
@@ -5237,7 +5060,7 @@ pub fn temp_mat_uninit<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     stack: PodStack<'_>,
-) -> (DynMat<'_, E>, PodStack<'_>) {
+) -> (MatMut<'_, E>, PodStack<'_>) {
     let col_stride = col_stride::<E::Unit>(nrows);
     let alloc_size = ncols.checked_mul(col_stride).unwrap();
 
@@ -5250,11 +5073,14 @@ pub fn temp_mat_uninit<E: ComplexField>(
         }
     });
     (
-        DynMat {
-            inner: E::faer_map(alloc, DynMatUnitImpl::Init),
-            nrows,
-            ncols,
-            col_stride,
+        unsafe {
+            MatMut::from_raw_parts(
+                E::faer_map(alloc, |alloc| alloc.as_mut_ptr()),
+                nrows,
+                ncols,
+                1,
+                col_stride as isize,
+            )
         },
         stack,
     )
@@ -5265,7 +5091,9 @@ fn col_stride<Unit: 'static>(nrows: usize) -> usize {
     if !is_vectorizable::<Unit>() || nrows >= isize::MAX as usize {
         nrows
     } else {
-        round_up_to(nrows, align_for::<Unit>() / core::mem::size_of::<Unit>())
+        nrows
+            .checked_next_multiple_of(align_for::<Unit>() / core::mem::size_of::<Unit>())
+            .unwrap()
     }
 }
 
@@ -5553,15 +5381,15 @@ mod tests {
     }
 
     #[derive(Debug, PartialEq, Clone, Copy)]
-    struct ZST;
-    unsafe impl bytemuck::Zeroable for ZST {}
-    unsafe impl bytemuck::Pod for ZST {}
+    struct Zst;
+    unsafe impl bytemuck::Zeroable for Zst {}
+    unsafe impl bytemuck::Pod for Zst {}
 
     #[test]
     fn reserve_zst() {
-        impl_unit_entity!(ZST);
+        impl_unit_entity!(Zst);
 
-        let mut m = Mat::<ZST>::new();
+        let mut m = Mat::<Zst>::new();
 
         m.reserve_exact(0, 0);
         assert!(m.row_capacity() == 0);
@@ -5611,7 +5439,7 @@ mod tests {
     fn resize_zst() {
         // miri test
         let mut m = Mat::new();
-        let f = |_i, _j| ZST;
+        let f = |_i, _j| Zst;
         m.resize_with(2, 3, f);
         m.resize_with(1, 2, f);
         m.resize_with(2, 1, f);
@@ -5855,14 +5683,14 @@ mod tests {
         let mut mat = Mat::from_fn(9, 10, |i, j| (i + j) as f64);
         let mut iter = mat.row_chunks_mut(4);
 
-        let _0 = iter.next();
-        let _1 = iter.next();
-        let _2 = iter.next();
+        let first = iter.next();
+        let second = iter.next();
+        let last = iter.next();
         let none = iter.next();
 
-        assert!(_0 == Some(Mat::from_fn(4, 10, |i, j| (i + j) as f64).as_mut()));
-        assert!(_1 == Some(Mat::from_fn(4, 10, |i, j| (i + j + 4) as f64).as_mut()));
-        assert!(_2 == Some(Mat::from_fn(1, 10, |i, j| (i + j + 8) as f64).as_mut()));
+        assert!(first == Some(Mat::from_fn(4, 10, |i, j| (i + j) as f64).as_mut()));
+        assert!(second == Some(Mat::from_fn(4, 10, |i, j| (i + j + 4) as f64).as_mut()));
+        assert!(last == Some(Mat::from_fn(1, 10, |i, j| (i + j + 8) as f64).as_mut()));
         assert!(none == None);
     }
 }

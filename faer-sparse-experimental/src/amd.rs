@@ -109,13 +109,13 @@ fn postorder<'n, 'out, I: Index>(
     let zero = I::truncate(0);
     let none = I::truncate(NONE);
 
-    let (mut child, stack) = stack.make_raw::<I>(n);
-    let (mut sibling, stack) = stack.make_raw::<I>(n);
-    let (mut stack, _) = stack.make_raw::<I>(n);
+    let (child, stack) = stack.make_raw::<I>(n);
+    let (sibling, stack) = stack.make_raw::<I>(n);
+    let (stack, _) = stack.make_raw::<I>(n);
 
-    let child = Array::from_mut(ghost::fill_none(&mut child, N), N);
-    let sibling = Array::from_mut(ghost::fill_none(&mut sibling, N), N);
-    let stack = Array::from_mut(&mut stack, N);
+    let child = Array::from_mut(ghost::fill_none(child, N), N);
+    let sibling = Array::from_mut(ghost::fill_none(sibling, N), N);
+    let stack = Array::from_mut(stack, N);
 
     for j in N.indices().rev() {
         if nv[j] > zero {
@@ -243,9 +243,9 @@ fn amd_2<I: Index>(
     let dense = Ord::max(dense, 16);
     let dense = Ord::min(dense, n);
 
-    let (mut w, stack) = stack.make_raw::<I>(n);
-    let (mut nv, stack) = stack.make_raw::<I>(n);
-    let (mut elen, mut stack) = stack.make_raw::<I>(n);
+    let (w, stack) = stack.make_raw::<I>(n);
+    let (nv, stack) = stack.make_raw::<I>(n);
+    let (elen, mut stack) = stack.make_raw::<I>(n);
 
     let nv = &mut *nv;
     let elen = &mut *elen;
@@ -256,8 +256,8 @@ fn amd_2<I: Index>(
     let mut ndense = zero;
 
     {
-        let (mut head, stack) = stack.rb_mut().make_raw::<I>(n);
-        let (mut degree, _) = stack.make_raw::<I>(n);
+        let (head, stack) = stack.rb_mut().make_raw::<I>(n);
+        let (degree, _) = stack.make_raw::<I>(n);
 
         let head = &mut *head;
         let degree = &mut *degree;
@@ -711,9 +711,7 @@ fn amd_2<I: Index>(
         );
     });
 
-    let (mut head, _) = stack.make_raw::<I>(n);
-
-    let head = &mut *head;
+    let (head, _) = stack.make_raw::<I>(n);
 
     mem::fill_none(head);
     mem::fill_none(next);
@@ -775,9 +773,9 @@ fn amd_1<I: Index>(
     let zero = I(0);
     let one = I(1);
 
-    let (mut p_e, stack) = stack.make_raw::<I>(n);
-    let (mut s_p, stack) = stack.make_raw::<I>(n);
-    let (mut i_w, mut stack) = stack.make_raw::<I>(iwlen);
+    let (p_e, stack) = stack.make_raw::<I>(n);
+    let (s_p, stack) = stack.make_raw::<I>(n);
+    let (i_w, mut stack) = stack.make_raw::<I>(iwlen);
 
     // Construct the pointers for A+A'.
 
@@ -796,11 +794,11 @@ fn amd_1<I: Index>(
     assert!(iwlen >= pfree + n);
 
     ghost::with_size(n, |N| {
-        let (mut t_p, _) = stack.rb_mut().make_raw::<I>(n);
+        let (t_p, _) = stack.rb_mut().make_raw::<I>(n);
 
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
-        let s_p = Array::from_mut(&mut s_p, N);
-        let t_p = Array::from_mut(&mut t_p, N);
+        let s_p = Array::from_mut(s_p, N);
+        let t_p = Array::from_mut(t_p, N);
 
         for k in N.indices() {
             // Construct A+A'.
@@ -870,9 +868,7 @@ fn amd_1<I: Index>(
 
     debug_assert!(s_p[n - 1] == I(pfree));
 
-    amd_2::<I>(
-        &mut p_e, &mut i_w, len, pfree, perm_inv, perm, control, stack,
-    )
+    amd_2::<I>(p_e, i_w, len, pfree, perm_inv, perm, control, stack)
 }
 
 fn preprocess<'out, I: Index>(
@@ -888,11 +884,11 @@ fn preprocess<'out, I: Index>(
         let zero = I(0);
         let one = I(1);
 
-        let (mut w, stack) = stack.make_raw::<I>(n);
-        let (mut flag, _) = stack.make_raw::<I>(n);
+        let (w, stack) = stack.make_raw::<I>(n);
+        let (flag, _) = stack.make_raw::<I>(n);
 
-        let w = Array::from_mut(&mut w, N);
-        let flag = Array::from_mut(&mut flag, N);
+        let w = Array::from_mut(w, N);
+        let flag = Array::from_mut(flag, N);
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
         mem::fill_zero(w);
@@ -1066,13 +1062,13 @@ pub fn order_sorted<I: Index>(
         });
     }
 
-    let (mut len, mut stack) = stack.make_raw::<I>(n);
-    let nzaat = aat(&mut len, A, stack.rb_mut())?;
+    let (len, mut stack) = stack.make_raw::<I>(n);
+    let nzaat = aat(len, A, stack.rb_mut())?;
     let iwlen = nzaat
         .checked_add(nzaat / 5)
         .and_then(|x| x.checked_add(n))
         .ok_or(FaerError::IndexOverflow)?;
-    Ok(amd_1(perm, perm_inv, A, &mut len, iwlen, control, stack))
+    Ok(amd_1(perm, perm_inv, A, len, iwlen, control, stack))
 }
 
 pub fn order_maybe_unsorted<I: Index>(
@@ -1092,9 +1088,9 @@ pub fn order_maybe_unsorted<I: Index>(
         });
     }
     let nnz = A.compute_nnz();
-    let (mut new_col_ptrs, stack) = stack.make_raw::<I>(n + 1);
-    let (mut new_row_indices, mut stack) = stack.make_raw::<I>(nnz);
-    let A = preprocess(&mut new_col_ptrs, &mut new_row_indices, A, stack.rb_mut());
+    let (new_col_ptrs, stack) = stack.make_raw::<I>(n + 1);
+    let (new_row_indices, mut stack) = stack.make_raw::<I>(nnz);
+    let A = preprocess(new_col_ptrs, new_row_indices, A, stack.rb_mut());
     order_sorted(perm, perm_inv, A, control, stack)
 }
 

@@ -726,19 +726,10 @@ pub fn qr_in_place<'out, E: ComplexField>(
         disable_parallelism,
     );
 
-    fn div_ceil(a: usize, b: usize) -> usize {
-        let (div, rem) = (a / b, a % b);
-        if rem == 0 {
-            div
-        } else {
-            div + 1
-        }
-    }
-
     let blocksize = householder_factor.nrows();
     if blocksize > 1 {
         let size = householder_factor.ncols();
-        let n_blocks = div_ceil(size, blocksize);
+        let n_blocks = size.div_ceil(blocksize);
 
         let qr_factors = matrix.rb();
 
@@ -877,9 +868,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]));
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj));
                     }
                 }
             }
@@ -935,9 +926,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]));
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj));
                     }
                 }
             }
@@ -983,9 +974,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj), 1e-4);
                     }
                 }
             }
@@ -1041,9 +1032,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj), 1e-4);
                     }
                 }
             }
@@ -1099,9 +1090,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj), 1e-4);
                     }
                 }
             }
@@ -1157,9 +1148,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj), 1e-4);
                     }
                 }
             }
@@ -1220,9 +1211,9 @@ mod tests {
                     Parallelism::Rayon(8),
                 );
 
-                for j in 0..n {
+                for (j, &pj) in perm.iter().enumerate() {
                     for i in 0..m {
-                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, perm[j]), 1e-4);
+                        assert_approx_eq!(qr.read(i, j), mat_orig.read(i, pj), 1e-4);
                     }
                 }
             }

@@ -364,8 +364,7 @@ fn lu_in_place_impl<E: ComplexField>(
     );
 
     {
-        let (mut tmp_perm, mut stack) = stack.rb_mut().make_with(m - bs, |i| i);
-        let tmp_perm = &mut *tmp_perm;
+        let (tmp_perm, mut stack) = stack.rb_mut().make_with(m - bs, |i| i);
         n_transpositions += lu_in_place_impl(
             matrix.rb_mut().submatrix(bs, col_start, m - bs, n),
             bs,
@@ -523,14 +522,14 @@ pub fn lu_in_place<'out, E: ComplexField>(
     }
 
     let n_transpositions = {
-        let (mut transpositions, mut stack) = stack.rb_mut().make_with(size, |_| 0);
+        let (transpositions, mut stack) = stack.rb_mut().make_with(size, |_| 0);
 
         lu_in_place_impl(
             matrix.rb_mut(),
             0,
             size,
             perm,
-            &mut transpositions,
+            transpositions,
             parallelism,
             stack.rb_mut(),
         )

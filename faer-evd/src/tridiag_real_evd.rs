@@ -481,18 +481,18 @@ pub fn compute_tridiag_real_evd<E: RealField>(
     stack: PodStack<'_>,
 ) {
     let n = diag.len();
-    let (mut pl_before, stack) = stack.make_with(n, |_| 0usize);
-    let (mut pl_after, stack) = stack.make_with(n, |_| 0usize);
-    let (mut pr, stack) = stack.make_with(n, |_| 0usize);
-    let (mut run_info, stack) = stack.make_with(n, |_| 0usize);
-    let (mut z, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut permuted_diag, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut permuted_z, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut householder, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut mus, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut shifts, stack) = temp_mat_uninit::<E>(n, 1, stack);
-    let (mut repaired_u, stack) = temp_mat_uninit::<E>(n, n, stack);
-    let (mut tmp, _) = temp_mat_uninit::<E>(n, n, stack);
+    let (pl_before, stack) = stack.make_with(n, |_| 0usize);
+    let (pl_after, stack) = stack.make_with(n, |_| 0usize);
+    let (pr, stack) = stack.make_with(n, |_| 0usize);
+    let (run_info, stack) = stack.make_with(n, |_| 0usize);
+    let (z, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (permuted_diag, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (permuted_z, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (householder, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mus, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (shifts, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (repaired_u, stack) = temp_mat_uninit::<E>(n, n, stack);
+    let (tmp, _) = temp_mat_uninit::<E>(n, n, stack);
 
     compute_tridiag_real_evd_impl(
         diag,
@@ -501,18 +501,18 @@ pub fn compute_tridiag_real_evd<E: RealField>(
         epsilon,
         consider_zero_threshold,
         parallelism,
-        &mut pl_before,
-        &mut pl_after,
-        &mut pr,
-        &mut run_info,
-        z.as_mut(),
-        permuted_diag.as_mut(),
-        permuted_z.as_mut(),
-        householder.as_mut(),
-        mus.as_mut(),
-        shifts.as_mut(),
-        repaired_u.as_mut(),
-        tmp.as_mut(),
+        pl_before,
+        pl_after,
+        pr,
+        run_info,
+        z,
+        permuted_diag,
+        permuted_z,
+        householder,
+        mus,
+        shifts,
+        repaired_u,
+        tmp,
     );
 }
 

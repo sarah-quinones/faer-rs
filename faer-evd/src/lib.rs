@@ -207,17 +207,17 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     let mut u = match u {
         Some(u) => u,
         None => {
-            let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
-            let (mut offdiag, _) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
+            let (diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
+            let (offdiag, _) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
             tridiag_qr_algorithm::compute_tridiag_real_evd_qr_algorithm(
-                &mut diag,
-                &mut offdiag,
+                diag,
+                offdiag,
                 None,
                 epsilon,
                 zero_threshold,
             );
-            for i in 0..n {
-                s.write(i, 0, E::faer_from_real(diag[i]));
+            for (i, &diag) in diag.iter().enumerate() {
+                s.write(i, 0, E::faer_from_real(diag));
             }
 
             return;
@@ -238,14 +238,14 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     }
 
     {
-        let (mut diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
+        let (diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
 
         if coe::is_same::<E::Real, E>() {
-            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_real());
+            let (offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_real());
 
             tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(
-                &mut diag,
-                &mut offdiag,
+                diag,
+                offdiag,
                 u.rb_mut().coerce(),
                 epsilon,
                 zero_threshold,
@@ -253,10 +253,10 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 stack,
             );
         } else {
-            let (mut offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
+            let (offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_abs());
 
             let (mut u_real, stack) = temp_mat_uninit::<E::Real>(n, n, stack);
-            let (mut mul, stack) = stack.make_with(n, |_| E::faer_zero());
+            let (mul, stack) = stack.make_with(n, |_| E::faer_zero());
 
             let normalized = |x: E| {
                 if x == E::faer_zero() {
@@ -269,16 +269,14 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
             mul[0] = E::faer_one();
 
             let mut x = E::faer_one();
-            for i in 1..n {
+            for (i, mul) in mul.iter_mut().skip(1).enumerate() {
                 x = normalized(trid.read(i, i - 1).faer_mul(x.faer_conj())).faer_conj();
-                mul[i] = x.faer_conj();
+                *mul = x.faer_conj();
             }
 
-            let mut u_real = u_real.as_mut();
-
             tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(
-                &mut diag,
-                &mut offdiag,
+                diag,
+                offdiag,
                 u_real.rb_mut(),
                 epsilon,
                 zero_threshold,
@@ -287,16 +285,16 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
             );
 
             for j in 0..n {
-                for i in 0..n {
+                for (i, &mul) in mul.iter().enumerate() {
                     unsafe {
-                        u.write_unchecked(i, j, mul[i].faer_scale_real(u_real.read_unchecked(i, j)))
+                        u.write_unchecked(i, j, mul.faer_scale_real(u_real.read_unchecked(i, j)))
                     };
                 }
             }
         }
 
-        for i in 0..n {
-            s.write(i, 0, E::faer_from_real(diag[i]));
+        for (i, &diag) in diag.iter().enumerate() {
+            s.write(i, 0, E::faer_from_real(diag));
         }
     }
 
