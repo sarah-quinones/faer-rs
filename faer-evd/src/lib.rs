@@ -356,6 +356,184 @@ pub fn compute_evd_real<E: RealField>(
     );
 }
 
+fn dot2<E: RealField>(lhs0: MatRef<'_, E>, lhs1: MatRef<'_, E>, rhs: MatRef<'_, E>) -> (E, E) {
+    assert!(lhs0.ncols() == 1);
+    assert!(lhs1.ncols() == 1);
+    assert!(rhs.ncols() == 1);
+    let n = rhs.nrows();
+    assert!(lhs0.nrows() == n);
+    assert!(lhs1.nrows() == n);
+
+    let mut acc00 = E::faer_zero();
+    let mut acc01 = E::faer_zero();
+    let mut acc02 = E::faer_zero();
+    let mut acc03 = E::faer_zero();
+
+    let mut acc10 = E::faer_zero();
+    let mut acc11 = E::faer_zero();
+    let mut acc12 = E::faer_zero();
+    let mut acc13 = E::faer_zero();
+
+    let n4 = n / 4 * 4;
+
+    let mut i = 0;
+    unsafe {
+        while i < n4 {
+            acc00 = acc00.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs.read_unchecked(i, 0),
+            ));
+            acc01 = acc01.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i + 1, 0),
+                rhs.read_unchecked(i + 1, 0),
+            ));
+            acc02 = acc02.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i + 2, 0),
+                rhs.read_unchecked(i + 2, 0),
+            ));
+            acc03 = acc03.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i + 3, 0),
+                rhs.read_unchecked(i + 3, 0),
+            ));
+
+            acc10 = acc10.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs.read_unchecked(i, 0),
+            ));
+            acc11 = acc11.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i + 1, 0),
+                rhs.read_unchecked(i + 1, 0),
+            ));
+            acc12 = acc12.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i + 2, 0),
+                rhs.read_unchecked(i + 2, 0),
+            ));
+            acc13 = acc13.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i + 3, 0),
+                rhs.read_unchecked(i + 3, 0),
+            ));
+
+            i += 4;
+        }
+        while i < n {
+            acc00 = acc00.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs.read_unchecked(i, 0),
+            ));
+            acc10 = acc10.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs.read_unchecked(i, 0),
+            ));
+
+            i += 1;
+        }
+    }
+
+    (
+        E::faer_add(acc00.faer_add(acc01), acc02.faer_add(acc03)),
+        E::faer_add(acc10.faer_add(acc11), acc12.faer_add(acc13)),
+    )
+}
+
+fn dot4<E: RealField>(
+    lhs0: MatRef<'_, E>,
+    lhs1: MatRef<'_, E>,
+    rhs0: MatRef<'_, E>,
+    rhs1: MatRef<'_, E>,
+) -> (E, E, E, E) {
+    assert!(lhs0.ncols() == 1);
+    assert!(lhs1.ncols() == 1);
+    let n = rhs0.nrows();
+    assert!(lhs0.nrows() == n);
+    assert!(lhs1.nrows() == n);
+    assert!(rhs0.nrows() == n);
+    assert!(rhs1.nrows() == n);
+
+    let mut acc00 = E::faer_zero();
+    let mut acc01 = E::faer_zero();
+
+    let mut acc10 = E::faer_zero();
+    let mut acc11 = E::faer_zero();
+
+    let mut acc20 = E::faer_zero();
+    let mut acc21 = E::faer_zero();
+
+    let mut acc30 = E::faer_zero();
+    let mut acc31 = E::faer_zero();
+
+    let n2 = n / 2 * 2;
+
+    let mut i = 0;
+    unsafe {
+        while i < n2 {
+            acc00 = acc00.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs0.read_unchecked(i, 0),
+            ));
+            acc01 = acc01.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i + 1, 0),
+                rhs0.read_unchecked(i + 1, 0),
+            ));
+
+            acc10 = acc10.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs0.read_unchecked(i, 0),
+            ));
+            acc11 = acc11.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i + 1, 0),
+                rhs0.read_unchecked(i + 1, 0),
+            ));
+
+            acc20 = acc20.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs1.read_unchecked(i, 0),
+            ));
+            acc21 = acc21.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i + 1, 0),
+                rhs1.read_unchecked(i + 1, 0),
+            ));
+
+            acc30 = acc30.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs1.read_unchecked(i, 0),
+            ));
+            acc31 = acc31.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i + 1, 0),
+                rhs1.read_unchecked(i + 1, 0),
+            ));
+
+            i += 2;
+        }
+        while i < n {
+            acc00 = acc00.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs0.read_unchecked(i, 0),
+            ));
+            acc10 = acc10.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs0.read_unchecked(i, 0),
+            ));
+            acc20 = acc20.faer_add(E::faer_mul(
+                lhs0.read_unchecked(i, 0),
+                rhs1.read_unchecked(i, 0),
+            ));
+            acc30 = acc30.faer_add(E::faer_mul(
+                lhs1.read_unchecked(i, 0),
+                rhs1.read_unchecked(i, 0),
+            ));
+
+            i += 1;
+        }
+    }
+
+    (
+        acc00.faer_add(acc01),
+        acc10.faer_add(acc11),
+        acc20.faer_add(acc21),
+        acc30.faer_add(acc31),
+    )
+}
+
 /// See [`compute_evd_real`].
 ///
 /// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
@@ -407,7 +585,6 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     let mut s_im = s_im;
 
     let (mut h, stack) = temp_mat_uninit(n, n, stack);
-    let mut h = h.as_mut();
 
     h.clone_from(matrix);
 
@@ -471,6 +648,22 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
         zipped!(h.rb().submatrix(1, 0, n - 1, n - 1).diagonal()).for_each(|x| {
             norm = norm.faer_add(x.read().faer_abs());
         });
+
+        let mut h = h.transpose();
+
+        for j in 1..n {
+            let upper = h.read(j - 1, j);
+            let lower = h.read(j, j - 1);
+
+            h.write(j - 1, j, lower);
+            h.write(j, j - 1, upper);
+        }
+
+        for j in 2..n {
+            for i in 0..j - 1 {
+                h.write(i, j, h.read(j, i));
+            }
+        }
 
         {
             let mut k = n;
@@ -603,19 +796,16 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
                         if i == 0 || h.read(i, i - 1) == E::faer_zero() {
                             // 1x1 block
-                            let mut dot = Complex::<E>::faer_zero();
-                            for j in i + 1..k - 1 {
-                                dot = dot.faer_add(
-                                    Complex {
-                                        re: x.read(j, k - 1),
-                                        im: x.read(j, k),
-                                    }
-                                    .faer_scale_real(h.read(i, j)),
-                                );
-                            }
+                            let start = i + 1;
+                            let len = k - 1 - (i + 1);
+                            let (dot_re, dot_im) = dot2(
+                                x.rb().col(k - 1).subrows(start, len),
+                                x.rb().col(k).subrows(start, len),
+                                h.rb().transpose().col(i).subrows(start, len),
+                            );
 
-                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot.re));
-                            x.write(i, k, x.read(i, k).faer_sub(dot.im));
+                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot_re));
+                            x.write(i, k, x.read(i, k).faer_sub(dot_im));
 
                             let z = Complex {
                                 re: h.read(i, i).faer_sub(p),
@@ -633,6 +823,14 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             }
                         } else {
                             // 2x2 block
+                            let start = i + 1;
+                            let len = k - 1 - (i + 1);
+                            let (dot0_re, dot0_im, dot1_re, dot1_im) = dot4(
+                                x.rb().col(k - 1).subrows(start, len),
+                                x.rb().col(k).subrows(start, len),
+                                h.rb().transpose().col(i - 1).subrows(start, len),
+                                h.rb().transpose().col(i).subrows(start, len),
+                            );
                             let mut dot0 = Complex::<E>::faer_zero();
                             let mut dot1 = Complex::<E>::faer_zero();
                             for j in i + 1..k - 1 {
@@ -652,10 +850,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                                 );
                             }
 
-                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).faer_sub(dot0.re));
-                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0.im));
-                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot1.re));
-                            x.write(i, k, x.read(i, k).faer_sub(dot1.im));
+                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).faer_sub(dot0_re));
+                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0_im));
+                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot1_re));
+                            x.write(i, k, x.read(i, k).faer_sub(dot1_im));
 
                             let a = Complex {
                                 re: h.read(i, i).faer_sub(p),
@@ -919,6 +1117,14 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
             norm = norm.faer_add(x.read().faer_abs2());
         });
         let norm = norm.faer_sqrt();
+
+        let mut h = h.transpose();
+
+        for j in 1..n {
+            for i in 0..j {
+                h.write(i, j, h.read(j, i));
+            }
+        }
 
         for k in (0..n).rev() {
             x.write(k, k, E::faer_zero());
