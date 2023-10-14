@@ -5,6 +5,7 @@ use faer_core::{
     mul::matmul, permutation::PermutationMut, solve::solve_unit_lower_triangular_in_place,
     temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 #[inline(always)]
@@ -175,7 +176,8 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
             |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
         );
 
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
         let prefix = m % lane_count;
 

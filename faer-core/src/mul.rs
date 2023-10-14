@@ -1,13 +1,13 @@
 //! Matrix multiplication.
 
 use crate::{
-    c32, c64, simd::*, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
-    Parallelism, SimdGroup,
+    c32, c64, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
+    Parallelism, SimdGroupFor,
 };
 #[cfg(feature = "std")]
 use assert2::assert;
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
-use faer_entity::SimdCtx;
+use faer_entity::{SimdCtx, *};
 use pulp::Simd;
 use reborrow::*;
 
@@ -20,10 +20,10 @@ pub mod inner_prod {
     #[inline(always)]
     pub fn conditional_conj_mul_adde<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: SimdGroup<E, S>,
-        b: SimdGroup<E, S>,
-        acc: SimdGroup<E, S>,
-    ) -> SimdGroup<E, S> {
+        a: SimdGroupFor<E, S>,
+        b: SimdGroupFor<E, S>,
+        acc: SimdGroupFor<E, S>,
+    ) -> SimdGroupFor<E, S> {
         if CONJ_A {
             E::faer_simd_conj_mul_adde(simd, a, b, acc)
         } else {
@@ -34,9 +34,9 @@ pub mod inner_prod {
     #[inline(always)]
     fn a_x_b_accumulate_prologue1<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: E::Group<&[E::SimdUnit<S>]>,
-        b: E::Group<&[E::SimdUnit<S>]>,
-    ) -> SimdGroup<E, S> {
+        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
+        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    ) -> SimdGroupFor<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
         E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
@@ -57,9 +57,9 @@ pub mod inner_prod {
     #[inline(always)]
     fn a_x_b_accumulate_prologue2<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: E::Group<&[E::SimdUnit<S>]>,
-        b: E::Group<&[E::SimdUnit<S>]>,
-    ) -> SimdGroup<E, S> {
+        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
+        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    ) -> SimdGroupFor<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
         E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
@@ -95,9 +95,9 @@ pub mod inner_prod {
     #[inline(always)]
     fn a_x_b_accumulate_prologue4<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: E::Group<&[E::SimdUnit<S>]>,
-        b: E::Group<&[E::SimdUnit<S>]>,
-    ) -> SimdGroup<E, S> {
+        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
+        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    ) -> SimdGroupFor<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
         E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
@@ -140,9 +140,9 @@ pub mod inner_prod {
     #[inline(always)]
     fn a_x_b_accumulate_prologue8<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: E::Group<&[E::SimdUnit<S>]>,
-        b: E::Group<&[E::SimdUnit<S>]>,
-    ) -> SimdGroup<E, S> {
+        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
+        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    ) -> SimdGroupFor<E, S> {
         assert!(E::N_COMPONENTS > 0);
         let mut len = usize::MAX;
         E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
@@ -198,8 +198,8 @@ pub mod inner_prod {
     #[inline(always)]
     fn a_x_b_accumulate_simd<const CONJ_A: bool, E: ComplexField, S: Simd>(
         simd: S,
-        a: E::Group<&[E::Unit]>,
-        b: E::Group<&[E::Unit]>,
+        a: GroupFor<E, &[UnitFor<E>]>,
+        b: GroupFor<E, &[UnitFor<E>]>,
     ) -> E {
         {
             let mut len = 0;
@@ -323,12 +323,12 @@ pub mod inner_prod {
     }
 
     pub struct AccNoConjAxB<'a, E: ComplexField> {
-        pub a: E::Group<&'a [E::Unit]>,
-        pub b: E::Group<&'a [E::Unit]>,
+        pub a: GroupFor<E, &'a [UnitFor<E>]>,
+        pub b: GroupFor<E, &'a [UnitFor<E>]>,
     }
     pub struct AccConjAxB<'a, E: ComplexField> {
-        pub a: E::Group<&'a [E::Unit]>,
-        pub b: E::Group<&'a [E::Unit]>,
+        pub a: GroupFor<E, &'a [UnitFor<E>]>,
+        pub b: GroupFor<E, &'a [UnitFor<E>]>,
     }
 
     impl<E: ComplexField> pulp::WithSimd for AccNoConjAxB<'_, E> {
@@ -489,13 +489,13 @@ mod matvec_colmajor {
     use assert2::assert;
 
     pub struct NoConjImpl<'a, E: ComplexField> {
-        pub acc: E::Group<&'a mut [E::Unit]>,
-        pub a: E::Group<&'a [E::Unit]>,
+        pub acc: GroupFor<E, &'a mut [UnitFor<E>]>,
+        pub a: GroupFor<E, &'a [UnitFor<E>]>,
         pub b: E,
     }
     pub struct ConjImpl<'a, E: ComplexField> {
-        pub acc: E::Group<&'a mut [E::Unit]>,
-        pub a: E::Group<&'a [E::Unit]>,
+        pub acc: GroupFor<E, &'a mut [UnitFor<E>]>,
+        pub a: GroupFor<E, &'a [UnitFor<E>]>,
         pub b: E,
     }
 
@@ -727,15 +727,15 @@ pub mod outer_prod {
     use assert2::assert;
 
     struct NoConjImpl<'a, E: ComplexField> {
-        acc: E::Group<&'a mut [E::Unit]>,
+        acc: GroupFor<E, &'a mut [UnitFor<E>]>,
         alpha: Option<E>,
-        a: E::Group<&'a [E::Unit]>,
+        a: GroupFor<E, &'a [UnitFor<E>]>,
         b: E,
     }
     struct ConjImpl<'a, E: ComplexField> {
-        acc: E::Group<&'a mut [E::Unit]>,
+        acc: GroupFor<E, &'a mut [UnitFor<E>]>,
         alpha: Option<E>,
-        a: E::Group<&'a [E::Unit]>,
+        a: GroupFor<E, &'a [UnitFor<E>]>,
         b: E,
     }
 
@@ -1060,7 +1060,7 @@ impl<E: ComplexField> pulp::WithSimd for SimdLaneCount<E> {
 
     fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
         let _ = simd;
-        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>()
+        core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>()
     }
 }
 
@@ -1078,7 +1078,8 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
     #[inline(always)]
     fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
         let Self { mut acc, a, b } = self;
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
         let mr = MR_DIV_N * lane_count;
         let nr = NR;
@@ -1094,7 +1095,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
 
         let k = a.ncols();
         let mut local_acc =
-            [[E::faer_into_copy(E::faer_simd_splat(simd, E::faer_zero())); MR_DIV_N]; NR];
+            [[into_copy::<E, _>(E::faer_simd_splat(simd, E::faer_zero())); MR_DIV_N]; NR];
 
         unsafe {
             let mut one_iter = {
@@ -1103,21 +1104,22 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                     let a = a.ptr_inbounds_at(0, depth);
 
                     let mut a_uninit =
-                        [MaybeUninit::<E::GroupCopy<E::SimdUnit<S>>>::uninit(); MR_DIV_N];
+                        [MaybeUninit::<GroupCopyFor<E, SimdUnitFor<E, S>>>::uninit(); MR_DIV_N];
 
                     let mut i = 0usize;
                     loop {
                         if i == MR_DIV_N {
                             break;
                         }
-                        a_uninit[i] = MaybeUninit::new(E::faer_into_copy(E::faer_map(
+                        a_uninit[i] = MaybeUninit::new(into_copy::<E, _>(E::faer_map(
                             E::faer_copy(&a),
                             #[inline(always)]
-                            |ptr| *(ptr.add(i * lane_count) as *const E::SimdUnit<S>),
+                            |ptr| *(ptr.add(i * lane_count) as *const SimdUnitFor<E, S>),
                         )));
                         i += 1;
                     }
-                    let a: [E::Group<E::SimdUnit<S>>; MR_DIV_N] = transmute_unchecked(a_uninit);
+                    let a: [GroupFor<E, SimdUnitFor<E, S>>; MR_DIV_N] =
+                        transmute_unchecked(a_uninit);
 
                     let mut j = 0usize;
                     loop {
@@ -1136,7 +1138,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                             }
                             let local_acc = &mut local_acc[j][i];
                             *local_acc =
-                                E::faer_into_copy(inner_prod::conditional_conj_mul_adde::<
+                                into_copy::<E, _>(inner_prod::conditional_conj_mul_adde::<
                                     CONJ_B,
                                     E,
                                     S,
@@ -1144,7 +1146,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                                     simd,
                                     E::faer_copy(&b),
                                     E::faer_copy(&a[i]),
-                                    E::faer_from_copy(*local_acc),
+                                    from_copy::<E, _>(*local_acc),
                                 ));
                             i += 1;
                         }
@@ -1178,11 +1180,11 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                     }
                     let acc = acc.rb_mut().ptr_inbounds_at(i * lane_count, j);
                     let mut acc_value =
-                        E::faer_map(E::faer_copy(&acc), |acc| *(acc as *const E::SimdUnit<S>));
+                        E::faer_map(E::faer_copy(&acc), |acc| *(acc as *const SimdUnitFor<E, S>));
                     acc_value =
-                        E::faer_simd_add(simd, acc_value, E::faer_from_copy(local_acc[j][i]));
+                        E::faer_simd_add(simd, acc_value, from_copy::<E, _>(local_acc[j][i]));
                     E::faer_map(E::faer_zip(acc, acc_value), |(acc, new_acc)| {
-                        *(acc as *mut E::SimdUnit<S>) = new_acc
+                        *(acc as *mut SimdUnitFor<E, S>) = new_acc
                     });
                     i += 1;
                 }
@@ -2092,7 +2094,7 @@ macro_rules! stack_mat_16x16_begin {
         let __nrows = $nrows;
         let __ncols = $ncols;
         let mut __data = <$ty as $crate::Entity>::faer_map(
-            <$ty as $crate::Entity>::faer_from_copy(<$ty as $crate::Entity>::UNIT),
+            <$ty as $crate::Entity>::UNIT,
             #[inline(always)]
             |()| unsafe {
                 $crate::transmute_unchecked::<
@@ -3423,7 +3425,7 @@ pub mod triangular {
             } else if lhs_structure.is_lower() {
                 if !skip_diag {
                     match &alpha {
-                        Some(alpha) => {
+                        &Some(alpha) => {
                             zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
                                 .for_each(|mut acc, lhs, rhs| {
                                     acc.write(

@@ -10,6 +10,7 @@ use faer_core::{
     permutation::{swap_cols, swap_rows, PermutationMut},
     simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
 };
+use faer_entity::*;
 use paste::paste;
 use pulp::{cast_lossy, Simd};
 use reborrow::*;
@@ -157,13 +158,17 @@ fn best2d_f32<S: Simd>(
 #[inline(always)]
 fn best2d<E: RealField, S: Simd>(
     simd: S,
-    best_value: E::Group<E::SimdUnit<S>>,
-    best_row_indices: E::SimdIndex<S>,
-    best_col_indices: E::SimdIndex<S>,
-    value: E::Group<E::SimdUnit<S>>,
-    row_indices: E::SimdIndex<S>,
-    col_indices: E::SimdIndex<S>,
-) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>, E::SimdIndex<S>) {
+    best_value: GroupFor<E, SimdUnitFor<E, S>>,
+    best_row_indices: SimdIndexFor<E, S>,
+    best_col_indices: SimdIndexFor<E, S>,
+    value: GroupFor<E, SimdUnitFor<E, S>>,
+    row_indices: SimdIndexFor<E, S>,
+    col_indices: SimdIndexFor<E, S>,
+) -> (
+    GroupFor<E, SimdUnitFor<E, S>>,
+    SimdIndexFor<E, S>,
+    SimdIndexFor<E, S>,
+) {
     let is_better =
         E::faer_simd_greater_than(simd, E::faer_copy(&value), E::faer_copy(&best_value));
     (
@@ -176,14 +181,11 @@ fn best2d<E: RealField, S: Simd>(
 #[inline(always)]
 fn best_value<E: ComplexField, S: Simd>(
     simd: S,
-    best_value: <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
+    best_value: SimdGroupFor<E::Real, S>,
     best_indices: <E::Real as Entity>::SimdIndex<S>,
-    data: E::Group<E::SimdUnit<S>>,
+    data: GroupFor<E, SimdUnitFor<E, S>>,
     indices: <E::Real as Entity>::SimdIndex<S>,
-) -> (
-    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
-    <E::Real as Entity>::SimdIndex<S>,
-) {
+) -> (SimdGroupFor<E::Real, S>, <E::Real as Entity>::SimdIndex<S>) {
     let value = E::faer_simd_score(simd, data);
     let is_better = E::Real::faer_simd_greater_than(
         simd,
@@ -199,11 +201,11 @@ fn best_value<E: ComplexField, S: Simd>(
 #[inline(always)]
 fn best_score<E: RealField, S: Simd>(
     simd: S,
-    best_value: E::Group<E::SimdUnit<S>>,
-    best_indices: E::SimdIndex<S>,
-    value: E::Group<E::SimdUnit<S>>,
-    indices: E::SimdIndex<S>,
-) -> (E::Group<E::SimdUnit<S>>, E::SimdIndex<S>) {
+    best_value: GroupFor<E, SimdUnitFor<E, S>>,
+    best_indices: SimdIndexFor<E, S>,
+    value: GroupFor<E, SimdUnitFor<E, S>>,
+    indices: SimdIndexFor<E, S>,
+) -> (GroupFor<E, SimdUnitFor<E, S>>, SimdIndexFor<E, S>) {
     let is_better = E::Real::faer_simd_greater_than(
         simd,
         E::Real::faer_copy(&value),
@@ -218,15 +220,12 @@ fn best_score<E: RealField, S: Simd>(
 #[inline(always)]
 fn best_in_col<E: ComplexField, S: Simd>(
     simd: S,
-    data: E::Group<&[E::Unit]>,
-) -> (
-    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
-    <E::Real as Entity>::SimdIndex<S>,
-) {
+    data: GroupFor<E, &[UnitFor<E>]>,
+) -> (SimdGroupFor<E::Real, S>, SimdIndexFor<E::Real, S>) {
     let (head, tail) = simd::slice_as_simd::<E, S>(data);
 
     let iota = E::Real::faer_simd_index_seq(simd);
-    let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
     let increment1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(lane_count));
     let increment4 =
         E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(4 * lane_count));
@@ -291,13 +290,10 @@ fn best_in_col<E: ComplexField, S: Simd>(
 #[inline(always)]
 fn update_and_best_in_col<E: ComplexField, S: Simd>(
     simd: S,
-    data: E::Group<&mut [E::Unit]>,
-    lhs: E::Group<&[E::Unit]>,
+    data: GroupFor<E, &mut [UnitFor<E>]>,
+    lhs: GroupFor<E, &[UnitFor<E>]>,
     rhs: E,
-) -> (
-    <E::Real as Entity>::Group<<E::Real as Entity>::SimdUnit<S>>,
-    <E::Real as Entity>::SimdIndex<S>,
-) {
+) -> (SimdGroupFor<E::Real, S>, <E::Real as Entity>::SimdIndex<S>) {
     let mut len = 0;
     E::faer_map(
         E::faer_as_ref(&data),
@@ -306,7 +302,7 @@ fn update_and_best_in_col<E: ComplexField, S: Simd>(
     );
 
     let iota = E::Real::faer_simd_index_seq(simd);
-    let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
     let rhs = E::faer_simd_splat(simd, rhs);
 
@@ -535,10 +531,10 @@ best_in_col_simd!(c32, f32, u32);
 #[inline(always)]
 fn reduce2d<E: RealField>(
     len: usize,
-    best_value: E::Group<&[E::Unit]>,
-    best_row: &[E::Index],
-    best_col: &[E::Index],
-) -> (E, E::Index, E::Index) {
+    best_value: GroupFor<E, &[UnitFor<E>]>,
+    best_row: &[IndexFor<E>],
+    best_col: &[IndexFor<E>],
+) -> (E, IndexFor<E>, IndexFor<E>) {
     let (mut best_value_scalar, mut best_row_scalar, mut best_col_scalar) = (
         E::faer_zero(),
         E::faer_usize_to_index(0),
@@ -680,7 +676,7 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
 
             let len = Ord::min(
                 m,
-                core::mem::size_of::<E::SimdIndex<S>>() / core::mem::size_of::<E::Index>(),
+                core::mem::size_of::<SimdIndexFor<E, S>>() / core::mem::size_of::<IndexFor<E>>(),
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,
@@ -754,7 +750,7 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
 
             let len = Ord::min(
                 m,
-                core::mem::size_of::<E::SimdIndex<S>>() / core::mem::size_of::<E::Index>(),
+                core::mem::size_of::<SimdIndexFor<E, S>>() / core::mem::size_of::<IndexFor<E>>(),
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,

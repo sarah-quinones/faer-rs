@@ -12,6 +12,7 @@ use faer_core::{
     parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField, Conj,
     Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 use crate::tridiag_real_evd::norm2;
@@ -74,7 +75,8 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
 
         debug_assert!(m > 0);
 
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
         unsafe {
             let prefix = ((m - 1) % lane_count) + 1;

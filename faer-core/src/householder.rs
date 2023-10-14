@@ -40,7 +40,7 @@ use crate::{
 #[cfg(feature = "std")]
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
-use faer_entity::SimdCtx;
+use faer_entity::*;
 use reborrow::*;
 
 #[doc(hidden)]
@@ -358,8 +358,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                     }
 
                     let m = rhs.nrows() - 1;
-                    let lane_count =
-                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>()
+                        / core::mem::size_of::<UnitFor<E>>();
                     let prefix = m % lane_count;
 
                     let essential = E::faer_map(
@@ -470,8 +470,8 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                     }
 
                     let m = rhs.nrows() - 1;
-                    let lane_count =
-                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>()
+                        / core::mem::size_of::<UnitFor<E>>();
                     let prefix = m % lane_count;
 
                     let essential = E::faer_map(

@@ -5,6 +5,7 @@ use faer_core::{
     mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
     Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 pub(crate) struct RankUpdate<'a, E: ComplexField> {
@@ -34,7 +35,8 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
             return;
         }
 
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
         let prefix = m % lane_count;
 
         let acc = a21.as_ptr();
