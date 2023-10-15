@@ -11,11 +11,12 @@ use faer_core::{
     mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
     temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 struct RankUpdateStepImpl<'a, E: Entity, const R: usize> {
-    l_col: E::Group<&'a mut [E::Unit]>,
-    w: [E::Group<&'a mut [E::Unit]>; R],
+    l_col: GroupFor<E, &'a mut [E::Unit]>,
+    w: [GroupFor<E, &'a mut [E::Unit]>; R],
     neg_wj_over_ljj_array: [E; R],
     alpha_wj_over_nljj_array: [E; R],
     nljj_over_ljj_array: [E; R],

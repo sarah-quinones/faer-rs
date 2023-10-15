@@ -6,6 +6,8 @@ use assert2::{assert, debug_assert};
 use core::mem::MaybeUninit;
 use reborrow::*;
 
+use faer_entity::*;
+
 /// Specifies whether the main diagonal should be traversed, when iterating over a triangular chunk
 /// of the matrix.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -18,11 +20,11 @@ pub enum Diag {
 
 /// Read only view over a single matrix element.
 pub struct Read<'a, E: Entity> {
-    ptr: E::Group<&'a MaybeUninit<E::Unit>>,
+    ptr: GroupFor<E, &'a MaybeUninit<E::Unit>>,
 }
 /// Read-write view over a single matrix element.
 pub struct ReadWrite<'a, E: Entity> {
-    ptr: E::Group<&'a mut MaybeUninit<E::Unit>>,
+    ptr: GroupFor<E, &'a mut MaybeUninit<E::Unit>>,
 }
 
 impl<E: Entity> Read<'_, E> {
@@ -91,7 +93,7 @@ pub trait Mat<'short, Outlives = &'short Self>: Seal {
 impl<'a, E: Entity> Seal for MatRef<'a, E> {}
 impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
     type Item = Read<'short, E>;
-    type RawSlice = E::Group<&'a [MaybeUninit<E::Unit>]>;
+    type RawSlice = GroupFor<E, &'a [MaybeUninit<E::Unit>]>;
 
     #[inline(always)]
     fn transpose(self) -> Self {
@@ -161,7 +163,7 @@ impl<'a, 'short, E: Entity> Mat<'short> for MatRef<'a, E> {
 impl<'a, E: Entity> Seal for MatMut<'a, E> {}
 impl<'a, 'short, E: Entity> Mat<'short> for MatMut<'a, E> {
     type Item = ReadWrite<'short, E>;
-    type RawSlice = E::Group<&'a mut [MaybeUninit<E::Unit>]>;
+    type RawSlice = GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>;
 
     #[inline(always)]
     fn transpose(self) -> Self {

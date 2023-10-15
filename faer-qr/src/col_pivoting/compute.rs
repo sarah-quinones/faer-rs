@@ -10,6 +10,7 @@ use faer_core::{
     simd, transmute_unchecked, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
     SimdCtx,
 };
+use faer_entity::*;
 use pulp::{as_arrays, as_arrays_mut, Simd};
 use reborrow::*;
 
@@ -18,8 +19,8 @@ pub use crate::no_pivoting::compute::recommended_blocksize;
 #[inline(always)]
 fn update_and_norm2_simd_impl<'a, E: ComplexField, S: Simd>(
     simd: S,
-    a: E::Group<&'a mut [E::Unit]>,
-    b: E::Group<&'a [E::Unit]>,
+    a: GroupFor<E, &'a mut [UnitFor<E>]>,
+    b: GroupFor<E, &'a [UnitFor<E>]>,
     k: E,
 ) -> E::Real {
     let mut acc0 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
@@ -298,8 +299,8 @@ fn update_and_norm2_simd_impl_c64<'a, S: Simd>(
 }
 
 struct UpdateAndNorm2<'a, E: ComplexField> {
-    a: E::Group<&'a mut [E::Unit]>,
-    b: E::Group<&'a [E::Unit]>,
+    a: GroupFor<E, &'a mut [UnitFor<E>]>,
+    b: GroupFor<E, &'a [UnitFor<E>]>,
     k: E,
 }
 

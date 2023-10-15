@@ -7,6 +7,7 @@ use faer_core::{
     parallelism_degree, simd, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField,
     Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use pulp::Simd;
 use reborrow::*;
 
@@ -266,22 +267,22 @@ fn bidiag_fused_op_step0<E: ComplexField>(
     arch: E::Simd,
 
     // update a_next
-    mut a_j: E::Group<&mut [E::Unit]>,
-    z: E::Group<&[E::Unit]>,
-    u_prev: E::Group<&[E::Unit]>,
+    mut a_j: GroupFor<E, &mut [UnitFor<E>]>,
+    z: GroupFor<E, &[UnitFor<E>]>,
+    u_prev: GroupFor<E, &[UnitFor<E>]>,
     u_rhs: E,
     z_rhs: E,
 
     // compute yj
-    u: E::Group<&[E::Unit]>,
+    u: GroupFor<E, &[UnitFor<E>]>,
 ) -> E {
     struct Impl<'a, E: ComplexField> {
-        a_j: E::Group<&'a mut [E::Unit]>,
-        z: E::Group<&'a [E::Unit]>,
-        u_prev: E::Group<&'a [E::Unit]>,
+        a_j: GroupFor<E, &'a mut [UnitFor<E>]>,
+        z: GroupFor<E, &'a [UnitFor<E>]>,
+        u_prev: GroupFor<E, &'a [UnitFor<E>]>,
         u_rhs: E,
         z_rhs: E,
-        u: E::Group<&'a [E::Unit]>,
+        u: GroupFor<E, &'a [UnitFor<E>]>,
     }
 
     impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {
@@ -441,13 +442,13 @@ fn bidiag_fused_op_step1<'a, E: ComplexField>(
     arch: E::Simd,
 
     // update z
-    z: E::Group<&'a mut [E::Unit]>,
-    a_j: E::Group<&'a [E::Unit]>,
+    z: GroupFor<E, &'a mut [UnitFor<E>]>,
+    a_j: GroupFor<E, &'a [UnitFor<E>]>,
     rhs: E,
 ) {
     struct Impl<'a, E: ComplexField> {
-        z: E::Group<&'a mut [E::Unit]>,
-        a_j: E::Group<&'a [E::Unit]>,
+        z: GroupFor<E, &'a mut [UnitFor<E>]>,
+        a_j: GroupFor<E, &'a [UnitFor<E>]>,
         rhs: E,
     }
     impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {

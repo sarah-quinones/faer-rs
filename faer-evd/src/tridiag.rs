@@ -7,6 +7,7 @@ use faer_core::{
     mul::inner_prod::inner_prod_with_conj, parallelism_degree, temp_mat_req, temp_mat_zeroed,
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 pub fn tridiagonalize_in_place_req<E: Entity>(
@@ -78,7 +79,8 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
         debug_assert!(u.row_stride() == 1);
         debug_assert!(y.row_stride() == 1);
 
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
         let mut acc =
             unsafe { E::faer_map(acc.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
@@ -734,7 +736,8 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
         debug_assert!(rhs.row_stride() == 1);
         debug_assert!(acc.row_stride() == 1);
 
-        let lane_count = core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+        let lane_count =
+            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
         let mut acc =
             unsafe { E::faer_map(acc.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };

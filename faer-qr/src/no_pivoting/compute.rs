@@ -9,6 +9,7 @@ use faer_core::{
     mul::inner_prod::{self, inner_prod_with_conj_arch},
     temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 fn qr_in_place_unblocked<E: ComplexField>(
@@ -76,8 +77,8 @@ fn qr_in_place_unblocked<E: ComplexField>(
                     }
 
                     let m = last_cols.nrows() - 1;
-                    let lane_count =
-                        core::mem::size_of::<E::SimdUnit<S>>() / core::mem::size_of::<E::Unit>();
+                    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>()
+                        / core::mem::size_of::<UnitFor<E>>();
                     let prefix = m % lane_count;
 
                     let first_col_tail = E::faer_map(

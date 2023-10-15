@@ -79,8 +79,10 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use faer_entity::NoSimd;
-pub use faer_entity::{ComplexField, Conjugate, Entity, RealField, SimdCtx, SimpleEntity};
+use faer_entity::*;
+pub use faer_entity::{
+    ComplexField, Conjugate, Entity, GroupFor, IdentityGroup, RealField, SimdCtx, SimpleEntity,
+};
 
 #[cfg(feature = "std")]
 use assert2::{assert, debug_assert};
@@ -113,7 +115,6 @@ pub use matrix_ops::Scale;
 
 #[doc(hidden)]
 pub mod simd;
-type SimdGroup<E, S> = <E as Entity>::Group<<E as Entity>::SimdUnit<S>>;
 
 #[doc(hidden)]
 pub use faer_entity::transmute_unchecked;
@@ -892,12 +893,12 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
-    fn faer_simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+    fn faer_simd_neg<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         simd.c32s_neg(values)
     }
 
     #[inline(always)]
-    fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+    fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         let _ = simd;
         values
     }
@@ -905,35 +906,35 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn faer_simd_add<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_add(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_sub<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_sub(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_mul<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_mul(lhs, rhs)
     }
     #[inline(always)]
     fn faer_simd_scale_real<S: Simd>(
         simd: S,
-        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self::Real, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         if coe::is_same::<pulp::Scalar, S>() {
             let lhs: f32 = bytemuck::cast(lhs);
             let rhs: num_complex::Complex32 = bytemuck::cast(rhs);
@@ -945,53 +946,59 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn faer_simd_conj_mul<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_conj_mul(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_mul_adde<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-        acc: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
     fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-        acc: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c32s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
-    fn faer_simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+    fn faer_simd_reduce_add<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> Self {
         pulp::cast(simd.c32s_reduce_sum(values))
     }
 
     #[inline(always)]
     fn faer_simd_abs2_adde<S: Simd>(
         simd: S,
-        values: SimdGroup<Self, S>,
-        acc: SimdGroup<Self::Real, S>,
-    ) -> SimdGroup<Self::Real, S> {
+        values: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self::Real, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values, acc);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
-    fn faer_simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+    fn faer_simd_abs2<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
-    fn faer_simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+    fn faer_simd_score<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
@@ -1209,12 +1216,12 @@ impl ComplexField for c64 {
     }
 
     #[inline(always)]
-    fn faer_simd_neg<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+    fn faer_simd_neg<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         simd.c64s_neg(values)
     }
 
     #[inline(always)]
-    fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self, S> {
+    fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         let _ = simd;
         values
     }
@@ -1222,35 +1229,35 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn faer_simd_add<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_add(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_sub<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_sub(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_mul<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_mul(lhs, rhs)
     }
     #[inline(always)]
     fn faer_simd_scale_real<S: Simd>(
         simd: S,
-        lhs: <Self::Real as Entity>::Group<<Self::Real as Entity>::SimdUnit<S>>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self::Real, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         if coe::is_same::<pulp::Scalar, S>() {
             let lhs: f64 = bytemuck::cast(lhs);
             let rhs: num_complex::Complex64 = bytemuck::cast(rhs);
@@ -1262,53 +1269,59 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn faer_simd_conj_mul<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_conj_mul(lhs, rhs)
     }
 
     #[inline(always)]
     fn faer_simd_mul_adde<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-        acc: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
     fn faer_simd_conj_mul_adde<S: Simd>(
         simd: S,
-        lhs: SimdGroup<Self, S>,
-        rhs: SimdGroup<Self, S>,
-        acc: SimdGroup<Self, S>,
-    ) -> SimdGroup<Self, S> {
+        lhs: SimdGroupFor<Self, S>,
+        rhs: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
         simd.c64s_conj_mul_add_e(lhs, rhs, acc)
     }
 
     #[inline(always)]
-    fn faer_simd_reduce_add<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> Self {
+    fn faer_simd_reduce_add<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> Self {
         pulp::cast(simd.c64s_reduce_sum(values))
     }
 
     #[inline(always)]
     fn faer_simd_abs2_adde<S: Simd>(
         simd: S,
-        values: SimdGroup<Self, S>,
-        acc: SimdGroup<Self::Real, S>,
-    ) -> SimdGroup<Self::Real, S> {
+        values: SimdGroupFor<Self, S>,
+        acc: SimdGroupFor<Self::Real, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values, acc);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
-    fn faer_simd_abs2<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+    fn faer_simd_abs2<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
-    fn faer_simd_score<S: Simd>(simd: S, values: SimdGroup<Self, S>) -> SimdGroup<Self::Real, S> {
+    fn faer_simd_score<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
         unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
@@ -1340,35 +1353,35 @@ unsafe impl Entity for c32 {
     type SimdUnit<S: Simd> = S::c32s;
     type SimdMask<S: Simd> = S::m32s;
     type SimdIndex<S: Simd> = S::u32s;
-    type Group<T> = T;
-    type GroupCopy<T: Copy> = T;
+    type Group = IdentityGroup;
+    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const UNIT: Self::GroupCopy<()> = ();
+    const UNIT: GroupCopyFor<Self, ()> = ();
 
     #[inline(always)]
-    fn faer_from_units(group: Self::Group<Self::Unit>) -> Self {
+    fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
         group
     }
 
     #[inline(always)]
-    fn faer_into_units(self) -> Self::Group<Self::Unit> {
+    fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
         self
     }
 
     #[inline(always)]
-    fn faer_as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+    fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
         group
     }
 
     #[inline(always)]
-    fn faer_as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+    fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
         group
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
         let mut f = f;
         f(group)
     }
@@ -1376,34 +1389,27 @@ unsafe impl Entity for c32 {
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
         ctx: Ctx,
-        group: Self::Group<T>,
+        group: GroupFor<Self, T>,
         f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-    ) -> (Ctx, Self::Group<U>) {
+    ) -> (Ctx, GroupFor<Self, U>) {
         (*f)(ctx, group)
     }
 
     #[inline(always)]
-    fn faer_zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+    fn faer_zip<T, U>(
+        first: GroupFor<Self, T>,
+        second: GroupFor<Self, U>,
+    ) -> GroupFor<Self, (T, U)> {
         (first, second)
     }
     #[inline(always)]
-    fn faer_unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+    fn faer_unzip<T, U>(zipped: GroupFor<Self, (T, U)>) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
         zipped
     }
 
     #[inline(always)]
-    fn faer_into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+    fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
         iter.into_iter()
-    }
-
-    #[inline(always)]
-    fn faer_from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
-        group
-    }
-
-    #[inline(always)]
-    fn faer_into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
-        group
     }
 }
 unsafe impl Entity for c32conj {
@@ -1412,35 +1418,35 @@ unsafe impl Entity for c32conj {
     type SimdUnit<S: Simd> = S::c32s;
     type SimdMask<S: Simd> = S::m32s;
     type SimdIndex<S: Simd> = S::u32s;
-    type Group<T> = T;
-    type GroupCopy<T: Copy> = T;
+    type Group = IdentityGroup;
+    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const UNIT: Self::GroupCopy<()> = ();
+    const UNIT: GroupCopyFor<Self, ()> = ();
 
     #[inline(always)]
-    fn faer_from_units(group: Self::Group<Self::Unit>) -> Self {
+    fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
         group
     }
 
     #[inline(always)]
-    fn faer_into_units(self) -> Self::Group<Self::Unit> {
+    fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
         self
     }
 
     #[inline(always)]
-    fn faer_as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+    fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
         group
     }
 
     #[inline(always)]
-    fn faer_as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+    fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
         group
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
         let mut f = f;
         f(group)
     }
@@ -1448,34 +1454,27 @@ unsafe impl Entity for c32conj {
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
         ctx: Ctx,
-        group: Self::Group<T>,
+        group: GroupFor<Self, T>,
         f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-    ) -> (Ctx, Self::Group<U>) {
+    ) -> (Ctx, GroupFor<Self, U>) {
         (*f)(ctx, group)
     }
 
     #[inline(always)]
-    fn faer_zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+    fn faer_zip<T, U>(
+        first: GroupFor<Self, T>,
+        second: GroupFor<Self, U>,
+    ) -> GroupFor<Self, (T, U)> {
         (first, second)
     }
     #[inline(always)]
-    fn faer_unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+    fn faer_unzip<T, U>(zipped: GroupFor<Self, (T, U)>) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
         zipped
     }
 
     #[inline(always)]
-    fn faer_into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+    fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
         iter.into_iter()
-    }
-
-    #[inline(always)]
-    fn faer_from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
-        group
-    }
-
-    #[inline(always)]
-    fn faer_into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
-        group
     }
 }
 
@@ -1485,35 +1484,35 @@ unsafe impl Entity for c64 {
     type SimdUnit<S: Simd> = S::c64s;
     type SimdMask<S: Simd> = S::m64s;
     type SimdIndex<S: Simd> = S::u64s;
-    type Group<T> = T;
-    type GroupCopy<T: Copy> = T;
+    type Group = IdentityGroup;
+    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const UNIT: Self::GroupCopy<()> = ();
+    const UNIT: GroupCopyFor<Self, ()> = ();
 
     #[inline(always)]
-    fn faer_from_units(group: Self::Group<Self::Unit>) -> Self {
+    fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
         group
     }
 
     #[inline(always)]
-    fn faer_into_units(self) -> Self::Group<Self::Unit> {
+    fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
         self
     }
 
     #[inline(always)]
-    fn faer_as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+    fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
         group
     }
 
     #[inline(always)]
-    fn faer_as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+    fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
         group
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
         let mut f = f;
         f(group)
     }
@@ -1521,34 +1520,27 @@ unsafe impl Entity for c64 {
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
         ctx: Ctx,
-        group: Self::Group<T>,
+        group: GroupFor<Self, T>,
         f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-    ) -> (Ctx, Self::Group<U>) {
+    ) -> (Ctx, GroupFor<Self, U>) {
         (*f)(ctx, group)
     }
 
     #[inline(always)]
-    fn faer_zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+    fn faer_zip<T, U>(
+        first: GroupFor<Self, T>,
+        second: GroupFor<Self, U>,
+    ) -> GroupFor<Self, (T, U)> {
         (first, second)
     }
     #[inline(always)]
-    fn faer_unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+    fn faer_unzip<T, U>(zipped: GroupFor<Self, (T, U)>) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
         zipped
     }
 
     #[inline(always)]
-    fn faer_into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+    fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
         iter.into_iter()
-    }
-
-    #[inline(always)]
-    fn faer_from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
-        group
-    }
-
-    #[inline(always)]
-    fn faer_into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
-        group
     }
 }
 unsafe impl Entity for c64conj {
@@ -1557,35 +1549,35 @@ unsafe impl Entity for c64conj {
     type SimdUnit<S: Simd> = S::c64s;
     type SimdMask<S: Simd> = S::m64s;
     type SimdIndex<S: Simd> = S::u64s;
-    type Group<T> = T;
-    type GroupCopy<T: Copy> = T;
+    type Group = IdentityGroup;
+    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
-    const UNIT: Self::GroupCopy<()> = ();
+    const UNIT: GroupCopyFor<Self, ()> = ();
 
     #[inline(always)]
-    fn faer_from_units(group: Self::Group<Self::Unit>) -> Self {
+    fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
         group
     }
 
     #[inline(always)]
-    fn faer_into_units(self) -> Self::Group<Self::Unit> {
+    fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
         self
     }
 
     #[inline(always)]
-    fn faer_as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+    fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
         group
     }
 
     #[inline(always)]
-    fn faer_as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+    fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
         group
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
         let mut f = f;
         f(group)
     }
@@ -1593,34 +1585,27 @@ unsafe impl Entity for c64conj {
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
         ctx: Ctx,
-        group: Self::Group<T>,
+        group: GroupFor<Self, T>,
         f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-    ) -> (Ctx, Self::Group<U>) {
+    ) -> (Ctx, GroupFor<Self, U>) {
         (*f)(ctx, group)
     }
 
     #[inline(always)]
-    fn faer_zip<T, U>(first: Self::Group<T>, second: Self::Group<U>) -> Self::Group<(T, U)> {
+    fn faer_zip<T, U>(
+        first: GroupFor<Self, T>,
+        second: GroupFor<Self, U>,
+    ) -> GroupFor<Self, (T, U)> {
         (first, second)
     }
     #[inline(always)]
-    fn faer_unzip<T, U>(zipped: Self::Group<(T, U)>) -> (Self::Group<T>, Self::Group<U>) {
+    fn faer_unzip<T, U>(zipped: GroupFor<Self, (T, U)>) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
         zipped
     }
 
     #[inline(always)]
-    fn faer_into_iter<I: IntoIterator>(iter: Self::Group<I>) -> Self::Iter<I::IntoIter> {
+    fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
         iter.into_iter()
-    }
-
-    #[inline(always)]
-    fn faer_from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
-        group
-    }
-
-    #[inline(always)]
-    fn faer_into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
-        group
     }
 }
 
@@ -1669,7 +1654,7 @@ unsafe impl Conjugate for c64conj {
 }
 
 struct MatImpl<E: Entity> {
-    ptr: E::GroupCopy<*mut E::Unit>,
+    ptr: GroupCopyFor<E, *mut E::Unit>,
     nrows: usize,
     ncols: usize,
     row_stride: isize,
@@ -2047,7 +2032,7 @@ const _: () = {
     impl_ranges!(MatMut);
 
     impl<'a, E: Entity> MatIndex<usize, usize> for MatRef<'a, E> {
-        type Target = E::Group<&'a E::Unit>;
+        type Target = GroupFor<E, &'a E::Unit>;
 
         #[track_caller]
         #[inline(always)]
@@ -2065,7 +2050,7 @@ const _: () = {
     }
 
     impl<'a, E: Entity> MatIndex<usize, usize> for MatMut<'a, E> {
-        type Target = E::Group<&'a mut E::Unit>;
+        type Target = GroupFor<E, &'a mut E::Unit>;
 
         #[track_caller]
         #[inline(always)]
@@ -2105,7 +2090,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// ```
     #[track_caller]
     pub fn from_column_major_slice(
-        slice: E::Group<&'a [E::Unit]>,
+        slice: GroupFor<E, &'a [E::Unit]>,
         nrows: usize,
         ncols: usize,
     ) -> Self {
@@ -2155,7 +2140,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub fn from_row_major_slice(
-        slice: E::Group<&'a [E::Unit]>,
+        slice: GroupFor<E, &'a [E::Unit]>,
         nrows: usize,
         ncols: usize,
     ) -> Self {
@@ -2201,7 +2186,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn from_raw_parts(
-        ptr: E::Group<*const E::Unit>,
+        ptr: GroupFor<E, *const E::Unit>,
         nrows: usize,
         ncols: usize,
         row_stride: isize,
@@ -2209,7 +2194,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ) -> Self {
         Self {
             inner: MatImpl {
-                ptr: E::faer_into_copy(E::faer_map(ptr, |ptr| ptr as *mut E::Unit)),
+                ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| ptr as *mut E::Unit)),
                 nrows,
                 ncols,
                 row_stride,
@@ -2221,8 +2206,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> E::Group<*const E::Unit> {
-        E::faer_map(E::faer_from_copy(self.inner.ptr), |ptr| {
+    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| {
             ptr as *const E::Unit
         })
     }
@@ -2253,7 +2238,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at(self, row: usize, col: usize) -> E::Group<*const E::Unit> {
+    pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         E::faer_map(self.as_ptr(), |ptr| {
             ptr.wrapping_offset(row as isize * self.inner.row_stride)
                 .wrapping_offset(col as isize * self.inner.col_stride)
@@ -2269,7 +2254,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> E::Group<*const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         debug_assert!(row < self.nrows());
         debug_assert!(col < self.ncols());
         E::faer_map(self.as_ptr(), |ptr| {
@@ -2447,12 +2432,12 @@ impl<'a, E: Entity> MatRef<'a, E> {
     {
         unsafe {
             // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
-            // and that E::GroupCopy<X> == E::Conj::GroupCopy<X>
+            // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
             MatRef {
                 inner: MatImpl {
                     ptr: transmute_unchecked::<
-                        E::GroupCopy<*mut E::Unit>,
-                        <E::Conj as Entity>::GroupCopy<*mut <E::Conj as Entity>::Unit>,
+                        GroupCopyFor<E, *mut E::Unit>,
+                        GroupCopyFor<E::Conj, *mut UnitFor<E::Conj>>,
                     >(self.inner.ptr),
                     nrows: self.inner.nrows,
                     ncols: self.inner.ncols,
@@ -2486,10 +2471,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
                 MatRef {
                     inner: MatImpl {
                         ptr: transmute_unchecked::<
-                            E::GroupCopy<*mut E::Unit>,
-                            <E::Canonical as Entity>::GroupCopy<
-                                *mut <E::Canonical as Entity>::Unit,
-                            >,
+                            GroupCopyFor<E, *mut E::Unit>,
+                            GroupCopyFor<E::Canonical, *mut UnitFor<E::Canonical>>,
                         >(self.inner.ptr),
                         nrows: self.inner.nrows,
                         ncols: self.inner.ncols,
@@ -2954,7 +2937,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// ```
     #[track_caller]
     pub fn from_column_major_slice(
-        slice: E::Group<&'a mut [E::Unit]>,
+        slice: GroupFor<E, &'a mut [E::Unit]>,
         nrows: usize,
         ncols: usize,
     ) -> Self {
@@ -3004,7 +2987,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub fn from_row_major_slice(
-        slice: E::Group<&'a mut [E::Unit]>,
+        slice: GroupFor<E, &'a mut [E::Unit]>,
         nrows: usize,
         ncols: usize,
     ) -> Self {
@@ -3054,7 +3037,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn from_raw_parts(
-        ptr: E::Group<*mut E::Unit>,
+        ptr: GroupFor<E, *mut E::Unit>,
         nrows: usize,
         ncols: usize,
         row_stride: isize,
@@ -3062,7 +3045,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ) -> Self {
         Self {
             inner: MatImpl {
-                ptr: E::faer_into_copy(ptr),
+                ptr: into_copy::<E, _>(ptr),
                 nrows,
                 ncols,
                 row_stride,
@@ -3074,8 +3057,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> E::Group<*mut E::Unit> {
-        E::faer_from_copy(self.inner.ptr)
+    pub fn as_ptr(self) -> GroupFor<E, *mut E::Unit> {
+        from_copy::<E, _>(self.inner.ptr)
     }
 
     /// Returns the number of rows of the matrix.
@@ -3104,7 +3087,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at(self, row: usize, col: usize) -> E::Group<*mut E::Unit> {
+    pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
         let row_stride = self.inner.row_stride;
         let col_stride = self.inner.col_stride;
         E::faer_map(self.as_ptr(), |ptr| {
@@ -3122,7 +3105,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> E::Group<*mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(row < self.nrows());
         debug_assert!(col < self.ncols());
         let row_stride = self.inner.row_stride;
@@ -3831,7 +3814,7 @@ impl<T: 'static> Drop for RawMatUnit<T> {
 
 #[repr(C)]
 struct RawMat<E: Entity> {
-    ptr: E::GroupCopy<NonNull<E::Unit>>,
+    ptr: GroupCopyFor<E, NonNull<E::Unit>>,
     row_capacity: usize,
     col_capacity: usize,
 }
@@ -3911,14 +3894,14 @@ pub fn align_for<T: 'static>() -> usize {
 impl<E: Entity> RawMat<E> {
     pub fn new(row_capacity: usize, col_capacity: usize) -> Self {
         // allocate the unit matrices
-        let group = E::faer_map(E::faer_from_copy(E::UNIT), |()| {
+        let group = E::faer_map(E::UNIT, |()| {
             RawMatUnit::<E::Unit>::new(row_capacity, col_capacity)
         });
 
         let group = E::faer_map(group, ManuallyDrop::new);
 
         Self {
-            ptr: E::faer_into_copy(E::faer_map(group, |mat| mat.ptr)),
+            ptr: into_copy::<E, _>(E::faer_map(group, |mat| mat.ptr)),
             row_capacity,
             col_capacity,
         }
@@ -3927,7 +3910,7 @@ impl<E: Entity> RawMat<E> {
 
 impl<E: Entity> Drop for RawMat<E> {
     fn drop(&mut self) {
-        drop(E::faer_map(E::faer_from_copy(self.ptr), |ptr| RawMatUnit {
+        drop(E::faer_map(from_copy::<E, _>(self.ptr), |ptr| RawMatUnit {
             ptr,
             row_capacity: self.row_capacity,
             col_capacity: self.col_capacity,
@@ -4099,7 +4082,7 @@ impl<E: Entity> Mat<E> {
     pub fn new() -> Self {
         Self {
             raw: RawMat::<E> {
-                ptr: E::faer_map_copy(E::UNIT, |()| NonNull::<E::Unit>::dangling()),
+                ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| NonNull::<E::Unit>::dangling())),
                 row_capacity: 0,
                 col_capacity: 0,
             },
@@ -4177,16 +4160,16 @@ impl<E: Entity> Mat<E> {
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr(&self) -> E::Group<*const E::Unit> {
-        E::faer_map(E::faer_from_copy(self.raw.ptr), |ptr| {
+    pub fn as_ptr(&self) -> GroupFor<E, *const E::Unit> {
+        E::faer_map(from_copy::<E, _>(self.raw.ptr), |ptr| {
             ptr.as_ptr() as *const E::Unit
         })
     }
 
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
-    pub fn as_mut_ptr(&mut self) -> E::Group<*mut E::Unit> {
-        E::faer_map(E::faer_from_copy(self.raw.ptr), |ptr| ptr.as_ptr())
+    pub fn as_mut_ptr(&mut self) -> GroupFor<E, *mut E::Unit> {
+        E::faer_map(from_copy::<E, _>(self.raw.ptr), |ptr| ptr.as_ptr())
     }
 
     /// Returns the number of rows of the matrix.
@@ -4244,7 +4227,7 @@ impl<E: Entity> Mat<E> {
 
         let mut this = ManuallyDrop::new(core::mem::take(self));
         {
-            let mut this_group = E::faer_map(E::faer_from_copy(this.raw.ptr), |ptr| MatUnit {
+            let mut this_group = E::faer_map(from_copy::<E, _>(this.raw.ptr), |ptr| MatUnit {
                 raw: RawMatUnit {
                     ptr,
                     row_capacity: old_row_capacity,
@@ -4259,7 +4242,7 @@ impl<E: Entity> Mat<E> {
             });
 
             let this_group = E::faer_map(this_group, ManuallyDrop::new);
-            this.raw.ptr = E::faer_into_copy(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
+            this.raw.ptr = into_copy::<E, _>(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
             this.raw.row_capacity = new_row_capacity;
             this.raw.col_capacity = new_col_capacity;
         }
@@ -4294,10 +4277,10 @@ impl<E: Entity> Mat<E> {
         debug_assert!(row_start <= row_end);
         debug_assert!(col_start <= col_end);
 
-        let ptr = E::faer_into_copy(self.as_mut_ptr());
+        let ptr = self.as_mut_ptr();
 
         for j in col_start..col_end {
-            let ptr_j = E::faer_map_copy(ptr, |ptr| {
+            let ptr_j = E::faer_map(E::faer_copy(&ptr), |ptr| {
                 ptr.wrapping_offset(j as isize * self.col_stride())
             });
 
@@ -4307,7 +4290,7 @@ impl<E: Entity> Mat<E> {
                 // allocation since we reserved enough space
                 // * writing to this memory region is sound since it is properly
                 // aligned and valid for writes
-                let ptr_ij = E::faer_map(E::faer_from_copy(ptr_j), |ptr_j| ptr_j.add(i));
+                let ptr_ij = E::faer_map(E::faer_copy(&ptr_j), |ptr_j| ptr_j.add(i));
                 let value = E::faer_into_units(f(i, j));
 
                 E::faer_map(E::faer_zip(ptr_ij, value), |(ptr_ij, value)| {
@@ -4397,7 +4380,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    pub fn col_ref(&self, col: usize) -> E::Group<&[E::Unit]> {
+    pub fn col_ref(&self, col: usize) -> GroupFor<E, &[E::Unit]> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_ref().ptr_at(0, col);
@@ -4411,7 +4394,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a mutable reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    pub fn col_mut(&mut self, col: usize) -> E::Group<&mut [E::Unit]> {
+    pub fn col_mut(&mut self, col: usize) -> GroupFor<E, &mut [E::Unit]> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_mut().ptr_at(0, col);
@@ -5064,7 +5047,7 @@ pub fn temp_mat_uninit<E: ComplexField>(
     let col_stride = col_stride::<E::Unit>(nrows);
     let alloc_size = ncols.checked_mul(col_stride).unwrap();
 
-    let (stack, alloc) = E::faer_map_with_context(stack, E::faer_from_copy(E::UNIT), &mut {
+    let (stack, alloc) = E::faer_map_with_context(stack, E::UNIT, &mut {
         #[inline(always)]
         |stack, ()| {
             let (alloc, stack) =
@@ -5105,7 +5088,7 @@ pub fn temp_mat_req<E: Entity>(nrows: usize, ncols: usize) -> Result<StackReq, S
     let additional = StackReq::try_new_aligned::<E::Unit>(alloc_size, align_for::<E::Unit>())?;
 
     let req = Ok(StackReq::empty());
-    let (req, _) = E::faer_map_with_context(req, E::faer_from_copy(E::UNIT), &mut {
+    let (req, _) = E::faer_map_with_context(req, E::UNIT, &mut {
         #[inline(always)]
         |req, ()| {
             let req = match req {
@@ -5246,35 +5229,38 @@ mod tests {
                 type SimdUnit<S: $crate::pulp::Simd> = ();
                 type SimdMask<S: $crate::pulp::Simd> = ();
                 type SimdIndex<S: $crate::pulp::Simd> = ();
-                type Group<T> = T;
-                type GroupCopy<T: Copy> = T;
+                type Group = IdentityGroup;
+                type GroupCopy = IdentityGroup;
                 type Iter<I: Iterator> = I;
 
                 const N_COMPONENTS: usize = 1;
-                const UNIT: Self::GroupCopy<()> = ();
+                const UNIT: GroupCopyFor<Self, ()> = ();
 
                 #[inline(always)]
-                fn faer_from_units(group: Self::Group<Self::Unit>) -> Self {
+                fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
                     group
                 }
 
                 #[inline(always)]
-                fn faer_into_units(self) -> Self::Group<Self::Unit> {
+                fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
                     self
                 }
 
                 #[inline(always)]
-                fn faer_as_ref<T>(group: &Self::Group<T>) -> Self::Group<&T> {
+                fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
                     group
                 }
 
                 #[inline(always)]
-                fn faer_as_mut<T>(group: &mut Self::Group<T>) -> Self::Group<&mut T> {
+                fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
                     group
                 }
 
                 #[inline(always)]
-                fn faer_map<T, U>(group: Self::Group<T>, f: impl FnMut(T) -> U) -> Self::Group<U> {
+                fn faer_map<T, U>(
+                    group: GroupFor<Self, T>,
+                    f: impl FnMut(T) -> U,
+                ) -> GroupFor<Self, U> {
                     let mut f = f;
                     f(group)
                 }
@@ -5282,41 +5268,31 @@ mod tests {
                 #[inline(always)]
                 fn faer_map_with_context<Ctx, T, U>(
                     ctx: Ctx,
-                    group: Self::Group<T>,
+                    group: GroupFor<Self, T>,
                     f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-                ) -> (Ctx, Self::Group<U>) {
+                ) -> (Ctx, GroupFor<Self, U>) {
                     (*f)(ctx, group)
                 }
 
                 #[inline(always)]
                 fn faer_zip<T, U>(
-                    first: Self::Group<T>,
-                    second: Self::Group<U>,
-                ) -> Self::Group<(T, U)> {
+                    first: GroupFor<Self, T>,
+                    second: GroupFor<Self, U>,
+                ) -> GroupFor<Self, (T, U)> {
                     (first, second)
                 }
                 #[inline(always)]
                 fn faer_unzip<T, U>(
-                    zipped: Self::Group<(T, U)>,
-                ) -> (Self::Group<T>, Self::Group<U>) {
+                    zipped: GroupFor<Self, (T, U)>,
+                ) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
                     zipped
                 }
 
                 #[inline(always)]
                 fn faer_into_iter<I: IntoIterator>(
-                    iter: Self::Group<I>,
+                    iter: GroupFor<Self, I>,
                 ) -> Self::Iter<I::IntoIter> {
                     iter.into_iter()
-                }
-
-                #[inline(always)]
-                fn faer_from_copy<T: Copy>(group: Self::GroupCopy<T>) -> Self::Group<T> {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_into_copy<T: Copy>(group: Self::Group<T>) -> Self::GroupCopy<T> {
-                    group
                 }
             }
         };
