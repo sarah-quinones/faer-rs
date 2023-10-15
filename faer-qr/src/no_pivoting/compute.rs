@@ -348,6 +348,16 @@ pub fn qr_in_place<E: ComplexField>(
     let size = Ord::min(matrix.nrows(), matrix.ncols());
     assert!(blocksize > 0);
     assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
+
+    #[cfg(feature = "perf-warn")]
+    if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+        if matrix.col_stride().unsigned_abs() == 1 {
+            log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found row-major matrix.");
+        } else {
+            log::warn!(target: "faer_perf", "QR prefers column-major matrix. Found matrix with generic strides.");
+        }
+    }
+
     if blocksize == 1 {
         qr_in_place_unblocked(matrix, householder_factor.transpose(), stack);
     } else {

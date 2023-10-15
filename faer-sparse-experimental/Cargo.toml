@@ -16,6 +16,7 @@ faer-cholesky = { version = "0.12.0", default-features = false, path = "../faer-
 reborrow = { workspace = true }
 dyn-stack = { workspace = true }
 assert2 = { workspace = true }
+log = { workspace = true, optional = true }
 rayon = { workspace = true }
 bytemuck = { workspace = true }
 pulp = { workspace = true, default-features = false}
@@ -34,6 +35,7 @@ nightly = [
   "faer-cholesky/nightly",
   "pulp/nightly",
 ]
+perf-warn = ["log"]
 
 [dev-dependencies]
 criterion.workspace = true

@@ -452,6 +452,14 @@ pub fn lu_in_place<'out, E: ComplexField>(
 
     assert!(perm.len() == matrix.nrows());
     assert!(perm_inv.len() == matrix.nrows());
+
+    #[cfg(feature = "perf-warn")]
+    if (matrix.col_stride().unsigned_abs() == 1 || matrix.row_stride().unsigned_abs() != 1)
+        && faer_core::__perf_warn!(LU_WARN)
+    {
+        log::warn!(target: "faer_perf", "LU with partial pivoting prefers column-major or row-major matrix. Found matrix with generic strides.");
+    }
+
     let mut matrix = matrix;
     let mut stack = stack;
     let m = matrix.nrows();

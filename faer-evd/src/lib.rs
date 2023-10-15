@@ -167,6 +167,21 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         assert!(u.ncols() == n);
     }
 
+    if n == 0 {
+        return;
+    }
+
+    #[cfg(feature = "perf-warn")]
+    if let Some(matrix) = u.rb() {
+        if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+            if matrix.col_stride().unsigned_abs() == 1 {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found row-major matrix.");
+            } else {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found matrix with generic strides.");
+            }
+        }
+    }
+
     let mut all_finite = true;
     zipped!(matrix).for_each_triangular_lower(faer_core::zip::Diag::Include, |x| {
         all_finite &= x.read().faer_is_finite();
@@ -567,6 +582,17 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     if n == 0 {
         return;
+    }
+
+    #[cfg(feature = "perf-warn")]
+    if let Some(matrix) = u.rb() {
+        if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+            if matrix.col_stride().unsigned_abs() == 1 {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found row-major matrix.");
+            } else {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found matrix with generic strides.");
+            }
+        }
     }
 
     if !matrix.is_all_finite() {
@@ -1041,6 +1067,17 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     if n == 0 {
         return;
+    }
+
+    #[cfg(feature = "perf-warn")]
+    if let Some(matrix) = u.rb() {
+        if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+            if matrix.col_stride().unsigned_abs() == 1 {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found row-major matrix.");
+            } else {
+                log::warn!(target: "faer_perf", "EVD prefers column-major eigenvector matrix. Found matrix with generic strides.");
+            }
+        }
     }
 
     if !matrix.is_all_finite() {

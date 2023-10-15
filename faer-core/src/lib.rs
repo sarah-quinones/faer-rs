@@ -96,6 +96,30 @@ use pulp::{cast, Simd};
 use reborrow::*;
 use zip::Zip;
 
+#[cfg(feature = "perf-warn")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __perf_warn {
+    ($name: ident) => {{
+        #[inline(always)]
+        #[allow(non_snake_case)]
+        fn $name() -> &'static ::core::sync::atomic::AtomicBool {
+            static $name: ::core::sync::atomic::AtomicBool =
+                ::core::sync::atomic::AtomicBool::new(false);
+            &$name
+        }
+        ::core::matches!(
+            $name().compare_exchange(
+                false,
+                true,
+                ::core::sync::atomic::Ordering::Relaxed,
+                ::core::sync::atomic::Ordering::Relaxed,
+            ),
+            Ok(_)
+        )
+    }};
+}
+
 extern crate alloc;
 
 pub mod householder;

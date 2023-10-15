@@ -709,6 +709,20 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
         assert!(v.ncols() == matrix.ncols() || v.ncols() == size);
     }
 
+    #[cfg(feature = "perf-warn")]
+    match (u.rb(), v.rb()) {
+        (Some(matrix), _) | (_, Some(matrix)) => {
+            if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+                if matrix.col_stride().unsigned_abs() == 1 {
+                    log::warn!(target: "faer_perf", "SVD prefers column-major singular vector matrices. Found row-major matrix.");
+                } else {
+                    log::warn!(target: "faer_perf", "SVD prefers column-major singular vector matrices. Found matrix with generic strides.");
+                }
+            }
+        }
+        _ => {}
+    }
+
     if !matrix.is_all_finite() {
         { s }.fill(E::faer_nan());
         if let Some(mut u) = u {

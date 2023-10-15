@@ -710,6 +710,15 @@ pub fn qr_in_place<'out, E: ComplexField>(
     assert!(col_perm.len() == n);
     assert!(col_perm_inv.len() == n);
 
+    #[cfg(feature = "perf-warn")]
+    if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+        if matrix.col_stride().unsigned_abs() == 1 {
+            log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found row-major matrix.");
+        } else {
+            log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found matrix with generic strides.");
+        }
+    }
+
     for (j, p) in col_perm.iter_mut().enumerate() {
         *p = j;
     }

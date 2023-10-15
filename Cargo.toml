@@ -27,6 +27,7 @@ bytemuck = { version = "1", default-features = false }
 
 rayon = "1"
 assert2 = "0.3"
+log = "0.4"
 
 criterion = { git = "https://github.com/sarah-ek/criterion.rs" }
 

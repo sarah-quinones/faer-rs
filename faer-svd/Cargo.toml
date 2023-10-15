@@ -24,6 +24,7 @@ num-complex = { workspace = true, default-features = false }
 bytemuck = { workspace = true }
 
 assert2 = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -40,6 +41,7 @@ std = [
   "pulp/std",
   "assert2",
 ]
+perf-warn = ["log", "faer-core/perf-warn"]
 rayon = [
   "std",
   "faer-core/rayon",

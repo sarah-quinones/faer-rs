@@ -25,6 +25,7 @@ num-complex = { workspace = true, default-features = false }
 bytemuck = { workspace = true }
 
 assert2 = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
 
 [features]
 default = ["std", "rayon"]
@@ -33,6 +34,7 @@ std = [
   "pulp/std",
   "assert2",
 ]
+perf-warn = ["log", "faer-core/perf-warn"]
 rayon = ["std", "faer-core/rayon"]
 assert2 = ["dep:assert2"]
 nightly = ["faer-core/nightly", "pulp/nightly"]

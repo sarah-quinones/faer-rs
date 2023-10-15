@@ -29,6 +29,7 @@ bytemuck = { workspace = true }
 
 rayon = { workspace = true, optional = true }
 assert2 = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
 matrixcompare-core = { version = "0.1.0", optional = true }
 
 [features]
@@ -40,6 +41,7 @@ std = [
   "assert2",
   "matrixcompare-core",
 ]
+perf-warn = ["log"]
 rayon = [
   "std",
   "gemm/rayon",
