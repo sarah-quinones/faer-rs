@@ -1006,7 +1006,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
             let idx_to_col_start = |idx: usize| {
                 let idx_as_percent = idx as f64 / n_threads;
-                let col_start_percent = 1.0 - (1.0 - idx_as_percent).sqrt();
+                let col_start_percent = 1.0f64 - (1.0f64 - idx_as_percent).faer_sqrt();
                 (col_start_percent * ncols) as usize
             };
 
