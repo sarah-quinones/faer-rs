@@ -1036,7 +1036,6 @@ unsafe impl faer_core::Entity for Symbolic {
     type SimdMask<S: pulp::Simd> = bool;
     type SimdIndex<S: pulp::Simd> = usize;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
     const N_COMPONENTS: usize = 1;
     const UNIT: GroupCopyFor<Self, ()> = ();
@@ -1062,8 +1061,11 @@ unsafe impl faer_core::Entity for Symbolic {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, mut f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
 
     #[inline(always)]
@@ -2332,7 +2334,6 @@ pub(crate) mod qd {
             type SimdIndex<S: Simd> = S::u64s;
 
             type Group = DoubleGroup;
-            type GroupCopy = DoubleGroup;
             type Iter<I: Iterator> = Double<I>;
 
             const N_COMPONENTS: usize = 2;
@@ -2359,11 +2360,11 @@ pub(crate) mod qd {
             }
 
             #[inline(always)]
-            fn faer_map<T, U>(
+            fn faer_map_impl<T, U>(
                 group: GroupFor<Self, T>,
-                mut f: impl FnMut(T) -> U,
+                f: &mut impl FnMut(T) -> U,
             ) -> GroupFor<Self, U> {
-                Double(f(group.0), f(group.1))
+                Double((*f)(group.0), (*f)(group.1))
             }
 
             #[inline(always)]

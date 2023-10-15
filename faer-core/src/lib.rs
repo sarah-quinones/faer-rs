@@ -1354,7 +1354,6 @@ unsafe impl Entity for c32 {
     type SimdMask<S: Simd> = S::m32s;
     type SimdIndex<S: Simd> = S::u32s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1381,9 +1380,11 @@ unsafe impl Entity for c32 {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
 
     #[inline(always)]
@@ -1419,7 +1420,6 @@ unsafe impl Entity for c32conj {
     type SimdMask<S: Simd> = S::m32s;
     type SimdIndex<S: Simd> = S::u32s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1446,9 +1446,11 @@ unsafe impl Entity for c32conj {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
 
     #[inline(always)]
@@ -1485,7 +1487,6 @@ unsafe impl Entity for c64 {
     type SimdMask<S: Simd> = S::m64s;
     type SimdIndex<S: Simd> = S::u64s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1512,9 +1513,11 @@ unsafe impl Entity for c64 {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
 
     #[inline(always)]
@@ -1550,7 +1553,6 @@ unsafe impl Entity for c64conj {
     type SimdMask<S: Simd> = S::m64s;
     type SimdIndex<S: Simd> = S::u64s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1577,9 +1579,11 @@ unsafe impl Entity for c64conj {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
 
     #[inline(always)]
@@ -2875,7 +2879,7 @@ impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatRef<'_, E> {
     #[inline]
     #[track_caller]
     fn index(&self, (row, col): (usize, usize)) -> &E {
-        E::faer_from_group(self.get(row, col))
+        self.get(row, col)
     }
 }
 
@@ -2885,7 +2889,7 @@ impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatMut<'_, E> {
     #[inline]
     #[track_caller]
     fn index(&self, (row, col): (usize, usize)) -> &E {
-        E::faer_from_group(self.rb().get(row, col))
+        self.rb().get(row, col)
     }
 }
 
@@ -2893,7 +2897,7 @@ impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for MatMut<'_, E> {
     #[inline]
     #[track_caller]
     fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut E {
-        E::faer_from_group(self.rb_mut().get(row, col))
+        self.rb_mut().get(row, col)
     }
 }
 
@@ -2903,7 +2907,7 @@ impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for Mat<E> {
     #[inline]
     #[track_caller]
     fn index(&self, (row, col): (usize, usize)) -> &E {
-        E::faer_from_group(self.as_ref().get(row, col))
+        self.as_ref().get(row, col)
     }
 }
 
@@ -2911,7 +2915,7 @@ impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for Mat<E> {
     #[inline]
     #[track_caller]
     fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut E {
-        E::faer_from_group(self.as_mut().get(row, col))
+        self.as_mut().get(row, col)
     }
 }
 
@@ -5230,7 +5234,6 @@ mod tests {
                 type SimdMask<S: $crate::pulp::Simd> = ();
                 type SimdIndex<S: $crate::pulp::Simd> = ();
                 type Group = IdentityGroup;
-                type GroupCopy = IdentityGroup;
                 type Iter<I: Iterator> = I;
 
                 const N_COMPONENTS: usize = 1;
@@ -5257,12 +5260,11 @@ mod tests {
                 }
 
                 #[inline(always)]
-                fn faer_map<T, U>(
+                fn faer_map_impl<T, U>(
                     group: GroupFor<Self, T>,
-                    f: impl FnMut(T) -> U,
+                    f: &mut impl FnMut(T) -> U,
                 ) -> GroupFor<Self, U> {
-                    let mut f = f;
-                    f(group)
+                    (*f)(group)
                 }
 
                 #[inline(always)]

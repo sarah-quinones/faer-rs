@@ -153,7 +153,7 @@ impl<Group: ForType> ForType for ComplexGroup<Group> {
 }
 
 pub type GroupFor<E, T> = <<E as Entity>::Group as ForType>::FaerOf<T>;
-pub type GroupCopyFor<E, T> = <<E as Entity>::GroupCopy as ForCopyType>::FaerOfCopy<T>;
+pub type GroupCopyFor<E, T> = <<E as Entity>::Group as ForCopyType>::FaerOfCopy<T>;
 pub type UnitFor<E> = <E as Entity>::Unit;
 pub type IndexFor<E> = <E as Entity>::Index;
 
@@ -182,8 +182,7 @@ pub fn from_copy<E: Entity, T: Copy>(x: GroupCopyFor<E, T>) -> GroupFor<E, T> {
 /// # Safety
 /// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static {
-    type Group: ForType;
-    type GroupCopy: ForCopyType;
+    type Group: ForType + ForCopyType;
 
     type Unit: Copy + Pod + PartialEq + Send + Sync + Debug + 'static;
     type Index: Copy + Pod + Send + Sync + Debug + 'static;
@@ -200,7 +199,13 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
 
     fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T>;
     fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T>;
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U>;
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U>;
+    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
+        Self::faer_map_impl(group, &mut { f })
+    }
     fn faer_zip<T, U>(
         first: GroupFor<Self, T>,
         second: GroupFor<Self, U>,
@@ -1415,19 +1420,8 @@ unsafe impl Conjugate for f64 {
     }
 }
 
-pub trait SimpleEntity:
-    Entity<Group = IdentityGroup, GroupCopy = IdentityGroup, Unit = Self>
-{
-    #[inline(always)]
-    fn faer_from_group<T>(group: GroupFor<Self, T>) -> T {
-        unsafe { transmute_unchecked(group) }
-    }
-    #[inline(always)]
-    fn faer_to_group<T>(group: T) -> GroupFor<Self, T> {
-        unsafe { transmute_unchecked(group) }
-    }
-}
-impl<E: Entity<Group = IdentityGroup, GroupCopy = IdentityGroup, Unit = Self>> SimpleEntity for E {}
+pub trait SimpleEntity: Entity<Group = IdentityGroup, Unit = Self> {}
+impl<E: Entity<Group = IdentityGroup, Unit = Self>> SimpleEntity for E {}
 
 const _: () = {
     const fn __assert_simple_entity<E: SimpleEntity>() {}
@@ -1441,7 +1435,6 @@ unsafe impl Entity for f32 {
     type SimdMask<S: Simd> = S::m32s;
     type SimdIndex<S: Simd> = S::u32s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1468,9 +1461,11 @@ unsafe impl Entity for f32 {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
@@ -1506,7 +1501,6 @@ unsafe impl Entity for f64 {
     type SimdMask<S: Simd> = S::m64s;
     type SimdIndex<S: Simd> = S::u64s;
     type Group = IdentityGroup;
-    type GroupCopy = IdentityGroup;
     type Iter<I: Iterator> = I;
 
     const N_COMPONENTS: usize = 1;
@@ -1533,9 +1527,11 @@ unsafe impl Entity for f64 {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
-        f(group)
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
     }
     #[inline(always)]
     fn faer_map_with_context<Ctx, T, U>(
@@ -1571,7 +1567,6 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     type SimdMask<S: Simd> = E::SimdMask<S>;
     type SimdIndex<S: Simd> = SimdIndexFor<E, S>;
     type Group = ComplexGroup<E::Group>;
-    type GroupCopy = ComplexGroup<E::GroupCopy>;
     type Iter<I: Iterator> = ComplexIter<E::Iter<I>>;
 
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
@@ -1613,11 +1608,13 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
         Complex {
-            re: E::faer_map(group.re, &mut f),
-            im: E::faer_map(group.im, &mut f),
+            re: E::faer_map_impl(group.re, f),
+            im: E::faer_map_impl(group.im, f),
         }
     }
     #[inline(always)]
@@ -1664,7 +1661,6 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     type SimdMask<S: Simd> = E::SimdMask<S>;
     type SimdIndex<S: Simd> = SimdIndexFor<E, S>;
     type Group = ComplexConjGroup<E::Group>;
-    type GroupCopy = ComplexConjGroup<E::GroupCopy>;
     type Iter<I: Iterator> = ComplexConjIter<E::Iter<I>>;
 
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
@@ -1706,11 +1702,13 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     }
 
     #[inline(always)]
-    fn faer_map<T, U>(group: GroupFor<Self, T>, f: impl FnMut(T) -> U) -> GroupFor<Self, U> {
-        let mut f = f;
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
         ComplexConj {
-            re: E::faer_map(group.re, &mut f),
-            neg_im: E::faer_map(group.neg_im, &mut f),
+            re: E::faer_map_impl(group.re, f),
+            neg_im: E::faer_map_impl(group.neg_im, f),
         }
     }
     #[inline(always)]

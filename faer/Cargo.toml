@@ -22,6 +22,8 @@ reborrow = { workspace = true }
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
 
+num-complex = { workspace = true, default-features = false }
+
 matrixcompare = { version = "0.3", optional = true }
 
 nalgebra = { version = "0.32", optional = true, default-features = false }

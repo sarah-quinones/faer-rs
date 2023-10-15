@@ -10,6 +10,7 @@ eyre = "0.6.8"
 nalgebra = "0.32.1"
 ndarray = { version = "0.15.6", features = ["blas"] }
 blas-src = { version = "0.8", features = ["openblas"] }
+faer-entity = { path = "../faer-entity", features = ["nightly"] }
 faer-core = { path = "../faer-core", features = ["nightly"] }
 faer-lu = { path = "../faer-lu", features = ["nightly"] }
 faer-qr = { path = "../faer-qr", features = ["nightly"] }
