@@ -153,7 +153,7 @@ use solvers::*;
 pub mod prelude {
     pub use crate::{
         solvers::{Solver, SolverCore, SolverLstsq, SolverLstsqCore},
-        Faer, IntoFaer,
+        Faer, IntoFaer, IntoFaerComplex,
     };
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 }
