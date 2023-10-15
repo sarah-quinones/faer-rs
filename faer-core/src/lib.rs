@@ -825,7 +825,7 @@ impl ComplexField for c32 {
 
     #[inline(always)]
     fn faer_abs(self) -> Self::Real {
-        self.faer_abs2().sqrt()
+        self.faer_abs2().faer_sqrt()
     }
 
     #[inline(always)]
@@ -1148,7 +1148,7 @@ impl ComplexField for c64 {
 
     #[inline(always)]
     fn faer_abs(self) -> Self::Real {
-        self.faer_abs2().sqrt()
+        self.faer_abs2().faer_sqrt()
     }
 
     #[inline(always)]
