@@ -17,6 +17,7 @@ bytemuck = { workspace = true }
 pulp = { workspace = true, default-features = false }
 num-traits = { workspace = true, default-features = false }
 num-complex = { workspace = true, default-features = false }
+libm = { workspace = true }
 
 [features]
 default = ["std"]

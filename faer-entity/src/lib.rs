@@ -693,7 +693,14 @@ impl ComplexField for f32 {
 
     #[inline(always)]
     fn faer_sqrt(self) -> Self {
-        self.sqrt()
+        #[cfg(feature = "std")]
+        {
+            self.sqrt()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::sqrtf(self)
+        }
     }
 
     #[inline(always)]
@@ -708,12 +715,19 @@ impl ComplexField for f32 {
 
     #[inline(always)]
     fn faer_score(self) -> Self::Real {
-        self.abs()
+        self.faer_abs()
     }
 
     #[inline(always)]
     fn faer_abs(self) -> Self::Real {
-        self.abs()
+        #[cfg(feature = "std")]
+        {
+            self.abs()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::fabsf(self)
+        }
     }
 
     #[inline(always)]
@@ -964,7 +978,14 @@ impl ComplexField for f64 {
 
     #[inline(always)]
     fn faer_sqrt(self) -> Self {
-        self.sqrt()
+        #[cfg(feature = "std")]
+        {
+            self.sqrt()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::sqrt(self)
+        }
     }
 
     #[inline(always)]
@@ -979,12 +1000,19 @@ impl ComplexField for f64 {
 
     #[inline(always)]
     fn faer_score(self) -> Self::Real {
-        self.abs()
+        self.faer_abs()
     }
 
     #[inline(always)]
     fn faer_abs(self) -> Self::Real {
-        self.abs()
+        #[cfg(feature = "std")]
+        {
+            self.abs()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            libm::fabs(self)
+        }
     }
 
     #[inline(always)]

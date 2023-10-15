@@ -25,7 +25,7 @@ bytemuck = { workspace = true }
 
 assert2 = { workspace = true, optional = true }
 log = { workspace = true, optional = true, default-features = false }
-libm = "0.2"
+libm = { workspace = true }
 
 [dev-dependencies]
 criterion = "0.5"
