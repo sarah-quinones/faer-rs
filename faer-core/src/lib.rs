@@ -778,8 +778,8 @@ impl ComplexField for c32 {
         } else if self.re == inf || self.im == inf {
             Self::faer_zero()
         } else {
-            let re = self.faer_real().abs();
-            let im = self.faer_imag().abs();
+            let re = self.faer_real().faer_abs();
+            let im = self.faer_imag().faer_abs();
             let max = if re > im { re } else { im };
             let max_inv = max.faer_inv();
             let x = self.faer_scale_real(max_inv);
@@ -1101,8 +1101,8 @@ impl ComplexField for c64 {
         } else if self.re == inf || self.im == inf {
             Self::faer_zero()
         } else {
-            let re = self.faer_real().abs();
-            let im = self.faer_imag().abs();
+            let re = self.faer_real().faer_abs();
+            let im = self.faer_imag().faer_abs();
             let max = if re > im { re } else { im };
             let max_inv = max.faer_inv();
             let x = self.faer_scale_real(max_inv);
