@@ -31,7 +31,7 @@ ndarray = { version = "0.15", optional = true, default-features = false }
 polars = { version = "0.33", optional = true, features = ["lazy"] }
 
 assert2 = { workspace = true, optional = true }
-log = { workspace = true, optional = true }
+log = { workspace = true, optional = true, default-features = false }
 
 [features]
 default = ["std"]

@@ -24,7 +24,7 @@ bytemuck = { workspace = true }
 
 rayon = { workspace = true, optional = true }
 assert2 = { workspace = true, optional = true }
-log = { workspace = true, optional = true }
+log = { workspace = true, optional = true, default-features = false }
 
 [features]
 default = ["std", "rayon"]

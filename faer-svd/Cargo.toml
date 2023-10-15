@@ -24,7 +24,7 @@ num-complex = { workspace = true, default-features = false }
 bytemuck = { workspace = true }
 
 assert2 = { workspace = true, optional = true }
-log = { workspace = true, optional = true }
+log = { workspace = true, optional = true, default-features = false }
 
 [dev-dependencies]
 criterion = "0.5"
