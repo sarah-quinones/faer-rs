@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -10,12 +10,12 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.12.0", path = "../faer-core", default-features = false }
-faer-cholesky = { version = "0.12.0", path = "../faer-cholesky", default-features = false }
-faer-lu = { version = "0.12.0", path = "../faer-lu", default-features = false }
-faer-qr = { version = "0.12.0", path = "../faer-qr", default-features = false }
-faer-svd = { version = "0.12.0", path = "../faer-svd", default-features = false }
-faer-evd = { version = "0.12.0", path = "../faer-evd", default-features = false }
+faer-core = { version = "0.13.0", path = "../faer-core", default-features = false }
+faer-cholesky = { version = "0.13.0", path = "../faer-cholesky", default-features = false }
+faer-lu = { version = "0.13.0", path = "../faer-lu", default-features = false }
+faer-qr = { version = "0.13.0", path = "../faer-qr", default-features = false }
+faer-svd = { version = "0.13.0", path = "../faer-svd", default-features = false }
+faer-evd = { version = "0.13.0", path = "../faer-evd", default-features = false }
 
 coe-rs = { workspace = true }
 reborrow = { workspace = true }

@@ -1,6 +1,6 @@
 [package]
 name = "faer-svd"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -10,9 +10,9 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.12.0", default-features = false, path = "../faer-core" }
-faer-entity = { version = "0.12.0", default-features = false, path = "../faer-entity" }
-faer-qr = { version = "0.12.0", default-features = false, path = "../faer-qr" }
+faer-core = { version = "0.13.0", default-features = false, path = "../faer-core" }
+faer-entity = { version = "0.13.0", default-features = false, path = "../faer-entity" }
+faer-qr = { version = "0.13.0", default-features = false, path = "../faer-qr" }
 
 coe-rs = { workspace = true }
 reborrow = { workspace = true }
