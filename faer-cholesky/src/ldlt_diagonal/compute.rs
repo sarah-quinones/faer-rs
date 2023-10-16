@@ -385,10 +385,7 @@ pub fn raw_cholesky_in_place<E: ComplexField>(
     stack: PodStack<'_>,
     params: LdltDiagParams,
 ) -> usize {
-    assert!(
-        matrix.ncols() == matrix.nrows(),
-        "only square matrices can be decomposed into cholesky factors",
-    );
+    assert!(matrix.ncols() == matrix.nrows());
     #[cfg(feature = "perf-warn")]
     if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(CHOLESKY_WARN) {
         if matrix.col_stride().unsigned_abs() == 1 {

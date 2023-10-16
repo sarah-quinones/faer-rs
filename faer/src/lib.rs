@@ -63,6 +63,12 @@
 //! $$A = LL^H,$$
 //! where $L$ is a lower triangular matrix. This decomposition is highly efficient and has good
 //! stability properties.
+//! ## Bunch-Kaufman decomposition
+//! [`Faer::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
+//! $$P A P^\top = LBL^H,$$
+//! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block
+//! diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal blocks.
+//! This decomposition is efficient and has good stability properties.
 //! ## LU decomposition with partial pivoting
 //! [`Faer::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
 //! matrix $L$, a unit upper triangular matrix $U$, and a permutation matrix $P$, such that
@@ -139,15 +145,31 @@
 //! If only the eigenvalues (elements of $S$) are desired, they can be obtained in
 //! nonincreasing order using [`Faer::selfadjoint_eigenvalues`], [`Faer::eigenvalues`], or
 //! [`Faer::complex_eigenvalues`], with the same conditions described above.
+//!
+//! # Crate features
+//!
+//! - `std`: enabled by default. Links with the standard library to enable additional features such
+//!   as cpu feature detection at runtime.
+//! - `rayon`: enabled by default. Enables the `rayon` parallel backend and enables global
+//!   parallelism by default.
+//! - `matrixcompare`: enabled by default. Enables macros for approximate equality checks on
+//!   matrices.
+//! - `perf-warn`: Produces performance warnings when matrix operations are called with suboptimal
+//! data layout.
+//! - `polars`: Enables basic interoperability with the `polars` crate.
+//! - `nalgebra`: Enables basic interoperability with the `nalgebra` crate.
+//! - `ndarray`: Enables basic interoperability with the `ndarray` crate.
+//! - `nightly`: Requires the nightly compiler. Enables experimental SIMD features such as AVX512.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use dyn_stack::{GlobalPodBuffer, PodStack};
-use faer_cholesky::llt::CholeskyError;
 use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity};
 use prelude::*;
 use solvers::*;
+
+pub use faer_cholesky::llt::CholeskyError;
 
 /// Commonly used traits for a streamlined user experience.
 pub mod prelude {
@@ -391,6 +413,14 @@ pub mod solvers {
         factors: Mat<E>,
     }
 
+    /// Bunch-Kaufman decomposition.
+    pub struct Lblt<E: Entity> {
+        factors: Mat<E>,
+        subdiag: Mat<E>,
+        perm: Vec<usize>,
+        perm_inv: Vec<usize>,
+    }
+
     /// LU decomposition with partial pivoting.
     pub struct PartialPivLu<E: Entity> {
         pub(crate) factors: Mat<E>,
@@ -562,6 +592,193 @@ pub mod solvers {
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
                     faer_cholesky::llt::solve::solve_in_place_req::<E>(
+                        self.dim(),
+                        rhs_ncols,
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            self.solve_in_place_with_conj_impl(rhs, conj.compose(Conj::Yes))
+        }
+
+        fn nrows(&self) -> usize {
+            self.factors.nrows()
+        }
+
+        fn ncols(&self) -> usize {
+            self.factors.ncols()
+        }
+    }
+
+    impl<E: ComplexField> Lblt<E> {
+        #[track_caller]
+        pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>, side: Side) -> Self {
+            assert!(matrix.nrows() == matrix.ncols());
+
+            let dim = matrix.nrows();
+            let parallelism = get_global_parallelism();
+
+            let mut factors = Mat::<E>::zeros(dim, dim);
+            let mut subdiag = Mat::<E>::zeros(dim, 1);
+            let mut perm = vec![0; dim];
+            let mut perm_inv = vec![0; dim];
+
+            match side {
+                Side::Lower => {
+                    zipped!(factors.as_mut(), matrix).for_each_triangular_lower(
+                        faer_core::zip::Diag::Include,
+                        |mut dst, src| dst.write(src.read().canonicalize()),
+                    );
+                }
+                Side::Upper => {
+                    zipped!(factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
+                        faer_core::zip::Diag::Include,
+                        |mut dst, src| dst.write(src.read().canonicalize()),
+                    );
+                }
+            }
+
+            let params = Default::default();
+
+            faer_cholesky::bunch_kaufman::compute::cholesky_in_place(
+                factors.as_mut(),
+                subdiag.as_mut(),
+                &mut perm,
+                &mut perm_inv,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<E>(
+                        dim,
+                        parallelism,
+                        params,
+                    )
+                    .unwrap(),
+                )),
+                params,
+            );
+            Self {
+                factors,
+                subdiag,
+                perm,
+                perm_inv,
+            }
+        }
+
+        fn dim(&self) -> usize {
+            self.factors.nrows()
+        }
+    }
+
+    impl<E: ComplexField> SolverCore<E> for Lblt<E> {
+        fn inverse(&self) -> Mat<E> {
+            let n = self.dim();
+            let mut inv = Mat::identity(n, n);
+            self.solve_in_place_with_conj_impl(inv.as_mut(), Conj::No);
+            inv
+        }
+
+        fn reconstruct(&self) -> Mat<E> {
+            let parallelism = get_global_parallelism();
+            let n = self.dim();
+            let lbl = self.factors.as_ref();
+            let subdiag = self.subdiag.as_ref();
+            let mut mat = Mat::<E>::identity(n, n);
+            let mut mat2 = Mat::<E>::identity(n, n);
+            zipped!(mat.as_mut(), lbl)
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst, src| {
+                    dst.write(src.read())
+                });
+
+            let mut i = 0;
+            while i < n {
+                if subdiag.read(i, 0) == E::faer_zero() {
+                    let d = lbl.read(i, i).faer_real();
+                    for j in 0..n {
+                        mat.write(j, i, mat.read(j, i).faer_scale_real(d));
+                    }
+                    i += 1;
+                } else {
+                    let akm1k = subdiag.read(i, 0);
+                    let akm1 = lbl.read(i, i).faer_real();
+                    let ak = lbl.read(i + 1, i + 1).faer_real();
+
+                    for j in 0..n {
+                        let xkm1 = mat.read(j, i);
+                        let xk = mat.read(j, i + 1);
+
+                        mat.write(
+                            j,
+                            i,
+                            xkm1.faer_scale_real(akm1).faer_add(xk.faer_mul(akm1k)),
+                        );
+                        mat.write(
+                            j,
+                            i + 1,
+                            xk.faer_scale_real(ak)
+                                .faer_add(xkm1.faer_mul(akm1k.faer_conj())),
+                        );
+                    }
+                    i += 2;
+                }
+            }
+            faer_core::mul::triangular::matmul(
+                mat2.as_mut(),
+                faer_core::mul::triangular::BlockStructure::TriangularLower,
+                lbl,
+                faer_core::mul::triangular::BlockStructure::UnitTriangularLower,
+                mat.as_ref().adjoint(),
+                faer_core::mul::triangular::BlockStructure::Rectangular,
+                None,
+                E::faer_one(),
+                parallelism,
+            );
+
+            for j in 0..n {
+                let pj = self.perm_inv[j];
+                for i in j..n {
+                    let pi = self.perm_inv[i];
+
+                    mat.write(
+                        i,
+                        j,
+                        if pi >= pj {
+                            mat2.read(pi, pj)
+                        } else {
+                            mat2.read(pj, pi).faer_conj()
+                        },
+                    );
+                }
+            }
+
+            for j in 0..n {
+                mat.write(j, j, E::faer_from_real(mat.read(j, j).faer_real()));
+                for i in 0..j {
+                    mat.write(i, j, mat.read(j, i).faer_conj());
+                }
+            }
+
+            mat
+        }
+
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
+                self.factors.as_ref(),
+                self.subdiag.as_ref(),
+                conj,
+                unsafe { PermutationRef::new_unchecked(&self.perm, &self.perm_inv) },
+                rhs,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_cholesky::bunch_kaufman::solve::solve_in_place_req::<E>(
                         self.dim(),
                         rhs_ncols,
                         parallelism,
@@ -1935,6 +2152,8 @@ pub trait Faer<E: ComplexField> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     fn cholesky(&self, side: Side) -> Result<Cholesky<E>, CholeskyError>;
+    /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
+    fn lblt(&self, side: Side) -> Lblt<E>;
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     fn partial_piv_lu(&self) -> PartialPivLu<E>;
     /// Returns the LU decomposition of `self` with full pivoting.
@@ -2012,6 +2231,10 @@ where
     #[track_caller]
     fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         Cholesky::try_new(self.as_ref(), side)
+    }
+    #[track_caller]
+    fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
+        Lblt::new(self.as_ref(), side)
     }
     #[track_caller]
     fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
@@ -2200,6 +2423,10 @@ where
         self.as_ref().cholesky(side)
     }
     #[track_caller]
+    fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
+        self.as_ref().lblt(side)
+    }
+    #[track_caller]
     fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
@@ -2295,6 +2522,10 @@ where
     #[track_caller]
     fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
+    }
+    #[track_caller]
+    fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
+        self.as_ref().lblt(side)
     }
     #[track_caller]
     fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
@@ -3440,7 +3671,7 @@ mod tests {
         let sol = decomp.solve_conj_transpose(&rhs);
         assert_approx_eq(H.adjoint() * &sol, &rhs);
 
-        assert_approx_eq(H, decomp.reconstruct());
+        assert_approx_eq(decomp.reconstruct(), H);
         assert_approx_eq(H * decomp.inverse(), I);
     }
 
@@ -3458,6 +3689,18 @@ mod tests {
 
         let sol = decomp.solve_lstsq_conj(&rhs);
         assert_approx_eq(H.transpose() * H.conjugate() * &sol, H.transpose() * &rhs);
+    }
+
+    #[test]
+    fn test_lblt() {
+        let n = 7;
+
+        let random = |_, _| c64::new(rand::random(), rand::random());
+        let H = Mat::from_fn(n, n, random);
+        let H = &H + H.adjoint();
+
+        test_solver(&H, &H.lblt(Side::Lower));
+        test_solver(&H, &H.lblt(Side::Upper));
     }
 
     #[test]
