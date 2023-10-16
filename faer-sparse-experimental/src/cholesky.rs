@@ -3031,7 +3031,7 @@ mod tests {
 
             let mut A_dense = sparse_to_dense(A_upper);
             for (j, &sign) in signs.iter().enumerate() {
-                A_dense.write(j, j, sign as f64 * dynamic_regularization_epsilon);
+                A_dense.write(j, j, sign as f64 * dynamic_regularization_delta);
                 for i in j + 1..n {
                     A_dense.write(i, j, A_dense.read(j, i).faer_conj());
                 }
