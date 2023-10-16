@@ -77,8 +77,8 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         );
 
         let mut real = a11.read(0, 0).faer_real();
-        if has_eps && real >= E::Real::faer_zero() && real <= delta {
-            real = eps;
+        if has_eps && real >= E::Real::faer_zero() && real <= eps {
+            real = delta;
             dynamic_regularization_count += 1;
         }
 

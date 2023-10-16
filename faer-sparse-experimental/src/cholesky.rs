@@ -205,7 +205,7 @@ pub mod simplicial {
 
                         let eps = regularization.dynamic_regularization_epsilon.faer_abs();
                         let delta = regularization.dynamic_regularization_delta.faer_abs();
-                        let has_eps = delta > E::Real::faer_zero();
+                        let has_eps = eps > E::Real::faer_zero();
                         let mut dynamic_regularization_count = 0usize;
 
                         let (x, stack) = crate::make_raw::<E>(n, stack);
@@ -279,19 +279,19 @@ pub mod simplicial {
 
                             if has_eps {
                                 if let Some(signs) = regularization.dynamic_regularization_signs {
-                                    if signs[*k] > 0 && d <= delta {
-                                        d = eps;
+                                    if signs[*k] > 0 && d <= eps {
+                                        d = delta;
                                         dynamic_regularization_count += 1;
-                                    } else if signs[*k] < 0 && d >= delta.faer_neg() {
-                                        d = eps.faer_neg();
+                                    } else if signs[*k] < 0 && d >= eps.faer_neg() {
+                                        d = delta.faer_neg();
                                         dynamic_regularization_count += 1;
                                     }
-                                } else if d.faer_abs() <= delta {
+                                } else if d.faer_abs() <= eps {
                                     if d < E::Real::faer_zero() {
-                                        d = eps.faer_neg();
+                                        d = delta.faer_neg();
                                         dynamic_regularization_count += 1;
                                     } else {
-                                        d = eps;
+                                        d = delta;
                                         dynamic_regularization_count += 1;
                                     }
                                 }

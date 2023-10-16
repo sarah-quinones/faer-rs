@@ -171,19 +171,19 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // dynamic regularization code taken from clarabel.rs with modifications
         if has_eps {
             if let Some(signs) = regularization.dynamic_regularization_signs {
-                if signs[idx] > 0 && d <= delta {
-                    d = eps;
+                if signs[idx] > 0 && d <= eps {
+                    d = delta;
                     dynamic_regularization_count += 1;
-                } else if signs[idx] < 0 && d >= delta.faer_neg() {
-                    d = eps.faer_neg();
+                } else if signs[idx] < 0 && d >= eps.faer_neg() {
+                    d = delta.faer_neg();
                     dynamic_regularization_count += 1;
                 }
-            } else if d.faer_abs() <= delta {
+            } else if d.faer_abs() <= eps {
                 if d < E::Real::faer_zero() {
-                    d = eps.faer_neg();
+                    d = delta.faer_neg();
                     dynamic_regularization_count += 1;
                 } else {
-                    d = eps;
+                    d = delta;
                     dynamic_regularization_count += 1;
                 }
             }
