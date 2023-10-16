@@ -1,3 +1,12 @@
+# 0.13
+- Implemented the Bunch-Kaufman Cholesky decomposition for hermitian indefinite matrices.
+- Implemented dynamic regularization for the diagonal LDLT.
+- Support conversions involving complex values using `IntoFaerComplex`, `IntoNalgebraComplex` and `IntoNdarrayComplex`.
+- Refactored the Entity trait for better ergonomics.
+- `faer` scalar traits are now prefixed with `faer_` to avoid conflicts with standard library and popular library traits.
+- `no_std` and `no_rayon` are now supported, with the optional features `std` and `rayon` (enabled by default).
+- Performance improvements in the eigenvalue decomposition and thin matrix multiplication.
+
 # 0.12
 - Implemented matrix chunked iterators and parallel chunked iterators.
 - Renamed `{Mat,MatMut}::fill_with_zero` to `fill_zeros`
@@ -19,7 +28,7 @@
 - Simpler math operators (+, -, *). Thanks @geo-ant and @DJDuque.
 - More robust pivoted decompositions for rank deficient matrices.
 - Better overflow/underflow handling in matrix decompositions, as well as non finite inputs.
-- Provide control over global parallelism settings in faer-core.
+- Provide control over global parallelism settings in `faer-core`.
 - Various bug fixes for complex number handling.
 
 # 0.9

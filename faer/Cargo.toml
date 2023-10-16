@@ -83,6 +83,7 @@ rand = "0.8.5"
 nalgebra = "0.32"
 ndarray = "0.15"
 polars = { version = "0.33", features = ["lazy", "parquet"] }
+dbgf = "0.1.0"
 
 [[example]]
 name = "conversions"

@@ -490,8 +490,8 @@ pub fn lu_in_place<'out, E: ComplexField>(
         solve_unit_lower_triangular_in_place(left.rb(), right, parallelism);
     }
 
-    for i in 0..m {
-        perm_inv[perm[i]] = i;
+    for (i, &p) in perm.iter().enumerate() {
+        perm_inv[p] = i;
     }
 
     (n_transpositions, unsafe {

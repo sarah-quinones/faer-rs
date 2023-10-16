@@ -7,6 +7,7 @@ use assert2::assert;
 use core::cmp::Ordering;
 use faer_core::{permutation::PermutationMut, ComplexField, MatRef};
 
+pub mod bunch_kaufman;
 pub mod ldlt_diagonal;
 pub mod llt;
 

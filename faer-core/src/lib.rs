@@ -2023,6 +2023,25 @@ const _: () = {
                 }
             }
 
+            impl<E: Entity> MatIndex<RangeTo, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeTo, col: Range) -> Self {
+                    <Self as MatIndex<Range, Range>>::get(this, 0..row.end, col)
+                }
+            }
+            impl<E: Entity> MatIndex<RangeTo, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeTo, col: usize) -> Self {
+                    <Self as MatIndex<Range, usize>>::get(this, 0..row.end, col)
+                }
+            }
+
             impl<E: Entity> MatIndex<RangeToInclusive, Range> for $mat<'_, E> {
                 type Target = Self;
 
