@@ -12,8 +12,8 @@ keywords = ["math", "matrix", "linear-algebra"]
 [dependencies]
 faer-entity = { workspace = true, default-features = false }
 
-faer-core = { version = "0.13.4", default-features = false, path = "../faer-core" }
-faer-qr = { version = "0.13.4", default-features = false, path = "../faer-qr" }
+faer-core = { version = "0.13.5", default-features = false, path = "../faer-core" }
+faer-qr = { version = "0.13.5", default-features = false, path = "../faer-qr" }
 
 coe-rs = { workspace = true }
 reborrow = { workspace = true }

@@ -10,12 +10,12 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-core = { version = "0.13.4", path = "../faer-core", default-features = false }
-faer-cholesky = { version = "0.13.4", path = "../faer-cholesky", default-features = false }
-faer-lu = { version = "0.13.4", path = "../faer-lu", default-features = false }
-faer-qr = { version = "0.13.4", path = "../faer-qr", default-features = false }
-faer-svd = { version = "0.13.4", path = "../faer-svd", default-features = false }
-faer-evd = { version = "0.13.4", path = "../faer-evd", default-features = false }
+faer-core = { version = "0.13.5", path = "../faer-core", default-features = false }
+faer-cholesky = { version = "0.13.5", path = "../faer-cholesky", default-features = false }
+faer-lu = { version = "0.13.5", path = "../faer-lu", default-features = false }
+faer-qr = { version = "0.13.5", path = "../faer-qr", default-features = false }
+faer-svd = { version = "0.13.5", path = "../faer-svd", default-features = false }
+faer-evd = { version = "0.13.5", path = "../faer-evd", default-features = false }
 
 coe-rs = { workspace = true }
 reborrow = { workspace = true }
