@@ -68,6 +68,10 @@ started, and they generally include a detailed set of instructions for what to
 do. Please ask questions on the Discord server or the issue itself if anything
 is unclear!
 
+# Minimum supported Rust version
+
+The current MSRV is Rust 1.67.0.
+
 # Benchmarks
 
 The benchmarks were run on an `11th Gen Intel(R) Core(TM) i5-11400 @ 2.60GHz` with 12 threads.  

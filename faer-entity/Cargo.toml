@@ -9,6 +9,8 @@ repository = "https://github.com/sarah-ek/faer-rs/"
 license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
+rust-version = "1.67.0"
+
 [dependencies]
 coe-rs = { workspace = true }
 reborrow = { workspace = true }

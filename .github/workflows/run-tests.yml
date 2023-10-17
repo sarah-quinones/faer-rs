@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - nightly
+          - 1.67.0
         os:
           - ubuntu-latest
           - windows-latest
