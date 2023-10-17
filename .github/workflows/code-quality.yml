@@ -22,17 +22,18 @@ jobs:
           components: clippy, rustfmt, rust-src, miri
 
       - name: Formatting check
-        run: cargo fmt --all -- --check
+        run:
+          cd faer-libs
+          cargo fmt --all -- --check
+          cd ../faer-entity
+          cargo fmt --all -- --check
         # want to get all quality issues
         continue-on-error: true
 
       - name: Linting check
-        run: cargo clippy --all-targets
-        # want to get all quality issues
+        run:
+          cd faer-libs
+          cargo clippy --all-targets
+          cd ../faer-entity
+          cargo clippy --all-targets
         continue-on-error: true
-
-  # This step can be uncommented and readded once Miri tests are faster
-  #    - name: Undefined behavior check
-  #     run: cargo miri test --release --workspace --exclude faer-bench
-  #     # want to get all quality issues
-  #     continue-on-error: true

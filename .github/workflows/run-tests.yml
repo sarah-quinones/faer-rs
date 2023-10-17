@@ -33,7 +33,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Verify 1.67.0
-        run: cargo check
+        run:
+          cd faer-libs
+          cargo check
+          cd ../faer-entity
+          cargo check
 
   testing:
     name: testing-${{ matrix.toolchain }}-${{ matrix.os }}
