@@ -1,6 +1,6 @@
 [package]
 name = "faer"
-version = "0.13.1"
+version = "0.13.3"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
