@@ -1,6 +1,6 @@
 [package]
 name = "faer-entity"
-version = "0.13.4"
+version = "0.13.5"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
