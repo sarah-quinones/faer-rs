@@ -34,8 +34,8 @@ use crate::{
         inner_prod, matmul, matmul_with_conj,
         triangular::{self, BlockStructure},
     },
-    solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
-    Parallelism,
+    solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, DivCeil, Entity, MatMut,
+    MatRef, Parallelism,
 };
 #[cfg(feature = "std")]
 use assert2::assert;
@@ -101,7 +101,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
 
     assert!(householder_factor.nrows() == householder_factor.ncols());
 
-    let block_count = householder_factor.nrows().div_ceil(blocksize);
+    let block_count = householder_factor.nrows().msrv_div_ceil(blocksize);
 
     if block_count > 1 {
         assert!(blocksize > prev_blocksize);
@@ -162,7 +162,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
             parallelism,
         );
     } else {
-        let prev_block_count = householder_factor.nrows().div_ceil(prev_blocksize);
+        let prev_block_count = householder_factor.nrows().msrv_div_ceil(prev_blocksize);
 
         let idx = (prev_block_count / 2) * prev_blocksize;
         let [tau_tl, mut tau_tr, _, tau_br] = householder_factor.split_at(idx, idx);

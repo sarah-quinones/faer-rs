@@ -7,8 +7,8 @@ use faer_core::{
     householder::upgrade_householder_factor,
     mul::inner_prod::{self, inner_prod_with_conj_arch},
     permutation::{swap_cols, PermutationMut},
-    simd, transmute_unchecked, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
-    SimdCtx,
+    simd, transmute_unchecked, zipped, ComplexField, Conj, DivCeil, Entity, MatMut, MatRef,
+    Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use pulp::{as_arrays, as_arrays_mut, Simd};
@@ -739,7 +739,7 @@ pub fn qr_in_place<'out, E: ComplexField>(
     let blocksize = householder_factor.nrows();
     if blocksize > 1 {
         let size = householder_factor.ncols();
-        let n_blocks = size.div_ceil(blocksize);
+        let n_blocks = size.msrv_div_ceil(blocksize);
 
         let qr_factors = matrix.rb();
 

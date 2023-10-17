@@ -1,7 +1,7 @@
 //! Matrix multiplication.
 
 use crate::{
-    c32, c64, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, MatMut, MatRef,
+    c32, c64, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, DivCeil, MatMut, MatRef,
     Parallelism, SimdGroupFor,
 };
 #[cfg(feature = "std")]
@@ -1315,8 +1315,8 @@ fn matmul_with_conj_impl<E: ComplexField>(
             let a_panel = a.submatrix(0, depth_outer, m, k_chunk);
             let b_block = b_panel.submatrix(depth_outer, 0, k_chunk, n_chunk);
 
-            let n_job_count = n_chunk.div_ceil(nr);
-            let chunk_count = m.div_ceil(MC);
+            let n_job_count = n_chunk.msrv_div_ceil(nr);
+            let chunk_count = m.msrv_div_ceil(MC);
 
             let job_count = n_job_count * chunk_count;
 
@@ -1897,7 +1897,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     let m = acc.nrows();
     let n = acc.ncols();
 
-    let padded_m = m.checked_next_multiple_of(lane_count).unwrap();
+    let padded_m = m.msrv_checked_next_multiple_of(lane_count).unwrap();
 
     let mut a_copy = a.to_owned();
     a_copy.resize_with(padded_m, k, |_, _| E::faer_zero());

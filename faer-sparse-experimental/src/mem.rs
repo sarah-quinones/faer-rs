@@ -56,8 +56,11 @@ pub unsafe fn transmute_slice_mut<From, To>(from: &mut [From]) -> &mut [To] {
 
 #[inline]
 pub const fn repeat_byte(byte: u8) -> usize {
-    let data = [byte; 32];
-    unsafe { ((&data) as *const _ as *const usize).read_unaligned() }
+    #[repr(align(256))]
+    struct Aligned([u8; 32]);
+
+    let data = Aligned([byte; 32]);
+    unsafe { *((&data) as *const _ as *const usize) }
 }
 
 #[inline]

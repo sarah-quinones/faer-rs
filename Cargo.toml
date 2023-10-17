@@ -19,7 +19,7 @@ resolver = "2"
 coe-rs = "0.1"
 reborrow = "0.5"
 dyn-stack = { version = "0.10", default-features = false }
-pulp = { version = "0.16", default-features = false }
+pulp = { version = "0.16.3", default-features = false }
 
 num-traits = { version = "0.2", default-features = false }
 num-complex = { version = "0.4", default-features = false }

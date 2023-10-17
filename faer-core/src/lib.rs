@@ -120,6 +120,44 @@ macro_rules! __perf_warn {
     }};
 }
 
+#[doc(hidden)]
+pub trait DivCeil: Sized {
+    fn msrv_div_ceil(self, rhs: Self) -> Self;
+    fn msrv_next_multiple_of(self, rhs: Self) -> Self;
+    fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self>;
+}
+
+impl DivCeil for usize {
+    #[inline]
+    fn msrv_div_ceil(self, rhs: Self) -> Self {
+        let d = self / rhs;
+        let r = self % rhs;
+        if r > 0 {
+            d + 1
+        } else {
+            d
+        }
+    }
+
+    #[inline]
+    fn msrv_next_multiple_of(self, rhs: Self) -> Self {
+        match self % rhs {
+            0 => self,
+            r => self + (rhs - r),
+        }
+    }
+
+    #[inline]
+    fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self> {
+        {
+            match self.checked_rem(rhs)? {
+                0 => Some(self),
+                r => self.checked_add(rhs - r),
+            }
+        }
+    }
+}
+
 extern crate alloc;
 
 pub mod householder;
@@ -2845,7 +2883,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         chunk_size: usize,
     ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
         assert!(chunk_size > 0);
-        let chunk_count = self.ncols().div_ceil(chunk_size);
+        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
         (0..chunk_count).map(move |chunk_idx| {
             let pos = chunk_size * chunk_idx;
             self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
@@ -2886,7 +2924,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         use rayon::prelude::*;
 
         assert!(chunk_size > 0);
-        let chunk_count = self.ncols().div_ceil(chunk_size);
+        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
         (0..chunk_count).into_par_iter().map(move |chunk_idx| {
             let pos = chunk_size * chunk_idx;
             self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
@@ -4263,7 +4301,7 @@ impl<E: Entity> Mat<E> {
         if is_vectorizable::<E::Unit>() {
             let align_factor = align_for::<E::Unit>() / core::mem::size_of::<E::Unit>();
             new_row_capacity = new_row_capacity
-                .checked_next_multiple_of(align_factor)
+                .msrv_checked_next_multiple_of(align_factor)
                 .unwrap();
         }
 
@@ -5122,7 +5160,7 @@ fn col_stride<Unit: 'static>(nrows: usize) -> usize {
         nrows
     } else {
         nrows
-            .checked_next_multiple_of(align_for::<Unit>() / core::mem::size_of::<Unit>())
+            .msrv_checked_next_multiple_of(align_for::<Unit>() / core::mem::size_of::<Unit>())
             .unwrap()
     }
 }
