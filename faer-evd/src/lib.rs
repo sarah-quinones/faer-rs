@@ -1754,4 +1754,64 @@ mod tests {
             }
         }
     }
+
+    // https://github.com/sarah-ek/faer-rs/issues/78
+    #[test]
+    fn test_cplx_gh78() {
+        let i = c64::new(0.0, 1.0);
+
+        let mat = faer_core::mat![
+            [
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i,
+                2.220446049250313e-16 + -1.0000000000000002 * i
+            ],
+            [
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i,
+                2.220446049250313e-16 + -1.0000000000000002 * i,
+                0.0 + 0.0 * i
+            ],
+            [
+                0.0 + 0.0 * i,
+                2.220446049250313e-16 + -1.0000000000000002 * i,
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i
+            ],
+            [
+                2.220446049250313e-16 + -1.0000000000000002 * i,
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i,
+                0.0 + 0.0 * i
+            ],
+        ];
+        let n = mat.nrows();
+
+        let mut s = Mat::zeros(n, n);
+        let mut u = Mat::zeros(n, n);
+
+        compute_evd_complex(
+            mat.as_ref(),
+            s.as_mut().diagonal(),
+            Some(u.as_mut()),
+            Parallelism::None,
+            make_stack!(compute_evd_req::<c64>(
+                n,
+                ComputeVectors::Yes,
+                Parallelism::None,
+                Default::default(),
+            )),
+            Default::default(),
+        );
+
+        let left = &mat * &u;
+        let right = &u * &s;
+
+        for j in 0..n {
+            for i in 0..n {
+                assert_approx_eq!(left.read(i, j), right.read(i, j), 1e-10);
+            }
+        }
+    }
 }

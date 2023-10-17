@@ -478,7 +478,7 @@ pub fn lahqr<E: ComplexField>(
                 if i >= ilo + 2 {
                     tst = tst.faer_add(a.read(i - 1, i - 2).faer_abs());
                 }
-                if i < ihi {
+                if i + 1 < ihi {
                     tst = tst.faer_add(a.read(i + 1, i).faer_abs());
                 }
             }
