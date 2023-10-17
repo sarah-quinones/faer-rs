@@ -34,9 +34,9 @@ jobs:
 
       - name: Verify 1.67.0
         run:
-          cd faer-libs
-          cargo check
-          cd ../faer-entity
+          cd faer-libs &&
+          cargo check &&
+          cd ../faer-entity &&
           cargo check
 
   testing:
