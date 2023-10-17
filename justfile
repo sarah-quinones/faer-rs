@@ -1,9 +1,9 @@
 publish:
-    cargo publish --package faer-entity
-    cargo publish --package faer-core
-    cargo publish --package faer-lu
-    cargo publish --package faer-qr
-    cargo publish --package faer-cholesky
-    cargo publish --package faer-svd
-    cargo publish --package faer-evd
-    cargo publish --package faer
+    cd faer-entity && cargo publish --package faer-entity
+    cd faer-libs   && cargo publish --package faer-core
+    cd faer-libs   && cargo publish --package faer-lu
+    cd faer-libs   && cargo publish --package faer-qr
+    cd faer-libs   && cargo publish --package faer-cholesky
+    cd faer-libs   && cargo publish --package faer-svd
+    cd faer-libs   && cargo publish --package faer-evd
+    cd faer-libs   && cargo publish --package faer

@@ -8,7 +8,7 @@ readme = "../../README.md"
 repository = "https://github.com/sarah-ek/faer-rs/"
 license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
-rust-version = "1.65.0"
+rust-version = "1.67.0"
 
 [dependencies]
 faer-entity = { workspace = true, default-features = false }
