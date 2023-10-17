@@ -1,5 +1,5 @@
 [package]
-name = "faer-core"
+name = "faer-cholesky"
 version = "0.13.4"
 edition = "2021"
 authors = ["sarah <>"]
@@ -8,60 +8,44 @@ readme = "../README.md"
 repository = "https://github.com/sarah-ek/faer-rs/"
 license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
-rust-version = "1.65.0"
 
 [dependencies]
-faer-entity = { version = "0.13.4", default-features = false, path = "../faer-entity" }
+faer-entity = { workspace = true, default-features = false }
 
+faer-core = { version = "0.13.4", default-features = false, path = "../faer-core" }
 seq-macro = "0.3"
-paste =  "1.0"
 
-coe-rs = { workspace = true }
 reborrow = { workspace = true }
-
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
-gemm = { version = "0.16.12", default-features = false }
-
 
 num-traits = { workspace = true, default-features = false }
 num-complex = { workspace = true, default-features = false }
 bytemuck = { workspace = true }
 
-rayon = { workspace = true, optional = true }
 assert2 = { workspace = true, optional = true }
 log = { workspace = true, optional = true, default-features = false }
-matrixcompare-core = { version = "0.1.0", optional = true }
 
 [features]
 default = ["std", "rayon"]
 std = [
-  "faer-entity/std",
-  "gemm/std",
+  "faer-core/std",
   "pulp/std",
   "assert2",
-  "matrixcompare-core",
 ]
-perf-warn = ["log"]
-rayon = [
-  "std",
-  "gemm/rayon",
-  "dep:rayon",
-]
+perf-warn = ["log", "faer-core/perf-warn"]
+rayon = ["std", "faer-core/rayon"]
 assert2 = ["dep:assert2"]
-matrixcompare-core = ["dep:matrixcompare-core"]
-nightly = [
-  "faer-entity/nightly",
-  "gemm/nightly",
-  "pulp/nightly",
-]
+nightly = ["faer-core/nightly", "pulp/nightly"]
 
 [dev-dependencies]
 criterion = "0.5"
 rand = "0.8.5"
 nalgebra = "0.32.3"
 assert_approx_eq = "1.1.0"
+rayon = "1.8"
 dbgf = "0.1.0"
+env_logger = "0.10"
 
 [[bench]]
 name = "bench"

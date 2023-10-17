@@ -10,7 +10,8 @@ license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
 [dependencies]
-faer-entity = { version = "0.13.0", path = "../faer-entity" }
+faer-entity = { workspace = true, default-features = false }
+
 faer-core = { version = "0.13.0", default-features = false, path = "../faer-core" }
 faer-cholesky = { version = "0.13.0", default-features = false, path = "../faer-cholesky" }
 reborrow = { workspace = true }
