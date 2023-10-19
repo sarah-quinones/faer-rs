@@ -158,6 +158,7 @@ impl DivCeil for usize {
     }
 }
 
+/// Specifies whether the triangular lower or upper part of a matrix should be accessed.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Side {
     Lower,
