@@ -2,17 +2,19 @@
 use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    join_raw, mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit,
-    ComplexField, Entity, MatMut, MatRef, Parallelism,
+    join_raw,
+    mul::triangular,
+    permutation::{Index, PermutationRef, SignedIndex},
+    temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
 
-fn invert_impl<T: ComplexField>(
+fn invert_impl<T: ComplexField, I: Index>(
     mut dst: MatMut<'_, T>,
     lu_factors: Option<MatRef<'_, T>>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -67,17 +69,17 @@ fn invert_impl<T: ComplexField>(
     unsafe {
         if dst.row_stride().abs() <= dst.col_stride().abs() {
             for j in 0..n {
-                let jj = *col_p.get_unchecked(j);
+                let jj = col_p.get_unchecked(j).to_signed().zx();
                 for i in 0..m {
-                    let ii = *row_p.get_unchecked(i);
+                    let ii = row_p.get_unchecked(i).to_signed().zx();
                     dst.write_unchecked(i, j, inv.read_unchecked(ii, jj));
                 }
             }
         } else {
             for i in 0..m {
-                let ii = *row_p.get_unchecked(i);
+                let ii = row_p.get_unchecked(i).to_signed().zx();
                 for j in 0..n {
-                    let jj = *col_p.get_unchecked(j);
+                    let jj = col_p.get_unchecked(j).to_signed().zx();
                     dst.write_unchecked(i, j, inv.read_unchecked(ii, jj));
                 }
             }
@@ -96,11 +98,11 @@ fn invert_impl<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
-pub fn invert<T: ComplexField>(
+pub fn invert<T: ComplexField, I: Index>(
     dst: MatMut<'_, T>,
     lu_factors: MatRef<'_, T>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -128,10 +130,10 @@ pub fn invert<T: ComplexField>(
 /// - Panics if the column permutation doesn't have the same dimension as the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
-pub fn invert_in_place<T: ComplexField>(
+pub fn invert_in_place<T: ComplexField, I: Index>(
     lu_factors: MatMut<'_, T>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -143,7 +145,7 @@ pub fn invert_in_place<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn invert_req<T: Entity>(
+pub fn invert_req<T: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -154,7 +156,7 @@ pub fn invert_req<T: Entity>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix in place, given its full pivoting LU decomposition.
-pub fn invert_in_place_req<T: Entity>(
+pub fn invert_in_place_req<T: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -184,7 +186,7 @@ mod tests {
             let mat = Mat::from_fn(n, n, |_, _| random::<f64>());
             let mut lu = mat.clone();
             let mut row_perm = vec![0; n];
-            let mut row_perm_inv = vec![0; n];
+            let mut row_perm_inv = vec![0usize; n];
             let mut col_perm = vec![0; n];
             let mut col_perm_inv = vec![0; n];
             let (_, row_perm, col_perm) = lu_in_place(
@@ -194,7 +196,7 @@ mod tests {
                 &mut col_perm,
                 &mut col_perm_inv,
                 Parallelism::Rayon(0),
-                make_stack!(lu_in_place_req::<f64>(
+                make_stack!(lu_in_place_req::<f64, usize>(
                     n,
                     n,
                     Parallelism::Rayon(0),
@@ -209,7 +211,7 @@ mod tests {
                 row_perm.rb(),
                 col_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_req::<f64>(n, n, Parallelism::Rayon(0))),
+                make_stack!(invert_req::<f64, usize>(n, n, Parallelism::Rayon(0))),
             );
 
             let mut prod = Mat::zeros(n, n);

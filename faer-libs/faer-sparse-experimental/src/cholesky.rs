@@ -970,7 +970,7 @@ pub mod supernodal {
             for s in 0..symbolic.n_supernodes() {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
-                let Ds = s.matrix.diagonal();
+                let Ds = s.matrix.diagonal().into_column_vector();
                 for j in 0..k {
                     for idx in 0..size {
                         let d_inv = Ds.read(idx, 0).faer_real().faer_inv();
@@ -1734,7 +1734,7 @@ pub mod supernodal {
                 let [Ld_top, Ld_mid_bot] = Ld.split_at_row(d_ncols);
                 let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
                 let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
-                let D = Ld_top.diagonal();
+                let D = Ld_top.diagonal().into_column_vector();
 
                 let stack = stack.rb_mut();
 
@@ -2640,8 +2640,15 @@ mod tests {
         }
 
         let mut D = Mat::<E>::zeros(n, n);
-        D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
-        dense.as_mut().diagonal().fill(E::faer_one());
+        D.as_mut()
+            .diagonal()
+            .into_column_vector()
+            .clone_from(dense.as_ref().diagonal().into_column_vector());
+        dense
+            .as_mut()
+            .diagonal()
+            .into_column_vector()
+            .fill(E::faer_one());
         &dense * D * dense.adjoint()
     }
 
@@ -2670,8 +2677,15 @@ mod tests {
         }
 
         let mut D = Mat::<E>::zeros(n, n);
-        D.as_mut().diagonal().clone_from(dense.as_ref().diagonal());
-        dense.as_mut().diagonal().fill(E::faer_one());
+        D.as_mut()
+            .diagonal()
+            .into_column_vector()
+            .clone_from(dense.as_ref().diagonal().into_column_vector());
+        dense
+            .as_mut()
+            .diagonal()
+            .into_column_vector()
+            .fill(E::faer_one());
 
         &dense * D * dense.adjoint()
     }

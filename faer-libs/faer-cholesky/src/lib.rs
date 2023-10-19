@@ -5,7 +5,10 @@
 #[cfg(feature = "std")]
 use assert2::assert;
 use core::cmp::Ordering;
-use faer_core::{permutation::PermutationMut, ComplexField, MatRef};
+use faer_core::{
+    permutation::{Index, PermutationMut, SignedIndex},
+    ComplexField, MatRef,
+};
 
 pub mod bunch_kaufman;
 pub mod ldlt_diagonal;
@@ -15,12 +18,13 @@ pub mod llt;
 /// factorization with diagonal $D$, then stores the result in `perm_indices` and
 /// `perm_inv_indices`.
 #[track_caller]
-pub fn compute_cholesky_permutation<'a, E: ComplexField>(
-    perm_indices: &'a mut [usize],
-    perm_inv_indices: &'a mut [usize],
+pub fn compute_cholesky_permutation<'a, E: ComplexField, I: Index>(
+    perm_indices: &'a mut [I],
+    perm_inv_indices: &'a mut [I],
     matrix: MatRef<'_, E>,
-) -> PermutationMut<'a> {
+) -> PermutationMut<'a, I> {
     let n = matrix.nrows();
+    let truncate = <I::Signed as SignedIndex>::truncate;
     assert!(
         matrix.nrows() == matrix.ncols(),
         "input matrix must be square",
@@ -35,12 +39,16 @@ pub fn compute_cholesky_permutation<'a, E: ComplexField>(
     );
 
     for (i, p) in perm_indices.iter_mut().enumerate() {
-        *p = i;
+        *p = I::from_signed(truncate(i));
     }
 
     perm_indices.sort_unstable_by(move |&i, &j| {
-        let lhs = matrix.read(i, i).faer_abs();
-        let rhs = matrix.read(j, j).faer_abs();
+        let lhs = matrix
+            .read(i.to_signed().zx(), i.to_signed().zx())
+            .faer_abs();
+        let rhs = matrix
+            .read(j.to_signed().zx(), j.to_signed().zx())
+            .faer_abs();
         let cmp = rhs.partial_cmp(&lhs);
         if let Some(cmp) = cmp {
             cmp
@@ -50,7 +58,7 @@ pub fn compute_cholesky_permutation<'a, E: ComplexField>(
     });
 
     for (i, p) in perm_indices.iter().copied().enumerate() {
-        perm_inv_indices[p] = i;
+        perm_inv_indices[p.to_signed().zx()] = I::from_signed(truncate(i));
     }
 
     unsafe { PermutationMut::new_unchecked(perm_indices, perm_inv_indices) }

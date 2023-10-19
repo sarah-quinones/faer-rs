@@ -6,7 +6,7 @@ use faer_core::{
     c32, c64,
     householder::upgrade_householder_factor,
     mul::inner_prod::{self, inner_prod_with_conj_arch},
-    permutation::{swap_cols, PermutationMut},
+    permutation::{swap_cols, Index, PermutationMut, SignedIndex},
     simd, transmute_unchecked, zipped, ComplexField, Conj, DivCeil, Entity, MatMut, MatRef,
     Parallelism, SimdCtx,
 };
@@ -375,10 +375,10 @@ fn update_and_norm2<E: ComplexField>(
     acc
 }
 
-fn qr_in_place_colmajor<E: ComplexField>(
+fn qr_in_place_colmajor<E: ComplexField, I: Index>(
     mut matrix: MatMut<'_, E>,
     mut householder_coeffs: MatMut<'_, E>,
-    col_perm: &mut [usize],
+    col_perm: &mut [I],
     parallelism: Parallelism,
     disable_parallelism: fn(usize, usize) -> bool,
 ) -> usize {
@@ -651,7 +651,7 @@ impl ColPivQrComputeParams {
 
 /// Computes the size and alignment of required workspace for performing a QR decomposition
 /// with column pivoting.
-pub fn qr_in_place_req<E: Entity>(
+pub fn qr_in_place_req<E: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
@@ -693,89 +693,114 @@ pub fn qr_in_place_req<E: Entity>(
 /// - Panics if the length of `col_perm` and `col_perm_inv` is not equal to the number of columns
 /// of `matrix`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`qr_in_place_req`]).
-pub fn qr_in_place<'out, E: ComplexField>(
+pub fn qr_in_place<'out, E: ComplexField, I: Index>(
     matrix: MatMut<'_, E>,
     householder_factor: MatMut<'_, E>,
-    col_perm: &'out mut [usize],
-    col_perm_inv: &'out mut [usize],
+    col_perm: &'out mut [I],
+    col_perm_inv: &'out mut [I],
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: ColPivQrComputeParams,
-) -> (usize, PermutationMut<'out>) {
-    let _ = &stack;
-    let disable_parallelism = params.normalize();
-    let m = matrix.nrows();
-    let n = matrix.ncols();
+) -> (usize, PermutationMut<'out, I>) {
+    fn implementation<'out, E: ComplexField, I: Index>(
+        matrix: MatMut<'_, E>,
+        householder_factor: MatMut<'_, E>,
+        col_perm: &'out mut [I],
+        col_perm_inv: &'out mut [I],
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+        params: ColPivQrComputeParams,
+    ) -> (usize, PermutationMut<'out, I>) {
+        {
+            let truncate = <I::Signed as SignedIndex>::truncate;
 
-    assert!(col_perm.len() == n);
-    assert!(col_perm_inv.len() == n);
+            let _ = &stack;
+            let disable_parallelism = params.normalize();
+            let m = matrix.nrows();
+            let n = matrix.ncols();
 
-    #[cfg(feature = "perf-warn")]
-    if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
-        if matrix.col_stride().unsigned_abs() == 1 {
-            log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found row-major matrix.");
-        } else {
-            log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found matrix with generic strides.");
+            assert!(col_perm.len() == n);
+            assert!(col_perm_inv.len() == n);
+
+            #[cfg(feature = "perf-warn")]
+            if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
+                if matrix.col_stride().unsigned_abs() == 1 {
+                    log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found row-major matrix.");
+                } else {
+                    log::warn!(target: "faer_perf", "QR with column pivoting prefers column-major matrix. Found matrix with generic strides.");
+                }
+            }
+
+            for (j, p) in col_perm.iter_mut().enumerate() {
+                *p = I::from_signed(truncate(j));
+            }
+
+            let mut householder_factor = householder_factor;
+            let householder_coeffs = householder_factor.rb_mut().row(0).transpose();
+
+            let mut matrix = matrix;
+
+            let n_transpositions = qr_in_place_colmajor(
+                matrix.rb_mut(),
+                householder_coeffs,
+                col_perm,
+                parallelism,
+                disable_parallelism,
+            );
+
+            let blocksize = householder_factor.nrows();
+            if blocksize > 1 {
+                let size = householder_factor.ncols();
+                let n_blocks = size.msrv_div_ceil(blocksize);
+
+                let qr_factors = matrix.rb();
+
+                let func = |idx: usize| {
+                    let j = idx * blocksize;
+                    let blocksize = Ord::min(blocksize, size - j);
+                    let mut householder = unsafe { householder_factor.rb().const_cast() }
+                        .submatrix(0, j, blocksize, blocksize);
+
+                    for i in 0..blocksize {
+                        let coeff = householder.read(0, i);
+                        householder.write(i, i, coeff);
+                    }
+
+                    let qr = qr_factors.submatrix(j, j, m - j, blocksize);
+
+                    upgrade_householder_factor(householder, qr, blocksize, 1, parallelism);
+                };
+
+                match parallelism {
+                    Parallelism::None => (0..n_blocks).for_each(func),
+                    #[cfg(feature = "rayon")]
+                    Parallelism::Rayon(_) => {
+                        use rayon::prelude::*;
+                        (0..n_blocks).into_par_iter().for_each(func)
+                    }
+                }
+            }
+
+            for (j, &p) in col_perm.iter().enumerate() {
+                col_perm_inv[p.to_signed().zx()] = I::from_signed(truncate(j));
+            }
+
+            (n_transpositions, unsafe {
+                PermutationMut::new_unchecked(col_perm, col_perm_inv)
+            })
         }
     }
 
-    for (j, p) in col_perm.iter_mut().enumerate() {
-        *p = j;
-    }
-
-    let mut householder_factor = householder_factor;
-    let householder_coeffs = householder_factor.rb_mut().row(0).transpose();
-
-    let mut matrix = matrix;
-
-    let n_transpositions = qr_in_place_colmajor(
-        matrix.rb_mut(),
-        householder_coeffs,
-        col_perm,
+    let (n_transpositions, perm) = implementation(
+        matrix,
+        householder_factor,
+        I::canonicalize_mut(col_perm),
+        I::canonicalize_mut(col_perm_inv),
         parallelism,
-        disable_parallelism,
+        stack,
+        params,
     );
-
-    let blocksize = householder_factor.nrows();
-    if blocksize > 1 {
-        let size = householder_factor.ncols();
-        let n_blocks = size.msrv_div_ceil(blocksize);
-
-        let qr_factors = matrix.rb();
-
-        let func = |idx: usize| {
-            let j = idx * blocksize;
-            let blocksize = Ord::min(blocksize, size - j);
-            let mut householder = unsafe { householder_factor.rb().const_cast() }
-                .submatrix(0, j, blocksize, blocksize);
-
-            for i in 0..blocksize {
-                let coeff = householder.read(0, i);
-                householder.write(i, i, coeff);
-            }
-
-            let qr = qr_factors.submatrix(j, j, m - j, blocksize);
-
-            upgrade_householder_factor(householder, qr, blocksize, 1, parallelism);
-        };
-
-        match parallelism {
-            Parallelism::None => (0..n_blocks).for_each(func),
-            #[cfg(feature = "rayon")]
-            Parallelism::Rayon(_) => {
-                use rayon::prelude::*;
-                (0..n_blocks).into_par_iter().for_each(func)
-            }
-        }
-    }
-
-    for (j, &p) in col_perm.iter().enumerate() {
-        col_perm_inv[p] = j;
-    }
-
-    (n_transpositions, unsafe {
-        PermutationMut::new_unchecked(col_perm, col_perm_inv)
-    })
+    (n_transpositions, perm.uncanonicalize::<I>())
 }
 
 #[cfg(test)]
@@ -816,9 +841,7 @@ mod tests {
             .zip(qr_factors)
             .for_each_triangular_upper(Diag::Include, |mut a, b| a.write(b.read()));
 
-        q.as_mut()
-            .diagonal()
-            .cwise()
+        zipped!(q.as_mut().diagonal().into_column_vector())
             .for_each(|mut a| a.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -857,7 +880,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<f64>(
+                    make_stack!(qr_in_place_req::<f64, usize>(
                         m,
                         n,
                         blocksize,
@@ -905,7 +928,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c64>(
+                    make_stack!(qr_in_place_req::<c64, usize>(
                         m,
                         n,
                         blocksize,
@@ -963,7 +986,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<f32>(
+                    make_stack!(qr_in_place_req::<f32, usize>(
                         m,
                         n,
                         blocksize,
@@ -1011,7 +1034,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32>(
+                    make_stack!(qr_in_place_req::<c32, usize>(
                         m,
                         n,
                         blocksize,
@@ -1069,7 +1092,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32>(
+                    make_stack!(qr_in_place_req::<c32, usize>(
                         m,
                         n,
                         blocksize,
@@ -1127,7 +1150,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32>(
+                    make_stack!(qr_in_place_req::<c32, usize>(
                         m,
                         n,
                         blocksize,
@@ -1190,7 +1213,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32>(
+                    make_stack!(qr_in_place_req::<c32, usize>(
                         m,
                         n,
                         blocksize,

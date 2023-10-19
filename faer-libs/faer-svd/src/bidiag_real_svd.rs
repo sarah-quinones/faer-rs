@@ -1248,14 +1248,14 @@ fn bidiag_svd_impl<E: RealField>(
     if max_val == E::faer_zero() {
         u.fill_zeros();
         if u.nrows() == n + 1 {
-            u.diagonal().fill_zeros();
+            u.diagonal().into_column_vector().fill_zeros();
         } else {
             u.write(0, 0, E::faer_one());
             u.write(1, n, E::faer_one());
         }
         if let Some(mut v) = v {
             v.fill_zeros();
-            v.diagonal().fill(E::faer_one());
+            v.diagonal().into_column_vector().fill(E::faer_one());
         };
         return;
     }

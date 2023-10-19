@@ -10,9 +10,6 @@ use nalgebra::DMatrix;
 
 pub fn cholesky(c: &mut Criterion) {
     use faer_cholesky::{ldlt_diagonal, llt};
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Warn)
-        .init();
 
     for n in [6, 8, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 4096] {
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {

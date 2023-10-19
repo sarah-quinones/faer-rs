@@ -2322,6 +2322,490 @@ unsafe impl<E: Entity + ComplexField> Conjugate for ComplexConj<E> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Symbolic;
+impl Symbolic {
+    #[inline(always)]
+    pub fn materialize(n: usize) -> &'static mut [Self] {
+        unsafe {
+            core::slice::from_raw_parts_mut(core::ptr::NonNull::<Symbolic>::dangling().as_ptr(), n)
+        }
+    }
+}
+unsafe impl bytemuck::Zeroable for Symbolic {}
+unsafe impl Pod for Symbolic {}
+unsafe impl Entity for Symbolic {
+    type Unit = Symbolic;
+    type Index = usize;
+    type SimdUnit<S: pulp::Simd> = Symbolic;
+    type SimdMask<S: pulp::Simd> = bool;
+    type SimdIndex<S: pulp::Simd> = usize;
+    type Group = IdentityGroup;
+    type Iter<I: Iterator> = I;
+    const N_COMPONENTS: usize = 1;
+    const UNIT: GroupCopyFor<Self, ()> = ();
+
+    #[inline(always)]
+    fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
+        group
+    }
+
+    #[inline(always)]
+    fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
+        self
+    }
+
+    #[inline(always)]
+    fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
+        group
+    }
+
+    #[inline(always)]
+    fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn faer_map_impl<T, U>(
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(T) -> U,
+    ) -> GroupFor<Self, U> {
+        (*f)(group)
+    }
+
+    #[inline(always)]
+    fn faer_zip<T, U>(
+        first: GroupFor<Self, T>,
+        second: GroupFor<Self, U>,
+    ) -> GroupFor<Self, (T, U)> {
+        (first, second)
+    }
+
+    #[inline(always)]
+    fn faer_unzip<T, U>(zipped: GroupFor<Self, (T, U)>) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
+        zipped
+    }
+
+    #[inline(always)]
+    fn faer_map_with_context<Ctx, T, U>(
+        ctx: Ctx,
+        group: GroupFor<Self, T>,
+        f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
+    ) -> (Ctx, GroupFor<Self, U>) {
+        (*f)(ctx, group)
+    }
+
+    #[inline(always)]
+    fn faer_into_iter<I: IntoIterator>(iter: GroupFor<Self, I>) -> Self::Iter<I::IntoIter> {
+        iter.into_iter()
+    }
+}
+
+unsafe impl Conjugate for Symbolic {
+    type Conj = Symbolic;
+    type Canonical = Symbolic;
+    #[inline(always)]
+    fn canonicalize(self) -> Self::Canonical {
+        self
+    }
+}
+
+impl RealField for Symbolic {
+    #[inline(always)]
+    fn faer_epsilon() -> Option<Self> {
+        Some(Self)
+    }
+
+    #[inline(always)]
+    fn faer_zero_threshold() -> Option<Self> {
+        Some(Self)
+    }
+
+    #[inline(always)]
+    fn faer_div(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_usize_to_index(a: usize) -> Self::Index {
+        a
+    }
+
+    #[inline(always)]
+    fn faer_index_to_usize(a: Self::Index) -> usize {
+        a
+    }
+
+    #[inline(always)]
+    fn faer_max_index() -> Self::Index {
+        usize::MAX
+    }
+
+    #[inline(always)]
+    fn faer_simd_less_than<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroupFor<Self, S>,
+        _b: SimdGroupFor<Self, S>,
+    ) -> Self::SimdMask<S> {
+        false
+    }
+
+    #[inline(always)]
+    fn faer_simd_less_than_or_equal<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroupFor<Self, S>,
+        _b: SimdGroupFor<Self, S>,
+    ) -> Self::SimdMask<S> {
+        true
+    }
+
+    #[inline(always)]
+    fn faer_simd_greater_than<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroupFor<Self, S>,
+        _b: SimdGroupFor<Self, S>,
+    ) -> Self::SimdMask<S> {
+        false
+    }
+
+    #[inline(always)]
+    fn faer_simd_greater_than_or_equal<S: pulp::Simd>(
+        _simd: S,
+        _a: SimdGroupFor<Self, S>,
+        _b: SimdGroupFor<Self, S>,
+    ) -> Self::SimdMask<S> {
+        true
+    }
+
+    #[inline(always)]
+    fn faer_simd_select<S: pulp::Simd>(
+        _simd: S,
+        _mask: Self::SimdMask<S>,
+        _if_true: SimdGroupFor<Self, S>,
+        _if_false: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_index_select<S: pulp::Simd>(
+        _simd: S,
+        mask: Self::SimdMask<S>,
+        if_true: Self::SimdIndex<S>,
+        if_false: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        if mask {
+            if_true
+        } else {
+            if_false
+        }
+    }
+
+    #[inline(always)]
+    fn faer_simd_index_seq<S: pulp::Simd>(_simd: S) -> Self::SimdIndex<S> {
+        0
+    }
+
+    #[inline(always)]
+    fn faer_simd_index_splat<S: pulp::Simd>(_simd: S, value: Self::Index) -> Self::SimdIndex<S> {
+        value
+    }
+
+    #[inline(always)]
+    fn faer_simd_index_add<S: pulp::Simd>(
+        _simd: S,
+        a: Self::SimdIndex<S>,
+        b: Self::SimdIndex<S>,
+    ) -> Self::SimdIndex<S> {
+        a.wrapping_add(b)
+    }
+}
+
+impl ComplexField for Symbolic {
+    type Real = Symbolic;
+    type Simd = NoSimd;
+    type ScalarSimd = NoSimd;
+
+    #[inline(always)]
+    fn faer_from_f64(_value: f64) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_add(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_sub(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_mul(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_neg(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_inv(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_conj(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_sqrt(self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_scale_real(self, _rhs: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_scale_power_of_two(self, _rhs: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_score(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_abs(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_abs2(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_nan() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_from_real(_real: Self::Real) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_real(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_imag(self) -> Self::Real {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_zero() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_one() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_simd<S: pulp::Simd>(
+        slice: &[Self::Unit],
+    ) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
+        (slice, &[])
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_mut_simd<S: pulp::Simd>(
+        slice: &mut [Self::Unit],
+    ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
+        (slice, &mut [])
+    }
+
+    #[inline(always)]
+    fn faer_partial_load_unit<S: pulp::Simd>(_simd: S, _slice: &[Self::Unit]) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_partial_store_unit<S: pulp::Simd>(
+        _simd: S,
+        _slice: &mut [Self::Unit],
+        _values: Self::SimdUnit<S>,
+    ) {
+    }
+
+    #[inline(always)]
+    fn faer_partial_load_last_unit<S: pulp::Simd>(
+        _simd: S,
+        _slice: &[Self::Unit],
+    ) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_partial_store_last_unit<S: pulp::Simd>(
+        _simd: S,
+        _slice: &mut [Self::Unit],
+        _values: Self::SimdUnit<S>,
+    ) {
+    }
+
+    #[inline(always)]
+    fn faer_simd_splat_unit<S: pulp::Simd>(_simd: S, _unit: Self::Unit) -> Self::SimdUnit<S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_scalar_mul<S: pulp::Simd>(_simd: S, _lhs: Self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_scalar_conj_mul<S: pulp::Simd>(_simd: S, _lhs: Self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_scalar_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: Self,
+        _rhs: Self,
+        _acc: Self,
+    ) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_scalar_conj_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: Self,
+        _rhs: Self,
+        _acc: Self,
+    ) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_neg<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_conj<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_add<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_sub<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_mul<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_scale_real<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self::Real, S>,
+        _rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_conj_mul<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+        _acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_conj_mul_adde<S: pulp::Simd>(
+        _simd: S,
+        _lhs: SimdGroupFor<Self, S>,
+        _rhs: SimdGroupFor<Self, S>,
+        _acc: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_abs2_adde<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroupFor<Self, S>,
+        _acc: SimdGroupFor<Self::Real, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_abs2<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_score<S: pulp::Simd>(
+        _simd: S,
+        _values: SimdGroupFor<Self, S>,
+    ) -> SimdGroupFor<Self::Real, S> {
+        Self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

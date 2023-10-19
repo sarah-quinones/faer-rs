@@ -12,7 +12,7 @@
 //!
 //! # Example
 //! ```
-//! use faer_core::{mat, Mat, Scale};
+//! use faer_core::{mat, scale, Mat};
 //!
 //! let a = mat![
 //!     [1.0, 5.0, 9.0],
@@ -25,7 +25,7 @@
 //!
 //! let add = &a + &b;
 //! let sub = &a - &b;
-//! let scale = Scale(3.0) * &a;
+//! let scale = scale(3.0) * &a;
 //! let mul = &a * b.transpose();
 //! ```
 //!
@@ -158,6 +158,12 @@ impl DivCeil for usize {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Side {
+    Lower,
+    Upper,
+}
+
 extern crate alloc;
 
 pub mod householder;
@@ -170,10 +176,10 @@ pub mod permutation;
 pub mod solve;
 pub mod zip;
 
-mod matrix_ops;
+pub mod matrix_ops;
 
 /// Thin wrapper used for scalar multiplication of a matrix by a scalar value.
-pub use matrix_ops::Scale;
+pub use matrix_ops::scale;
 
 #[doc(hidden)]
 pub mod simd;
@@ -592,6 +598,7 @@ impl Debug for c64conj {
     }
 }
 
+/// Whether a matrix should be implicitly conjugated when read or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
     Yes,
@@ -609,9 +616,11 @@ impl Conj {
     }
 }
 
+/// Trait for types that can be converted to a matrix view.
 pub trait AsMatRef<E: Entity> {
     fn as_mat_ref(&self) -> MatRef<'_, E>;
 }
+/// Trait for types that can be converted to a mutable matrix view.
 pub trait AsMatMut<E: Entity> {
     fn as_mat_mut(&mut self) -> MatMut<'_, E>;
 }
@@ -1719,12 +1728,19 @@ unsafe impl Conjugate for c64conj {
     }
 }
 
+#[repr(C)]
 struct MatImpl<E: Entity> {
     ptr: GroupCopyFor<E, *mut E::Unit>,
     nrows: usize,
     ncols: usize,
     row_stride: isize,
     col_stride: isize,
+}
+#[repr(C)]
+struct NonNullMatImpl<E: Entity> {
+    ptr: GroupCopyFor<E, NonNull<E::Unit>>,
+    nrows: usize,
+    ncols: usize,
 }
 
 impl<E: Entity> Copy for MatImpl<E> {}
@@ -1735,6 +1751,97 @@ impl<E: Entity> Clone for MatImpl<E> {
     }
 }
 
+/// Generic matrix container.
+#[derive(Copy, Clone)]
+pub struct Matrix<M> {
+    inner: M,
+}
+
+pub mod inner {
+    use super::*;
+
+    impl<E: Entity> Copy for DiagRef<'_, E> {}
+    impl<E: Entity> Clone for DiagRef<'_, E> {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    impl<E: Entity> Copy for DenseRef<'_, E> {}
+    impl<E: Entity> Clone for DenseRef<'_, E> {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    impl<I> Copy for PermRef<'_, I> {}
+    impl<I> Clone for PermRef<'_, I> {
+        #[inline(always)]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    #[repr(C)]
+    #[derive(Debug)]
+    pub struct PermRef<'a, I> {
+        pub(crate) forward: &'a [I],
+        pub(crate) inverse: &'a [I],
+    }
+    #[repr(C)]
+    #[derive(Debug)]
+    pub struct PermMut<'a, I> {
+        pub(crate) forward: &'a mut [I],
+        pub(crate) inverse: &'a mut [I],
+    }
+    #[repr(C)]
+    pub struct PermOwn<I> {
+        pub(crate) forward: Box<[I]>,
+        pub(crate) inverse: Box<[I]>,
+    }
+
+    #[repr(C)]
+    pub struct DiagRef<'a, E: Entity> {
+        pub(crate) inner: MatRef<'a, E>,
+    }
+
+    #[repr(C)]
+    pub struct DiagMut<'a, E: Entity> {
+        pub(crate) inner: MatMut<'a, E>,
+    }
+
+    #[repr(C)]
+    pub struct DiagOwn<E: Entity> {
+        pub(crate) inner: Mat<E>,
+    }
+
+    #[repr(C)]
+    pub struct DenseRef<'a, E: Entity> {
+        pub(crate) inner: MatImpl<E>,
+        pub(crate) __marker: PhantomData<&'a E>,
+    }
+
+    #[repr(C)]
+    pub struct DenseMut<'a, E: Entity> {
+        pub(crate) inner: MatImpl<E>,
+        pub(crate) __marker: PhantomData<&'a mut E>,
+    }
+
+    #[repr(C)]
+    pub struct DenseOwn<E: Entity> {
+        pub(crate) inner: NonNullMatImpl<E>,
+        pub(crate) row_capacity: usize,
+        pub(crate) col_capacity: usize,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    pub struct Scale<E: Entity>(pub E);
+}
+use inner::*;
+
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
 ///
 /// # Note
@@ -1744,18 +1851,7 @@ impl<E: Entity> Clone for MatImpl<E> {
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`MatRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub struct MatRef<'a, E: Entity> {
-    inner: MatImpl<E>,
-    __marker: PhantomData<&'a E>,
-}
-
-impl<E: Entity> Copy for MatRef<'_, E> {}
-impl<E: Entity> Clone for MatRef<'_, E> {
-    #[inline(always)]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
+pub type MatRef<'a, E> = Matrix<DenseRef<'a, E>>;
 
 /// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
 ///
@@ -1801,9 +1897,21 @@ impl<E: Entity> Clone for MatRef<'_, E> {
 /// takes_matref(view.rb());
 /// // view is still usable here
 /// ```
-pub struct MatMut<'a, E: Entity> {
-    inner: MatImpl<E>,
-    __marker: PhantomData<&'a mut E>,
+pub type MatMut<'a, E> = Matrix<DenseMut<'a, E>>;
+
+/// Wrapper around a scalar value that allows scalar multiplication by matrices.
+pub type MatScale<E> = Matrix<Scale<E>>;
+
+impl<E: Entity> MatScale<E> {
+    #[inline(always)]
+    pub fn new(value: E) -> Self {
+        Self {
+            inner: Scale(value),
+        }
+    }
+    pub fn value(self) -> E {
+        self.inner.0
+    }
 }
 
 impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
@@ -1812,8 +1920,10 @@ impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
     #[inline(always)]
     fn into_const(self) -> Self::Target {
         MatRef {
-            inner: self.inner,
-            __marker: PhantomData,
+            inner: DenseRef {
+                inner: self.inner.inner,
+                __marker: PhantomData,
+            },
         }
     }
 }
@@ -1824,8 +1934,10 @@ impl<'short, 'a, E: Entity> Reborrow<'short> for MatMut<'a, E> {
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
         MatRef {
-            inner: self.inner,
-            __marker: PhantomData,
+            inner: DenseRef {
+                inner: self.inner.inner,
+                __marker: PhantomData,
+            },
         }
     }
 }
@@ -1836,8 +1948,10 @@ impl<'short, 'a, E: Entity> ReborrowMut<'short> for MatMut<'a, E> {
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
         MatMut {
-            inner: self.inner,
-            __marker: PhantomData,
+            inner: DenseMut {
+                inner: self.inner.inner,
+                __marker: PhantomData,
+            },
         }
     }
 }
@@ -1869,10 +1983,76 @@ impl<'short, 'a, E: Entity> ReborrowMut<'short> for MatRef<'a, E> {
     }
 }
 
-unsafe impl<E: Entity> Send for MatRef<'_, E> {}
-unsafe impl<E: Entity> Sync for MatRef<'_, E> {}
-unsafe impl<E: Entity> Send for MatMut<'_, E> {}
-unsafe impl<E: Entity> Sync for MatMut<'_, E> {}
+impl<'a, E: Entity> IntoConst for Matrix<DiagMut<'a, E>> {
+    type Target = Matrix<DiagRef<'a, E>>;
+
+    #[inline(always)]
+    fn into_const(self) -> Self::Target {
+        Matrix {
+            inner: DiagRef {
+                inner: self.inner.inner.into_const(),
+            },
+        }
+    }
+}
+
+impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<DiagMut<'a, E>> {
+    type Target = Matrix<DiagRef<'short, E>>;
+
+    #[inline(always)]
+    fn rb(&'short self) -> Self::Target {
+        Matrix {
+            inner: DiagRef {
+                inner: self.inner.inner.rb(),
+            },
+        }
+    }
+}
+
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<DiagMut<'a, E>> {
+    type Target = Matrix<DiagMut<'short, E>>;
+
+    #[inline(always)]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        Matrix {
+            inner: DiagMut {
+                inner: self.inner.inner.rb_mut(),
+            },
+        }
+    }
+}
+
+impl<'a, E: Entity> IntoConst for Matrix<DiagRef<'a, E>> {
+    type Target = Matrix<DiagRef<'a, E>>;
+
+    #[inline(always)]
+    fn into_const(self) -> Self::Target {
+        self
+    }
+}
+
+impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<DiagRef<'a, E>> {
+    type Target = Matrix<DiagRef<'short, E>>;
+
+    #[inline(always)]
+    fn rb(&'short self) -> Self::Target {
+        *self
+    }
+}
+
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<DiagRef<'a, E>> {
+    type Target = Matrix<DiagRef<'short, E>>;
+
+    #[inline(always)]
+    fn rb_mut(&'short mut self) -> Self::Target {
+        *self
+    }
+}
+
+unsafe impl<E: Entity> Send for MatImpl<E> {}
+unsafe impl<E: Entity> Sync for MatImpl<E> {}
+unsafe impl<E: Entity> Send for NonNullMatImpl<E> {}
+unsafe impl<E: Entity> Sync for NonNullMatImpl<E> {}
 
 #[doc(hidden)]
 #[inline]
@@ -1897,6 +2077,7 @@ mod seal {
     pub trait Seal {}
 }
 
+/// Represents a type that can be used to slice a matrix, such as an index or a range of indices.
 pub trait MatIndex<RowRange, ColRange>: seal::Seal + Sized {
     type Target;
     #[allow(clippy::missing_safety_doc)]
@@ -2153,6 +2334,44 @@ const _: () = {
     }
 };
 
+impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
+    #[inline(always)]
+    pub fn into_column_vector(self) -> MatRef<'a, E> {
+        self.inner.inner
+    }
+}
+
+impl<'a, E: Entity> Matrix<DiagMut<'a, E>> {
+    #[inline(always)]
+    pub fn into_column_vector(self) -> MatMut<'a, E> {
+        self.inner.inner
+    }
+}
+
+impl<E: Entity> Matrix<DiagOwn<E>> {
+    #[inline(always)]
+    pub fn into_column_vector(self) -> Mat<E> {
+        self.inner.inner
+    }
+    #[inline(always)]
+    pub fn as_ref(&self) -> Matrix<DiagRef<'_, E>> {
+        Matrix {
+            inner: DiagRef {
+                inner: self.inner.inner.as_ref(),
+            },
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_mut(&mut self) -> Matrix<DiagMut<'_, E>> {
+        Matrix {
+            inner: DiagMut {
+                inner: self.inner.inner.as_mut(),
+            },
+        }
+    }
+}
+
 impl<'a, E: Entity> MatRef<'a, E> {
     /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
     /// The data is interpreted in a column-major format, so that the first chunk of `nrows`
@@ -2278,55 +2497,54 @@ impl<'a, E: Entity> MatRef<'a, E> {
         col_stride: isize,
     ) -> Self {
         Self {
-            inner: MatImpl {
-                ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| ptr as *mut E::Unit)),
-                nrows,
-                ncols,
-                row_stride,
-                col_stride,
+            inner: DenseRef {
+                inner: MatImpl {
+                    ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| ptr as *mut E::Unit)),
+                    nrows,
+                    ncols,
+                    row_stride,
+                    col_stride,
+                },
+                __marker: PhantomData,
             },
-            __marker: PhantomData,
         }
+    }
+
+    #[inline(always)]
+    pub fn nrows(&self) -> usize {
+        self.inner.inner.nrows
+    }
+    #[inline(always)]
+    pub fn ncols(&self) -> usize {
+        self.inner.inner.ncols
     }
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
     pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
-        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| {
+        E::faer_map(from_copy::<E, _>(self.inner.inner.ptr), |ptr| {
             ptr as *const E::Unit
         })
-    }
-
-    /// Returns the number of rows of the matrix.
-    #[inline(always)]
-    pub fn nrows(&self) -> usize {
-        self.inner.nrows
-    }
-
-    /// Returns the number of columns of the matrix.
-    #[inline(always)]
-    pub fn ncols(&self) -> usize {
-        self.inner.ncols
     }
 
     /// Returns the row stride of the matrix, specified in number of elements, not in bytes.
     #[inline(always)]
     pub fn row_stride(&self) -> isize {
-        self.inner.row_stride
+        self.inner.inner.row_stride
     }
 
     /// Returns the column stride of the matrix, specified in number of elements, not in bytes.
     #[inline(always)]
     pub fn col_stride(&self) -> isize {
-        self.inner.col_stride
+        self.inner.inner.col_stride
     }
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
     pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         E::faer_map(self.as_ptr(), |ptr| {
-            ptr.wrapping_offset(row as isize * self.inner.row_stride)
-                .wrapping_offset(col as isize * self.inner.col_stride)
+            ptr.wrapping_offset(row as isize * self.inner.inner.row_stride)
+                .wrapping_offset(col as isize * self.inner.inner.col_stride)
         })
     }
 
@@ -2343,8 +2561,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
         debug_assert!(row < self.nrows());
         debug_assert!(col < self.ncols());
         E::faer_map(self.as_ptr(), |ptr| {
-            ptr.offset(row as isize * self.inner.row_stride)
-                .offset(col as isize * self.inner.col_stride)
+            ptr.offset(row as isize * self.inner.inner.row_stride)
+                .offset(col as isize * self.inner.inner.col_stride)
         })
     }
 
@@ -2496,15 +2714,14 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[must_use]
     pub fn transpose(self) -> Self {
-        Self {
-            inner: MatImpl {
-                ptr: self.inner.ptr,
-                nrows: self.inner.ncols,
-                ncols: self.inner.nrows,
-                row_stride: self.inner.col_stride,
-                col_stride: self.inner.row_stride,
-            },
-            __marker: PhantomData,
+        unsafe {
+            Self::from_raw_parts(
+                self.as_ptr(),
+                self.ncols(),
+                self.nrows(),
+                self.col_stride(),
+                self.row_stride(),
+            )
         }
     }
 
@@ -2518,19 +2735,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
         unsafe {
             // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
             // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
-            MatRef {
-                inner: MatImpl {
-                    ptr: transmute_unchecked::<
-                        GroupCopyFor<E, *mut E::Unit>,
-                        GroupCopyFor<E::Conj, *mut UnitFor<E::Conj>>,
-                    >(self.inner.ptr),
-                    nrows: self.inner.nrows,
-                    ncols: self.inner.ncols,
-                    row_stride: self.inner.row_stride,
-                    col_stride: self.inner.col_stride,
-                },
-                __marker: PhantomData,
-            }
+            MatRef::<'_, E::Conj>::from_raw_parts(
+                transmute_unchecked::<
+                    GroupFor<E, *const E::Unit>,
+                    GroupFor<E::Conj, *const UnitFor<E::Conj>>,
+                >(self.as_ptr()),
+                self.nrows(),
+                self.ncols(),
+                self.row_stride(),
+                self.col_stride(),
+            )
         }
     }
 
@@ -2553,19 +2767,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
         (
             unsafe {
                 // SAFETY: see Self::conjugate
-                MatRef {
-                    inner: MatImpl {
-                        ptr: transmute_unchecked::<
-                            GroupCopyFor<E, *mut E::Unit>,
-                            GroupCopyFor<E::Canonical, *mut UnitFor<E::Canonical>>,
-                        >(self.inner.ptr),
-                        nrows: self.inner.nrows,
-                        ncols: self.inner.ncols,
-                        row_stride: self.inner.row_stride,
-                        col_stride: self.inner.col_stride,
-                    },
-                    __marker: PhantomData,
-                }
+                MatRef::<'_, E::Canonical>::from_raw_parts(
+                    transmute_unchecked::<
+                        GroupFor<E, *const E::Unit>,
+                        GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
+                    >(self.as_ptr()),
+                    self.nrows(),
+                    self.ncols(),
+                    self.row_stride(),
+                    self.col_stride(),
+                )
             },
             if coe::is_same::<E, E::Canonical>() {
                 Conj::No
@@ -2783,32 +2994,29 @@ impl<'a, E: Entity> MatRef<'a, E> {
         self.subcols(col_idx, 1)
     }
 
-    /// Returns a view over the main diagonal of the matrix.
-    ///
-    /// # Example
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let matrix = mat![
-    ///     [1.0, 5.0, 9.0],
-    ///     [2.0, 6.0, 10.0],
-    ///     [3.0, 7.0, 11.0],
-    ///     [4.0, 8.0, 12.0f64],
-    /// ];
-    ///
-    /// let view = matrix.as_ref();
-    /// let diagonal = view.diagonal();
-    ///
-    /// let expected = mat![[1.0], [6.0], [11.0]];
-    /// assert_eq!(expected.as_ref(), diagonal);
-    /// ```
+    /// Given a matrix with a single column, returns an object that interprets
+    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn diagonal(self) -> Self {
+    pub fn column_vector_as_diagonal(self) -> Matrix<DiagRef<'a, E>> {
+        assert!(self.ncols() == 1);
+        Matrix {
+            inner: DiagRef { inner: self },
+        }
+    }
+
+    #[inline(always)]
+    pub fn diagonal(self) -> Matrix<DiagRef<'a, E>> {
         let size = self.nrows().min(self.ncols());
         let row_stride = self.row_stride();
         let col_stride = self.col_stride();
-        unsafe { Self::from_raw_parts(self.as_ptr(), size, 1, row_stride + col_stride, 0) }
+        unsafe {
+            Matrix {
+                inner: DiagRef {
+                    inner: Self::from_raw_parts(self.as_ptr(), size, 1, row_stride + col_stride, 0),
+                },
+            }
+        }
     }
 
     /// Returns an owning [`Mat`] of the data.
@@ -2866,8 +3074,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     pub unsafe fn const_cast(self) -> MatMut<'a, E> {
         MatMut {
-            inner: self.inner,
-            __marker: PhantomData,
+            inner: DenseMut {
+                inner: self.inner.inner,
+                __marker: PhantomData,
+            },
         }
     }
 
@@ -3129,52 +3339,51 @@ impl<'a, E: Entity> MatMut<'a, E> {
         col_stride: isize,
     ) -> Self {
         Self {
-            inner: MatImpl {
-                ptr: into_copy::<E, _>(ptr),
-                nrows,
-                ncols,
-                row_stride,
-                col_stride,
+            inner: DenseMut {
+                inner: MatImpl {
+                    ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| ptr as *mut E::Unit)),
+                    nrows,
+                    ncols,
+                    row_stride,
+                    col_stride,
+                },
+                __marker: PhantomData,
             },
-            __marker: PhantomData,
         }
+    }
+
+    #[inline(always)]
+    pub fn nrows(&self) -> usize {
+        self.inner.inner.nrows
+    }
+    #[inline(always)]
+    pub fn ncols(&self) -> usize {
+        self.inner.inner.ncols
     }
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
     pub fn as_ptr(self) -> GroupFor<E, *mut E::Unit> {
-        from_copy::<E, _>(self.inner.ptr)
-    }
-
-    /// Returns the number of rows of the matrix.
-    #[inline(always)]
-    pub fn nrows(&self) -> usize {
-        self.inner.nrows
-    }
-
-    /// Returns the number of columns of the matrix.
-    #[inline(always)]
-    pub fn ncols(&self) -> usize {
-        self.inner.ncols
+        from_copy::<E, _>(self.inner.inner.ptr)
     }
 
     /// Returns the row stride of the matrix, specified in number of elements, not in bytes.
     #[inline(always)]
     pub fn row_stride(&self) -> isize {
-        self.inner.row_stride
+        self.inner.inner.row_stride
     }
 
     /// Returns the column stride of the matrix, specified in number of elements, not in bytes.
     #[inline(always)]
     pub fn col_stride(&self) -> isize {
-        self.inner.col_stride
+        self.inner.inner.col_stride
     }
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
     pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
-        let row_stride = self.inner.row_stride;
-        let col_stride = self.inner.col_stride;
+        let row_stride = self.inner.inner.row_stride;
+        let col_stride = self.inner.inner.col_stride;
         E::faer_map(self.as_ptr(), |ptr| {
             ptr.wrapping_offset(row as isize * row_stride)
                 .wrapping_offset(col as isize * col_stride)
@@ -3193,8 +3402,8 @@ impl<'a, E: Entity> MatMut<'a, E> {
     pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(row < self.nrows());
         debug_assert!(col < self.ncols());
-        let row_stride = self.inner.row_stride;
-        let col_stride = self.inner.col_stride;
+        let row_stride = self.inner.inner.row_stride;
+        let col_stride = self.inner.inner.col_stride;
         E::faer_map(self.as_ptr(), |ptr| {
             ptr.offset(row as isize * row_stride)
                 .offset(col as isize * col_stride)
@@ -3397,15 +3606,14 @@ impl<'a, E: Entity> MatMut<'a, E> {
     #[inline(always)]
     #[must_use]
     pub fn transpose(self) -> Self {
-        Self {
-            inner: MatImpl {
-                ptr: self.inner.ptr,
-                nrows: self.inner.ncols,
-                ncols: self.inner.nrows,
-                row_stride: self.inner.col_stride,
-                col_stride: self.inner.row_stride,
-            },
-            __marker: PhantomData,
+        unsafe {
+            Self::from_raw_parts(
+                from_copy::<E, _>(self.inner.inner.ptr),
+                self.ncols(),
+                self.nrows(),
+                self.col_stride(),
+                self.row_stride(),
+            )
         }
     }
 
@@ -3621,29 +3829,29 @@ impl<'a, E: Entity> MatMut<'a, E> {
         self.subcols(col_idx, 1)
     }
 
-    /// Returns a view over the main diagonal of the matrix.
-    ///
-    /// # Example
-    /// ```
-    /// use faer_core::mat;
-    ///
-    /// let mut matrix = mat![
-    ///     [1.0, 5.0, 9.0],
-    ///     [2.0, 6.0, 10.0],
-    ///     [3.0, 7.0, 11.0],
-    ///     [4.0, 8.0, 12.0f64],
-    /// ];
-    ///
-    /// let view = matrix.as_mut();
-    /// let diagonal = view.diagonal();
-    ///
-    /// let mut expected = mat![[1.0], [6.0], [11.0]];
-    /// assert_eq!(expected.as_mut(), diagonal);
-    /// ```
+    /// Given a matrix with a single column, returns an object that interprets
+    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn diagonal(self) -> Self {
-        unsafe { self.into_const().diagonal().const_cast() }
+    pub fn column_vector_as_diagonal(self) -> Matrix<DiagMut<'a, E>> {
+        assert!(self.ncols() == 1);
+        Matrix {
+            inner: DiagMut { inner: self },
+        }
+    }
+
+    #[inline(always)]
+    pub fn diagonal(self) -> Matrix<DiagMut<'a, E>> {
+        let size = self.nrows().min(self.ncols());
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe {
+            Matrix {
+                inner: DiagMut {
+                    inner: Self::from_raw_parts(self.as_ptr(), size, 1, row_stride + col_stride, 0),
+                },
+            }
+        }
     }
 
     /// Returns an owning [`Mat`] of the data
@@ -3792,32 +4000,6 @@ impl<'a, E: RealField> MatMut<'a, Complex<E>> {
                 re: re.const_cast(),
                 im: im.const_cast(),
             }
-        }
-    }
-}
-
-impl<U: Conjugate, T: Conjugate<Canonical = U::Canonical>> PartialEq<MatRef<'_, U>>
-    for MatRef<'_, T>
-where
-    T::Canonical: ComplexField,
-{
-    fn eq(&self, other: &MatRef<'_, U>) -> bool {
-        let same_dims = self.nrows() == other.nrows() && self.ncols() == other.ncols();
-        if !same_dims {
-            false
-        } else {
-            let m = self.nrows();
-            let n = self.ncols();
-
-            for j in 0..n {
-                for i in 0..m {
-                    if !(self.read(i, j).canonicalize() == other.read(i, j).canonicalize()) {
-                        return false;
-                    }
-                }
-            }
-
-            true
         }
     }
 }
@@ -4030,12 +4212,7 @@ impl<E: Entity> Drop for RawMat<E> {
 /// ```
 ///
 /// where X represents padding elements.
-#[repr(C)]
-pub struct Mat<E: Entity> {
-    raw: RawMat<E>,
-    nrows: usize,
-    ncols: usize,
-}
+pub type Mat<E> = Matrix<DenseOwn<E>>;
 
 #[repr(C)]
 struct MatUnit<T: 'static> {
@@ -4044,14 +4221,11 @@ struct MatUnit<T: 'static> {
     ncols: usize,
 }
 
-unsafe impl<E: Entity> Send for Mat<E> {}
-unsafe impl<E: Entity> Sync for Mat<E> {}
-
 impl<E: Entity> Clone for Mat<E> {
     fn clone(&self) -> Self {
         let this = self.as_ref();
         unsafe {
-            Self::from_fn(self.nrows, self.ncols, |i, j| {
+            Self::from_fn(self.nrows(), self.ncols(), |i, j| {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(i, j)))
             })
         }
@@ -4155,6 +4329,16 @@ impl<T> MatUnit<T> {
     }
 }
 
+impl<E: Entity> Drop for DenseOwn<E> {
+    fn drop(&mut self) {
+        drop(RawMat::<E> {
+            ptr: self.inner.ptr,
+            row_capacity: self.row_capacity,
+            col_capacity: self.col_capacity,
+        });
+    }
+}
+
 impl<E: Entity> Default for Mat<E> {
     #[inline]
     fn default() -> Self {
@@ -4166,13 +4350,17 @@ impl<E: Entity> Mat<E> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            raw: RawMat::<E> {
-                ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| NonNull::<E::Unit>::dangling())),
+            inner: DenseOwn {
+                inner: NonNullMatImpl {
+                    ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| {
+                        NonNull::<E::Unit>::dangling()
+                    })),
+                    nrows: 0,
+                    ncols: 0,
+                },
                 row_capacity: 0,
                 col_capacity: 0,
             },
-            nrows: 0,
-            ncols: 0,
         }
     }
 
@@ -4184,10 +4372,17 @@ impl<E: Entity> Mat<E> {
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
     pub fn with_capacity(row_capacity: usize, col_capacity: usize) -> Self {
+        let raw = ManuallyDrop::new(RawMat::<E>::new(row_capacity, col_capacity));
         Self {
-            raw: RawMat::<E>::new(row_capacity, col_capacity),
-            nrows: 0,
-            ncols: 0,
+            inner: DenseOwn {
+                inner: NonNullMatImpl {
+                    ptr: raw.ptr,
+                    nrows: 0,
+                    ncols: 0,
+                },
+                row_capacity: raw.row_capacity,
+                col_capacity: raw.col_capacity,
+            },
         }
     }
 
@@ -4225,8 +4420,21 @@ impl<E: Entity> Mat<E> {
         E: ComplexField,
     {
         let mut matrix = Self::zeros(nrows, ncols);
-        matrix.as_mut().diagonal().fill(E::faer_one());
         matrix
+            .as_mut()
+            .diagonal()
+            .into_column_vector()
+            .fill(E::faer_one());
+        matrix
+    }
+
+    #[inline(always)]
+    pub fn nrows(&self) -> usize {
+        self.inner.inner.nrows
+    }
+    #[inline(always)]
+    pub fn ncols(&self) -> usize {
+        self.inner.inner.ncols
     }
 
     /// Set the dimensions of the matrix.
@@ -4239,14 +4447,14 @@ impl<E: Entity> Mat<E> {
     /// initialized.
     #[inline]
     pub unsafe fn set_dims(&mut self, nrows: usize, ncols: usize) {
-        self.nrows = nrows;
-        self.ncols = ncols;
+        self.inner.inner.nrows = nrows;
+        self.inner.inner.ncols = ncols;
     }
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
     pub fn as_ptr(&self) -> GroupFor<E, *const E::Unit> {
-        E::faer_map(from_copy::<E, _>(self.raw.ptr), |ptr| {
+        E::faer_map(from_copy::<E, _>(self.inner.inner.ptr), |ptr| {
             ptr.as_ptr() as *const E::Unit
         })
     }
@@ -4254,33 +4462,21 @@ impl<E: Entity> Mat<E> {
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> GroupFor<E, *mut E::Unit> {
-        E::faer_map(from_copy::<E, _>(self.raw.ptr), |ptr| ptr.as_ptr())
-    }
-
-    /// Returns the number of rows of the matrix.
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.nrows
-    }
-
-    /// Returns the number of columns of the matrix.
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.ncols
+        E::faer_map(from_copy::<E, _>(self.inner.inner.ptr), |ptr| ptr.as_ptr())
     }
 
     /// Returns the row capacity, that is, the number of rows that the matrix is able to hold
     /// without needing to reallocate, excluding column insertions.
     #[inline]
     pub fn row_capacity(&self) -> usize {
-        self.raw.row_capacity
+        self.inner.row_capacity
     }
 
     /// Returns the column capacity, that is, the number of columns that the matrix is able to hold
     /// without needing to reallocate, excluding row insertions.
     #[inline]
     pub fn col_capacity(&self) -> usize {
-        self.raw.col_capacity
+        self.inner.col_capacity
     }
 
     /// Returns the offset between the first elements of two successive rows in the matrix.
@@ -4305,31 +4501,33 @@ impl<E: Entity> Mat<E> {
                 .unwrap();
         }
 
-        let nrows = self.nrows;
-        let ncols = self.ncols;
-        let old_row_capacity = self.raw.row_capacity;
-        let old_col_capacity = self.raw.col_capacity;
+        let nrows = self.inner.inner.nrows;
+        let ncols = self.inner.inner.ncols;
+        let old_row_capacity = self.inner.row_capacity;
+        let old_col_capacity = self.inner.col_capacity;
 
         let mut this = ManuallyDrop::new(core::mem::take(self));
         {
-            let mut this_group = E::faer_map(from_copy::<E, _>(this.raw.ptr), |ptr| MatUnit {
-                raw: RawMatUnit {
-                    ptr,
-                    row_capacity: old_row_capacity,
-                    col_capacity: old_col_capacity,
-                },
-                nrows,
-                ncols,
-            });
+            let mut this_group =
+                E::faer_map(from_copy::<E, _>(this.inner.inner.ptr), |ptr| MatUnit {
+                    raw: RawMatUnit {
+                        ptr,
+                        row_capacity: old_row_capacity,
+                        col_capacity: old_col_capacity,
+                    },
+                    nrows,
+                    ncols,
+                });
 
             E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
                 mat_unit.do_reserve_exact(new_row_capacity, new_col_capacity);
             });
 
             let this_group = E::faer_map(this_group, ManuallyDrop::new);
-            this.raw.ptr = into_copy::<E, _>(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
-            this.raw.row_capacity = new_row_capacity;
-            this.raw.col_capacity = new_col_capacity;
+            this.inner.inner.ptr =
+                into_copy::<E, _>(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
+            this.inner.row_capacity = new_row_capacity;
+            this.inner.col_capacity = new_col_capacity;
         }
         *self = ManuallyDrop::into_inner(this);
     }
@@ -4344,8 +4542,8 @@ impl<E: Entity> Mat<E> {
         if self.row_capacity() >= row_capacity && self.col_capacity() >= col_capacity {
             // do nothing
         } else if core::mem::size_of::<E::Unit>() == 0 {
-            self.raw.row_capacity = self.row_capacity().max(row_capacity);
-            self.raw.col_capacity = self.col_capacity().max(col_capacity);
+            self.inner.row_capacity = self.row_capacity().max(row_capacity);
+            self.inner.col_capacity = self.col_capacity().max(col_capacity);
         } else {
             self.do_reserve_exact(row_capacity, col_capacity);
         }
@@ -4388,13 +4586,13 @@ impl<E: Entity> Mat<E> {
     fn erase_last_cols(&mut self, new_ncols: usize) {
         let old_ncols = self.ncols();
         debug_assert!(new_ncols <= old_ncols);
-        self.ncols = new_ncols;
+        self.inner.inner.ncols = new_ncols;
     }
 
     fn erase_last_rows(&mut self, new_nrows: usize) {
         let old_nrows = self.nrows();
         debug_assert!(new_nrows <= old_nrows);
-        self.nrows = new_nrows;
+        self.inner.inner.nrows = new_nrows;
     }
 
     unsafe fn insert_last_cols_with<F: FnMut(usize, usize) -> E>(
@@ -4407,7 +4605,7 @@ impl<E: Entity> Mat<E> {
         debug_assert!(new_ncols > old_ncols);
 
         self.insert_block_with(f, 0, self.nrows(), old_ncols, new_ncols);
-        self.ncols = new_ncols;
+        self.inner.inner.ncols = new_ncols;
     }
 
     unsafe fn insert_last_rows_with<F: FnMut(usize, usize) -> E>(
@@ -4420,7 +4618,7 @@ impl<E: Entity> Mat<E> {
         debug_assert!(new_nrows > old_nrows);
 
         self.insert_block_with(f, old_nrows, new_nrows, 0, self.ncols());
-        self.nrows = new_nrows;
+        self.inner.inner.nrows = new_nrows;
     }
 
     /// Resizes the matrix in-place so that the new dimensions are `(new_nrows, new_ncols)`.
@@ -4712,6 +4910,11 @@ impl<E: Entity> Mat<E> {
         E: Conjugate,
     {
         self.as_ref().adjoint()
+    }
+
+    #[inline]
+    pub fn diagonal(&self) -> Matrix<DiagRef<'_, E>> {
+        self.as_ref().diagonal()
     }
 
     /// Returns an owning [`Mat`] of the data
@@ -5282,27 +5485,27 @@ impl<E: Entity> Debug for Mat<E> {
     }
 }
 
-impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<MatRef<'_, RhsE>>
-    for MatRef<'_, LhsE>
-where
-    LhsE::Canonical: ComplexField,
-{
-    type Output = Mat<LhsE::Canonical>;
+// impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<MatRef<'_,
+// RhsE>>     for MatRef<'_, LhsE>
+// where
+//     LhsE::Canonical: ComplexField,
+// {
+//     type Output = Mat<LhsE::Canonical>;
 
-    #[track_caller]
-    fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
-        let mut out = Mat::zeros(self.nrows(), rhs.ncols());
-        mul::matmul(
-            out.as_mut(),
-            self,
-            rhs,
-            None,
-            LhsE::Canonical::faer_one(),
-            get_global_parallelism(),
-        );
-        out
-    }
-}
+//     #[track_caller]
+//     fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
+//         let mut out = Mat::zeros(self.nrows(), rhs.ncols());
+//         mul::matmul(
+//             out.as_mut(),
+//             self,
+//             rhs,
+//             None,
+//             LhsE::Canonical::faer_one(),
+//             get_global_parallelism(),
+//         );
+//         out
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -5649,12 +5852,12 @@ mod tests {
         let mut x = mat![[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]];
 
         let expected = mat![[0.0, 2.0], [4.0, 6.0], [8.0, 10.0]];
-        x *= Scale(2.0);
+        x *= scale(2.0);
         assert_eq!(x, expected);
 
         let expected = mat![[0.0, 4.0], [8.0, 12.0], [16.0, 20.0]];
         let mut x_mut = x.as_mut();
-        x_mut *= Scale(2.0);
+        x_mut *= scale(2.0);
         assert_eq!(x, expected);
     }
 

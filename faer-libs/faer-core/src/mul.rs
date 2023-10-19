@@ -3426,20 +3426,27 @@ pub mod triangular {
                 if !skip_diag {
                     match &alpha {
                         &Some(alpha) => {
-                            zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
-                                .for_each(|mut acc, lhs, rhs| {
-                                    acc.write(
-                                        (alpha.faer_mul(acc.read())).faer_add(
-                                            beta.faer_mul(lhs.read().faer_mul(rhs.read())),
-                                        ),
-                                    )
-                                });
+                            zipped!(
+                                acc.rb_mut().diagonal().into_column_vector(),
+                                lhs.diagonal().into_column_vector(),
+                                rhs.diagonal().into_column_vector()
+                            )
+                            .for_each(|mut acc, lhs, rhs| {
+                                acc.write(
+                                    (alpha.faer_mul(acc.read()))
+                                        .faer_add(beta.faer_mul(lhs.read().faer_mul(rhs.read()))),
+                                )
+                            });
                         }
                         None => {
-                            zipped!(acc.rb_mut().diagonal(), lhs.diagonal(), rhs.diagonal())
-                                .for_each(|mut acc, lhs, rhs| {
-                                    acc.write(beta.faer_mul(lhs.read().faer_mul(rhs.read())))
-                                });
+                            zipped!(
+                                acc.rb_mut().diagonal().into_column_vector(),
+                                lhs.diagonal().into_column_vector(),
+                                rhs.diagonal().into_column_vector()
+                            )
+                            .for_each(|mut acc, lhs, rhs| {
+                                acc.write(beta.faer_mul(lhs.read().faer_mul(rhs.read())))
+                            });
                         }
                     }
                 }

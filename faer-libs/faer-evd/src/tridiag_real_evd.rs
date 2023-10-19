@@ -539,7 +539,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let n = diag.len();
 
     if n <= 1 {
-        zipped!(u.rb_mut().diagonal()).for_each(|mut x| x.write(E::faer_one()));
+        zipped!(u.rb_mut().diagonal().into_column_vector())
+            .for_each(|mut x| x.write(E::faer_one()));
         return;
     }
 

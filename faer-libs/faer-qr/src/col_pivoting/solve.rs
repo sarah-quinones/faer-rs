@@ -1,7 +1,9 @@
 use crate::no_pivoting;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    permutation::{permute_rows, permute_rows_in_place, permute_rows_in_place_req, PermutationRef},
+    permutation::{
+        permute_rows, permute_rows_in_place, permute_rows_in_place_req, Index, PermutationRef,
+    },
     ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
@@ -9,56 +11,56 @@ use reborrow::*;
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_in_place_req<T: Entity>(
+pub fn solve_in_place_req<E: Entity, I: Index>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
-        no_pivoting::solve::solve_in_place_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+        no_pivoting::solve::solve_in_place_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_in_place_req<T: Entity>(
+pub fn solve_transpose_in_place_req<E: Entity, I: Index>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
-        no_pivoting::solve::solve_transpose_in_place_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+        no_pivoting::solve::solve_transpose_in_place_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_req<T: Entity>(
+pub fn solve_req<E: Entity, I: Index>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
-        no_pivoting::solve::solve_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+        no_pivoting::solve::solve_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix ouf of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_req<T: Entity>(
+pub fn solve_transpose_req<E: Entity, I: Index>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
-        no_pivoting::solve::solve_transpose_req::<T>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<T>(qr_size, rhs_ncols)?,
+        no_pivoting::solve::solve_transpose_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
+        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
     ])
 }
 
@@ -79,12 +81,12 @@ pub fn solve_transpose_req<T: Entity>(
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
 #[track_caller]
-pub fn solve_in_place<T: ComplexField>(
-    qr_factors: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
-    col_perm: PermutationRef<'_>,
+pub fn solve_in_place<E: ComplexField, I: Index>(
+    qr_factors: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
+    col_perm: PermutationRef<'_, I>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -120,12 +122,12 @@ pub fn solve_in_place<T: ComplexField>(
 /// - Panics if the provided memory in `stack` is insufficient (see
 ///   [`solve_transpose_in_place_req`]).
 #[track_caller]
-pub fn solve_transpose_in_place<T: ComplexField>(
-    qr_factors: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
-    col_perm: PermutationRef<'_>,
+pub fn solve_transpose_in_place<E: ComplexField, I: Index>(
+    qr_factors: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
+    col_perm: PermutationRef<'_, I>,
     conj_lhs: Conj,
-    rhs: MatMut<'_, T>,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -161,13 +163,13 @@ pub fn solve_transpose_in_place<T: ComplexField>(
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
 #[track_caller]
-pub fn solve<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    qr_factors: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
-    col_perm: PermutationRef<'_>,
+pub fn solve<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    qr_factors: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
+    col_perm: PermutationRef<'_, I>,
     conj_lhs: Conj,
-    rhs: MatRef<'_, T>,
+    rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -204,13 +206,13 @@ pub fn solve<T: ComplexField>(
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
 #[track_caller]
-pub fn solve_transpose<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    qr_factors: MatRef<'_, T>,
-    householder_factor: MatRef<'_, T>,
-    col_perm: PermutationRef<'_>,
+pub fn solve_transpose<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    qr_factors: MatRef<'_, E>,
+    householder_factor: MatRef<'_, E>,
+    col_perm: PermutationRef<'_, I>,
     conj_lhs: Conj,
-    rhs: MatRef<'_, T>,
+    rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -241,7 +243,7 @@ mod tests {
         };
     }
 
-    fn test_solve_in_place<T: ComplexField>(mut random: impl FnMut() -> T, epsilon: T::Real) {
+    fn test_solve_in_place<E: ComplexField>(mut random: impl FnMut() -> E, epsilon: E::Real) {
         let n = 32;
         let k = 6;
 
@@ -250,9 +252,9 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::faer_zero());
-        let mut perm = vec![0; n];
-        let mut perm_inv = vec![0; n];
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::faer_zero());
+        let mut perm = vec![0usize; n];
+        let mut perm_inv = vec![0usize; n];
 
         let (_, perm) = qr_in_place(
             qr.as_mut(),
@@ -260,7 +262,7 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(
+            make_stack!(qr_in_place_req::<E, usize>(
                 n,
                 n,
                 blocksize,
@@ -281,7 +283,7 @@ mod tests {
                 conj_lhs,
                 sol.as_mut(),
                 Parallelism::None,
-                make_stack!(solve_in_place_req::<T>(n, blocksize, k)),
+                make_stack!(solve_in_place_req::<E, usize>(n, blocksize, k)),
             );
 
             let mut rhs_reconstructed = rhs.clone();
@@ -292,7 +294,7 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                T::faer_one(),
+                E::faer_one(),
                 Parallelism::None,
             );
 
@@ -307,9 +309,9 @@ mod tests {
         }
     }
 
-    fn test_solve_transpose_in_place<T: ComplexField>(
-        mut random: impl FnMut() -> T,
-        epsilon: T::Real,
+    fn test_solve_transpose_in_place<E: ComplexField>(
+        mut random: impl FnMut() -> E,
+        epsilon: E::Real,
     ) {
         let n = 32;
         let k = 6;
@@ -319,8 +321,8 @@ mod tests {
 
         let mut qr = a.clone();
         let blocksize = recommended_blocksize::<f64>(n, n);
-        let mut householder = Mat::from_fn(blocksize, n, |_, _| T::faer_zero());
-        let mut perm = vec![0; n];
+        let mut householder = Mat::from_fn(blocksize, n, |_, _| E::faer_zero());
+        let mut perm = vec![0usize; n];
         let mut perm_inv = vec![0; n];
 
         let (_, perm) = qr_in_place(
@@ -329,7 +331,7 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<T>(
+            make_stack!(qr_in_place_req::<E, usize>(
                 n,
                 n,
                 blocksize,
@@ -350,7 +352,7 @@ mod tests {
                 conj_lhs,
                 sol.as_mut(),
                 Parallelism::None,
-                make_stack!(solve_transpose_in_place_req::<T>(n, blocksize, k)),
+                make_stack!(solve_transpose_in_place_req::<E, usize>(n, blocksize, k)),
             );
 
             let mut rhs_reconstructed = rhs.clone();
@@ -361,7 +363,7 @@ mod tests {
                 sol.as_ref(),
                 Conj::No,
                 None,
-                T::faer_one(),
+                E::faer_one(),
                 Parallelism::None,
             );
 

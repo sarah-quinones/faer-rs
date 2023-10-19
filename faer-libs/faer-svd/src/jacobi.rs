@@ -118,7 +118,7 @@ pub fn jacobi_svd<E: RealField>(
 
     let mut max_diag = E::faer_zero();
     {
-        let diag = matrix.rb().diagonal();
+        let diag = matrix.rb().diagonal().into_column_vector();
         for idx in 0..diag.nrows() {
             let d = diag.read(idx, 0).faer_abs();
             max_diag = if d > max_diag { d } else { max_diag };

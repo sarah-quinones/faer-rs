@@ -1,18 +1,18 @@
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    permutation::{permute_rows, PermutationRef},
+    permutation::{permute_rows, Index, PermutationRef},
     solve::*,
     temp_mat_req, temp_mat_uninit, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
-fn solve_impl<T: ComplexField>(
-    lu_factors: MatRef<'_, T>,
+fn solve_impl<E: ComplexField, I: Index>(
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    dst: MatMut<'_, T>,
-    rhs: Option<MatRef<'_, T>>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    dst: MatMut<'_, E>,
+    rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -24,7 +24,7 @@ fn solve_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    let (mut temp, _) = temp_mat_uninit::<T>(n, k, stack);
+    let (mut temp, _) = temp_mat_uninit::<E>(n, k, stack);
     let mut temp = temp.as_mut();
 
     // temp <- P(row_fwd) B
@@ -49,13 +49,13 @@ fn solve_impl<T: ComplexField>(
     permute_rows(dst, temp.rb(), col_perm.inverse());
 }
 
-fn solve_transpose_impl<T: ComplexField>(
-    lu_factors: MatRef<'_, T>,
+fn solve_transpose_impl<E: ComplexField, I: Index>(
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    dst: MatMut<'_, T>,
-    rhs: Option<MatRef<'_, T>>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    dst: MatMut<'_, E>,
+    rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -68,7 +68,7 @@ fn solve_transpose_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let k = dst.ncols();
 
-    let (mut temp, _) = temp_mat_uninit::<T>(n, k, stack);
+    let (mut temp, _) = temp_mat_uninit::<E>(n, k, stack);
     let mut temp = temp.as_mut();
 
     // temp <- P(col_fwd) B
@@ -100,7 +100,7 @@ fn solve_transpose_impl<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix in place, given its full pivoting LU decomposition.
-pub fn solve_in_place_req<T: Entity>(
+pub fn solve_in_place_req<E: Entity, I: Index>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -108,12 +108,12 @@ pub fn solve_in_place_req<T: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = lu_ncols;
     let _ = parallelism;
-    temp_mat_req::<T>(lu_nrows, rhs_ncols)
+    temp_mat_req::<E>(lu_nrows, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn solve_req<T: Entity>(
+pub fn solve_req<E: Entity, I: Index>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -121,12 +121,12 @@ pub fn solve_req<T: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = lu_ncols;
     let _ = parallelism;
-    temp_mat_req::<T>(lu_nrows, rhs_ncols)
+    temp_mat_req::<E>(lu_nrows, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix in place, given its full pivoting LU decomposition.
-pub fn solve_transpose_in_place_req<T: Entity>(
+pub fn solve_transpose_in_place_req<E: Entity, I: Index>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -134,12 +134,12 @@ pub fn solve_transpose_in_place_req<T: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = lu_ncols;
     let _ = parallelism;
-    temp_mat_req::<T>(lu_nrows, rhs_ncols)
+    temp_mat_req::<E>(lu_nrows, rhs_ncols)
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix out of place, given its full pivoting LU decomposition.
-pub fn solve_transpose_req<T: Entity>(
+pub fn solve_transpose_req<E: Entity, I: Index>(
     lu_nrows: usize,
     lu_ncols: usize,
     rhs_ncols: usize,
@@ -147,7 +147,7 @@ pub fn solve_transpose_req<T: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = lu_ncols;
     let _ = parallelism;
-    temp_mat_req::<T>(lu_nrows, rhs_ncols)
+    temp_mat_req::<E>(lu_nrows, rhs_ncols)
 }
 
 /// Given the LU factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this function computes
@@ -166,13 +166,13 @@ pub fn solve_transpose_req<T: Entity>(
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
-pub fn solve<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
+pub fn solve<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    rhs: MatRef<'_, T>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -203,12 +203,12 @@ pub fn solve<T: ComplexField>(
 /// - Panics if `col_perm` doesn't have the same dimension as `lu_factors`.
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
-pub fn solve_in_place<T: ComplexField>(
-    lu_factors: MatRef<'_, T>,
+pub fn solve_in_place<E: ComplexField, I: Index>(
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    rhs: MatMut<'_, T>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -240,13 +240,13 @@ pub fn solve_in_place<T: ComplexField>(
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
-pub fn solve_transpose<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
+pub fn solve_transpose<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    rhs: MatRef<'_, T>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -278,12 +278,12 @@ pub fn solve_transpose<T: ComplexField>(
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see
 ///   [`solve_transpose_in_place_req`]).
-pub fn solve_transpose_in_place<T: ComplexField>(
-    lu_factors: MatRef<'_, T>,
+pub fn solve_transpose_in_place<E: ComplexField, I: Index>(
+    lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
-    rhs: MatMut<'_, T>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
+    rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -313,7 +313,7 @@ mod tests {
         };
     }
 
-    fn test_solve<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
+    fn test_solve<E: ComplexField>(mut gen: impl FnMut() -> E, epsilon: E::Real) {
         (0..32).chain((1..8).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
                 let a = Mat::from_fn(n, n, |_, _| gen());
@@ -324,7 +324,7 @@ mod tests {
                 let k = 32;
                 let rhs = Mat::from_fn(n, k, |_, _| gen());
                 let rhs = rhs.as_ref();
-                let mut sol = Mat::<T>::zeros(n, k);
+                let mut sol = Mat::<E>::zeros(n, k);
                 let mut sol = sol.as_mut();
 
                 let mut row_perm = vec![0_usize; n];
@@ -341,7 +341,12 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<T>(n, n, parallelism, Default::default())),
+                    make_stack!(lu_in_place_req::<E, usize>(
+                        n,
+                        n,
+                        parallelism,
+                        Default::default()
+                    )),
                     Default::default(),
                 );
 
@@ -353,7 +358,7 @@ mod tests {
                     col_perm.rb(),
                     rhs,
                     parallelism,
-                    make_stack!(solve_req::<T>(n, n, k, parallelism)),
+                    make_stack!(solve_req::<E, usize>(n, n, k, parallelism)),
                 );
 
                 let mut rhs_reconstructed = Mat::zeros(n, k);
@@ -366,7 +371,7 @@ mod tests {
                     sol.rb(),
                     Conj::No,
                     None,
-                    T::faer_one(),
+                    E::faer_one(),
                     parallelism,
                 );
 
@@ -382,7 +387,7 @@ mod tests {
         });
     }
 
-    fn test_solve_transpose<T: ComplexField>(mut gen: impl FnMut() -> T, epsilon: T::Real) {
+    fn test_solve_transpose<E: ComplexField>(mut gen: impl FnMut() -> E, epsilon: E::Real) {
         (0..32).chain((1..16).map(|i| i * 32)).for_each(|n| {
             for conj_lhs in [Conj::No, Conj::Yes] {
                 let a = Mat::from_fn(n, n, |_, _| gen());
@@ -393,7 +398,7 @@ mod tests {
                 let k = 32;
                 let rhs = Mat::from_fn(n, k, |_, _| gen());
                 let rhs = rhs.as_ref();
-                let mut sol = Mat::<T>::zeros(n, k);
+                let mut sol = Mat::<E>::zeros(n, k);
                 let mut sol = sol.as_mut();
 
                 let mut row_perm = vec![0_usize; n];
@@ -410,7 +415,12 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<T>(n, n, parallelism, Default::default())),
+                    make_stack!(lu_in_place_req::<E, usize>(
+                        n,
+                        n,
+                        parallelism,
+                        Default::default()
+                    )),
                     Default::default(),
                 );
 
@@ -422,7 +432,7 @@ mod tests {
                     col_perm.rb(),
                     rhs,
                     parallelism,
-                    make_stack!(solve_transpose_req::<T>(n, n, k, parallelism)),
+                    make_stack!(solve_transpose_req::<E, usize>(n, n, k, parallelism)),
                 );
 
                 let mut rhs_reconstructed = Mat::zeros(n, k);
@@ -435,7 +445,7 @@ mod tests {
                     sol.rb(),
                     Conj::No,
                     None,
-                    T::faer_one(),
+                    E::faer_one(),
                     parallelism,
                 );
 

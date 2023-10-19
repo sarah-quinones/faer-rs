@@ -1067,8 +1067,13 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 last_col,
             });
 
-            zipped!(y21.rb_mut(), acc.rb(), a22.rb().diagonal(), a21.rb())
-                .for_each(|mut y, v, a, u| y.write(v.read().faer_add(a.read().faer_mul(u.read()))));
+            zipped!(
+                y21.rb_mut(),
+                acc.rb(),
+                a22.rb().diagonal().into_column_vector(),
+                a21.rb()
+            )
+            .for_each(|mut y, v, a, u| y.write(v.read().faer_add(a.read().faer_mul(u.read()))));
         }
 
         zipped!(u21.rb_mut(), a21.rb()).for_each(|mut dst, src| dst.write(src.read()));

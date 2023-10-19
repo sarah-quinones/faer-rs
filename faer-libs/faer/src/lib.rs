@@ -36,7 +36,7 @@
 //!
 //! ## Example
 //! ```
-//! use faer::{mat, prelude::*, Mat, Scale};
+//! use faer::{mat, prelude::*, scale, Mat};
 //!
 //! let a = mat![
 //!     [1.0, 5.0, 9.0],
@@ -49,7 +49,7 @@
 //!
 //! let add = &a + &b;
 //! let sub = &a - &b;
-//! let scale = Scale(3.0) * &a;
+//! let scale = scale(3.0) * &a;
 //! let mul = &a * b.transpose();
 //!
 //! let a00 = a[(0, 0)];
@@ -181,19 +181,12 @@ pub mod prelude {
 }
 
 pub use faer_core::{
-    complex_native, get_global_parallelism, mat, set_global_parallelism, Mat, MatMut, MatRef,
-    Parallelism, Scale,
+    complex_native, get_global_parallelism, mat, scale, set_global_parallelism, Mat, MatMut,
+    MatRef, Parallelism, Side,
 };
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use matrixcompare::assert_matrix_eq;
-
-/// Specifies whether the triangular lower or upper part of a matrix should be accessed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Side {
-    Lower,
-    Upper,
-}
 
 extern crate alloc;
 use alloc::{vec, vec::Vec};
@@ -652,7 +645,7 @@ pub mod solvers {
                 &mut perm_inv,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<E>(
+                    faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<E, usize>(
                         dim,
                         parallelism,
                         params,
@@ -823,7 +816,7 @@ pub mod solvers {
                 &mut row_perm_inv,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::compute::lu_in_place_req::<E>(
+                    faer_lu::partial_pivoting::compute::lu_in_place_req::<E, usize>(
                         dim,
                         dim,
                         parallelism,
@@ -846,7 +839,7 @@ pub mod solvers {
             self.factors.nrows()
         }
 
-        pub fn row_permutation(&self) -> PermutationRef<'_> {
+        pub fn row_permutation(&self) -> PermutationRef<'_, usize> {
             unsafe { PermutationRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
         }
 
@@ -868,7 +861,11 @@ pub mod solvers {
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
                     dst.write(E::faer_zero())
                 });
-            factor.as_mut().diagonal().fill(E::faer_one());
+            factor
+                .as_mut()
+                .diagonal()
+                .into_column_vector()
+                .fill(E::faer_one());
             factor
         }
     }
@@ -883,7 +880,7 @@ pub mod solvers {
                 self.row_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::inverse::invert_req::<E>(
+                    faer_lu::partial_pivoting::inverse::invert_req::<E, usize>(
                         self.dim(),
                         self.dim(),
                         parallelism,
@@ -905,7 +902,7 @@ pub mod solvers {
                 self.row_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::reconstruct::reconstruct_req::<E>(
+                    faer_lu::partial_pivoting::reconstruct::reconstruct_req::<E, usize>(
                         self.dim(),
                         self.dim(),
                         parallelism,
@@ -929,7 +926,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::solve::solve_in_place_req::<E>(
+                    faer_lu::partial_pivoting::solve::solve_in_place_req::<E, usize>(
                         self.dim(),
                         self.dim(),
                         rhs_ncols,
@@ -952,7 +949,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::solve::solve_transpose_in_place_req::<E>(
+                    faer_lu::partial_pivoting::solve::solve_transpose_in_place_req::<E, usize>(
                         self.dim(),
                         self.dim(),
                         rhs_ncols,
@@ -996,7 +993,7 @@ pub mod solvers {
                 &mut col_perm_inv,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::compute::lu_in_place_req::<E>(
+                    faer_lu::full_pivoting::compute::lu_in_place_req::<E, usize>(
                         m,
                         n,
                         parallelism,
@@ -1017,10 +1014,10 @@ pub mod solvers {
             }
         }
 
-        pub fn row_permutation(&self) -> PermutationRef<'_> {
+        pub fn row_permutation(&self) -> PermutationRef<'_, usize> {
             unsafe { PermutationRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
         }
-        pub fn col_permutation(&self) -> PermutationRef<'_> {
+        pub fn col_permutation(&self) -> PermutationRef<'_, usize> {
             unsafe { PermutationRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
         }
 
@@ -1052,7 +1049,11 @@ pub mod solvers {
                 .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
                     dst.write(E::faer_zero())
                 });
-            factor.as_mut().diagonal().fill(E::faer_one());
+            factor
+                .as_mut()
+                .diagonal()
+                .into_column_vector()
+                .fill(E::faer_one());
             factor
         }
     }
@@ -1073,7 +1074,7 @@ pub mod solvers {
                 self.col_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::inverse::invert_req::<E>(dim, dim, parallelism)
+                    faer_lu::full_pivoting::inverse::invert_req::<E, usize>(dim, dim, parallelism)
                         .unwrap(),
                 )),
             );
@@ -1092,7 +1093,7 @@ pub mod solvers {
                 self.col_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::reconstruct::reconstruct_req::<E>(
+                    faer_lu::full_pivoting::reconstruct::reconstruct_req::<E, usize>(
                         self.nrows(),
                         self.ncols(),
                         parallelism,
@@ -1119,7 +1120,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::solve::solve_in_place_req::<E>(
+                    faer_lu::full_pivoting::solve::solve_in_place_req::<E, usize>(
                         self.nrows(),
                         self.ncols(),
                         rhs_ncols,
@@ -1145,7 +1146,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::solve::solve_transpose_in_place_req::<E>(
+                    faer_lu::full_pivoting::solve::solve_transpose_in_place_req::<E, usize>(
                         self.nrows(),
                         self.ncols(),
                         rhs_ncols,
@@ -1224,7 +1225,10 @@ pub mod solvers {
             let m = factors.nrows();
 
             let mut q = Mat::<E>::zeros(m, m);
-            q.as_mut().diagonal().fill(E::faer_one());
+            q.as_mut()
+                .diagonal()
+                .into_column_vector()
+                .fill(E::faer_one());
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
                 factors,
@@ -1382,7 +1386,7 @@ pub mod solvers {
                 &mut col_perm_inv,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::compute::qr_in_place_req::<E>(
+                    faer_qr::col_pivoting::compute::qr_in_place_req::<E, usize>(
                         nrows,
                         ncols,
                         blocksize,
@@ -1402,7 +1406,7 @@ pub mod solvers {
             }
         }
 
-        pub fn col_permutation(&self) -> PermutationRef<'_> {
+        pub fn col_permutation(&self) -> PermutationRef<'_, usize> {
             unsafe { PermutationRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
         }
 
@@ -1435,7 +1439,7 @@ pub mod solvers {
                 self.col_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::reconstruct::reconstruct_req::<E>(
+                    faer_qr::col_pivoting::reconstruct::reconstruct_req::<E, usize>(
                         self.nrows(),
                         self.ncols(),
                         self.blocksize(),
@@ -1461,7 +1465,7 @@ pub mod solvers {
                 self.col_permutation(),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::inverse::invert_req::<E>(
+                    faer_qr::col_pivoting::inverse::invert_req::<E, usize>(
                         self.nrows(),
                         self.ncols(),
                         self.blocksize(),
@@ -1495,7 +1499,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::solve::solve_transpose_in_place_req::<E>(
+                    faer_qr::col_pivoting::solve::solve_transpose_in_place_req::<E, usize>(
                         self.nrows(),
                         self.blocksize(),
                         rhs_ncols,
@@ -1528,7 +1532,7 @@ pub mod solvers {
                 rhs,
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::solve::solve_in_place_req::<E>(
+                    faer_qr::col_pivoting::solve::solve_in_place_req::<E, usize>(
                         self.nrows(),
                         self.blocksize(),
                         rhs_ncols,
@@ -3843,7 +3847,10 @@ mod tests {
         {
             let eigen = H.eigendecomposition::<c64>();
             let mut s = Mat::zeros(n, n);
-            s.as_mut().diagonal().clone_from(eigen.s_diagonal());
+            s.as_mut()
+                .diagonal()
+                .into_column_vector()
+                .clone_from(eigen.s_diagonal());
             let u = eigen.u();
             assert_approx_eq(u * &s, &H * u);
         }
@@ -3851,7 +3858,10 @@ mod tests {
         {
             let eigen = H.complex_eigendecomposition();
             let mut s = Mat::zeros(n, n);
-            s.as_mut().diagonal().clone_from(eigen.s_diagonal());
+            s.as_mut()
+                .diagonal()
+                .into_column_vector()
+                .clone_from(eigen.s_diagonal());
             let u = eigen.u();
             assert_approx_eq(u * &s, &H * u);
         }
@@ -3876,7 +3886,10 @@ mod tests {
 
         let eigen = H_real.eigendecomposition::<c64>();
         let mut s = Mat::zeros(n, n);
-        s.as_mut().diagonal().clone_from(eigen.s_diagonal());
+        s.as_mut()
+            .diagonal()
+            .into_column_vector()
+            .clone_from(eigen.s_diagonal());
         let u = eigen.u();
         assert_approx_eq(u * &s, &H * u);
     }
