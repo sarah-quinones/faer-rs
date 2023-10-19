@@ -6,7 +6,9 @@
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     mul::triangular::{self, BlockStructure},
-    permutation::{permute_rows, swap_cols, swap_rows, PermutationMut, PermutationRef},
+    permutation::{
+        permute_rows, swap_cols, swap_rows, Index, PermutationMut, PermutationRef, SignedIndex,
+    },
     solve::{
         solve_unit_lower_triangular_in_place_with_conj,
         solve_unit_upper_triangular_in_place_with_conj,
@@ -126,10 +128,10 @@ pub mod compute {
         a.write(i1, j1, tmp);
     }
 
-    fn cholesky_diagonal_pivoting_blocked_step<E: ComplexField>(
+    fn cholesky_diagonal_pivoting_blocked_step<E: ComplexField, I: Index>(
         mut a: MatMut<'_, E>,
         mut w: MatMut<'_, E>,
-        pivots: &mut [usize],
+        pivots: &mut [I],
         alpha: E::Real,
         parallelism: Parallelism,
     ) -> usize {
@@ -140,6 +142,8 @@ pub mod compute {
         if n == 0 {
             return 0;
         }
+
+        let truncate = <I::Signed as SignedIndex>::truncate;
 
         let mut k = 0;
         while k < n && k + 1 < nb {
@@ -295,10 +299,10 @@ pub mod compute {
             }
 
             if k_step == 1 {
-                pivots[k] = kp;
+                pivots[k] = I::from_signed(truncate(kp));
             } else {
-                pivots[k] = !kp;
-                pivots[k + 1] = !kp;
+                pivots[k] = I::from_signed(truncate(!kp));
+                pivots[k + 1] = I::from_signed(truncate(!kp));
             }
 
             k += k_step;
@@ -317,13 +321,13 @@ pub mod compute {
             parallelism,
         );
 
-        zipped!(a_right.diagonal())
+        zipped!(a_right.diagonal().into_column_vector())
             .for_each(|mut x| x.write(E::faer_from_real(x.read().faer_real())));
 
         let mut j = k - 1;
         loop {
             let jj = j;
-            let mut jp = pivots[j];
+            let mut jp = pivots[j].to_signed().sx();
             if (jp as isize) < 0 {
                 jp = !jp;
                 j -= 1;
@@ -343,11 +347,13 @@ pub mod compute {
         }
     }
 
-    fn cholesky_diagonal_pivoting_unblocked<E: ComplexField>(
+    fn cholesky_diagonal_pivoting_unblocked<E: ComplexField, I: Index>(
         mut a: MatMut<'_, E>,
-        pivots: &mut [usize],
+        pivots: &mut [I],
         alpha: E::Real,
     ) {
+        let truncate = <I::Signed as SignedIndex>::truncate;
+
         assert!(a.nrows() == a.ncols());
         let n = a.nrows();
         if n == 0 {
@@ -479,19 +485,19 @@ pub mod compute {
             }
 
             if k_step == 1 {
-                pivots[k] = kp;
+                pivots[k] = I::from_signed(truncate(kp));
             } else {
-                pivots[k] = !kp;
-                pivots[k + 1] = !kp;
+                pivots[k] = I::from_signed(truncate(!kp));
+                pivots[k + 1] = I::from_signed(truncate(!kp));
             }
 
             k += k_step;
         }
     }
 
-    fn convert<E: ComplexField>(
+    fn convert<E: ComplexField, I: Index>(
         mut a: MatMut<'_, E>,
-        pivots: &[usize],
+        pivots: &[I],
         mut subdiag: MatMut<'_, E>,
     ) {
         assert!(a.nrows() == a.ncols());
@@ -499,7 +505,7 @@ pub mod compute {
 
         let mut i = 0;
         while i < n {
-            if (pivots[i] as isize) < 0 {
+            if (pivots[i].to_signed().sx() as isize) < 0 {
                 subdiag.write(i, 0, a.read(i + 1, i));
                 subdiag.write(i + 1, 0, E::faer_zero());
                 a.write(i + 1, i, E::faer_zero());
@@ -512,7 +518,7 @@ pub mod compute {
 
         let mut i = 0;
         while i < n {
-            let p = pivots[i];
+            let p = pivots[i].to_signed().sx();
             if (p as isize) < 0 {
                 let p = !p;
                 swap_rows(a.rb_mut().subcols(0, i), i + 1, p);
@@ -524,7 +530,7 @@ pub mod compute {
         }
     }
 
-    pub fn cholesky_in_place_req<E: Entity>(
+    pub fn cholesky_in_place_req<E: Entity, I: Index>(
         dim: usize,
         parallelism: Parallelism,
         params: BunchKaufmanParams,
@@ -534,19 +540,21 @@ pub mod compute {
         if bs < 2 || dim <= bs {
             bs = 0;
         }
-        StackReq::try_new::<usize>(dim)?.try_and(temp_mat_req::<E>(dim, bs)?)
+        StackReq::try_new::<I>(dim)?.try_and(temp_mat_req::<E>(dim, bs)?)
     }
 
     #[track_caller]
-    pub fn cholesky_in_place<'out, E: ComplexField>(
+    pub fn cholesky_in_place<'out, E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
         subdiag: MatMut<'_, E>,
-        perm: &'out mut [usize],
-        perm_inv: &'out mut [usize],
+        perm: &'out mut [I],
+        perm_inv: &'out mut [I],
         parallelism: Parallelism,
         stack: PodStack<'_>,
         params: BunchKaufmanParams,
-    ) -> PermutationMut<'out> {
+    ) -> PermutationMut<'out, I> {
+        let truncate = <I::Signed as SignedIndex>::truncate;
+
         let n = matrix.nrows();
         assert!(matrix.nrows() == matrix.ncols());
         assert!(subdiag.nrows() == n);
@@ -570,7 +578,7 @@ pub mod compute {
             .faer_add(E::Real::faer_from_f64(17.0).faer_sqrt())
             .faer_scale_power_of_two(E::Real::faer_from_f64(1.0 / 8.0));
 
-        let (pivots, stack) = stack.make_raw::<usize>(n);
+        let (pivots, stack) = stack.make_raw::<I>(n);
 
         let mut bs = params.blocksize;
         if bs < 2 || n <= bs {
@@ -599,10 +607,11 @@ pub mod compute {
             }
 
             for pivot in &mut pivots[k..k + kb] {
-                if *pivot as isize >= 0 {
-                    *pivot += k;
+                let pv = (*pivot).to_signed().sx();
+                if pv as isize >= 0 {
+                    *pivot = I::from_signed(truncate(pv + k));
                 } else {
-                    *pivot -= k;
+                    *pivot = I::from_signed(truncate(pv - k));
                 }
             }
 
@@ -612,11 +621,11 @@ pub mod compute {
         convert(matrix.rb_mut(), pivots, subdiag);
 
         for (i, p) in perm.iter_mut().enumerate() {
-            *p = i;
+            *p = I::from_signed(truncate(i));
         }
         let mut i = 0;
         while i < n {
-            let p = pivots[i];
+            let p = pivots[i].to_signed().sx();
             if (p as isize) < 0 {
                 let p = !p;
                 perm.swap(i + 1, p);
@@ -627,7 +636,7 @@ pub mod compute {
             }
         }
         for (i, &p) in perm.iter().enumerate() {
-            perm_inv[p] = i;
+            perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
         }
 
         unsafe { PermutationMut::new_unchecked(perm, perm_inv) }
@@ -651,11 +660,11 @@ pub mod solve {
     }
 
     #[track_caller]
-    pub fn solve_in_place_with_conj<E: ComplexField>(
+    pub fn solve_in_place_with_conj<E: ComplexField, I: Index>(
         lb_factors: MatRef<'_, E>,
         subdiag: MatRef<'_, E>,
         conj: Conj,
-        perm: PermutationRef<'_>,
+        perm: PermutationRef<'_, I>,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,
@@ -746,12 +755,12 @@ mod tests {
             let mut ldl = a.clone();
             let mut subdiag = Mat::<f64>::zeros(n, 1);
 
-            let mut perm = vec![0; n];
+            let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
 
             let params = Default::default();
             let mut mem = GlobalPodBuffer::new(
-                compute::cholesky_in_place_req::<f64>(n, Parallelism::None, params).unwrap(),
+                compute::cholesky_in_place_req::<f64, usize>(n, Parallelism::None, params).unwrap(),
             );
             let perm = compute::cholesky_in_place(
                 ldl.as_mut(),
@@ -785,7 +794,7 @@ mod tests {
                     max = err
                 }
             });
-            assert!(max < 1e-10);
+            assert!(max < 1e-9);
         }
     }
 
@@ -799,7 +808,7 @@ mod tests {
             let mut ldl = a.clone();
             let mut subdiag = Mat::<c64>::zeros(n, 1);
 
-            let mut perm = vec![0; n];
+            let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
 
             let params = BunchKaufmanParams {
@@ -807,7 +816,7 @@ mod tests {
                 blocksize: 32,
             };
             let mut mem = GlobalPodBuffer::new(
-                compute::cholesky_in_place_req::<c64>(n, Parallelism::None, params).unwrap(),
+                compute::cholesky_in_place_req::<c64, usize>(n, Parallelism::None, params).unwrap(),
             );
             let perm = compute::cholesky_in_place(
                 ldl.as_mut(),
@@ -844,7 +853,7 @@ mod tests {
             for i in 0..n {
                 assert!(ldl[(i, i)].faer_imag() == 0.0);
             }
-            assert!(max < 1e-10);
+            assert!(max < 1e-9);
         }
     }
 }

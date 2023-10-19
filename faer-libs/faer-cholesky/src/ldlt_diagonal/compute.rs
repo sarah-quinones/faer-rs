@@ -145,7 +145,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 
         let [top_left, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(idx, idx);
         let l00 = top_left.into_const();
-        let d0 = l00.diagonal();
+        let d0 = l00.diagonal().into_column_vector();
         let [_, l10, _, l20] = bottom_left.into_const().split_at(block_size, 0);
         let [mut a11, _, a21, _] = bottom_right.split_at(block_size, block_size);
 
@@ -275,7 +275,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
         );
 
         let l00 = l00.into_const();
-        let d0 = l00.diagonal();
+        let d0 = l00.diagonal().into_column_vector();
 
         solve::solve_unit_lower_triangular_in_place(
             l00.conjugate(),

@@ -2,18 +2,19 @@
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
-    Entity, MatMut, MatRef, Parallelism,
+    mul::triangular,
+    permutation::{Index, PermutationRef, SignedIndex},
+    temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
 
 #[track_caller]
-fn reconstruct_impl<T: ComplexField>(
-    mut dst: MatMut<'_, T>,
-    lu_factors: Option<MatRef<'_, T>>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+fn reconstruct_impl<E: ComplexField, I: Index>(
+    mut dst: MatMut<'_, E>,
+    lu_factors: Option<MatRef<'_, E>>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -26,7 +27,7 @@ fn reconstruct_impl<T: ComplexField>(
     let n = lu_factors.ncols();
     let size = Ord::min(m, n);
 
-    let (mut lu, _) = temp_mat_uninit::<T>(m, n, stack);
+    let (mut lu, _) = temp_mat_uninit::<E>(m, n, stack);
     let mut lu = lu.as_mut();
 
     let [l_top, _, l_bot, _] = lu_factors.split_at(size, size);
@@ -42,7 +43,7 @@ fn reconstruct_impl<T: ComplexField>(
         u_left,
         BlockStructure::TriangularUpper,
         None,
-        T::faer_one(),
+        E::faer_one(),
         parallelism,
     );
     triangular::matmul(
@@ -53,7 +54,7 @@ fn reconstruct_impl<T: ComplexField>(
         u_right,
         BlockStructure::Rectangular,
         None,
-        T::faer_one(),
+        E::faer_one(),
         parallelism,
     );
     triangular::matmul(
@@ -64,7 +65,7 @@ fn reconstruct_impl<T: ComplexField>(
         u_left,
         BlockStructure::TriangularUpper,
         None,
-        T::faer_one(),
+        E::faer_one(),
         parallelism,
     );
 
@@ -75,17 +76,17 @@ fn reconstruct_impl<T: ComplexField>(
     unsafe {
         if dst.row_stride().unsigned_abs() <= dst.col_stride().unsigned_abs() {
             for j in 0..n {
-                let jj = *col_inv.get_unchecked(j);
+                let jj = col_inv.get_unchecked(j).to_signed().zx();
                 for i in 0..m {
-                    let ii = *row_inv.get_unchecked(i);
+                    let ii = row_inv.get_unchecked(i).to_signed().zx();
                     dst.write_unchecked(i, j, lu.read_unchecked(ii, jj));
                 }
             }
         } else {
             for i in 0..m {
-                let ii = *row_inv.get_unchecked(i);
+                let ii = row_inv.get_unchecked(i).to_signed().zx();
                 for j in 0..n {
-                    let jj = *col_inv.get_unchecked(j);
+                    let jj = col_inv.get_unchecked(j).to_signed().zx();
                     dst.write_unchecked(i, j, lu.read_unchecked(ii, jj));
                 }
             }
@@ -105,11 +106,11 @@ fn reconstruct_impl<T: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
-pub fn reconstruct<T: ComplexField>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+pub fn reconstruct<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -136,10 +137,10 @@ pub fn reconstruct<T: ComplexField>(
 ///   the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
-pub fn reconstruct_in_place<T: ComplexField>(
-    lu_factors: MatMut<'_, T>,
-    row_perm: PermutationRef<'_>,
-    col_perm: PermutationRef<'_>,
+pub fn reconstruct_in_place<E: ComplexField, I: Index>(
+    lu_factors: MatMut<'_, E>,
+    row_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -149,21 +150,21 @@ pub fn reconstruct_in_place<T: ComplexField>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_in_place_req<T: Entity>(
+pub fn reconstruct_in_place_req<E: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)
+    temp_mat_req::<E>(nrows, ncols)
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_req<T: Entity>(
+pub fn reconstruct_req<E: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    reconstruct_in_place_req::<T>(nrows, ncols, parallelism)
+    reconstruct_in_place_req::<E, I>(nrows, ncols, parallelism)
 }

@@ -2,17 +2,18 @@
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular, permutation::PermutationRef, temp_mat_req, temp_mat_uninit, ComplexField,
-    Entity, MatMut, MatRef, Parallelism,
+    mul::triangular,
+    permutation::{Index, PermutationRef},
+    temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 use triangular::BlockStructure;
 
 #[track_caller]
-fn reconstruct_impl<E: ComplexField>(
+fn reconstruct_impl<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: Option<MatRef<'_, E>>,
-    row_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -80,10 +81,10 @@ fn reconstruct_impl<E: ComplexField>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
-pub fn reconstruct<E: ComplexField>(
+pub fn reconstruct<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
-    row_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -101,9 +102,9 @@ pub fn reconstruct<E: ComplexField>(
 /// matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
-pub fn reconstruct_in_place<E: ComplexField>(
+pub fn reconstruct_in_place<E: ComplexField, I: Index>(
     lu_factors: MatMut<'_, E>,
-    row_perm: PermutationRef<'_>,
+    row_perm: PermutationRef<'_, I>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -113,7 +114,7 @@ pub fn reconstruct_in_place<E: ComplexField>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its partial pivoting LU decomposition.
-pub fn reconstruct_req<E: Entity>(
+pub fn reconstruct_req<E: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -124,10 +125,10 @@ pub fn reconstruct_req<E: Entity>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its partial pivoting LU decomposition.
-pub fn reconstruct_in_place_req<E: Entity>(
+pub fn reconstruct_in_place_req<E: Entity, I: Index>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    reconstruct_req::<E>(nrows, ncols, parallelism)
+    reconstruct_req::<E, I>(nrows, ncols, parallelism)
 }

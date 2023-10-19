@@ -616,7 +616,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill(E::faer_one());
+    z.rb_mut()
+        .diagonal()
+        .into_column_vector()
+        .fill(E::faer_one());
 
     {
         let (mut householder, mut stack) =
@@ -671,7 +674,12 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             norm = norm.faer_add(x.read().faer_abs());
         });
         // subdiagonal
-        zipped!(h.rb().submatrix(1, 0, n - 1, n - 1).diagonal()).for_each(|x| {
+        zipped!(h
+            .rb()
+            .submatrix(1, 0, n - 1, n - 1)
+            .diagonal()
+            .into_column_vector())
+        .for_each(|x| {
             norm = norm.faer_add(x.read().faer_abs());
         });
 
@@ -1100,7 +1108,10 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
-    z.rb_mut().diagonal().fill(E::faer_one());
+    z.rb_mut()
+        .diagonal()
+        .into_column_vector()
+        .fill(E::faer_one());
 
     {
         let (mut householder, mut stack) =
@@ -1240,7 +1251,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1274,7 +1285,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1313,7 +1324,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1351,7 +1362,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1384,7 +1395,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1416,7 +1427,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1469,8 +1480,8 @@ mod tests {
 
                 compute_evd_real(
                     mat.as_ref(),
-                    s_re.as_mut().diagonal(),
-                    s_im.as_mut().diagonal(),
+                    s_re.as_mut().diagonal().into_column_vector(),
+                    s_im.as_mut().diagonal().into_column_vector(),
                     Some(u_re.as_mut()),
                     Parallelism::None,
                     make_stack!(compute_evd_req::<c64>(
@@ -1538,8 +1549,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal(),
-                s_im.as_mut().diagonal(),
+                s_re.as_mut().diagonal().into_column_vector(),
+                s_im.as_mut().diagonal().into_column_vector(),
                 Some(u_re.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1600,8 +1611,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal(),
-                s_im.as_mut().diagonal(),
+                s_re.as_mut().diagonal().into_column_vector(),
+                s_im.as_mut().diagonal().into_column_vector(),
                 Some(u_re.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1658,7 +1669,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1699,7 +1710,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1732,7 +1743,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal(),
+                s.as_mut().diagonal().into_column_vector(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1793,7 +1804,7 @@ mod tests {
 
         compute_evd_complex(
             mat.as_ref(),
-            s.as_mut().diagonal(),
+            s.as_mut().diagonal().into_column_vector(),
             Some(u.as_mut()),
             Parallelism::None,
             make_stack!(compute_evd_req::<c64>(

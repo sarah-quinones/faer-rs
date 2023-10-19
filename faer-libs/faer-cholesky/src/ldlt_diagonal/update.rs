@@ -1026,7 +1026,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
 
     let [ld00, _, l_bot_left, ld_bot_right] = ld.split_at(insertion_index, insertion_index);
     let ld00 = ld00.into_const();
-    let d0 = ld00.diagonal();
+    let d0 = ld00.diagonal().into_column_vector();
 
     let [_, mut l10, _, l20] = l_bot_left.split_at(r, 0);
     let [mut ld11, _, mut l21, ld22] = ld_bot_right.split_at(r, r);
@@ -1101,7 +1101,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         parallelism,
     );
 
-    let d1 = ld11.into_const().diagonal();
+    let d1 = ld11.into_const().diagonal().into_column_vector();
 
     for j in 0..r {
         unsafe {

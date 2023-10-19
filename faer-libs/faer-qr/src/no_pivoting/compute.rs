@@ -249,7 +249,11 @@ fn qr_in_place_blocked<E: ComplexField>(
     params: QrComputeParams,
 ) {
     if blocksize == 1 {
-        return qr_in_place_unblocked(matrix, householder_factor.diagonal(), stack);
+        return qr_in_place_unblocked(
+            matrix,
+            householder_factor.diagonal().into_column_vector(),
+            stack,
+        );
     }
 
     let mut matrix = matrix;
@@ -444,9 +448,7 @@ mod tests {
             .zip(qr_factors)
             .for_each_triangular_upper(Diag::Include, |mut a, b| a.write(b.read()));
 
-        q.as_mut()
-            .diagonal()
-            .cwise()
+        zipped!(q.as_mut().diagonal().into_column_vector())
             .for_each(|mut a| a.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(

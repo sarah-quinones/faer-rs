@@ -7,7 +7,7 @@ use dyn_stack::{PodStack, StackReq};
 use faer_core::{
     c32, c64,
     mul::matmul,
-    permutation::{swap_cols, swap_rows, PermutationMut},
+    permutation::{swap_cols, swap_rows, Index, PermutationMut, SignedIndex},
     simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
 };
 use faer_entity::*;
@@ -1038,10 +1038,10 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
 }
 
 #[inline]
-fn lu_in_place_unblocked<E: ComplexField>(
+fn lu_in_place_unblocked<E: ComplexField, I: Index>(
     mut matrix: MatMut<'_, E>,
-    row_transpositions: &mut [usize],
-    col_transpositions: &mut [usize],
+    row_transpositions: &mut [I],
+    col_transpositions: &mut [I],
     parallelism: Parallelism,
     transposed: bool,
     disable_parallelism: fn(usize, usize) -> bool,
@@ -1049,6 +1049,8 @@ fn lu_in_place_unblocked<E: ComplexField>(
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = Ord::min(m, n);
+
+    let truncate = <I::Signed as SignedIndex>::truncate;
 
     debug_assert!(row_transpositions.len() == size);
     debug_assert!(col_transpositions.len() == size);
@@ -1064,14 +1066,14 @@ fn lu_in_place_unblocked<E: ComplexField>(
     for k in 0..size {
         if biggest < E::Real::faer_zero_threshold().unwrap() {
             for idx in k..size {
-                row_transpositions[idx] = idx;
-                col_transpositions[idx] = idx;
+                row_transpositions[idx] = I::from_signed(truncate(idx));
+                col_transpositions[idx] = I::from_signed(truncate(idx));
             }
             break;
         }
 
-        row_transpositions[k] = max_row;
-        col_transpositions[k] = max_col;
+        row_transpositions[k] = I::from_signed(truncate(max_row));
+        col_transpositions[k] = I::from_signed(truncate(max_col));
 
         if max_row != k {
             n_transpositions += 1;
@@ -1174,7 +1176,7 @@ pub struct FullPivLuComputeParams {
 
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with full pivoting.
-pub fn lu_in_place_req<E: 'static>(
+pub fn lu_in_place_req<E: Entity, I: Index>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
@@ -1182,10 +1184,7 @@ pub fn lu_in_place_req<E: 'static>(
 ) -> Result<StackReq, dyn_stack::SizeOverflow> {
     let _ = parallelism;
     let _ = params;
-    StackReq::try_all_of([
-        StackReq::try_new::<usize>(m)?,
-        StackReq::try_new::<usize>(n)?,
-    ])
+    StackReq::try_all_of([StackReq::try_new::<I>(m)?, StackReq::try_new::<I>(n)?])
 }
 
 fn default_disable_parallelism(m: usize, n: usize) -> bool {
@@ -1227,19 +1226,21 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 /// - Panics if the length of the column permutation slices is not equal to the number of columns of
 ///   the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`lu_in_place_req`]).
-pub fn lu_in_place<'out, E: ComplexField>(
+pub fn lu_in_place<'out, E: ComplexField, I: Index>(
     matrix: MatMut<'_, E>,
-    row_perm: &'out mut [usize],
-    row_perm_inv: &'out mut [usize],
-    col_perm: &'out mut [usize],
-    col_perm_inv: &'out mut [usize],
+    row_perm: &'out mut [I],
+    row_perm_inv: &'out mut [I],
+    col_perm: &'out mut [I],
+    col_perm_inv: &'out mut [I],
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: FullPivLuComputeParams,
-) -> (usize, PermutationMut<'out>, PermutationMut<'out>) {
+) -> (usize, PermutationMut<'out, I>, PermutationMut<'out, I>) {
     let disable_parallelism = params
         .disable_parallelism
         .unwrap_or(default_disable_parallelism);
+
+    let truncate = <I::Signed as SignedIndex>::truncate;
 
     let _ = parallelism;
     let m = matrix.nrows();
@@ -1258,8 +1259,8 @@ pub fn lu_in_place<'out, E: ComplexField>(
         log::warn!(target: "faer_perf", "LU with full pivoting prefers column-major or row-major matrix. Found matrix with generic strides.");
     }
 
-    let (row_transpositions, stack) = stack.make_with(size, |_| 0usize);
-    let (col_transpositions, _) = stack.make_with(size, |_| 0usize);
+    let (row_transpositions, stack) = stack.make_with(size, |_| I::from_signed(truncate(0)));
+    let (col_transpositions, _) = stack.make_with(size, |_| I::from_signed(truncate(0)));
 
     let n_transpositions = if matrix.row_stride().abs() < matrix.col_stride().abs() {
         lu_in_place_unblocked(
@@ -1281,21 +1282,27 @@ pub fn lu_in_place<'out, E: ComplexField>(
         )
     };
 
-    row_perm.iter_mut().enumerate().for_each(|(i, e)| *e = i);
+    row_perm
+        .iter_mut()
+        .enumerate()
+        .for_each(|(i, e)| *e = I::from_signed(truncate(i)));
     for (i, t) in row_transpositions.iter().copied().enumerate() {
-        row_perm.swap(i, t);
+        row_perm.swap(i, t.to_signed().zx());
     }
 
-    col_perm.iter_mut().enumerate().for_each(|(i, e)| *e = i);
+    col_perm
+        .iter_mut()
+        .enumerate()
+        .for_each(|(i, e)| *e = I::from_signed(truncate(i)));
     for (i, t) in col_transpositions.iter().copied().enumerate() {
-        col_perm.swap(i, t);
+        col_perm.swap(i, t.to_signed().zx());
     }
 
     for (i, p) in row_perm.iter().copied().enumerate() {
-        row_perm_inv[p] = i;
+        row_perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
     }
     for (i, p) in col_perm.iter().copied().enumerate() {
-        col_perm_inv[p] = i;
+        col_perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
     }
 
     unsafe {
@@ -1321,10 +1328,10 @@ mod tests {
         };
     }
 
-    fn reconstruct_matrix<E: ComplexField>(
+    fn reconstruct_matrix<E: ComplexField, I: Index>(
         lu_factors: MatRef<'_, E>,
-        row_perm: PermutationRef<'_>,
-        col_perm: PermutationRef<'_>,
+        row_perm: PermutationRef<'_, I>,
+        col_perm: PermutationRef<'_, I>,
     ) -> Mat<E> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
@@ -1335,7 +1342,7 @@ mod tests {
             row_perm,
             col_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<E>(
+            make_stack!(reconstruct::reconstruct_req::<E, I>(
                 m,
                 n,
                 Parallelism::Rayon(0)
@@ -1363,7 +1370,7 @@ mod tests {
             for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
-                let mut row_perm = vec![0; m];
+                let mut row_perm = vec![0usize; m];
                 let mut row_perm_inv = vec![0; m];
                 let mut col_perm = vec![0; n];
                 let mut col_perm_inv = vec![0; n];
@@ -1375,7 +1382,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(
+                    make_stack!(lu_in_place_req::<f64, usize>(
                         m,
                         n,
                         Parallelism::None,
@@ -1420,7 +1427,7 @@ mod tests {
                 let mut mat = mat.as_mut().transpose();
                 let mat_orig = mat_orig.as_ref().transpose();
 
-                let mut row_perm = vec![0; m];
+                let mut row_perm = vec![0usize; m];
                 let mut row_perm_inv = vec![0; m];
                 let mut col_perm = vec![0; n];
                 let mut col_perm_inv = vec![0; n];
@@ -1432,7 +1439,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(
+                    make_stack!(lu_in_place_req::<f64, usize>(
                         m,
                         n,
                         Parallelism::None,
@@ -1502,7 +1509,7 @@ mod tests {
                 let mut mat = mat.as_mut();
                 let mat_orig = mat_orig.as_ref();
 
-                let mut row_perm = vec![0; m];
+                let mut row_perm = vec![0usize; m];
                 let mut row_perm_inv = vec![0; m];
                 let mut col_perm = vec![0; n];
                 let mut col_perm_inv = vec![0; n];
@@ -1514,7 +1521,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(
+                    make_stack!(lu_in_place_req::<f64, usize>(
                         m,
                         n,
                         Parallelism::None,
@@ -1559,7 +1566,7 @@ mod tests {
                 let mut mat = mat.as_mut();
                 let mat_orig = mat_orig.as_ref();
 
-                let mut row_perm = vec![0; m];
+                let mut row_perm = vec![0usize; m];
                 let mut row_perm_inv = vec![0; m];
                 let mut col_perm = vec![0; n];
                 let mut col_perm_inv = vec![0; n];
@@ -1571,7 +1578,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(
+                    make_stack!(lu_in_place_req::<f64, usize>(
                         m,
                         n,
                         Parallelism::None,
@@ -1621,7 +1628,7 @@ mod tests {
                 let mut mat = mat.as_mut();
                 let mat_orig = mat_orig.as_ref();
 
-                let mut row_perm = vec![0; m];
+                let mut row_perm = vec![0usize; m];
                 let mut row_perm_inv = vec![0; m];
                 let mut col_perm = vec![0; n];
                 let mut col_perm_inv = vec![0; n];
@@ -1633,7 +1640,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64>(
+                    make_stack!(lu_in_place_req::<f64, usize>(
                         m,
                         n,
                         Parallelism::None,

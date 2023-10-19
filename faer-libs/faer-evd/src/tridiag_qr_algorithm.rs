@@ -33,7 +33,8 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     if let Some(mut u) = u.rb_mut() {
         zipped!(u.rb_mut()).for_each(|mut u| u.write(E::faer_zero()));
-        zipped!(u.rb_mut().diagonal()).for_each(|mut u| u.write(E::faer_one()));
+        zipped!(u.rb_mut().diagonal().into_column_vector())
+            .for_each(|mut u| u.write(E::faer_one()));
     }
 
     let arch = E::Simd::default();
