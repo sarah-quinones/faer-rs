@@ -38,7 +38,7 @@ pub fn sum_i64(slice: &[i64]) -> Option<i64> {
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86 {
     use super::*;
-    use pulp::{x86::*, Simd};
+    use pulp::{x86::*, *};
     pub fn sum_i32_v3(simd: V3, slice: &[i32]) -> Option<i32> {
         struct Impl<'a> {
             simd: V3,
