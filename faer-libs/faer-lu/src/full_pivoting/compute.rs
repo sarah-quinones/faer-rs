@@ -8,7 +8,7 @@ use faer_core::{
     c32, c64,
     mul::matmul,
     permutation::{swap_cols, swap_rows, Index, PermutationMut, SignedIndex},
-    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
+    simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use faer_entity::*;
 use paste::paste;
