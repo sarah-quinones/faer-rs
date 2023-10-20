@@ -18,7 +18,7 @@ use reborrow::*;
 // doesn't seem like we benefit from vectorization on aarch64 here
 #[cfg(target_arch = "aarch64")]
 fn aarch64_nodispatch<E: ComplexField, F: pulp::WithSimd>(op: F) -> F::Output {
-    pulp::Scalar::new().dispatch(op)
+    pulp::Scalar::new().vectorize(op)
 }
 #[cfg(not(target_arch = "aarch64"))]
 fn aarch64_nodispatch<E: ComplexField, F: pulp::WithSimd>(op: F) -> F::Output {

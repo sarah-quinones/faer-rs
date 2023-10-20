@@ -307,6 +307,39 @@ impl<I: Index> Permutation<I> {
 }
 
 impl<I: Index> Permutation<I> {
+    /// Creates a new permutation, by checking the validity of the inputs.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if any of the following conditions are violated:
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+    #[inline]
+    #[track_caller]
+    pub fn new_checked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
+        PermutationRef::new_checked(&forward, &inverse);
+        Self {
+            inner: PermOwn { forward, inverse },
+        }
+    }
+
+    /// Creates a new permutation reference, without checking the validity of the inputs.
+    ///
+    /// # Safety
+    ///
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new_unchecked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
+        let n = forward.len();
+        assert!(forward.len() == inverse.len());
+        assert!(n <= I::Signed::MAX.zx());
+        Self {
+            inner: PermOwn { forward, inverse },
+        }
+    }
+
     /// Returns the permutation as an array.
     #[inline]
     pub fn into_arrays(self) -> (Box<[I]>, Box<[I]>) {
@@ -329,22 +362,50 @@ impl<I: Index> Permutation<I> {
             },
         }
     }
+}
+
+impl<'a, I: Index> PermutationRef<'a, I> {
+    /// Creates a new permutation reference, by checking the validity of the inputs.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if any of the following conditions are violated:
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+    #[inline]
+    #[track_caller]
+    pub fn new_checked(forward: &'a [I], inverse: &'a [I]) -> Self {
+        let n = forward.len();
+        assert!(forward.len() == inverse.len());
+        assert!(n <= I::Signed::MAX.zx());
+        for (i, &p) in forward.iter().enumerate() {
+            let p = p.to_signed().zx();
+            assert!(p < n);
+            assert!(inverse[p].to_signed().zx() == i);
+        }
+        Self {
+            inner: PermRef { forward, inverse },
+        }
+    }
 
     /// Creates a new permutation reference, without checking the validity of the inputs.
     ///
     /// # Safety
     ///
-    /// `forward` and `inverse` must have the same length, be valid permutations, and be inverse
-    /// permutations of each other.
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
-    pub unsafe fn new_unchecked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
+    #[track_caller]
+    pub unsafe fn new_unchecked(forward: &'a [I], inverse: &'a [I]) -> Self {
+        let n = forward.len();
+        assert!(forward.len() == inverse.len());
+        assert!(n <= I::Signed::MAX.zx());
+
         Self {
-            inner: PermOwn { forward, inverse },
+            inner: PermRef { forward, inverse },
         }
     }
-}
 
-impl<'a, I: Index> PermutationRef<'a, I> {
     /// Returns the permutation as an array.
     #[inline]
     pub fn into_arrays(self) -> (&'a [I], &'a [I]) {
@@ -365,19 +426,6 @@ impl<'a, I: Index> PermutationRef<'a, I> {
                 forward: self.inner.inverse,
                 inverse: self.inner.forward,
             },
-        }
-    }
-
-    /// Creates a new permutation reference, without checking the validity of the inputs.
-    ///
-    /// # Safety
-    ///
-    /// `forward` and `inverse` must have the same length, be valid permutations, and be inverse
-    /// permutations of each other.
-    #[inline]
-    pub unsafe fn new_unchecked(forward: &'a [I], inverse: &'a [I]) -> Self {
-        Self {
-            inner: PermRef { forward, inverse },
         }
     }
 
@@ -404,6 +452,40 @@ impl<'a, I: Index> PermutationRef<'a, I> {
 }
 
 impl<'a, I: Index> PermutationMut<'a, I> {
+    /// Creates a new permutation mutable reference, by checking the validity of the inputs.
+    ///
+    /// # Panics
+    ///
+    /// The function panics if any of the following conditions are violated:
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+    #[inline]
+    #[track_caller]
+    pub fn new_checked(forward: &'a mut [I], inverse: &'a mut [I]) -> Self {
+        PermutationRef::new_checked(forward, inverse);
+        Self {
+            inner: PermMut { forward, inverse },
+        }
+    }
+
+    /// Creates a new permutation mutable reference, without checking the validity of the inputs.
+    ///
+    /// # Safety
+    ///
+    /// `forward` and `inverse` must have the same length which must be less than or equal to
+    /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn new_unchecked(forward: &'a mut [I], inverse: &'a mut [I]) -> Self {
+        let n = forward.len();
+        assert!(forward.len() == inverse.len());
+        assert!(n <= I::Signed::MAX.zx());
+
+        Self {
+            inner: PermMut { forward, inverse },
+        }
+    }
+
     /// Returns the permutation as an array.
     ///
     /// # Safety
@@ -429,19 +511,6 @@ impl<'a, I: Index> PermutationMut<'a, I> {
                 forward: self.inner.inverse,
                 inverse: self.inner.forward,
             },
-        }
-    }
-
-    /// Creates a new permutation mutable reference, without checking the validity of the inputs.
-    ///
-    /// # Safety
-    ///
-    /// `forward` and `inverse` must have the same length, be valid permutations, and be inverse
-    /// permutations of each other.
-    #[inline]
-    pub unsafe fn new_unchecked(forward: &'a mut [I], inverse: &'a mut [I]) -> Self {
-        Self {
-            inner: PermMut { forward, inverse },
         }
     }
 
