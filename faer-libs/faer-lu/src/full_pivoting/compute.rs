@@ -15,6 +15,16 @@ use paste::paste;
 use pulp::{cast_lossy, Simd};
 use reborrow::*;
 
+// doesn't seem like we benefit from vectorization on aarch64 here
+#[cfg(target_arch = "aarch64")]
+fn aarch64_nodispatch<E: ComplexField, F: pulp::WithSimd>(op: F) -> F::Output {
+    pulp::Scalar::new().dispatch(op)
+}
+#[cfg(not(target_arch = "aarch64"))]
+fn aarch64_nodispatch<E: ComplexField, F: pulp::WithSimd>(op: F) -> F::Output {
+    E::Simd::default().dispatch(op)
+}
+
 #[inline(always)]
 fn best_f64<S: Simd>(
     simd: S,
@@ -692,7 +702,7 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
             )
         }
     }
-    E::Simd::default().dispatch(BestInMat(matrix))
+    aarch64_nodispatch::<E, _>(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_simd<E: ComplexField>(
@@ -766,7 +776,8 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
             )
         }
     }
-    E::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+
+    aarch64_nodispatch::<E, _>(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
@@ -809,7 +820,7 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    <c64 as ComplexField>::Simd::default().dispatch(BestInMat(matrix))
+    aarch64_nodispatch::<c64, _>(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_c64(
@@ -863,7 +874,7 @@ fn update_and_best_in_matrix_c64(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    <c64 as ComplexField>::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+    aarch64_nodispatch::<c64, _>(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
@@ -906,7 +917,7 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    <c32 as ComplexField>::Simd::default().dispatch(BestInMat(matrix))
+    aarch64_nodispatch::<c32, _>(BestInMat(matrix))
 }
 
 fn update_and_best_in_matrix_c32(
@@ -960,7 +971,7 @@ fn update_and_best_in_matrix_c32(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    <c32 as ComplexField>::Simd::default().dispatch(UpdateAndBestInMat(matrix, lhs, rhs))
+    aarch64_nodispatch::<c32, _>(UpdateAndBestInMat(matrix, lhs, rhs))
 }
 
 #[inline]
