@@ -1777,8 +1777,8 @@ pub mod inner {
         }
     }
 
-    impl<I> Copy for PermRef<'_, I> {}
-    impl<I> Clone for PermRef<'_, I> {
+    impl<I, E: Entity> Copy for PermRef<'_, I, E> {}
+    impl<I, E: Entity> Clone for PermRef<'_, I, E> {
         #[inline(always)]
         fn clone(&self) -> Self {
             *self
@@ -1787,20 +1787,24 @@ pub mod inner {
 
     #[repr(C)]
     #[derive(Debug)]
-    pub struct PermRef<'a, I> {
+    pub struct PermRef<'a, I, E: Entity> {
         pub(crate) forward: &'a [I],
         pub(crate) inverse: &'a [I],
+        pub(crate) __marker: PhantomData<E>,
     }
     #[repr(C)]
     #[derive(Debug)]
-    pub struct PermMut<'a, I> {
+    pub struct PermMut<'a, I, E: Entity> {
         pub(crate) forward: &'a mut [I],
         pub(crate) inverse: &'a mut [I],
+        pub(crate) __marker: PhantomData<E>,
     }
     #[repr(C)]
-    pub struct PermOwn<I> {
+    #[derive(Debug)]
+    pub struct PermOwn<I, E: Entity> {
         pub(crate) forward: Box<[I]>,
         pub(crate) inverse: Box<[I]>,
+        pub(crate) __marker: PhantomData<E>,
     }
 
     #[repr(C)]
@@ -5486,27 +5490,483 @@ impl<E: Entity> Debug for Mat<E> {
     }
 }
 
-// impl<LhsE: Conjugate, RhsE: Conjugate<Canonical = LhsE::Canonical>> core::ops::Mul<MatRef<'_,
-// RhsE>>     for MatRef<'_, LhsE>
-// where
-//     LhsE::Canonical: ComplexField,
-// {
-//     type Output = Mat<LhsE::Canonical>;
+/// Module for index and matrix types with compile time checks, instead of bound checking at
+/// runtime.
+pub mod constrained {
+    use super::*;
+    use crate::permutation::{Index, SignedIndex};
+    #[cfg(feature = "std")]
+    use assert2::{assert, debug_assert};
 
-//     #[track_caller]
-//     fn mul(self, rhs: MatRef<'_, RhsE>) -> Self::Output {
-//         let mut out = Mat::zeros(self.nrows(), rhs.ncols());
-//         mul::matmul(
-//             out.as_mut(),
-//             self,
-//             rhs,
-//             None,
-//             LhsE::Canonical::faer_one(),
-//             get_global_parallelism(),
-//         );
-//         out
-//     }
-// }
+    #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    struct Branded<'a, T: ?Sized> {
+        __marker: PhantomData<fn(&'a ()) -> &'a ()>,
+        inner: T,
+    }
+
+    #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    pub struct Size<'n>(Branded<'n, usize>);
+
+    #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    pub struct Idx<'n, I>(Branded<'n, I>);
+
+    #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    pub struct IdxInclusive<'n, I>(Branded<'n, I>);
+
+    #[derive(Copy, Clone, PartialEq, Eq)]
+    #[repr(transparent)]
+    pub struct MaybeIdx<'n, I: SignedIndex>(Branded<'n, I>);
+
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
+    #[repr(transparent)]
+    pub struct Array<'n, T>(Branded<'n, [T]>);
+
+    #[repr(transparent)]
+    pub struct PermutationRef<'n, 'a, I, E: Entity>(
+        Branded<'n, super::permutation::PermutationRef<'a, I, E>>,
+    );
+
+    #[repr(transparent)]
+    pub struct MatRef<'nrows, 'ncols, 'a, E: Entity>(
+        Branded<'ncols, Branded<'nrows, super::MatRef<'a, E>>>,
+    );
+    #[repr(transparent)]
+    pub struct MatMut<'nrows, 'ncols, 'a, E: Entity>(
+        Branded<'ncols, Branded<'nrows, super::MatMut<'a, E>>>,
+    );
+
+    impl<'size> Size<'size> {
+        #[track_caller]
+        #[inline]
+        pub fn with<R>(n: usize, f: impl for<'n> FnOnce(Size<'n>) -> R) -> R {
+            f(Size(Branded {
+                __marker: PhantomData,
+                inner: n,
+            }))
+        }
+
+        #[track_caller]
+        #[inline]
+        pub fn with2<R>(
+            m: usize,
+            n: usize,
+            f: impl for<'m, 'n> FnOnce(Size<'m>, Size<'n>) -> R,
+        ) -> R {
+            f(
+                Size(Branded {
+                    __marker: PhantomData,
+                    inner: m,
+                }),
+                Size(Branded {
+                    __marker: PhantomData,
+                    inner: n,
+                }),
+            )
+        }
+
+        #[inline]
+        pub unsafe fn new_raw_unchecked(n: usize) -> Self {
+            Size(Branded {
+                __marker: PhantomData,
+                inner: n,
+            })
+        }
+
+        #[inline]
+        pub fn inner(self) -> usize {
+            self.0.inner
+        }
+
+        #[inline]
+        pub fn indices(self) -> impl DoubleEndedIterator<Item = Idx<'size, usize>> {
+            (0..self.0.inner).map(|i| unsafe { Idx::new_raw_unchecked(i) })
+        }
+    }
+
+    impl<'n, I: Index> Idx<'n, I> {
+        #[inline]
+        pub fn new_checked(idx: I, size: Size<'n>) -> Self {
+            assert!(idx.zx() < size.inner());
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+        #[inline]
+        pub unsafe fn new_unchecked(idx: I, size: Size<'n>) -> Self {
+            debug_assert!(idx.zx() < size.inner());
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+
+        #[inline]
+        pub unsafe fn new_raw_unchecked(idx: I) -> Self {
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+
+        #[inline]
+        pub fn inner(self) -> I {
+            self.0.inner
+        }
+
+        #[inline]
+        pub fn zx(self) -> Idx<'n, usize> {
+            unsafe { Idx::new_raw_unchecked(self.0.inner.zx()) }
+        }
+    }
+
+    impl<'n, I: Index> IdxInclusive<'n, I> {
+        #[inline]
+        pub fn new_checked(idx: I, size: Size<'n>) -> Self {
+            assert!(idx.zx() <= size.inner());
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+        #[inline]
+        pub unsafe fn new_unchecked(idx: I, size: Size<'n>) -> Self {
+            debug_assert!(idx.zx() <= size.inner());
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+
+        #[inline]
+        pub unsafe fn new_raw_unchecked(idx: I) -> Self {
+            Self(Branded {
+                __marker: PhantomData,
+                inner: idx,
+            })
+        }
+
+        #[inline]
+        pub fn inner(self) -> I {
+            self.0.inner
+        }
+    }
+
+    impl<'n, T> Array<'n, T> {
+        #[inline]
+        #[track_caller]
+        pub fn from_ref<'a>(slice: &'a [T], size: Size<'n>) -> &'a Self {
+            assert!(slice.len() == size.inner());
+            unsafe { &*(slice as *const [T] as *const Self) }
+        }
+
+        #[inline]
+        #[track_caller]
+        pub fn from_mut<'a>(slice: &'a mut [T], size: Size<'n>) -> &'a mut Self {
+            assert!(slice.len() == size.inner());
+            unsafe { &mut *(slice as *mut [T] as *mut Self) }
+        }
+
+        #[inline]
+        pub fn len(&self) -> Size<'n> {
+            unsafe { Size::new_raw_unchecked(self.0.inner.len()) }
+        }
+    }
+
+    impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
+        #[inline]
+        #[track_caller]
+        pub fn new(inner: super::MatRef<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
+            assert!((inner.nrows(), inner.ncols()) == (nrows.inner(), ncols.inner()));
+            Self(Branded {
+                __marker: PhantomData,
+                inner: Branded {
+                    __marker: PhantomData,
+                    inner,
+                },
+            })
+        }
+
+        #[inline]
+        pub fn nrows(&self) -> Size<'nrows> {
+            unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
+        }
+
+        #[inline]
+        pub fn ncols(&self) -> Size<'ncols> {
+            unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
+        }
+
+        #[inline]
+        pub fn inner(self) -> super::MatRef<'a, E> {
+            self.0.inner.inner
+        }
+
+        #[inline]
+        #[track_caller]
+        pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
+            unsafe { self.0.inner.inner.read_unchecked(i.inner(), j.inner()) }
+        }
+    }
+
+    impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
+        #[inline]
+        #[track_caller]
+        pub fn new(inner: super::MatMut<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
+            assert!((inner.nrows(), inner.ncols()) == (nrows.inner(), ncols.inner()));
+            Self(Branded {
+                __marker: PhantomData,
+                inner: Branded {
+                    __marker: PhantomData,
+                    inner,
+                },
+            })
+        }
+
+        #[inline]
+        pub fn nrows(&self) -> Size<'nrows> {
+            unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
+        }
+
+        #[inline]
+        pub fn ncols(&self) -> Size<'ncols> {
+            unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
+        }
+
+        #[inline]
+        pub fn inner(self) -> super::MatMut<'a, E> {
+            self.0.inner.inner
+        }
+
+        #[inline]
+        #[track_caller]
+        pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
+            unsafe { self.0.inner.inner.read_unchecked(i.inner(), j.inner()) }
+        }
+
+        #[inline]
+        #[track_caller]
+        pub fn write(&mut self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>, value: E) {
+            unsafe {
+                self.0
+                    .inner
+                    .inner
+                    .write_unchecked(i.inner(), j.inner(), value)
+            };
+        }
+    }
+
+    impl<'n, 'a, I: Index, E: Entity> PermutationRef<'n, 'a, I, E> {
+        #[inline]
+        #[track_caller]
+        pub fn new(perm: super::permutation::PermutationRef<'a, I, E>, size: Size<'n>) -> Self {
+            let (fwd, inv) = perm.into_arrays();
+            assert!(fwd.len() == size.inner());
+            assert!(inv.len() == size.inner());
+            Self(Branded {
+                __marker: PhantomData,
+                inner: perm,
+            })
+        }
+
+        #[inline]
+        pub fn inverse(self) -> PermutationRef<'n, 'a, I, E> {
+            PermutationRef(Branded {
+                __marker: PhantomData,
+                inner: self.0.inner.inverse(),
+            })
+        }
+
+        #[inline]
+        pub fn into_arrays(self) -> (&'a Array<'n, Idx<'n, I>>, &'a Array<'n, Idx<'n, I>>) {
+            unsafe {
+                let (fwd, inv) = self.0.inner.into_arrays();
+                let fwd = &*(fwd as *const [I] as *const Array<'n, Idx<'n, I>>);
+                let inv = &*(inv as *const [I] as *const Array<'n, Idx<'n, I>>);
+                (fwd, inv)
+            }
+        }
+
+        #[inline]
+        pub fn inner(self) -> super::permutation::PermutationRef<'a, I, E> {
+            self.0.inner
+        }
+
+        #[inline]
+        pub fn len(&self) -> Size<'n> {
+            unsafe { Size::new_raw_unchecked(self.inner().len()) }
+        }
+    }
+
+    impl<I, E: Entity> Clone for PermutationRef<'_, '_, I, E> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<I, E: Entity> Copy for PermutationRef<'_, '_, I, E> {}
+
+    impl<E: Entity> Clone for MatRef<'_, '_, '_, E> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<E: Entity> Copy for MatRef<'_, '_, '_, E> {}
+
+    impl<'nrows, 'ncols, 'a, E: Entity> IntoConst for MatRef<'nrows, 'ncols, 'a, E> {
+        type Target = MatRef<'nrows, 'ncols, 'a, E>;
+        #[inline]
+        fn into_const(self) -> Self::Target {
+            self
+        }
+    }
+    impl<'nrows, 'ncols, 'a, 'short, E: Entity> Reborrow<'short> for MatRef<'nrows, 'ncols, 'a, E> {
+        type Target = MatRef<'nrows, 'ncols, 'short, E>;
+        #[inline]
+        fn rb(&'short self) -> Self::Target {
+            *self
+        }
+    }
+    impl<'nrows, 'ncols, 'a, 'short, E: Entity> ReborrowMut<'short> for MatRef<'nrows, 'ncols, 'a, E> {
+        type Target = MatRef<'nrows, 'ncols, 'short, E>;
+        #[inline]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            *self
+        }
+    }
+
+    impl<'nrows, 'ncols, 'a, E: Entity> IntoConst for MatMut<'nrows, 'ncols, 'a, E> {
+        type Target = MatRef<'nrows, 'ncols, 'a, E>;
+        #[inline]
+        fn into_const(self) -> Self::Target {
+            let inner = self.0.inner.inner.into_const();
+            MatRef(Branded {
+                __marker: PhantomData,
+                inner: Branded {
+                    __marker: PhantomData,
+                    inner,
+                },
+            })
+        }
+    }
+    impl<'nrows, 'ncols, 'a, 'short, E: Entity> Reborrow<'short> for MatMut<'nrows, 'ncols, 'a, E> {
+        type Target = MatRef<'nrows, 'ncols, 'short, E>;
+        #[inline]
+        fn rb(&'short self) -> Self::Target {
+            let inner = self.0.inner.inner.rb();
+            MatRef(Branded {
+                __marker: PhantomData,
+                inner: Branded {
+                    __marker: PhantomData,
+                    inner,
+                },
+            })
+        }
+    }
+    impl<'nrows, 'ncols, 'a, 'short, E: Entity> ReborrowMut<'short> for MatMut<'nrows, 'ncols, 'a, E> {
+        type Target = MatMut<'nrows, 'ncols, 'short, E>;
+        #[inline]
+        fn rb_mut(&'short mut self) -> Self::Target {
+            let inner = self.0.inner.inner.rb_mut();
+            MatMut(Branded {
+                __marker: PhantomData,
+                inner: Branded {
+                    __marker: PhantomData,
+                    inner,
+                },
+            })
+        }
+    }
+
+    impl Debug for Size<'_> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.fmt(f)
+        }
+    }
+    impl<I: Debug> Debug for Idx<'_, I> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.fmt(f)
+        }
+    }
+    impl<I: Debug> Debug for IdxInclusive<'_, I> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.fmt(f)
+        }
+    }
+    impl<I: Debug + SignedIndex> Debug for MaybeIdx<'_, I> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            #[derive(Debug)]
+            struct None;
+
+            if self.0.inner >= I::truncate(0) {
+                self.0.inner.fmt(f)
+            } else {
+                None.fmt(f)
+            }
+        }
+    }
+    impl<T: Debug> Debug for Array<'_, T> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.fmt(f)
+        }
+    }
+    impl<E: Entity> Debug for MatRef<'_, '_, '_, E> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.inner.fmt(f)
+        }
+    }
+    impl<E: Entity> Debug for MatMut<'_, '_, '_, E> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.inner.fmt(f)
+        }
+    }
+    impl<I: Debug, E: Entity> Debug for PermutationRef<'_, '_, I, E> {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.0.inner.fmt(f)
+        }
+    }
+
+    impl<'n, T> core::ops::Index<Idx<'n, usize>> for Array<'n, T> {
+        type Output = T;
+        #[track_caller]
+        fn index(&self, idx: Idx<'n, usize>) -> &Self::Output {
+            #[cfg(debug_assertions)]
+            {
+                &self.0.inner[idx.inner()]
+            }
+            #[cfg(not(debug_assertions))]
+            unsafe {
+                self.0.inner.get_unchecked(idx.inner())
+            }
+        }
+    }
+    impl<'n, T> core::ops::IndexMut<Idx<'n, usize>> for Array<'n, T> {
+        #[track_caller]
+        fn index_mut(&mut self, idx: Idx<'n, usize>) -> &mut Self::Output {
+            #[cfg(debug_assertions)]
+            {
+                &mut self.0.inner[idx.inner()]
+            }
+            #[cfg(not(debug_assertions))]
+            unsafe {
+                self.0.inner.get_unchecked_mut(idx.inner())
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

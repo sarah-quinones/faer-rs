@@ -24,7 +24,7 @@ pub fn reconstruct<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
-    col_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -72,7 +72,7 @@ pub fn reconstruct<E: ComplexField, I: Index>(
 pub fn reconstruct_in_place<E: ComplexField, I: Index>(
     qr_factors: MatMut<'_, E>,
     householder_factor: MatRef<'_, E>,
-    col_perm: PermutationRef<'_, I>,
+    col_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {

@@ -701,7 +701,7 @@ pub fn qr_in_place<'out, E: ComplexField, I: Index>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: ColPivQrComputeParams,
-) -> (usize, PermutationMut<'out, I>) {
+) -> (usize, PermutationMut<'out, I, E>) {
     fn implementation<'out, E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
         householder_factor: MatMut<'_, E>,
@@ -710,7 +710,7 @@ pub fn qr_in_place<'out, E: ComplexField, I: Index>(
         parallelism: Parallelism,
         stack: PodStack<'_>,
         params: ColPivQrComputeParams,
-    ) -> (usize, PermutationMut<'out, I>) {
+    ) -> (usize, PermutationMut<'out, I, E>) {
         {
             let truncate = <I::Signed as SignedIndex>::truncate;
 

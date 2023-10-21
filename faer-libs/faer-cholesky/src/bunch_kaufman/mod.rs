@@ -552,7 +552,7 @@ pub mod compute {
         parallelism: Parallelism,
         stack: PodStack<'_>,
         params: BunchKaufmanParams,
-    ) -> PermutationMut<'out, I> {
+    ) -> PermutationMut<'out, I, E> {
         let truncate = <I::Signed as SignedIndex>::truncate;
 
         let n = matrix.nrows();
@@ -664,7 +664,7 @@ pub mod solve {
         lb_factors: MatRef<'_, E>,
         subdiag: MatRef<'_, E>,
         conj: Conj,
-        perm: PermutationRef<'_, I>,
+        perm: PermutationRef<'_, I, E>,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,

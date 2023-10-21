@@ -839,7 +839,7 @@ pub mod solvers {
             self.factors.nrows()
         }
 
-        pub fn row_permutation(&self) -> PermutationRef<'_, usize> {
+        pub fn row_permutation(&self) -> PermutationRef<'_, usize, E> {
             unsafe { PermutationRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
         }
 
@@ -1014,10 +1014,10 @@ pub mod solvers {
             }
         }
 
-        pub fn row_permutation(&self) -> PermutationRef<'_, usize> {
+        pub fn row_permutation(&self) -> PermutationRef<'_, usize, E> {
             unsafe { PermutationRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
         }
-        pub fn col_permutation(&self) -> PermutationRef<'_, usize> {
+        pub fn col_permutation(&self) -> PermutationRef<'_, usize, E> {
             unsafe { PermutationRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
         }
 
@@ -1406,7 +1406,7 @@ pub mod solvers {
             }
         }
 
-        pub fn col_permutation(&self) -> PermutationRef<'_, usize> {
+        pub fn col_permutation(&self) -> PermutationRef<'_, usize, E> {
             unsafe { PermutationRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
         }
 

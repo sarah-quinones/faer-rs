@@ -22,7 +22,7 @@ pub fn compute_cholesky_permutation<'a, E: ComplexField, I: Index>(
     perm_indices: &'a mut [I],
     perm_inv_indices: &'a mut [I],
     matrix: MatRef<'_, E>,
-) -> PermutationMut<'a, I> {
+) -> PermutationMut<'a, I, E> {
     let n = matrix.nrows();
     let truncate = <I::Signed as SignedIndex>::truncate;
     assert!(

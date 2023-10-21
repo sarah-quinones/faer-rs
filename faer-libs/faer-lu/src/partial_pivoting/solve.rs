@@ -9,7 +9,7 @@ use reborrow::*;
 fn solve_impl<E: ComplexField, I: Index>(
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     dst: MatMut<'_, E>,
     rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
@@ -51,7 +51,7 @@ fn solve_impl<E: ComplexField, I: Index>(
 fn solve_transpose_impl<E: ComplexField, I: Index>(
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     dst: MatMut<'_, E>,
     rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
@@ -167,7 +167,7 @@ pub fn solve<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -200,7 +200,7 @@ pub fn solve<E: ComplexField, I: Index>(
 pub fn solve_in_place<E: ComplexField, I: Index>(
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -235,7 +235,7 @@ pub fn solve_transpose<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -268,7 +268,7 @@ pub fn solve_transpose<E: ComplexField, I: Index>(
 pub fn solve_transpose_in_place<E: ComplexField, I: Index>(
     lu_factors: MatRef<'_, E>,
     conj_lhs: Conj,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,

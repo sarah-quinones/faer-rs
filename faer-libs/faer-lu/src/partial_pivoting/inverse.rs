@@ -13,7 +13,7 @@ use triangular::BlockStructure;
 fn invert_impl<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: Option<MatRef<'_, E>>,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -97,7 +97,7 @@ pub fn invert_req<E: Entity, I: Index>(
 pub fn invert<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -120,7 +120,7 @@ pub fn invert<E: ComplexField, I: Index>(
 #[track_caller]
 pub fn invert_in_place<E: ComplexField, I: Index>(
     lu_factors: MatMut<'_, E>,
-    row_perm: PermutationRef<'_, I>,
+    row_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {

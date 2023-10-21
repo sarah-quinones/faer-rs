@@ -10,11 +10,11 @@ use faer_core::{
 use reborrow::*;
 use triangular::BlockStructure;
 
-fn invert_impl<T: ComplexField, I: Index>(
-    mut dst: MatMut<'_, T>,
-    lu_factors: Option<MatRef<'_, T>>,
-    row_perm: PermutationRef<'_, I>,
-    col_perm: PermutationRef<'_, I>,
+fn invert_impl<E: ComplexField, I: Index>(
+    mut dst: MatMut<'_, E>,
+    lu_factors: Option<MatRef<'_, E>>,
+    row_perm: PermutationRef<'_, I, E>,
+    col_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -29,8 +29,8 @@ fn invert_impl<T: ComplexField, I: Index>(
     debug_assert!(dst.nrows() == n);
     debug_assert!(dst.ncols() == n);
 
-    let (mut inv_lu, stack) = temp_mat_uninit::<T>(m, n, stack);
-    let (mut inv, _) = temp_mat_uninit::<T>(m, n, stack);
+    let (mut inv_lu, stack) = temp_mat_uninit::<E>(m, n, stack);
+    let (mut inv, _) = temp_mat_uninit::<E>(m, n, stack);
     let inv_lu = inv_lu.as_mut();
     let mut inv = inv.as_mut();
 
@@ -58,7 +58,7 @@ fn invert_impl<T: ComplexField, I: Index>(
         l_inv,
         BlockStructure::UnitTriangularLower,
         None,
-        T::faer_one(),
+        E::faer_one(),
         parallelism,
     );
 
@@ -98,11 +98,11 @@ fn invert_impl<T: ComplexField, I: Index>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
-pub fn invert<T: ComplexField, I: Index>(
-    dst: MatMut<'_, T>,
-    lu_factors: MatRef<'_, T>,
-    row_perm: PermutationRef<'_, I>,
-    col_perm: PermutationRef<'_, I>,
+pub fn invert<E: ComplexField, I: Index>(
+    dst: MatMut<'_, E>,
+    lu_factors: MatRef<'_, E>,
+    row_perm: PermutationRef<'_, I, E>,
+    col_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
@@ -130,10 +130,10 @@ pub fn invert<T: ComplexField, I: Index>(
 /// - Panics if the column permutation doesn't have the same dimension as the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
-pub fn invert_in_place<T: ComplexField, I: Index>(
-    lu_factors: MatMut<'_, T>,
-    row_perm: PermutationRef<'_, I>,
-    col_perm: PermutationRef<'_, I>,
+pub fn invert_in_place<E: ComplexField, I: Index>(
+    lu_factors: MatMut<'_, E>,
+    row_perm: PermutationRef<'_, I, E>,
+    col_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {

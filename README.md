@@ -30,7 +30,7 @@ The core module implements matrix structures, as well as BLAS-like matrix operat
 [![Documentation](https://docs.rs/faer-cholesky/badge.svg)](https://docs.rs/faer-cholesky)
 [![Crate](https://img.shields.io/crates/v/faer-cholesky.svg)](https://crates.io/crates/faer-cholesky)
 
-The Cholesky module implements the LLT and LDLT matrix decompositions. These allow for solving symmetric/Hermitian (+positive definite for LLT) linear systems.
+The Cholesky module implements the LLT, LDLT and Bunch-Kaufman matrix decompositions. These allow for solving Hermitian (+positive definite for LLT) linear systems.
 
 ## faer-lu
 

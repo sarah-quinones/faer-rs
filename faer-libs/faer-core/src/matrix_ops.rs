@@ -1,6 +1,7 @@
 //! addition and subtraction of matrices
 
 use super::*;
+use crate::permutation::{Index, SignedIndex};
 #[cfg(feature = "std")]
 use assert2::assert;
 
@@ -12,6 +13,9 @@ pub struct Diag {
 }
 pub struct Scale {
     __private: (),
+}
+pub struct Perm<I> {
+    __private: PhantomData<I>,
 }
 
 pub trait MatrixKind {
@@ -38,6 +42,11 @@ impl MatrixKind for Diag {
     type Mut<'a, E: Entity> = Matrix<DiagMut<'a, E>>;
     type Own<E: Entity> = Matrix<DiagOwn<E>>;
 }
+impl<I: Index> MatrixKind for Perm<I> {
+    type Ref<'a, E: Entity> = Matrix<PermRef<'a, I, E>>;
+    type Mut<'a, E: Entity> = Matrix<PermMut<'a, I, E>>;
+    type Own<E: Entity> = Matrix<PermOwn<I, E>>;
+}
 
 pub trait GenericMatrix: Sized {
     type Kind: MatrixKind;
@@ -47,6 +56,34 @@ pub trait GenericMatrix: Sized {
 }
 pub trait GenericMatrixMut: GenericMatrix {
     fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem>;
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::PermRef<'_, I, E> {
+    type Kind = Perm<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        *this
+    }
+}
+impl<I: Index, E: Entity> GenericMatrix for inner::PermMut<'_, I, E> {
+    type Kind = Perm<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.rb()
+    }
+}
+impl<I: Index, E: Entity> GenericMatrix for inner::PermOwn<I, E> {
+    type Kind = Perm<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.as_ref()
+    }
 }
 
 impl<E: Entity> GenericMatrix for inner::DenseRef<'_, E> {
@@ -183,9 +220,93 @@ mod __matmul_assign {
 
 mod __matmul {
 
+    use crate::permutation::Permutation;
+
     use super::*;
     #[cfg(feature = "std")]
     use assert2::assert;
+
+    impl<I: Index> MatMul<Perm<I>> for Perm<I> {
+        type Output = Perm<I>;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Perm<I>>,
+            rhs: KindRef<'_, RhsE, Perm<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.len() == rhs.len());
+            let truncate = <I::Signed as SignedIndex>::truncate;
+            let mut fwd = vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+            let mut inv = vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+
+            for (fwd, rhs) in fwd.iter_mut().zip(rhs.inner.forward) {
+                *fwd = lhs.inner.forward[rhs.to_signed().zx()];
+            }
+            for (i, fwd) in fwd.iter().enumerate() {
+                inv[fwd.to_signed().zx()] = I::from_signed(I::Signed::truncate(i));
+            }
+
+            Permutation {
+                inner: PermOwn {
+                    forward: fwd,
+                    inverse: inv,
+                    __marker: core::marker::PhantomData,
+                },
+            }
+        }
+    }
+    impl<I: Index> MatMul<Dense> for Perm<I> {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Perm<I>>,
+            rhs: KindRef<'_, RhsE, Dense>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.len() == rhs.nrows());
+            let mut out = Mat::zeros(rhs.nrows(), rhs.ncols());
+            let fwd = lhs.inner.forward;
+
+            for j in 0..rhs.ncols() {
+                for (i, fwd) in fwd.iter().enumerate() {
+                    out.write(i, j, rhs.read(fwd.to_signed().zx(), j).canonicalize());
+                }
+            }
+            out
+        }
+    }
+    impl<I: Index> MatMul<Perm<I>> for Dense {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Dense>,
+            rhs: KindRef<'_, RhsE, Perm<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.ncols() == rhs.len());
+            let mut out = Mat::zeros(lhs.nrows(), lhs.ncols());
+            let inv = rhs.inner.inverse;
+
+            for (j, inv) in inv.iter().enumerate() {
+                for i in 0..lhs.nrows() {
+                    out.write(i, j, lhs.read(i, inv.to_signed().zx()).canonicalize());
+                }
+            }
+            out
+        }
+    }
 
     impl MatMul<Dense> for Dense {
         type Output = Dense;
@@ -432,6 +553,18 @@ impl MatSized for Dense {
     }
 }
 
+impl<I: Index> MatSized for Perm<I> {
+    #[inline(always)]
+    fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
+        this.len()
+    }
+
+    #[inline(always)]
+    fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
+        this.len()
+    }
+}
+
 impl MatSized for Diag {
     #[inline(always)]
     fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
@@ -441,6 +574,16 @@ impl MatSized for Diag {
     #[inline(always)]
     fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
         Diag::nrows(this)
+    }
+}
+
+impl<I: Index> MatEq<Perm<I>> for Perm<I> {
+    #[track_caller]
+    fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> bool {
+        lhs.inner.forward == rhs.inner.forward
     }
 }
 
@@ -846,7 +989,12 @@ const _: () = {
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod test {
-    use crate::{mat, Mat};
+    use crate::{
+        mat,
+        permutation::{Permutation, PermutationRef},
+        Mat,
+    };
+    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
 
     fn matrices() -> (Mat<f64>, Mat<f64>) {
@@ -957,6 +1105,45 @@ mod test {
 
         assert!(&diag_left * &A == diag_left.diagonal() * &A);
         assert!(&A * &diag_right == &A * diag_right.diagonal());
+    }
+
+    #[test]
+    fn test_perm_mul() {
+        let A = Mat::from_fn(6, 5, |i, j| (j + 5 * i) as f64);
+        let pl = Permutation::<usize, f64>::new_checked(
+            Box::new([5, 1, 4, 0, 2, 3]),
+            Box::new([3, 1, 4, 5, 2, 0]),
+        );
+        let pr = Permutation::<usize, f64>::new_checked(
+            Box::new([1, 4, 0, 2, 3]),
+            Box::new([2, 0, 3, 4, 1]),
+        );
+
+        let perm_left = mat![
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        ];
+        let perm_right = mat![
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+        ];
+
+        assert!(
+            &pl * pl.as_ref().inverse()
+                == PermutationRef::<'_, usize, f64>::new_checked(
+                    &[0, 1, 2, 3, 4, 5],
+                    &[0, 1, 2, 3, 4, 5],
+                )
+        );
+        assert!(&perm_left * &A == &pl * &A);
+        assert!(&A * &perm_right == &A * &pr);
     }
 
     fn assert_matrix_approx_eq(given: Mat<f64>, expected: &Mat<f64>) {

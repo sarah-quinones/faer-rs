@@ -2,6 +2,7 @@
 #![allow(clippy::len_without_is_empty)]
 
 use crate::{
+    constrained,
     inner::{PermMut, PermOwn, PermRef},
     seal::Seal,
     temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef, Matrix,
@@ -23,13 +24,24 @@ pub trait Index: Seal + core::fmt::Debug + Pod + Eq + Ord + Send + Sync {
     type Unsigned: Index;
     type Signed: SignedIndex;
 
-    #[doc(hidden)]
+    #[must_use]
+    #[inline(always)]
+    fn truncate(value: usize) -> Self {
+        Self::from_signed(<Self::Signed as SignedIndex>::truncate(value))
+    }
+
+    /// zero extend
+    #[must_use]
+    #[inline(always)]
+    fn zx(self) -> usize {
+        self.to_signed().zx()
+    }
+
     #[inline(always)]
     fn canonicalize(slice: &[Self]) -> &[Self::Unsigned] {
         bytemuck::cast_slice(slice)
     }
 
-    #[doc(hidden)]
     #[inline(always)]
     fn canonicalize_mut(slice: &mut [Self]) -> &mut [Self::Unsigned] {
         bytemuck::cast_slice_mut(slice)
@@ -233,16 +245,14 @@ pub fn swap_cols<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     }
 
     let mat = mat.into_const();
-    let mat_a = mat.subcols(a, 1);
-    let mat_b = mat.subcols(b, 1);
+    let mat_a = mat.col(a);
+    let mat_b = mat.col(b);
 
-    unsafe {
-        zipped!(mat_a.const_cast(), mat_b.const_cast()).for_each(|mut a, mut b| {
-            let (a_read, b_read) = (a.read(), b.read());
-            a.write(b_read);
-            b.write(a_read);
-        });
-    }
+    unsafe { zipped!(mat_a.const_cast(), mat_b.const_cast()) }.for_each(|mut a, mut b| {
+        let (a_read, b_read) = (a.read(), b.read());
+        a.write(b_read);
+        b.write(a_read);
+    });
 }
 
 /// Swaps the two rows at indices `a` and `b` in the given matrix.
@@ -280,33 +290,35 @@ pub fn swap_rows<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     swap_cols(mat.transpose(), a, b)
 }
 
-pub type PermutationRef<'a, I> = Matrix<PermRef<'a, I>>;
-pub type PermutationMut<'a, I> = Matrix<PermMut<'a, I>>;
-pub type Permutation<I> = Matrix<PermOwn<I>>;
+pub type PermutationRef<'a, I, E> = Matrix<PermRef<'a, I, E>>;
+pub type PermutationMut<'a, I, E> = Matrix<PermMut<'a, I, E>>;
+pub type Permutation<I, E> = Matrix<PermOwn<I, E>>;
 
-impl<I: Index> Permutation<I> {
+impl<I, E: Entity> Permutation<I, E> {
     #[inline]
-    pub fn as_ref(&self) -> PermutationRef<'_, I> {
+    pub fn as_ref(&self) -> PermutationRef<'_, I, E> {
         PermutationRef {
             inner: PermRef {
                 forward: &self.inner.forward,
                 inverse: &self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 
     #[inline]
-    pub fn as_mut(&mut self) -> PermutationMut<'_, I> {
+    pub fn as_mut(&mut self) -> PermutationMut<'_, I, E> {
         PermutationMut {
             inner: PermMut {
                 forward: &mut self.inner.forward,
                 inverse: &mut self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<I: Index> Permutation<I> {
+impl<I: Index, E: Entity> Permutation<I, E> {
     /// Creates a new permutation, by checking the validity of the inputs.
     ///
     /// # Panics
@@ -317,9 +329,13 @@ impl<I: Index> Permutation<I> {
     #[inline]
     #[track_caller]
     pub fn new_checked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
-        PermutationRef::new_checked(&forward, &inverse);
+        PermutationRef::<'_, I, E>::new_checked(&forward, &inverse);
         Self {
-            inner: PermOwn { forward, inverse },
+            inner: PermOwn {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -336,7 +352,11 @@ impl<I: Index> Permutation<I> {
         assert!(forward.len() == inverse.len());
         assert!(n <= I::Signed::MAX.zx());
         Self {
-            inner: PermOwn { forward, inverse },
+            inner: PermOwn {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -359,12 +379,24 @@ impl<I: Index> Permutation<I> {
             inner: PermOwn {
                 forward: self.inner.inverse,
                 inverse: self.inner.forward,
+                __marker: core::marker::PhantomData,
+            },
+        }
+    }
+
+    #[inline]
+    pub fn cast<T: Entity>(self) -> Permutation<I, T> {
+        Permutation {
+            inner: PermOwn {
+                forward: self.inner.forward,
+                inverse: self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<'a, I: Index> PermutationRef<'a, I> {
+impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
     /// Creates a new permutation reference, by checking the validity of the inputs.
     ///
     /// # Panics
@@ -375,16 +407,25 @@ impl<'a, I: Index> PermutationRef<'a, I> {
     #[inline]
     #[track_caller]
     pub fn new_checked(forward: &'a [I], inverse: &'a [I]) -> Self {
-        let n = forward.len();
-        assert!(forward.len() == inverse.len());
-        assert!(n <= I::Signed::MAX.zx());
-        for (i, &p) in forward.iter().enumerate() {
-            let p = p.to_signed().zx();
-            assert!(p < n);
-            assert!(inverse[p].to_signed().zx() == i);
+        #[track_caller]
+        fn check<I: Index>(forward: &[I], inverse: &[I]) {
+            let n = forward.len();
+            assert!(forward.len() == inverse.len());
+            assert!(n <= I::Signed::MAX.zx());
+            for (i, &p) in forward.iter().enumerate() {
+                let p = p.to_signed().zx();
+                assert!(p < n);
+                assert!(inverse[p].to_signed().zx() == i);
+            }
         }
+
+        check(I::canonicalize(forward), I::canonicalize(inverse));
         Self {
-            inner: PermRef { forward, inverse },
+            inner: PermRef {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -402,7 +443,11 @@ impl<'a, I: Index> PermutationRef<'a, I> {
         assert!(n <= I::Signed::MAX.zx());
 
         Self {
-            inner: PermRef { forward, inverse },
+            inner: PermRef {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -425,33 +470,47 @@ impl<'a, I: Index> PermutationRef<'a, I> {
             inner: PermRef {
                 forward: self.inner.inverse,
                 inverse: self.inner.forward,
+                __marker: core::marker::PhantomData,
+            },
+        }
+    }
+
+    #[inline]
+    pub fn cast<T: Entity>(self) -> PermutationRef<'a, I, T> {
+        PermutationRef {
+            inner: PermRef {
+                forward: self.inner.forward,
+                inverse: self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 
     #[inline(always)]
-    pub fn canonicalize(self) -> PermutationRef<'a, I::Unsigned> {
+    pub fn canonicalize(self) -> PermutationRef<'a, I::Unsigned, E> {
         PermutationRef {
             inner: PermRef {
                 forward: I::canonicalize(self.inner.forward),
                 inverse: I::canonicalize(self.inner.inverse),
+                __marker: core::marker::PhantomData,
             },
         }
     }
 
     #[inline(always)]
-    pub fn uncanonicalize<J: Index>(self) -> PermutationRef<'a, J> {
+    pub fn uncanonicalize<J: Index>(self) -> PermutationRef<'a, J, E> {
         assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
         PermutationRef {
             inner: PermRef {
                 forward: bytemuck::cast_slice(self.inner.forward),
                 inverse: bytemuck::cast_slice(self.inner.inverse),
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<'a, I: Index> PermutationMut<'a, I> {
+impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
     /// Creates a new permutation mutable reference, by checking the validity of the inputs.
     ///
     /// # Panics
@@ -462,9 +521,13 @@ impl<'a, I: Index> PermutationMut<'a, I> {
     #[inline]
     #[track_caller]
     pub fn new_checked(forward: &'a mut [I], inverse: &'a mut [I]) -> Self {
-        PermutationRef::new_checked(forward, inverse);
+        PermutationRef::<'_, I, E>::new_checked(forward, inverse);
         Self {
-            inner: PermMut { forward, inverse },
+            inner: PermMut {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -482,7 +545,11 @@ impl<'a, I: Index> PermutationMut<'a, I> {
         assert!(n <= I::Signed::MAX.zx());
 
         Self {
-            inner: PermMut { forward, inverse },
+            inner: PermMut {
+                forward,
+                inverse,
+                __marker: core::marker::PhantomData,
+            },
         }
     }
 
@@ -510,34 +577,48 @@ impl<'a, I: Index> PermutationMut<'a, I> {
             inner: PermMut {
                 forward: self.inner.inverse,
                 inverse: self.inner.forward,
+                __marker: core::marker::PhantomData,
+            },
+        }
+    }
+
+    #[inline]
+    pub fn cast<T: Entity>(self) -> PermutationMut<'a, I, T> {
+        PermutationMut {
+            inner: PermMut {
+                forward: self.inner.forward,
+                inverse: self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 
     #[inline(always)]
-    pub fn canonicalize(self) -> PermutationMut<'a, I::Unsigned> {
+    pub fn canonicalize(self) -> PermutationMut<'a, I::Unsigned, E> {
         PermutationMut {
             inner: PermMut {
                 forward: I::canonicalize_mut(self.inner.forward),
                 inverse: I::canonicalize_mut(self.inner.inverse),
+                __marker: core::marker::PhantomData,
             },
         }
     }
 
     #[inline(always)]
-    pub fn uncanonicalize<J: Index>(self) -> PermutationMut<'a, J> {
+    pub fn uncanonicalize<J: Index>(self) -> PermutationMut<'a, J, E> {
         assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
         PermutationMut {
             inner: PermMut {
                 forward: bytemuck::cast_slice_mut(self.inner.forward),
                 inverse: bytemuck::cast_slice_mut(self.inner.inverse),
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<'short, 'a, I> Reborrow<'short> for PermutationRef<'a, I> {
-    type Target = PermutationRef<'short, I>;
+impl<'short, 'a, I, E: Entity> Reborrow<'short> for PermutationRef<'a, I, E> {
+    type Target = PermutationRef<'short, I, E>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -545,8 +626,8 @@ impl<'short, 'a, I> Reborrow<'short> for PermutationRef<'a, I> {
     }
 }
 
-impl<'short, 'a, I> ReborrowMut<'short> for PermutationRef<'a, I> {
-    type Target = PermutationRef<'short, I>;
+impl<'short, 'a, I, E: Entity> ReborrowMut<'short> for PermutationRef<'a, I, E> {
+    type Target = PermutationRef<'short, I, E>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -554,8 +635,8 @@ impl<'short, 'a, I> ReborrowMut<'short> for PermutationRef<'a, I> {
     }
 }
 
-impl<'short, 'a, I> Reborrow<'short> for PermutationMut<'a, I> {
-    type Target = PermutationRef<'short, I>;
+impl<'short, 'a, I, E: Entity> Reborrow<'short> for PermutationMut<'a, I, E> {
+    type Target = PermutationRef<'short, I, E>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -563,13 +644,14 @@ impl<'short, 'a, I> Reborrow<'short> for PermutationMut<'a, I> {
             inner: PermRef {
                 forward: &*self.inner.forward,
                 inverse: &*self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<'short, 'a, I> ReborrowMut<'short> for PermutationMut<'a, I> {
-    type Target = PermutationMut<'short, I>;
+impl<'short, 'a, I, E: Entity> ReborrowMut<'short> for PermutationMut<'a, I, E> {
+    type Target = PermutationMut<'short, I, E>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -577,21 +659,28 @@ impl<'short, 'a, I> ReborrowMut<'short> for PermutationMut<'a, I> {
             inner: PermMut {
                 forward: &mut *self.inner.forward,
                 inverse: &mut *self.inner.inverse,
+                __marker: core::marker::PhantomData,
             },
         }
     }
 }
 
-impl<'a, I: Debug> Debug for PermutationRef<'a, I> {
+impl<'a, I: Debug, E: Entity> Debug for PermutationRef<'a, I, E> {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.inner.fmt(f)
     }
 }
-impl<'a, I: Debug> Debug for PermutationMut<'a, I> {
+impl<'a, I: Debug, E: Entity> Debug for PermutationMut<'a, I, E> {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.inner.fmt(f)
+        self.rb().fmt(f)
+    }
+}
+impl<'a, I: Debug, E: Entity> Debug for Permutation<I, E> {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
     }
 }
 
@@ -607,7 +696,7 @@ impl<'a, I: Debug> Debug for PermutationMut<'a, I> {
 pub fn permute_cols<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     src: MatRef<'_, E>,
-    perm_indices: PermutationRef<'_, I>,
+    perm_indices: PermutationRef<'_, I, E>,
 ) {
     assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
     assert!(perm_indices.into_arrays().0.len() == src.ncols());
@@ -631,45 +720,41 @@ pub fn permute_cols<E: ComplexField, I: Index>(
 pub fn permute_rows<E: ComplexField, I: Index>(
     dst: MatMut<'_, E>,
     src: MatRef<'_, E>,
-    perm_indices: PermutationRef<'_, I>,
+    perm_indices: PermutationRef<'_, I, E>,
 ) {
     #[track_caller]
     fn implementation<E: ComplexField, I: Index>(
         dst: MatMut<'_, E>,
         src: MatRef<'_, E>,
-        perm_indices: PermutationRef<'_, I>,
+        perm_indices: PermutationRef<'_, I, E>,
     ) {
         assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
         assert!(perm_indices.into_arrays().0.len() == src.nrows());
 
-        let mut dst = dst;
-        let m = src.nrows();
-        let n = src.ncols();
+        constrained::Size::with2(src.nrows(), src.ncols(), |m, n| {
+            let mut dst = constrained::MatMut::new(dst, m, n);
+            let src = constrained::MatRef::new(src, m, n);
+            let perm = constrained::PermutationRef::new(perm_indices, m)
+                .into_arrays()
+                .0;
 
-        let perm = perm_indices.into_arrays().0;
-
-        if dst.row_stride().abs() < dst.col_stride().abs() {
-            for j in 0..n {
-                for i in 0..m {
-                    unsafe {
-                        dst.rb_mut().write_unchecked(
-                            i,
-                            j,
-                            src.read_unchecked(perm.get_unchecked(i).to_signed().zx(), j),
-                        );
+            if dst.rb().inner().row_stride().unsigned_abs()
+                < dst.rb().inner().col_stride().unsigned_abs()
+            {
+                for j in n.indices() {
+                    for i in m.indices() {
+                        dst.rb_mut().write(i, j, src.read(perm[i].zx(), j));
                     }
                 }
-            }
-        } else {
-            for i in 0..m {
-                unsafe {
-                    let src_i = src.subrows(perm.get_unchecked(i).to_signed().zx(), 1);
-                    let dst_i = dst.rb_mut().subrows(i, 1);
+            } else {
+                for i in m.indices() {
+                    let src_i = src.inner().row(perm[i].zx().inner());
+                    let mut dst_i = dst.rb_mut().inner().row(i.inner());
 
-                    zipped!(dst_i, src_i).for_each(|mut dst, src| dst.write(src.read()));
+                    dst_i.clone_from(src_i);
                 }
             }
-        }
+        });
     }
 
     implementation(dst, src, perm_indices.canonicalize())
@@ -703,14 +788,14 @@ pub fn permute_cols_in_place_req<E: Entity, I: Index>(
 #[track_caller]
 pub fn permute_rows_in_place<E: ComplexField, I: Index>(
     matrix: MatMut<'_, E>,
-    perm_indices: PermutationRef<'_, I>,
+    perm_indices: PermutationRef<'_, I, E>,
     stack: PodStack<'_>,
 ) {
     #[inline]
     #[track_caller]
     fn implementation<E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
-        perm_indices: PermutationRef<'_, I>,
+        perm_indices: PermutationRef<'_, I, E>,
         stack: PodStack<'_>,
     ) {
         let mut matrix = matrix;
@@ -732,14 +817,14 @@ pub fn permute_rows_in_place<E: ComplexField, I: Index>(
 #[track_caller]
 pub fn permute_cols_in_place<E: ComplexField, I: Index>(
     matrix: MatMut<'_, E>,
-    perm_indices: PermutationRef<'_, I>,
+    perm_indices: PermutationRef<'_, I, E>,
     stack: PodStack<'_>,
 ) {
     #[inline]
     #[track_caller]
     fn implementation<E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
-        perm_indices: PermutationRef<'_, I>,
+        perm_indices: PermutationRef<'_, I, E>,
         stack: PodStack<'_>,
     ) {
         let mut matrix = matrix;

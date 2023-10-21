@@ -1246,7 +1246,11 @@ pub fn lu_in_place<'out, E: ComplexField, I: Index>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: FullPivLuComputeParams,
-) -> (usize, PermutationMut<'out, I>, PermutationMut<'out, I>) {
+) -> (
+    usize,
+    PermutationMut<'out, I, E>,
+    PermutationMut<'out, I, E>,
+) {
     let disable_parallelism = params
         .disable_parallelism
         .unwrap_or(default_disable_parallelism);
@@ -1341,8 +1345,8 @@ mod tests {
 
     fn reconstruct_matrix<E: ComplexField, I: Index>(
         lu_factors: MatRef<'_, E>,
-        row_perm: PermutationRef<'_, I>,
-        col_perm: PermutationRef<'_, I>,
+        row_perm: PermutationRef<'_, I, E>,
+        col_perm: PermutationRef<'_, I, E>,
     ) -> Mat<E> {
         let m = lu_factors.nrows();
         let n = lu_factors.ncols();
