@@ -1217,14 +1217,34 @@ pub mod solvers {
         }
 
         pub fn compute_q(&self) -> Mat<E> {
-            Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref())
+            Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), false)
         }
 
-        fn __compute_q_impl(factors: MatRef<'_, E>, householder: MatRef<'_, E>) -> Mat<E> {
+        pub fn compute_thin_r(&self) -> Mat<E> {
+            let m = self.nrows();
+            let n = self.ncols();
+            let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
+            zipped!(factor.as_mut())
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                    dst.write(E::faer_zero())
+                });
+            factor
+        }
+
+        pub fn compute_thin_q(&self) -> Mat<E> {
+            Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
+        }
+
+        fn __compute_q_impl(
+            factors: MatRef<'_, E>,
+            householder: MatRef<'_, E>,
+            thin: bool,
+        ) -> Mat<E> {
             let parallelism = get_global_parallelism();
             let m = factors.nrows();
+            let size = Ord::min(m, factors.ncols());
 
-            let mut q = Mat::<E>::zeros(m, m);
+            let mut q = Mat::<E>::zeros(m, if thin { size } else { m });
             q.as_mut()
                 .diagonal()
                 .into_column_vector()
@@ -1424,7 +1444,22 @@ pub mod solvers {
         }
 
         pub fn compute_q(&self) -> Mat<E> {
-            Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref())
+            Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), false)
+        }
+
+        pub fn compute_thin_r(&self) -> Mat<E> {
+            let m = self.nrows();
+            let n = self.ncols();
+            let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
+            zipped!(factor.as_mut())
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                    dst.write(E::faer_zero())
+                });
+            factor
+        }
+
+        pub fn compute_thin_q(&self) -> Mat<E> {
+            Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
         }
     }
     impl<E: ComplexField> SolverCore<E> for ColPivQr<E> {
@@ -3753,6 +3788,7 @@ mod tests {
             let H = Mat::from_fn(m, n, random);
             let qr = H.qr();
             assert_approx_eq(qr.compute_q() * qr.compute_r(), &H);
+            assert_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
             if m >= n {
                 test_solver_lstsq(H, &qr)
             }
@@ -3771,6 +3807,14 @@ mod tests {
         for (m, n) in [(7, 5), (5, 7), (7, 7)] {
             let H = Mat::from_fn(m, n, random);
             let qr = H.col_piv_qr();
+            assert_approx_eq(
+                qr.compute_q() * qr.compute_r(),
+                &H * qr.col_permutation().inverse(),
+            );
+            assert_approx_eq(
+                qr.compute_thin_q() * qr.compute_thin_r(),
+                &H * qr.col_permutation().inverse(),
+            );
             if m >= n {
                 test_solver_lstsq(H, &qr)
             }
