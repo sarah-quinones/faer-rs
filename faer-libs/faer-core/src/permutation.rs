@@ -16,11 +16,28 @@ use reborrow::*;
 
 impl Seal for i32 {}
 impl Seal for i64 {}
+impl Seal for i128 {}
+impl Seal for isize {}
 impl Seal for u32 {}
 impl Seal for u64 {}
+impl Seal for u128 {}
 impl Seal for usize {}
 
-pub trait Index: Seal + core::fmt::Debug + Pod + Eq + Ord + Send + Sync {
+pub trait Index:
+    Seal
+    + core::fmt::Debug
+    + core::ops::Not<Output = Self>
+    + core::ops::Add<Output = Self>
+    + core::ops::Sub<Output = Self>
+    + core::ops::AddAssign
+    + core::ops::SubAssign
+    + Pod
+    + Eq
+    + Ord
+    + Send
+    + Sync
+{
+    type FixedWidth: Index;
     type Unsigned: Index;
     type Signed: SignedIndex;
 
@@ -38,12 +55,12 @@ pub trait Index: Seal + core::fmt::Debug + Pod + Eq + Ord + Send + Sync {
     }
 
     #[inline(always)]
-    fn canonicalize(slice: &[Self]) -> &[Self::Unsigned] {
+    fn canonicalize(slice: &[Self]) -> &[Self::FixedWidth] {
         bytemuck::cast_slice(slice)
     }
 
     #[inline(always)]
-    fn canonicalize_mut(slice: &mut [Self]) -> &mut [Self::Unsigned] {
+    fn canonicalize_mut(slice: &mut [Self]) -> &mut [Self::FixedWidth] {
         bytemuck::cast_slice_mut(slice)
     }
 
@@ -63,6 +80,11 @@ pub trait Index: Seal + core::fmt::Debug + Pod + Eq + Ord + Send + Sync {
     #[inline(always)]
     fn to_signed(self) -> Self::Signed {
         pulp::cast(self)
+    }
+
+    #[inline]
+    fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
+        Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice)).map(Self::from_signed)
     }
 }
 
@@ -91,6 +113,17 @@ pub trait SignedIndex:
     /// sign extend
     #[must_use]
     fn sx(self) -> usize;
+
+    fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
+        let mut acc = Self::zeroed();
+        for &i in slice {
+            if Self::MAX - i < acc {
+                return None;
+            }
+            acc += i;
+        }
+        Some(acc)
+    }
 }
 
 #[cfg(any(
@@ -99,34 +132,33 @@ pub trait SignedIndex:
     target_pointer_width = "128",
 ))]
 impl Index for u32 {
+    type FixedWidth = u32;
     type Unsigned = u32;
     type Signed = i32;
 }
 #[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
 impl Index for u64 {
+    type FixedWidth = u64;
     type Unsigned = u64;
     type Signed = i64;
 }
 #[cfg(target_pointer_width = "128")]
 impl Index for u128 {
+    type FixedWidth = u128;
     type Unsigned = u128;
     type Signed = i128;
 }
 
 impl Index for usize {
     #[cfg(target_pointer_width = "32")]
-    type Unsigned = u32;
+    type FixedWidth = u32;
     #[cfg(target_pointer_width = "64")]
-    type Unsigned = u64;
+    type FixedWidth = u64;
     #[cfg(target_pointer_width = "128")]
-    type Unsigned = u128;
+    type FixedWidth = u128;
 
-    #[cfg(target_pointer_width = "32")]
-    type Signed = i32;
-    #[cfg(target_pointer_width = "64")]
-    type Signed = i64;
-    #[cfg(target_pointer_width = "128")]
-    type Signed = i128;
+    type Unsigned = usize;
+    type Signed = isize;
 }
 
 #[cfg(any(
@@ -202,6 +234,25 @@ impl SignedIndex for i128 {
     #[inline(always)]
     fn sx(self) -> usize {
         self as isize as usize
+    }
+}
+
+impl SignedIndex for isize {
+    const MAX: Self = Self::MAX;
+
+    #[inline(always)]
+    fn truncate(value: usize) -> Self {
+        value as isize
+    }
+
+    #[inline(always)]
+    fn zx(self) -> usize {
+        self as usize
+    }
+
+    #[inline(always)]
+    fn sx(self) -> usize {
+        self as usize
     }
 }
 
@@ -487,7 +538,7 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
     }
 
     #[inline(always)]
-    pub fn canonicalize(self) -> PermutationRef<'a, I::Unsigned, E> {
+    pub fn canonicalize(self) -> PermutationRef<'a, I::FixedWidth, E> {
         PermutationRef {
             inner: PermRef {
                 forward: I::canonicalize(self.inner.forward),
@@ -594,7 +645,7 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
     }
 
     #[inline(always)]
-    pub fn canonicalize(self) -> PermutationMut<'a, I::Unsigned, E> {
+    pub fn canonicalize(self) -> PermutationMut<'a, I::FixedWidth, E> {
         PermutationMut {
             inner: PermMut {
                 forward: I::canonicalize_mut(self.inner.forward),
@@ -734,12 +785,12 @@ pub fn permute_rows<E: ComplexField, I: Index>(
         constrained::Size::with2(src.nrows(), src.ncols(), |m, n| {
             let mut dst = constrained::MatMut::new(dst, m, n);
             let src = constrained::MatRef::new(src, m, n);
-            let perm = constrained::PermutationRef::new(perm_indices, m)
+            let perm = constrained::permutation::PermutationRef::new(perm_indices, m)
                 .into_arrays()
                 .0;
 
-            if dst.rb().inner().row_stride().unsigned_abs()
-                < dst.rb().inner().col_stride().unsigned_abs()
+            if dst.rb().into_inner().row_stride().unsigned_abs()
+                < dst.rb().into_inner().col_stride().unsigned_abs()
             {
                 for j in n.indices() {
                     for i in m.indices() {
@@ -748,8 +799,8 @@ pub fn permute_rows<E: ComplexField, I: Index>(
                 }
             } else {
                 for i in m.indices() {
-                    let src_i = src.inner().row(perm[i].zx().inner());
-                    let mut dst_i = dst.rb_mut().inner().row(i.inner());
+                    let src_i = src.into_inner().row(perm[i].zx().into_inner());
+                    let mut dst_i = dst.rb_mut().into_inner().row(i.into_inner());
 
                     dst_i.clone_from(src_i);
                 }

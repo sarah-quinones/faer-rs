@@ -35,7 +35,7 @@
 use crate::{
     ghost::{self, Array, Idx, MaybeIdx},
     mem::{self, NONE},
-    windows2, FaerError, Index, SymbolicSparseColMatRef,
+    windows2, FaerError, Index, SignedIndex, SymbolicSparseColMatRef,
 };
 use assert2::assert;
 use core::{cell::Cell, iter::zip};
@@ -44,16 +44,17 @@ use reborrow::*;
 
 #[inline]
 fn post_tree<'n, I: Index>(
-    root: Idx<'n>,
+    root: Idx<'n, usize>,
     k: usize,
     child: &mut Array<'n, MaybeIdx<'n, I>>,
     sibling: &Array<'n, MaybeIdx<'n, I>>,
-    order: &mut Array<'n, I>,
-    stack: &mut Array<'n, I>,
+    order: &mut Array<'n, I::Signed>,
+    stack: &mut Array<'n, I::Signed>,
 ) -> usize {
     let N = child.len();
+    let I = I::Signed::truncate;
     let mut top = 1usize;
-    stack[N.check(0)] = I::truncate(*root);
+    stack[N.check(0)] = I(*root);
 
     let mut k = k;
 
@@ -74,17 +75,17 @@ fn post_tree<'n, I: Index>(
             let mut f = child_.zx();
             loop {
                 t -= 1;
-                stack[N.check(t)] = *f.truncate();
+                stack[N.check(t)] = I(*f);
                 if let Some(new_f) = sibling[f].idx() {
                     f = new_f.zx();
                 } else {
                     break;
                 }
             }
-            child[i] = MaybeIdx::none_index();
+            child[i] = MaybeIdx::none();
         } else {
             top -= 1;
-            order[i] = I::truncate(k);
+            order[i] = I(k);
             k += 1;
         }
     }
@@ -94,10 +95,10 @@ fn post_tree<'n, I: Index>(
 
 #[inline]
 fn postorder<'n, 'out, I: Index>(
-    order: &'out mut Array<'n, I>,
+    order: &'out mut Array<'n, I::Signed>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
-    nv: &Array<'n, I>,
-    f_size: &Array<'n, I>,
+    nv: &Array<'n, I::Signed>,
+    f_size: &Array<'n, I::Signed>,
     stack: PodStack<'_>,
 ) {
     let N = order.len();
@@ -106,15 +107,16 @@ fn postorder<'n, 'out, I: Index>(
         return;
     }
 
-    let zero = I::truncate(0);
-    let none = I::truncate(NONE);
+    let I = I::Signed::truncate;
+    let zero = I(0);
+    let none = I(NONE);
 
-    let (child, stack) = stack.make_raw::<I>(n);
-    let (sibling, stack) = stack.make_raw::<I>(n);
-    let (stack, _) = stack.make_raw::<I>(n);
+    let (child, stack) = stack.make_raw::<I::Signed>(n);
+    let (sibling, stack) = stack.make_raw::<I::Signed>(n);
+    let (stack, _) = stack.make_raw::<I::Signed>(n);
 
-    let child = Array::from_mut(ghost::fill_none(child, N), N);
-    let sibling = Array::from_mut(ghost::fill_none(sibling, N), N);
+    let child = Array::from_mut(ghost::fill_none::<I>(child, N), N);
+    let sibling = Array::from_mut(ghost::fill_none::<I>(sibling, N), N);
     let stack = Array::from_mut(stack, N);
 
     for j in N.indices().rev() {
@@ -159,14 +161,14 @@ fn postorder<'n, 'out, I: Index>(
                     }
 
                     let fprev = fprev.idx().unwrap();
-                    sibling[bigf] = MaybeIdx::none_index();
+                    sibling[bigf] = MaybeIdx::none();
                     sibling[fprev] = MaybeIdx::from_index(bigf.truncate());
                 }
             }
         }
     }
 
-    mem::fill_none(order);
+    mem::fill_none(order.as_mut());
 
     let mut k = 0usize;
     for i in N.indices() {
@@ -177,12 +179,12 @@ fn postorder<'n, 'out, I: Index>(
 }
 
 #[inline(always)]
-fn flip<I: Index>(i: I) -> I {
+fn flip<I: SignedIndex>(i: I) -> I {
     -I::truncate(2) - i
 }
 
 #[inline]
-fn clear_flag<I: Index>(wflg: I, wbig: I, w: &mut [I]) -> I {
+fn clear_flag<I: SignedIndex>(wflg: I, wbig: I, w: &mut [I]) -> I {
     let I = I::truncate;
     let zero = I(0);
     let one = I(1);
@@ -200,22 +202,22 @@ fn clear_flag<I: Index>(wflg: I, wbig: I, w: &mut [I]) -> I {
 
 #[allow(clippy::comparison_chain)]
 fn amd_2<I: Index>(
-    pe: &mut [I],  // input/output
-    iw: &mut [I],  // input/modified (undefined on output)
-    len: &mut [I], // input/modified (undefined on output)
+    pe: &mut [I::Signed],  // input/output
+    iw: &mut [I::Signed],  // input/modified (undefined on output)
+    len: &mut [I::Signed], // input/modified (undefined on output)
     pfree: usize,
-    next: &mut [I],
-    last: &mut [I],
+    next: &mut [I::Signed],
+    last: &mut [I::Signed],
     control: Control,
     stack: PodStack<'_>,
 ) -> FlopCount {
     let n = pe.len();
-    assert!(n < I::MAX.zx());
+    assert!(n < I::Signed::MAX.zx());
 
     let mut pfree = pfree;
     let iwlen = iw.len();
 
-    let I = I::truncate;
+    let I = I::Signed::truncate;
     let none = I(NONE);
     let zero = I(0);
     let one = I(1);
@@ -243,21 +245,21 @@ fn amd_2<I: Index>(
     let dense = Ord::max(dense, 16);
     let dense = Ord::min(dense, n);
 
-    let (w, stack) = stack.make_raw::<I>(n);
-    let (nv, stack) = stack.make_raw::<I>(n);
-    let (elen, mut stack) = stack.make_raw::<I>(n);
+    let (w, stack) = stack.make_raw::<I::Signed>(n);
+    let (nv, stack) = stack.make_raw::<I::Signed>(n);
+    let (elen, mut stack) = stack.make_raw::<I::Signed>(n);
 
     let nv = &mut *nv;
     let elen = &mut *elen;
     let w = &mut *w;
 
-    let wbig = I::MAX - I(n);
+    let wbig = I::Signed::MAX - I(n);
     let mut wflg = clear_flag(zero, wbig, w);
     let mut ndense = zero;
 
     {
-        let (head, stack) = stack.rb_mut().make_raw::<I>(n);
-        let (degree, _) = stack.make_raw::<I>(n);
+        let (head, stack) = stack.rb_mut().make_raw::<I::Signed>(n);
+        let (degree, _) = stack.make_raw::<I::Signed>(n);
 
         let head = &mut *head;
         let degree = &mut *degree;
@@ -704,14 +706,14 @@ fn amd_2<I: Index>(
     ghost::with_size(n, |N| {
         postorder(
             Array::from_mut(w, N),
-            Array::from_ref(MaybeIdx::slice_ref_checked(pe, N), N),
+            Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(pe, N), N),
             Array::from_ref(nv, N),
             Array::from_ref(elen, N),
             stack.rb_mut(),
         );
     });
 
-    let (head, _) = stack.make_raw::<I>(n);
+    let (head, _) = stack.make_raw::<I::Signed>(n);
 
     mem::fill_none(head);
     mem::fill_none(next);
@@ -759,23 +761,23 @@ fn amd_2<I: Index>(
 
 #[allow(clippy::comparison_chain)]
 fn amd_1<I: Index>(
-    perm: &mut [I],
-    perm_inv: &mut [I],
+    perm: &mut [I::Signed],
+    perm_inv: &mut [I::Signed],
     A: SymbolicSparseColMatRef<'_, I>,
-    len: &mut [I],
+    len: &mut [I::Signed],
     iwlen: usize,
     control: Control,
     stack: PodStack<'_>,
 ) -> FlopCount {
     let n = perm.len();
-    let I = I::truncate;
+    let I = I::Signed::truncate;
 
     let zero = I(0);
     let one = I(1);
 
-    let (p_e, stack) = stack.make_raw::<I>(n);
-    let (s_p, stack) = stack.make_raw::<I>(n);
-    let (i_w, mut stack) = stack.make_raw::<I>(iwlen);
+    let (p_e, stack) = stack.make_raw::<I::Signed>(n);
+    let (s_p, stack) = stack.make_raw::<I::Signed>(n);
+    let (i_w, mut stack) = stack.make_raw::<I::Signed>(iwlen);
 
     // Construct the pointers for A+A'.
 
@@ -794,7 +796,7 @@ fn amd_1<I: Index>(
     assert!(iwlen >= pfree + n);
 
     ghost::with_size(n, |N| {
-        let (t_p, _) = stack.rb_mut().make_raw::<I>(n);
+        let (t_p, _) = stack.rb_mut().make_raw::<I::Signed>(n);
 
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
         let s_p = Array::from_mut(s_p, N);
@@ -880,22 +882,22 @@ fn preprocess<'out, I: Index>(
     let n = A.nrows();
 
     ghost::with_size(n, |N| {
-        let I = I::truncate;
+        let I = I::Signed::truncate;
         let zero = I(0);
         let one = I(1);
 
-        let (w, stack) = stack.make_raw::<I>(n);
-        let (flag, _) = stack.make_raw::<I>(n);
+        let (w, stack) = stack.make_raw::<I::Signed>(n);
+        let (flag, _) = stack.make_raw::<I::Signed>(n);
 
         let w = Array::from_mut(w, N);
         let flag = Array::from_mut(flag, N);
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
-        mem::fill_zero(w);
-        mem::fill_none(flag);
+        mem::fill_zero(w.as_mut());
+        mem::fill_none(flag.as_mut());
 
         for j in N.indices() {
-            let j_ = *j.truncate();
+            let j_ = I(*j);
             for i in A.row_indices_of_col(j) {
                 if flag[i] != j_ {
                     w[i] += one;
@@ -904,22 +906,23 @@ fn preprocess<'out, I: Index>(
             }
         }
 
-        new_col_ptrs[0] = zero;
+        new_col_ptrs[0] = I::from_signed(zero);
         for (i, [r, r_next]) in zip(
             N.indices(),
             windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
         ) {
-            r_next.set(r.get() + w[i]);
+            r_next.set(r.get() + I::from_signed(w[i]));
         }
 
-        w.copy_from_slice(&new_col_ptrs[..n]);
-        mem::fill_none(flag);
+        w.as_mut()
+            .copy_from_slice(bytemuck::cast_slice(&new_col_ptrs[..n]));
+        mem::fill_none(flag.as_mut());
 
         for j in N.indices() {
-            let j_ = *j.truncate();
+            let j_ = I(*j);
             for i in A.row_indices_of_col(j) {
                 if flag[i] != j_ {
-                    new_row_indices[w[i].zx()] = j_;
+                    new_row_indices[w[i].zx()] = I::from_signed(j_);
                     w[i] += one;
                     flag[i] = j_;
                 }
@@ -940,24 +943,24 @@ fn preprocess<'out, I: Index>(
 
 #[allow(clippy::comparison_chain)]
 fn aat<I: Index>(
-    len: &mut [I],
+    len: &mut [I::Signed],
     A: SymbolicSparseColMatRef<'_, I>,
     stack: PodStack<'_>,
 ) -> Result<usize, FaerError> {
     ghost::with_size(A.nrows(), |N| {
-        let I = I::truncate;
+        let I = I::Signed::truncate;
         let zero = I(0);
         let one = I(1);
         let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
 
         let n = *N;
 
-        let t_p = &mut *stack.make_raw::<I>(n).0; // local workspace
+        let t_p = &mut *stack.make_raw::<I::Signed>(n).0; // local workspace
 
         let len = Array::from_mut(len, N);
         let t_p = Array::from_mut(t_p, N);
 
-        mem::fill_zero(len);
+        mem::fill_zero(len.as_mut());
 
         for k in N.indices() {
             let mut seen = zero;
@@ -1000,7 +1003,7 @@ fn aat<I: Index>(
             }
         }
     });
-    let nzaat = I::sum_nonnegative(len);
+    let nzaat = I::Signed::sum_nonnegative(len).map(I::from_signed);
     nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
 
@@ -1062,13 +1065,21 @@ pub fn order_sorted<I: Index>(
         });
     }
 
-    let (len, mut stack) = stack.make_raw::<I>(n);
+    let (len, mut stack) = stack.make_raw::<I::Signed>(n);
     let nzaat = aat(len, A, stack.rb_mut())?;
     let iwlen = nzaat
         .checked_add(nzaat / 5)
         .and_then(|x| x.checked_add(n))
         .ok_or(FaerError::IndexOverflow)?;
-    Ok(amd_1(perm, perm_inv, A, len, iwlen, control, stack))
+    Ok(amd_1::<I>(
+        bytemuck::cast_slice_mut(perm),
+        bytemuck::cast_slice_mut(perm_inv),
+        A,
+        len,
+        iwlen,
+        control,
+        stack,
+    ))
 }
 
 pub fn order_maybe_unsorted<I: Index>(

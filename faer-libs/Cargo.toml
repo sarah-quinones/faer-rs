@@ -6,8 +6,7 @@ members = [
   "faer-qr",
   "faer-svd",
   "faer-evd",
-
-  "faer-sparse-experimental",
+  "faer-sparse",
 
   "faer",
 ]
