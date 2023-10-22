@@ -1949,12 +1949,12 @@ pub mod supernodal {
             }
             req = StackReq::try_any_of([
                 req,
-                faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<E, I>(
+                faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<I, E>(
                     s_ncols,
                     parallelism,
                     Default::default(),
                 )?,
-                faer_core::permutation::permute_cols_in_place_req::<E, I>(
+                faer_core::permutation::permute_cols_in_place_req::<I, E>(
                     s_pattern.len(),
                     s_ncols,
                 )?,
@@ -3936,7 +3936,7 @@ mod tests {
                     x.as_mut(),
                     lblt.perm,
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                        faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
                 lblt.dense_solve_in_place_no_numeric_permute_with_conj(
@@ -3951,7 +3951,7 @@ mod tests {
                     x.as_mut(),
                     lblt.perm.inverse(),
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                        faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
 
@@ -4075,7 +4075,7 @@ mod tests {
                     x.as_mut(),
                     lblt.perm,
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                        faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
                 lblt.dense_solve_in_place_no_numeric_permute_with_conj(
@@ -4090,7 +4090,7 @@ mod tests {
                     x.as_mut(),
                     lblt.perm.inverse(),
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                        faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
 

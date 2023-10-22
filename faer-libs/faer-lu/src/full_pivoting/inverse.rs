@@ -10,7 +10,7 @@ use faer_core::{
 use reborrow::*;
 use triangular::BlockStructure;
 
-fn invert_impl<E: ComplexField, I: Index>(
+fn invert_impl<I: Index, E: ComplexField>(
     mut dst: MatMut<'_, E>,
     lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_, I, E>,
@@ -98,7 +98,7 @@ fn invert_impl<E: ComplexField, I: Index>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
-pub fn invert<E: ComplexField, I: Index>(
+pub fn invert<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
@@ -130,7 +130,7 @@ pub fn invert<E: ComplexField, I: Index>(
 /// - Panics if the column permutation doesn't have the same dimension as the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
-pub fn invert_in_place<E: ComplexField, I: Index>(
+pub fn invert_in_place<I: Index, E: ComplexField>(
     lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
     col_perm: PermutationRef<'_, I, E>,
@@ -145,24 +145,24 @@ pub fn invert_in_place<E: ComplexField, I: Index>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its full pivoting LU decomposition.
-pub fn invert_req<T: Entity, I: Index>(
+pub fn invert_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+    temp_mat_req::<E>(nrows, ncols)?.try_and(temp_mat_req::<E>(nrows, ncols)?)
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix in place, given its full pivoting LU decomposition.
-pub fn invert_in_place_req<T: Entity, I: Index>(
+pub fn invert_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    temp_mat_req::<T>(nrows, ncols)?.try_and(temp_mat_req::<T>(nrows, ncols)?)
+    temp_mat_req::<E>(nrows, ncols)?.try_and(temp_mat_req::<E>(nrows, ncols)?)
 }
 
 #[cfg(test)]
@@ -196,7 +196,7 @@ mod tests {
                 &mut col_perm,
                 &mut col_perm_inv,
                 Parallelism::Rayon(0),
-                make_stack!(lu_in_place_req::<f64, usize>(
+                make_stack!(lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::Rayon(0),
@@ -211,7 +211,7 @@ mod tests {
                 row_perm.rb(),
                 col_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_req::<f64, usize>(n, n, Parallelism::Rayon(0))),
+                make_stack!(invert_req::<usize, f64>(n, n, Parallelism::Rayon(0))),
             );
 
             let mut prod = Mat::zeros(n, n);

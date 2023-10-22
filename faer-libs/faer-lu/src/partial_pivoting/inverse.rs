@@ -10,7 +10,7 @@ use faer_core::{
 use reborrow::*;
 use triangular::BlockStructure;
 
-fn invert_impl<E: ComplexField, I: Index>(
+fn invert_impl<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_, I, E>,
@@ -64,7 +64,7 @@ fn invert_impl<E: ComplexField, I: Index>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix in place, given its partial pivoting LU decomposition.
-pub fn invert_in_place_req<E: Entity, I: Index>(
+pub fn invert_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -75,7 +75,7 @@ pub fn invert_in_place_req<E: Entity, I: Index>(
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
 /// matrix out of place, given its partial pivoting LU decomposition.
-pub fn invert_req<E: Entity, I: Index>(
+pub fn invert_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -94,7 +94,7 @@ pub fn invert_req<E: Entity, I: Index>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_req`]).
 #[track_caller]
-pub fn invert<E: ComplexField, I: Index>(
+pub fn invert<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
@@ -118,7 +118,7 @@ pub fn invert<E: ComplexField, I: Index>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`invert_in_place_req`]).
 #[track_caller]
-pub fn invert_in_place<E: ComplexField, I: Index>(
+pub fn invert_in_place<I: Index, E: ComplexField>(
     lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
     parallelism: Parallelism,
@@ -157,7 +157,7 @@ mod tests {
                 &mut row_perm,
                 &mut row_perm_inv,
                 Parallelism::Rayon(0),
-                make_stack!(lu_in_place_req::<f64, usize>(
+                make_stack!(lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::Rayon(0),
@@ -171,7 +171,7 @@ mod tests {
                 lu.as_ref(),
                 row_perm.rb(),
                 Parallelism::Rayon(0),
-                make_stack!(invert_req::<f64, usize>(n, n, Parallelism::Rayon(0))),
+                make_stack!(invert_req::<usize, f64>(n, n, Parallelism::Rayon(0))),
             );
 
             let mut prod = Mat::zeros(n, n);

@@ -10,7 +10,7 @@ use reborrow::*;
 use triangular::BlockStructure;
 
 #[track_caller]
-fn reconstruct_impl<E: ComplexField, I: Index>(
+fn reconstruct_impl<I: Index, E: ComplexField>(
     mut dst: MatMut<'_, E>,
     lu_factors: Option<MatRef<'_, E>>,
     row_perm: PermutationRef<'_, I, E>,
@@ -106,7 +106,7 @@ fn reconstruct_impl<E: ComplexField, I: Index>(
 /// - Panics if the destination shape doesn't match the shape of the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
-pub fn reconstruct<E: ComplexField, I: Index>(
+pub fn reconstruct<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     lu_factors: MatRef<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
@@ -137,7 +137,7 @@ pub fn reconstruct<E: ComplexField, I: Index>(
 ///   the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
-pub fn reconstruct_in_place<E: ComplexField, I: Index>(
+pub fn reconstruct_in_place<I: Index, E: ComplexField>(
     lu_factors: MatMut<'_, E>,
     row_perm: PermutationRef<'_, I, E>,
     col_perm: PermutationRef<'_, I, E>,
@@ -150,7 +150,7 @@ pub fn reconstruct_in_place<E: ComplexField, I: Index>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_in_place_req<E: Entity, I: Index>(
+pub fn reconstruct_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
@@ -161,10 +161,10 @@ pub fn reconstruct_in_place_req<E: Entity, I: Index>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its full pivoting LU decomposition.
-pub fn reconstruct_req<E: Entity, I: Index>(
+pub fn reconstruct_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
-    reconstruct_in_place_req::<E, I>(nrows, ncols, parallelism)
+    reconstruct_in_place_req::<I, E>(nrows, ncols, parallelism)
 }

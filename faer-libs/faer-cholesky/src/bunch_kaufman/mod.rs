@@ -145,7 +145,7 @@ pub mod compute {
         a.write(i1, j1, tmp);
     }
 
-    fn cholesky_diagonal_pivoting_blocked_step<E: ComplexField, I: Index>(
+    fn cholesky_diagonal_pivoting_blocked_step<I: Index, E: ComplexField>(
         mut a: MatMut<'_, E>,
         regularization: BunchKaufmanRegularization<'_, E>,
         mut w: MatMut<'_, E>,
@@ -450,7 +450,7 @@ pub mod compute {
         }
     }
 
-    fn cholesky_diagonal_pivoting_unblocked<E: ComplexField, I: Index>(
+    fn cholesky_diagonal_pivoting_unblocked<I: Index, E: ComplexField>(
         mut a: MatMut<'_, E>,
         regularization: BunchKaufmanRegularization<'_, E>,
         pivots: &mut [I],
@@ -682,7 +682,7 @@ pub mod compute {
         (pivot_count, dynamic_regularization_count)
     }
 
-    fn convert<E: ComplexField, I: Index>(
+    fn convert<I: Index, E: ComplexField>(
         mut a: MatMut<'_, E>,
         pivots: &[I],
         mut subdiag: MatMut<'_, E>,
@@ -717,7 +717,7 @@ pub mod compute {
         }
     }
 
-    pub fn cholesky_in_place_req<E: Entity, I: Index>(
+    pub fn cholesky_in_place_req<I: Index, E: Entity>(
         dim: usize,
         parallelism: Parallelism,
         params: BunchKaufmanParams,
@@ -737,7 +737,7 @@ pub mod compute {
     }
 
     #[track_caller]
-    pub fn cholesky_in_place<'out, E: ComplexField, I: Index>(
+    pub fn cholesky_in_place<'out, I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
         subdiag: MatMut<'_, E>,
         regularization: BunchKaufmanRegularization<'_, E>,
@@ -868,7 +868,7 @@ pub mod solve {
     use assert2::assert;
 
     #[track_caller]
-    pub fn solve_in_place_req<E: Entity>(
+    pub fn solve_in_place_req<I: Index, E: Entity>(
         dim: usize,
         rhs_ncols: usize,
         parallelism: Parallelism,
@@ -878,7 +878,7 @@ pub mod solve {
     }
 
     #[track_caller]
-    pub fn solve_in_place_with_conj<E: ComplexField, I: Index>(
+    pub fn solve_in_place_with_conj<I: Index, E: ComplexField>(
         lb_factors: MatRef<'_, E>,
         subdiag: MatRef<'_, E>,
         conj: Conj,
@@ -988,7 +988,7 @@ mod tests {
 
             let params = Default::default();
             let mut mem = GlobalPodBuffer::new(
-                compute::cholesky_in_place_req::<f64, usize>(n, Parallelism::None, params).unwrap(),
+                compute::cholesky_in_place_req::<usize, f64>(n, Parallelism::None, params).unwrap(),
             );
             let (_, perm) = compute::cholesky_in_place(
                 ldl.as_mut(),
@@ -1002,7 +1002,7 @@ mod tests {
             );
 
             let mut mem = GlobalPodBuffer::new(
-                solve::solve_in_place_req::<f64>(n, rhs.ncols(), Parallelism::None).unwrap(),
+                solve::solve_in_place_req::<usize, f64>(n, rhs.ncols(), Parallelism::None).unwrap(),
             );
             let mut x = rhs.clone();
             solve::solve_in_place_with_conj(
@@ -1045,7 +1045,7 @@ mod tests {
                 blocksize: 32,
             };
             let mut mem = GlobalPodBuffer::new(
-                compute::cholesky_in_place_req::<c64, usize>(n, Parallelism::None, params).unwrap(),
+                compute::cholesky_in_place_req::<usize, c64>(n, Parallelism::None, params).unwrap(),
             );
             let (_, perm) = compute::cholesky_in_place(
                 ldl.as_mut(),
@@ -1060,7 +1060,7 @@ mod tests {
 
             let mut x = rhs.clone();
             let mut mem = GlobalPodBuffer::new(
-                solve::solve_in_place_req::<c64>(n, rhs.ncols(), Parallelism::None).unwrap(),
+                solve::solve_in_place_req::<usize, c64>(n, rhs.ncols(), Parallelism::None).unwrap(),
             );
             solve::solve_in_place_with_conj(
                 ldl.as_ref(),

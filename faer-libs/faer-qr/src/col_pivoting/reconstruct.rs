@@ -20,7 +20,7 @@ use reborrow::*;
 /// - Panics if `dst` doesn't have the same shape as `qr_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_req`]).
 #[track_caller]
-pub fn reconstruct<E: ComplexField, I: Index>(
+pub fn reconstruct<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
@@ -69,7 +69,7 @@ pub fn reconstruct<E: ComplexField, I: Index>(
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`reconstruct_in_place_req`]).
 #[track_caller]
-pub fn reconstruct_in_place<E: ComplexField, I: Index>(
+pub fn reconstruct_in_place<I: Index, E: ComplexField>(
     qr_factors: MatMut<'_, E>,
     householder_factor: MatRef<'_, E>,
     col_perm: PermutationRef<'_, I, E>,
@@ -93,7 +93,7 @@ pub fn reconstruct_in_place<E: ComplexField, I: Index>(
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
 /// given its QR decomposition with column pivoting.
-pub fn reconstruct_req<E: Entity, I: Index>(
+pub fn reconstruct_req<I: Index, E: Entity>(
     qr_nrows: usize,
     qr_ncols: usize,
     blocksize: usize,
@@ -103,13 +103,13 @@ pub fn reconstruct_req<E: Entity, I: Index>(
     let _ = parallelism;
     StackReq::try_any_of([
         temp_mat_req::<E>(blocksize, qr_ncols)?,
-        permute_cols_in_place_req::<E, I>(qr_nrows, qr_ncols)?,
+        permute_cols_in_place_req::<I, E>(qr_nrows, qr_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix in place,
 /// given its QR decomposition with column pivoting.
-pub fn reconstruct_in_place_req<E: Entity, I: Index>(
+pub fn reconstruct_in_place_req<I: Index, E: Entity>(
     qr_nrows: usize,
     qr_ncols: usize,
     blocksize: usize,
@@ -117,7 +117,7 @@ pub fn reconstruct_in_place_req<E: Entity, I: Index>(
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
         temp_mat_req::<E>(qr_nrows, qr_ncols)?,
-        reconstruct_req::<E, I>(qr_nrows, qr_ncols, blocksize, parallelism)?,
+        reconstruct_req::<I, E>(qr_nrows, qr_ncols, blocksize, parallelism)?,
     ])
 }
 
@@ -169,7 +169,7 @@ mod tests {
                 &mut perm,
                 &mut perm_inv,
                 parallelism,
-                make_stack!(qr_in_place_req::<E, usize>(
+                make_stack!(qr_in_place_req::<usize, E>(
                     n,
                     n,
                     blocksize,
@@ -186,7 +186,7 @@ mod tests {
                 householder_factor.as_ref(),
                 perm.rb(),
                 parallelism,
-                make_stack!(reconstruct_req::<E, usize>(n, n, blocksize, parallelism)),
+                make_stack!(reconstruct_req::<usize, E>(n, n, blocksize, parallelism)),
             );
 
             for i in 0..n {

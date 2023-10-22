@@ -375,7 +375,7 @@ fn update_and_norm2<E: ComplexField>(
     acc
 }
 
-fn qr_in_place_colmajor<E: ComplexField, I: Index>(
+fn qr_in_place_colmajor<I: Index, E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     mut householder_coeffs: MatMut<'_, E>,
     col_perm: &mut [I],
@@ -651,7 +651,7 @@ impl ColPivQrComputeParams {
 
 /// Computes the size and alignment of required workspace for performing a QR decomposition
 /// with column pivoting.
-pub fn qr_in_place_req<E: Entity, I: Index>(
+pub fn qr_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
     blocksize: usize,
@@ -693,7 +693,7 @@ pub fn qr_in_place_req<E: Entity, I: Index>(
 /// - Panics if the length of `col_perm` and `col_perm_inv` is not equal to the number of columns
 /// of `matrix`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`qr_in_place_req`]).
-pub fn qr_in_place<'out, E: ComplexField, I: Index>(
+pub fn qr_in_place<'out, I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     householder_factor: MatMut<'_, E>,
     col_perm: &'out mut [I],
@@ -702,7 +702,7 @@ pub fn qr_in_place<'out, E: ComplexField, I: Index>(
     stack: PodStack<'_>,
     params: ColPivQrComputeParams,
 ) -> (usize, PermutationMut<'out, I, E>) {
-    fn implementation<'out, E: ComplexField, I: Index>(
+    fn implementation<'out, I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
         householder_factor: MatMut<'_, E>,
         col_perm: &'out mut [I],
@@ -880,7 +880,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<f64, usize>(
+                    make_stack!(qr_in_place_req::<usize, f64>(
                         m,
                         n,
                         blocksize,
@@ -928,7 +928,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c64, usize>(
+                    make_stack!(qr_in_place_req::<usize, c64>(
                         m,
                         n,
                         blocksize,
@@ -986,7 +986,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<f32, usize>(
+                    make_stack!(qr_in_place_req::<usize, f32>(
                         m,
                         n,
                         blocksize,
@@ -1034,7 +1034,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32, usize>(
+                    make_stack!(qr_in_place_req::<usize, c32>(
                         m,
                         n,
                         blocksize,
@@ -1092,7 +1092,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32, usize>(
+                    make_stack!(qr_in_place_req::<usize, c32>(
                         m,
                         n,
                         blocksize,
@@ -1150,7 +1150,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32, usize>(
+                    make_stack!(qr_in_place_req::<usize, c32>(
                         m,
                         n,
                         blocksize,
@@ -1213,7 +1213,7 @@ mod tests {
                     &mut perm,
                     &mut perm_inv,
                     parallelism,
-                    make_stack!(qr_in_place_req::<c32, usize>(
+                    make_stack!(qr_in_place_req::<usize, c32>(
                         m,
                         n,
                         blocksize,

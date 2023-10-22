@@ -277,7 +277,7 @@ fn blocksize<E: Entity>(n: usize) -> usize {
     }
 }
 
-fn lu_recursive_req<E: Entity, I: Index>(
+fn lu_recursive_req<I: Index, E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
@@ -290,16 +290,16 @@ fn lu_recursive_req<E: Entity, I: Index>(
     let _ = parallelism;
 
     StackReq::try_any_of([
-        lu_recursive_req::<E, I>(m, bs, parallelism)?,
+        lu_recursive_req::<I, E>(m, bs, parallelism)?,
         StackReq::try_all_of([
             StackReq::try_new::<I>(m - bs)?,
-            lu_recursive_req::<E, I>(m - bs, n - bs, parallelism)?,
+            lu_recursive_req::<I, E>(m - bs, n - bs, parallelism)?,
         ])?,
         temp_mat_req::<E>(m, 1)?,
     ])
 }
 
-fn lu_in_place_impl<E: ComplexField, I: Index>(
+fn lu_in_place_impl<I: Index, E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
@@ -411,7 +411,7 @@ pub struct PartialPivLuComputeParams {}
 
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with partial pivoting.
-pub fn lu_in_place_req<E: Entity, I: Index>(
+pub fn lu_in_place_req<I: Index, E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
@@ -422,7 +422,7 @@ pub fn lu_in_place_req<E: Entity, I: Index>(
     let size = Ord::min(n, m);
     StackReq::try_all_of([
         StackReq::try_new::<I>(size)?,
-        lu_recursive_req::<E, I>(m, size, parallelism)?,
+        lu_recursive_req::<I, E>(m, size, parallelism)?,
     ])
 }
 
@@ -452,7 +452,7 @@ pub fn lu_in_place_req<E: Entity, I: Index>(
 /// - Panics if the length of the permutation slices is not equal to the number of rows of the
 /// matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`lu_in_place_req`]).
-pub fn lu_in_place<'out, E: ComplexField, I: Index>(
+pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
@@ -530,7 +530,7 @@ mod tests {
         };
     }
 
-    fn reconstruct_matrix<E: ComplexField, I: Index>(
+    fn reconstruct_matrix<I: Index, E: ComplexField>(
         lu_factors: MatRef<'_, E>,
         row_perm: PermutationRef<'_, I, E>,
     ) -> Mat<E> {
@@ -542,7 +542,7 @@ mod tests {
             lu_factors,
             row_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<E, I>(
+            make_stack!(reconstruct::reconstruct_req::<I, E>(
                 m,
                 n,
                 Parallelism::Rayon(0)
@@ -576,7 +576,7 @@ mod tests {
             let mut perm_inv = vec![0; m];
 
             let mut mem = GlobalPodBuffer::new(
-                lu_in_place_req::<f64, usize>(m, n, Parallelism::Rayon(8), Default::default())
+                lu_in_place_req::<usize, f64>(m, n, Parallelism::Rayon(8), Default::default())
                     .unwrap(),
             );
             let mut stack = PodStack::new(&mut mem);
@@ -625,7 +625,7 @@ mod tests {
             let mut perm_inv = vec![0; m];
 
             let mut mem = GlobalPodBuffer::new(
-                lu_in_place_req::<f64, usize>(m, n, Parallelism::Rayon(8), Default::default())
+                lu_in_place_req::<usize, f64>(m, n, Parallelism::Rayon(8), Default::default())
                     .unwrap(),
             );
             let mut stack = PodStack::new(&mut mem);
@@ -675,7 +675,7 @@ mod tests {
             let mut perm_inv = vec![0; m];
 
             let mut mem = GlobalPodBuffer::new(
-                lu_in_place_req::<f64, usize>(m, n, Parallelism::Rayon(8), Default::default())
+                lu_in_place_req::<usize, f64>(m, n, Parallelism::Rayon(8), Default::default())
                     .unwrap(),
             );
             let mut stack = PodStack::new(&mut mem);

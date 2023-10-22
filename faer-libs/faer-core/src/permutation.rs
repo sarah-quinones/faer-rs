@@ -744,7 +744,7 @@ impl<'a, I: Debug, E: Entity> Debug for Permutation<I, E> {
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_cols<E: ComplexField, I: Index>(
+pub fn permute_cols<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     src: MatRef<'_, E>,
     perm_indices: PermutationRef<'_, I, E>,
@@ -768,13 +768,13 @@ pub fn permute_cols<E: ComplexField, I: Index>(
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrices.
 #[inline]
 #[track_caller]
-pub fn permute_rows<E: ComplexField, I: Index>(
+pub fn permute_rows<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     src: MatRef<'_, E>,
     perm_indices: PermutationRef<'_, I, E>,
 ) {
     #[track_caller]
-    fn implementation<E: ComplexField, I: Index>(
+    fn implementation<I: Index, E: ComplexField>(
         dst: MatMut<'_, E>,
         src: MatRef<'_, E>,
         perm_indices: PermutationRef<'_, I, E>,
@@ -813,7 +813,7 @@ pub fn permute_rows<E: ComplexField, I: Index>(
 
 /// Computes the size and alignment of required workspace for applying a row permutation to a
 /// matrix in place.
-pub fn permute_rows_in_place_req<E: Entity, I: Index>(
+pub fn permute_rows_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
@@ -822,7 +822,7 @@ pub fn permute_rows_in_place_req<E: Entity, I: Index>(
 
 /// Computes the size and alignment of required workspace for applying a column permutation to a
 /// matrix in place.
-pub fn permute_cols_in_place_req<E: Entity, I: Index>(
+pub fn permute_cols_in_place_req<I: Index, E: Entity>(
     nrows: usize,
     ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
@@ -837,7 +837,7 @@ pub fn permute_cols_in_place_req<E: Entity, I: Index>(
 /// - Panics if the size of the permutation doesn't match the number of rows of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_rows_in_place<E: ComplexField, I: Index>(
+pub fn permute_rows_in_place<I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_, I, E>,
     stack: PodStack<'_>,
@@ -866,14 +866,14 @@ pub fn permute_rows_in_place<E: ComplexField, I: Index>(
 /// - Panics if the size of the permutation doesn't match the number of columns of the matrix.
 #[inline]
 #[track_caller]
-pub fn permute_cols_in_place<E: ComplexField, I: Index>(
+pub fn permute_cols_in_place<I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermutationRef<'_, I, E>,
     stack: PodStack<'_>,
 ) {
     #[inline]
     #[track_caller]
-    fn implementation<E: ComplexField, I: Index>(
+    fn implementation<I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
         perm_indices: PermutationRef<'_, I, E>,
         stack: PodStack<'_>,

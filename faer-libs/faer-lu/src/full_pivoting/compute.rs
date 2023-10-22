@@ -1049,7 +1049,7 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
 }
 
 #[inline]
-fn lu_in_place_unblocked<E: ComplexField, I: Index>(
+fn lu_in_place_unblocked<I: Index, E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     row_transpositions: &mut [I],
     col_transpositions: &mut [I],
@@ -1187,7 +1187,7 @@ pub struct FullPivLuComputeParams {
 
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with full pivoting.
-pub fn lu_in_place_req<E: Entity, I: Index>(
+pub fn lu_in_place_req<I: Index, E: Entity>(
     m: usize,
     n: usize,
     parallelism: Parallelism,
@@ -1237,7 +1237,7 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
 /// - Panics if the length of the column permutation slices is not equal to the number of columns of
 ///   the matrix.
 /// - Panics if the provided memory in `stack` is insufficient (see [`lu_in_place_req`]).
-pub fn lu_in_place<'out, E: ComplexField, I: Index>(
+pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     row_perm: &'out mut [I],
     row_perm_inv: &'out mut [I],
@@ -1343,7 +1343,7 @@ mod tests {
         };
     }
 
-    fn reconstruct_matrix<E: ComplexField, I: Index>(
+    fn reconstruct_matrix<I: Index, E: ComplexField>(
         lu_factors: MatRef<'_, E>,
         row_perm: PermutationRef<'_, I, E>,
         col_perm: PermutationRef<'_, I, E>,
@@ -1357,7 +1357,7 @@ mod tests {
             row_perm,
             col_perm,
             Parallelism::Rayon(0),
-            make_stack!(reconstruct::reconstruct_req::<E, I>(
+            make_stack!(reconstruct::reconstruct_req::<I, E>(
                 m,
                 n,
                 Parallelism::Rayon(0)
@@ -1397,7 +1397,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64, usize>(
+                    make_stack!(lu_in_place_req::<usize, f64>(
                         m,
                         n,
                         Parallelism::None,
@@ -1454,7 +1454,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64, usize>(
+                    make_stack!(lu_in_place_req::<usize, f64>(
                         m,
                         n,
                         Parallelism::None,
@@ -1536,7 +1536,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64, usize>(
+                    make_stack!(lu_in_place_req::<usize, f64>(
                         m,
                         n,
                         Parallelism::None,
@@ -1593,7 +1593,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64, usize>(
+                    make_stack!(lu_in_place_req::<usize, f64>(
                         m,
                         n,
                         Parallelism::None,
@@ -1655,7 +1655,7 @@ mod tests {
                     &mut col_perm,
                     &mut col_perm_inv,
                     parallelism,
-                    make_stack!(lu_in_place_req::<f64, usize>(
+                    make_stack!(lu_in_place_req::<usize, f64>(
                         m,
                         n,
                         Parallelism::None,

@@ -11,56 +11,56 @@ use reborrow::*;
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_in_place_req<E: Entity, I: Index>(
+pub fn solve_in_place_req<I: Index, E: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
         no_pivoting::solve::solve_in_place_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
+        permute_rows_in_place_req::<I, E>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix in place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_in_place_req<E: Entity, I: Index>(
+pub fn solve_transpose_in_place_req<I: Index, E: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
         no_pivoting::solve::solve_transpose_in_place_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
+        permute_rows_in_place_req::<I, E>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
 /// matrix out of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_req<E: Entity, I: Index>(
+pub fn solve_req<I: Index, E: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
         no_pivoting::solve::solve_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
+        permute_rows_in_place_req::<I, E>(qr_size, rhs_ncols)?,
     ])
 }
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by
 /// the transpose of a matrix ouf of place, given its QR decomposition with column pivoting.
 #[inline]
-pub fn solve_transpose_req<E: Entity, I: Index>(
+pub fn solve_transpose_req<I: Index, E: Entity>(
     qr_size: usize,
     qr_blocksize: usize,
     rhs_ncols: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_any_of([
         no_pivoting::solve::solve_transpose_req::<E>(qr_size, qr_blocksize, rhs_ncols)?,
-        permute_rows_in_place_req::<E, I>(qr_size, rhs_ncols)?,
+        permute_rows_in_place_req::<I, E>(qr_size, rhs_ncols)?,
     ])
 }
 
@@ -81,7 +81,7 @@ pub fn solve_transpose_req<E: Entity, I: Index>(
 /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
 #[track_caller]
-pub fn solve_in_place<E: ComplexField, I: Index>(
+pub fn solve_in_place<I: Index, E: ComplexField>(
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     col_perm: PermutationRef<'_, I, E>,
@@ -122,7 +122,7 @@ pub fn solve_in_place<E: ComplexField, I: Index>(
 /// - Panics if the provided memory in `stack` is insufficient (see
 ///   [`solve_transpose_in_place_req`]).
 #[track_caller]
-pub fn solve_transpose_in_place<E: ComplexField, I: Index>(
+pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     col_perm: PermutationRef<'_, I, E>,
@@ -163,7 +163,7 @@ pub fn solve_transpose_in_place<E: ComplexField, I: Index>(
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
 #[track_caller]
-pub fn solve<E: ComplexField, I: Index>(
+pub fn solve<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
@@ -206,7 +206,7 @@ pub fn solve<E: ComplexField, I: Index>(
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
 #[track_caller]
-pub fn solve_transpose<E: ComplexField, I: Index>(
+pub fn solve_transpose<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
@@ -262,7 +262,7 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<E, usize>(
+            make_stack!(qr_in_place_req::<usize, E>(
                 n,
                 n,
                 blocksize,
@@ -283,7 +283,7 @@ mod tests {
                 conj_lhs,
                 sol.as_mut(),
                 Parallelism::None,
-                make_stack!(solve_in_place_req::<E, usize>(n, blocksize, k)),
+                make_stack!(solve_in_place_req::<usize, E>(n, blocksize, k)),
             );
 
             let mut rhs_reconstructed = rhs.clone();
@@ -331,7 +331,7 @@ mod tests {
             &mut perm,
             &mut perm_inv,
             Parallelism::None,
-            make_stack!(qr_in_place_req::<E, usize>(
+            make_stack!(qr_in_place_req::<usize, E>(
                 n,
                 n,
                 blocksize,
@@ -352,7 +352,7 @@ mod tests {
                 conj_lhs,
                 sol.as_mut(),
                 Parallelism::None,
-                make_stack!(solve_transpose_in_place_req::<E, usize>(n, blocksize, k)),
+                make_stack!(solve_transpose_in_place_req::<usize, E>(n, blocksize, k)),
             );
 
             let mut rhs_reconstructed = rhs.clone();
