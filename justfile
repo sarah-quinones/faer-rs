@@ -8,4 +8,5 @@ publish-libs:
     cd faer-libs   && cargo publish --package faer-cholesky
     cd faer-libs   && cargo publish --package faer-svd
     cd faer-libs   && cargo publish --package faer-evd
+    cd faer-libs   && cargo publish --package faer-sparse
     cd faer-libs   && cargo publish --package faer
