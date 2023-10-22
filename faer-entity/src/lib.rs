@@ -365,6 +365,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     type Real: RealField;
     type Simd: SimdCtx;
     type ScalarSimd: SimdCtx;
+    type PortableSimd: SimdCtx;
 
     /// Converts `value` from `f64` to `Self`.  
     /// The conversion may be lossy when converting to a type with less precision.
@@ -655,6 +656,7 @@ impl ComplexField for f32 {
     type Real = Self;
     type Simd = pulp::Arch;
     type ScalarSimd = NoSimd;
+    type PortableSimd = pulp::Arch;
 
     #[inline(always)]
     fn faer_from_f64(value: f64) -> Self {
@@ -940,6 +942,7 @@ impl ComplexField for f64 {
     type Real = Self;
     type Simd = pulp::Arch;
     type ScalarSimd = NoSimd;
+    type PortableSimd = pulp::Arch;
 
     #[inline(always)]
     fn faer_from_f64(value: f64) -> Self {
@@ -1789,6 +1792,7 @@ impl<E: RealField> ComplexField for Complex<E> {
     type Real = E;
     type Simd = <E as ComplexField>::Simd;
     type ScalarSimd = <E as ComplexField>::ScalarSimd;
+    type PortableSimd = <E as ComplexField>::PortableSimd;
 
     #[inline(always)]
     fn faer_from_f64(value: f64) -> Self {
@@ -2525,6 +2529,7 @@ impl ComplexField for Symbolic {
     type Real = Symbolic;
     type Simd = NoSimd;
     type ScalarSimd = NoSimd;
+    type PortableSimd = NoSimd;
 
     #[inline(always)]
     fn faer_from_f64(_value: f64) -> Self {

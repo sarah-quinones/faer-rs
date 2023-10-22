@@ -773,6 +773,7 @@ impl ComplexField for c32 {
     type Real = f32;
     type Simd = pulp::Arch;
     type ScalarSimd = NoSimd;
+    type PortableSimd = pulp::Arch;
 
     #[inline(always)]
     fn faer_from_f64(value: f64) -> Self {
@@ -1096,6 +1097,7 @@ impl ComplexField for c64 {
     type Real = f64;
     type Simd = pulp::Arch;
     type ScalarSimd = NoSimd;
+    type PortableSimd = pulp::Arch;
 
     #[inline(always)]
     fn faer_from_f64(value: f64) -> Self {
