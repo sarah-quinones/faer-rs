@@ -25,6 +25,13 @@ For developers who want to know more about the data layout and underlying struct
 
 The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
 
+## faer-sparse
+
+[![Documentation](https://docs.rs/faer-sparse/badge.svg)](https://docs.rs/faer-sparse)
+[![Crate](https://img.shields.io/crates/v/faer-sparse.svg)](https://crates.io/crates/faer-sparse)
+
+The sparse module implements sparse matrix algorithms.
+
 ## faer-cholesky
 
 [![Documentation](https://docs.rs/faer-cholesky/badge.svg)](https://docs.rs/faer-cholesky)

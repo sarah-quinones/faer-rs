@@ -1,3 +1,12 @@
+# 0.14
+- Implemented sparse data structures in `faer_core::sparse`.
+- Implemented sparse Cholesky decompositions, simplicial and supernodal. Only the low level API is currently exposed in `faer-sparse`.
+- Implemented dynamic regularization for the Bunch-Kaufman Cholesky decomposition.
+- Implemented diagonal wrappers that can be used to interpret a matrix as a diagonal matrix, using `{MatRef,MatMut}::diagonal` and `{MatRef,MatMut}::column_vector_as_diagonal`.
+- Implemented matrix multiplication syntax sugar for diagonal wrappers, and permutation matrices.
+- Implemented `compute_thin_r` and `compute_thin_q` in `faer::solvers::{Qr,ColPivQr}`.
+- Implemented initial SIMD support for aarch64.
+
 # 0.13
 - Implemented the Bunch-Kaufman Cholesky decomposition for hermitian indefinite matrices.
 - Implemented dynamic regularization for the diagonal LDLT.
