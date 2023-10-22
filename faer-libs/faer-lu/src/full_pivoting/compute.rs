@@ -1203,6 +1203,11 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
     prod < 512 * 256
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct FullPivLuInfo {
+    pub transposition_count: usize,
+}
+
 /// Computes the LU decomposition of the given matrix with partial pivoting, replacing the matrix
 /// with its factors in place.
 ///
@@ -1247,7 +1252,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     stack: PodStack<'_>,
     params: FullPivLuComputeParams,
 ) -> (
-    usize,
+    FullPivLuInfo,
     PermutationMut<'out, I, E>,
     PermutationMut<'out, I, E>,
 ) {
@@ -1322,7 +1327,9 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 
     unsafe {
         (
-            n_transpositions,
+            FullPivLuInfo {
+                transposition_count: n_transpositions,
+            },
             PermutationMut::new_unchecked(row_perm, row_perm_inv),
             PermutationMut::new_unchecked(col_perm, col_perm_inv),
         )

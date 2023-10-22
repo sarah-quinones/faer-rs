@@ -409,6 +409,11 @@ fn lu_in_place_impl<I: Index, E: ComplexField>(
 #[non_exhaustive]
 pub struct PartialPivLuComputeParams {}
 
+#[derive(Copy, Clone, Debug)]
+pub struct PartialPivLuInfo {
+    pub transposition_count: usize,
+}
+
 /// Computes the size and alignment of required workspace for performing an LU
 /// decomposition with partial pivoting.
 pub fn lu_in_place_req<I: Index, E: Entity>(
@@ -459,7 +464,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: PartialPivLuComputeParams,
-) -> (usize, PermutationMut<'out, I, E>) {
+) -> (PartialPivLuInfo, PermutationMut<'out, I, E>) {
     let _ = &params;
     let truncate = <I::Signed as SignedIndex>::truncate;
 
@@ -509,9 +514,12 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
         perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
     }
 
-    (n_transpositions, unsafe {
-        PermutationMut::new_unchecked(perm, perm_inv)
-    })
+    (
+        PartialPivLuInfo {
+            transposition_count: n_transpositions,
+        },
+        unsafe { PermutationMut::new_unchecked(perm, perm_inv) },
+    )
 }
 
 #[cfg(test)]

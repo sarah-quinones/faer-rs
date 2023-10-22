@@ -1,3 +1,5 @@
+//! Approximate minimum degree ordering.
+
 // AMD, Copyright (c), 1996-2022, Timothy A. Davis,
 // Patrick R. Amestoy, and Iain S. Duff.  All Rights Reserved.
 //

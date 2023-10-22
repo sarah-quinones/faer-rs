@@ -37,6 +37,7 @@ pub mod compute {
         pub blocksize: usize,
     }
 
+    /// Dynamic Bunch-Kaufman regularization.
     #[derive(Debug)]
     pub struct BunchKaufmanRegularization<'a, E: ComplexField> {
         pub dynamic_regularization_signs: Option<&'a mut [i8]>,
@@ -717,6 +718,8 @@ pub mod compute {
         }
     }
 
+    /// Computes the size and alignment of required workspace for performing a Cholesky
+    /// decomposition with Bunch-Kaufman pivoting.
     pub fn cholesky_in_place_req<I: Index, E: Entity>(
         dim: usize,
         parallelism: Parallelism,
@@ -736,6 +739,18 @@ pub mod compute {
         pub transposition_count: usize,
     }
 
+    /// Computes the Cholesky factorization with Bunch-Kaufman  pivoting of the input matrix and
+    /// stores the factorization in `matrix` and `subdiag`.
+    ///
+    /// The inverses of the diagonal blocks of the block diagonal matrix are stored on the diagonal
+    /// of `matrix`, while the subdiagonal elements of those inverses are stored in `subdiag`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the input matrix is not square.
+    ///
+    /// This can also panic if the provided memory in `stack` is insufficient (see
+    /// [`cholesky_in_place_req`]).
     #[track_caller]
     pub fn cholesky_in_place<'out, I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,

@@ -36,7 +36,7 @@ pub fn lu(c: &mut Criterion) {
             let mut copy = mat.clone();
 
             let mut mem = GlobalPodBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64, usize>(
+                partial_pivoting::compute::lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::None,
@@ -65,7 +65,7 @@ pub fn lu(c: &mut Criterion) {
             let mut perm_inv = vec![0; n];
 
             let mut mem = GlobalPodBuffer::new(
-                partial_pivoting::compute::lu_in_place_req::<f64, usize>(
+                partial_pivoting::compute::lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::Rayon(rayon::current_num_threads()),
@@ -97,7 +97,7 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalPodBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64, usize>(
+                full_pivoting::compute::lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::None,
@@ -132,7 +132,7 @@ pub fn lu(c: &mut Criterion) {
             let mut col_perm_inv = vec![0; n];
 
             let mut mem = GlobalPodBuffer::new(
-                full_pivoting::compute::lu_in_place_req::<f64, usize>(
+                full_pivoting::compute::lu_in_place_req::<usize, f64>(
                     n,
                     n,
                     Parallelism::None,

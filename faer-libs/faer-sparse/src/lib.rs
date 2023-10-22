@@ -18,6 +18,8 @@ use faer_core::{
 use faer_entity::*;
 use reborrow::*;
 
+pub use faer_core::permutation::{Index, SignedIndex};
+
 #[allow(unused_macros)]
 macro_rules! shadow {
     ($id: ident) => {
@@ -44,6 +46,7 @@ macro_rules! impl_copy {
     };
 }
 
+/// Errors that can occur in sparse algorithms.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum FaerError {
@@ -123,8 +126,6 @@ pub mod cholesky;
 mod ghost;
 
 mod mem;
-
-pub use faer_core::permutation::{Index, SignedIndex};
 
 fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
     new_values: SliceGroupMut<'out, E>,
@@ -397,6 +398,9 @@ fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
     )
 }
 
+/// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over it.
+///
+/// The result is stored in `new_col_ptrs`, `new_row_indices`.
 pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
     new_values: GroupFor<E, &'out mut [E::Unit]>,
     new_col_ptrs: &'out mut [I],
@@ -527,6 +531,9 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     )
 }
 
+/// Computes the adjoint of the matrix `A` and returns a view over it.
+///
+/// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
 pub fn adjoint<'a, I: Index, E: ComplexField>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
@@ -548,6 +555,9 @@ pub fn adjoint<'a, I: Index, E: ComplexField>(
     })
 }
 
+/// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
+///
+/// The result is stored in `new_col_ptrs`, `new_row_indices`.
 pub fn adjoint_symbolic<'a, I: Index>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],

@@ -23,6 +23,9 @@ impl Seal for u64 {}
 impl Seal for u128 {}
 impl Seal for usize {}
 
+/// Trait for unsigned integers that can be indexed with.
+///
+/// Always smaller than or equal to `usize`.
 pub trait Index:
     Seal
     + core::fmt::Debug
@@ -38,7 +41,6 @@ pub trait Index:
     + Sync
 {
     type FixedWidth: Index;
-    type Unsigned: Index;
     type Signed: SignedIndex;
 
     #[must_use]
@@ -65,18 +67,10 @@ pub trait Index:
     }
 
     #[inline(always)]
-    fn from_unsigned(value: Self::Unsigned) -> Self {
-        pulp::cast(value)
-    }
-    #[inline(always)]
     fn from_signed(value: Self::Signed) -> Self {
         pulp::cast(value)
     }
 
-    #[inline(always)]
-    fn to_unsigned(self) -> Self::Unsigned {
-        pulp::cast(self)
-    }
     #[inline(always)]
     fn to_signed(self) -> Self::Signed {
         pulp::cast(self)
@@ -88,6 +82,9 @@ pub trait Index:
     }
 }
 
+/// Trait for signed integers corresponding to the ones satisfying [`Index`].
+///
+/// Always smaller than or equal to `isize`.
 pub trait SignedIndex:
     Seal
     + core::fmt::Debug
@@ -133,19 +130,16 @@ pub trait SignedIndex:
 ))]
 impl Index for u32 {
     type FixedWidth = u32;
-    type Unsigned = u32;
     type Signed = i32;
 }
 #[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
 impl Index for u64 {
     type FixedWidth = u64;
-    type Unsigned = u64;
     type Signed = i64;
 }
 #[cfg(target_pointer_width = "128")]
 impl Index for u128 {
     type FixedWidth = u128;
-    type Unsigned = u128;
     type Signed = i128;
 }
 
@@ -157,7 +151,6 @@ impl Index for usize {
     #[cfg(target_pointer_width = "128")]
     type FixedWidth = u128;
 
-    type Unsigned = usize;
     type Signed = isize;
 }
 

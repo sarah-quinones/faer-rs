@@ -835,7 +835,7 @@ pub mod solvers {
             );
 
             Self {
-                n_transpositions,
+                n_transpositions: n_transpositions.transposition_count,
                 factors,
                 row_perm,
                 row_perm_inv,
@@ -1017,7 +1017,7 @@ pub mod solvers {
                 row_perm_inv,
                 col_perm,
                 col_perm_inv,
-                n_transpositions,
+                n_transpositions: n_transpositions.transposition_count,
             }
         }
 

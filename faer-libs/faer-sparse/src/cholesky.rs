@@ -1,3 +1,8 @@
+//! Computes the Cholesky decomposition (either LLT, LDLT, or Bunch-Kaufman) of a given sparse
+//! matrix. See [`faer_cholesky`] for more info.
+//!
+//! The entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic`].
+
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
 use crate::{
@@ -43,6 +48,31 @@ pub mod simplicial {
     use super::*;
     use assert2::assert;
     use faer_entity::GroupFor;
+
+    /// Computes the elimination tree and column counts of the Cholesky factorization of the matrix
+    /// `A`.
+    pub fn prefactorize_symbolic<'out, I: Index>(
+        etree: &'out mut [I::Signed],
+        col_counts: &mut [I],
+        A: SymbolicSparseColMatRef<'_, I>,
+        stack: PodStack<'_>,
+    ) -> EliminationTreeRef<'out, I> {
+        let n = A.nrows();
+        assert!(A.nrows() == A.ncols());
+        assert!(etree.len() == n);
+        assert!(col_counts.len() == n);
+
+        ghost::with_size(n, |N| {
+            ghost_prefactorize_symbolic(
+                Array::from_mut(etree, N),
+                Array::from_mut(col_counts, N),
+                ghost::SymbolicSparseColMatRef::new(A, N, N),
+                stack,
+            );
+        });
+
+        simplicial::EliminationTreeRef { inner: etree }
+    }
 
     fn ereach<'n, 'a, I: Index>(
         stack: &'a mut Array<'n, I>,
@@ -208,7 +238,7 @@ pub mod simplicial {
             assert!(L_values.rb().len() == L_row_indices.len());
         }
         assert!(L_col_ptrs.len() == n + 1);
-        assert!(etree.inner().len() == n);
+        assert!(etree.into_inner().len() == n);
         let l_nnz = L_col_ptrs[n].zx();
 
         ghost::with_size(
@@ -1373,6 +1403,12 @@ pub mod simplicial {
         StackReq::try_all_of([make_raw_req::<E>(n)?, n_req, n_req, n_req])
     }
 
+    pub fn factorize_simplicial_numeric_llt_req<I: Index, E: Entity>(
+        n: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        factorize_simplicial_numeric_ldlt_req::<I, E>(n)
+    }
+
     #[derive(Debug)]
     pub struct SimplicialLltRef<'a, I: Index, E: Entity> {
         symbolic: &'a SymbolicSimplicialCholesky<I>,
@@ -1391,6 +1427,25 @@ pub mod simplicial {
         col_ptrs: Vec<I>,
         row_indices: Vec<I>,
         etree: Vec<I::Signed>,
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct EliminationTreeRef<'a, I: Index> {
+        pub(super) inner: &'a [I::Signed],
+    }
+
+    impl<'a, I: Index> EliminationTreeRef<'a, I> {
+        #[inline]
+        pub fn into_inner(self) -> &'a [I::Signed] {
+            self.inner
+        }
+
+        #[inline]
+        #[track_caller]
+        pub(crate) fn ghost_inner<'n>(self, N: ghost::Size<'n>) -> &'a Array<'n, MaybeIdx<'n, I>> {
+            assert!(self.inner.len() == *N);
+            unsafe { Array::from_ref(MaybeIdx::from_slice_ref_unchecked(self.inner), N) }
+        }
     }
 }
 
@@ -2030,14 +2085,14 @@ pub mod supernodal {
 
     pub fn factorize_supernodal_symbolic<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
-        etree: EliminationTreeRef<'_, I>,
+        etree: simplicial::EliminationTreeRef<'_, I>,
         col_counts: &[I],
         stack: PodStack<'_>,
         params: CholeskySymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
         let n = A.nrows();
         assert!(A.nrows() == A.ncols());
-        assert!(etree.inner().len() == n);
+        assert!(etree.into_inner().len() == n);
         assert!(col_counts.len() == n);
         ghost::with_size(n, |N| {
             ghost_factorize_supernodal_symbolic(
@@ -2898,7 +2953,8 @@ pub mod supernodal {
                 parallelism,
                 stack.rb_mut(),
                 params,
-            )?;
+            )?
+            .dynamic_regularization_count;
             faer_core::solve::solve_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),
                 Ls_bot.rb_mut().transpose(),
@@ -3109,7 +3165,8 @@ pub mod supernodal {
                     parallelism,
                     stack.rb_mut(),
                     params,
-                );
+                )
+                .dynamic_regularization_count;
             zipped!(Ls_top.rb_mut())
                 .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| {
                     x.write(E::faer_zero())
@@ -3496,25 +3553,6 @@ pub mod supernodal {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct EliminationTreeRef<'a, I: Index> {
-    inner: &'a [I::Signed],
-}
-
-impl<'a, I: Index> EliminationTreeRef<'a, I> {
-    #[inline]
-    pub fn inner(self) -> &'a [I::Signed] {
-        self.inner
-    }
-
-    #[inline]
-    #[track_caller]
-    fn ghost_inner<'n>(self, N: ghost::Size<'n>) -> &'a Array<'n, MaybeIdx<'n, I>> {
-        assert!(self.inner.len() == *N);
-        unsafe { Array::from_ref(MaybeIdx::from_slice_ref_unchecked(self.inner), N) }
-    }
-}
-
 // workspace: I*(n)
 fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     etree: &'out mut Array<'n, I::Signed>,
@@ -3555,29 +3593,6 @@ fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     }
 
     etree
-}
-
-pub fn prefactorize_symbolic<'out, I: Index>(
-    etree: &'out mut [I::Signed],
-    col_counts: &mut [I],
-    A: SymbolicSparseColMatRef<'_, I>,
-    stack: PodStack<'_>,
-) -> EliminationTreeRef<'out, I> {
-    let n = A.nrows();
-    assert!(A.nrows() == A.ncols());
-    assert!(etree.len() == n);
-    assert!(col_counts.len() == n);
-
-    ghost::with_size(n, |N| {
-        ghost_prefactorize_symbolic(
-            Array::from_mut(etree, N),
-            Array::from_mut(col_counts, N),
-            ghost::SymbolicSparseColMatRef::new(A, N, N),
-            stack,
-        );
-    });
-
-    EliminationTreeRef { inner: etree }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -3647,12 +3662,14 @@ impl ComputationModel {
     }
 }
 
+/// The inner factorization used for the symbolic Cholesky, either simplicial or symbolic.
 #[derive(Debug)]
 pub enum SymbolicCholeskyRaw<I: Index> {
     Simplicial(simplicial::SymbolicSimplicialCholesky<I>),
     Supernodal(supernodal::SymbolicSupernodalCholesky<I>),
 }
 
+/// The symbolic structure of a sparse Cholesky decomposition.
 #[derive(Debug)]
 pub struct SymbolicCholesky<I: Index> {
     raw: SymbolicCholeskyRaw<I>,
@@ -3662,6 +3679,7 @@ pub struct SymbolicCholesky<I: Index> {
 }
 
 impl<I: Index> SymbolicCholesky<I> {
+    /// Returns the number of rows of the matrix.
     #[inline]
     pub fn nrows(&self) -> usize {
         match &self.raw {
@@ -3670,21 +3688,26 @@ impl<I: Index> SymbolicCholesky<I> {
         }
     }
 
+    /// Returns the number of columns of the matrix.
     #[inline]
     pub fn ncols(&self) -> usize {
         self.nrows()
     }
 
+    /// Returns the inner type of the factorization, either simplicial or symbolic.
     #[inline]
     pub fn raw(&self) -> &SymbolicCholeskyRaw<I> {
         &self.raw
     }
 
+    /// Returns the permutation that was computed during symbolic analysis.
     #[inline]
     pub fn perm(&self) -> PermutationRef<'_, I, Symbolic> {
         unsafe { PermutationRef::new_unchecked(&self.perm_fwd, &self.perm_inv) }
     }
 
+    /// Returns the length of the slice needed to store the numerical values of the Cholesky
+    /// decomposition.
     #[inline]
     pub fn len_values(&self) -> usize {
         match &self.raw {
@@ -3693,6 +3716,36 @@ impl<I: Index> SymbolicCholesky<I> {
         }
     }
 
+    /// Computes the required workspace size and alignment for a numerical LLT factorization.
+    #[inline]
+    pub fn factorize_numeric_llt_req<E: Entity>(
+        &self,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n = self.nrows();
+        let A_nnz = self.A_nnz;
+
+        let n_req = StackReq::try_new::<I>(n)?;
+        let A_req = StackReq::try_all_of([
+            make_raw_req::<E>(A_nnz)?,
+            StackReq::try_new::<I>(n + 1)?,
+            StackReq::try_new::<I>(A_nnz)?,
+        ])?;
+        let permute_req = n_req;
+
+        let factor_req = match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(_) => {
+                simplicial::factorize_simplicial_numeric_llt_req::<I, E>(n)?
+            }
+            SymbolicCholeskyRaw::Supernodal(this) => {
+                supernodal::factorize_supernodal_numeric_llt_req::<I, E>(this, parallelism)?
+            }
+        };
+
+        StackReq::try_all_of([A_req, StackReq::try_or(permute_req, factor_req)?])
+    }
+
+    /// Computes the required workspace size and alignment for a numerical LDLT factorization.
     #[inline]
     pub fn factorize_numeric_ldlt_req<E: Entity>(
         &self,
@@ -3732,6 +3785,8 @@ impl<I: Index> SymbolicCholesky<I> {
         ])
     }
 
+    /// Computes the required workspace size and alignment for a numerical intranodal Bunch-Kaufman
+    /// factorization.
     #[inline]
     pub fn factorize_numeric_intranode_bunch_kaufman_req<E: Entity>(
         &self,
@@ -3774,6 +3829,8 @@ impl<I: Index> SymbolicCholesky<I> {
         ])
     }
 
+    /// Computes a numerical LLT factorization of A, or returns a [`CholeskyError`] if the matrix
+    /// is not numerically positive definite.
     #[inline]
     pub fn factorize_numeric_llt<'out, E: ComplexField>(
         &'out self,
@@ -3843,6 +3900,7 @@ impl<I: Index> SymbolicCholesky<I> {
         })
     }
 
+    /// Computes a numerical LDLT factorization of A.
     #[inline]
     pub fn factorize_numeric_ldlt<'out, E: ComplexField>(
         &'out self,
@@ -3931,6 +3989,7 @@ impl<I: Index> SymbolicCholesky<I> {
         })
     }
 
+    /// Computes a numerical intranodal Bunch-Kaufman factorization of A.
     #[inline]
     pub fn factorize_numeric_intranode_bunch_kaufman<'out, E: ComplexField>(
         &'out self,
@@ -4046,6 +4105,8 @@ impl<I: Index> SymbolicCholesky<I> {
         })
     }
 
+    /// Computes the required workspace size and alignment for a dense solve in place using an LLT,
+    /// LDLT or intranodal Bunch-Kaufman factorization.
     pub fn dense_solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
@@ -4061,24 +4122,49 @@ impl<I: Index> SymbolicCholesky<I> {
     }
 }
 
+/// Sparse LLT factorization wrapper.
 #[derive(Debug)]
 pub struct LltRef<'a, I: Index, E: Entity> {
     symbolic: &'a SymbolicCholesky<I>,
     values: SliceGroup<'a, E>,
 }
 
+/// Sparse LDLT factorization wrapper.
 #[derive(Debug)]
 pub struct LdltRef<'a, I: Index, E: Entity> {
     symbolic: &'a SymbolicCholesky<I>,
     values: SliceGroup<'a, E>,
 }
 
+/// Sparse intranodal Bunch-Kaufman factorization wrapper.
 #[derive(Debug)]
 pub struct IntranodeBunchKaufmanRef<'a, I: Index, E: Entity> {
     symbolic: &'a SymbolicCholesky<I>,
     values: SliceGroup<'a, E>,
     subdiag: SliceGroup<'a, E>,
     perm: PermutationRef<'a, I, E>,
+}
+
+impl<'a, I: Index, E: Entity> core::ops::Deref for LltRef<'a, I, E> {
+    type Target = SymbolicCholesky<I>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.symbolic
+    }
+}
+impl<'a, I: Index, E: Entity> core::ops::Deref for LdltRef<'a, I, E> {
+    type Target = SymbolicCholesky<I>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.symbolic
+    }
+}
+impl<'a, I: Index, E: Entity> core::ops::Deref for IntranodeBunchKaufmanRef<'a, I, E> {
+    type Target = SymbolicCholesky<I>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.symbolic
+    }
 }
 
 impl_copy!(<'a><I><supernodal::SymbolicSupernodeRef<'a, I>>);
@@ -4387,6 +4473,8 @@ impl Default for CholeskySymbolicParams<'_> {
     }
 }
 
+/// Computes the symbolic factorization of the matrix `A`, or returns an error if the operation
+/// could not be completed.
 pub fn factorize_symbolic<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     side: Side,

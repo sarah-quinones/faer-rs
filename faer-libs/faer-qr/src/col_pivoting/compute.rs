@@ -666,6 +666,11 @@ pub fn qr_in_place_req<I: Index, E: Entity>(
     Ok(StackReq::default())
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct ColPivQrInfo {
+    pub transposition_count: usize,
+}
+
 /// Computes the QR decomposition with pivoting of a rectangular matrix $A$, into a unitary matrix
 /// $Q$, represented as a block Householder sequence, and an upper trapezoidal matrix $R$, such
 /// that $$AP^\top = QR.$$
@@ -701,7 +706,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: ColPivQrComputeParams,
-) -> (usize, PermutationMut<'out, I, E>) {
+) -> (ColPivQrInfo, PermutationMut<'out, I, E>) {
     fn implementation<'out, I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
         householder_factor: MatMut<'_, E>,
@@ -800,7 +805,12 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
         stack,
         params,
     );
-    (n_transpositions, perm.uncanonicalize::<I>())
+    (
+        ColPivQrInfo {
+            transposition_count: n_transpositions,
+        },
+        perm.uncanonicalize::<I>(),
+    )
 }
 
 #[cfg(test)]

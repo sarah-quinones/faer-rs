@@ -230,8 +230,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 #[non_exhaustive]
 pub struct LdltDiagParams {}
 
-/// Computes the size and alignment of required workspace for performing a Cholesky
-/// decomposition with partial pivoting.
+/// Computes the size and alignment of required workspace for performing a Cholesky decomposition.
 pub fn raw_cholesky_in_place_req<E: Entity>(
     dim: usize,
     parallelism: Parallelism,
@@ -330,11 +329,17 @@ fn cholesky_in_place_impl<E: ComplexField>(
     }
 }
 
+/// Dynamic LDLT regularization.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltRegularization<'a, E: ComplexField> {
     pub dynamic_regularization_signs: Option<&'a [i8]>,
     pub dynamic_regularization_delta: E::Real,
     pub dynamic_regularization_epsilon: E::Real,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct LdltInfo {
+    pub dynamic_regularization_count: usize,
 }
 
 impl<E: ComplexField> Default for LdltRegularization<'_, E> {
@@ -356,7 +361,7 @@ impl<E: ComplexField> Default for LdltRegularization<'_, E> {
 /// The input matrix is interpreted as symmetric and only the lower triangular part is read.
 ///
 /// The matrix $L$ is stored in the strictly lower triangular part of the input matrix, and the
-/// diagonal elements of $D$ are stored on the diagonal.
+/// inverses of the diagonal elements of $D$ are stored on the diagonal.
 ///
 /// The strictly upper triangular part of the matrix is clobbered and may be filled with garbage
 /// values.
@@ -382,7 +387,7 @@ pub fn raw_cholesky_in_place<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: LdltDiagParams,
-) -> usize {
+) -> LdltInfo {
     assert!(matrix.ncols() == matrix.nrows());
     #[cfg(feature = "perf-warn")]
     if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(CHOLESKY_WARN) {
@@ -402,5 +407,7 @@ pub fn raw_cholesky_in_place<E: ComplexField>(
         stack,
         params,
     );
-    count
+    LdltInfo {
+        dynamic_regularization_count: count,
+    }
 }

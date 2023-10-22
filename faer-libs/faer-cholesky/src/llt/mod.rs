@@ -8,6 +8,8 @@ pub mod reconstruct;
 pub mod solve;
 pub mod update;
 
+/// This error signifies that the LLT decomposition could not be computed due to the matrix not
+/// being numerically positive definite.
 #[derive(Debug, Clone, Copy)]
 pub struct CholeskyError;
 

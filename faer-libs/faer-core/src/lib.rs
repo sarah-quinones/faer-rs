@@ -1758,6 +1758,7 @@ pub struct Matrix<M> {
     inner: M,
 }
 
+/// Specialized containers that are used with [`Matrix`].
 pub mod inner {
     use super::*;
 
@@ -1847,6 +1848,7 @@ pub mod inner {
 }
 use inner::*;
 
+/// Advanced: Helper types for working with [`GroupFor`] in generic contexts.
 pub mod group_helpers {
     use super::*;
     #[cfg(feature = "std")]
@@ -2311,6 +2313,7 @@ pub mod group_helpers {
     }
 }
 
+/// Sparse matrix data structures.
 pub mod sparse {
     use super::*;
     #[cfg(feature = "std")]
@@ -2363,6 +2366,21 @@ pub mod sparse {
         unsafe { data.value }
     }
 
+    /// Symbolic structure of sparse matrix in column format, either compressed or uncompressed.
+    ///
+    /// Requires:
+    /// * `nrows <= I::Signed::MAX` (always checked)
+    /// * `ncols <= I::Signed::MAX` (always checked)
+    /// * `col_ptrs` has length n (always checked)
+    /// * `col_ptrs` is non-decreasing
+    /// * `col_ptrs[0]..col_ptrs[n]` is a valid range in row_indices (always checked, assuming
+    ///   non-decreasing)
+    /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are
+    ///   less than `nrows`
+    ///
+    /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
+    /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]`
+    ///   are less than `nrows`
     #[derive(Debug)]
     pub struct SymbolicSparseColMatRef<'a, I> {
         nrows: usize,
@@ -2380,23 +2398,12 @@ pub mod sparse {
         }
     }
 
-    /// Requires:
-    /// * `nrows <= I::MAX` (always checked)
-    /// * `ncols <= I::MAX` (always checked)
-    /// * `col_ptrs` has length n (always checked)
-    /// * `col_ptrs` is non-decreasing
-    /// * `col_ptrs[0]..col_ptrs[n]` is a valid range in row_indices (always checked, assuming
-    ///   non-decreasing)
-    /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are
-    ///   less than `nrows`
-    ///
-    /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
-    /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]`
-    ///   are less than `nrows`
-    ///
-    /// Ensures:
-    /// * `self.compute_nnz() <= I::MAX`
     impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
+        /// Creates a new symbolic matrix view after asserting its invariants.
+        ///
+        /// # Panics
+        ///
+        /// See type level documentation.
         #[inline]
         #[track_caller]
         pub fn new_checked(
@@ -2406,8 +2413,8 @@ pub mod sparse {
             nnz_per_col: Option<&'a [I]>,
             row_indices: &'a [I],
         ) -> Self {
-            assert!(ncols <= <I::Signed as SignedIndex>::MAX.zx());
-            assert!(nrows <= <I::Signed as SignedIndex>::MAX.zx());
+            assert!(ncols <= I::Signed::MAX.zx());
+            assert!(nrows <= I::Signed::MAX.zx());
             assert!(col_ptrs.len() == ncols + 1);
             for &[c, c_next] in windows2(col_ptrs) {
                 assert!(c <= c_next);
@@ -2438,6 +2445,11 @@ pub mod sparse {
             }
         }
 
+        /// Creates a new symbolic matrix view without asserting its invariants.
+        ///
+        /// # Safety
+        ///
+        /// See type level documentation.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn new_unchecked(
@@ -2461,15 +2473,20 @@ pub mod sparse {
             }
         }
 
+        /// Returns the number of rows of the matrix.
         #[inline]
         pub fn nrows(&self) -> usize {
             self.nrows
         }
+        /// Returns the number of columns of the matrix.
         #[inline]
         pub fn ncols(&self) -> usize {
             self.ncols
         }
 
+        /// Returns the number of symbolic non-zeros in the matrix.
+        ///
+        /// The value is guaranteed to be less than `I::Signed::MAX`.
         #[inline]
         pub fn compute_nnz(&self) -> usize {
             match self.col_nnz {
@@ -2485,27 +2502,40 @@ pub mod sparse {
             }
         }
 
+        /// Returns the column pointers.
         #[inline]
         pub fn col_ptrs(&self) -> &'a [I] {
             self.col_ptr
         }
 
+        /// Returns the count of non-zeros per column of the matrix.
         #[inline]
         pub fn nnz_per_col(&self) -> Option<&'a [I]> {
             self.col_nnz
         }
 
+        /// Returns the row indices.
         #[inline]
         pub fn row_indices(&self) -> &'a [I] {
             self.row_ind
         }
 
+        /// Returns the row indices of column j.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `j >= self.ncols()`
         #[inline]
         #[track_caller]
         pub fn row_indices_of_col_raw(&self, j: usize) -> &'a [I] {
             &self.row_ind[self.col_range(j)]
         }
 
+        /// Returns the row indices of column j.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `j >= self.ncols()`
         #[inline]
         #[track_caller]
         pub fn row_indices_of_col(
@@ -2518,6 +2548,11 @@ pub mod sparse {
             )
         }
 
+        /// Returns the range that the column `j` occupies in `self.row_indices().
+        ///
+        /// # Panics
+        ///
+        /// Panics if `j >= self.ncols()`
         #[inline]
         #[track_caller]
         pub fn col_range(&self, j: usize) -> Range<usize> {
@@ -2530,6 +2565,11 @@ pub mod sparse {
             start..end
         }
 
+        /// Returns the range that the column `j` occupies in `self.row_indices().
+        ///
+        /// # Safety
+        ///
+        /// The behavior is undefined if `j >= self.ncols()`
         #[inline]
         #[track_caller]
         pub unsafe fn col_range_unchecked(&self, j: usize) -> Range<usize> {
@@ -2543,6 +2583,7 @@ pub mod sparse {
         }
     }
 
+    /// Sparse matrix in column format, either compressed or uncompressed.
     #[derive(Debug)]
     pub struct SparseColMatRef<'a, I, E: Entity> {
         symbolic: SymbolicSparseColMatRef<'a, I>,
@@ -2558,6 +2599,12 @@ pub mod sparse {
     }
 
     impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
+        /// Creates a new sparse matrix view.
+        ///
+        /// # Panics
+        ///
+        /// Panics if the length of `values` is not equal to the length of
+        /// `symbolic.row_indices()`.
         #[inline]
         #[track_caller]
         pub fn new(
@@ -2568,17 +2615,25 @@ pub mod sparse {
             assert!(symbolic.row_indices().len() == values.len());
             Self { symbolic, values }
         }
+
+        /// Returns the numerical values of the matrix.
         #[inline]
         pub fn values(&self) -> GroupFor<E, &'a [E::Unit]> {
             self.values.into_inner()
         }
 
+        /// Returns the numerical values of column `j` of the matrix.
+        ///
+        /// # Panics:
+        ///
+        /// Panics if `j >= n`.
         #[inline]
         #[track_caller]
         pub fn values_of_col(&self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
             self.values.subslice(self.col_range(j)).into_inner()
         }
 
+        /// Returns the symbolic structure of the matrix.
         #[inline]
         pub fn symbolic(&self) -> SymbolicSparseColMatRef<'a, I> {
             self.symbolic
@@ -6237,8 +6292,8 @@ impl<E: Entity> Debug for Mat<E> {
     }
 }
 
-/// Module for index and matrix types with compile time checks, instead of bound checking at
-/// runtime.
+/// Advanced: Module for index and matrix types with compile time checks, instead of bound checking
+/// at runtime.
 pub mod constrained {
     use core::ops::Range;
 

@@ -129,6 +129,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
 #[non_exhaustive]
 pub struct LltParams {}
 
+/// Dynamic LLT regularization.
 #[derive(Copy, Clone, Debug)]
 pub struct LltRegularization<E: ComplexField> {
     pub dynamic_regularization_delta: E::Real,
@@ -145,7 +146,7 @@ impl<E: ComplexField> Default for LltRegularization<E> {
 }
 
 /// Computes the size and alignment of required workspace for performing a Cholesky
-/// decomposition with partial pivoting.
+/// decomposition.
 pub fn cholesky_in_place_req<E: Entity>(
     dim: usize,
     parallelism: Parallelism,
@@ -213,6 +214,11 @@ fn cholesky_in_place_impl<E: ComplexField>(
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct LltInfo {
+    pub dynamic_regularization_count: usize,
+}
+
 /// Computes the Cholesky factor $L$ of a hermitian positive definite input matrix $A$ such that
 /// $L$ is lower triangular, and
 /// $$LL^H == A.$$
@@ -239,7 +245,7 @@ pub fn cholesky_in_place<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
     params: LltParams,
-) -> Result<usize, CholeskyError> {
+) -> Result<LltInfo, CholeskyError> {
     let _ = params;
     assert!(matrix.ncols() == matrix.nrows());
     #[cfg(feature = "perf-warn")]
@@ -260,5 +266,7 @@ pub fn cholesky_in_place<E: ComplexField>(
         stack,
         params,
     )?;
-    Ok(count)
+    Ok(LltInfo {
+        dynamic_regularization_count: count,
+    })
 }
