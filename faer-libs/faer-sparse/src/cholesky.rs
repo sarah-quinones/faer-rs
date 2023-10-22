@@ -956,7 +956,7 @@ pub mod supernodal {
             }
         }
 
-        pub fn dense_solve_in_place_with_conj_no_permute(
+        pub fn dense_solve_in_place_no_numeric_permute_with_conj(
             self,
             rhs: MatMut<'_, E>,
             conj: Conj,
@@ -1097,36 +1097,6 @@ pub mod supernodal {
                     parallelism,
                 );
             }
-        }
-
-        pub fn dense_solve_in_place_with_conj(
-            self,
-            rhs: MatMut<'_, E>,
-            conj: Conj,
-            parallelism: Parallelism,
-            stack: PodStack<'_>,
-        ) where
-            E: ComplexField,
-        {
-            let symbolic = self.symbolic();
-            let n = symbolic.nrows();
-            assert!(rhs.nrows() == n);
-            let mut stack = stack;
-
-            let mut x = rhs;
-
-            faer_core::permutation::permute_rows_in_place(x.rb_mut(), self.perm, stack.rb_mut());
-            self.dense_solve_in_place_with_conj_no_permute(
-                x.rb_mut(),
-                conj,
-                parallelism,
-                stack.rb_mut(),
-            );
-            faer_core::permutation::permute_rows_in_place(
-                x.rb_mut(),
-                self.perm.inverse(),
-                stack.rb_mut(),
-            );
         }
     }
 
@@ -1328,7 +1298,7 @@ pub mod supernodal {
             supernodal::SymbolicSupernodeRef { start, pattern }
         }
 
-        pub fn dense_solve_in_place_no_permute_req<E: Entity>(
+        pub fn dense_solve_in_place_req<E: Entity>(
             &self,
             rhs_ncols: usize,
         ) -> Result<StackReq, SizeOverflow> {
@@ -1339,17 +1309,6 @@ pub mod supernodal {
                 req = req.try_or(temp_mat_req::<E>(s.pattern.len(), rhs_ncols)?)?;
             }
             Ok(req)
-        }
-
-        pub fn dense_solve_in_place_req<E: Entity>(
-            &self,
-            rhs_ncols: usize,
-        ) -> Result<StackReq, SizeOverflow> {
-            self.dense_solve_in_place_no_permute_req::<E>(rhs_ncols)?
-                .try_or(faer_core::permutation::permute_rows_in_place_req::<E, I>(
-                    self.nrows(),
-                    rhs_ncols,
-                )?)
         }
     }
 
@@ -2551,7 +2510,7 @@ pub mod supernodal {
         symbolic: &'a SymbolicSupernodalCholesky<I>,
         values: SliceGroup<'a, E>,
         subdiag: SliceGroup<'a, E>,
-        perm: PermutationRef<'a, I, E>,
+        pub(super) perm: PermutationRef<'a, I, E>,
     }
 
     #[derive(Debug)]
@@ -3137,33 +3096,50 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
         let mut rhs = rhs;
 
         let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
-
         let (fwd, inv) = self.symbolic.perm().into_arrays();
-        for j in 0..k {
-            for (i, fwd) in fwd.iter().enumerate() {
-                x.write(i, j, rhs.read(fwd.zx(), j));
-            }
-        }
 
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLdltRef::new(symbolic, self.values);
+
+                for j in 0..k {
+                    for (i, fwd) in fwd.iter().enumerate() {
+                        x.write(i, j, rhs.read(fwd.zx().zx(), j));
+                    }
+                }
                 this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                for j in 0..k {
+                    for (i, inv) in inv.iter().enumerate() {
+                        rhs.write(i, j, x.read(inv.zx().zx(), j));
+                    }
+                }
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
+                let (dyn_fwd, dyn_inv) = self.perm.into_arrays();
+                for j in 0..k {
+                    for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
+                        x.write(i, j, rhs.read(fwd[dyn_fwd.zx()].zx(), j));
+                    }
+                }
+
                 let this = supernodal::SupernodalIntranodeBunchKaufmanRef::new(
                     symbolic,
                     self.values.into_inner(),
                     self.subdiag.into_inner(),
                     self.perm,
                 );
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
-            }
-        }
+                this.dense_solve_in_place_no_numeric_permute_with_conj(
+                    x.rb_mut(),
+                    conj,
+                    parallelism,
+                    stack,
+                );
 
-        for j in 0..k {
-            for (i, inv) in inv.iter().enumerate() {
-                rhs.write(i, j, x.read(inv.zx(), j));
+                for j in 0..k {
+                    for (i, inv) in inv.iter().enumerate() {
+                        rhs.write(i, j, x.read(dyn_inv[inv.zx()].zx(), j));
+                    }
+                }
             }
         }
     }
@@ -3956,12 +3932,26 @@ mod tests {
                     subdiag.col_ref(0),
                     PermutationRef::new_checked(&fwd, &inv),
                 );
-                lblt.dense_solve_in_place_with_conj(
+                faer_core::permutation::permute_rows_in_place(
+                    x.as_mut(),
+                    lblt.perm,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                    )),
+                );
+                lblt.dense_solve_in_place_no_numeric_permute_with_conj(
                     x.as_mut(),
                     conj,
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                    )),
+                );
+                faer_core::permutation::permute_rows_in_place(
+                    x.as_mut(),
+                    lblt.perm.inverse(),
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
                     )),
                 );
 
@@ -4081,12 +4071,26 @@ mod tests {
                     subdiag.col_ref(0),
                     PermutationRef::new_checked(&fwd, &inv),
                 );
-                lblt.dense_solve_in_place_with_conj(
+                faer_core::permutation::permute_rows_in_place(
+                    x.as_mut(),
+                    lblt.perm,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
+                    )),
+                );
+                lblt.dense_solve_in_place_no_numeric_permute_with_conj(
                     x.as_mut(),
                     conj,
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                    )),
+                );
+                faer_core::permutation::permute_rows_in_place(
+                    x.as_mut(),
+                    lblt.perm.inverse(),
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        faer_core::permutation::permute_rows_in_place_req::<E, I>(n, k).unwrap(),
                     )),
                 );
 
