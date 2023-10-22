@@ -18,7 +18,9 @@ use faer_core::{
 use faer_entity::{GroupFor, Symbolic};
 use reborrow::*;
 
-pub use faer_cholesky::ldlt_diagonal::compute::LdltRegularization;
+pub use faer_cholesky::{
+    bunch_kaufman::compute::BunchKaufmanRegularization, ldlt_diagonal::compute::LdltRegularization,
+};
 
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
@@ -893,6 +895,241 @@ pub mod supernodal {
         symbolic: SymbolicSupernodeRef<'a, I>,
     }
 
+    impl<'a, I: Index, E: Entity> SupernodalIntranodeBunchKaufmanRef<'a, I, E> {
+        #[inline]
+        pub fn new(
+            symbolic: &'a SymbolicSupernodalCholesky<I>,
+            values: GroupFor<E, &'a [E::Unit]>,
+            subdiag: GroupFor<E, &'a [E::Unit]>,
+            perm: PermutationRef<'a, I, E>,
+        ) -> Self {
+            let values = SliceGroup::<'_, E>::new(values);
+            let subdiag = SliceGroup::<'_, E>::new(subdiag);
+            assert!(values.len() == symbolic.len_values());
+            Self {
+                symbolic,
+                values,
+                subdiag,
+                perm,
+            }
+        }
+
+        #[inline]
+        pub fn symbolic(self) -> &'a SymbolicSupernodalCholesky<I> {
+            self.symbolic
+        }
+
+        #[inline]
+        pub fn values(self) -> SliceGroup<'a, E> {
+            self.values
+        }
+
+        #[inline]
+        pub fn supernode(self, s: usize) -> SupernodeRef<'a, I, E> {
+            let symbolic = self.symbolic();
+            let L_values = self.values();
+            let s_start = symbolic.supernode_begin[s].zx();
+            let s_end = symbolic.supernode_begin[s + 1].zx();
+
+            let s_pattern = &symbolic.row_indices()[symbolic.col_ptrs_for_row_indices()[s].zx()
+                ..symbolic.col_ptrs_for_row_indices()[s + 1].zx()];
+            let s_ncols = s_end - s_start;
+            let s_nrows = s_pattern.len() + s_ncols;
+
+            let Ls = MatRef::<E>::from_column_major_slice(
+                L_values
+                    .subslice(
+                        symbolic.col_ptrs_for_values()[s].zx()
+                            ..symbolic.col_ptrs_for_values()[s + 1].zx(),
+                    )
+                    .into_inner(),
+                s_nrows,
+                s_ncols,
+            );
+
+            SupernodeRef {
+                matrix: Ls,
+                symbolic: SymbolicSupernodeRef {
+                    start: s_start,
+                    pattern: s_pattern,
+                },
+            }
+        }
+
+        pub fn dense_solve_in_place_with_conj_no_permute(
+            self,
+            rhs: MatMut<'_, E>,
+            conj: Conj,
+            parallelism: Parallelism,
+            stack: PodStack<'_>,
+        ) where
+            E: ComplexField,
+        {
+            let symbolic = self.symbolic();
+            let n = symbolic.nrows();
+            assert!(rhs.nrows() == n);
+            let mut stack = stack;
+
+            let mut x = rhs;
+
+            let k = x.ncols();
+            for s in 0..symbolic.n_supernodes() {
+                let s = self.supernode(s);
+                let size = s.matrix.ncols();
+                let Ls = s.matrix;
+                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
+                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                faer_core::solve::solve_unit_lower_triangular_in_place_with_conj(
+                    Ls_top,
+                    conj,
+                    x_top.rb_mut(),
+                    parallelism,
+                );
+
+                let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
+                faer_core::mul::matmul_with_conj(
+                    tmp.rb_mut(),
+                    Ls_bot,
+                    conj,
+                    x_top.rb(),
+                    Conj::No,
+                    None,
+                    E::faer_one(),
+                    parallelism,
+                );
+
+                let inv = self.perm.into_arrays().1;
+                for j in 0..k {
+                    for (idx, i) in s.pattern().iter().enumerate() {
+                        let i = i.zx();
+                        let i = inv[i].zx();
+                        x.write(i, j, x.read(i, j).faer_sub(tmp.read(idx, j)))
+                    }
+                }
+            }
+            for s in 0..symbolic.n_supernodes() {
+                let s = self.supernode(s);
+                let size = s.matrix.ncols();
+                let Bs = s.matrix();
+                let subdiag = self.subdiag.subslice(s.start()..s.start() + size);
+
+                let mut idx = 0;
+                while idx < size {
+                    let subdiag = subdiag.read(idx);
+                    let i = idx + s.start();
+                    if subdiag == E::faer_zero() {
+                        let d = Bs.read(idx, idx).faer_real();
+                        for j in 0..k {
+                            x.write(i, j, x.read(i, j).faer_scale_real(d))
+                        }
+                        idx += 1;
+                    } else {
+                        let d11 = Bs.read(idx, idx).faer_real();
+                        let d22 = Bs.read(idx + 1, idx + 1).faer_real();
+                        let d21 = subdiag;
+
+                        if conj == Conj::Yes {
+                            for j in 0..k {
+                                let xi = x.read(i, j);
+                                let xip1 = x.read(i + 1, j);
+
+                                x.write(i, j, xi.faer_scale_real(d11).faer_add(xip1.faer_mul(d21)));
+                                x.write(
+                                    i + 1,
+                                    j,
+                                    xip1.faer_scale_real(d22)
+                                        .faer_add(xi.faer_mul(d21.faer_conj())),
+                                );
+                            }
+                        } else {
+                            for j in 0..k {
+                                let xi = x.read(i, j);
+                                let xip1 = x.read(i + 1, j);
+
+                                x.write(
+                                    i,
+                                    j,
+                                    xi.faer_scale_real(d11)
+                                        .faer_add(xip1.faer_mul(d21.faer_conj())),
+                                );
+                                x.write(
+                                    i + 1,
+                                    j,
+                                    xip1.faer_scale_real(d22).faer_add(xi.faer_mul(d21)),
+                                );
+                            }
+                        }
+                        idx += 2;
+                    }
+                }
+            }
+            for s in (0..symbolic.n_supernodes()).rev() {
+                let s = self.supernode(s);
+                let size = s.matrix.ncols();
+                let Ls = s.matrix;
+                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
+
+                let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
+                let inv = self.perm.into_arrays().1;
+                for j in 0..k {
+                    for (idx, i) in s.pattern().iter().enumerate() {
+                        let i = i.zx();
+                        let i = inv[i].zx();
+                        tmp.write(idx, j, x.read(i, j));
+                    }
+                }
+
+                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                faer_core::mul::matmul_with_conj(
+                    x_top.rb_mut(),
+                    Ls_bot.transpose(),
+                    conj.compose(Conj::Yes),
+                    tmp.rb(),
+                    Conj::No,
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    parallelism,
+                );
+                faer_core::solve::solve_unit_upper_triangular_in_place_with_conj(
+                    Ls_top.transpose(),
+                    conj.compose(Conj::Yes),
+                    x_top.rb_mut(),
+                    parallelism,
+                );
+            }
+        }
+
+        pub fn dense_solve_in_place_with_conj(
+            self,
+            rhs: MatMut<'_, E>,
+            conj: Conj,
+            parallelism: Parallelism,
+            stack: PodStack<'_>,
+        ) where
+            E: ComplexField,
+        {
+            let symbolic = self.symbolic();
+            let n = symbolic.nrows();
+            assert!(rhs.nrows() == n);
+            let mut stack = stack;
+
+            let mut x = rhs;
+
+            faer_core::permutation::permute_rows_in_place(x.rb_mut(), self.perm, stack.rb_mut());
+            self.dense_solve_in_place_with_conj_no_permute(
+                x.rb_mut(),
+                conj,
+                parallelism,
+                stack.rb_mut(),
+            );
+            faer_core::permutation::permute_rows_in_place(
+                x.rb_mut(),
+                self.perm.inverse(),
+                stack.rb_mut(),
+            );
+        }
+    }
+
     impl<'a, I: Index, E: Entity> SupernodalLdltRef<'a, I, E> {
         #[inline]
         pub fn new(symbolic: &'a SymbolicSupernodalCholesky<I>, values: SliceGroup<'a, E>) -> Self {
@@ -996,7 +1233,7 @@ pub mod supernodal {
                 let Ds = s.matrix.diagonal().into_column_vector();
                 for j in 0..k {
                     for idx in 0..size {
-                        let d_inv = Ds.read(idx, 0).faer_real().faer_inv();
+                        let d_inv = Ds.read(idx, 0).faer_real();
                         let i = idx + s.start();
                         x.write(i, j, x.read(i, j).faer_scale_real(d_inv))
                     }
@@ -1091,7 +1328,7 @@ pub mod supernodal {
             supernodal::SymbolicSupernodeRef { start, pattern }
         }
 
-        pub fn dense_solve_in_place_req<E: Entity>(
+        pub fn dense_solve_in_place_no_permute_req<E: Entity>(
             &self,
             rhs_ncols: usize,
         ) -> Result<StackReq, SizeOverflow> {
@@ -1102,6 +1339,17 @@ pub mod supernodal {
                 req = req.try_or(temp_mat_req::<E>(s.pattern.len(), rhs_ncols)?)?;
             }
             Ok(req)
+        }
+
+        pub fn dense_solve_in_place_req<E: Entity>(
+            &self,
+            rhs_ncols: usize,
+        ) -> Result<StackReq, SizeOverflow> {
+            self.dense_solve_in_place_no_permute_req::<E>(rhs_ncols)?
+                .try_or(faer_core::permutation::permute_rows_in_place_req::<E, I>(
+                    self.nrows(),
+                    rhs_ncols,
+                )?)
         }
     }
 
@@ -1694,6 +1942,68 @@ pub mod supernodal {
         req.try_and(StackReq::try_new::<I>(n)?)
     }
 
+    pub fn factorize_supernodal_numeric_intranode_bunch_kaufman_req<I: Index, E: Entity>(
+        symbolic: &SymbolicSupernodalCholesky<I>,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_supernodes = symbolic.n_supernodes();
+        let n = symbolic.nrows();
+        let post = &*symbolic.supernode_postorder;
+        let post_inv = &*symbolic.supernode_postorder_inv;
+
+        let desc_count = &*symbolic.descendent_count;
+
+        let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
+        let row_ind = &*symbolic.row_indices;
+
+        let mut req = StackReq::empty();
+        for s in 0..n_supernodes {
+            let s_start = symbolic.supernode_begin[s].zx();
+            let s_end = symbolic.supernode_begin[s + 1].zx();
+
+            let s_ncols = s_end - s_start;
+            let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+
+            let s_postordered = post_inv[s].zx();
+            let desc_count = desc_count[s].zx();
+            for d in &post[s_postordered - desc_count..s_postordered] {
+                let mut d_req = StackReq::empty();
+
+                let d = d.zx();
+                let d_start = symbolic.supernode_begin[d].zx();
+                let d_end = symbolic.supernode_begin[d + 1].zx();
+
+                let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+
+                let d_ncols = d_end - d_start;
+
+                let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
+                let d_pattern_mid_len =
+                    d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
+
+                d_req = d_req.try_and(temp_mat_req::<E>(
+                    d_pattern.len() - d_pattern_start,
+                    d_pattern_mid_len,
+                )?)?;
+                d_req = d_req.try_and(temp_mat_req::<E>(d_ncols, d_pattern_mid_len)?)?;
+                req = req.try_or(d_req)?;
+            }
+            req = StackReq::try_any_of([
+                req,
+                faer_cholesky::bunch_kaufman::compute::cholesky_in_place_req::<E, I>(
+                    s_ncols,
+                    parallelism,
+                    Default::default(),
+                )?,
+                faer_core::permutation::permute_cols_in_place_req::<E, I>(
+                    s_pattern.len(),
+                    s_ncols,
+                )?,
+            ])?;
+        }
+        req.try_and(StackReq::try_new::<I>(n)?)
+    }
+
     pub fn factorize_supernodal_numeric_ldlt<I: Index, E: ComplexField>(
         L_values: GroupFor<E, &mut [E::Unit]>,
         A_lower: SparseColMatRef<'_, I, E>,
@@ -1804,7 +2114,9 @@ pub mod supernodal {
                         Ld_mid_x_D.write(
                             i,
                             j,
-                            Ld_mid.read(i, j).faer_scale_real(D.read(j, 0).faer_real()),
+                            Ld_mid
+                                .read(i, j)
+                                .faer_scale_real(D.read(j, 0).faer_real().faer_inv()),
                         );
                     }
                 }
@@ -1900,9 +2212,324 @@ pub mod supernodal {
                 parallelism,
             );
             for j in 0..s_ncols {
-                let d = Ls_top.read(j, j).faer_real().faer_inv();
+                let d = Ls_top.read(j, j).faer_real();
                 for i in 0..s_pattern.len() {
                     Ls_bot.write(i, j, Ls_bot.read(i, j).faer_scale_real(d));
+                }
+            }
+
+            for &row in s_pattern {
+                global_to_local[row.zx()] = none;
+            }
+        }
+        dynamic_regularization_count
+    }
+
+    pub fn factorize_supernodal_numeric_intranode_bunch_kaufman<I: Index, E: ComplexField>(
+        L_values: GroupFor<E, &mut [E::Unit]>,
+        subdiag: GroupFor<E, &mut [E::Unit]>,
+        perm_forward: &mut [I],
+        perm_inverse: &mut [I],
+        A_lower: SparseColMatRef<'_, I, E>,
+        regularization: BunchKaufmanRegularization<'_, E>,
+        symbolic: &SymbolicSupernodalCholesky<I>,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) -> usize {
+        let mut regularization = regularization;
+        let n_supernodes = symbolic.n_supernodes();
+        let n = symbolic.nrows();
+        let mut dynamic_regularization_count = 0usize;
+        let mut L_values = SliceGroupMut::<'_, E>::new(L_values);
+        let mut subdiag = SliceGroupMut::<'_, E>::new(subdiag);
+        L_values.fill_zero();
+
+        assert!(A_lower.nrows() == n);
+        assert!(A_lower.ncols() == n);
+        assert!(perm_forward.len() == n);
+        assert!(perm_inverse.len() == n);
+        assert!(subdiag.len() == n);
+        assert!(L_values.len() == symbolic.len_values());
+        let slice_group = SliceGroup::<'_, E>::new;
+
+        let none = I::Signed::truncate(NONE);
+
+        let post = &*symbolic.supernode_postorder;
+        let post_inv = &*symbolic.supernode_postorder_inv;
+
+        let desc_count = &*symbolic.descendent_count;
+
+        let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
+        let col_ptr_val = &*symbolic.col_ptrs_for_values;
+        let row_ind = &*symbolic.row_indices;
+
+        // mapping from global indices to local
+        let (global_to_local, mut stack) = stack.make_raw::<I::Signed>(n);
+        mem::fill_none(global_to_local.as_mut());
+
+        for s in 0..n_supernodes {
+            let s_start = symbolic.supernode_begin[s].zx();
+            let s_end = symbolic.supernode_begin[s + 1].zx();
+
+            let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
+            let s_ncols = s_end - s_start;
+            let s_nrows = s_pattern.len() + s_ncols;
+
+            for (i, &row) in s_pattern.iter().enumerate() {
+                global_to_local[row.zx()] = I::Signed::truncate(i + s_ncols);
+            }
+
+            let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
+            let head = head.rb();
+            let mut Ls = MatMut::<E>::from_column_major_slice(
+                tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
+                    .into_inner(),
+                s_nrows,
+                s_ncols,
+            );
+
+            for j in s_start..s_end {
+                let j_shifted = j - s_start;
+                for (i, val) in zip(
+                    A_lower.row_indices_of_col(j),
+                    slice_group(A_lower.values_of_col(j)).into_ref_iter(),
+                ) {
+                    let val = val.read();
+                    if i >= s_end {
+                        Ls.write(global_to_local[i].sx(), j_shifted, val);
+                    } else if i >= j {
+                        Ls.write(i - s_start, j_shifted, val);
+                    }
+                }
+            }
+
+            let s_postordered = post_inv[s].zx();
+            let desc_count = desc_count[s].zx();
+            for d in &post[s_postordered - desc_count..s_postordered] {
+                let d = d.zx();
+                let d_start = symbolic.supernode_begin[d].zx();
+                let d_end = symbolic.supernode_begin[d + 1].zx();
+
+                let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
+                let d_ncols = d_end - d_start;
+                let d_nrows = d_pattern.len() + d_ncols;
+
+                let Ld = MatRef::<E>::from_column_major_slice(
+                    head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
+                        .into_inner(),
+                    d_nrows,
+                    d_ncols,
+                );
+
+                let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
+                let d_pattern_mid_len =
+                    d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
+                let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
+
+                let [Ld_top, Ld_mid_bot] = Ld.split_at_row(d_ncols);
+                let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
+                let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
+                let d_subdiag = subdiag.rb().subslice(d_start..d_start + d_ncols);
+
+                let stack = stack.rb_mut();
+
+                let (tmp, stack) =
+                    temp_mat_uninit::<E>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack);
+                let (tmp2, _) = temp_mat_uninit::<E>(Ld_mid.ncols(), Ld_mid.nrows(), stack);
+                let mut Ld_mid_x_D = tmp2.transpose();
+
+                let mut j = 0;
+                while j < d_ncols {
+                    let subdiag = d_subdiag.read(j);
+                    if subdiag == E::faer_zero() {
+                        let d = Ld_top.read(j, j).faer_real().faer_inv();
+                        for i in 0..d_pattern_mid_len {
+                            Ld_mid_x_D.write(i, j, Ld_mid.read(i, j).faer_scale_real(d));
+                        }
+                        j += 1;
+                    } else {
+                        // 1/d21
+                        let akp1k = subdiag.faer_inv();
+                        // d11/d21
+                        let ak = akp1k.faer_scale_real(Ld_top.read(j, j).faer_real());
+                        // d22/conj(d21)
+                        let akp1 = akp1k
+                            .faer_conj()
+                            .faer_scale_real(Ld_top.read(j + 1, j + 1).faer_real());
+
+                        // (d11 * d21 / |d21|^2  -  1)^-1
+                        // = |d21|^2 / ( d11 * d21 - |d21|^2 )
+                        let denom = ak
+                            .faer_mul(akp1)
+                            .faer_real()
+                            .faer_sub(E::Real::faer_one())
+                            .faer_inv();
+
+                        for i in 0..d_pattern_mid_len {
+                            // x1 / d21
+                            let xk = Ld_mid.read(i, j).faer_mul(akp1k);
+                            // x2 / conj(d21)
+                            let xkp1 = Ld_mid.read(i, j + 1).faer_mul(akp1k.faer_conj());
+
+                            // d22/conj(d21) * x1/d21 * |d21|^2 / (d11 * d21 - |d21|^2)
+                            // - x2/conj(d21) * |d21|^2 / (d11 * d21 - |d21|^2)
+                            //
+                            // =  x1 * d22/det - x2 * d21/det
+                            Ld_mid_x_D.write(
+                                i,
+                                j,
+                                (akp1.faer_mul(xk).faer_sub(xkp1)).faer_scale_real(denom),
+                            );
+                            Ld_mid_x_D.write(
+                                i,
+                                j + 1,
+                                (ak.faer_mul(xkp1).faer_sub(xk)).faer_scale_real(denom),
+                            );
+                        }
+                        j += 2;
+                    }
+                }
+
+                let [mut tmp_top, mut tmp_bot] = tmp.split_at_row(d_pattern_mid_len);
+
+                use faer_core::{mul, mul::triangular};
+                triangular::matmul(
+                    tmp_top.rb_mut(),
+                    triangular::BlockStructure::TriangularLower,
+                    Ld_mid,
+                    triangular::BlockStructure::Rectangular,
+                    Ld_mid_x_D.rb().adjoint(),
+                    triangular::BlockStructure::Rectangular,
+                    None,
+                    E::faer_one(),
+                    parallelism,
+                );
+                mul::matmul(
+                    tmp_bot.rb_mut(),
+                    Ld_bot,
+                    Ld_mid_x_D.rb().adjoint(),
+                    None,
+                    E::faer_one(),
+                    parallelism,
+                );
+
+                for (j_idx, j) in d_pattern[d_pattern_start..d_pattern_mid].iter().enumerate() {
+                    let j = j.zx();
+                    let j_s = j - s_start;
+                    for (i_idx, i) in d_pattern[d_pattern_start..d_pattern_mid][j_idx..]
+                        .iter()
+                        .enumerate()
+                    {
+                        let i_idx = i_idx + j_idx;
+
+                        let i = i.zx();
+                        let i_s = i - s_start;
+
+                        debug_assert!(i_s >= j_s);
+                        unsafe {
+                            Ls.write_unchecked(
+                                i_s,
+                                j_s,
+                                Ls.read_unchecked(i_s, j_s)
+                                    .faer_sub(tmp_top.read_unchecked(i_idx, j_idx)),
+                            )
+                        };
+                    }
+                }
+
+                for (j_idx, j) in d_pattern[d_pattern_start..d_pattern_mid].iter().enumerate() {
+                    let j = j.zx();
+                    let j_s = j - s_start;
+                    for (i_idx, i) in d_pattern[d_pattern_mid..].iter().enumerate() {
+                        let i = i.zx();
+                        let i_s = global_to_local[i].zx();
+                        unsafe {
+                            Ls.write_unchecked(
+                                i_s,
+                                j_s,
+                                Ls.read_unchecked(i_s, j_s)
+                                    .faer_sub(tmp_bot.read_unchecked(i_idx, j_idx)),
+                            )
+                        };
+                    }
+                }
+            }
+
+            let [mut Ls_top, mut Ls_bot] = Ls.rb_mut().split_at_row(s_ncols);
+            let mut s_subdiag = subdiag.rb_mut().subslice(s_start..s_end);
+
+            let params = Default::default();
+            let (info, perm) = faer_cholesky::bunch_kaufman::compute::cholesky_in_place(
+                Ls_top.rb_mut(),
+                MatMut::<'_, E>::from_column_major_slice(
+                    s_subdiag.rb_mut().into_inner(),
+                    s_ncols,
+                    1,
+                ),
+                BunchKaufmanRegularization {
+                    dynamic_regularization_signs: regularization
+                        .dynamic_regularization_signs
+                        .rb_mut()
+                        .map(|signs| &mut signs[s_start..s_end]),
+                    ..regularization
+                },
+                &mut perm_forward[s_start..s_end],
+                &mut perm_inverse[s_start..s_end],
+                parallelism,
+                stack.rb_mut(),
+                params,
+            );
+            dynamic_regularization_count += info.dynamic_regularization_count;
+            zipped!(Ls_top.rb_mut())
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| {
+                    x.write(E::faer_zero())
+                });
+
+            faer_core::permutation::permute_cols_in_place(
+                Ls_bot.rb_mut(),
+                perm.rb(),
+                stack.rb_mut(),
+            );
+
+            for p in &mut perm_forward[s_start..s_end] {
+                *p += I::truncate(s_start);
+            }
+            for p in &mut perm_inverse[s_start..s_end] {
+                *p += I::truncate(s_start);
+            }
+
+            faer_core::solve::solve_unit_lower_triangular_in_place(
+                Ls_top.rb().conjugate(),
+                Ls_bot.rb_mut().transpose(),
+                parallelism,
+            );
+
+            let mut j = 0;
+            while j < s_ncols {
+                if s_subdiag.read(j) == E::faer_zero() {
+                    let d = Ls_top.read(j, j).faer_real();
+                    for i in 0..s_pattern.len() {
+                        Ls_bot.write(i, j, Ls_bot.read(i, j).faer_scale_real(d));
+                    }
+                    j += 1;
+                } else {
+                    let akp1k = s_subdiag.read(j);
+                    let ak = Ls_top.read(j, j).faer_real();
+                    let akp1 = Ls_top.read(j + 1, j + 1).faer_real();
+
+                    for i in 0..s_pattern.len() {
+                        let xk = Ls_bot.read(i, j);
+                        let xkp1 = Ls_bot.read(i, j + 1);
+
+                        Ls_bot.write(i, j, xk.faer_scale_real(ak).faer_add(xkp1.faer_mul(akp1k)));
+                        Ls_bot.write(
+                            i,
+                            j + 1,
+                            xkp1.faer_scale_real(akp1)
+                                .faer_add(xk.faer_mul(akp1k.faer_conj())),
+                        );
+                    }
+                    j += 2;
                 }
             }
 
@@ -1917,6 +2544,14 @@ pub mod supernodal {
     pub struct SupernodalLdltRef<'a, I, E: Entity> {
         symbolic: &'a SymbolicSupernodalCholesky<I>,
         values: SliceGroup<'a, E>,
+    }
+
+    #[derive(Debug)]
+    pub struct SupernodalIntranodeBunchKaufmanRef<'a, I, E: Entity> {
+        symbolic: &'a SymbolicSupernodalCholesky<I>,
+        values: SliceGroup<'a, E>,
+        subdiag: SliceGroup<'a, E>,
+        perm: PermutationRef<'a, I, E>,
     }
 
     #[derive(Debug)]
@@ -2184,6 +2819,48 @@ impl<I: Index> SymbolicCholesky<I> {
     }
 
     #[inline]
+    pub fn factorize_numeric_intranode_bunch_kaufman_req<E: Entity>(
+        &self,
+        with_regularization_signs: bool,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n = self.nrows();
+        let A_nnz = self.A_nnz;
+
+        let regularization_signs = if with_regularization_signs {
+            StackReq::try_new::<i8>(n)?
+        } else {
+            StackReq::empty()
+        };
+
+        let n_req = StackReq::try_new::<I>(n)?;
+        let A_req = StackReq::try_all_of([
+            make_raw_req::<E>(A_nnz)?,
+            StackReq::try_new::<I>(n + 1)?,
+            StackReq::try_new::<I>(A_nnz)?,
+        ])?;
+        let permute_req = n_req;
+
+        let factor_req = match &self.raw {
+            SymbolicCholeskyRaw::Simplicial(_) => {
+                simplicial::factorize_simplicial_numeric_ldlt_req::<I, E>(n)?
+            }
+            SymbolicCholeskyRaw::Supernodal(this) => {
+                supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
+                    this,
+                    parallelism,
+                )?
+            }
+        };
+
+        StackReq::try_all_of([
+            regularization_signs,
+            A_req,
+            StackReq::try_or(permute_req, factor_req)?,
+        ])
+    }
+
+    #[inline]
     pub fn factorize_numeric_ldlt<E: ComplexField>(
         &self,
         L_values: GroupFor<E, &mut [E::Unit]>,
@@ -2268,6 +2945,121 @@ impl<I: Index> SymbolicCholesky<I> {
         });
     }
 
+    #[inline]
+    pub fn factorize_numeric_intranode_bunch_kaufman<'out, E: ComplexField>(
+        &'out self,
+        L_values: GroupFor<E, &'out mut [E::Unit]>,
+        subdiag: GroupFor<E, &'out mut [E::Unit]>,
+        perm_forward: &'out mut [I],
+        perm_inverse: &'out mut [I],
+        A: SparseColMatRef<'_, I, E>,
+        side: Side,
+        regularization: LdltRegularization<'_, E>,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) -> IntranodeBunchKaufmanRef<'out, I, E> {
+        assert!(A.nrows() == A.ncols());
+        let n = A.nrows();
+        let mut L_values = L_values;
+        let mut subdiag = subdiag;
+
+        ghost::with_size(n, move |N| {
+            let A_nnz = self.A_nnz;
+            let A = ghost::SparseColMatRef::new(A, N, N);
+
+            let (new_signs, stack) =
+                stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() {
+                    n
+                } else {
+                    0
+                });
+
+            let static_perm = ghost::PermutationRef::new(self.perm(), N);
+            let signs = regularization.dynamic_regularization_signs.map(|signs| {
+                {
+                    let fwd = static_perm.into_arrays().0;
+                    let new_signs = Array::from_mut(new_signs, N);
+                    let signs = Array::from_ref(signs, N);
+                    for i in N.indices() {
+                        new_signs[i] = signs[fwd[i].zx()];
+                    }
+                }
+                &mut *new_signs
+            });
+
+            let (mut new_values, stack) = crate::make_raw::<E>(A_nnz, stack);
+            let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
+            let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+
+            let out_side = match &self.raw {
+                SymbolicCholeskyRaw::Simplicial(_) => Side::Upper,
+                SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
+            };
+
+            let A = ghost_permute_hermitian(
+                new_values.rb_mut(),
+                new_col_ptr,
+                new_row_ind,
+                A,
+                static_perm.cast(),
+                side,
+                out_side,
+                stack.rb_mut(),
+            );
+
+            match &self.raw {
+                SymbolicCholeskyRaw::Simplicial(this) => {
+                    let regularization = LdltRegularization {
+                        dynamic_regularization_signs: signs.rb(),
+                        dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                        dynamic_regularization_epsilon: regularization
+                            .dynamic_regularization_epsilon,
+                    };
+                    for (i, p) in perm_forward.iter_mut().enumerate() {
+                        *p = I::truncate(i);
+                    }
+                    for (i, p) in perm_inverse.iter_mut().enumerate() {
+                        *p = I::truncate(i);
+                    }
+                    simplicial::factorize_simplicial_numeric_ldlt(
+                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                        A.into_inner(),
+                        regularization,
+                        this,
+                        stack,
+                    );
+                }
+                SymbolicCholeskyRaw::Supernodal(this) => {
+                    let regularization = BunchKaufmanRegularization {
+                        dynamic_regularization_signs: signs,
+                        dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                        dynamic_regularization_epsilon: regularization
+                            .dynamic_regularization_epsilon,
+                    };
+
+                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+                        E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
+                        E::faer_rb_mut(E::faer_as_mut(&mut subdiag)),
+                        perm_forward,
+                        perm_inverse,
+                        A.into_inner(),
+                        regularization,
+                        this,
+                        parallelism,
+                        stack,
+                    );
+                }
+            }
+
+            IntranodeBunchKaufmanRef::<'out, I, E>::new(
+                self,
+                E::faer_into_const(L_values),
+                E::faer_into_const(subdiag),
+                unsafe { PermutationRef::<'out, I, E>::new_unchecked(perm_forward, perm_inverse) },
+            )
+        })
+    }
+
     pub fn dense_solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
@@ -2289,10 +3081,93 @@ pub struct LdltRef<'a, I: Index, E: Entity> {
     values: SliceGroup<'a, E>,
 }
 
+#[derive(Debug)]
+pub struct IntranodeBunchKaufmanRef<'a, I: Index, E: Entity> {
+    symbolic: &'a SymbolicCholesky<I>,
+    values: SliceGroup<'a, E>,
+    subdiag: SliceGroup<'a, E>,
+    perm: PermutationRef<'a, I, E>,
+}
+
 impl_copy!(<'a><I><supernodal::SymbolicSupernodeRef<'a, I>>);
 impl_copy!(<'a><I, E: Entity><supernodal::SupernodalLdltRef<'a, I, E>>);
+impl_copy!(<'a><I, E: Entity><supernodal::SupernodalIntranodeBunchKaufmanRef<'a, I, E>>);
 impl_copy!(<'a><I:Index, E: Entity><simplicial::SimplicialLdltRef<'a, I, E>>);
 impl_copy!(<'a><I, E: Entity><supernodal::SupernodeRef<'a, I, E>>);
+
+impl_copy!(<'a><I: Index, E: Entity><IntranodeBunchKaufmanRef<'a, I, E>>);
+impl_copy!(<'a><I: Index, E: Entity><LdltRef<'a, I, E>>);
+
+impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
+    #[inline]
+    pub fn new(
+        symbolic: &'a SymbolicCholesky<I>,
+        values: GroupFor<E, &'a [E::Unit]>,
+        subdiag: GroupFor<E, &'a [E::Unit]>,
+        perm: PermutationRef<'a, I, E>,
+    ) -> Self {
+        let values = SliceGroup::<'_, E>::new(values);
+        let subdiag = SliceGroup::<'_, E>::new(subdiag);
+        assert!(symbolic.len_values() == values.len());
+        Self {
+            symbolic,
+            values,
+            subdiag,
+            perm,
+        }
+    }
+
+    #[inline]
+    pub fn symbolic(self) -> &'a SymbolicCholesky<I> {
+        self.symbolic
+    }
+
+    pub fn dense_solve_in_place_with_conj(
+        self,
+        rhs: MatMut<'_, E>,
+        conj: Conj,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) where
+        E: ComplexField,
+    {
+        let k = rhs.ncols();
+        let n = self.symbolic.nrows();
+
+        let mut rhs = rhs;
+
+        let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
+
+        let (fwd, inv) = self.symbolic.perm().into_arrays();
+        for j in 0..k {
+            for (i, fwd) in fwd.iter().enumerate() {
+                x.write(i, j, rhs.read(fwd.zx(), j));
+            }
+        }
+
+        match self.symbolic.raw() {
+            SymbolicCholeskyRaw::Simplicial(symbolic) => {
+                let this = simplicial::SimplicialLdltRef::new(symbolic, self.values);
+                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+            }
+            SymbolicCholeskyRaw::Supernodal(symbolic) => {
+                let this = supernodal::SupernodalIntranodeBunchKaufmanRef::new(
+                    symbolic,
+                    self.values.into_inner(),
+                    self.subdiag.into_inner(),
+                    self.perm,
+                );
+                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+            }
+        }
+
+        for j in 0..k {
+            for (i, inv) in inv.iter().enumerate() {
+                rhs.write(i, j, x.read(inv.zx(), j));
+            }
+        }
+    }
+}
 
 impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
     #[inline]
@@ -2548,10 +3423,11 @@ pub fn factorize_symbolic<I: Index>(
 #[cfg(test)]
 mod tests {
     use super::{supernodal::SupernodalLdltRef, *};
-    use crate::qd::Double;
+    use crate::{cholesky::supernodal::SupernodalIntranodeBunchKaufmanRef, qd::Double};
     use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
     use faer_core::Mat;
+    use num_complex::Complex;
     use rand::{Rng, SeedableRng};
 
     macro_rules! monomorphize_test {
@@ -2701,10 +3577,11 @@ mod tests {
         }
 
         let mut D = Mat::<E>::zeros(n, n);
-        D.as_mut()
-            .diagonal()
-            .into_column_vector()
-            .clone_from(dense.as_ref().diagonal().into_column_vector());
+        zipped!(
+            D.as_mut().diagonal().into_column_vector(),
+            dense.as_ref().diagonal().into_column_vector()
+        )
+        .for_each(|mut dst, src| dst.write(src.read().faer_inv()));
         dense
             .as_mut()
             .diagonal()
@@ -2757,7 +3634,7 @@ mod tests {
     }
 
     fn test_supernodal<I: Index>() {
-        type E = num_complex::Complex<Double<f64>>;
+        type E = Complex<Double<f64>>;
         let truncate = I::truncate;
 
         let (_, col_ptr, row_ind, values) = MEDIUM;
@@ -2851,8 +3728,391 @@ mod tests {
         });
     }
 
+    fn test_supernodal_ldlt<I: Index>() {
+        type E = Complex<Double<f64>>;
+        let truncate = I::truncate;
+
+        let (_, col_ptr, row_ind, values) = MEDIUM;
+
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+        let i = E::faer_one().faer_neg().faer_sqrt();
+        let mut complexify = |e: E| {
+            if e == E::faer_from_f64(1.0) {
+                e.faer_add(i.faer_mul(E::faer_from_f64(2000.0 * gen.gen::<f64>())))
+                    .faer_add(E::faer_from_f64(2000.0 * gen.gen::<f64>()))
+            } else {
+                e.faer_add(E::faer_from_f64(100.0 * gen.gen::<f64>()))
+            }
+        };
+
+        let n = col_ptr.len() - 1;
+        let nnz = values.len();
+        let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+        let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+        let values_mat =
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
+        let values = values_mat.col_ref(0);
+
+        let A = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            values,
+        );
+        let mut A_dense = sparse_to_dense(A);
+        for j in 0..n {
+            for i in j + 1..n {
+                A_dense.write(i, j, A_dense.read(j, i).faer_conj());
+            }
+        }
+
+        let zero = truncate(0);
+        let mut etree = vec![zero.to_signed(); n];
+        let mut col_count = vec![zero; n];
+        ghost::with_size(n, |N| {
+            let A = ghost::SparseColMatRef::new(A, N, N);
+            let etree = ghost_prefactorize_symbolic(
+                Array::from_mut(&mut etree, N),
+                Array::from_mut(&mut col_count, N),
+                *A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+            );
+
+            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+                *A,
+                etree,
+                Array::from_ref(&col_count, N),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+                Default::default(),
+            )
+            .unwrap();
+
+            let mut A_lower_col_ptr = col_ptr.to_vec();
+            let mut A_lower_values = values_mat.clone();
+            let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower = crate::ghost_adjoint(
+                &mut A_lower_col_ptr,
+                &mut A_lower_row_ind,
+                A_lower_values,
+                A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            );
+            let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+            supernodal::factorize_supernodal_numeric_ldlt(
+                values.col_mut(0),
+                A_lower.into_inner(),
+                Default::default(),
+                &symbolic,
+                Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    supernodal::factorize_supernodal_numeric_ldlt_req::<I, E>(
+                        &symbolic,
+                        Parallelism::None,
+                    )
+                    .unwrap(),
+                )),
+            );
+            let k = 2;
+
+            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+            });
+            for conj in [Conj::Yes, Conj::No] {
+                let mut x = rhs.clone();
+                let ldlt =
+                    SupernodalLdltRef::new(&symbolic, SliceGroup::<'_, E>::new(values.col_ref(0)));
+                ldlt.dense_solve_in_place_with_conj(
+                    x.as_mut(),
+                    conj,
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                    )),
+                );
+
+                let rhs_reconstructed = if conj == Conj::No {
+                    &A_dense * &x
+                } else {
+                    A_dense.conjugate() * &x
+                };
+                let mut max = <E as ComplexField>::Real::faer_zero();
+                for j in 0..k {
+                    for i in 0..n {
+                        let x = rhs_reconstructed
+                            .read(i, j)
+                            .faer_sub(rhs.read(i, j))
+                            .faer_abs();
+                        max = if max > x { max } else { x }
+                    }
+                }
+                dbg!(max);
+                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
+            }
+        });
+    }
+
+    fn test_supernodal_intranode_bk_1<I: Index>() {
+        type E = Complex<f64>;
+        let truncate = I::truncate;
+
+        let (_, col_ptr, row_ind, values) = MEDIUM;
+
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+        let i = E::faer_one().faer_neg().faer_sqrt();
+
+        let n = col_ptr.len() - 1;
+        let nnz = values.len();
+        let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+        let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+
+        let mut complexify = |e: E| {
+            let i = E::faer_one().faer_neg().faer_sqrt();
+            if e == E::faer_from_f64(1.0) {
+                e.faer_add(i.faer_mul(E::faer_from_f64(1000.0 * gen.gen::<f64>())))
+            } else {
+                e.faer_add(E::faer_from_f64(1000.0 * gen.gen::<f64>()))
+            }
+        };
+        let values_mat =
+            faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
+        let values = values_mat.col_ref(0);
+
+        let A = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            values,
+        );
+        let mut A_dense = sparse_to_dense(A);
+        for j in 0..n {
+            for i in j + 1..n {
+                A_dense.write(i, j, A_dense.read(j, i).faer_conj());
+            }
+        }
+
+        let zero = truncate(0);
+        let mut etree = vec![zero.to_signed(); n];
+        let mut col_count = vec![zero; n];
+        ghost::with_size(n, |N| {
+            let A = ghost::SparseColMatRef::new(A, N, N);
+            let etree = ghost_prefactorize_symbolic(
+                Array::from_mut(&mut etree, N),
+                Array::from_mut(&mut col_count, N),
+                *A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+            );
+
+            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+                *A,
+                etree,
+                Array::from_ref(&col_count, N),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+                Default::default(),
+            )
+            .unwrap();
+
+            let mut A_lower_col_ptr = col_ptr.to_vec();
+            let mut A_lower_values = values_mat.clone();
+            let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower = crate::ghost_adjoint(
+                &mut A_lower_col_ptr,
+                &mut A_lower_row_ind,
+                A_lower_values,
+                A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            );
+            let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+            let mut fwd = vec![zero; n];
+            let mut inv = vec![zero; n];
+            let mut subdiag = Mat::<E>::zeros(n, 1);
+
+            supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+                values.col_mut(0),
+                subdiag.col_mut(0),
+                &mut fwd,
+                &mut inv,
+                A_lower.into_inner(),
+                Default::default(),
+                &symbolic,
+                Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
+                        &symbolic,
+                        Parallelism::None,
+                    )
+                    .unwrap(),
+                )),
+            );
+            let k = 2;
+
+            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+            });
+            for conj in [Conj::Yes, Conj::No] {
+                let mut x = rhs.clone();
+                let lblt = SupernodalIntranodeBunchKaufmanRef::new(
+                    &symbolic,
+                    values.col_ref(0),
+                    subdiag.col_ref(0),
+                    PermutationRef::new_checked(&fwd, &inv),
+                );
+                lblt.dense_solve_in_place_with_conj(
+                    x.as_mut(),
+                    conj,
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                    )),
+                );
+
+                let rhs_reconstructed = if conj == Conj::No {
+                    &A_dense * &x
+                } else {
+                    A_dense.conjugate() * &x
+                };
+                let mut max = <E as ComplexField>::Real::faer_zero();
+                for j in 0..k {
+                    for i in 0..n {
+                        let x = rhs_reconstructed
+                            .read(i, j)
+                            .faer_sub(rhs.read(i, j))
+                            .faer_abs();
+                        max = if max > x { max } else { x }
+                    }
+                }
+                dbg!(max);
+                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
+            }
+        });
+    }
+
+    fn test_supernodal_intranode_bk_2<I: Index>() {
+        type E = Complex<f64>;
+        let truncate = I::truncate;
+
+        let (_, col_ptr, row_ind, values) = MEDIUM_P;
+
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+        let i = E::faer_one().faer_neg().faer_sqrt();
+
+        let n = col_ptr.len() - 1;
+        let nnz = values.len();
+        let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+        let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+        let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| values[i]);
+        let values = values_mat.col_ref(0);
+
+        let A = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            values,
+        );
+        let mut A_dense = sparse_to_dense(A);
+        for j in 0..n {
+            for i in j + 1..n {
+                A_dense.write(i, j, A_dense.read(j, i).faer_conj());
+            }
+        }
+
+        let zero = truncate(0);
+        let mut etree = vec![zero.to_signed(); n];
+        let mut col_count = vec![zero; n];
+        ghost::with_size(n, |N| {
+            let A = ghost::SparseColMatRef::new(A, N, N);
+            let etree = ghost_prefactorize_symbolic(
+                Array::from_mut(&mut etree, N),
+                Array::from_mut(&mut col_count, N),
+                *A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
+            );
+
+            let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
+                *A,
+                etree,
+                Array::from_ref(&col_count, N),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+                Default::default(),
+            )
+            .unwrap();
+
+            let mut A_lower_col_ptr = col_ptr.to_vec();
+            let mut A_lower_values = values_mat.clone();
+            let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower = crate::ghost_adjoint(
+                &mut A_lower_col_ptr,
+                &mut A_lower_row_ind,
+                A_lower_values,
+                A,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            );
+            let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
+
+            let mut fwd = vec![zero; n];
+            let mut inv = vec![zero; n];
+            let mut subdiag = Mat::<E>::zeros(n, 1);
+
+            supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
+                values.col_mut(0),
+                subdiag.col_mut(0),
+                &mut fwd,
+                &mut inv,
+                A_lower.into_inner(),
+                Default::default(),
+                &symbolic,
+                Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<I, E>(
+                        &symbolic,
+                        Parallelism::None,
+                    )
+                    .unwrap(),
+                )),
+            );
+            let k = 2;
+
+            let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+                E::faer_from_f64(gen.gen()).faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+            });
+            for conj in [Conj::Yes, Conj::No] {
+                let mut x = rhs.clone();
+                let lblt = SupernodalIntranodeBunchKaufmanRef::new(
+                    &symbolic,
+                    values.col_ref(0),
+                    subdiag.col_ref(0),
+                    PermutationRef::new_checked(&fwd, &inv),
+                );
+                lblt.dense_solve_in_place_with_conj(
+                    x.as_mut(),
+                    conj,
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                    )),
+                );
+
+                let rhs_reconstructed = if conj == Conj::No {
+                    &A_dense * &x
+                } else {
+                    A_dense.conjugate() * &x
+                };
+                let mut max = <E as ComplexField>::Real::faer_zero();
+                for j in 0..k {
+                    for i in 0..n {
+                        let x = rhs_reconstructed
+                            .read(i, j)
+                            .faer_sub(rhs.read(i, j))
+                            .faer_abs();
+                        max = if max > x { max } else { x }
+                    }
+                }
+                dbg!(max);
+                assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-10));
+            }
+        });
+    }
+
     fn test_simplicial<I: Index>() {
-        type E = num_complex::Complex<Double<f64>>;
+        type E = Complex<Double<f64>>;
         let truncate = I::truncate;
 
         let (_, col_ptr, row_ind, values) = SMALL;
@@ -2930,8 +4190,8 @@ mod tests {
         });
     }
 
-    fn test_solver<I: Index>() {
-        type E = num_complex::Complex<Double<f64>>;
+    fn test_solver_ldlt<I: Index>() {
+        type E = Complex<Double<f64>>;
         let truncate = I::truncate;
 
         for (_, col_ptr, row_ind, values) in [SMALL, MEDIUM] {
@@ -3071,6 +4331,130 @@ mod tests {
         }
     }
 
+    fn test_solver_intranode_bk<I: Index>() {
+        type E = Complex<Double<f64>>;
+        let truncate = I::truncate;
+
+        for (_, col_ptr, row_ind, values) in [MEDIUM, SMALL] {
+            let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+            let i = E::faer_one().faer_neg().faer_sqrt();
+            let mut complexify = |e: E| {
+                if e == E::faer_from_f64(1.0) {
+                    e.faer_add(i.faer_mul(E::faer_from_f64(2000.0 * gen.gen::<f64>())))
+                        .faer_add(E::faer_from_f64(2000.0 * gen.gen::<f64>()))
+                } else {
+                    e.faer_add(E::faer_from_f64(100.0 * gen.gen::<f64>()))
+                }
+            };
+
+            let n = col_ptr.len() - 1;
+            let nnz = values.len();
+            let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
+            let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
+            let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| {
+                complexify(E::faer_from_f64(values[i]))
+            });
+            let values = values_mat.col_ref(0);
+
+            let A_upper = SparseColMatRef::<'_, I, E>::new(
+                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                values,
+            );
+
+            let mut A_lower_col_ptr = col_ptr.to_vec();
+            let mut A_lower_values = values_mat.clone();
+            let mut A_lower_row_ind = row_ind.to_vec();
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower = crate::adjoint(
+                &mut A_lower_col_ptr,
+                &mut A_lower_row_ind,
+                A_lower_values,
+                A_upper,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
+            );
+
+            let mut A_dense = sparse_to_dense(A_upper);
+            for j in 0..n {
+                for i in j + 1..n {
+                    A_dense.write(i, j, A_dense.read(j, i).faer_conj());
+                }
+            }
+
+            for (A, side, supernodal_flop_ratio_threshold, parallelism) in [
+                (A_upper, Side::Upper, 0.0, Parallelism::None),
+                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
+                (A_lower, Side::Lower, 0.0, Parallelism::None),
+                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
+            ] {
+                let symbolic = factorize_symbolic(
+                    A.symbolic(),
+                    side,
+                    CholeskySymbolicParams {
+                        supernodal_flop_ratio_threshold,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let mut mem = GlobalPodBuffer::new(
+                    symbolic
+                        .factorize_numeric_intranode_bunch_kaufman_req::<E>(false, parallelism)
+                        .unwrap(),
+                );
+                let mut L_values = Mat::<E>::zeros(symbolic.len_values(), 1);
+                let mut subdiag = Mat::<E>::zeros(n, 1);
+                let mut fwd = vec![I::truncate(0); n];
+                let mut inv = vec![I::truncate(0); n];
+
+                let lblt = symbolic.factorize_numeric_intranode_bunch_kaufman::<E>(
+                    L_values.col_mut(0),
+                    subdiag.col_mut(0),
+                    &mut fwd,
+                    &mut inv,
+                    A,
+                    side,
+                    Default::default(),
+                    parallelism,
+                    PodStack::new(&mut mem),
+                );
+
+                for k in (1..16).chain(128..132) {
+                    let rhs = Mat::<E>::from_fn(n, k, |_, _| {
+                        E::faer_from_f64(gen.gen())
+                            .faer_add(i.faer_mul(E::faer_from_f64(gen.gen())))
+                    });
+                    for conj in [Conj::No, Conj::Yes] {
+                        let mut x = rhs.clone();
+                        lblt.dense_solve_in_place_with_conj(
+                            x.as_mut(),
+                            conj,
+                            parallelism,
+                            PodStack::new(&mut GlobalPodBuffer::new(
+                                symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                            )),
+                        );
+
+                        let rhs_reconstructed = if conj == Conj::No {
+                            &A_dense * &x
+                        } else {
+                            A_dense.conjugate() * &x
+                        };
+                        let mut max = <E as ComplexField>::Real::faer_zero();
+                        for j in 0..k {
+                            for i in 0..n {
+                                let x = rhs_reconstructed
+                                    .read(i, j)
+                                    .faer_sub(rhs.read(i, j))
+                                    .faer_abs();
+                                max = if max > x { max } else { x }
+                            }
+                        }
+                        assert!(max < <E as ComplexField>::Real::faer_from_f64(1e-25));
+                    }
+                }
+            }
+        }
+    }
+
     fn test_solver_regularization<I: Index>() {
         type E = f64;
         let I = I::truncate;
@@ -3179,7 +4563,11 @@ mod tests {
     monomorphize_test!(test_amd);
     monomorphize_test!(test_counts);
     monomorphize_test!(test_supernodal, u32);
+    monomorphize_test!(test_supernodal_ldlt, u32);
+    monomorphize_test!(test_supernodal_intranode_bk_1, u32);
+    monomorphize_test!(test_supernodal_intranode_bk_2, u32);
     monomorphize_test!(test_simplicial, u32);
-    monomorphize_test!(test_solver, u32);
+    monomorphize_test!(test_solver_ldlt, u32);
+    monomorphize_test!(test_solver_intranode_bk, u32);
     monomorphize_test!(test_solver_regularization, u32);
 }

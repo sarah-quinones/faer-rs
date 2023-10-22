@@ -641,6 +641,7 @@ pub mod solvers {
             faer_cholesky::bunch_kaufman::compute::cholesky_in_place(
                 factors.as_mut(),
                 subdiag.as_mut(),
+                Default::default(),
                 &mut perm,
                 &mut perm_inv,
                 parallelism,
@@ -687,36 +688,42 @@ pub mod solvers {
                     dst.write(src.read())
                 });
 
-            let mut i = 0;
-            while i < n {
-                if subdiag.read(i, 0) == E::faer_zero() {
-                    let d = lbl.read(i, i).faer_real();
-                    for j in 0..n {
-                        mat.write(j, i, mat.read(j, i).faer_scale_real(d));
+            let mut j = 0;
+            while j < n {
+                if subdiag.read(j, 0) == E::faer_zero() {
+                    let d = lbl.read(j, j).faer_real().faer_inv();
+                    for i in 0..n {
+                        mat.write(i, j, mat.read(i, j).faer_scale_real(d));
                     }
-                    i += 1;
+                    j += 1;
                 } else {
-                    let akm1k = subdiag.read(i, 0);
-                    let akm1 = lbl.read(i, i).faer_real();
-                    let ak = lbl.read(i + 1, i + 1).faer_real();
+                    let akp1k = subdiag.read(j, 0).faer_inv();
+                    let ak = akp1k.faer_scale_real(lbl.read(j, j).faer_real());
+                    let akp1 = akp1k
+                        .faer_conj()
+                        .faer_scale_real(lbl.read(j + 1, j + 1).faer_real());
+                    let denom = ak
+                        .faer_mul(akp1)
+                        .faer_sub(E::faer_one())
+                        .faer_real()
+                        .faer_inv();
 
-                    for j in 0..n {
-                        let xkm1 = mat.read(j, i);
-                        let xk = mat.read(j, i + 1);
+                    for i in 0..n {
+                        let xk = mat.read(i, j).faer_mul(akp1k);
+                        let xkp1 = mat.read(i, j + 1).faer_mul(akp1k.faer_conj());
 
                         mat.write(
-                            j,
                             i,
-                            xkm1.faer_scale_real(akm1).faer_add(xk.faer_mul(akm1k)),
+                            j,
+                            (akp1.faer_mul(xk).faer_sub(xkp1)).faer_scale_real(denom),
                         );
                         mat.write(
-                            j,
-                            i + 1,
-                            xk.faer_scale_real(ak)
-                                .faer_add(xkm1.faer_mul(akm1k.faer_conj())),
+                            i,
+                            j + 1,
+                            (ak.faer_mul(xkp1).faer_sub(xk)).faer_scale_real(denom),
                         );
                     }
-                    i += 2;
+                    j += 2;
                 }
             }
             faer_core::mul::triangular::matmul(
@@ -3682,6 +3689,38 @@ mod tests {
         }
     }
 
+    fn test_solver_real(H: impl AsMatRef<f64>, decomp: &dyn SolverCore<f64>) {
+        let H = H.as_mat_ref();
+        let n = H.nrows();
+        let k = 2;
+
+        let random = |_, _| rand::random::<f64>();
+        let rhs = Mat::from_fn(n, k, random);
+
+        let I = Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                f64::faer_one()
+            } else {
+                f64::faer_zero()
+            }
+        });
+
+        let sol = decomp.solve(&rhs);
+        assert_approx_eq(H * &sol, &rhs);
+
+        let sol = decomp.solve_conj(&rhs);
+        assert_approx_eq(H.conjugate() * &sol, &rhs);
+
+        let sol = decomp.solve_transpose(&rhs);
+        assert_approx_eq(H.transpose() * &sol, &rhs);
+
+        let sol = decomp.solve_conj_transpose(&rhs);
+        assert_approx_eq(H.adjoint() * &sol, &rhs);
+
+        assert_approx_eq(decomp.reconstruct(), H);
+        assert_approx_eq(H * decomp.inverse(), I);
+    }
+
     fn test_solver(H: impl AsMatRef<c64>, decomp: &dyn SolverCore<c64>) {
         let H = H.as_mat_ref();
         let n = H.nrows();
@@ -3728,6 +3767,18 @@ mod tests {
 
         let sol = decomp.solve_lstsq_conj(&rhs);
         assert_approx_eq(H.transpose() * H.conjugate() * &sol, H.transpose() * &rhs);
+    }
+
+    #[test]
+    fn test_lblt_real() {
+        let n = 7;
+
+        let random = |_, _| rand::random::<f64>();
+        let H = Mat::from_fn(n, n, random);
+        let H = &H + H.adjoint();
+
+        test_solver_real(&H, &H.lblt(Side::Lower));
+        test_solver_real(&H, &H.lblt(Side::Upper));
     }
 
     #[test]

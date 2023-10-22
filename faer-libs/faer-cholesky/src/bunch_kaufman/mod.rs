@@ -37,6 +37,23 @@ pub mod compute {
         pub blocksize: usize,
     }
 
+    #[derive(Debug)]
+    pub struct BunchKaufmanRegularization<'a, E: ComplexField> {
+        pub dynamic_regularization_signs: Option<&'a mut [i8]>,
+        pub dynamic_regularization_delta: E::Real,
+        pub dynamic_regularization_epsilon: E::Real,
+    }
+
+    impl<E: ComplexField> Default for BunchKaufmanRegularization<'_, E> {
+        fn default() -> Self {
+            Self {
+                dynamic_regularization_signs: None,
+                dynamic_regularization_delta: E::Real::faer_zero(),
+                dynamic_regularization_epsilon: E::Real::faer_zero(),
+            }
+        }
+    }
+
     impl Default for BunchKaufmanParams {
         fn default() -> Self {
             Self {
@@ -130,18 +147,26 @@ pub mod compute {
 
     fn cholesky_diagonal_pivoting_blocked_step<E: ComplexField, I: Index>(
         mut a: MatMut<'_, E>,
+        regularization: BunchKaufmanRegularization<'_, E>,
         mut w: MatMut<'_, E>,
         pivots: &mut [I],
         alpha: E::Real,
         parallelism: Parallelism,
-    ) -> usize {
+    ) -> (usize, usize, usize) {
         assert!(a.nrows() == a.ncols());
         let n = a.nrows();
         let nb = w.ncols();
         assert!(nb < n);
         if n == 0 {
-            return 0;
+            return (0, 0, 0);
         }
+
+        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+        let delta = regularization.dynamic_regularization_delta.faer_abs();
+        let mut signs = regularization.dynamic_regularization_signs;
+        let has_eps = delta > E::Real::faer_zero();
+        let mut dynamic_regularization_count = 0usize;
+        let mut pivot_count = 0usize;
 
         let truncate = <I::Signed as SignedIndex>::truncate;
 
@@ -187,6 +212,21 @@ pub mod compute {
             let kp;
             if max(abs_akk, colmax) == E::Real::faer_zero() {
                 kp = k;
+
+                let mut d11 = w.read(k, k).faer_real();
+                if has_eps {
+                    if let Some(signs) = signs.rb_mut() {
+                        if signs[k] > 0 && d11 <= eps {
+                            d11 = delta;
+                            dynamic_regularization_count += 1;
+                        } else if signs[k] < 0 && d11 >= eps.faer_neg() {
+                            d11 = delta.faer_neg();
+                            dynamic_regularization_count += 1;
+                        }
+                    }
+                }
+                let d11 = d11.faer_inv();
+                a.write(k, k, E::faer_from_real(d11));
             } else {
                 if abs_akk >= colmax.faer_mul(alpha) {
                     kp = k;
@@ -236,6 +276,10 @@ pub mod compute {
                 let kk = k + k_step - 1;
 
                 if kp != kk {
+                    pivot_count += 1;
+                    if let Some(signs) = signs.rb_mut() {
+                        signs.swap(kp, kk);
+                    }
                     a.write(kp, kp, a.read(kk, kk));
                     for j in kk + 1..kp {
                         a.write(kp, j, a.read(j, kk).faer_conj());
@@ -252,44 +296,103 @@ pub mod compute {
                         .col(k)
                         .clone_from(w.rb().subrows(k, n - k).col(k));
 
-                    if k + 1 < n {
-                        let d11 = a.read(k, k).faer_real().faer_inv();
-                        let x = a.rb_mut().subrows(k + 1, n - k - 1).col(k);
-                        zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
-                        zipped!(w.rb_mut().subrows(k + 1, n - k - 1).col(k))
-                            .for_each(|mut x| x.write(x.read().faer_conj()));
+                    let mut d11 = w.read(k, k).faer_real();
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if signs[k] > 0 && d11 <= eps {
+                                d11 = delta;
+                                dynamic_regularization_count += 1;
+                            } else if signs[k] < 0 && d11 >= eps.faer_neg() {
+                                d11 = delta.faer_neg();
+                                dynamic_regularization_count += 1;
+                            }
+                        } else {
+                            if d11.faer_abs() <= eps {
+                                if d11 < E::Real::faer_zero() {
+                                    d11 = delta.faer_neg();
+                                } else {
+                                    d11 = delta;
+                                }
+                                dynamic_regularization_count += 1;
+                            }
+                        }
                     }
+                    let d11 = d11.faer_inv();
+                    a.write(k, k, E::faer_from_real(d11));
+
+                    let x = a.rb_mut().subrows(k + 1, n - k - 1).col(k);
+                    zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
+                    zipped!(w.rb_mut().subrows(k + 1, n - k - 1).col(k))
+                        .for_each(|mut x| x.write(x.read().faer_conj()));
                 } else {
-                    if k + 2 < n {
-                        let d21 = w.read(k + 1, k);
-                        let d21_inv = d21.faer_inv();
-                        let d11 = w.read(k + 1, k + 1).faer_mul(d21_inv);
-                        let d22 = w.read(k, k).faer_mul(d21_inv.faer_conj());
+                    let d21 = w.read(k + 1, k).faer_abs();
+                    let d21_inv = d21.faer_inv();
+                    let mut d11 = d21_inv.faer_scale_real(w.read(k + 1, k + 1).faer_real());
+                    let mut d22 = d21_inv.faer_scale_real(w.read(k, k).faer_real());
 
-                        let t = (d11.faer_mul(d22))
-                            .faer_real()
-                            .faer_sub(E::Real::faer_one())
-                            .faer_inv();
-                        let d21 = d21_inv.faer_scale_real(t);
-
-                        for j in k + 2..n {
-                            let wk = d21
-                                .faer_conj()
-                                .faer_mul(d11.faer_mul(w.read(j, k)).faer_sub(w.read(j, k + 1)));
-                            let wkp1 =
-                                d21.faer_mul(d22.faer_mul(w.read(j, k + 1)).faer_sub(w.read(j, k)));
-
-                            a.write(j, k, wk);
-                            a.write(j, k + 1, wkp1);
+                    let eps = eps.faer_mul(d21_inv);
+                    let delta = delta.faer_mul(d21_inv);
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if signs[k] > 0 && signs[k + 1] > 0 {
+                                if d11 <= eps {
+                                    d11 = delta;
+                                }
+                                if d22 <= eps {
+                                    d22 = delta;
+                                }
+                            } else if signs[k] < 0 && signs[k + 1] < 0 {
+                                if d11 >= eps.faer_neg() {
+                                    d11 = delta.faer_neg();
+                                }
+                                if d22 >= eps.faer_neg() {
+                                    d22 = delta.faer_neg();
+                                }
+                            }
                         }
                     }
 
-                    a.write(k, k, w.read(k, k));
-                    a.write(k + 1, k, w.read(k + 1, k));
-                    a.write(k + 1, k + 1, w.read(k + 1, k + 1));
+                    // t = (d11/|d21| * d22/|d21| - 1.0)
+                    let mut t = d11.faer_mul(d22).faer_sub(E::Real::faer_one());
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if ((signs[k] > 0 && signs[k + 1] > 0)
+                                || (signs[k] < 0 && signs[k + 1] < 0))
+                                && t <= eps
+                            {
+                                t = delta;
+                            } else if ((signs[k] > 0 && signs[k + 1] < 0)
+                                || (signs[k] < 0 && signs[k + 1] > 0))
+                                && t >= eps.faer_neg()
+                            {
+                                t = delta.faer_neg();
+                            }
+                        }
+                    }
 
-                    make_real(a.rb_mut(), k, k);
-                    make_real(a.rb_mut(), k + 1, k + 1);
+                    let t = t.faer_inv();
+                    let d21 = w.read(k + 1, k).faer_scale_real(d21_inv);
+                    let d = t.faer_mul(d21_inv);
+
+                    a.write(k, k, E::faer_from_real(d11.faer_mul(d)));
+                    a.write(k + 1, k, d21.faer_scale_real(d.faer_neg()));
+                    a.write(k + 1, k + 1, E::faer_from_real(d22.faer_mul(d)));
+
+                    for j in k + 2..n {
+                        let wk = (w
+                            .read(j, k)
+                            .faer_scale_real(d11)
+                            .faer_sub(w.read(j, k + 1).faer_mul(d21)))
+                        .faer_scale_real(d);
+                        let wkp1 = (w
+                            .read(j, k + 1)
+                            .faer_scale_real(d22)
+                            .faer_sub(w.read(j, k).faer_mul(d21.faer_conj())))
+                        .faer_scale_real(d);
+
+                        a.write(j, k, wk);
+                        a.write(j, k + 1, wkp1);
+                    }
 
                     zipped!(w.rb_mut().subrows(k + 1, n - k - 1).col(k))
                         .for_each(|mut x| x.write(x.read().faer_conj()));
@@ -334,7 +437,7 @@ pub mod compute {
             }
 
             if j == 0 {
-                return k;
+                return (k, pivot_count, dynamic_regularization_count);
             }
             j -= 1;
 
@@ -342,23 +445,31 @@ pub mod compute {
                 swap_rows(a.rb_mut().subcols(0, j + 1), jp, jj);
             }
             if j == 0 {
-                return k;
+                return (k, pivot_count, dynamic_regularization_count);
             }
         }
     }
 
     fn cholesky_diagonal_pivoting_unblocked<E: ComplexField, I: Index>(
         mut a: MatMut<'_, E>,
+        regularization: BunchKaufmanRegularization<'_, E>,
         pivots: &mut [I],
         alpha: E::Real,
-    ) {
+    ) -> (usize, usize) {
         let truncate = <I::Signed as SignedIndex>::truncate;
 
         assert!(a.nrows() == a.ncols());
         let n = a.nrows();
         if n == 0 {
-            return;
+            return (0, 0);
         }
+
+        let eps = regularization.dynamic_regularization_epsilon.faer_abs();
+        let delta = regularization.dynamic_regularization_delta.faer_abs();
+        let mut signs = regularization.dynamic_regularization_signs;
+        let has_eps = delta > E::Real::faer_zero();
+        let mut dynamic_regularization_count = 0usize;
+        let mut pivot_count = 0usize;
 
         let mut k = 0;
         while k < n {
@@ -384,6 +495,21 @@ pub mod compute {
             let kp;
             if max(abs_akk, colmax) == E::Real::faer_zero() {
                 kp = k;
+
+                let mut d11 = a.read(k, k).faer_real();
+                if has_eps {
+                    if let Some(signs) = signs.rb_mut() {
+                        if signs[k] > 0 && d11 <= eps {
+                            d11 = delta;
+                            dynamic_regularization_count += 1;
+                        } else if signs[k] < 0 && d11 >= eps.faer_neg() {
+                            d11 = delta.faer_neg();
+                            dynamic_regularization_count += 1;
+                        }
+                    }
+                }
+                let d11 = d11.faer_inv();
+                a.write(k, k, E::faer_from_real(d11));
             } else {
                 if abs_akk >= colmax.faer_mul(alpha) {
                     kp = k;
@@ -406,6 +532,7 @@ pub mod compute {
                 let kk = k + k_step - 1;
 
                 if kp != kk {
+                    pivot_count += 1;
                     swap_cols(a.rb_mut().subrows(kp + 1, n - kp - 1), kk, kp);
                     for j in kk + 1..kp {
                         swap_elems_conj(a.rb_mut(), j, kk, kp, j);
@@ -420,66 +547,124 @@ pub mod compute {
                 }
 
                 if k_step == 1 {
-                    if k < n {
-                        let d11 = a.read(k, k).faer_real().faer_inv();
-
-                        let [x, mut trailing] = a
-                            .rb_mut()
-                            .subrows(k + 1, n - k - 1)
-                            .subcols(k, n - k)
-                            .split_at_col(1);
-
-                        for j in 0..n - k - 1 {
-                            let d11xj = x.read(j, 0).faer_conj().faer_scale_real(d11);
-                            for i in 0..n - k - 1 {
-                                let xi = x.read(i, 0);
-                                trailing.write(
-                                    i,
-                                    j,
-                                    trailing.read(i, j).faer_sub(d11xj.faer_mul(xi)),
-                                );
+                    let mut d11 = a.read(k, k).faer_real();
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if signs[k] > 0 && d11 <= eps {
+                                d11 = delta;
+                                dynamic_regularization_count += 1;
+                            } else if signs[k] < 0 && d11 >= eps.faer_neg() {
+                                d11 = delta.faer_neg();
+                                dynamic_regularization_count += 1;
                             }
-                            make_real(trailing.rb_mut(), j, j);
+                        } else {
+                            if d11.faer_abs() <= eps {
+                                if d11 < E::Real::faer_zero() {
+                                    d11 = delta.faer_neg();
+                                } else {
+                                    d11 = delta;
+                                }
+                                dynamic_regularization_count += 1;
+                            }
                         }
-                        zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
                     }
-                } else {
-                    if k + 1 < n {
-                        let d = a.read(k + 1, k).faer_abs();
-                        let d_inv = d.faer_inv();
-                        let d11 = d_inv.faer_scale_real(a.read(k + 1, k + 1).faer_real());
-                        let d22 = d_inv.faer_scale_real(a.read(k, k).faer_real());
+                    let d11 = d11.faer_inv();
+                    a.write(k, k, E::faer_from_real(d11));
 
-                        let t = (d11.faer_mul(d22).faer_sub(E::Real::faer_one())).faer_inv();
-                        let d21 = a.read(k + 1, k).faer_scale_real(d_inv);
-                        let d = t.faer_mul(d_inv);
+                    let [x, mut trailing] = a
+                        .rb_mut()
+                        .subrows(k + 1, n - k - 1)
+                        .subcols(k, n - k)
+                        .split_at_col(1);
 
-                        for j in k + 2..n {
-                            let wk = (a
-                                .read(j, k)
-                                .faer_scale_real(d11)
-                                .faer_sub(a.read(j, k + 1).faer_mul(d21)))
-                            .faer_scale_real(d);
-                            let wkp1 = (a
-                                .read(j, k + 1)
-                                .faer_scale_real(d22)
-                                .faer_sub(a.read(j, k).faer_mul(d21.faer_conj())))
-                            .faer_scale_real(d);
-
-                            for i in j..n {
-                                a.write(
-                                    i,
-                                    j,
-                                    a.read(i, j)
-                                        .faer_sub(a.read(i, k).faer_mul(wk.faer_conj()))
-                                        .faer_sub(a.read(i, k + 1).faer_mul(wkp1.faer_conj())),
-                                );
-                            }
-                            make_real(a.rb_mut(), j, j);
-
-                            a.write(j, k, wk);
-                            a.write(j, k + 1, wkp1);
+                    for j in 0..n - k - 1 {
+                        let d11xj = x.read(j, 0).faer_conj().faer_scale_real(d11);
+                        for i in 0..n - k - 1 {
+                            let xi = x.read(i, 0);
+                            trailing.write(i, j, trailing.read(i, j).faer_sub(d11xj.faer_mul(xi)));
                         }
+                        make_real(trailing.rb_mut(), j, j);
+                    }
+                    zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
+                } else {
+                    let d21 = a.read(k + 1, k).faer_abs();
+                    let d21_inv = d21.faer_inv();
+                    let mut d11 = d21_inv.faer_scale_real(a.read(k + 1, k + 1).faer_real());
+                    let mut d22 = d21_inv.faer_scale_real(a.read(k, k).faer_real());
+
+                    let eps = eps.faer_mul(d21_inv);
+                    let delta = delta.faer_mul(d21_inv);
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if signs[k] > 0 && signs[k + 1] > 0 {
+                                if d11 <= eps {
+                                    d11 = delta;
+                                }
+                                if d22 <= eps {
+                                    d22 = delta;
+                                }
+                            } else if signs[k] < 0 && signs[k + 1] < 0 {
+                                if d11 >= eps.faer_neg() {
+                                    d11 = delta.faer_neg();
+                                }
+                                if d22 >= eps.faer_neg() {
+                                    d22 = delta.faer_neg();
+                                }
+                            }
+                        }
+                    }
+
+                    // t = (d11/|d21| * d22/|d21| - 1.0)
+                    let mut t = d11.faer_mul(d22).faer_sub(E::Real::faer_one());
+                    if has_eps {
+                        if let Some(signs) = signs.rb_mut() {
+                            if ((signs[k] > 0 && signs[k + 1] > 0)
+                                || (signs[k] < 0 && signs[k + 1] < 0))
+                                && t <= eps
+                            {
+                                t = delta;
+                            } else if ((signs[k] > 0 && signs[k + 1] < 0)
+                                || (signs[k] < 0 && signs[k + 1] > 0))
+                                && t >= eps.faer_neg()
+                            {
+                                t = delta.faer_neg();
+                            }
+                        }
+                    }
+
+                    let t = t.faer_inv();
+                    let d21 = a.read(k + 1, k).faer_scale_real(d21_inv);
+                    let d = t.faer_mul(d21_inv);
+
+                    a.write(k, k, E::faer_from_real(d11.faer_mul(d)));
+                    a.write(k + 1, k, d21.faer_scale_real(d.faer_neg()));
+                    a.write(k + 1, k + 1, E::faer_from_real(d22.faer_mul(d)));
+
+                    for j in k + 2..n {
+                        let wk = (a
+                            .read(j, k)
+                            .faer_scale_real(d11)
+                            .faer_sub(a.read(j, k + 1).faer_mul(d21)))
+                        .faer_scale_real(d);
+                        let wkp1 = (a
+                            .read(j, k + 1)
+                            .faer_scale_real(d22)
+                            .faer_sub(a.read(j, k).faer_mul(d21.faer_conj())))
+                        .faer_scale_real(d);
+
+                        for i in j..n {
+                            a.write(
+                                i,
+                                j,
+                                a.read(i, j)
+                                    .faer_sub(a.read(i, k).faer_mul(wk.faer_conj()))
+                                    .faer_sub(a.read(i, k + 1).faer_mul(wkp1.faer_conj())),
+                            );
+                        }
+                        make_real(a.rb_mut(), j, j);
+
+                        a.write(j, k, wk);
+                        a.write(j, k + 1, wkp1);
                     }
                 }
             }
@@ -493,6 +678,8 @@ pub mod compute {
 
             k += k_step;
         }
+
+        (pivot_count, dynamic_regularization_count)
     }
 
     fn convert<E: ComplexField, I: Index>(
@@ -543,17 +730,25 @@ pub mod compute {
         StackReq::try_new::<I>(dim)?.try_and(temp_mat_req::<E>(dim, bs)?)
     }
 
+    #[derive(Copy, Clone, Debug)]
+    pub struct BunchKaufmanInfo {
+        pub dynamic_regularization_count: usize,
+        pub transposition_count: usize,
+    }
+
     #[track_caller]
     pub fn cholesky_in_place<'out, E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
         subdiag: MatMut<'_, E>,
+        regularization: BunchKaufmanRegularization<'_, E>,
         perm: &'out mut [I],
         perm_inv: &'out mut [I],
         parallelism: Parallelism,
         stack: PodStack<'_>,
         params: BunchKaufmanParams,
-    ) -> PermutationMut<'out, I, E> {
+    ) -> (BunchKaufmanInfo, PermutationMut<'out, I, E>) {
         let truncate = <I::Signed as SignedIndex>::truncate;
+        let mut regularization = regularization;
 
         let n = matrix.nrows();
         assert!(matrix.nrows() == matrix.ncols());
@@ -587,24 +782,41 @@ pub mod compute {
         let mut work = temp_mat_uninit(n, bs, stack).0;
 
         let mut k = 0;
+        let mut dynamic_regularization_count = 0;
+        let mut transposition_count = 0;
         while k < n {
+            let regularization = BunchKaufmanRegularization {
+                dynamic_regularization_signs: regularization
+                    .dynamic_regularization_signs
+                    .rb_mut()
+                    .map(|signs| &mut signs[k..]),
+                dynamic_regularization_delta: regularization.dynamic_regularization_delta,
+                dynamic_regularization_epsilon: regularization.dynamic_regularization_epsilon,
+            };
+
             let kb;
+            let reg_count;
+            let piv_count;
             if bs >= 2 && bs < n - k {
-                kb = cholesky_diagonal_pivoting_blocked_step(
+                (kb, piv_count, reg_count) = cholesky_diagonal_pivoting_blocked_step(
                     matrix.rb_mut().submatrix(k, k, n - k, n - k),
+                    regularization,
                     work.rb_mut(),
                     &mut pivots[k..],
                     alpha,
                     parallelism,
                 );
             } else {
-                cholesky_diagonal_pivoting_unblocked(
+                (piv_count, reg_count) = cholesky_diagonal_pivoting_unblocked(
                     matrix.rb_mut().submatrix(k, k, n - k, n - k),
+                    regularization,
                     &mut pivots[k..],
                     alpha,
                 );
                 kb = n - k;
             }
+            dynamic_regularization_count += reg_count;
+            transposition_count += piv_count;
 
             for pivot in &mut pivots[k..k + kb] {
                 let pv = (*pivot).to_signed().sx();
@@ -639,7 +851,13 @@ pub mod compute {
             perm_inv[p.to_signed().zx()] = I::from_signed(truncate(i));
         }
 
-        unsafe { PermutationMut::new_unchecked(perm, perm_inv) }
+        (
+            BunchKaufmanInfo {
+                dynamic_regularization_count,
+                transposition_count,
+            },
+            unsafe { PermutationMut::new_unchecked(perm, perm_inv) },
+        )
     }
 }
 
@@ -691,39 +909,49 @@ pub mod solve {
         let mut i = 0;
         while i < n {
             if subdiag.read(i, 0) == E::faer_zero() {
-                let d_inv = a.read(i, i).faer_real().faer_inv();
+                let d_inv = a.read(i, i).faer_real();
                 for j in 0..k {
                     x.write(i, j, x.read(i, j).faer_scale_real(d_inv));
                 }
                 i += 1;
             } else {
                 if conj == Conj::Yes {
-                    let akm1k = subdiag.read(i, 0).faer_conj().faer_inv();
-                    let akm1 = akm1k.faer_conj().faer_scale_real(a.read(i, i).faer_real());
-                    let ak = akm1k.faer_scale_real(a.read(i + 1, i + 1).faer_real());
-
-                    let denom = akm1.faer_mul(ak).faer_sub(E::faer_one()).faer_inv();
+                    let akp1k = subdiag.read(i, 0);
+                    let ak = a.read(i, i).faer_real();
+                    let akp1 = a.read(i + 1, i + 1).faer_real();
 
                     for j in 0..k {
-                        let xkm1 = x.read(i, j).faer_mul(akm1k.faer_conj());
-                        let xk = x.read(i + 1, j).faer_mul(akm1k);
+                        let xk = x.read(i, j);
+                        let xkp1 = x.read(i + 1, j);
 
-                        x.write(i, j, (ak.faer_mul(xkm1).faer_sub(xk)).faer_mul(denom));
-                        x.write(i + 1, j, (akm1.faer_mul(xk).faer_sub(xkm1)).faer_mul(denom));
+                        x.write(i, j, xk.faer_scale_real(ak).faer_add(xkp1.faer_mul(akp1k)));
+                        x.write(
+                            i + 1,
+                            j,
+                            xkp1.faer_scale_real(akp1)
+                                .faer_add(xk.faer_mul(akp1k.faer_conj())),
+                        );
                     }
                 } else {
-                    let akm1k = subdiag.read(i, 0).faer_inv();
-                    let akm1 = akm1k.faer_conj().faer_scale_real(a.read(i, i).faer_real());
-                    let ak = akm1k.faer_scale_real(a.read(i + 1, i + 1).faer_real());
-
-                    let denom = akm1.faer_mul(ak).faer_sub(E::faer_one()).faer_inv();
+                    let akp1k = subdiag.read(i, 0);
+                    let ak = a.read(i, i).faer_real();
+                    let akp1 = a.read(i + 1, i + 1).faer_real();
 
                     for j in 0..k {
-                        let xkm1 = x.read(i, j).faer_mul(akm1k.faer_conj());
-                        let xk = x.read(i + 1, j).faer_mul(akm1k);
+                        let xk = x.read(i, j);
+                        let xkp1 = x.read(i + 1, j);
 
-                        x.write(i, j, (ak.faer_mul(xkm1).faer_sub(xk)).faer_mul(denom));
-                        x.write(i + 1, j, (akm1.faer_mul(xk).faer_sub(xkm1)).faer_mul(denom));
+                        x.write(
+                            i,
+                            j,
+                            xk.faer_scale_real(ak)
+                                .faer_add(xkp1.faer_mul(akp1k.faer_conj())),
+                        );
+                        x.write(
+                            i + 1,
+                            j,
+                            xkp1.faer_scale_real(akp1).faer_add(xk.faer_mul(akp1k)),
+                        );
                     }
                 }
                 i += 2;
@@ -762,9 +990,10 @@ mod tests {
             let mut mem = GlobalPodBuffer::new(
                 compute::cholesky_in_place_req::<f64, usize>(n, Parallelism::None, params).unwrap(),
             );
-            let perm = compute::cholesky_in_place(
+            let (_, perm) = compute::cholesky_in_place(
                 ldl.as_mut(),
                 subdiag.as_mut(),
+                Default::default(),
                 &mut perm,
                 &mut perm_inv,
                 Parallelism::None,
@@ -818,9 +1047,10 @@ mod tests {
             let mut mem = GlobalPodBuffer::new(
                 compute::cholesky_in_place_req::<c64, usize>(n, Parallelism::None, params).unwrap(),
             );
-            let perm = compute::cholesky_in_place(
+            let (_, perm) = compute::cholesky_in_place(
                 ldl.as_mut(),
                 subdiag.as_mut(),
+                Default::default(),
                 &mut perm,
                 &mut perm_inv,
                 Parallelism::None,

@@ -152,8 +152,12 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // reserve space for L10×D0
         let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
 
-        zipped!(l10xd0.rb_mut(), l10, d0.transpose())
-            .for_each(|mut dst, src, factor| dst.write(src.read().faer_mul(factor.read())));
+        zipped!(l10xd0.rb_mut(), l10, d0.transpose()).for_each(|mut dst, src, factor| {
+            dst.write(
+                src.read()
+                    .faer_scale_real(factor.read().faer_real().faer_inv()),
+            )
+        });
 
         let l10xd0 = l10xd0.into_const();
 
@@ -181,22 +185,19 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             } else if d.faer_abs() <= eps {
                 if d < E::Real::faer_zero() {
                     d = delta.faer_neg();
-                    dynamic_regularization_count += 1;
                 } else {
                     d = delta;
-                    dynamic_regularization_count += 1;
                 }
+                dynamic_regularization_count += 1;
             }
         }
 
+        let d = d.faer_inv();
         a11.write(0, 0, E::faer_from_real(d));
 
         if idx + block_size == n {
             break;
         }
-
-        let ld11 = a11.into_const();
-        let l11 = ld11;
 
         let mut a21 = a21.col(0);
 
@@ -218,8 +219,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             }
         }
 
-        let r = l11.read(0, 0).faer_real().faer_inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(r)));
+        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(d)));
 
         idx += block_size;
     }
@@ -293,11 +293,9 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 let a10_col = a10.rb_mut().col(j);
                 let d0_elem = d0.read(j, 0);
 
-                let d0_elem_inv = d0_elem.faer_inv();
-
                 zipped!(l10xd0_col, a10_col).for_each(|mut l10xd0_elem, mut a10_elem| {
                     let a10_elem_read = a10_elem.read();
-                    a10_elem.write(a10_elem_read.faer_mul(d0_elem_inv));
+                    a10_elem.write(a10_elem_read.faer_mul(d0_elem));
                     l10xd0_elem.write(a10_elem_read);
                 });
             }

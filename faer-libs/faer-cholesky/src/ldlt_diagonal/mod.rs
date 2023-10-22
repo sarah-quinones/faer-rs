@@ -30,10 +30,10 @@ mod tests {
 
         let mut lxd = Mat::zeros(n, n);
         for j in 0..n {
-            let dj = cholesky_factors.read(j, j);
-            lxd.write(j, j, dj);
+            let dj = cholesky_factors.read(j, j).faer_real().faer_inv();
+            lxd.write(j, j, E::faer_from_real(dj));
             for i in j + 1..n {
-                lxd.write(i, j, cholesky_factors.read(i, j).faer_mul(dj));
+                lxd.write(i, j, cholesky_factors.read(i, j).faer_scale_real(dj));
             }
         }
 
