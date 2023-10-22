@@ -398,7 +398,7 @@ fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
 }
 
 pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
-    new_values: SliceGroupMut<'out, E>,
+    new_values: GroupFor<E, &'out mut [E::Unit]>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: SparseColMatRef<'_, I, E>,
@@ -411,7 +411,7 @@ pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
         assert!(A.nrows() == A.ncols());
         assert!(A.nrows() == A.ncols());
         ghost_permute_hermitian(
-            new_values,
+            SliceGroupMut::new(new_values),
             new_col_ptrs,
             new_row_indices,
             ghost::SparseColMatRef::new(A, N, N),
@@ -530,7 +530,7 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
 pub fn adjoint<'a, I: Index, E: ComplexField>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
-    new_values: SliceGroupMut<'a, E>,
+    new_values: GroupFor<E, &'a mut [E::Unit]>,
     A: SparseColMatRef<'_, I, E>,
     stack: PodStack<'_>,
 ) -> SparseColMatRef<'a, I, E> {
@@ -539,7 +539,7 @@ pub fn adjoint<'a, I: Index, E: ComplexField>(
             ghost_adjoint(
                 new_col_ptrs,
                 new_row_indices,
-                new_values,
+                SliceGroupMut::new(new_values),
                 ghost::SparseColMatRef::new(A, M, N),
                 stack,
             )
