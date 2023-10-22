@@ -1163,6 +1163,7 @@ pub(crate) mod qd {
             type Real = Double<f64>;
             type Simd = pulp::Arch;
             type ScalarSimd = pulp::Arch;
+            type PortableSimd = pulp::Arch;
 
             #[inline(always)]
             fn faer_sqrt(self) -> Self {
