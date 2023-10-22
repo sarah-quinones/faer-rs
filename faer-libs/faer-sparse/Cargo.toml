@@ -1,6 +1,6 @@
 [package]
 name = "faer-sparse"
-version = "0.13.5"
+version = "0.14.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -12,8 +12,8 @@ keywords = ["math", "matrix", "linear-algebra"]
 [dependencies]
 faer-entity = { workspace = true, default-features = false }
 
-faer-core = { version = "0.13.0", default-features = false, path = "../faer-core" }
-faer-cholesky = { version = "0.13.0", default-features = false, path = "../faer-cholesky" }
+faer-core = { version = "0.14.0", default-features = false, path = "../faer-core" }
+faer-cholesky = { version = "0.14.0", default-features = false, path = "../faer-cholesky" }
 reborrow = { workspace = true }
 dyn-stack = { workspace = true }
 assert2 = { workspace = true }
