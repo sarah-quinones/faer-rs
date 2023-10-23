@@ -74,11 +74,12 @@ pub fn solve_transpose_req<I: Index, E: Entity>(
 ///
 /// # Panics
 ///
+/// - Panics if `qr_factors` is not a tall matrix.
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
-/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` doesn't have the same number of rows as the number of columns of `qr_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
 #[track_caller]
 pub fn solve_in_place<I: Index, E: ComplexField>(
@@ -105,7 +106,7 @@ pub fn solve_in_place<I: Index, E: ComplexField>(
 }
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
-/// this function computes the solution of the linear system in the sense of least squares::
+/// this function computes the solution of the linear system in the sense of least squares:
 /// $$\text{Op}_A(A)\top X = B.$$
 ///
 /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of `conj_lhs`.  
@@ -114,11 +115,12 @@ pub fn solve_in_place<I: Index, E: ComplexField>(
 ///
 /// # Panics
 ///
+/// - Panics if `qr_factors` is not a square matrix.
 /// - Panics if the number of columns of `householder_factor` isn't the same as the minimum of the
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
-/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `qr_factors`.
 /// - Panics if the provided memory in `stack` is insufficient (see
 ///   [`solve_transpose_in_place_req`]).
 #[track_caller]
@@ -159,7 +161,7 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
-/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `qr_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_req`]).
 #[track_caller]
@@ -202,7 +204,7 @@ pub fn solve<I: Index, E: ComplexField>(
 /// number of rows and the number of columns of `qr_factors`.
 /// - Panics if the block size is zero.
 /// - Panics if `col_perm` doesn't have the same dimension as `qr_factors`.
-/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lu_factors`.
+/// - Panics if `rhs` doesn't have the same number of rows as the dimension of `qr_factors`.
 /// - Panics if `rhs` and `dst` don't have the same shape.
 /// - Panics if the provided memory in `stack` is insufficient (see [`solve_transpose_req`]).
 #[track_caller]
