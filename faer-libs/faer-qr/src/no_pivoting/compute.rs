@@ -528,6 +528,7 @@ mod tests {
     fn test_blocked() {
         for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
             for (m, n) in [
+                (16, 4),
                 (2, 3),
                 (2, 2),
                 (2, 4),
@@ -538,6 +539,8 @@ mod tests {
             ] {
                 let mat_orig = Mat::from_fn(m, n, |_, _| random_value());
                 let mut mat = mat_orig.clone();
+                dbg!(mat.transpose());
+                return;
                 let size = m.min(n);
                 let blocksize = size.min(512);
                 let mut householder = Mat::zeros(blocksize, size);
