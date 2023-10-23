@@ -13,7 +13,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-faer-entity = { version = "0.14.0", default-features = false, path = "../faer-entity" }
+faer-entity = { version = "0.14.1", default-features = false, path = "../faer-entity" }
 
 coe-rs = "0.1"
 reborrow = "0.5"

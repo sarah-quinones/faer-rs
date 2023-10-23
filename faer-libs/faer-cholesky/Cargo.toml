@@ -12,7 +12,7 @@ keywords = ["math", "matrix", "linear-algebra"]
 [dependencies]
 faer-entity = { workspace = true, default-features = false }
 
-faer-core = { version = "0.14.0", default-features = false, path = "../faer-core" }
+faer-core = { version = "0.14.1", default-features = false, path = "../faer-core" }
 seq-macro = "0.3"
 
 reborrow = { workspace = true }
