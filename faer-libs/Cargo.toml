@@ -31,6 +31,18 @@ log = { version = "0.4", default-features = false }
 
 criterion = { git = "https://github.com/sarah-ek/criterion.rs" }
 
+[profile.dev2]
+inherits = "dev"
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+rpath = false
+
 [profile.dev]
 opt-level = 3
 debug = true

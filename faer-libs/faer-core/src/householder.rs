@@ -562,77 +562,113 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
         }
     } else {
         let [essentials_top, essentials_bot] = householder_basis.split_at_row(bs);
+        let m = matrix.nrows();
         let n = matrix.ncols();
 
-        let [mut matrix_top, mut matrix_bot] = matrix.split_at_row(bs);
-
         // essentials* × mat
-        let (mut tmp, _) = temp_mat_uninit::<E>(bs, n, stack);
-        let mut tmp = tmp.as_mut();
+        let (tmp, _) = temp_mat_uninit::<E>(bs, n, stack);
 
-        triangular::matmul_with_conj(
-            tmp.rb_mut(),
-            BlockStructure::Rectangular,
-            essentials_top.transpose(),
-            BlockStructure::UnitTriangularUpper,
-            Conj::Yes.compose(conj_lhs),
-            matrix_top.rb(),
-            BlockStructure::Rectangular,
-            Conj::No,
-            None,
-            E::faer_one(),
-            parallelism,
-        );
-        matmul_with_conj(
-            tmp.rb_mut(),
-            essentials_bot.transpose(),
-            Conj::Yes.compose(conj_lhs),
-            matrix_bot.rb(),
-            Conj::No,
-            Some(E::faer_one()),
-            E::faer_one(),
-            parallelism,
-        );
-
-        // [T^-1|T^-*] × essentials* × tmp
-        if forward {
-            solve::solve_lower_triangular_in_place_with_conj(
-                householder_factor.transpose(),
-                Conj::Yes.compose(conj_lhs),
-                tmp.rb_mut(),
-                parallelism,
-            );
-        } else {
-            solve::solve_upper_triangular_in_place_with_conj(
-                householder_factor,
-                Conj::No.compose(conj_lhs),
-                tmp.rb_mut(),
-                parallelism,
-            );
+        let mut n_tasks = Ord::min(Ord::min(crate::parallelism_degree(parallelism), n), 4);
+        if (m * n).saturating_mul(4 * bs) < gemm::get_threading_threshold() {
+            n_tasks = 1;
         }
 
-        // essentials × [T^-1|T^-*] × essentials* × tmp
-        triangular::matmul_with_conj(
-            matrix_top.rb_mut(),
-            BlockStructure::Rectangular,
-            essentials_top,
-            BlockStructure::UnitTriangularLower,
-            Conj::No.compose(conj_lhs),
-            tmp.rb(),
-            BlockStructure::Rectangular,
-            Conj::No,
-            Some(E::faer_one()),
-            E::faer_one().faer_neg(),
-            parallelism,
-        );
-        matmul_with_conj(
-            matrix_bot.rb_mut(),
-            essentials_bot,
-            Conj::No.compose(conj_lhs),
-            tmp.rb(),
-            Conj::No,
-            Some(E::faer_one()),
-            E::faer_one().faer_neg(),
+        let inner_parallelism = match parallelism {
+            Parallelism::None => Parallelism::None,
+            #[cfg(feature = "rayon")]
+            Parallelism::Rayon(mut par) => {
+                if par == 0 {
+                    par = rayon::current_num_threads();
+                }
+
+                if par >= 2 * n_tasks {
+                    Parallelism::Rayon(par / n_tasks)
+                } else {
+                    Parallelism::None
+                }
+            }
+        };
+
+        crate::for_each_raw(
+            n_tasks,
+            |tid| {
+                let (tid_col, tid_n) = crate::par_split_indices(n, tid, n_tasks);
+
+                let mut tmp = unsafe { tmp.rb().subcols(tid_col, tid_n).const_cast() };
+                let [mut matrix_top, mut matrix_bot] = unsafe {
+                    matrix
+                        .rb()
+                        .subcols(tid_col, tid_n)
+                        .const_cast()
+                        .split_at_row(bs)
+                };
+
+                triangular::matmul_with_conj(
+                    tmp.rb_mut(),
+                    BlockStructure::Rectangular,
+                    essentials_top.transpose(),
+                    BlockStructure::UnitTriangularUpper,
+                    Conj::Yes.compose(conj_lhs),
+                    matrix_top.rb(),
+                    BlockStructure::Rectangular,
+                    Conj::No,
+                    None,
+                    E::faer_one(),
+                    inner_parallelism,
+                );
+                matmul_with_conj(
+                    tmp.rb_mut(),
+                    essentials_bot.transpose(),
+                    Conj::Yes.compose(conj_lhs),
+                    matrix_bot.rb(),
+                    Conj::No,
+                    Some(E::faer_one()),
+                    E::faer_one(),
+                    inner_parallelism,
+                );
+
+                // [T^-1|T^-*] × essentials* × tmp
+                if forward {
+                    solve::solve_lower_triangular_in_place_with_conj(
+                        householder_factor.transpose(),
+                        Conj::Yes.compose(conj_lhs),
+                        tmp.rb_mut(),
+                        inner_parallelism,
+                    );
+                } else {
+                    solve::solve_upper_triangular_in_place_with_conj(
+                        householder_factor,
+                        Conj::No.compose(conj_lhs),
+                        tmp.rb_mut(),
+                        inner_parallelism,
+                    );
+                }
+
+                // essentials × [T^-1|T^-*] × essentials* × tmp
+                triangular::matmul_with_conj(
+                    matrix_top.rb_mut(),
+                    BlockStructure::Rectangular,
+                    essentials_top,
+                    BlockStructure::UnitTriangularLower,
+                    Conj::No.compose(conj_lhs),
+                    tmp.rb(),
+                    BlockStructure::Rectangular,
+                    Conj::No,
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    inner_parallelism,
+                );
+                matmul_with_conj(
+                    matrix_bot.rb_mut(),
+                    essentials_bot,
+                    Conj::No.compose(conj_lhs),
+                    tmp.rb(),
+                    Conj::No,
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    inner_parallelism,
+                );
+            },
             parallelism,
         );
     }

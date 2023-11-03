@@ -47,7 +47,7 @@ fn min_positive<E: 'static>() -> E {
 }
 
 fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
-    for n in [32, 64, 128, 256, 512, 1024] {
+    for n in [32, 64, 128, 256, 512, 1024, 2000, 4000] {
         let mut mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let adjoint = mat.adjoint().to_owned();
 

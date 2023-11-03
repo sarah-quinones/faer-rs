@@ -9,6 +9,18 @@ pub fn with_size<R>(n: usize, f: impl FnOnce(Size<'_>) -> R) -> R {
 }
 
 #[inline]
+pub fn fill_zero<'n, 'a, I: Index>(slice: &'a mut [I], size: Size<'n>) -> &'a mut [Idx<'n, I>] {
+    let len = slice.len();
+    if len > 0 {
+        assert!(*size > 0);
+    }
+    unsafe {
+        core::ptr::write_bytes(slice.as_mut_ptr(), 0u8, len);
+        &mut *(slice as *mut _ as *mut _)
+    }
+}
+
+#[inline]
 pub fn fill_none<'n, 'a, I: Index>(
     slice: &'a mut [I::Signed],
     size: Size<'n>,
