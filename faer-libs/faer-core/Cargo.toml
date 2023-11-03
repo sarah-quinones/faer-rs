@@ -21,7 +21,7 @@ reborrow = { workspace = true }
 
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
-gemm = { version = "0.16.12", default-features = false }
+gemm = { version = "0.16.12", default-features = false, path = "../../../gemm/gemm" }
 
 
 num-traits = { workspace = true, default-features = false }

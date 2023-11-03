@@ -1850,6 +1850,8 @@ pub mod inner {
 }
 use inner::*;
 
+use crate::group_helpers::SliceGroup;
+
 /// Advanced: Helper types for working with [`GroupFor`] in generic contexts.
 pub mod group_helpers {
     use super::*;
@@ -1868,6 +1870,9 @@ pub mod group_helpers {
         GroupFor<E, &'static mut E::Unit>,
         PhantomData<&'a mut ()>,
     );
+
+    unsafe impl<E: Entity> Send for SliceGroup<'_, E> {}
+    unsafe impl<E: Entity> Sync for SliceGroup<'_, E> {}
 
     impl<E: Entity> Copy for SliceGroup<'_, E> {}
     impl<E: Entity> Copy for RefGroup<'_, E> {}
@@ -2907,11 +2912,29 @@ const _: () = {
     use core::ops::RangeFull;
     type Range = core::ops::Range<usize>;
     type RangeInclusive = core::ops::RangeInclusive<usize>;
+    type RangeFrom = core::ops::RangeFrom<usize>;
     type RangeTo = core::ops::RangeTo<usize>;
     type RangeToInclusive = core::ops::RangeToInclusive<usize>;
 
     macro_rules! impl_ranges {
         ($mat: ident) => {
+            impl<E: Entity, RowRange> MatIndex<RowRange, RangeFrom> for $mat<'_, E>
+            where
+                Self: MatIndex<RowRange, Range>,
+            {
+                type Target = <Self as MatIndex<RowRange, Range>>::Target;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(
+                    this: Self,
+                    row: RowRange,
+                    col: RangeFrom,
+                ) -> <Self as MatIndex<RowRange, Range>>::Target {
+                    let ncols = this.ncols();
+                    <Self as MatIndex<RowRange, Range>>::get(this, row, col.start..ncols)
+                }
+            }
             impl<E: Entity, RowRange> MatIndex<RowRange, RangeTo> for $mat<'_, E>
             where
                 Self: MatIndex<RowRange, Range>,
@@ -3051,6 +3074,26 @@ const _: () = {
                 }
             }
 
+            impl<E: Entity> MatIndex<RangeFrom, Range> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeFrom, col: Range) -> Self {
+                    let nrows = this.nrows();
+                    <Self as MatIndex<Range, Range>>::get(this, row.start..nrows, col)
+                }
+            }
+            impl<E: Entity> MatIndex<RangeFrom, usize> for $mat<'_, E> {
+                type Target = Self;
+
+                #[track_caller]
+                #[inline(always)]
+                fn get(this: Self, row: RangeFrom, col: usize) -> Self {
+                    let nrows = this.nrows();
+                    <Self as MatIndex<Range, usize>>::get(this, row.start..nrows, col)
+                }
+            }
             impl<E: Entity> MatIndex<RangeTo, Range> for $mat<'_, E> {
                 type Target = Self;
 
@@ -3211,11 +3254,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
         // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
         // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
         // we don't care
-        E::faer_map(
-            E::faer_copy(&slice),
-            #[inline(always)]
-            |slice| assert!(size == slice.len()),
-        );
+        {
+            let slice = SliceGroup::<'_, E>::new(E::faer_copy(&slice));
+            assert!(slice.len() == size);
+        }
         unsafe {
             Self::from_raw_parts(
                 E::faer_map(
@@ -3227,6 +3269,38 @@ impl<'a, E: Entity> MatRef<'a, E> {
                 ncols,
                 1,
                 nrows as isize,
+            )
+        }
+    }
+
+    #[track_caller]
+    pub fn from_column_major_slice_with_stride(
+        slice: GroupFor<E, &'a [E::Unit]>,
+        nrows: usize,
+        ncols: usize,
+        col_stride: usize,
+    ) -> Self {
+        // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
+        // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
+        // we don't care
+        if nrows > 0 && ncols > 0 {
+            let slice = SliceGroup::<'_, E>::new(E::faer_copy(&slice));
+            let last = usize::checked_mul(col_stride, ncols - 1)
+                .and_then(|last_col| last_col.checked_add(nrows - 1))
+                .unwrap_or(usize::MAX);
+            assert!(last < slice.len());
+        }
+        unsafe {
+            Self::from_raw_parts(
+                E::faer_map(
+                    slice,
+                    #[inline(always)]
+                    |slice| slice.as_ptr(),
+                ),
+                nrows,
+                ncols,
+                1,
+                col_stride as isize,
             )
         }
     }
@@ -4049,11 +4123,10 @@ impl<'a, E: Entity> MatMut<'a, E> {
         // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
         // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
         // we don't care
-        E::faer_map(
-            E::faer_as_ref(&slice),
-            #[inline(always)]
-            |slice| assert!(size == slice.len()),
-        );
+        {
+            let slice = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice)));
+            assert!(slice.len() == size);
+        }
         unsafe {
             Self::from_raw_parts(
                 E::faer_map(
@@ -4065,6 +4138,38 @@ impl<'a, E: Entity> MatMut<'a, E> {
                 ncols,
                 1,
                 nrows as isize,
+            )
+        }
+    }
+
+    #[track_caller]
+    pub fn from_column_major_slice_with_stride(
+        slice: GroupFor<E, &'a mut[E::Unit]>,
+        nrows: usize,
+        ncols: usize,
+        col_stride: usize,
+    ) -> Self {
+        // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
+        // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
+        // we don't care
+        if nrows > 0 && ncols > 0 {
+            let slice = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice)));
+            let last = usize::checked_mul(col_stride, ncols - 1)
+                .and_then(|last_col| last_col.checked_add(nrows - 1))
+                .unwrap_or(usize::MAX);
+            assert!(last < slice.len());
+        }
+        unsafe {
+            Self::from_raw_parts(
+                E::faer_map(
+                    slice,
+                    #[inline(always)]
+                    |slice| slice.as_mut_ptr(),
+                ),
+                nrows,
+                ncols,
+                1,
+                col_stride as isize,
             )
         }
     }
@@ -4917,7 +5022,8 @@ pub fn is_vectorizable<T: 'static>() -> bool {
 }
 
 // https://rust-lang.github.io/hashbrown/src/crossbeam_utils/cache_padded.rs.html#128-130
-const CACHELINE_ALIGN: usize = {
+#[doc(hidden)]
+pub const CACHELINE_ALIGN: usize = {
     #[cfg(any(
         target_arch = "x86_64",
         target_arch = "aarch64",
@@ -6066,6 +6172,11 @@ pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelis
         op: &(dyn Send + Sync + Fn(usize)),
         parallelism: Parallelism,
     ) {
+        if n_tasks == 1 {
+            op(0);
+            return;
+        }
+
         match parallelism {
             Parallelism::None => (0..n_tasks).for_each(op),
             #[cfg(feature = "rayon")]
@@ -6166,8 +6277,9 @@ pub fn temp_mat_uninit<E: ComplexField>(
     )
 }
 
+#[doc(hidden)]
 #[inline]
-fn col_stride<Unit: 'static>(nrows: usize) -> usize {
+pub fn col_stride<Unit: 'static>(nrows: usize) -> usize {
     if !is_vectorizable::<Unit>() || nrows >= isize::MAX as usize {
         nrows
     } else {
@@ -6786,6 +6898,18 @@ pub mod constrained {
         #[inline]
         pub fn check<I: Index>(self, idx: I) -> Idx<'size, I> {
             Idx::new_checked(idx, self)
+        }
+
+        #[inline]
+        pub fn try_check<I: Index>(self, idx: I) -> Option<Idx<'size, I>> {
+            if idx.zx() < self.into_inner() {
+                Some(Idx(Branded {
+                    __marker: PhantomData,
+                    inner: idx,
+                }))
+            } else {
+                None
+            }
         }
     }
 

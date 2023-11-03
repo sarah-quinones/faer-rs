@@ -1431,7 +1431,7 @@ pub mod simplicial {
 
     #[derive(Copy, Clone, Debug)]
     pub struct EliminationTreeRef<'a, I: Index> {
-        pub(super) inner: &'a [I::Signed],
+        pub(crate) inner: &'a [I::Signed],
     }
 
     impl<'a, I: Index> EliminationTreeRef<'a, I> {
@@ -1465,6 +1465,44 @@ pub mod supernodal {
         let k_: I = *k.truncate();
         visited[index_to_super[k].zx()] = k_.to_signed();
         for i in A.row_indices_of_col(k) {
+            if i >= k {
+                continue;
+            }
+            let mut supernode_i = index_to_super[i].zx();
+            loop {
+                if visited[supernode_i] == k_.to_signed() {
+                    break;
+                }
+
+                row_indices[current_row_positions[supernode_i].zx()] = k.truncate();
+                current_row_positions[supernode_i] += I::truncate(1);
+
+                visited[supernode_i] = k_.to_signed();
+                supernode_i = super_etree[supernode_i].sx().idx().unwrap();
+            }
+        }
+    }
+
+    fn ereach_super_ata<'m, 'n, 'nsuper, I: Index>(
+        A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+        perm: Option<ghost::PermutationRef<'n, '_, I, Symbolic>>,
+        min_col: &Array<'m, MaybeIdx<'n, I>>,
+        super_etree: &Array<'nsuper, MaybeIdx<'nsuper, I>>,
+        index_to_super: &Array<'n, Idx<'nsuper, I>>,
+        current_row_positions: &mut Array<'nsuper, I>,
+        row_indices: &mut [Idx<'n, I>],
+        k: Idx<'n, usize>,
+        visited: &mut Array<'nsuper, I::Signed>,
+    ) {
+        let k_: I = *k.truncate();
+        visited[index_to_super[k].zx()] = k_.to_signed();
+
+        let fwd = perm.map(|perm| perm.into_arrays().0);
+        let fwd = |i: Idx<'n, usize>| fwd.map(|fwd| fwd[k].zx()).unwrap_or(i);
+        for i in A.row_indices_of_col(fwd(k)) {
+            let Some(i) = min_col[i].idx() else { continue };
+            let i = i.zx();
+
             if i >= k {
                 continue;
             }
@@ -2097,6 +2135,9 @@ pub mod supernodal {
         ghost::with_size(n, |N| {
             ghost_factorize_supernodal_symbolic(
                 ghost::SymbolicSparseColMatRef::new(A, N, N),
+                None,
+                None,
+                CholeskyInput::A,
                 etree.ghost_inner(N),
                 Array::from_ref(col_counts, N),
                 stack,
@@ -2105,8 +2146,16 @@ pub mod supernodal {
         })
     }
 
-    pub(crate) fn ghost_factorize_supernodal_symbolic<'n, I: Index>(
-        A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
+    pub(crate) enum CholeskyInput {
+        A,
+        ATA,
+    }
+
+    pub(crate) fn ghost_factorize_supernodal_symbolic<'m, 'n, I: Index>(
+        A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+        col_perm: Option<ghost::PermutationRef<'n, '_, I, Symbolic>>,
+        min_col: Option<&Array<'m, MaybeIdx<'n, I>>>,
+        input: CholeskyInput,
         etree: &Array<'n, MaybeIdx<'n, I>>,
         col_counts: &Array<'n, I>,
         stack: PodStack<'_>,
@@ -2118,7 +2167,7 @@ pub mod supernodal {
             (i <= to_wide(I::from_signed(I::Signed::MAX))).then_some(I::truncate(i as usize))
         };
 
-        let N = A.nrows();
+        let N = A.ncols();
         let n = *N;
 
         let zero = I::truncate(0);
@@ -2131,7 +2180,7 @@ pub mod supernodal {
                 dimension: n,
                 supernode_postorder: Vec::new(),
                 supernode_postorder_inv: Vec::new(),
-                descendent_count: Vec::new(),
+                descendant_count: Vec::new(),
 
                 supernode_begin: try_collect([zero])?,
                 col_ptrs_for_row_indices: try_collect([zero])?,
@@ -2524,22 +2573,49 @@ pub mod supernodal {
                         bytemuck::cast_slice_mut(&mut child_count.as_mut()[..n_supernodes]),
                         N_SUPERNODES,
                     );
-                    mem::fill_none::<I::Signed>(visited.as_mut());
-                    for s in N_SUPERNODES.indices() {
-                        let k1 = ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
-                        let k2 =
-                            ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
 
-                        for k in k1.range_to(k2) {
-                            ereach_super(
-                                A,
-                                super_etree,
-                                index_to_super,
-                                current_row_positions,
-                                row_indices,
-                                k,
-                                visited,
-                            );
+                    mem::fill_none::<I::Signed>(visited.as_mut());
+                    if matches!(input, CholeskyInput::A) {
+                        let A = ghost::SymbolicSparseColMatRef::new(A.into_inner(), N, N);
+                        for s in N_SUPERNODES.indices() {
+                            let k1 =
+                                ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
+                            let k2 =
+                                ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
+
+                            for k in k1.range_to(k2) {
+                                ereach_super(
+                                    A,
+                                    super_etree,
+                                    index_to_super,
+                                    current_row_positions,
+                                    row_indices,
+                                    k,
+                                    visited,
+                                );
+                            }
+                        }
+                    } else {
+                        let min_col = min_col.unwrap();
+                        for s in N_SUPERNODES.indices() {
+                            let k1 =
+                                ghost::IdxInclusive::new_checked(supernode_begin__[*s].zx(), N);
+                            let k2 =
+                                ghost::IdxInclusive::new_checked(supernode_begin__[*s + 1].zx(), N);
+
+                            for k in k1.range_to(k2) {
+                                ereach_super_ata(
+                                    A,
+                                    col_perm,
+                                    min_col,
+                                    super_etree,
+                                    index_to_super,
+                                    current_row_positions,
+                                    row_indices,
+                                    k,
+                                    visited,
+                                );
+                            }
                         }
                     }
 
@@ -2597,7 +2673,7 @@ pub mod supernodal {
             dimension: n,
             supernode_postorder: supernode_postorder__,
             supernode_postorder_inv: supernode_etree__,
-            descendent_count: descendent_count__,
+            descendant_count: descendent_count__,
             supernode_begin: supernode_begin__,
             col_ptrs_for_row_indices: col_ptrs_for_row_indices__,
             col_ptrs_for_values: col_ptrs_for_values__,
@@ -2606,7 +2682,7 @@ pub mod supernodal {
     }
 
     #[inline]
-    fn partition_fn<I: Index>(idx: usize) -> impl Fn(&I) -> bool {
+    pub(crate) fn partition_fn<I: Index>(idx: usize) -> impl Fn(&I) -> bool {
         let idx = I::truncate(idx);
         move |&i| i < idx
     }
@@ -2620,7 +2696,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let row_ind = &*symbolic.row_indices;
@@ -2669,7 +2745,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let row_ind = &*symbolic.row_indices;
@@ -2725,7 +2801,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let row_ind = &*symbolic.row_indices;
@@ -2802,7 +2878,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let col_ptr_val = &*symbolic.col_ptrs_for_values;
@@ -2992,7 +3068,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let col_ptr_val = &*symbolic.col_ptrs_for_values;
@@ -3222,7 +3298,7 @@ pub mod supernodal {
         let post = &*symbolic.supernode_postorder;
         let post_inv = &*symbolic.supernode_postorder_inv;
 
-        let desc_count = &*symbolic.descendent_count;
+        let desc_count = &*symbolic.descendant_count;
 
         let col_ptr_row = &*symbolic.col_ptrs_for_row_indices;
         let col_ptr_val = &*symbolic.col_ptrs_for_values;
@@ -3527,15 +3603,15 @@ pub mod supernodal {
 
     #[derive(Debug)]
     pub struct SymbolicSupernodalCholesky<I> {
-        dimension: usize,
-        supernode_postorder: Vec<I>,
-        supernode_postorder_inv: Vec<I>,
-        descendent_count: Vec<I>,
+        pub(crate) dimension: usize,
+        pub(crate) supernode_postorder: Vec<I>,
+        pub(crate) supernode_postorder_inv: Vec<I>,
+        pub(crate) descendant_count: Vec<I>,
 
-        supernode_begin: Vec<I>,
-        col_ptrs_for_row_indices: Vec<I>,
-        col_ptrs_for_values: Vec<I>,
-        row_indices: Vec<I>,
+        pub(crate) supernode_begin: Vec<I>,
+        pub(crate) col_ptrs_for_row_indices: Vec<I>,
+        pub(crate) col_ptrs_for_values: Vec<I>,
+        pub(crate) row_indices: Vec<I>,
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -4410,7 +4486,7 @@ fn postorder_depth_first_search<'n, I: Index>(
 }
 
 /// workspace: I×(3*n)
-fn ghost_postorder<'n, I: Index>(
+pub(crate) fn ghost_postorder<'n, I: Index>(
     post: &mut Array<'n, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
     stack: PodStack<'_>,
@@ -4432,11 +4508,9 @@ fn ghost_postorder<'n, I: Index>(
 
     for j in N.indices().rev() {
         let parent = etree[j];
-        let next = &mut next_child[j];
-
         if let Some(parent) = parent.idx() {
             let first = &mut first_child[parent.zx()];
-            *next = **first;
+            next_child[j] = **first;
             *first = MaybeIdx::from_index(j.truncate::<I>());
         }
     }
@@ -4554,6 +4628,9 @@ pub fn factorize_symbolic<I: Index>(
         let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold {
             SymbolicCholeskyRaw::Supernodal(supernodal::ghost_factorize_supernodal_symbolic(
                 A,
+                None,
+                None,
+                supernodal::CholeskyInput::A,
                 etree,
                 col_counts,
                 stack.rb_mut(),
@@ -4578,30 +4655,17 @@ pub fn factorize_symbolic<I: Index>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{supernodal::SupernodalLdltRef, *};
-    use crate::{cholesky::supernodal::SupernodalIntranodeBunchKaufmanRef, qd::Double};
+    use crate::{
+        cholesky::supernodal::{CholeskyInput, SupernodalIntranodeBunchKaufmanRef},
+        qd::Double,
+    };
     use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
     use faer_core::Mat;
     use num_complex::Complex;
     use rand::{Rng, SeedableRng};
-
-    macro_rules! monomorphize_test {
-        ($name: ident) => {
-            monomorphize_test!($name, u32);
-            monomorphize_test!($name, u64);
-        };
-
-        ($name: ident, $ty: ident) => {
-            paste::paste! {
-                #[test]
-                fn [<$name _ $ty>]() {
-                    $name::<$ty>();
-                }
-            }
-        };
-    }
 
     fn test_counts<I: Index>() {
         let truncate = I::truncate;
@@ -4638,6 +4702,9 @@ mod tests {
 
             supernodal::ghost_factorize_supernodal_symbolic(
                 A,
+                None,
+                None,
+                CholeskyInput::A,
                 etree,
                 Array::from_ref(&col_count, N),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
@@ -4895,6 +4962,9 @@ mod tests {
 
             let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
                 *A,
+                None,
+                None,
+                CholeskyInput::A,
                 etree,
                 Array::from_ref(&col_count, N),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
@@ -4998,6 +5068,9 @@ mod tests {
 
             let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
                 *A,
+                None,
+                None,
+                CholeskyInput::A,
                 etree,
                 Array::from_ref(&col_count, N),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
@@ -5120,6 +5193,9 @@ mod tests {
 
             let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
                 *A,
+                None,
+                None,
+                CholeskyInput::A,
                 etree,
                 Array::from_ref(&col_count, N),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
@@ -5258,6 +5334,9 @@ mod tests {
 
             let symbolic = supernodal::ghost_factorize_supernodal_symbolic(
                 *A,
+                None,
+                None,
+                CholeskyInput::A,
                 etree,
                 Array::from_ref(&col_count, N),
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),

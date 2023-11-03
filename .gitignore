@@ -7,4 +7,6 @@ f128.txt
 c32.txt
 c64.txt
 c128.txt
-*.mtx
+faer-libs/faer-sparse/bench_data
+faer-libs/faer-sparse/data
+faer-libs/faer-sparse/test_data

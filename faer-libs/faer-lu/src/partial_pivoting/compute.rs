@@ -5,7 +5,7 @@ use faer_core::{
     mul::matmul,
     permutation::{Index, PermutationMut, SignedIndex},
     solve::solve_unit_lower_triangular_in_place,
-    temp_mat_req, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
+    zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -50,23 +50,16 @@ fn swap_two_elems_contiguous<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usi
     }
 }
 
-#[allow(clippy::extra_unused_type_parameters)]
-fn lu_unblocked_req<E: Entity>(_m: usize, _n: usize) -> Result<StackReq, SizeOverflow> {
-    Ok(StackReq::default())
-}
-
 #[inline(never)]
 fn lu_in_place_unblocked<E: ComplexField, I: Index>(
     mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
     transpositions: &mut [I],
-    stack: PodStack<'_>,
 ) -> usize {
-    let _ = &stack;
     let m = matrix.nrows();
     let ncols = matrix.ncols();
-    debug_assert!(m >= n);
+    assert!(m >= n);
 
     let truncate = <I::Signed as SignedIndex>::truncate;
 
@@ -79,47 +72,23 @@ fn lu_in_place_unblocked<E: ComplexField, I: Index>(
     let arch = E::Simd::default();
 
     for (k, t) in transpositions.iter_mut().enumerate() {
-        let imax;
+        let mut imax = 0;
         {
             let col = k + col_start;
             let col = matrix.rb().col(col).subrows(k, m - k);
             let m = col.nrows();
 
-            let mut imax0 = 0;
-            let mut imax1 = 0;
-            let mut max0 = E::Real::faer_zero();
-            let mut max1 = E::Real::faer_zero();
+            let mut max = E::Real::faer_zero();
 
-            for i in 0..m / 2 {
-                let i = 2 * i;
-
-                let abs0 = unsafe { col.read_unchecked(i, 0) }.faer_score();
-                let abs1 = unsafe { col.read_unchecked(i + 1, 0) }.faer_score();
-
-                if abs0 > max0 {
-                    imax0 = i;
-                    max0 = abs0;
-                }
-                if abs1 > max1 {
-                    imax1 = i + 1;
-                    max1 = abs1;
+            for i in 0..m {
+                let abs = unsafe { col.read_unchecked(i, 0) }.faer_score();
+                if abs > max {
+                    imax = i;
+                    max = abs;
                 }
             }
 
-            if m % 2 != 0 {
-                let i = m - 1;
-                let abs0 = unsafe { col.read_unchecked(i, 0) }.faer_score();
-                if abs0 > max0 {
-                    imax0 = i;
-                    max0 = abs0;
-                }
-            }
-
-            if max0 > max1 {
-                imax = imax0 + k;
-            } else {
-                imax = imax1 + k;
-            }
+            imax += k;
         }
 
         *t = I::from_signed(truncate(imax - k));
@@ -277,35 +246,13 @@ fn blocksize<E: Entity>(n: usize) -> usize {
     }
 }
 
-fn lu_recursive_req<I: Index, E: Entity>(
-    m: usize,
-    n: usize,
-    parallelism: Parallelism,
-) -> Result<StackReq, SizeOverflow> {
-    if n <= recursion_threshold::<E>(m) {
-        return lu_unblocked_req::<E>(m, n);
-    }
-
-    let bs = blocksize::<E>(n);
-    let _ = parallelism;
-
-    StackReq::try_any_of([
-        lu_recursive_req::<I, E>(m, bs, parallelism)?,
-        StackReq::try_all_of([
-            StackReq::try_new::<I>(m - bs)?,
-            lu_recursive_req::<I, E>(m - bs, n - bs, parallelism)?,
-        ])?,
-        temp_mat_req::<E>(m, 1)?,
-    ])
-}
-
-fn lu_in_place_impl<I: Index, E: ComplexField>(
+#[doc(hidden)]
+pub fn lu_in_place_impl<I: Index, E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     col_start: usize,
     n: usize,
     transpositions: &mut [I],
     parallelism: Parallelism,
-    mut stack: PodStack<'_>,
 ) -> usize {
     let m = matrix.nrows();
     let full_n = matrix.ncols();
@@ -313,7 +260,7 @@ fn lu_in_place_impl<I: Index, E: ComplexField>(
     debug_assert!(m >= n);
 
     if n <= recursion_threshold::<E>(m) {
-        return lu_in_place_unblocked(matrix, col_start, n, transpositions, stack);
+        return lu_in_place_unblocked(matrix, col_start, n, transpositions);
     }
 
     // recursing is fine-ish since we halve the blocksize at each recursion step
@@ -327,7 +274,6 @@ fn lu_in_place_impl<I: Index, E: ComplexField>(
         bs,
         &mut transpositions[..bs],
         parallelism,
-        stack.rb_mut(),
     );
 
     let [mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right] = matrix
@@ -351,7 +297,6 @@ fn lu_in_place_impl<I: Index, E: ComplexField>(
         n - bs,
         &mut transpositions[bs..],
         parallelism,
-        stack.rb_mut(),
     );
 
     let parallelism = if m * (full_n - n) > 128 * 128 {
@@ -423,12 +368,10 @@ pub fn lu_in_place_req<I: Index, E: Entity>(
     params: PartialPivLuComputeParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = &params;
+    let _ = &parallelism;
 
     let size = Ord::min(n, m);
-    StackReq::try_all_of([
-        StackReq::try_new::<I>(size)?,
-        lu_recursive_req::<I, E>(m, size, parallelism)?,
-    ])
+    StackReq::try_new::<I>(size)
 }
 
 /// Computes the LU decomposition of the given matrix with partial pivoting, replacing the matrix
@@ -488,17 +431,10 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
         *p = I::from_signed(truncate(i));
     }
 
-    let (transpositions, mut stack) = stack
+    let (transpositions, _) = stack
         .rb_mut()
         .make_with(size, |_| I::from_signed(truncate(0)));
-    let n_transpositions = lu_in_place_impl(
-        matrix.rb_mut(),
-        0,
-        size,
-        transpositions,
-        parallelism,
-        stack.rb_mut(),
-    );
+    let n_transpositions = lu_in_place_impl(matrix.rb_mut(), 0, size, transpositions, parallelism);
 
     for (idx, t) in transpositions.iter().enumerate() {
         perm.swap(idx, idx + t.to_signed().zx());

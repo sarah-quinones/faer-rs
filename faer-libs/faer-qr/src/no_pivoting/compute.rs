@@ -199,9 +199,13 @@ pub fn recommended_blocksize<E: Entity>(nrows: usize, ncols: usize) -> usize {
     } else if prod > 1024 * 1024 {
         64
     } else if prod > 512 * 512 {
+        48
+    } else if prod > 128 * 128 {
         32
     } else if prod > 32 * 32 {
         16
+    } else if prod > 16 * 16 {
+        8
     } else {
         1
     })
@@ -539,8 +543,6 @@ mod tests {
             ] {
                 let mat_orig = Mat::from_fn(m, n, |_, _| random_value());
                 let mut mat = mat_orig.clone();
-                dbg!(mat.transpose());
-                return;
                 let size = m.min(n);
                 let blocksize = size.min(512);
                 let mut householder = Mat::zeros(blocksize, size);

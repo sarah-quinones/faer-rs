@@ -1,20 +1,20 @@
-type TestMat = (
+pub type TestMat = (
     &'static [usize],
     &'static [usize],
     &'static [usize],
     &'static [f64],
 );
 
-type TestMatCplx = (
+pub type TestMatCplx = (
     &'static [usize],
     &'static [usize],
     &'static [usize],
     &'static [Complex<f64>],
 );
 
-const __TEMPLATE: TestMat = (&[], &[], &[], &[]);
+pub const __TEMPLATE: TestMat = (&[], &[], &[], &[]);
 
-const SMALL: TestMat = (
+pub const SMALL: TestMat = (
     &[0, 7, 8, 9, 12, 5, 6, 3, 10, 4, 1, 2, 11, 13, 14, 15],
     &[0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 14, 18, 20, 21, 22, 23],
     &[
@@ -26,7 +26,7 @@ const SMALL: TestMat = (
     ],
 );
 
-const MEDIUM: TestMat = (
+pub const MEDIUM: TestMat = (
     &[
         20, 26, 108, 101, 22, 14, 25, 59, 72, 66, 21, 123, 8, 69, 99, 120, 24, 75, 42, 117, 58, 85,
         35, 11, 87, 70, 94, 49, 12, 55, 118, 109, 111, 7, 88, 121, 6, 30, 79, 68, 104, 17, 0, 32,
@@ -148,7 +148,7 @@ const MEDIUM: TestMat = (
     ],
 );
 
-const MEDIUM_P: TestMatCplx = (
+pub const MEDIUM_P: TestMatCplx = (
     &[],
     &[
         0, 1, 2, 3, 5, 8, 9, 10, 13, 14, 15, 16, 20, 21, 23, 24, 26, 29, 33, 36, 37, 39, 40, 41,
@@ -3959,7 +3959,7 @@ const MEDIUM_P: TestMatCplx = (
     ],
 );
 
-const QSCTAP2: TestMat = (
+pub const QSCTAP2: TestMat = (
     &[],
     &[
         0, 1, 2, 4, 7, 8, 9, 11, 14, 15, 16, 18, 21, 22, 26, 31, 37, 38, 42, 47, 53, 54, 55, 57,
@@ -5167,4 +5167,4 @@ const QSCTAP2: TestMat = (
 );
 
 #[allow(dead_code)]
-const ALL: &[(&str, TestMat)] = &[("small", SMALL), ("medium", MEDIUM), ("", QSCTAP2)];
+pub const ALL: &[(&str, TestMat)] = &[("small", SMALL), ("medium", MEDIUM), ("", QSCTAP2)];

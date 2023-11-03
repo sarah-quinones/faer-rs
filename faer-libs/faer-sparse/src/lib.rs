@@ -1,4 +1,4 @@
-// TODO: document safety requirements
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
@@ -77,13 +77,10 @@ fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerError> {
 
 #[inline]
 #[track_caller]
-fn try_collect<I: IntoIterator>(iter: I) -> Result<Vec<I::Item>, FaerError>
-where
-    I::IntoIter: ExactSizeIterator,
-{
+fn try_collect<I: IntoIterator>(iter: I) -> Result<Vec<I::Item>, FaerError> {
     let iter = iter.into_iter();
     let mut v = Vec::new();
-    v.try_reserve_exact(iter.len()).map_err(nomem)?;
+    v.try_reserve_exact(iter.size_hint().0).map_err(nomem)?;
     v.extend(iter);
     Ok(v)
 }
@@ -120,8 +117,33 @@ fn make_raw<E: Entity>(size: usize, stack: PodStack<'_>) -> (SliceGroupMut<'_, E
     (SliceGroupMut::new(array), stack)
 }
 
+#[cfg(test)]
+macro_rules! monomorphize_test {
+    ($name: ident) => {
+        monomorphize_test!($name, u32);
+        monomorphize_test!($name, u64);
+    };
+
+    ($name: ident, $ty: ident) => {
+        paste::paste! {
+            #[test]
+            fn [<$name _ $ty>]() {
+                $name::<$ty>();
+            }
+        }
+    };
+}
+
+pub mod colamd;
 pub mod amd;
+
 pub mod cholesky;
+
+// [wip]
+#[doc(hidden)]
+pub mod lu;
+#[doc(hidden)]
+pub mod qr;
 
 mod ghost;
 
