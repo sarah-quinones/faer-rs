@@ -110,7 +110,7 @@
 //!
 //! // compute R_rect^{-1} Q_thin^H×B
 //! solve::solve_upper_triangular_in_place(
-//!     qr.as_ref().split_at_row(rank)[0],
+//!     qr.as_ref().split_at_row(rank).0,
 //!     solution.as_mut(),
 //!     Parallelism::None,
 //! );
@@ -225,7 +225,7 @@ mod tests {
 
         // compute R_rect^{-1} Q_thin^H×B
         solve::solve_upper_triangular_in_place(
-            qr.as_ref().split_at_row(rank)[0],
+            qr.as_ref().split_at_row(rank).0,
             solution.as_mut(),
             Parallelism::None,
         );

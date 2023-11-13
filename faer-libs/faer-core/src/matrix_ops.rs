@@ -1,10 +1,20 @@
 //! addition and subtraction of matrices
 
 use super::*;
-use crate::permutation::{Index, SignedIndex};
-#[cfg(feature = "std")]
-use assert2::assert;
+use crate::{
+    assert,
+    permutation::{Index, SignedIndex},
+};
 
+pub struct Scalar {
+    __private: (),
+}
+pub struct DenseCol {
+    __private: (),
+}
+pub struct DenseRow {
+    __private: (),
+}
 pub struct Dense {
     __private: (),
 }
@@ -27,6 +37,21 @@ type KindRef<'a, E, K> = <K as MatrixKind>::Ref<'a, E>;
 type KindMut<'a, E, K> = <K as MatrixKind>::Mut<'a, E>;
 type KindOwn<E, K> = <K as MatrixKind>::Own<E>;
 
+impl MatrixKind for Scalar {
+    type Ref<'a, E: Entity> = &'a E;
+    type Mut<'a, E: Entity> = &'a mut E;
+    type Own<E: Entity> = E;
+}
+impl MatrixKind for DenseCol {
+    type Ref<'a, E: Entity> = ColRef<'a, E>;
+    type Mut<'a, E: Entity> = ColMut<'a, E>;
+    type Own<E: Entity> = Col<E>;
+}
+impl MatrixKind for DenseRow {
+    type Ref<'a, E: Entity> = RowRef<'a, E>;
+    type Mut<'a, E: Entity> = RowMut<'a, E>;
+    type Own<E: Entity> = Row<E>;
+}
 impl MatrixKind for Dense {
     type Ref<'a, E: Entity> = MatRef<'a, E>;
     type Mut<'a, E: Entity> = MatMut<'a, E>;
@@ -83,6 +108,86 @@ impl<I: Index, E: Entity> GenericMatrix for inner::PermOwn<I, E> {
     #[inline(always)]
     fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
         this.as_ref()
+    }
+}
+
+impl<E: Entity> GenericMatrix for inner::DenseRowRef<'_, E> {
+    type Kind = DenseRow;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        *this
+    }
+}
+impl<E: Entity> GenericMatrix for inner::DenseRowMut<'_, E> {
+    type Kind = DenseRow;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.rb()
+    }
+}
+impl<E: Entity> GenericMatrix for inner::DenseRowOwn<E> {
+    type Kind = DenseRow;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.as_ref()
+    }
+}
+impl<E: Entity> GenericMatrixMut for inner::DenseRowMut<'_, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.rb_mut()
+    }
+}
+impl<E: Entity> GenericMatrixMut for inner::DenseRowOwn<E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.as_mut()
+    }
+}
+
+impl<E: Entity> GenericMatrix for inner::DenseColRef<'_, E> {
+    type Kind = DenseCol;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        *this
+    }
+}
+impl<E: Entity> GenericMatrix for inner::DenseColMut<'_, E> {
+    type Kind = DenseCol;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.rb()
+    }
+}
+impl<E: Entity> GenericMatrix for inner::DenseColOwn<E> {
+    type Kind = DenseCol;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.as_ref()
+    }
+}
+impl<E: Entity> GenericMatrixMut for inner::DenseColMut<'_, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.rb_mut()
+    }
+}
+impl<E: Entity> GenericMatrixMut for inner::DenseColOwn<E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.as_mut()
     }
 }
 
@@ -185,6 +290,28 @@ impl<E: Entity> GenericMatrixMut for inner::Scale<E> {
 mod __matmul_assign {
     use super::*;
 
+    impl MatMulAssign<Scale> for DenseCol {
+        #[track_caller]
+        fn mat_mul_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+            lhs: KindMut<'_, E, DenseCol>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) {
+            let rhs = rhs.value().canonicalize();
+            zipped!(lhs.as_2d_mut())
+                .for_each(|unzipped!(mut lhs)| lhs.write(lhs.read().faer_mul(rhs)));
+        }
+    }
+    impl MatMulAssign<Scale> for DenseRow {
+        #[track_caller]
+        fn mat_mul_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+            lhs: KindMut<'_, E, DenseRow>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) {
+            let rhs = rhs.value().canonicalize();
+            zipped!(lhs.as_2d_mut())
+                .for_each(|unzipped!(mut lhs)| lhs.write(lhs.read().faer_mul(rhs)));
+        }
+    }
     impl MatMulAssign<Scale> for Dense {
         #[track_caller]
         fn mat_mul_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
@@ -192,7 +319,7 @@ mod __matmul_assign {
             rhs: KindRef<'_, RhsE, Scale>,
         ) {
             let rhs = rhs.value().canonicalize();
-            zipped!(lhs).for_each(|mut lhs| lhs.write(lhs.read().faer_mul(rhs)));
+            zipped!(lhs).for_each(|unzipped!(mut lhs)| lhs.write(lhs.read().faer_mul(rhs)));
         }
     }
     impl MatMulAssign<Scale> for Scale {
@@ -212,19 +339,16 @@ mod __matmul_assign {
             lhs: KindMut<'_, E, Diag>,
             rhs: KindRef<'_, RhsE, Diag>,
         ) {
-            zipped!(lhs.inner.inner, rhs.inner.inner)
-                .for_each(|mut lhs, rhs| lhs.write(lhs.read().faer_mul(rhs.read().canonicalize())));
+            zipped!(lhs.inner.inner.as_2d_mut(), rhs.inner.inner.as_2d()).for_each(
+                |unzipped!(mut lhs, rhs)| lhs.write(lhs.read().faer_mul(rhs.read().canonicalize())),
+            );
         }
     }
 }
 
 mod __matmul {
-
-    use crate::permutation::Permutation;
-
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::{assert, permutation::Permutation};
 
     impl<I: Index> MatMul<Perm<I>> for Perm<I> {
         type Output = Perm<I>;
@@ -240,8 +364,8 @@ mod __matmul {
         ) -> KindOwn<E, Self::Output> {
             assert!(lhs.len() == rhs.len());
             let truncate = <I::Signed as SignedIndex>::truncate;
-            let mut fwd = vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
-            let mut inv = vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+            let mut fwd = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
+            let mut inv = alloc::vec![I::from_signed(truncate(0)); lhs.len()].into_boxed_slice();
 
             for (fwd, rhs) in fwd.iter_mut().zip(rhs.inner.forward) {
                 *fwd = lhs.inner.forward[rhs.to_signed().zx()];
@@ -257,6 +381,28 @@ mod __matmul {
                     __marker: core::marker::PhantomData,
                 },
             }
+        }
+    }
+
+    impl<I: Index> MatMul<DenseCol> for Perm<I> {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Perm<I>>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.len() == rhs.nrows());
+            let mut out = Col::zeros(rhs.nrows());
+            let fwd = lhs.inner.forward;
+            for (i, fwd) in fwd.iter().enumerate() {
+                out.write(i, rhs.read(fwd.to_signed().zx()).canonicalize());
+            }
+            out
         }
     }
     impl<I: Index> MatMul<Dense> for Perm<I> {
@@ -279,6 +425,28 @@ mod __matmul {
                 for (i, fwd) in fwd.iter().enumerate() {
                     out.write(i, j, rhs.read(fwd.to_signed().zx(), j).canonicalize());
                 }
+            }
+            out
+        }
+    }
+    impl<I: Index> MatMul<Perm<I>> for DenseRow {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, DenseRow>,
+            rhs: KindRef<'_, RhsE, Perm<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.ncols() == rhs.len());
+            let mut out = Row::zeros(lhs.ncols());
+            let inv = rhs.inner.inverse;
+
+            for (j, inv) in inv.iter().enumerate() {
+                out.write(j, lhs.read(inv.to_signed().zx()).canonicalize());
             }
             out
         }
@@ -308,6 +476,272 @@ mod __matmul {
         }
     }
 
+    impl MatMul<DenseCol> for Scale {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Scale>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Col::<E>::zeros(rhs.nrows());
+            let lhs = lhs.inner.0.canonicalize();
+            zipped!(out.as_mut().as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut out, rhs)| {
+                out.write(E::faer_mul(lhs, rhs.read().canonicalize()))
+            });
+            out
+        }
+    }
+    impl MatMul<Scale> for DenseCol {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, DenseCol>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Col::<E>::zeros(lhs.nrows());
+            let rhs = rhs.inner.0.canonicalize();
+            zipped!(out.as_mut().as_2d_mut(), lhs.as_2d()).for_each(|unzipped!(mut out, lhs)| {
+                out.write(E::faer_mul(lhs.read().canonicalize(), rhs))
+            });
+            out
+        }
+    }
+    impl MatMul<DenseRow> for Scale {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Scale>,
+            rhs: KindRef<'_, RhsE, DenseRow>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Row::<E>::zeros(rhs.nrows());
+            let lhs = lhs.inner.0.canonicalize();
+            zipped!(out.as_mut().as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut out, rhs)| {
+                out.write(E::faer_mul(lhs, rhs.read().canonicalize()))
+            });
+            out
+        }
+    }
+    impl MatMul<Scale> for DenseRow {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, DenseRow>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Row::<E>::zeros(lhs.nrows());
+            let rhs = rhs.inner.0.canonicalize();
+            zipped!(out.as_mut().as_2d_mut(), lhs.as_2d()).for_each(|unzipped!(mut out, lhs)| {
+                out.write(E::faer_mul(lhs.read().canonicalize(), rhs))
+            });
+            out
+        }
+    }
+    impl MatMul<Dense> for Scale {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Scale>,
+            rhs: KindRef<'_, RhsE, Dense>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::<E>::zeros(rhs.nrows(), rhs.ncols());
+            let lhs = lhs.inner.0.canonicalize();
+            zipped!(out.as_mut(), rhs).for_each(|unzipped!(mut out, rhs)| {
+                out.write(E::faer_mul(lhs, rhs.read().canonicalize()))
+            });
+            out
+        }
+    }
+    impl MatMul<Scale> for Dense {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Dense>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::<E>::zeros(lhs.nrows(), lhs.ncols());
+            let rhs = rhs.inner.0.canonicalize();
+            zipped!(out.as_mut(), lhs).for_each(|unzipped!(mut out, lhs)| {
+                out.write(E::faer_mul(lhs.read().canonicalize(), rhs))
+            });
+            out
+        }
+    }
+    impl MatMul<Scale> for Scale {
+        type Output = Scale;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Scale>,
+            rhs: KindRef<'_, RhsE, Scale>,
+        ) -> KindOwn<E, Self::Output> {
+            scale(E::faer_mul(
+                lhs.inner.0.canonicalize(),
+                rhs.inner.0.canonicalize(),
+            ))
+        }
+    }
+
+    impl MatMul<Diag> for DenseRow {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, DenseRow>,
+            rhs: KindRef<'_, RhsE, Diag>,
+        ) -> KindOwn<E, Self::Output> {
+            let lhs_ncols = lhs.ncols();
+            let rhs_dim = rhs.inner.inner.nrows();
+            assert!(lhs_ncols == rhs_dim);
+
+            Row::from_fn(lhs_ncols, |j| unsafe {
+                E::faer_mul(
+                    lhs.read_unchecked(j).canonicalize(),
+                    rhs.inner.inner.read_unchecked(j).canonicalize(),
+                )
+            })
+        }
+    }
+    impl MatMul<Diag> for Dense {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Dense>,
+            rhs: KindRef<'_, RhsE, Diag>,
+        ) -> KindOwn<E, Self::Output> {
+            let lhs_ncols = lhs.ncols();
+            let rhs_dim = rhs.inner.inner.nrows();
+            assert!(lhs_ncols == rhs_dim);
+
+            Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| unsafe {
+                E::faer_mul(
+                    lhs.read_unchecked(i, j).canonicalize(),
+                    rhs.inner.inner.read_unchecked(j).canonicalize(),
+                )
+            })
+        }
+    }
+
+    impl MatMul<DenseCol> for Diag {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Diag>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
+        ) -> KindOwn<E, Self::Output> {
+            let lhs_dim = lhs.inner.inner.nrows();
+            let rhs_nrows = rhs.nrows();
+            assert!(lhs_dim == rhs_nrows);
+
+            Col::from_fn(rhs.nrows(), |i| unsafe {
+                E::faer_mul(
+                    lhs.inner.inner.read_unchecked(i).canonicalize(),
+                    rhs.read_unchecked(i).canonicalize(),
+                )
+            })
+        }
+    }
+    impl MatMul<Dense> for Diag {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Diag>,
+            rhs: KindRef<'_, RhsE, Dense>,
+        ) -> KindOwn<E, Self::Output> {
+            let lhs_dim = lhs.inner.inner.nrows();
+            let rhs_nrows = rhs.nrows();
+            assert!(lhs_dim == rhs_nrows);
+
+            Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| unsafe {
+                E::faer_mul(
+                    lhs.inner.inner.read_unchecked(i).canonicalize(),
+                    rhs.read_unchecked(i, j).canonicalize(),
+                )
+            })
+        }
+    }
+
+    impl MatMul<Diag> for Diag {
+        type Output = Diag;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Diag>,
+            rhs: KindRef<'_, RhsE, Diag>,
+        ) -> KindOwn<E, Self::Output> {
+            let lhs_dim = lhs.inner.inner.nrows();
+            let rhs_dim = rhs.inner.inner.nrows();
+            assert!(lhs_dim == rhs_dim);
+
+            Matrix {
+                inner: DiagOwn {
+                    inner: Col::from_fn(lhs_dim, |i| unsafe {
+                        E::faer_mul(
+                            lhs.inner.inner.read_unchecked(i).canonicalize(),
+                            rhs.inner.inner.read_unchecked(i).canonicalize(),
+                        )
+                    }),
+                },
+            }
+        }
+    }
+
     impl MatMul<Dense> for Dense {
         type Output = Dense;
 
@@ -333,27 +767,9 @@ mod __matmul {
             out
         }
     }
-    impl MatMul<Dense> for Scale {
-        type Output = Dense;
 
-        #[track_caller]
-        fn mat_mul<
-            E: ComplexField,
-            LhsE: Conjugate<Canonical = E>,
-            RhsE: Conjugate<Canonical = E>,
-        >(
-            lhs: KindRef<'_, LhsE, Scale>,
-            rhs: KindRef<'_, RhsE, Dense>,
-        ) -> KindOwn<E, Self::Output> {
-            let mut out = Mat::zeros(rhs.nrows(), rhs.ncols());
-            let lhs = lhs.inner.0.canonicalize();
-            zipped!(out.as_mut(), rhs)
-                .for_each(|mut out, rhs| out.write(E::faer_mul(lhs, rhs.read().canonicalize())));
-            out
-        }
-    }
-    impl MatMul<Scale> for Dense {
-        type Output = Dense;
+    impl MatMul<DenseCol> for Dense {
+        type Output = DenseCol;
 
         #[track_caller]
         fn mat_mul<
@@ -362,17 +778,23 @@ mod __matmul {
             RhsE: Conjugate<Canonical = E>,
         >(
             lhs: KindRef<'_, LhsE, Dense>,
-            rhs: KindRef<'_, RhsE, Scale>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
         ) -> KindOwn<E, Self::Output> {
-            let mut out = Mat::zeros(lhs.nrows(), lhs.ncols());
-            let rhs = rhs.inner.0.canonicalize();
-            zipped!(out.as_mut(), lhs)
-                .for_each(|mut out, lhs| out.write(E::faer_mul(lhs.read().canonicalize(), rhs)));
+            assert!(lhs.ncols() == rhs.nrows());
+            let mut out = Col::zeros(lhs.nrows());
+            mul::matmul(
+                out.as_mut().as_2d_mut(),
+                lhs,
+                rhs.as_2d(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
             out
         }
     }
-    impl MatMul<Scale> for Scale {
-        type Output = Scale;
+    impl MatMul<Dense> for DenseRow {
+        type Output = DenseRow;
 
         #[track_caller]
         fn mat_mul<
@@ -380,68 +802,25 @@ mod __matmul {
             LhsE: Conjugate<Canonical = E>,
             RhsE: Conjugate<Canonical = E>,
         >(
-            lhs: KindRef<'_, LhsE, Scale>,
-            rhs: KindRef<'_, RhsE, Scale>,
-        ) -> KindOwn<E, Self::Output> {
-            scale(E::faer_mul(
-                lhs.inner.0.canonicalize(),
-                rhs.inner.0.canonicalize(),
-            ))
-        }
-    }
-
-    impl MatMul<Diag> for Dense {
-        type Output = Dense;
-
-        #[track_caller]
-        fn mat_mul<
-            E: ComplexField,
-            LhsE: Conjugate<Canonical = E>,
-            RhsE: Conjugate<Canonical = E>,
-        >(
-            lhs: KindRef<'_, LhsE, Dense>,
-            rhs: KindRef<'_, RhsE, Diag>,
-        ) -> KindOwn<E, Self::Output> {
-            let lhs_ncols = lhs.ncols();
-            let rhs_dim = rhs.inner.inner.nrows();
-            assert!(lhs_ncols == rhs_dim);
-
-            Mat::from_fn(lhs.nrows(), lhs.ncols(), |i, j| unsafe {
-                E::faer_mul(
-                    lhs.read_unchecked(i, j).canonicalize(),
-                    rhs.inner.inner.read_unchecked(j, 0).canonicalize(),
-                )
-            })
-        }
-    }
-
-    impl MatMul<Dense> for Diag {
-        type Output = Dense;
-
-        #[track_caller]
-        fn mat_mul<
-            E: ComplexField,
-            LhsE: Conjugate<Canonical = E>,
-            RhsE: Conjugate<Canonical = E>,
-        >(
-            lhs: KindRef<'_, LhsE, Diag>,
+            lhs: KindRef<'_, LhsE, DenseRow>,
             rhs: KindRef<'_, RhsE, Dense>,
         ) -> KindOwn<E, Self::Output> {
-            let lhs_dim = lhs.inner.inner.nrows();
-            let rhs_nrows = rhs.nrows();
-            assert!(lhs_dim == rhs_nrows);
-
-            Mat::from_fn(rhs.nrows(), rhs.ncols(), |i, j| unsafe {
-                E::faer_mul(
-                    lhs.inner.inner.read_unchecked(i, 0).canonicalize(),
-                    rhs.read_unchecked(i, j).canonicalize(),
-                )
-            })
+            assert!(lhs.ncols() == rhs.nrows());
+            let mut out = Row::zeros(lhs.nrows());
+            mul::matmul(
+                out.as_mut().as_2d_mut(),
+                lhs.as_2d(),
+                rhs,
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
         }
     }
 
-    impl MatMul<Diag> for Diag {
-        type Output = Diag;
+    impl MatMul<DenseCol> for DenseRow {
+        type Output = Scalar;
 
         #[track_caller]
         fn mat_mul<
@@ -449,23 +828,45 @@ mod __matmul {
             LhsE: Conjugate<Canonical = E>,
             RhsE: Conjugate<Canonical = E>,
         >(
-            lhs: KindRef<'_, LhsE, Diag>,
-            rhs: KindRef<'_, RhsE, Diag>,
+            lhs: KindRef<'_, LhsE, DenseRow>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
         ) -> KindOwn<E, Self::Output> {
-            let lhs_dim = lhs.inner.inner.nrows();
-            let rhs_dim = rhs.inner.inner.nrows();
-            assert!(lhs_dim == rhs_dim);
+            assert!(lhs.ncols() == rhs.nrows());
+            let (lhs, conj_lhs) = lhs.canonicalize();
+            let (rhs, conj_rhs) = rhs.canonicalize();
 
-            Matrix {
-                inner: DiagOwn {
-                    inner: Mat::from_fn(lhs_dim, 1, |i, _| unsafe {
-                        E::faer_mul(
-                            lhs.inner.inner.read_unchecked(i, 0).canonicalize(),
-                            rhs.inner.inner.read_unchecked(i, 0).canonicalize(),
-                        )
-                    }),
-                },
-            }
+            crate::mul::inner_prod::inner_prod_with_conj(
+                lhs.transpose().as_2d(),
+                conj_lhs,
+                rhs.as_2d(),
+                conj_rhs,
+            )
+        }
+    }
+
+    impl MatMul<DenseRow> for DenseCol {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, DenseCol>,
+            rhs: KindRef<'_, RhsE, DenseRow>,
+        ) -> KindOwn<E, Self::Output> {
+            assert!(lhs.ncols() == rhs.nrows());
+            let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
+            mul::matmul(
+                out.as_mut(),
+                lhs.as_2d(),
+                rhs.as_2d(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
         }
     }
 }
@@ -587,6 +988,25 @@ impl<I: Index> MatEq<Perm<I>> for Perm<I> {
     }
 }
 
+impl MatEq<DenseCol> for DenseCol {
+    #[track_caller]
+    fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> bool {
+        lhs.as_2d() == rhs.as_2d()
+    }
+}
+impl MatEq<DenseRow> for DenseRow {
+    #[track_caller]
+    fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> bool {
+        lhs.as_2d() == rhs.as_2d()
+    }
+}
+
 impl MatEq<Dense> for Dense {
     #[track_caller]
     fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
@@ -610,6 +1030,164 @@ impl MatEq<Dense> for Dense {
     }
 }
 
+impl MatAdd<DenseCol> for DenseCol {
+    type Output = DenseCol;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        let mut out = Col::<E>::zeros(lhs.nrows());
+        zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
+            |unzipped!(mut out, lhs, rhs)| {
+                out.write(E::faer_add(
+                    lhs.read().canonicalize(),
+                    rhs.read().canonicalize(),
+                ))
+            },
+        );
+        out
+    }
+}
+impl MatSub<DenseCol> for DenseCol {
+    type Output = DenseCol;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        let mut out = Col::<E>::zeros(lhs.nrows());
+        zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
+            |unzipped!(mut out, lhs, rhs)| {
+                out.write(E::faer_sub(
+                    lhs.read().canonicalize(),
+                    rhs.read().canonicalize(),
+                ))
+            },
+        );
+        out
+    }
+}
+impl MatAddAssign<DenseCol> for DenseCol {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, DenseCol>,
+        rhs: KindRef<'_, RhsE, DenseCol>,
+    ) {
+        zipped!(lhs.as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
+        });
+    }
+}
+impl MatSubAssign<DenseCol> for DenseCol {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, DenseCol>,
+        rhs: KindRef<'_, RhsE, DenseCol>,
+    ) {
+        zipped!(lhs.as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
+        });
+    }
+}
+
+impl MatNeg for DenseCol {
+    type Output = DenseCol;
+
+    fn mat_neg<E: Conjugate>(mat: KindRef<'_, E, Self>) -> KindOwn<E::Canonical, Self::Output>
+    where
+        E::Canonical: ComplexField,
+    {
+        let mut out = Col::<E::Canonical>::zeros(mat.nrows());
+        zipped!(out.as_mut().as_2d_mut(), mat.as_2d())
+            .for_each(|unzipped!(mut out, src)| out.write(src.read().canonicalize().faer_neg()));
+        out
+    }
+}
+
+impl MatAdd<DenseRow> for DenseRow {
+    type Output = DenseRow;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        let mut out = Row::<E>::zeros(lhs.nrows());
+        zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
+            |unzipped!(mut out, lhs, rhs)| {
+                out.write(E::faer_add(
+                    lhs.read().canonicalize(),
+                    rhs.read().canonicalize(),
+                ))
+            },
+        );
+        out
+    }
+}
+impl MatSub<DenseRow> for DenseRow {
+    type Output = DenseRow;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        let mut out = Row::<E>::zeros(lhs.nrows());
+        zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
+            |unzipped!(mut out, lhs, rhs)| {
+                out.write(E::faer_sub(
+                    lhs.read().canonicalize(),
+                    rhs.read().canonicalize(),
+                ))
+            },
+        );
+        out
+    }
+}
+impl MatAddAssign<DenseRow> for DenseRow {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, DenseRow>,
+        rhs: KindRef<'_, RhsE, DenseRow>,
+    ) {
+        zipped!(lhs.as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
+        });
+    }
+}
+impl MatSubAssign<DenseRow> for DenseRow {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, DenseRow>,
+        rhs: KindRef<'_, RhsE, DenseRow>,
+    ) {
+        zipped!(lhs.as_2d_mut(), rhs.as_2d()).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
+        });
+    }
+}
+
+impl MatNeg for DenseRow {
+    type Output = DenseRow;
+
+    fn mat_neg<E: Conjugate>(mat: KindRef<'_, E, Self>) -> KindOwn<E::Canonical, Self::Output>
+    where
+        E::Canonical: ComplexField,
+    {
+        let mut out = Row::<E::Canonical>::zeros(mat.nrows());
+        zipped!(out.as_mut().as_2d_mut(), mat.as_2d())
+            .for_each(|unzipped!(mut out, src)| out.write(src.read().canonicalize().faer_neg()));
+        out
+    }
+}
+
 impl MatAdd<Dense> for Dense {
     type Output = Dense;
 
@@ -619,8 +1197,8 @@ impl MatAdd<Dense> for Dense {
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
         assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
-        let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-        zipped!(out.as_mut(), lhs, rhs).for_each(|mut out, lhs, rhs| {
+        let mut out = Mat::<E>::zeros(lhs.nrows(), rhs.ncols());
+        zipped!(out.as_mut(), lhs, rhs).for_each(|unzipped!(mut out, lhs, rhs)| {
             out.write(E::faer_add(
                 lhs.read().canonicalize(),
                 rhs.read().canonicalize(),
@@ -638,8 +1216,8 @@ impl MatSub<Dense> for Dense {
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
         assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
-        let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
-        zipped!(out.as_mut(), lhs, rhs).for_each(|mut out, lhs, rhs| {
+        let mut out = Mat::<E>::zeros(lhs.nrows(), rhs.ncols());
+        zipped!(out.as_mut(), lhs, rhs).for_each(|unzipped!(mut out, lhs, rhs)| {
             out.write(E::faer_sub(
                 lhs.read().canonicalize(),
                 rhs.read().canonicalize(),
@@ -654,8 +1232,9 @@ impl MatAddAssign<Dense> for Dense {
         lhs: KindMut<'_, E, Dense>,
         rhs: KindRef<'_, RhsE, Dense>,
     ) {
-        zipped!(lhs, rhs)
-            .for_each(|mut lhs, rhs| lhs.write(lhs.read().faer_add(rhs.read().canonicalize())));
+        zipped!(lhs, rhs).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_add(rhs.read().canonicalize()))
+        });
     }
 }
 impl MatSubAssign<Dense> for Dense {
@@ -664,8 +1243,9 @@ impl MatSubAssign<Dense> for Dense {
         lhs: KindMut<'_, E, Dense>,
         rhs: KindRef<'_, RhsE, Dense>,
     ) {
-        zipped!(lhs, rhs)
-            .for_each(|mut lhs, rhs| lhs.write(lhs.read().faer_sub(rhs.read().canonicalize())));
+        zipped!(lhs, rhs).for_each(|unzipped!(mut lhs, rhs)| {
+            lhs.write(lhs.read().faer_sub(rhs.read().canonicalize()))
+        });
     }
 }
 
@@ -676,9 +1256,9 @@ impl MatNeg for Dense {
     where
         E::Canonical: ComplexField,
     {
-        let mut out = Mat::zeros(mat.nrows(), mat.ncols());
+        let mut out = Mat::<E::Canonical>::zeros(mat.nrows(), mat.ncols());
         zipped!(out.as_mut(), mat)
-            .for_each(|mut out, src| out.write(src.read().canonicalize().faer_neg()));
+            .for_each(|unzipped!(mut out, src)| out.write(src.read().canonicalize().faer_neg()));
         out
     }
 }
@@ -990,11 +1570,10 @@ const _: () = {
 #[allow(non_snake_case)]
 mod test {
     use crate::{
-        mat,
+        assert, mat,
         permutation::{Permutation, PermutationRef},
-        Mat,
+        Col, Mat, Row,
     };
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
 
     fn matrices() -> (Mat<f64>, Mat<f64>) {
@@ -1144,6 +1723,20 @@ mod test {
         );
         assert!(&perm_left * &A == &pl * &A);
         assert!(&A * &perm_right == &A * &pr);
+    }
+
+    #[test]
+    fn test_matmul_col_row() {
+        let A = Col::from_fn(6, |i| i as f64);
+        let B = Row::from_fn(6, |j| (5 * j + 1) as f64);
+
+        // outer product
+        assert_eq!(&A * &B, A.as_ref().as_2d() * B.as_ref().as_2d());
+        // inner product
+        assert_eq!(
+            &B * &A,
+            (B.as_ref().as_2d() * A.as_ref().as_2d()).read(0, 0),
+        );
     }
 
     fn assert_matrix_approx_eq(given: Mat<f64>, expected: &Mat<f64>) {

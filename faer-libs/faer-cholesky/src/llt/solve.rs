@@ -1,7 +1,7 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
-use faer_core::{solve, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism};
+use faer_core::{
+    assert, solve, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+};
 use reborrow::*;
 
 /// Computes the size and alignment of required workspace for solving a linear system defined by a
@@ -132,7 +132,7 @@ pub fn solve_with_conj<E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }
 
@@ -199,6 +199,6 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_transpose_in_place_with_conj(cholesky_factor, conj_lhs, dst, parallelism, stack)
 }

@@ -47,7 +47,7 @@ pub fn lu(c: &mut Criterion) {
             let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-plu-{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     partial_pivoting::compute::lu_in_place(
                         copy.as_mut(),
                         &mut perm,
@@ -76,7 +76,7 @@ pub fn lu(c: &mut Criterion) {
             let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-plu-{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     partial_pivoting::compute::lu_in_place(
                         copy.as_mut(),
                         &mut perm,
@@ -109,7 +109,7 @@ pub fn lu(c: &mut Criterion) {
 
             c.bench_function(&format!("faer-st-flu-{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     full_pivoting::compute::lu_in_place(
                         copy.as_mut(),
                         &mut row_perm,
@@ -143,7 +143,7 @@ pub fn lu(c: &mut Criterion) {
             let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-mt-flu-{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     full_pivoting::compute::lu_in_place(
                         copy.as_mut(),
                         &mut row_perm,

@@ -1,11 +1,9 @@
 use super::CholeskyError;
 use crate::ldlt_diagonal::compute::RankUpdate;
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular::BlockStructure, parallelism_degree, solve, zipped, ComplexField, Entity,
-    MatMut, Parallelism, SimdCtx,
+    assert, debug_assert, mul::triangular::BlockStructure, parallelism_degree, solve, unzipped,
+    zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
 use reborrow::*;
 
@@ -41,12 +39,12 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     loop {
         let block_size = 1;
 
-        let [_, _, bottom_left, bottom_right] = matrix.rb_mut().split_at(idx, idx);
-        let [_, l10, _, l20] = bottom_left.into_const().split_at(block_size, 0);
-        let [mut a11, _, a21, _] = bottom_right.split_at(block_size, block_size);
+        let (_, _, bottom_left, bottom_right) = matrix.rb_mut().split_at_mut(idx, idx);
+        let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
+        let (mut a11, _, a21, _) = bottom_right.split_at_mut(block_size, block_size);
 
         let l10 = l10.row(0);
-        let mut a21 = a21.col(0);
+        let mut a21 = a21.col_mut(0);
 
         //
         //      L00
@@ -68,7 +66,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A11 -= L10 × L10^H
         let mut dot = E::Real::faer_zero();
         for j in 0..idx {
-            dot = dot.faer_add(l10.read(0, j).faer_abs2());
+            dot = dot.faer_add(l10.read(j).faer_abs2());
         }
         a11.write(
             0,
@@ -97,18 +95,20 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A21 -= L20 × L10^H
         if a21.row_stride() == 1 {
             arch.dispatch(RankUpdate {
-                a21: a21.rb_mut(),
+                a21: a21.rb_mut().as_2d_mut(),
                 l20,
-                l10,
+                l10: l10.as_2d(),
             });
         } else {
             for j in 0..idx {
                 let l20_col = l20.col(j);
-                let l10_conj = l10.read(0, j).faer_conj();
+                let l10_conj = l10.read(j).faer_conj();
 
-                zipped!(a21.rb_mut(), l20_col).for_each(|mut dst, src| {
-                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
-                });
+                zipped!(a21.rb_mut().as_2d_mut(), l20_col.as_2d()).for_each(
+                    |unzipped!(mut dst, src)| {
+                        dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
+                    },
+                );
             }
         }
 
@@ -118,7 +118,8 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // conj(L11) L21^T = A21^T
 
         let r = l11.faer_real().faer_inv();
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(r)));
+        zipped!(a21.rb_mut().as_2d_mut())
+            .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(r)));
 
         idx += block_size;
     }
@@ -179,7 +180,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
         Ok(())
     } else {
         let block_size = Ord::min(n / 2, 128 * parallelism_degree(parallelism));
-        let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
+        let (mut l00, _, mut a10, mut a11) = matrix.rb_mut().split_at_mut(block_size, block_size);
 
         cholesky_in_place_impl(
             count,
@@ -194,7 +195,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
         solve::solve_lower_triangular_in_place(
             l00.conjugate(),
-            a10.rb_mut().transpose(),
+            a10.rb_mut().transpose_mut(),
             parallelism,
         );
 

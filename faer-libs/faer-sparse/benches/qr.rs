@@ -242,6 +242,5 @@ fn main() {
             time_limit,
         );
         dbg!(single_thread);
-
     }
 }

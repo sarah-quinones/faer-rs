@@ -102,7 +102,7 @@ pub fn solve_in_place<I: Index, E: ComplexField>(
         stack.rb_mut(),
     );
     let size = qr_factors.ncols();
-    permute_rows_in_place(rhs.subrows(0, size), col_perm.inverse(), stack);
+    permute_rows_in_place(rhs.subrows_mut(0, size), col_perm.inverse(), stack);
 }
 
 /// Given the QR factors with column pivoting of a matrix $A$ and a matrix $B$ stored in `rhs`,
@@ -235,8 +235,7 @@ pub fn solve_transpose<I: Index, E: ComplexField>(
 mod tests {
     use super::*;
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
-    use assert2::assert as fancy_assert;
-    use faer_core::{c32, c64, mul::matmul_with_conj, Mat};
+    use faer_core::{assert, c32, c64, mul::matmul_with_conj, Mat};
     use rand::random;
 
     macro_rules! make_stack {
@@ -302,7 +301,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    fancy_assert!(
+                    assert!(
                         (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
                             < epsilon
                     )
@@ -371,7 +370,7 @@ mod tests {
 
             for j in 0..k {
                 for i in 0..n {
-                    fancy_assert!(
+                    assert!(
                         (rhs_reconstructed.read(i, j).faer_sub(rhs.read(i, j))).faer_abs()
                             < epsilon
                     )

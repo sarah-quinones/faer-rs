@@ -1,10 +1,9 @@
-#[cfg(feature = "std")]
-use assert2::debug_assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    debug_assert,
     mul::{inner_prod::inner_prod_with_conj, matmul},
-    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
-    RealField,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism, RealField,
 };
 use reborrow::*;
 
@@ -539,8 +538,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let n = diag.len();
 
     if n <= 1 {
-        zipped!(u.rb_mut().diagonal().into_column_vector())
-            .for_each(|mut x| x.write(E::faer_one()));
+        zipped!(u.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+            .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
         return;
     }
 
@@ -637,20 +636,20 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     diag0[n1 - 1] = diag0[n1 - 1].faer_sub(rho.faer_abs());
     diag1[0] = diag1[0].faer_sub(rho.faer_abs());
 
-    let [mut u0, _, _, mut u1] = u.rb_mut().split_at(n1, n1);
+    let (mut u0, _, _, mut u1) = u.rb_mut().split_at_mut(n1, n1);
     {
         let (pl_before0, pl_before1) = pl_before.split_at_mut(n1);
         let (pl_after0, pl_after1) = pl_after.split_at_mut(n1);
         let (pr0, pr1) = pr.split_at_mut(n1);
         let (run_info0, run_info1) = run_info.split_at_mut(n1);
-        let [z0, z1] = z.rb_mut().split_at_row(n1);
-        let [permuted_diag0, permuted_diag1] = permuted_diag.rb_mut().split_at_row(n1);
-        let [permuted_z0, permuted_z1] = permuted_z.rb_mut().split_at_row(n1);
-        let [householder0, householder1] = householder.rb_mut().split_at_row(n1);
-        let [mus0, mus1] = mus.rb_mut().split_at_row(n1);
-        let [shift0, shift1] = shifts.rb_mut().split_at_row(n1);
-        let [repaired_u0, repaired_u1] = repaired_u.rb_mut().split_at_col(n1);
-        let [tmp0, tmp1] = tmp.rb_mut().split_at_col(n1);
+        let (z0, z1) = z.rb_mut().split_at_row_mut(n1);
+        let (permuted_diag0, permuted_diag1) = permuted_diag.rb_mut().split_at_row_mut(n1);
+        let (permuted_z0, permuted_z1) = permuted_z.rb_mut().split_at_row_mut(n1);
+        let (householder0, householder1) = householder.rb_mut().split_at_row_mut(n1);
+        let (mus0, mus1) = mus.rb_mut().split_at_row_mut(n1);
+        let (shift0, shift1) = shifts.rb_mut().split_at_row_mut(n1);
+        let (repaired_u0, repaired_u1) = repaired_u.rb_mut().split_at_col_mut(n1);
+        let (tmp0, tmp1) = tmp.rb_mut().split_at_col_mut(n1);
 
         faer_core::join_raw(
             |parallelism| {
@@ -700,8 +699,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             parallelism,
         );
     }
-    let mut repaired_u = repaired_u.subrows(0, n);
-    let mut tmp = tmp.subrows(0, n);
+    let mut repaired_u = repaired_u.subrows_mut(0, n);
+    let mut tmp = tmp.subrows_mut(0, n);
 
     //     [Q0   0] ([D0   0]            ) [Q0.T     0]
     // T = [ 0  Q1]×([ 0  D1] + rho×z×z.T)×[   0  Q1.T]
@@ -720,17 +719,19 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     //
     // diag([D0 D1]) + rho×z×z.T = Pl_before^-1×H^-1×Pl_after^-1×Q×Pr × E × ...
 
-    let [mut z0, mut z1] = z.rb_mut().split_at_row(n1);
-    zipped!(z0.rb_mut(), u0.rb().row(n1 - 1).transpose()).for_each(|mut z, u| z.write(u.read()));
+    let (mut z0, mut z1) = z.rb_mut().split_at_row_mut(n1);
+    zipped!(z0.rb_mut(), u0.rb().row(n1 - 1).transpose().as_2d())
+        .for_each(|unzipped!(mut z, u)| z.write(u.read()));
     if rho < E::faer_zero() {
-        zipped!(z1.rb_mut(), u1.rb().row(0).transpose())
-            .for_each(|mut z, u| z.write(u.read().faer_neg()));
+        zipped!(z1.rb_mut(), u1.rb().row(0).transpose().as_2d())
+            .for_each(|unzipped!(mut z, u)| z.write(u.read().faer_neg()));
     } else {
-        zipped!(z1.rb_mut(), u1.rb().row(0).transpose()).for_each(|mut z, u| z.write(u.read()));
+        zipped!(z1.rb_mut(), u1.rb().row(0).transpose().as_2d())
+            .for_each(|unzipped!(mut z, u)| z.write(u.read()));
     }
 
     let inv_sqrt2 = E::faer_from_f64(2.0).faer_sqrt().faer_inv();
-    zipped!(z.rb_mut()).for_each(|mut x| x.write(x.read().faer_mul(inv_sqrt2)));
+    zipped!(z.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_sqrt2)));
 
     rho = rho
         .faer_scale_power_of_two(E::faer_from_f64(2.0))
@@ -766,13 +767,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let mut dmax = E::faer_zero();
     let mut zmax = E::faer_zero();
 
-    zipped!(permuted_diag.rb()).for_each(|x| {
+    zipped!(permuted_diag.rb()).for_each(|unzipped!(x)| {
         let x = x.read().faer_abs();
         if x > dmax {
             dmax = x
         }
     });
-    zipped!(permuted_z.rb()).for_each(|x| {
+    zipped!(permuted_z.rb()).for_each(|unzipped!(x)| {
         let x = x.read().faer_abs();
         if x > zmax {
             zmax = x
@@ -789,15 +790,18 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         // copy permuted_diag to diag
         // return
 
-        let [mut tmp_tl, mut tmp_tr, mut tmp_bl, mut tmp_br] = tmp.rb_mut().split_at(n1, n1);
-        zipped!(tmp_tl.rb_mut(), u0.rb()).for_each(|mut dst, src| dst.write(src.read()));
-        zipped!(tmp_br.rb_mut(), u1.rb()).for_each(|mut dst, src| dst.write(src.read()));
-        zipped!(tmp_tr.rb_mut()).for_each(|mut dst| dst.write(E::faer_zero()));
-        zipped!(tmp_bl.rb_mut()).for_each(|mut dst| dst.write(E::faer_zero()));
+        let (mut tmp_tl, mut tmp_tr, mut tmp_bl, mut tmp_br) = tmp.rb_mut().split_at_mut(n1, n1);
+        zipped!(tmp_tl.rb_mut(), u0.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+        zipped!(tmp_br.rb_mut(), u1.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+        zipped!(tmp_tr.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+        zipped!(tmp_bl.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
 
         for (j, &dst_j) in pl_before.iter().enumerate() {
-            zipped!(u.rb_mut().col(dst_j), tmp.rb().col(j))
-                .for_each(|mut dst, src| dst.write(src.read()));
+            zipped!(
+                u.rb_mut().col_mut(dst_j).as_2d_mut(),
+                tmp.rb().col(j).as_2d()
+            )
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         }
 
         for (j, diag) in diag.iter_mut().enumerate() {
@@ -837,23 +841,28 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         if run_len > 1 {
             applied_householder = true;
 
-            let mut householder = householder.rb_mut().subrows(idx, run_len);
-            let mut permuted_z = permuted_z.rb_mut().subrows(idx, run_len);
+            let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
+            let mut permuted_z = permuted_z.rb_mut().subrows_mut(idx, run_len);
 
             zipped!(householder.rb_mut(), permuted_z.rb())
-                .for_each(|mut dst, src| dst.write(src.read()));
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
             let head = householder.read(run_len - 1, 0);
-            let tail_squared_norm = norm2(householder.rb().subrows(0, run_len - 1));
+            let tail_norm = householder.rb().subrows(0, run_len - 1).norm_l2();
 
-            let (tau, beta) = faer_core::householder::make_householder_in_place(
-                Some(householder.rb_mut().subrows(0, run_len - 1).reverse_rows()),
+            let (tau, beta) = faer_core::householder::make_householder_in_place_v2(
+                Some(
+                    householder
+                        .rb_mut()
+                        .subrows_mut(0, run_len - 1)
+                        .reverse_rows_mut(),
+                ),
                 head,
-                tail_squared_norm,
+                tail_norm,
             );
 
             householder.write(run_len - 1, 0, tau);
-            zipped!(permuted_z.rb_mut()).for_each(|mut dst| dst.write(E::faer_zero()));
+            zipped!(permuted_z.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
             permuted_z.write(run_len - 1, 0, beta);
         }
 
@@ -889,8 +898,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     }
 
     // compute eigenvalues
-    let mut mus = mus.subrows(0, n);
-    let mut shifts = shifts.subrows(0, n);
+    let mut mus = mus.subrows_mut(0, n);
+    let mut shifts = shifts.subrows_mut(0, n);
 
     compute_eigenvalues(
         mus.rb_mut(),
@@ -960,7 +969,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // compute singular vectors
     for (j, &pj) in pr.iter().enumerate() {
         if pj >= non_deflated {
-            zipped!(repaired_u.rb_mut().col(j)).for_each(|mut x| x.write(E::faer_zero()));
+            zipped!(repaired_u.rb_mut().col_mut(j).as_2d_mut())
+                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
             repaired_u.write(pl_after[pj], j, E::faer_one());
         } else {
             let mu_j = mus.read(pj, 0);
@@ -980,9 +990,9 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                 repaired_u.write(pl_after, j, E::faer_zero());
             }
 
-            let inv_norm = norm2(repaired_u.rb().col(j)).faer_sqrt().faer_inv();
-            zipped!(repaired_u.rb_mut().col(j))
-                .for_each(|mut x| x.write(x.read().faer_mul(inv_norm)));
+            let inv_norm = norm2(repaired_u.rb().col(j).as_2d()).faer_sqrt().faer_inv();
+            zipped!(repaired_u.rb_mut().col_mut(j).as_2d_mut())
+                .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_norm)));
         }
     }
 
@@ -992,25 +1002,26 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             let run_len = run_info[idx];
 
             if run_len > 1 {
-                let mut householder = householder.rb_mut().subrows(idx, run_len);
+                let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
                 let tau = householder.read(run_len - 1, 0);
                 householder.write(run_len - 1, 0, E::faer_one());
                 let householder = householder.rb();
 
-                let mut repaired_u = repaired_u.rb_mut().subrows(idx, run_len);
+                let mut repaired_u = repaired_u.rb_mut().subrows_mut(idx, run_len);
 
                 let tau_inv = tau.faer_inv();
 
                 for j in 0..n {
-                    let mut col = repaired_u.rb_mut().col(j);
+                    let mut col = repaired_u.rb_mut().col_mut(j);
                     let dot = tau_inv.faer_mul(inner_prod_with_conj(
                         householder,
                         Conj::No,
-                        col.rb(),
+                        col.rb().as_2d(),
                         Conj::No,
                     ));
-                    zipped!(col.rb_mut(), householder)
-                        .for_each(|mut u, h| u.write(u.read().faer_sub(dot.faer_mul(h.read()))));
+                    zipped!(col.rb_mut().as_2d_mut(), householder).for_each(
+                        |unzipped!(mut u, h)| u.write(u.read().faer_sub(dot.faer_mul(h.read()))),
+                    );
                 }
             }
             idx += run_len;
@@ -1038,8 +1049,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     //                  [u0×u'_0]
     // u × repaired_u = [u1×u'_1]
 
-    let [repaired_u_top, repaired_u_bot] = repaired_u.rb().split_at_row(n1);
-    let [tmp_top, tmp_bot] = tmp.rb_mut().split_at_row(n1);
+    let (repaired_u_top, repaired_u_bot) = repaired_u.rb().split_at_row(n1);
+    let (tmp_top, tmp_bot) = tmp.rb_mut().split_at_row_mut(n1);
 
     faer_core::join_raw(
         |parallelism| {
@@ -1065,7 +1076,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         parallelism,
     );
 
-    zipped!(u.rb_mut(), tmp.rb()).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(u.rb_mut(), tmp.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     for i in 0..n {
         let mu_i = mus.read(pr[i], 0);
         let shift_i = shifts.read(pr[i], 0);
@@ -1097,9 +1108,8 @@ pub fn compute_tridiag_real_evd_req<E: Entity>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::Mat;
+    use faer_core::{assert, Mat};
 
     macro_rules! make_stack {
         ($req: expr) => {

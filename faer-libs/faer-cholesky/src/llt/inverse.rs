@@ -1,7 +1,6 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     inverse::invert_lower_triangular,
     mul::triangular::{self, BlockStructure},
     temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,

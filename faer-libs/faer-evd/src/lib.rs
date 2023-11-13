@@ -13,11 +13,10 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "std")]
-use assert2::assert;
 use coe::Coerce;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_req,
         apply_block_householder_sequence_on_the_right_in_place_with_conj,
@@ -27,8 +26,8 @@ use faer_core::{
         inner_prod::inner_prod_with_conj,
         triangular::{self, BlockStructure},
     },
-    temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField, Conj, MatMut, MatRef,
-    Parallelism, RealField,
+    temp_mat_req, temp_mat_uninit, temp_mat_zeroed, unzipped, zipped, ComplexField, Conj, MatMut,
+    MatRef, Parallelism, RealField,
 };
 use faer_qr::no_pivoting::compute::recommended_blocksize;
 pub use hessenberg_cplx_evd::EvdParams;
@@ -183,7 +182,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     }
 
     let mut all_finite = true;
-    zipped!(matrix).for_each_triangular_lower(faer_core::zip::Diag::Include, |x| {
+    zipped!(matrix).for_each_triangular_lower(faer_core::zip::Diag::Include, |unzipped!(x)| {
         all_finite &= x.read().faer_is_finite();
     });
 
@@ -205,13 +204,13 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     let mut trid = trid.as_mut();
 
     zipped!(trid.rb_mut(), matrix)
-        .for_each_triangular_lower(faer_core::zip::Diag::Include, |mut dst, src| {
+        .for_each_triangular_lower(faer_core::zip::Diag::Include, |unzipped!(mut dst, src)| {
             dst.write(src.read())
         });
 
     tridiag::tridiagonalize_in_place(
         trid.rb_mut(),
-        householder.rb_mut().transpose(),
+        householder.rb_mut().transpose_mut(),
         parallelism,
         stack.rb_mut(),
     );
@@ -242,7 +241,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     let mut j_base = 0;
     while j_base < n - 1 {
         let bs = Ord::min(householder_blocksize, n - 1 - j_base);
-        let mut householder = householder.rb_mut().submatrix(0, j_base, bs, bs);
+        let mut householder = householder.rb_mut().submatrix_mut(0, j_base, bs, bs);
         let full_essentials = trid.submatrix(1, 0, n - 1, n);
         let essentials = full_essentials.submatrix(j_base, j_base, n - 1 - j_base, bs);
         for j in 0..bs {
@@ -322,7 +321,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         trid.submatrix(1, 0, n - 1, n - 1),
         householder.rb(),
         Conj::No,
-        u.rb_mut().subrows(1, n - 1),
+        u.rb_mut().subrows_mut(1, n - 1),
         parallelism,
         stack.rb_mut(),
     );
@@ -612,13 +611,13 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
     let (mut h, stack) = temp_mat_uninit(n, n, stack);
 
-    h.clone_from(matrix);
+    h.copy_from(matrix);
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
     z.rb_mut()
-        .diagonal()
-        .into_column_vector()
+        .diagonal_mut()
+        .column_vector_mut()
         .fill(E::faer_one());
 
     {
@@ -628,7 +627,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
         hessenberg::make_hessenberg_in_place(
             h.rb_mut(),
-            householder.rb_mut().transpose(),
+            householder.rb_mut().transpose_mut(),
             parallelism,
             stack.rb_mut(),
         );
@@ -637,7 +636,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                 h.rb().submatrix(1, 0, n - 1, n - 1),
                 householder.rb(),
                 Conj::No,
-                z.rb_mut().submatrix(1, 1, n - 1, n - 1),
+                z.rb_mut().submatrix_mut(1, 1, n - 1, n - 1),
                 parallelism,
                 stack,
             );
@@ -670,7 +669,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
         let mut x = x.as_mut();
 
         let mut norm = zero_threshold;
-        zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
+        zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |unzipped!(x)| {
             norm = norm.faer_add(x.read().faer_abs());
         });
         // subdiagonal
@@ -678,12 +677,13 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             .rb()
             .submatrix(1, 0, n - 1, n - 1)
             .diagonal()
-            .into_column_vector())
-        .for_each(|x| {
+            .column_vector()
+            .as_2d())
+        .for_each(|unzipped!(x)| {
             norm = norm.faer_add(x.read().faer_abs());
         });
 
-        let mut h = h.transpose();
+        let mut h = h.transpose_mut();
 
         for j in 1..n {
             let upper = h.read(j - 1, j);
@@ -730,9 +730,9 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         if i == 0 || h.read(i, i - 1) == E::faer_zero() {
                             // 1x1 block
                             let dot = inner_prod_with_conj(
-                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
+                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
                                 Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1),
+                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
                                 Conj::No,
                             );
 
@@ -749,15 +749,19 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         } else {
                             // 2x2 block
                             let dot0 = inner_prod_with_conj(
-                                h.rb().row(i - 1).subcols(i + 1, k - i - 1).transpose(),
+                                h.rb()
+                                    .row(i - 1)
+                                    .subcols(i + 1, k - i - 1)
+                                    .transpose()
+                                    .as_2d(),
                                 Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1),
+                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
                                 Conj::No,
                             );
                             let dot1 = inner_prod_with_conj(
-                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
+                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
                                 Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1),
+                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
                                 Conj::No,
                             );
 
@@ -833,9 +837,9 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             let start = i + 1;
                             let len = k - 1 - (i + 1);
                             let (dot_re, dot_im) = dot2(
-                                x.rb().col(k - 1).subrows(start, len),
-                                x.rb().col(k).subrows(start, len),
-                                h.rb().transpose().col(i).subrows(start, len),
+                                x.rb().col(k - 1).subrows(start, len).as_2d(),
+                                x.rb().col(k).subrows(start, len).as_2d(),
+                                h.rb().transpose().col(i).subrows(start, len).as_2d(),
                             );
 
                             x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot_re));
@@ -860,10 +864,10 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                             let start = i + 1;
                             let len = k - 1 - (i + 1);
                             let (dot0_re, dot0_im, dot1_re, dot1_im) = dot4(
-                                x.rb().col(k - 1).subrows(start, len),
-                                x.rb().col(k).subrows(start, len),
-                                h.rb().transpose().col(i - 1).subrows(start, len),
-                                h.rb().transpose().col(i).subrows(start, len),
+                                x.rb().col(k - 1).subrows(start, len).as_2d(),
+                                x.rb().col(k).subrows(start, len).as_2d(),
+                                h.rb().transpose().col(i - 1).subrows(start, len).as_2d(),
+                                h.rb().transpose().col(i).subrows(start, len).as_2d(),
                             );
                             let mut dot0 = Complex::<E>::faer_zero();
                             let mut dot1 = Complex::<E>::faer_zero();
@@ -1104,13 +1108,13 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     let (mut h, stack) = temp_mat_uninit(n, n, stack);
     let mut h = h.as_mut();
 
-    h.clone_from(matrix);
+    h.copy_from(matrix);
 
     let (mut z, mut stack) = temp_mat_zeroed::<E>(n, if u.is_some() { n } else { 0 }, stack);
     let mut z = z.as_mut();
     z.rb_mut()
-        .diagonal()
-        .into_column_vector()
+        .diagonal_mut()
+        .column_vector_mut()
         .fill(E::faer_one());
 
     {
@@ -1129,7 +1133,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
                 h.rb().submatrix(1, 0, n - 1, n - 1),
                 householder.rb().transpose(),
                 Conj::No,
-                z.rb_mut().submatrix(1, 1, n - 1, n - 1),
+                z.rb_mut().submatrix_mut(1, 1, n - 1, n - 1),
                 parallelism,
                 stack,
             );
@@ -1161,12 +1165,12 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
         let mut x = x.as_mut();
 
         let mut norm = zero_threshold;
-        zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |x| {
+        zipped!(h.rb()).for_each_triangular_upper(faer_core::zip::Diag::Include, |unzipped!(x)| {
             norm = norm.faer_add(x.read().faer_abs2());
         });
         let norm = norm.faer_sqrt();
 
-        let mut h = h.transpose();
+        let mut h = h.transpose_mut();
 
         for j in 1..n {
             for i in 0..j {
@@ -1180,9 +1184,9 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
                 x.write(i, k, h.read(i, k).faer_neg());
                 if k > i + 1 {
                     let dot = inner_prod_with_conj(
-                        h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
+                        h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
                         Conj::No,
-                        x.rb().col(k).subrows(i + 1, k - i - 1),
+                        x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
                         Conj::No,
                     );
                     x.write(i, k, x.read(i, k).faer_sub(dot));
@@ -1231,9 +1235,8 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 #[cfg(test)]
 mod herm_tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, Mat};
+    use faer_core::{assert, c64, Mat};
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -1251,7 +1254,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1285,7 +1288,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1324,7 +1327,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1362,7 +1365,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1395,7 +1398,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1427,7 +1430,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1454,9 +1457,8 @@ mod herm_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, Mat};
+    use faer_core::{assert, c64, Mat};
     use num_complex::Complex;
 
     macro_rules! make_stack {
@@ -1466,10 +1468,79 @@ mod tests {
     }
 
     #[test]
+    fn test_real_3() {
+        let mat = faer_core::mat![
+            [0.03498524449256035, 0.5246466104879548, 0.20804192188707582,],
+            [0.007467248113335545, 0.1723793560841066, 0.2677423170633869,],
+            [
+                0.5907508388039022,
+                0.11540612644030279,
+                0.2624452803216497f64,
+            ],
+        ];
+
+        let n = mat.nrows();
+
+        let mut s_re = Mat::zeros(n, n);
+        let mut s_im = Mat::zeros(n, n);
+        let mut u_re = Mat::zeros(n, n);
+        let mut u_im = Mat::zeros(n, n);
+
+        compute_evd_real(
+            mat.as_ref(),
+            s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+            s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+            Some(u_re.as_mut()),
+            Parallelism::None,
+            make_stack!(compute_evd_req::<c64>(
+                n,
+                ComputeVectors::Yes,
+                Parallelism::None,
+                Default::default(),
+            )),
+            Default::default(),
+        );
+
+        let mut j = 0;
+        loop {
+            if j == n {
+                break;
+            }
+
+            if s_im.read(j, j) != 0.0 {
+                for i in 0..n {
+                    u_im.write(i, j, u_re.read(i, j + 1));
+                    u_im.write(i, j + 1, -u_re.read(i, j + 1));
+                    u_re.write(i, j + 1, u_re.read(i, j));
+                }
+
+                j += 1;
+            }
+
+            j += 1;
+        }
+
+        let u = Mat::from_fn(n, n, |i, j| Complex::new(u_re.read(i, j), u_im.read(i, j)));
+        let s = Mat::from_fn(n, n, |i, j| Complex::new(s_re.read(i, j), s_im.read(i, j)));
+        let mat = Mat::from_fn(n, n, |i, j| Complex::new(mat.read(i, j), 0.0));
+
+        let left = &mat * &u;
+        let right = &u * &s;
+
+        for j in 0..n {
+            for i in 0..n {
+                assert_approx_eq!(left.read(i, j).re, right.read(i, j).re, 1e-10);
+                assert_approx_eq!(left.read(i, j).im, right.read(i, j).im, 1e-10);
+            }
+        }
+    }
+
+    #[test]
     fn test_real() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [3, 2, 4, 5, 6, 7, 10, 15, 25] {
             for _ in 0..10 {
                 let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+                dbg!(&mat);
 
                 let n = mat.nrows();
 
@@ -1480,8 +1551,8 @@ mod tests {
 
                 compute_evd_real(
                     mat.as_ref(),
-                    s_re.as_mut().diagonal().into_column_vector(),
-                    s_im.as_mut().diagonal().into_column_vector(),
+                    s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                    s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                     Some(u_re.as_mut()),
                     Parallelism::None,
                     make_stack!(compute_evd_req::<c64>(
@@ -1549,8 +1620,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal().into_column_vector(),
-                s_im.as_mut().diagonal().into_column_vector(),
+                s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u_re.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1611,8 +1682,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal().into_column_vector(),
-                s_im.as_mut().diagonal().into_column_vector(),
+                s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u_re.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1669,7 +1740,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1710,7 +1781,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1743,7 +1814,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal().into_column_vector(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_evd_req::<c64>(
@@ -1804,7 +1875,7 @@ mod tests {
 
         compute_evd_complex(
             mat.as_ref(),
-            s.as_mut().diagonal().into_column_vector(),
+            s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
             Some(u.as_mut()),
             Parallelism::None,
             make_stack!(compute_evd_req::<c64>(

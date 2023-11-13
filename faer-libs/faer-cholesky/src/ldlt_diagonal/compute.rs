@@ -1,9 +1,8 @@
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::triangular::BlockStructure, solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField,
-    Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
+    assert, debug_assert, group_helpers::*, mul::triangular::BlockStructure, solve, temp_mat_req,
+    temp_mat_uninit, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -35,65 +34,38 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
             return;
         }
 
-        let lane_count =
-            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
-        let prefix = m % lane_count;
+        let simd = SimdFor::<E, S>::new(simd);
+        let acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut(0));
+        let offset = simd.align_offset(acc.rb());
 
-        let acc = a21.as_ptr();
-        let acc = E::faer_map(
-            acc,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-        );
-
-        let (mut acc_head, acc_tail) = E::faer_unzip(E::faer_map(
-            acc,
-            #[inline(always)]
-            |slice| slice.split_at_mut(prefix),
-        ));
-        let mut acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
+        let (mut acc_head, mut acc_body, mut acc_tail) = simd.as_aligned_simd_mut(acc, offset);
 
         for j in 0..n {
-            let l10_ = unsafe { l10.read_unchecked(0, j).faer_neg().faer_conj() };
-            let l10 = E::faer_simd_splat(simd, l10_);
+            let l10 = simd.splat(l10.read(0, j).faer_neg().faer_conj());
+            let l20 = SliceGroup::<'_, E>::new(l20.try_get_contiguous_col(j));
 
-            let l20 = E::faer_map(
-                l20.ptr_at(0, j),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-            );
-            let (l20_head, l20_tail) = E::faer_unzip(E::faer_map(
-                l20,
-                #[inline(always)]
-                |slice| slice.split_at(prefix),
-            ));
-            let l20_tail = faer_core::simd::slice_as_simd::<E, S>(l20_tail).0;
+            let (l20_head, l20_body, l20_tail) = simd.as_aligned_simd(l20, offset);
 
-            for (acc, l20) in E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(&mut acc_head)))
-                .zip(E::faer_into_iter(l20_head))
-            {
-                let mut acc_ = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc))));
-                let l20 = E::faer_from_units(E::faer_deref(l20));
-                acc_ = E::faer_simd_scalar_mul_adde(simd, l10_, l20, acc_);
-                E::faer_map(
-                    E::faer_zip(acc, acc_.faer_into_units()),
-                    #[inline(always)]
-                    |(acc, acc_)| *acc = acc_,
-                );
+            #[inline(always)]
+            fn process<E: ComplexField, S: pulp::Simd>(
+                simd: SimdFor<E, S>,
+                mut acc: impl Write<Output = SimdGroupFor<E, S>>,
+                l20: impl Read<Output = SimdGroupFor<E, S>>,
+                l10: SimdGroupFor<E, S>,
+            ) {
+                let zero = simd.splat(E::faer_zero());
+                acc.write(simd.mul_add_e(l10, l20.read_or(zero), acc.read_or(zero)));
             }
 
-            for (acc, l20) in E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(&mut acc_tail)))
-                .zip(E::faer_into_iter(l20_tail))
+            process(simd, acc_head.rb_mut(), l20_head, l10);
+            for (acc, l20) in acc_body
+                .rb_mut()
+                .into_mut_iter()
+                .zip(l20_body.into_ref_iter())
             {
-                let mut acc_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
-                let l20 = E::faer_deref(l20);
-                acc_ = E::faer_simd_mul_adde(simd, E::faer_copy(&l10), E::faer_copy(&l20), acc_);
-                E::faer_map(
-                    E::faer_zip(acc, acc_),
-                    #[inline(always)]
-                    |(acc, acc_)| *acc = acc_,
-                );
+                process(simd, acc, l20, l10)
             }
+            process(simd, acc_tail.rb_mut(), l20_tail, l10);
         }
     }
 }
@@ -143,21 +115,26 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         //
         // we already computed L00, L10, L20, and D0. we now compute L11, L21, and D1
 
-        let [top_left, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(idx, idx);
+        let (top_left, top_right, bottom_left, bottom_right) =
+            matrix.rb_mut().split_at_mut(idx, idx);
         let l00 = top_left.into_const();
-        let d0 = l00.diagonal().into_column_vector();
-        let [_, l10, _, l20] = bottom_left.into_const().split_at(block_size, 0);
-        let [mut a11, _, a21, _] = bottom_right.split_at(block_size, block_size);
+        let d0 = l00.diagonal().column_vector();
+        let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
+        let (mut a11, _, a21, _) = bottom_right.split_at_mut(block_size, block_size);
 
         // reserve space for L10×D0
-        let mut l10xd0 = top_right.submatrix(0, 0, idx, block_size).transpose();
+        let mut l10xd0 = top_right
+            .submatrix_mut(0, 0, idx, block_size)
+            .transpose_mut();
 
-        zipped!(l10xd0.rb_mut(), l10, d0.transpose()).for_each(|mut dst, src, factor| {
-            dst.write(
-                src.read()
-                    .faer_scale_real(factor.read().faer_real().faer_inv()),
-            )
-        });
+        zipped!(l10xd0.rb_mut(), l10, d0.transpose().as_2d()).for_each(
+            |unzipped!(mut dst, src, factor)| {
+                dst.write(
+                    src.read()
+                        .faer_scale_real(factor.read().faer_real().faer_inv()),
+                )
+            },
+        );
 
         let l10xd0 = l10xd0.into_const();
 
@@ -165,9 +142,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             .read(0, 0)
             .faer_sub(faer_core::mul::inner_prod::inner_prod_with_conj_arch(
                 arch,
-                l10xd0.row(0).transpose(),
+                l10xd0.row(0).transpose().as_2d(),
                 Conj::Yes,
-                l10.row(0).transpose(),
+                l10.row(0).transpose().as_2d(),
                 Conj::No,
             ))
             .faer_real();
@@ -199,12 +176,12 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             break;
         }
 
-        let mut a21 = a21.col(0);
+        let mut a21 = a21.col_mut(0);
 
         // A21 -= L20 × L10^H
         if a21.row_stride() == 1 {
             arch.dispatch(RankUpdate {
-                a21: a21.rb_mut(),
+                a21: a21.rb_mut().as_2d_mut(),
                 l20,
                 l10: l10xd0,
             });
@@ -213,13 +190,16 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 let l20_col = l20.col(j);
                 let l10_conj = l10xd0.read(0, j).faer_conj();
 
-                zipped!(a21.rb_mut(), l20_col).for_each(|mut dst, src| {
-                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
-                });
+                zipped!(a21.rb_mut().as_2d_mut(), l20_col.as_2d()).for_each(
+                    |unzipped!(mut dst, src)| {
+                        dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
+                    },
+                );
             }
         }
 
-        zipped!(a21.rb_mut()).for_each(|mut x| x.write(x.read().faer_scale_real(d)));
+        zipped!(a21.rb_mut().as_2d_mut())
+            .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d)));
 
         idx += block_size;
     }
@@ -262,7 +242,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     } else {
         let block_size = Ord::min(n / 2, 128);
         let rem = n - block_size;
-        let [mut l00, _, mut a10, mut a11] = matrix.rb_mut().split_at(block_size, block_size);
+        let (mut l00, _, mut a10, mut a11) = matrix.rb_mut().split_at_mut(block_size, block_size);
 
         cholesky_in_place_impl(
             count,
@@ -274,29 +254,31 @@ fn cholesky_in_place_impl<E: ComplexField>(
         );
 
         let l00 = l00.into_const();
-        let d0 = l00.diagonal().into_column_vector();
+        let d0 = l00.diagonal().column_vector();
 
         solve::solve_unit_lower_triangular_in_place(
             l00.conjugate(),
-            a10.rb_mut().transpose(),
+            a10.rb_mut().transpose_mut(),
             parallelism,
         );
 
         {
             // reserve space for L10×D0
-            let (mut l10xd0, _) = temp_mat_uninit(rem, block_size, stack.rb_mut());
+            let (mut l10xd0, _) = temp_mat_uninit::<E>(rem, block_size, stack.rb_mut());
             let mut l10xd0 = l10xd0.as_mut();
 
             for j in 0..block_size {
-                let l10xd0_col = l10xd0.rb_mut().col(j);
-                let a10_col = a10.rb_mut().col(j);
-                let d0_elem = d0.read(j, 0);
+                let l10xd0_col = l10xd0.rb_mut().col_mut(j);
+                let a10_col = a10.rb_mut().col_mut(j);
+                let d0_elem = d0.read(j);
 
-                zipped!(l10xd0_col, a10_col).for_each(|mut l10xd0_elem, mut a10_elem| {
-                    let a10_elem_read = a10_elem.read();
-                    a10_elem.write(a10_elem_read.faer_mul(d0_elem));
-                    l10xd0_elem.write(a10_elem_read);
-                });
+                zipped!(l10xd0_col.as_2d_mut(), a10_col.as_2d_mut()).for_each(
+                    |unzipped!(mut l10xd0_elem, mut a10_elem)| {
+                        let a10_elem_read = a10_elem.read();
+                        a10_elem.write(a10_elem_read.faer_mul(d0_elem));
+                        l10xd0_elem.write(a10_elem_read);
+                    },
+                );
             }
 
             faer_core::mul::triangular::matmul(
@@ -304,7 +286,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 BlockStructure::TriangularLower,
                 a10.into_const(),
                 BlockStructure::Rectangular,
-                l10xd0.adjoint().into_const(),
+                l10xd0.adjoint_mut().into_const(),
                 BlockStructure::Rectangular,
                 Some(E::faer_one()),
                 E::faer_one().faer_neg(),

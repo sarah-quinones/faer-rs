@@ -7,25 +7,28 @@ use crate::{
     hessenberg::make_hessenberg_in_place,
     hessenberg_cplx_evd::{
         default_blocking_threshold, default_nibble_threshold, default_recommended_deflation_window,
-        sqr_norm,
     },
 };
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use dyn_stack::PodStack;
 use faer_core::{
+    assert, debug_assert,
     householder::{
         apply_block_householder_sequence_on_the_right_in_place_with_conj,
         apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
-        make_householder_in_place,
+        make_householder_in_place_v2,
     },
-    mul::{inner_prod::inner_prod_with_conj, matmul},
+    mul::matmul,
+    unzipped,
     zip::Diag,
-    zipped, Conj, MatMut, MatRef, Parallelism, RealField,
+    zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use reborrow::*;
 
 pub use crate::hessenberg_cplx_evd::{multishift_qr_req, EvdParams};
+
+fn hypot<E: RealField>(a: E, b: E) -> E {
+    num_complex::Complex { re: a, im: b }.faer_abs()
+}
 
 fn max<T: PartialOrd>(a: T, b: T) -> T {
     if a > b {
@@ -45,9 +48,7 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
 
 fn sign<E: RealField>(a: E) -> E {
     let zero = E::faer_zero();
-    if a == zero {
-        zero
-    } else if a > zero {
+    if a >= zero {
         E::faer_one()
     } else {
         E::faer_one().faer_neg()
@@ -59,7 +60,7 @@ fn abs1<E: RealField>(a: E) -> E::Real {
 }
 
 fn rot<E: RealField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E, s: E) {
-    zipped!(x, y).for_each(|mut x, mut y| {
+    zipped!(x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
 
@@ -386,7 +387,7 @@ fn lasy2<E: RealField>(
         [zero, zero, zero, zero]
     });
     let mut btmp = unsafe {
-        MatMut::<E>::from_raw_parts(
+        faer_core::mat::from_raw_parts_mut::<'_, E>(
             E::faer_map(E::faer_as_mut(&mut btmp), |array| array.as_mut_ptr()),
             4,
             1,
@@ -399,7 +400,7 @@ fn lasy2<E: RealField>(
         [zero, zero, zero, zero]
     });
     let mut tmp = unsafe {
-        MatMut::<E>::from_raw_parts(
+        faer_core::mat::from_raw_parts_mut::<'_, E>(
             E::faer_map(E::faer_as_mut(&mut tmp), |array| array.as_mut_ptr()),
             4,
             1,
@@ -415,7 +416,7 @@ fn lasy2<E: RealField>(
         ]
     });
     let mut t16 = unsafe {
-        MatMut::<E>::from_raw_parts(
+        faer_core::mat::from_raw_parts_mut::<'_, E>(
             E::faer_map(E::faer_as_mut(&mut t16), |array| array.as_mut_ptr()),
             4,
             4,
@@ -706,19 +707,19 @@ fn schur_swap<E: RealField>(
 
         // Apply transformation from the left
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
-            rot(row1.transpose(), row2.transpose(), cs, sn);
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
+            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -730,7 +731,7 @@ fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
-        let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
+        let mut b = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j0, j1));
         b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j0, j0)));
@@ -740,14 +741,11 @@ fn schur_swap<E: RealField>(
         b.write(2, 1, a.read(j2, j2).faer_sub(a.read(j0, j0)));
 
         // Make B upper triangular
-        let mut v1 = b.rb_mut().col(0);
+        let mut v1 = b.rb_mut().col_mut(0).as_2d_mut();
         let head = v1.read(0, 0);
-        let tail = v1.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail
-            .read(0, 0)
-            .faer_abs2()
-            .faer_add(tail.read(1, 0).faer_abs2());
-        let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v1.rb_mut().subrows_mut(1, 2);
+        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let (tau1, beta1) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = b.read(1, 0);
@@ -770,11 +768,11 @@ fn schur_swap<E: RealField>(
             b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
         );
 
-        let mut v2 = b.rb_mut().col(1).subrows(1, 2);
+        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2).as_2d_mut();
         let head = v2.read(0, 0);
-        let tail = v2.rb_mut().subrows(1, 1);
-        let tail_sqr_norm = tail.read(0, 0).faer_abs2();
-        let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v2.rb_mut().subrows_mut(1, 1);
+        let tail_norm = tail.read(0, 0).faer_abs();
+        let (tau2, beta2) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
         let v21 = v2.read(1, 0);
@@ -877,7 +875,7 @@ fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
-        let mut b = unsafe { MatMut::from_raw_parts(b_ptr, 3, 2, 1, 3) };
+        let mut b = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j1, j2));
         b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j2, j2)));
@@ -887,14 +885,11 @@ fn schur_swap<E: RealField>(
         b.write(2, 1, a.read(j0, j0).faer_sub(a.read(j2, j2)));
 
         // Make B upper triangular
-        let mut v1 = b.rb_mut().col(0);
+        let mut v1 = b.rb_mut().col_mut(0).as_2d_mut();
         let head = v1.read(0, 0);
-        let tail = v1.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail
-            .read(0, 0)
-            .faer_abs2()
-            .faer_add(tail.read(1, 0).faer_abs2());
-        let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v1.rb_mut().subrows_mut(1, 2);
+        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let (tau1, beta1) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = v1.read(1, 0);
@@ -917,11 +912,11 @@ fn schur_swap<E: RealField>(
             b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
         );
 
-        let mut v2 = b.rb_mut().col(1).subrows(1, 2);
+        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2).as_2d_mut();
         let head = v2.read(0, 0);
-        let tail = v2.rb_mut().subrows(1, 1);
-        let tail_sqr_norm = tail.read(0, 0).faer_abs2();
-        let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v2.rb_mut().subrows_mut(1, 1);
+        let tail_norm = tail.read(0, 0).faer_abs();
+        let (tau2, beta2) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
         let v21 = v2.read(1, 0);
@@ -1023,12 +1018,12 @@ fn schur_swap<E: RealField>(
             ]
         });
         let d_ptr = E::faer_map(E::faer_as_mut(&mut d_storage), |array| array.as_mut_ptr());
-        let mut d = unsafe { MatMut::from_raw_parts(d_ptr, 4, 4, 1, 4) };
+        let mut d = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(d_ptr, 4, 4, 1, 4) };
 
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
-        d.clone_from(ad_slice);
+        d.copy_from(ad_slice);
         let mut dnorm = E::faer_zero();
-        zipped!(d.rb()).for_each(|d| dnorm = max(dnorm, d.read().faer_abs()));
+        zipped!(d.rb()).for_each(|unzipped!(d)| dnorm = max(dnorm, d.read().faer_abs()));
 
         let eps = epsilon;
         let small_num = zero_threshold.faer_div(eps);
@@ -1041,10 +1036,10 @@ fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero, zero, zero]
         });
         let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
-        let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 4, 2, 1, 4) };
+        let mut v = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(v_ptr, 4, 2, 1, 4) };
 
-        let mut x = v.rb_mut().submatrix(0, 0, 2, 2);
-        let [tl, b, _, tr] = d.rb().split_at(2, 2);
+        let mut x = v.rb_mut().submatrix_mut(0, 0, 2, 2);
+        let (tl, b, _, tr) = d.rb().split_at(2, 2);
 
         let scale = lasy2(tl, tr, b, x.rb_mut(), epsilon, zero_threshold);
 
@@ -1054,15 +1049,11 @@ fn schur_swap<E: RealField>(
         v.write(3, 1, scale.faer_neg());
 
         // Make V upper triangular
-        let mut v1 = v.rb_mut().col(0);
+        let mut v1 = v.rb_mut().col_mut(0).as_2d_mut();
         let head = v1.read(0, 0);
-        let tail = v1.rb_mut().subrows(1, 3);
-        let tail_sqr_norm = tail
-            .read(0, 0)
-            .faer_abs2()
-            .faer_add(tail.read(1, 0).faer_abs2())
-            .faer_add(tail.read(2, 0).faer_abs2());
-        let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v1.rb_mut().subrows_mut(1, 3);
+        let tail_norm = hypot(hypot(tail.read(0, 0), tail.read(1, 0)), tail.read(2, 0));
+        let (tau1, beta1) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
         v1.write(0, 0, beta1);
         let v11 = v1.read(1, 0);
@@ -1092,14 +1083,11 @@ fn schur_swap<E: RealField>(
             v.read(3, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
         );
 
-        let mut v2 = v.rb_mut().col(1).subrows(1, 3);
+        let mut v2 = v.rb_mut().col_mut(1).subrows_mut(1, 3).as_2d_mut();
         let head = v2.read(0, 0);
-        let tail = v2.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = tail
-            .read(0, 0)
-            .faer_abs2()
-            .faer_add(tail.read(1, 0).faer_abs2());
-        let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = v2.rb_mut().subrows_mut(1, 2);
+        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let (tau2, beta2) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
         v2.write(0, 0, beta2);
 
@@ -1343,20 +1331,20 @@ fn schur_swap<E: RealField>(
         a.write(j1, j1, a11);
 
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
 
-            rot(row1.transpose(), row2.transpose(), cs, sn);
+            rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
+            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -1381,20 +1369,20 @@ fn schur_swap<E: RealField>(
         a.write(j1, j1, a11);
 
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
 
-            rot(row1.transpose(), row2.transpose(), cs, sn);
+            rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast() };
-            let col2 = unsafe { q.rb().col(j1).const_cast() };
+            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
+            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -1478,16 +1466,17 @@ fn aggressive_early_deflation<E: RealField>(
     let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
     let mut s_re_window = unsafe { s_re.rb().subrows(kwtop, ihi - kwtop).const_cast() };
     let mut s_im_window = unsafe { s_im.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-    zipped!(tw.rb_mut()).for_each_triangular_lower(Diag::Include, |mut x| x.write(E::faer_zero()));
+    zipped!(tw.rb_mut())
+        .for_each_triangular_lower(Diag::Include, |unzipped!(mut x)| x.write(E::faer_zero()));
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    v.fill_zeros();
+    v.fill_zero();
     v.rb_mut()
-        .diagonal()
-        .into_column_vector()
+        .diagonal_mut()
+        .column_vector_mut()
         .fill(E::faer_one());
 
     let infqr = if jw
@@ -1727,19 +1716,19 @@ fn aggressive_early_deflation<E: RealField>(
     if s_spike != E::faer_zero() {
         // Reflect spike back
         {
-            let mut vv = wv.rb_mut().col(0).subrows(0, ns);
+            let mut vv = wv.rb_mut().col_mut(0).subrows_mut(0, ns).as_2d_mut();
             for i in 0..ns {
                 vv.write(i, 0, v.read(0, i).faer_conj());
             }
             let head = vv.read(0, 0);
-            let tail = vv.rb_mut().subrows(1, ns - 1);
-            let tail_sqr_norm = sqr_norm(tail.rb());
-            let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+            let tail = vv.rb_mut().subrows_mut(1, ns - 1);
+            let tail_norm = tail.rb().norm_l2();
+            let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
             vv.write(0, 0, E::faer_one());
             let tau = tau.faer_inv();
 
             {
-                let mut tw_slice = tw.rb_mut().submatrix(0, 0, ns, jw);
+                let mut tw_slice = tw.rb_mut().submatrix_mut(0, 0, ns, jw);
                 let tmp = vv.rb().adjoint() * tw_slice.rb();
                 matmul(
                     tw_slice.rb_mut(),
@@ -1752,7 +1741,7 @@ fn aggressive_early_deflation<E: RealField>(
             }
 
             {
-                let mut tw_slice2 = tw.rb_mut().submatrix(0, 0, jw, ns);
+                let mut tw_slice2 = tw.rb_mut().submatrix_mut(0, 0, jw, ns);
                 let tmp = tw_slice2.rb() * vv.rb();
                 matmul(
                     tw_slice2.rb_mut(),
@@ -1765,7 +1754,7 @@ fn aggressive_early_deflation<E: RealField>(
             }
 
             {
-                let mut v_slice = v.rb_mut().submatrix(0, 0, jw, ns);
+                let mut v_slice = v.rb_mut().submatrix_mut(0, 0, jw, ns);
                 let tmp = v_slice.rb() * vv.rb();
                 matmul(
                     v_slice.rb_mut(),
@@ -1781,9 +1770,9 @@ fn aggressive_early_deflation<E: RealField>(
 
         // Hessenberg reduction
         {
-            let mut householder = wv.rb_mut().col(0).subrows(0, ns - 1);
+            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1).as_2d_mut();
             make_hessenberg_in_place(
-                tw.rb_mut().submatrix(0, 0, ns, ns),
+                tw.rb_mut().submatrix_mut(0, 0, ns, ns),
                 householder.rb_mut(),
                 parallelism,
                 stack.rb_mut(),
@@ -1800,7 +1789,7 @@ fn aggressive_early_deflation<E: RealField>(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
                 householder.rb().transpose(),
                 Conj::No,
-                v.rb_mut().submatrix(0, 1, jw, ns - 1),
+                v.rb_mut().submatrix_mut(0, 1, jw, ns - 1),
                 parallelism,
                 stack.rb_mut(),
             );
@@ -1838,10 +1827,10 @@ fn aggressive_early_deflation<E: RealField>(
         let mut i = ihi;
         while i < istop_m {
             let iblock = Ord::min(istop_m - i, wh.ncols());
-            let mut a_slice = a.rb_mut().submatrix(kwtop, i, ihi - kwtop, iblock);
+            let mut a_slice = a.rb_mut().submatrix_mut(kwtop, i, ihi - kwtop, iblock);
             let mut wh_slice = wh
                 .rb_mut()
-                .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
             matmul(
                 wh_slice.rb_mut(),
                 v.rb().adjoint(),
@@ -1850,7 +1839,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::faer_one(),
                 parallelism,
             );
-            a_slice.clone_from(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1860,10 +1849,10 @@ fn aggressive_early_deflation<E: RealField>(
         let mut i = istart_m;
         while i < kwtop {
             let iblock = Ord::min(kwtop - i, wv.nrows());
-            let mut a_slice = a.rb_mut().submatrix(i, kwtop, iblock, ihi - kwtop);
+            let mut a_slice = a.rb_mut().submatrix_mut(i, kwtop, iblock, ihi - kwtop);
             let mut wv_slice = wv
                 .rb_mut()
-                .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
             matmul(
                 wv_slice.rb_mut(),
                 a_slice.rb(),
@@ -1872,7 +1861,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::faer_one(),
                 parallelism,
             );
-            a_slice.clone_from(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1881,10 +1870,10 @@ fn aggressive_early_deflation<E: RealField>(
         let mut i = 0;
         while i < n {
             let iblock = Ord::min(n - i, wv.nrows());
-            let mut z_slice = z.rb_mut().submatrix(i, kwtop, iblock, ihi - kwtop);
+            let mut z_slice = z.rb_mut().submatrix_mut(i, kwtop, iblock, ihi - kwtop);
             let mut wv_slice = wv
                 .rb_mut()
-                .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
             matmul(
                 wv_slice.rb_mut(),
                 z_slice.rb(),
@@ -1893,7 +1882,7 @@ fn aggressive_early_deflation<E: RealField>(
                 E::faer_one(),
                 parallelism,
             );
-            z_slice.clone_from(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1925,9 +1914,9 @@ fn move_bulge<E: RealField>(
     v.write(2, 0, h.read(3, 0));
 
     let head = v.read(0, 0);
-    let tail = v.rb_mut().subrows(1, 2);
-    let tail_sqr_norm = sqr_norm(tail.rb());
-    let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+    let tail = v.rb_mut().subrows_mut(1, 2);
+    let tail_norm = tail.rb().norm_l2();
+    let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
     v.write(0, 0, tau.faer_inv());
 
     // Check for bulge collapse
@@ -1946,15 +1935,15 @@ fn move_bulge<E: RealField>(
             [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
-        let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
+        let mut vt = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1, 1, 3) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
 
         let head = vt.read(0, 0);
-        let tail = vt.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = sqr_norm(tail.rb());
-        let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = vt.rb_mut().subrows_mut(1, 2);
+        let tail_norm = tail.rb().norm_l2();
+        let (tau, _) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         vt.write(0, 0, tau.faer_inv());
         let vt0 = vt.read(0, 0);
         let vt1 = vt.read(1, 0);
@@ -2070,11 +2059,11 @@ fn multishift_qr_sweep<E: RealField>(
         let n_block = Ord::min(n_block_desired, ihi - ilo);
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
@@ -2083,7 +2072,7 @@ fn multishift_qr_sweep<E: RealField>(
 
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col(i_bulge);
+                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
                 if i_pos == ilo {
                     // Introduce bulge
                     let h = a.rb().submatrix(ilo, ilo, 3, 3);
@@ -2096,13 +2085,13 @@ fn multishift_qr_sweep<E: RealField>(
 
                     debug_assert!(v.nrows() == 3);
                     let head = v.read(0, 0);
-                    let tail = v.rb_mut().subrows(1, 2);
-                    let tail_sqr_norm = sqr_norm(tail.rb());
-                    let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                    let tail = v.rb_mut().subrows_mut(1, 2);
+                    let tail_norm = tail.rb().norm_l2();
+                    let (tau, _) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                     v.write(0, 0, tau.faer_inv());
                 } else {
                     // Chase bulge down
-                    let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                    let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                     let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
                     let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
                     let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
@@ -2222,7 +2211,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2252,7 +2241,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2302,10 +2291,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = ilo + n_block;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(ilo, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(ilo, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -2314,7 +2303,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -2323,10 +2312,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = istart_m;
             while i < ilo {
                 let iblock = Ord::min(ilo - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, ilo, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -2335,7 +2324,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2344,10 +2333,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, ilo, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -2356,7 +2345,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2374,11 +2363,11 @@ fn multishift_qr_sweep<E: RealField>(
         // Actual blocksize
         let n_block = n_shifts + n_pos;
 
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
@@ -2391,10 +2380,10 @@ fn multishift_qr_sweep<E: RealField>(
         for i_pos_last in i_pos_block + n_shifts - 2..i_pos_block + n_shifts - 2 + n_pos {
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col(i_bulge);
+                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 // Chase bulge down
-                let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                 let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
                 let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
                 let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
@@ -2513,7 +2502,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2543,7 +2532,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2597,10 +2586,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = i_pos_block + n_block;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(i_pos_block, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -2609,7 +2598,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -2619,10 +2608,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = istart_m;
             while i < i_pos_block {
                 let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -2631,7 +2620,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2640,10 +2629,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -2652,7 +2641,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2666,11 +2655,11 @@ fn multishift_qr_sweep<E: RealField>(
     {
         let n_block = ihi - i_pos_block;
 
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
@@ -2692,12 +2681,16 @@ fn multishift_qr_sweep<E: RealField>(
                 if i_pos == ihi - 2 {
                     // Special case, the bulge is at the bottom, needs a smaller
                     // reflector (order 2)
-                    let mut v = v.rb_mut().subrows(0, 2).col(i_bulge);
-                    let mut h = a.rb_mut().subrows(i_pos, 2).col(i_pos - 1);
+                    let mut v = v.rb_mut().subrows_mut(0, 2).col_mut(i_bulge).as_2d_mut();
+                    let mut h = a
+                        .rb_mut()
+                        .subrows_mut(i_pos, 2)
+                        .col_mut(i_pos - 1)
+                        .as_2d_mut();
                     let head = h.read(0, 0);
-                    let tail = h.rb_mut().subrows(1, 1);
-                    let tail_sqr_norm = sqr_norm(tail.rb());
-                    let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                    let tail = h.rb_mut().subrows_mut(1, 1);
+                    let tail_norm = tail.rb().norm_l2();
+                    let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                     v.write(0, 0, tau.faer_inv());
                     v.write(1, 0, h.read(1, 0));
                     h.write(0, 0, beta);
@@ -2753,8 +2746,8 @@ fn multishift_qr_sweep<E: RealField>(
                         );
                     }
                 } else {
-                    let mut v = v.rb_mut().col(i_bulge);
-                    let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                    let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                    let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                     let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
                     let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
                     let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
@@ -2886,7 +2879,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2916,7 +2909,7 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2972,10 +2965,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = ihi;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(i_pos_block, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -2984,7 +2977,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -2994,10 +2987,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = istart_m;
             while i < i_pos_block {
                 let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -3006,7 +2999,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -3015,10 +3008,10 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -3027,7 +3020,7 @@ fn multishift_qr_sweep<E: RealField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -3262,9 +3255,9 @@ pub fn multishift_qr<E: RealField>(
             if ls <= nsr / 2 {
                 // Got nsr/2 or fewer shifts? Then use multi/double shift qr to
                 // get more
-                let mut temp = a.rb_mut().submatrix(n - nsr, 0, nsr, nsr);
-                let mut shifts_re = w_re.rb_mut().subrows(istop - nsr, nsr);
-                let mut shifts_im = w_im.rb_mut().subrows(istop - nsr, nsr);
+                let mut temp = a.rb_mut().submatrix_mut(n - nsr, 0, nsr, nsr);
+                let mut shifts_re = w_re.rb_mut().subrows_mut(istop - nsr, nsr);
+                let mut shifts_im = w_im.rb_mut().subrows_mut(istop - nsr, nsr);
                 let ierr = lahqr(
                     false,
                     temp.rb_mut(),
@@ -3370,8 +3363,8 @@ pub fn multishift_qr<E: RealField>(
             }
         }
 
-        let mut shifts_re = w_re.rb_mut().subrows(i_shifts, ns);
-        let mut shifts_im = w_im.rb_mut().subrows(i_shifts, ns);
+        let mut shifts_re = w_re.rb_mut().subrows_mut(i_shifts, ns);
+        let mut shifts_im = w_im.rb_mut().subrows_mut(i_shifts, ns);
 
         multishift_qr_sweep(
             want_t,
@@ -3463,7 +3456,7 @@ pub fn lahqr<E: RealField>(
         [zero_unit, zero_unit, zero_unit]
     });
     let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
-    let mut v = unsafe { MatMut::<E>::from_raw_parts(v_ptr, 3, 1, 1, 3) };
+    let mut v = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(v_ptr, 3, 1, 1, 3) };
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
@@ -3589,17 +3582,19 @@ pub fn lahqr<E: RealField>(
                                 .row(istart)
                                 .subcols(istart + 2, istop_m - (istart + 2))
                                 .const_cast()
-                                .transpose()
+                                .transpose_mut()
+                                .as_2d_mut()
                         };
                         let y = unsafe {
                             a.rb()
                                 .row(istart + 1)
                                 .subcols(istart + 2, istop_m - (istart + 2))
                                 .const_cast()
-                                .transpose()
+                                .transpose_mut()
+                                .as_2d_mut()
                         };
 
-                        rot(x.transpose(), y.transpose(), cs, sn);
+                        rot(x.transpose_mut(), y.transpose_mut(), cs, sn);
                     }
 
                     let x = unsafe {
@@ -3607,19 +3602,21 @@ pub fn lahqr<E: RealField>(
                             .col(istart)
                             .subrows(istart_m, istart - istart_m)
                             .const_cast()
+                            .as_2d_mut()
                     };
                     let y = unsafe {
                         a.rb()
                             .col(istart + 1)
                             .subrows(istart_m, istart - istart_m)
                             .const_cast()
+                            .as_2d_mut()
                     };
 
                     rot(x, y, cs, sn);
                 }
                 if let Some(z) = z.rb_mut() {
-                    let x = unsafe { z.rb().col(istart).const_cast() };
-                    let y = unsafe { z.rb().col(istart + 1).const_cast() };
+                    let x = unsafe { z.rb().col(istart).const_cast().as_2d_mut() };
+                    let y = unsafe { z.rb().col(istart + 1).const_cast().as_2d_mut() };
 
                     rot(x, y, cs, sn);
                 }
@@ -3676,9 +3673,12 @@ pub fn lahqr<E: RealField>(
                 let h = a.rb().submatrix(i, i, 3, 3);
                 lahqr_shiftcolumn(h, v.rb_mut(), s1, s2);
                 let head = v.read(0, 0);
-                let tail_sqr_norm = v.read(1, 0).faer_abs2().faer_add(v.read(2, 0).faer_abs2());
-                let (tau, _) =
-                    make_householder_in_place(Some(v.rb_mut().subrows(1, 2)), head, tail_sqr_norm);
+                let tail_norm = hypot(v.read(1, 0), v.read(2, 0)).faer_abs();
+                let (tau, _) = make_householder_in_place_v2(
+                    Some(v.rb_mut().subrows_mut(1, 2)),
+                    head,
+                    tail_norm,
+                );
                 let tau = tau.faer_inv();
 
                 let v0 = tau;
@@ -3708,13 +3708,13 @@ pub fn lahqr<E: RealField>(
             let mut t1;
             if i == istart2 {
                 let h = a.rb().submatrix(i, i, nr, nr);
-                let mut x = v.rb_mut().subrows(0, nr);
+                let mut x = v.rb_mut().subrows_mut(0, nr);
                 lahqr_shiftcolumn(h, x.rb_mut(), s1, s2);
                 let head = x.read(0, 0);
-                let tail = x.rb_mut().subrows(1, nr - 1);
-                let tail_sqr_norm = inner_prod_with_conj(tail.rb(), Conj::No, tail.rb(), Conj::No);
+                let tail = x.rb_mut().subrows_mut(1, nr - 1);
+                let tail_norm = tail.rb().norm_l2();
                 let beta;
-                (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                (t1, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                 v.write(0, 0, beta);
                 t1 = t1.faer_inv();
                 if i > istart {
@@ -3727,10 +3727,10 @@ pub fn lahqr<E: RealField>(
                     v.write(2, 0, a.read(i + 2, i - 1));
                 }
                 let head = v.read(0, 0);
-                let tail = v.rb_mut().subrows(1, nr - 1);
-                let tail_sqr_norm = inner_prod_with_conj(tail.rb(), Conj::No, tail.rb(), Conj::No);
+                let tail = v.rb_mut().subrows_mut(1, nr - 1);
+                let tail_norm = tail.rb().norm_l2();
                 let beta;
-                (t1, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                (t1, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                 t1 = t1.faer_inv();
                 v.write(0, 0, beta);
                 a.write(i, i - 1, beta);
@@ -3813,9 +3813,8 @@ pub fn lahqr<E: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{mat, ComplexField, Mat};
+    use faer_core::{assert, mat, ComplexField, Mat};
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {

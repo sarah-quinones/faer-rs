@@ -190,7 +190,7 @@ mod tests {
             let mut a_updated = a.clone();
             let mut w = Mat::from_fn(n, k, |_, _| random());
             let mut alpha = Mat::from_fn(k, 1, |_, _| E::faer_from_real(rand::random()));
-            let alpha = alpha.as_mut().col(0);
+            let alpha = alpha.as_mut().col_mut(0).as_2d_mut();
 
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {

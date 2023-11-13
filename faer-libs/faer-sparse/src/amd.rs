@@ -39,9 +39,9 @@ use crate::{
     mem::{self, NONE},
     windows2, FaerError, Index, SignedIndex, SymbolicSparseColMatRef,
 };
-use assert2::assert;
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
+use faer_core::{assert, ComplexField};
 use reborrow::*;
 
 #[inline]
@@ -241,7 +241,7 @@ fn amd_2<I: Index>(
     let dense = if alpha < 0.0 {
         n - 2
     } else {
-        (alpha * (n as f64).sqrt()) as usize
+        (alpha * (n as f64).faer_sqrt()) as usize
     };
 
     let dense = Ord::max(dense, 16);

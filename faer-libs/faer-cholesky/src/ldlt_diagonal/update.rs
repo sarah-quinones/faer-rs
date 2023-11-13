@@ -1,11 +1,10 @@
 use crate::ldlt_diagonal::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
-use core::{iter::zip, slice};
+use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul, mul::triangular::BlockStructure, simd::slice_as_mut_simd, solve, temp_mat_req,
-    temp_mat_uninit, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
+    assert, debug_assert, group_helpers::*, mul, mul::triangular::BlockStructure, solve,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Entity, MatMut, Parallelism,
+    SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -18,8 +17,8 @@ struct RankRUpdate<'a, E: Entity> {
 }
 
 struct RankUpdateStepImpl<'a, E: Entity, const R: usize> {
-    l_col: GroupFor<E, &'a mut [E::Unit]>,
-    w: [GroupFor<E, &'a mut [E::Unit]>; R],
+    l_col: SliceGroupMut<'a, E>,
+    w: [SliceGroupMut<'a, E>; R],
     p_array: [E; R],
     beta_array: [E; R],
 }
@@ -40,147 +39,107 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 4> {
         let [beta0, beta1, beta2, beta3] = beta_array;
         let [w0, w1, w2, w3] = w;
 
-        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
-        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
-        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
-        let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
-        let (w3_head, w3_tail) = slice_as_mut_simd::<E, S>(w3);
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(w0.rb());
+        let (l_head, l_body, l_tail) = simd.as_aligned_simd_mut(l_col, offset);
+        let (w0_head, w0_body, w0_tail) = simd.as_aligned_simd_mut(w0, offset);
+        let (w1_head, w1_body, w1_tail) = simd.as_aligned_simd_mut(w1, offset);
+        let (w2_head, w2_body, w2_tail) = simd.as_aligned_simd_mut(w2, offset);
+        let (w3_head, w3_body, w3_tail) = simd.as_aligned_simd_mut(w3, offset);
 
-        {
-            let p0 = E::faer_simd_splat(simd, p0);
-            let p1 = E::faer_simd_splat(simd, p1);
-            let p2 = E::faer_simd_splat(simd, p2);
-            let p3 = E::faer_simd_splat(simd, p3);
-            let beta0 = E::faer_simd_splat(simd, beta0);
-            let beta1 = E::faer_simd_splat(simd, beta1);
-            let beta2 = E::faer_simd_splat(simd, beta2);
-            let beta3 = E::faer_simd_splat(simd, beta3);
+        let p0 = simd.splat(p0);
+        let p1 = simd.splat(p1);
+        let p2 = simd.splat(p2);
+        let p3 = simd.splat(p3);
+        let beta0 = simd.splat(beta0);
+        let beta1 = simd.splat(beta1);
+        let beta2 = simd.splat(beta2);
+        let beta3 = simd.splat(beta3);
+        let state = State {
+            p0,
+            p1,
+            p2,
+            p3,
+            beta0,
+            beta1,
+            beta2,
+            beta3,
+        };
 
-            for (l, (w0, (w1, (w2, w3)))) in zip(
-                E::faer_into_iter(l_head),
-                zip(
-                    E::faer_into_iter(w0_head),
-                    zip(
-                        E::faer_into_iter(w1_head),
-                        zip(E::faer_into_iter(w2_head), E::faer_into_iter(w3_head)),
-                    ),
-                ),
-            ) {
-                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
-                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
-                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
-                let mut local_w2 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w2)));
-                let mut local_w3 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w3)));
-
-                local_w0 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p0),
-                    E::faer_copy(&local_l),
-                    local_w0,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta0),
-                    E::faer_copy(&local_w0),
-                    local_l,
-                );
-
-                local_w1 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p1),
-                    E::faer_copy(&local_l),
-                    local_w1,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta1),
-                    E::faer_copy(&local_w1),
-                    local_l,
-                );
-
-                local_w2 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p2),
-                    E::faer_copy(&local_l),
-                    local_w2,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta2),
-                    E::faer_copy(&local_w2),
-                    local_l,
-                );
-
-                local_w3 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p3),
-                    E::faer_copy(&local_l),
-                    local_w3,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta3),
-                    E::faer_copy(&local_w3),
-                    local_l,
-                );
-
-                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
-                E::faer_map(E::faer_zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
-                E::faer_map(E::faer_zip(w3, local_w3), |(w3, local_w3)| *w3 = local_w3);
-            }
+        #[derive(Copy, Clone)]
+        struct State<E: ComplexField, S: pulp::Simd> {
+            p0: SimdGroupFor<E, S>,
+            p1: SimdGroupFor<E, S>,
+            p2: SimdGroupFor<E, S>,
+            p3: SimdGroupFor<E, S>,
+            beta0: SimdGroupFor<E, S>,
+            beta1: SimdGroupFor<E, S>,
+            beta2: SimdGroupFor<E, S>,
+            beta3: SimdGroupFor<E, S>,
         }
 
+        #[inline(always)]
+        fn process<E: ComplexField, S: pulp::Simd>(
+            simd: SimdFor<E, S>,
+            mut l: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w0: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w1: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w2: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w3: impl Write<Output = SimdGroupFor<E, S>>,
+
+            state: State<E, S>,
+        ) {
+            let State {
+                p0,
+                p1,
+                p2,
+                p3,
+                beta0,
+                beta1,
+                beta2,
+                beta3,
+            } = state;
+
+            let zero = simd.splat(E::faer_zero());
+            let mut local_l = l.read_or(zero);
+            let mut local_w0 = w0.read_or(zero);
+            let mut local_w1 = w1.read_or(zero);
+            let mut local_w2 = w2.read_or(zero);
+            let mut local_w3 = w3.read_or(zero);
+
+            local_w0 = simd.mul_add_e(p0, local_l, local_w0);
+            local_l = simd.mul_add_e(beta0, local_w0, local_l);
+
+            local_w1 = simd.mul_add_e(p1, local_l, local_w1);
+            local_l = simd.mul_add_e(beta1, local_w1, local_l);
+
+            local_w2 = simd.mul_add_e(p2, local_l, local_w2);
+            local_l = simd.mul_add_e(beta2, local_w2, local_l);
+
+            local_w3 = simd.mul_add_e(p3, local_l, local_w3);
+            local_l = simd.mul_add_e(beta3, local_w3, local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+            w2.write(local_w2);
+            w3.write(local_w3);
+        }
+
+        process(simd, l_head, w0_head, w1_head, w2_head, w3_head, state);
         for (l, (w0, (w1, (w2, w3)))) in zip(
-            E::faer_into_iter(l_tail),
+            (l_body).into_mut_iter(),
             zip(
-                E::faer_into_iter(w0_tail),
+                w0_body.into_mut_iter(),
                 zip(
-                    E::faer_into_iter(w1_tail),
-                    zip(E::faer_into_iter(w2_tail), E::faer_into_iter(w3_tail)),
+                    w1_body.into_mut_iter(),
+                    zip(w2_body.into_mut_iter(), w3_body.into_mut_iter()),
                 ),
             ),
         ) {
-            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
-            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
-            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
-            let mut local_w2 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w2))));
-            let mut local_w3 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w3))));
-
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
-
-            local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
-
-            local_w2 = local_w2.faer_add(E::faer_mul(p2, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta2, local_w2));
-
-            local_w3 = local_w3.faer_add(E::faer_mul(p3, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta3, local_w3));
-
-            E::faer_map(
-                E::faer_zip(l, E::faer_into_units(local_l)),
-                |(l, local_l)| *l = local_l,
-            );
-            E::faer_map(
-                E::faer_zip(w0, E::faer_into_units(local_w0)),
-                |(w0, local_w0)| *w0 = local_w0,
-            );
-            E::faer_map(
-                E::faer_zip(w1, E::faer_into_units(local_w1)),
-                |(w1, local_w1)| *w1 = local_w1,
-            );
-            E::faer_map(
-                E::faer_zip(w2, E::faer_into_units(local_w2)),
-                |(w2, local_w2)| *w2 = local_w2,
-            );
-            E::faer_map(
-                E::faer_zip(w3, E::faer_into_units(local_w3)),
-                |(w3, local_w3)| *w3 = local_w3,
-            );
+            process(simd, l, w0, w1, w2, w3, state);
         }
+        process(simd, l_tail, w0_tail, w1_tail, w2_tail, w3_tail, state);
     }
 }
 
@@ -200,115 +159,89 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 3> {
         let [beta0, beta1, beta2] = beta_array;
         let [w0, w1, w2] = w;
 
-        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
-        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
-        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
-        let (w2_head, w2_tail) = slice_as_mut_simd::<E, S>(w2);
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(w0.rb());
+        let (l_head, l_body, l_tail) = simd.as_aligned_simd_mut(l_col, offset);
+        let (w0_head, w0_body, w0_tail) = simd.as_aligned_simd_mut(w0, offset);
+        let (w1_head, w1_body, w1_tail) = simd.as_aligned_simd_mut(w1, offset);
+        let (w2_head, w2_body, w2_tail) = simd.as_aligned_simd_mut(w2, offset);
 
-        {
-            let p0 = E::faer_simd_splat(simd, p0);
-            let p1 = E::faer_simd_splat(simd, p1);
-            let p2 = E::faer_simd_splat(simd, p2);
-            let beta0 = E::faer_simd_splat(simd, beta0);
-            let beta1 = E::faer_simd_splat(simd, beta1);
-            let beta2 = E::faer_simd_splat(simd, beta2);
+        let p0 = simd.splat(p0);
+        let p1 = simd.splat(p1);
+        let p2 = simd.splat(p2);
+        let beta0 = simd.splat(beta0);
+        let beta1 = simd.splat(beta1);
+        let beta2 = simd.splat(beta2);
+        let state = State {
+            p0,
+            p1,
+            p2,
+            beta0,
+            beta1,
+            beta2,
+        };
 
-            for (l, (w0, (w1, w2))) in zip(
-                E::faer_into_iter(l_head),
-                zip(
-                    E::faer_into_iter(w0_head),
-                    zip(E::faer_into_iter(w1_head), E::faer_into_iter(w2_head)),
-                ),
-            ) {
-                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
-                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
-                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
-                let mut local_w2 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w2)));
-
-                local_w0 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p0),
-                    E::faer_copy(&local_l),
-                    local_w0,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta0),
-                    E::faer_copy(&local_w0),
-                    local_l,
-                );
-
-                local_w1 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p1),
-                    E::faer_copy(&local_l),
-                    local_w1,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta1),
-                    E::faer_copy(&local_w1),
-                    local_l,
-                );
-
-                local_w2 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p2),
-                    E::faer_copy(&local_l),
-                    local_w2,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta2),
-                    E::faer_copy(&local_w2),
-                    local_l,
-                );
-
-                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
-                E::faer_map(E::faer_zip(w2, local_w2), |(w2, local_w2)| *w2 = local_w2);
-            }
+        #[derive(Copy, Clone)]
+        struct State<E: ComplexField, S: pulp::Simd> {
+            p0: SimdGroupFor<E, S>,
+            p1: SimdGroupFor<E, S>,
+            p2: SimdGroupFor<E, S>,
+            beta0: SimdGroupFor<E, S>,
+            beta1: SimdGroupFor<E, S>,
+            beta2: SimdGroupFor<E, S>,
         }
 
+        #[inline(always)]
+        fn process<E: ComplexField, S: pulp::Simd>(
+            simd: SimdFor<E, S>,
+            mut l: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w0: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w1: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w2: impl Write<Output = SimdGroupFor<E, S>>,
+
+            state: State<E, S>,
+        ) {
+            let State {
+                p0,
+                p1,
+                p2,
+                beta0,
+                beta1,
+                beta2,
+            } = state;
+
+            let zero = simd.splat(E::faer_zero());
+            let mut local_l = l.read_or(zero);
+            let mut local_w0 = w0.read_or(zero);
+            let mut local_w1 = w1.read_or(zero);
+            let mut local_w2 = w2.read_or(zero);
+
+            local_w0 = simd.mul_add_e(p0, local_l, local_w0);
+            local_l = simd.mul_add_e(beta0, local_w0, local_l);
+
+            local_w1 = simd.mul_add_e(p1, local_l, local_w1);
+            local_l = simd.mul_add_e(beta1, local_w1, local_l);
+
+            local_w2 = simd.mul_add_e(p2, local_l, local_w2);
+            local_l = simd.mul_add_e(beta2, local_w2, local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+            w2.write(local_w2);
+        }
+
+        process(simd, l_head, w0_head, w1_head, w2_head, state);
         for (l, (w0, (w1, w2))) in zip(
-            E::faer_into_iter(l_tail),
+            (l_body).into_mut_iter(),
             zip(
-                E::faer_into_iter(w0_tail),
-                zip(E::faer_into_iter(w1_tail), E::faer_into_iter(w2_tail)),
+                w0_body.into_mut_iter(),
+                zip(w1_body.into_mut_iter(), w2_body.into_mut_iter()),
             ),
         ) {
-            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
-            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
-            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
-            let mut local_w2 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w2))));
-
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
-
-            local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
-
-            local_w2 = local_w2.faer_add(E::faer_mul(p2, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta2, local_w2));
-
-            E::faer_map(
-                E::faer_zip(l, E::faer_into_units(local_l)),
-                |(l, local_l)| *l = local_l,
-            );
-            E::faer_map(
-                E::faer_zip(w0, E::faer_into_units(local_w0)),
-                |(w0, local_w0)| *w0 = local_w0,
-            );
-            E::faer_map(
-                E::faer_zip(w1, E::faer_into_units(local_w1)),
-                |(w1, local_w1)| *w1 = local_w1,
-            );
-            E::faer_map(
-                E::faer_zip(w2, E::faer_into_units(local_w2)),
-                |(w2, local_w2)| *w2 = local_w2,
-            );
+            process(simd, l, w0, w1, w2, state);
         }
+        process(simd, l_tail, w0_tail, w1_tail, w2_tail, state);
     }
 }
 
@@ -328,83 +261,71 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 2> {
         let [beta0, beta1] = beta_array;
         let [w0, w1] = w;
 
-        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
-        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
-        let (w1_head, w1_tail) = slice_as_mut_simd::<E, S>(w1);
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(w0.rb());
+        let (l_head, l_body, l_tail) = simd.as_aligned_simd_mut(l_col, offset);
+        let (w0_head, w0_body, w0_tail) = simd.as_aligned_simd_mut(w0, offset);
+        let (w1_head, w1_body, w1_tail) = simd.as_aligned_simd_mut(w1, offset);
 
-        {
-            let p0 = E::faer_simd_splat(simd, p0);
-            let p1 = E::faer_simd_splat(simd, p1);
-            let beta0 = E::faer_simd_splat(simd, beta0);
-            let beta1 = E::faer_simd_splat(simd, beta1);
+        let p0 = simd.splat(p0);
+        let p1 = simd.splat(p1);
+        let beta0 = simd.splat(beta0);
+        let beta1 = simd.splat(beta1);
+        let state = State {
+            p0,
+            p1,
+            beta0,
+            beta1,
+        };
 
-            for (l, (w0, w1)) in zip(
-                E::faer_into_iter(l_head),
-                zip(E::faer_into_iter(w0_head), E::faer_into_iter(w1_head)),
-            ) {
-                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
-                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
-                let mut local_w1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w1)));
-
-                local_w0 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p0),
-                    E::faer_copy(&local_l),
-                    local_w0,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta0),
-                    E::faer_copy(&local_w0),
-                    local_l,
-                );
-
-                local_w1 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p1),
-                    E::faer_copy(&local_l),
-                    local_w1,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta1),
-                    E::faer_copy(&local_w1),
-                    local_l,
-                );
-
-                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-                E::faer_map(E::faer_zip(w1, local_w1), |(w1, local_w1)| *w1 = local_w1);
-            }
+        #[derive(Copy, Clone)]
+        struct State<E: ComplexField, S: pulp::Simd> {
+            p0: SimdGroupFor<E, S>,
+            p1: SimdGroupFor<E, S>,
+            beta0: SimdGroupFor<E, S>,
+            beta1: SimdGroupFor<E, S>,
         }
 
-        for (l, (w0, w1)) in zip(
-            E::faer_into_iter(l_tail),
-            zip(E::faer_into_iter(w0_tail), E::faer_into_iter(w1_tail)),
+        #[inline(always)]
+        fn process<E: ComplexField, S: pulp::Simd>(
+            simd: SimdFor<E, S>,
+            mut l: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w0: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w1: impl Write<Output = SimdGroupFor<E, S>>,
+
+            state: State<E, S>,
         ) {
-            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
-            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
-            let mut local_w1 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w1))));
+            let State {
+                p0,
+                p1,
+                beta0,
+                beta1,
+            } = state;
 
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
+            let zero = simd.splat(E::faer_zero());
+            let mut local_l = l.read_or(zero);
+            let mut local_w0 = w0.read_or(zero);
+            let mut local_w1 = w1.read_or(zero);
 
-            local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
+            local_w0 = simd.mul_add_e(p0, local_l, local_w0);
+            local_l = simd.mul_add_e(beta0, local_w0, local_l);
 
-            E::faer_map(
-                E::faer_zip(l, E::faer_into_units(local_l)),
-                |(l, local_l)| *l = local_l,
-            );
-            E::faer_map(
-                E::faer_zip(w0, E::faer_into_units(local_w0)),
-                |(w0, local_w0)| *w0 = local_w0,
-            );
-            E::faer_map(
-                E::faer_zip(w1, E::faer_into_units(local_w1)),
-                |(w1, local_w1)| *w1 = local_w1,
-            );
+            local_w1 = simd.mul_add_e(p1, local_l, local_w1);
+            local_l = simd.mul_add_e(beta1, local_w1, local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
         }
+
+        process(simd, l_head, w0_head, w1_head, state);
+        for (l, (w0, w1)) in zip(
+            (l_body).into_mut_iter(),
+            zip(w0_body.into_mut_iter(), w1_body.into_mut_iter()),
+        ) {
+            process(simd, l, w0, w1, state);
+        }
+        process(simd, l_tail, w0_tail, w1_tail, state);
     }
 }
 
@@ -424,51 +345,47 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
         let [beta0] = beta_array;
         let [w0] = w;
 
-        let (l_head, l_tail) = slice_as_mut_simd::<E, S>(l_col);
-        let (w0_head, w0_tail) = slice_as_mut_simd::<E, S>(w0);
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(w0.rb());
+        let (l_head, l_body, l_tail) = simd.as_aligned_simd_mut(l_col, offset);
+        let (w0_head, w0_body, w0_tail) = simd.as_aligned_simd_mut(w0, offset);
 
-        {
-            let p0 = E::faer_simd_splat(simd, p0);
-            let beta0 = E::faer_simd_splat(simd, beta0);
+        let p0 = simd.splat(p0);
+        let beta0 = simd.splat(beta0);
+        let state = State { p0, beta0 };
 
-            for (l, w0) in zip(E::faer_into_iter(l_head), E::faer_into_iter(w0_head)) {
-                let mut local_l = E::faer_deref(E::faer_rb(E::faer_as_ref(&l)));
-                let mut local_w0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&w0)));
-
-                local_w0 = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&p0),
-                    E::faer_copy(&local_l),
-                    local_w0,
-                );
-                local_l = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&beta0),
-                    E::faer_copy(&local_w0),
-                    local_l,
-                );
-
-                E::faer_map(E::faer_zip(l, local_l), |(l, local_l)| *l = local_l);
-                E::faer_map(E::faer_zip(w0, local_w0), |(w0, local_w0)| *w0 = local_w0);
-            }
+        #[derive(Copy, Clone)]
+        struct State<E: ComplexField, S: pulp::Simd> {
+            p0: SimdGroupFor<E, S>,
+            beta0: SimdGroupFor<E, S>,
         }
 
-        for (l, w0) in zip(E::faer_into_iter(l_tail), E::faer_into_iter(w0_tail)) {
-            let mut local_l = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&l))));
-            let mut local_w0 = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&w0))));
+        #[inline(always)]
+        fn process<E: ComplexField, S: pulp::Simd>(
+            simd: SimdFor<E, S>,
+            mut l: impl Write<Output = SimdGroupFor<E, S>>,
+            mut w0: impl Write<Output = SimdGroupFor<E, S>>,
 
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
+            state: State<E, S>,
+        ) {
+            let State { p0, beta0 } = state;
 
-            E::faer_map(
-                E::faer_zip(l, E::faer_into_units(local_l)),
-                |(l, local_l)| *l = local_l,
-            );
-            E::faer_map(
-                E::faer_zip(w0, E::faer_into_units(local_w0)),
-                |(w0, local_w0)| *w0 = local_w0,
-            );
+            let zero = simd.splat(E::faer_zero());
+            let mut local_l = l.read_or(zero);
+            let mut local_w0 = w0.read_or(zero);
+
+            local_w0 = simd.mul_add_e(p0, local_l, local_w0);
+            local_l = simd.mul_add_e(beta0, local_w0, local_l);
+
+            l.write(local_l);
+            w0.write(local_w0);
         }
+
+        process(simd, l_head, w0_head, state);
+        for (l, w0) in zip(l_body.into_mut_iter(), w0_body.into_mut_iter()) {
+            process(simd, l, w0, state);
+        }
+        process(simd, l_tail, w0_tail, state);
     }
 }
 
@@ -479,7 +396,6 @@ fn rank_update_step_impl4<E: ComplexField>(
     p_array: [E; 4],
     beta_array: [E; 4],
 ) {
-    let m = l_col.nrows();
     let w = w.into_const();
     let w0 = unsafe { w.col(0).const_cast() };
     let w1 = unsafe { w.col(1).const_cast() };
@@ -487,15 +403,13 @@ fn rank_update_step_impl4<E: ComplexField>(
     let w3 = unsafe { w.col(3).const_cast() };
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 4> {
-            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
-            w: unsafe {
-                [
-                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w3.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                ]
-            },
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            w: [
+                SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w2.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w3.try_get_contiguous_col_mut()),
+            ],
             p_array,
             beta_array,
         });
@@ -503,7 +417,14 @@ fn rank_update_step_impl4<E: ComplexField>(
         let [p0, p1, p2, p3] = p_array;
         let [beta0, beta1, beta2, beta3] = beta_array;
 
-        zipped!(l_col, w0, w1, w2, w3).for_each(|mut l, mut w0, mut w1, mut w2, mut w3| {
+        zipped!(
+            l_col,
+            w0.as_2d_mut(),
+            w1.as_2d_mut(),
+            w2.as_2d_mut(),
+            w3.as_2d_mut(),
+        )
+        .for_each(|unzipped!(mut l, mut w0, mut w1, mut w2, mut w3)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
             let mut local_w1 = w1.read();
@@ -538,7 +459,6 @@ fn rank_update_step_impl3<E: ComplexField>(
     p_array: [E; 4],
     beta_array: [E; 4],
 ) {
-    let m = l_col.nrows();
     let w = w.into_const();
     let w0 = unsafe { w.col(0).const_cast() };
     let w1 = unsafe { w.col(1).const_cast() };
@@ -549,14 +469,12 @@ fn rank_update_step_impl3<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
-            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
-            w: unsafe {
-                [
-                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w2.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                ]
-            },
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            w: [
+                SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w2.try_get_contiguous_col_mut()),
+            ],
             p_array,
             beta_array,
         });
@@ -564,26 +482,28 @@ fn rank_update_step_impl3<E: ComplexField>(
         let [p0, p1, p2] = p_array;
         let [beta0, beta1, beta2] = beta_array;
 
-        zipped!(l_col, w0, w1, w2).for_each(|mut l, mut w0, mut w1, mut w2| {
-            let mut local_l = l.read();
-            let mut local_w0 = w0.read();
-            let mut local_w1 = w1.read();
-            let mut local_w2 = w2.read();
+        zipped!(l_col, w0.as_2d_mut(), w1.as_2d_mut(), w2.as_2d_mut()).for_each(
+            |unzipped!(mut l, mut w0, mut w1, mut w2)| {
+                let mut local_l = l.read();
+                let mut local_w0 = w0.read();
+                let mut local_w1 = w1.read();
+                let mut local_w2 = w2.read();
 
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
+                local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
+                local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
 
-            local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
+                local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
+                local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
 
-            local_w2 = local_w2.faer_add(E::faer_mul(p2, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta2, local_w2));
+                local_w2 = local_w2.faer_add(E::faer_mul(p2, local_l));
+                local_l = local_l.faer_add(E::faer_mul(beta2, local_w2));
 
-            l.write(local_l);
-            w0.write(local_w0);
-            w1.write(local_w1);
-            w2.write(local_w2);
-        });
+                l.write(local_l);
+                w0.write(local_w0);
+                w1.write(local_w1);
+                w2.write(local_w2);
+            },
+        );
     }
 }
 
@@ -594,7 +514,6 @@ fn rank_update_step_impl2<E: ComplexField>(
     p_array: [E; 4],
     beta_array: [E; 4],
 ) {
-    let m = l_col.nrows();
     let w = w.into_const();
     let w0 = unsafe { w.col(0).const_cast() };
     let w1 = unsafe { w.col(1).const_cast() };
@@ -603,13 +522,11 @@ fn rank_update_step_impl2<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 2> {
-            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
-            w: unsafe {
-                [
-                    E::faer_map(w0.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                    E::faer_map(w1.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)),
-                ]
-            },
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            w: [
+                SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
+            ],
             p_array,
             beta_array,
         });
@@ -617,21 +534,23 @@ fn rank_update_step_impl2<E: ComplexField>(
         let [p0, p1] = p_array;
         let [beta0, beta1] = beta_array;
 
-        zipped!(l_col, w0, w1).for_each(|mut l, mut w0, mut w1| {
-            let mut local_l = l.read();
-            let mut local_w0 = w0.read();
-            let mut local_w1 = w1.read();
+        zipped!(l_col, w0.as_2d_mut(), w1.as_2d_mut()).for_each(
+            |unzipped!(mut l, mut w0, mut w1)| {
+                let mut local_l = l.read();
+                let mut local_w0 = w0.read();
+                let mut local_w1 = w1.read();
 
-            local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
+                local_w0 = local_w0.faer_add(E::faer_mul(p0, local_l));
+                local_l = local_l.faer_add(E::faer_mul(beta0, local_w0));
 
-            local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
-            local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
+                local_w1 = local_w1.faer_add(E::faer_mul(p1, local_l));
+                local_l = local_l.faer_add(E::faer_mul(beta1, local_w1));
 
-            l.write(local_l);
-            w0.write(local_w0);
-            w1.write(local_w1);
-        });
+                l.write(local_l);
+                w0.write(local_w0);
+                w1.write(local_w1);
+            },
+        );
     }
 }
 
@@ -642,21 +561,16 @@ fn rank_update_step_impl1<E: ComplexField>(
     p_array: [E; 4],
     beta_array: [E; 4],
 ) {
-    let m = l_col.nrows();
     let w_rs = w.row_stride();
 
-    let w0 = w.col(0);
+    let w0 = w.col_mut(0);
     let [p_array @ .., _, _, _] = p_array;
     let [beta_array @ .., _, _, _] = beta_array;
 
     if l_col.row_stride() == 1 && w_rs == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 1> {
-            l_col: unsafe { E::faer_map(l_col.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, m)) },
-            w: unsafe {
-                [E::faer_map(w0.as_ptr(), |ptr| {
-                    slice::from_raw_parts_mut(ptr, m)
-                })]
-            },
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            w: [SliceGroupMut::new(w0.try_get_contiguous_col_mut())],
             p_array,
             beta_array,
         });
@@ -664,7 +578,7 @@ fn rank_update_step_impl1<E: ComplexField>(
         let [p0] = p_array;
         let [beta0] = beta_array;
 
-        zipped!(l_col, w0).for_each(|mut l, mut w0| {
+        zipped!(l_col, w0.as_2d_mut()).for_each(|unzipped!(mut l, mut w0)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
 
@@ -739,14 +653,17 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 
                 let rem = n - j - 1;
 
-                let l_col = ld.rb_mut().col(j).subrows(j + 1, rem);
-                let w = w.rb_mut().subcols(r_idx, r_chunk).subrows(j + 1, rem);
+                let l_col = ld.rb_mut().col_mut(j).subrows_mut(j + 1, rem);
+                let w = w
+                    .rb_mut()
+                    .subcols_mut(r_idx, r_chunk)
+                    .subrows_mut(j + 1, rem);
 
                 match r_chunk {
-                    1 => rank_update_step_impl1(arch, l_col, w, p_array, beta_array),
-                    2 => rank_update_step_impl2(arch, l_col, w, p_array, beta_array),
-                    3 => rank_update_step_impl3(arch, l_col, w, p_array, beta_array),
-                    4 => rank_update_step_impl4(arch, l_col, w, p_array, beta_array),
+                    1 => rank_update_step_impl1(arch, l_col.as_2d_mut(), w, p_array, beta_array),
+                    2 => rank_update_step_impl2(arch, l_col.as_2d_mut(), w, p_array, beta_array),
+                    3 => rank_update_step_impl3(arch, l_col.as_2d_mut(), w, p_array, beta_array),
+                    4 => rank_update_step_impl4(arch, l_col.as_2d_mut(), w, p_array, beta_array),
                     _ => unreachable!(),
                 }
 
@@ -916,13 +833,13 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     let (mut alpha, _) = temp_mat_uninit::<E>(r, 1, stack);
     let mut w = w.as_mut();
     let alpha = alpha.as_mut();
-    let mut alpha = alpha.col(0);
+    let mut alpha = alpha.col_mut(0);
 
     E::Simd::default().dispatch(|| {
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                alpha.write_unchecked(k, 0, cholesky_factors.read_unchecked(j, j).faer_inv());
+                alpha.write_unchecked(k, cholesky_factors.read_unchecked(j, j).faer_inv());
             }
 
             for chunk_i in k..r {
@@ -947,9 +864,9 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     delete_rows_and_cols_triangular(cholesky_factors.rb_mut(), indices);
 
     RankRUpdate {
-        ld: cholesky_factors.submatrix(first, first, n - first - r, n - first - r),
+        ld: cholesky_factors.submatrix_mut(first, first, n - first - r, n - first - r),
         w,
-        alpha,
+        alpha: alpha.as_2d_mut(),
         r: &mut rank_update_indices(first, indices),
     }
     .run();
@@ -1024,15 +941,15 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         }
     }
 
-    let [ld00, _, l_bot_left, ld_bot_right] = ld.split_at(insertion_index, insertion_index);
+    let (ld00, _, l_bot_left, ld_bot_right) = ld.split_at_mut(insertion_index, insertion_index);
     let ld00 = ld00.into_const();
-    let d0 = ld00.diagonal().into_column_vector();
+    let d0 = ld00.diagonal().column_vector();
 
-    let [_, mut l10, _, l20] = l_bot_left.split_at(r, 0);
-    let [mut ld11, _, mut l21, ld22] = ld_bot_right.split_at(r, r);
+    let (_, mut l10, _, l20) = l_bot_left.split_at_mut(r, 0);
+    let (mut ld11, _, mut l21, ld22) = ld_bot_right.split_at_mut(r, r);
 
-    let [_, mut a01, _, a_bottom] = inserted_matrix.split_at(insertion_index, 0);
-    let [_, a11, _, a21] = a_bottom.split_at(r, 0);
+    let (_, mut a01, _, a_bottom) = inserted_matrix.split_at_mut(insertion_index, 0);
+    let (_, a11, _, a21) = a_bottom.split_at_mut(r, 0);
 
     let mut stack = stack;
 
@@ -1041,7 +958,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     let a01 = a01.rb();
 
     for j in 0..insertion_index {
-        let d0_inv = unsafe { d0.read_unchecked(j, 0) };
+        let d0_inv = unsafe { d0.read_unchecked(j) };
         for i in 0..r {
             unsafe {
                 l10.write_unchecked(i, j, a01.read_unchecked(j, i).faer_conj().faer_mul(d0_inv));
@@ -1097,15 +1014,15 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
 
     solve::solve_unit_lower_triangular_in_place(
         ld11.conjugate(),
-        l21.rb_mut().transpose(),
+        l21.rb_mut().transpose_mut(),
         parallelism,
     );
 
-    let d1 = ld11.into_const().diagonal().into_column_vector();
+    let d1 = ld11.into_const().diagonal().column_vector();
 
     for j in 0..r {
         unsafe {
-            let d1_inv = d1.read_unchecked(j, 0);
+            let d1_inv = d1.read_unchecked(j);
             for i in 0..rem {
                 let value = l21.rb_mut().read_unchecked(i, j).faer_mul(d1_inv);
                 l21.write_unchecked(i, j, value);
@@ -1113,14 +1030,14 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         }
     }
 
-    let mut alpha = a11.col(0);
+    let mut alpha = a11.col_mut(0);
     let mut w = a21;
 
     for j in 0..r {
         unsafe {
             alpha
                 .rb_mut()
-                .write_unchecked(j, 0, ld11.read_unchecked(j, j).faer_inv().faer_neg());
+                .write_unchecked(j, ld11.read_unchecked(j, j).faer_inv().faer_neg());
 
             for i in 0..rem {
                 w.rb_mut()
@@ -1129,5 +1046,5 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         }
     }
 
-    rank_r_update_clobber(ld22, w, alpha);
+    rank_r_update_clobber(ld22, w, alpha.as_2d_mut());
 }

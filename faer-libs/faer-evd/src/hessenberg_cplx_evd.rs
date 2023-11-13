@@ -12,13 +12,14 @@ use faer_core::{
         apply_block_householder_sequence_on_the_right_in_place_with_conj,
         apply_block_householder_sequence_transpose_on_the_left_in_place_req,
         apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
-        make_householder_in_place,
+        make_householder_in_place_v2,
     },
     mul::matmul,
-    temp_mat_req,
+    temp_mat_req, unzipped,
     zip::Diag,
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField, SimdCtx,
 };
+use faer_entity::*;
 use reborrow::*;
 
 fn max<T: PartialOrd>(a: T, b: T) -> T {
@@ -35,16 +36,6 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
     } else {
         b
     }
-}
-
-pub fn sqr_norm<E: ComplexField>(a: MatRef<'_, E>) -> E::Real {
-    faer_core::mul::inner_prod::inner_prod_with_conj(
-        a,
-        faer_core::Conj::Yes,
-        a,
-        faer_core::Conj::No,
-    )
-    .faer_real()
 }
 
 fn abs1<E: ComplexField>(a: E) -> E::Real {
@@ -268,7 +259,7 @@ pub fn rot<E: ComplexField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E::Real, s: E
         return;
     }
 
-    zipped!(x, y).for_each(|mut x, mut y| {
+    zipped!(x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
 
@@ -300,8 +291,8 @@ impl<E: ComplexField> pulp::WithSimd for Rot<'_, E> {
         debug_assert!(aj.ncols() == 1);
 
         let n = ai.nrows();
-        let ai = ai.as_ptr();
-        let aj = aj.as_ptr();
+        let ai = ai.as_ptr_mut();
+        let aj = aj.as_ptr_mut();
 
         let ai = unsafe {
             E::faer_map(
@@ -330,46 +321,41 @@ impl<E: ComplexField> pulp::WithSimd for Rot<'_, E> {
 
             let tmp = E::faer_simd_conj_mul_adde(
                 simd,
-                E::faer_copy(&s),
-                E::faer_copy(&aj_),
-                E::faer_simd_scale_real(simd, E::Real::faer_copy(&c), E::faer_copy(&ai_)),
+                s,
+                into_copy::<E, _>(E::faer_copy(&aj_)),
+                E::faer_simd_scale_real(simd, c, into_copy::<E, _>(E::faer_copy(&ai_))),
             );
 
-            aj_ = E::faer_simd_mul_adde(
+            aj_ = from_copy::<E, _>(E::faer_simd_mul_adde(
                 simd,
-                E::faer_simd_neg(simd, E::faer_copy(&s)),
-                ai_,
-                E::faer_simd_scale_real(simd, E::Real::faer_copy(&c), aj_),
-            );
-            ai_ = tmp;
+                E::faer_simd_neg(simd, s),
+                into_copy::<E, _>(ai_),
+                E::faer_simd_scale_real(simd, c, into_copy::<E, _>(aj_)),
+            ));
+            ai_ = from_copy::<E, _>(tmp);
 
             E::faer_map(
                 E::faer_zip(ai, ai_),
                 #[inline(always)]
-                |(ai, ai_)| *ai = ai_,
+                |(ai, ai_): (&mut _, _)| *ai = ai_,
             );
             E::faer_map(
                 E::faer_zip(aj, aj_),
                 #[inline(always)]
-                |(aj, aj_)| *aj = aj_,
+                |(aj, aj_): (&mut _, _)| *aj = aj_,
             );
         }
 
         let mut ai_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&ai_tail)));
         let mut aj_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&aj_tail)));
 
-        let tmp = E::faer_simd_conj_mul_adde(
-            simd,
-            E::faer_copy(&s),
-            E::faer_copy(&aj_),
-            E::faer_simd_scale_real(simd, E::Real::faer_copy(&c), E::faer_copy(&ai_)),
-        );
+        let tmp = E::faer_simd_conj_mul_adde(simd, s, aj_, E::faer_simd_scale_real(simd, c, ai_));
 
         aj_ = E::faer_simd_mul_adde(
             simd,
-            E::faer_simd_neg(simd, E::faer_copy(&s)),
+            E::faer_simd_neg(simd, s),
             ai_,
-            E::faer_simd_scale_real(simd, E::Real::faer_copy(&c), aj_),
+            E::faer_simd_scale_real(simd, c, aj_),
         );
         ai_ = tmp;
 
@@ -592,10 +578,22 @@ pub fn lahqr<E: ComplexField>(
             }
 
             // Apply G from the left to A
-            let ai = unsafe { a.rb().row(i).subcols(i, istop_m - i).const_cast() };
-            let aip1 = unsafe { a.rb().row(i + 1).subcols(i, istop_m - i).const_cast() };
+            let ai = unsafe {
+                a.rb()
+                    .row(i)
+                    .subcols(i, istop_m - i)
+                    .const_cast()
+                    .as_2d_mut()
+            };
+            let aip1 = unsafe {
+                a.rb()
+                    .row(i + 1)
+                    .subcols(i, istop_m - i)
+                    .const_cast()
+                    .as_2d_mut()
+            };
 
-            zipped!(ai, aip1).for_each(|mut ai, mut aip1| {
+            zipped!(ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
                 let ai_ = ai.read();
                 let aip1_ = aip1.read();
                 let tmp = (ai_.faer_scale_real(cs)).faer_add(aip1_.faer_mul(sn));
@@ -607,8 +605,20 @@ pub fn lahqr<E: ComplexField>(
 
             // Apply G**H from the right to A
             let nrows_ = Ord::min(i + 3, istop) - istart_m;
-            let ai = unsafe { a.rb().col(i).subrows(istart_m, nrows_).const_cast() };
-            let aip1 = unsafe { a.rb().col(i + 1).subrows(istart_m, nrows_).const_cast() };
+            let ai = unsafe {
+                a.rb()
+                    .col(i)
+                    .subrows(istart_m, nrows_)
+                    .const_cast()
+                    .as_2d_mut()
+            };
+            let aip1 = unsafe {
+                a.rb()
+                    .col(i + 1)
+                    .subrows(istart_m, nrows_)
+                    .const_cast()
+                    .as_2d_mut()
+            };
 
             if a.row_stride() == 1 {
                 arch.dispatch(Rot {
@@ -618,7 +628,7 @@ pub fn lahqr<E: ComplexField>(
                     s: sn,
                 });
             } else {
-                zipped!(ai, aip1).for_each(|mut ai, mut aip1| {
+                zipped!(ai, aip1).for_each(|unzipped!(mut ai, mut aip1)| {
                     let ai_ = ai.read();
                     let aip1_ = aip1.read();
                     let tmp = (ai_.faer_scale_real(cs)).faer_add(aip1_.faer_mul(sn.faer_conj()));
@@ -628,8 +638,8 @@ pub fn lahqr<E: ComplexField>(
             }
             if let Some(z) = z.rb_mut() {
                 // Apply G**H to Z from the right
-                let zi = unsafe { z.rb().col(i).const_cast() };
-                let zip1 = unsafe { z.rb().col(i + 1).const_cast() };
+                let zi = unsafe { z.rb().col(i).const_cast().as_2d_mut() };
+                let zip1 = unsafe { z.rb().col(i + 1).const_cast().as_2d_mut() };
 
                 if z.row_stride() == 1 {
                     arch.dispatch(Rot {
@@ -639,7 +649,7 @@ pub fn lahqr<E: ComplexField>(
                         s: sn,
                     });
                 } else {
-                    zipped!(zi, zip1).for_each(|mut zi, mut zip1| {
+                    zipped!(zi, zip1).for_each(|unzipped!(mut zi, mut zip1)| {
                         let zi_ = zi.read();
                         let zip1_ = zip1.read();
                         let tmp =
@@ -798,16 +808,17 @@ fn aggressive_early_deflation<E: ComplexField>(
     // window (note the use of infqr later in the code).
     let a_window = a.rb().submatrix(kwtop, kwtop, ihi - kwtop, ihi - kwtop);
     let mut s_window = unsafe { s.rb().subrows(kwtop, ihi - kwtop).const_cast() };
-    zipped!(tw.rb_mut()).for_each_triangular_lower(Diag::Include, |mut x| x.write(E::faer_zero()));
+    zipped!(tw.rb_mut())
+        .for_each_triangular_lower(Diag::Include, |unzipped!(mut x)| x.write(E::faer_zero()));
     for j in 0..jw {
         for i in 0..Ord::min(j + 2, jw) {
             tw.write(i, j, a_window.read(i, j));
         }
     }
-    v.fill_zeros();
+    v.fill_zero();
     v.rb_mut()
-        .diagonal()
-        .into_column_vector()
+        .diagonal_mut()
+        .column_vector_mut()
         .fill(E::faer_one());
 
     let infqr = if jw
@@ -950,19 +961,19 @@ fn aggressive_early_deflation<E: ComplexField>(
     if s_spike != E::faer_zero() {
         // Reflect spike back
         {
-            let mut vv = wv.rb_mut().col(0).subrows(0, ns);
+            let mut vv = wv.rb_mut().col_mut(0).subrows_mut(0, ns).as_2d_mut();
             for i in 0..ns {
                 vv.write(i, 0, v.read(0, i).faer_conj());
             }
             let head = vv.read(0, 0);
-            let tail = vv.rb_mut().subrows(1, ns - 1);
-            let tail_sqr_norm = sqr_norm(tail.rb());
-            let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+            let tail = vv.rb_mut().subrows_mut(1, ns - 1);
+            let tail_norm = tail.rb().norm_l2();
+            let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
             vv.write(0, 0, E::faer_one());
             let tau = tau.faer_inv();
 
             {
-                let mut tw_slice = tw.rb_mut().submatrix(0, 0, ns, jw);
+                let mut tw_slice = tw.rb_mut().submatrix_mut(0, 0, ns, jw);
                 let tmp = vv.rb().adjoint() * tw_slice.rb();
                 matmul(
                     tw_slice.rb_mut(),
@@ -975,7 +986,7 @@ fn aggressive_early_deflation<E: ComplexField>(
             }
 
             {
-                let mut tw_slice2 = tw.rb_mut().submatrix(0, 0, jw, ns);
+                let mut tw_slice2 = tw.rb_mut().submatrix_mut(0, 0, jw, ns);
                 let tmp = tw_slice2.rb() * vv.rb();
                 matmul(
                     tw_slice2.rb_mut(),
@@ -988,7 +999,7 @@ fn aggressive_early_deflation<E: ComplexField>(
             }
 
             {
-                let mut v_slice = v.rb_mut().submatrix(0, 0, jw, ns);
+                let mut v_slice = v.rb_mut().submatrix_mut(0, 0, jw, ns);
                 let tmp = v_slice.rb() * vv.rb();
                 matmul(
                     v_slice.rb_mut(),
@@ -1004,16 +1015,16 @@ fn aggressive_early_deflation<E: ComplexField>(
 
         // Hessenberg reduction
         {
-            let mut householder = wv.rb_mut().col(0).subrows(0, ns - 1);
+            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1);
             make_hessenberg_in_place(
-                tw.rb_mut().submatrix(0, 0, ns, ns),
-                householder.rb_mut(),
+                tw.rb_mut().submatrix_mut(0, 0, ns, ns),
+                householder.rb_mut().as_2d_mut(),
                 parallelism,
                 stack.rb_mut(),
             );
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
-                householder.rb().transpose(),
+                householder.rb().transpose().as_2d(),
                 Conj::Yes,
                 unsafe { tw.rb().submatrix(1, ns, ns - 1, jw - ns).const_cast() },
                 parallelism,
@@ -1021,9 +1032,9 @@ fn aggressive_early_deflation<E: ComplexField>(
             );
             apply_block_householder_sequence_on_the_right_in_place_with_conj(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
-                householder.rb().transpose(),
+                householder.rb().transpose().as_2d(),
                 Conj::No,
-                v.rb_mut().submatrix(0, 1, jw, ns - 1),
+                v.rb_mut().submatrix_mut(0, 1, jw, ns - 1),
                 parallelism,
                 stack.rb_mut(),
             );
@@ -1061,10 +1072,10 @@ fn aggressive_early_deflation<E: ComplexField>(
         let mut i = ihi;
         while i < istop_m {
             let iblock = Ord::min(istop_m - i, wh.ncols());
-            let mut a_slice = a.rb_mut().submatrix(kwtop, i, ihi - kwtop, iblock);
+            let mut a_slice = a.rb_mut().submatrix_mut(kwtop, i, ihi - kwtop, iblock);
             let mut wh_slice = wh
                 .rb_mut()
-                .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
             matmul(
                 wh_slice.rb_mut(),
                 v.rb().adjoint(),
@@ -1073,7 +1084,7 @@ fn aggressive_early_deflation<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            a_slice.clone_from(wh_slice.rb());
+            a_slice.copy_from(wh_slice.rb());
             i += iblock;
         }
     }
@@ -1083,10 +1094,10 @@ fn aggressive_early_deflation<E: ComplexField>(
         let mut i = istart_m;
         while i < kwtop {
             let iblock = Ord::min(kwtop - i, wv.nrows());
-            let mut a_slice = a.rb_mut().submatrix(i, kwtop, iblock, ihi - kwtop);
+            let mut a_slice = a.rb_mut().submatrix_mut(i, kwtop, iblock, ihi - kwtop);
             let mut wv_slice = wv
                 .rb_mut()
-                .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
             matmul(
                 wv_slice.rb_mut(),
                 a_slice.rb(),
@@ -1095,7 +1106,7 @@ fn aggressive_early_deflation<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            a_slice.clone_from(wv_slice.rb());
+            a_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1104,10 +1115,10 @@ fn aggressive_early_deflation<E: ComplexField>(
         let mut i = 0;
         while i < n {
             let iblock = Ord::min(n - i, wv.nrows());
-            let mut z_slice = z.rb_mut().submatrix(i, kwtop, iblock, ihi - kwtop);
+            let mut z_slice = z.rb_mut().submatrix_mut(i, kwtop, iblock, ihi - kwtop);
             let mut wv_slice = wv
                 .rb_mut()
-                .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
             matmul(
                 wv_slice.rb_mut(),
                 z_slice.rb(),
@@ -1116,7 +1127,7 @@ fn aggressive_early_deflation<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            z_slice.clone_from(wv_slice.rb());
+            z_slice.copy_from(wv_slice.rb());
             i += iblock;
         }
     }
@@ -1194,20 +1205,34 @@ fn schur_swap<E: ComplexField>(
 
     // Apply transformation from the left
     if j2 < n {
-        let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).transpose().const_cast() };
-        let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).transpose().const_cast() };
-        rot(row1.transpose(), row2.transpose(), cs, sn);
+        let row1 = unsafe {
+            a.rb()
+                .row(j0)
+                .subcols(j2, n - j2)
+                .transpose()
+                .const_cast()
+                .as_2d_mut()
+        };
+        let row2 = unsafe {
+            a.rb()
+                .row(j1)
+                .subcols(j2, n - j2)
+                .transpose()
+                .const_cast()
+                .as_2d_mut()
+        };
+        rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
     }
     // Apply transformation from the right
     if j0 > 0 {
-        let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
-        let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
+        let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
+        let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
 
         rot(col1, col2, cs, sn.faer_conj());
     }
     if let Some(q) = q {
-        let col1 = unsafe { q.rb().col(j0).const_cast() };
-        let col2 = unsafe { q.rb().col(j1).const_cast() };
+        let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
+        let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
         rot(col1, col2, cs, sn.faer_conj());
     }
 
@@ -1444,8 +1469,8 @@ pub fn multishift_qr<E: ComplexField>(
             if ls <= nsr / 2 {
                 // Got nsr/2 or fewer shifts? Then use multi/double shift qr to
                 // get more
-                let mut temp = a.rb_mut().submatrix(n - nsr, 0, nsr, nsr);
-                let mut shifts = w.rb_mut().subrows(istop - nsr, nsr);
+                let mut temp = a.rb_mut().submatrix_mut(n - nsr, 0, nsr, nsr);
+                let mut shifts = w.rb_mut().subrows_mut(istop - nsr, nsr);
                 let ierr = lahqr(
                     false,
                     temp.rb_mut(),
@@ -1515,7 +1540,7 @@ pub fn multishift_qr<E: ComplexField>(
             i_shifts = istop - ns;
         }
 
-        let mut shifts = w.rb_mut().subrows(i_shifts, ns);
+        let mut shifts = w.rb_mut().subrows_mut(i_shifts, ns);
         multishift_qr_sweep(
             want_t,
             a.rb_mut(),
@@ -1558,9 +1583,9 @@ fn move_bulge<E: ComplexField>(
     v.write(2, 0, h.read(3, 0));
 
     let head = v.read(0, 0);
-    let tail = v.rb_mut().subrows(1, 2);
-    let tail_sqr_norm = sqr_norm(tail.rb());
-    let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+    let tail = v.rb_mut().subrows_mut(1, 2);
+    let tail_norm = tail.rb().norm_l2();
+    let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
     v.write(0, 0, tau.faer_inv());
 
     // Check for bulge collapse
@@ -1579,15 +1604,15 @@ fn move_bulge<E: ComplexField>(
             [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
-        let mut vt = unsafe { MatMut::<E>::from_raw_parts(vt_ptr, 3, 1, 1, 3) };
+        let mut vt = unsafe { faer_core::mat::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1, 1, 3) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
 
         let head = vt.read(0, 0);
-        let tail = vt.rb_mut().subrows(1, 2);
-        let tail_sqr_norm = sqr_norm(tail.rb());
-        let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+        let tail = vt.rb_mut().subrows_mut(1, 2);
+        let tail_norm = tail.rb().norm_l2();
+        let (tau, _) = make_householder_in_place_v2(Some(tail), head, tail_norm);
         vt.write(0, 0, tau.faer_inv());
         let vt0 = vt.read(0, 0);
         let vt1 = vt.read(1, 0);
@@ -1702,11 +1727,11 @@ fn multishift_qr_sweep<E: ComplexField>(
         let n_block = Ord::min(n_block_desired, ihi - ilo);
         let mut istart_m = ilo;
         let mut istop_m = ilo + n_block;
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         for i_pos_last in ilo..ilo + n_block - 2 {
@@ -1715,7 +1740,7 @@ fn multishift_qr_sweep<E: ComplexField>(
 
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col(i_bulge);
+                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
                 if i_pos == ilo {
                     // Introduce bulge
                     let h = a.rb().submatrix(ilo, ilo, 3, 3);
@@ -1726,13 +1751,13 @@ fn multishift_qr_sweep<E: ComplexField>(
 
                     debug_assert!(v.nrows() == 3);
                     let head = v.read(0, 0);
-                    let tail = v.rb_mut().subrows(1, 2);
-                    let tail_sqr_norm = sqr_norm(tail.rb());
-                    let (tau, _) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                    let tail = v.rb_mut().subrows_mut(1, 2);
+                    let tail_norm = tail.rb().norm_l2();
+                    let (tau, _) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                     v.write(0, 0, tau.faer_inv());
                 } else {
                     // Chase bulge down
-                    let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                    let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                     let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                     let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
                     move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
@@ -1844,7 +1869,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Delayed update from the left
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -1874,7 +1899,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -1924,10 +1949,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = ilo + n_block;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(ilo, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(ilo, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -1936,7 +1961,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -1945,10 +1970,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = istart_m;
             while i < ilo {
                 let iblock = Ord::min(ilo - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, ilo, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -1957,7 +1982,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1966,10 +1991,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, ilo, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -1978,7 +2003,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -1996,11 +2021,11 @@ fn multishift_qr_sweep<E: ComplexField>(
         // Actual blocksize
         let n_block = n_shifts + n_pos;
 
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
@@ -2013,10 +2038,10 @@ fn multishift_qr_sweep<E: ComplexField>(
         for i_pos_last in i_pos_block + n_shifts - 2..i_pos_block + n_shifts - 2 + n_pos {
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col(i_bulge);
+                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 // Chase bulge down
-                let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                 let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                 let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
                 move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
@@ -2127,7 +2152,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Delayed update from the left
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2157,7 +2182,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2211,10 +2236,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = i_pos_block + n_block;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(i_pos_block, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -2223,7 +2248,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -2233,10 +2258,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = istart_m;
             while i < i_pos_block {
                 let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -2245,7 +2270,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2254,10 +2279,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -2266,7 +2291,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2280,11 +2305,11 @@ fn multishift_qr_sweep<E: ComplexField>(
     {
         let n_block = ihi - i_pos_block;
 
-        let mut u2 = u.rb_mut().submatrix(0, 0, n_block, n_block);
-        u2.fill_zeros();
+        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+        u2.fill_zero();
         u2.rb_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         // Near-the-diagonal bulge chase
@@ -2306,12 +2331,16 @@ fn multishift_qr_sweep<E: ComplexField>(
                 if i_pos == ihi - 2 {
                     // Special case, the bulge is at the bottom, needs a smaller
                     // reflector (order 2)
-                    let mut v = v.rb_mut().subrows(0, 2).col(i_bulge);
-                    let mut h = a.rb_mut().subrows(i_pos, 2).col(i_pos - 1);
+                    let mut v = v.rb_mut().subrows_mut(0, 2).col_mut(i_bulge).as_2d_mut();
+                    let mut h = a
+                        .rb_mut()
+                        .subrows_mut(i_pos, 2)
+                        .col_mut(i_pos - 1)
+                        .as_2d_mut();
                     let head = h.read(0, 0);
-                    let tail = h.rb_mut().subrows(1, 1);
-                    let tail_sqr_norm = sqr_norm(tail.rb());
-                    let (tau, beta) = make_householder_in_place(Some(tail), head, tail_sqr_norm);
+                    let tail = h.rb_mut().subrows_mut(1, 1);
+                    let tail_norm = tail.rb().norm_l2();
+                    let (tau, beta) = make_householder_in_place_v2(Some(tail), head, tail_norm);
                     v.write(0, 0, tau.faer_inv());
                     v.write(1, 0, h.read(1, 0));
                     h.write(0, 0, beta);
@@ -2367,8 +2396,8 @@ fn multishift_qr_sweep<E: ComplexField>(
                         );
                     }
                 } else {
-                    let mut v = v.rb_mut().col(i_bulge);
-                    let mut h = a.rb_mut().submatrix(i_pos - 1, i_pos - 1, 4, 4);
+                    let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                    let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
                     let s1 = s.read(s.nrows() - 1 - 2 * i_bulge, 0);
                     let s2 = s.read(s.nrows() - 1 - 2 * i_bulge - 1, 0);
                     move_bulge(h.rb_mut(), v.rb_mut(), s1, s2, epsilon);
@@ -2492,7 +2521,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Delayed update from the left
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2522,7 +2551,7 @@ fn multishift_qr_sweep<E: ComplexField>(
             // Accumulate the reflectors into U
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col(i_bulge);
+                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
 
                 let v0 = v.read(0, 0).faer_real();
                 let v1 = v.read(1, 0);
@@ -2578,10 +2607,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = ihi;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix(i_pos_block, i, n_block, iblock);
-                let mut wh_slice = wh
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut wh_slice =
+                    wh.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wh_slice.rb_mut(),
                     u2.rb().adjoint(),
@@ -2590,7 +2619,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wh_slice.rb());
+                a_slice.copy_from(wh_slice.rb());
                 i += iblock;
             }
         }
@@ -2600,10 +2629,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = istart_m;
             while i < i_pos_block {
                 let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, a_slice.nrows(), a_slice.ncols());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     a_slice.rb(),
@@ -2612,7 +2641,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                a_slice.clone_from(wv_slice.rb());
+                a_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2621,10 +2650,10 @@ fn multishift_qr_sweep<E: ComplexField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix(i, i_pos_block, iblock, n_block);
-                let mut wv_slice = wv
-                    .rb_mut()
-                    .submatrix(0, 0, z_slice.nrows(), z_slice.ncols());
+                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut wv_slice =
+                    wv.rb_mut()
+                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
                 matmul(
                     wv_slice.rb_mut(),
                     z_slice.rb(),
@@ -2633,7 +2662,7 @@ fn multishift_qr_sweep<E: ComplexField>(
                     E::faer_one(),
                     parallelism,
                 );
-                z_slice.clone_from(wv_slice.rb());
+                z_slice.copy_from(wv_slice.rb());
                 i += iblock;
             }
         }
@@ -2643,9 +2672,8 @@ fn multishift_qr_sweep<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, mat, Mat};
+    use faer_core::{assert, c64, mat, Mat};
 
     macro_rules! make_stack {
         ($req: expr $(,)?) => {
@@ -13080,5 +13108,338 @@ mod tests {
                 assert_approx_eq!(h_reconstructed.read(i, j), h.read(i, j));
             }
         }
+    }
+
+    #[test]
+    fn test_gh_84_cplx_20x20() {
+        let a = mat![
+            [
+                0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                -1.0,
+                0.0,
+                1.414213562373095,
+                0.0,
+                4.2913523532056946e-17,
+                0.0,
+                -1.044653549357173e-17,
+                0.0,
+                -3.1114138757927777e-18,
+                0.0,
+                -1.7041915655062705e-17,
+                0.0,
+                -1.5407439555097887e-33,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0,
+                1.4142135623730951,
+                0.0,
+                1.8708286933869704,
+                0.0,
+                5.584290580070408e-17,
+                0.0,
+                4.247123568135012e-17,
+                0.0,
+                3.383773620463798e-17,
+                0.0,
+                -7.996931848726948e-17,
+                0.0,
+                2.137243672031505e-16,
+                -2.1697413347872967e-16,
+                2.1669070851885488e-16,
+                8.793731080691344e-17,
+                -6.366867306877532e-17,
+                -2.166907085188549e-16,
+                -1.5209416587779695e-16,
+            ],
+            [
+                0.0,
+                0.0,
+                1.8708286933869707,
+                0.0,
+                0.8864052604279185,
+                0.0,
+                -5.4482028175548746e-18,
+                0.0,
+                -1.6227019814468362e-18,
+                0.0,
+                -8.887904793467559e-18,
+                0.0,
+                -1.5407439555097887e-33,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.8864052604279183,
+                0.0,
+                -1.780121110720045,
+                0.0,
+                2.4905953568839346e-17,
+                0.0,
+                1.9539297406873977e-17,
+                0.0,
+                -4.520412950660578e-17,
+                0.0,
+                7.136040597386633e-17,
+                -3.3287408030765184e-17,
+                3.9021417760079386e-17,
+                2.050611271670174e-18,
+                8.594289573868776e-17,
+                -3.9021417760079386e-17,
+                -2.225425376396652e-17,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.7801211107200454,
+                0.0,
+                -0.27971669721424774,
+                0.0,
+                1.3907420351599062e-17,
+                0.0,
+                7.617407843277181e-17,
+                0.0,
+                6.162975822039155e-33,
+                2.413689799097554e-35,
+                0.0,
+                7.173100169147405e-36,
+                2.1640125834190973e-35,
+                1.746648713648135e-36,
+                -7.173100169147405e-36,
+                -2.3028287065724625e-36,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -0.27971669721424774,
+                0.0,
+                2.08179724791363,
+                0.0,
+                3.128025644367276e-17,
+                0.0,
+                1.4857837468143015e-17,
+                3.0814879110195774e-33,
+                -4.353679358901167e-17,
+                1.575970043415495e-17,
+                3.371331087010223e-17,
+                -3.158189568582724e-17,
+                3.363028106986343e-17,
+                -3.371331087010223e-17,
+                1.0436797917561959e-16,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                2.08179724791363,
+                0.0,
+                -0.591353947688746,
+                0.0,
+                -1.6942472264780397e-16,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -0.5913539476887459,
+                0.0,
+                1.382991720854028,
+                0.0,
+                2.9339388813743063e-16,
+                0.0,
+                -2.5386000785908e-17,
+                4.58003519909708e-17,
+                -3.248053804275205e-17,
+                -1.7259032483343233e-17,
+                -6.634605605063898e-17,
+                3.248053804275205e-17,
+                6.644449342304512e-17,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.3829917208540286,
+                0.0,
+                0.5110217026036908,
+                0.0,
+                4.2381199337456166e-17,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.5110217026036906,
+                0.0,
+                -1.2687886196697642,
+                0.0,
+                -1.9866208356455852e-17,
+                6.074934010535109e-17,
+                -7.39350135280486e-17,
+                1.5423322066319723e-17,
+                -9.775009908321562e-17,
+                7.39350135280486e-17,
+                2.485877967834109e-16,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2687886196697646,
+                0.0,
+                -1.1161328626787337e-16,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -4.319252649148509e-17,
+                0.0,
+                2.095595710655279e-17,
+                1.2259068349524595e-18,
+                1.2354010708239072e-17,
+                -6.000254847480346e-18,
+                -7.043660603033051e-18,
+                -1.2354010708239072e-17,
+                2.8117846829535463e-17,
+            ],
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -3.3963911681598194e-17,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+            [
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+            ],
+        ];
+        let mut a = zipped!(a.as_ref()).map(|unzipped!(x)| c64::new(x.read(), 0.0));
+
+        let mut w = Mat::zeros(20, 1);
+        lahqr(
+            false,
+            a.as_mut(),
+            None,
+            w.as_mut(),
+            0,
+            20,
+            f64::EPSILON,
+            f64::MIN_POSITIVE,
+        );
     }
 }

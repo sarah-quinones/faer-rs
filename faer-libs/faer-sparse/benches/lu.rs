@@ -88,32 +88,6 @@ fn timeit(mut f: impl FnMut(), time_limit: Duration) -> Duration {
     }
 }
 
-// fn permute_cols<'out, I: Index>(
-//     new_col_ptrs: &'out mut [I],
-//     new_row_ind: &'out mut [I],
-//     new_val: &'out mut [f64],
-//     A: SparseColMatRef<'_, I, f64>,
-//     col_perm: PermutationRef<'_, I, f64>,
-// ) -> SparseColMatRef<'out, I, f64> { let I = I::truncate;
-
-//     let m = A.nrows();
-//     let n = A.ncols();
-//     new_col_ptrs[0] = I(0);
-//     for j in 0..n {
-//         let pj = col_perm.into_arrays().0[j].zx();
-//         let row_ind = A.row_indices_of_col_raw(pj);
-//         new_col_ptrs[j + 1] = new_col_ptrs[j] + I(row_ind.len());
-//         new_row_ind[new_col_ptrs[j].zx()..new_col_ptrs[j + 1].zx()].copy_from_slice(row_ind);
-//         new_val[new_col_ptrs[j].zx()..new_col_ptrs[j + 1].zx()]
-//             .copy_from_slice(A.values_of_col(pj));
-//     }
-
-//     SparseColMatRef::new(
-//         SymbolicSparseColMatRef::new_checked(m, n, new_col_ptrs, None, new_row_ind),
-//         &*new_val,
-//     )
-// }
-
 fn main() {
     let regexes = args()
         .skip(1)
@@ -153,7 +127,7 @@ fn main() {
 
         let (m, n, col_ptr, row_ind, values) = load_mtx::<I>(data);
         let nnz = values.len();
-        dbg!(&file, m, n, nnz);
+        println!("{file}: {m}×{n}, {nnz} non-zeros");
 
         let A = SparseColMatRef::<'_, I, f64>::new(
             SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_ind),
@@ -177,6 +151,8 @@ fn main() {
         let fill_col_perm = PermutationRef::<'_, I, Symbolic>::new_checked(&p, &p_inv);
 
         let mut etree = vec![0usize; n];
+        let mut min_col = vec![0usize; m];
+        let mut col_counts = vec![0usize; n];
         let etree = {
             let mut mem = GlobalPodBuffer::new(StackReq::new::<u8>(4 * 1024 * 1024 * 1024));
             let nnz = A.compute_nnz();
@@ -192,8 +168,6 @@ fn main() {
             );
 
             let mut post = vec![0usize; n];
-            let mut col_counts = vec![0usize; n];
-            let mut min_col = vec![0usize; m];
 
             let etree = col_etree(*A, Some(fill_col_perm), &mut etree, PodStack::new(&mut mem));
             faer_sparse::qr::postorder(&mut post, etree, PodStack::new(&mut mem));
@@ -209,44 +183,87 @@ fn main() {
             etree
         };
 
+        let mut mem = GlobalPodBuffer::new(StackReq::new::<u8>(4 * 1024 * 1024 * 1024));
+
+        let symbolic = faer_sparse::lu::supernodal::factorize_supernodal_symbolic::<usize>(
+            *A,
+            Some(fill_col_perm),
+            &min_col,
+            etree,
+            &col_counts,
+            PodStack::new(&mut mem),
+            faer_sparse::cholesky::supernodal::CholeskySymbolicSupernodalParams {
+                relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
+            },
+        )
+        .unwrap();
+
         let mut row_perm = vec![0; n];
         let mut row_perm_inv = vec![0; n];
         let mut col_perm = vec![0; n];
         let mut col_perm_inv = vec![0; n];
 
-        let mut lu = SupernodalLuT2::<usize, f64>::new();
-        let mut work = vec![];
-
-        let mut mem = GlobalPodBuffer::new(StackReq::new::<u8>(4 * 1024 * 1024 * 1024));
-        let mut op = |parallelism| {
-            let _ = factorize_supernodal_numeric_dynamic_lu::<I, f64>(
-                &mut row_perm,
-                &mut row_perm_inv,
-                &mut col_perm,
-                &mut col_perm_inv,
-                &mut lu,
-                &mut work,
-                A,
-                fill_col_perm.cast(),
-                etree,
-                parallelism,
-                PodStack::new(&mut mem),
-                Default::default(),
-            )
-            .unwrap();
-        };
-
-        // warm up
-        let warmup = time(|| op(faer_core::Parallelism::None));
-        dbg!(warmup);
         {
-            let single_thread = timeit(|| op(faer_core::Parallelism::None), time_limit);
-            dbg!(single_thread);
-        }
+            let mut lu = SupernodalLu::<usize, f64>::new();
+            let mut op = |parallelism| {
+                let _ = faer_sparse::lu::supernodal::factorize_supernodal_numeric_lu::<usize, f64>(
+                    &mut row_perm,
+                    &mut row_perm_inv,
+                    &mut lu,
+                    A,
+                    A,
+                    fill_col_perm.cast(),
+                    &symbolic,
+                    parallelism,
+                    PodStack::new(&mut mem),
+                );
+            };
 
-        {
-            let multithread = timeit(|| op(faer_core::Parallelism::Rayon(0)), time_limit);
-            dbg!(multithread);
+            let warmup = time(|| op(faer_core::Parallelism::None)).as_secs_f64();
+            println!("Multifrontal warmup           : {warmup:>12.9}s");
+
+            let single_thread =
+                timeit(|| op(faer_core::Parallelism::None), time_limit).as_secs_f64();
+            println!("Multifrontal single thread    : {single_thread:>12.9}s");
+
+            let multithread =
+                timeit(|| op(faer_core::Parallelism::Rayon(0)), time_limit).as_secs_f64();
+            println!("Multifrontal multithread      : {multithread:>12.9}s");
         }
+        {
+            let mut lu = faer_sparse::superlu::supernodal::SupernodalLu::<usize, f64>::new();
+            let mut work = vec![];
+
+            let mut op = |parallelism| {
+                let _ =
+                    faer_sparse::superlu::supernodal::factorize_supernodal_numeric_lu::<I, f64>(
+                        &mut row_perm,
+                        &mut row_perm_inv,
+                        &mut col_perm,
+                        &mut col_perm_inv,
+                        &mut lu,
+                        &mut work,
+                        A,
+                        fill_col_perm.cast(),
+                        etree,
+                        parallelism,
+                        PodStack::new(&mut mem),
+                        Default::default(),
+                    )
+                    .unwrap();
+            };
+
+            let warmup = time(|| op(faer_core::Parallelism::None)).as_secs_f64();
+            println!("SuperLU warmup                : {warmup:>12.9}s");
+
+            let single_thread =
+                timeit(|| op(faer_core::Parallelism::None), time_limit).as_secs_f64();
+            println!("SuperLU single thread         : {single_thread:>12.9}s");
+
+            let multithread =
+                timeit(|| op(faer_core::Parallelism::Rayon(0)), time_limit).as_secs_f64();
+            println!("SuperLU multithread           : {multithread:>12.9}s");
+        }
+        println!();
     }
 }

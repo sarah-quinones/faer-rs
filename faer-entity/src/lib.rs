@@ -56,7 +56,7 @@ pub fn slice_as_mut_simd<E: ComplexField, S: Simd>(
     let (a_head, a_tail) = E::faer_unzip(E::faer_map(
         slice,
         #[inline(always)]
-        |slice| E::faer_slice_as_mut_simd::<S>(slice),
+        |slice| E::faer_slice_as_simd_mut::<S>(slice),
     ));
     (a_head, a_tail)
 }
@@ -122,9 +122,15 @@ pub trait ForType {
 pub trait ForCopyType: ForType {
     type FaerOfCopy<T: Copy>: Copy;
 }
+pub trait ForDebugType: ForType {
+    type FaerOfDebug<T: Debug>: Debug;
+}
 
 pub struct IdentityGroup {
     __private: (),
+}
+impl ForDebugType for IdentityGroup {
+    type FaerOfDebug<T: Debug> = T;
 }
 impl ForCopyType for IdentityGroup {
     type FaerOfCopy<T: Copy> = T;
@@ -139,11 +145,18 @@ pub struct ComplexGroup<Group> {
 pub struct ComplexConjGroup<Group> {
     __private: PhantomData<Group>,
 }
+
+impl<Group: ForDebugType> ForDebugType for ComplexConjGroup<Group> {
+    type FaerOfDebug<T: Debug> = ComplexConj<Group::FaerOfDebug<T>>;
+}
 impl<Group: ForCopyType> ForCopyType for ComplexConjGroup<Group> {
     type FaerOfCopy<T: Copy> = ComplexConj<Group::FaerOfCopy<T>>;
 }
 impl<Group: ForType> ForType for ComplexConjGroup<Group> {
     type FaerOf<T> = ComplexConj<Group::FaerOf<T>>;
+}
+impl<Group: ForDebugType> ForDebugType for ComplexGroup<Group> {
+    type FaerOfDebug<T: Debug> = Complex<Group::FaerOfDebug<T>>;
 }
 impl<Group: ForCopyType> ForCopyType for ComplexGroup<Group> {
     type FaerOfCopy<T: Copy> = Complex<Group::FaerOfCopy<T>>;
@@ -154,6 +167,7 @@ impl<Group: ForType> ForType for ComplexGroup<Group> {
 
 pub type GroupFor<E, T> = <<E as Entity>::Group as ForType>::FaerOf<T>;
 pub type GroupCopyFor<E, T> = <<E as Entity>::Group as ForCopyType>::FaerOfCopy<T>;
+pub type GroupDebugFor<E, T> = <<E as Entity>::Group as ForDebugType>::FaerOfDebug<T>;
 pub type UnitFor<E> = <E as Entity>::Unit;
 pub type IndexFor<E> = <E as Entity>::Index;
 
@@ -161,7 +175,7 @@ pub type SimdUnitFor<E, S> = <E as Entity>::SimdUnit<S>;
 pub type SimdMaskFor<E, S> = <E as Entity>::SimdMask<S>;
 pub type SimdIndexFor<E, S> = <E as Entity>::SimdIndex<S>;
 
-pub type SimdGroupFor<E, S> = GroupFor<E, SimdUnitFor<E, S>>;
+pub type SimdGroupFor<E, S> = GroupCopyFor<E, SimdUnitFor<E, S>>;
 
 #[inline(always)]
 pub fn into_copy<E: Entity, T: Copy>(x: GroupFor<E, T>) -> GroupCopyFor<E, T> {
@@ -182,7 +196,7 @@ pub fn from_copy<E: Entity, T: Copy>(x: GroupCopyFor<E, T>) -> GroupFor<E, T> {
 /// # Safety
 /// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static {
-    type Group: ForType + ForCopyType;
+    type Group: ForType + ForCopyType + ForDebugType;
 
     type Unit: Copy + Pod + PartialEq + Send + Sync + Debug + 'static;
     type Index: Copy + Pod + Send + Sync + Debug + 'static;
@@ -191,8 +205,19 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     type SimdIndex<S: Simd>: Copy + Send + Sync + Debug + 'static;
     type Iter<I: Iterator>: Iterator<Item = GroupFor<Self, I::Item>>;
 
+    type PrefixUnit<'a, S: Simd>: pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
+    type SuffixUnit<'a, S: Simd>: pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
+    type PrefixMutUnit<'a, S: Simd>: pulp::Write<Output = SimdUnitFor<Self, S>>
+        + for<'short> ReborrowMut<'short, Target = <Self as Entity>::PrefixMutUnit<'short, S>>
+        + for<'short> Reborrow<'short, Target = <Self as Entity>::PrefixUnit<'short, S>>;
+    type SuffixMutUnit<'a, S: Simd>: pulp::Write<Output = SimdUnitFor<Self, S>>
+        + for<'short> ReborrowMut<'short, Target = <Self as Entity>::SuffixMutUnit<'short, S>>
+        + for<'short> Reborrow<'short, Target = <Self as Entity>::SuffixUnit<'short, S>>;
+
     const N_COMPONENTS: usize;
     const UNIT: GroupFor<Self, ()>;
+
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T;
 
     fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self;
     fn faer_into_units(self) -> GroupFor<Self, UnitFor<Self>>;
@@ -438,10 +463,35 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     /// Returns `1.0`.
     fn faer_one() -> Self;
 
+    fn faer_align_offset<S: Simd>(
+        simd: S,
+        ptr: *const UnitFor<Self>,
+        len: usize,
+    ) -> pulp::Offset<SimdMaskFor<Self, S>>;
+
+    fn faer_slice_as_aligned_simd<S: Simd>(
+        simd: S,
+        slice: &[UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixUnit<'_, S>,
+        &[SimdUnitFor<Self, S>],
+        Self::SuffixUnit<'_, S>,
+    );
+    fn faer_slice_as_aligned_simd_mut<S: Simd>(
+        simd: S,
+        slice: &mut [UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixMutUnit<'_, S>,
+        &mut [SimdUnitFor<Self, S>],
+        Self::SuffixMutUnit<'_, S>,
+    );
+
     fn faer_slice_as_simd<S: Simd>(
         slice: &[UnitFor<Self>],
     ) -> (&[SimdUnitFor<Self, S>], &[UnitFor<Self>]);
-    fn faer_slice_as_mut_simd<S: Simd>(
+    fn faer_slice_as_simd_mut<S: Simd>(
         slice: &mut [UnitFor<Self>],
     ) -> (&mut [SimdUnitFor<Self, S>], &mut [UnitFor<Self>]);
 
@@ -468,11 +518,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         simd: S,
         slice: GroupFor<Self, &[UnitFor<Self>]>,
     ) -> SimdGroupFor<Self, S> {
-        Self::faer_map(
+        into_copy::<Self, _>(Self::faer_map(
             slice,
             #[inline(always)]
             |slice| Self::faer_partial_load_unit(simd, slice),
-        )
+        ))
     }
     #[inline(always)]
     fn faer_partial_store<S: Simd>(
@@ -481,7 +531,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         values: SimdGroupFor<Self, S>,
     ) {
         Self::faer_map(
-            Self::faer_zip(slice, values),
+            Self::faer_zip(slice, from_copy::<Self, _>(values)),
             #[inline(always)]
             |(slice, unit)| Self::faer_partial_store_unit(simd, slice, unit),
         );
@@ -491,11 +541,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         simd: S,
         slice: GroupFor<Self, &[UnitFor<Self>]>,
     ) -> SimdGroupFor<Self, S> {
-        Self::faer_map(
+        into_copy::<Self, _>(Self::faer_map(
             slice,
             #[inline(always)]
             |slice| Self::faer_partial_load_last_unit(simd, slice),
-        )
+        ))
     }
     #[inline(always)]
     fn faer_partial_store_last<S: Simd>(
@@ -504,18 +554,18 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
         values: SimdGroupFor<Self, S>,
     ) {
         Self::faer_map(
-            Self::faer_zip(slice, values),
+            Self::faer_zip(slice, from_copy::<Self, _>(values)),
             #[inline(always)]
             |(slice, unit)| Self::faer_partial_store_last_unit(simd, slice, unit),
         );
     }
     #[inline(always)]
     fn faer_simd_splat<S: Simd>(simd: S, value: Self) -> SimdGroupFor<Self, S> {
-        Self::faer_map(
+        into_copy::<Self, _>(Self::faer_map(
             Self::faer_into_units(value),
             #[inline(always)]
             |unit| Self::faer_simd_splat_unit(simd, unit),
-        )
+        ))
     }
 
     fn faer_simd_scalar_mul<S: Simd>(simd: S, lhs: Self, rhs: Self) -> Self;
@@ -525,6 +575,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 
     fn faer_simd_neg<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S>;
     fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S>;
+    fn faer_simd_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+        amount: usize,
+    ) -> SimdGroupFor<Self, S>;
 
     fn faer_simd_add<S: Simd>(
         simd: S,
@@ -583,6 +638,7 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
     fn faer_simd_reduce_add<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> Self {
         let _ = simd;
         let mut acc = Self::faer_zero();
+        let values = from_copy::<Self, _>(values);
 
         let slice = simd_as_slice::<Self, S>(Self::faer_map(
             Self::faer_as_ref(&values),
@@ -603,6 +659,11 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
     fn faer_epsilon() -> Option<Self>;
     fn faer_zero_threshold() -> Option<Self>;
+
+    fn faer_min_positive() -> Self;
+    fn faer_min_positive_inv() -> Self;
+    fn faer_min_positive_sqrt() -> Self;
+    fn faer_min_positive_sqrt_inv() -> Self;
 
     fn faer_div(self, rhs: Self) -> Self;
 
@@ -650,6 +711,14 @@ pub trait RealField: ComplexField<Real = Self> + PartialOrd {
         a: SimdIndexFor<Self, S>,
         b: SimdIndexFor<Self, S>,
     ) -> SimdIndexFor<Self, S>;
+
+    fn faer_simd_index_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdIndexFor<Self, S>,
+        amount: usize,
+    ) -> SimdIndexFor<Self, S>;
+
+    fn faer_simd_abs<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S>;
 }
 
 impl ComplexField for f32 {
@@ -768,6 +837,40 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
+    fn faer_align_offset<S: Simd>(
+        simd: S,
+        ptr: *const UnitFor<Self>,
+        len: usize,
+    ) -> pulp::Offset<SimdMaskFor<Self, S>> {
+        simd.f32s_align_offset(ptr, len)
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd<S: Simd>(
+        simd: S,
+        slice: &[UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        pulp::Prefix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+        &[SimdUnitFor<Self, S>],
+        pulp::Suffix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+    ) {
+        simd.f32s_as_aligned_simd(slice, offset)
+    }
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd_mut<S: Simd>(
+        simd: S,
+        slice: &mut [UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        pulp::PrefixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+        &mut [SimdUnitFor<Self, S>],
+        pulp::SuffixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+    ) {
+        simd.f32s_as_aligned_mut_simd(slice, offset)
+    }
+
+    #[inline(always)]
     fn faer_slice_as_simd<S: Simd>(
         slice: &[UnitFor<Self>],
     ) -> (&[SimdUnitFor<Self, S>], &[UnitFor<Self>]) {
@@ -775,7 +878,7 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
-    fn faer_slice_as_mut_simd<S: Simd>(
+    fn faer_slice_as_simd_mut<S: Simd>(
         slice: &mut [UnitFor<Self>],
     ) -> (&mut [SimdUnitFor<Self, S>], &mut [UnitFor<Self>]) {
         S::f32s_as_mut_simd(slice)
@@ -826,6 +929,15 @@ impl ComplexField for f32 {
     fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         let _ = simd;
         values
+    }
+
+    #[inline(always)]
+    fn faer_simd_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+        amount: usize,
+    ) -> SimdGroupFor<Self, S> {
+        simd.f32s_rotate_left(values, amount)
     }
 
     #[inline(always)]
@@ -1054,6 +1166,40 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
+    fn faer_align_offset<S: Simd>(
+        simd: S,
+        ptr: *const UnitFor<Self>,
+        len: usize,
+    ) -> pulp::Offset<SimdMaskFor<Self, S>> {
+        simd.f64s_align_offset(ptr, len)
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd<S: Simd>(
+        simd: S,
+        slice: &[UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        pulp::Prefix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+        &[SimdUnitFor<Self, S>],
+        pulp::Suffix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+    ) {
+        simd.f64s_as_aligned_simd(slice, offset)
+    }
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd_mut<S: Simd>(
+        simd: S,
+        slice: &mut [UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        pulp::PrefixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+        &mut [SimdUnitFor<Self, S>],
+        pulp::SuffixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+    ) {
+        simd.f64s_as_aligned_mut_simd(slice, offset)
+    }
+
+    #[inline(always)]
     fn faer_slice_as_simd<S: Simd>(
         slice: &[UnitFor<Self>],
     ) -> (&[SimdUnitFor<Self, S>], &[UnitFor<Self>]) {
@@ -1061,7 +1207,7 @@ impl ComplexField for f64 {
     }
 
     #[inline(always)]
-    fn faer_slice_as_mut_simd<S: Simd>(
+    fn faer_slice_as_simd_mut<S: Simd>(
         slice: &mut [UnitFor<Self>],
     ) -> (&mut [SimdUnitFor<Self, S>], &mut [UnitFor<Self>]) {
         S::f64s_as_mut_simd(slice)
@@ -1111,6 +1257,15 @@ impl ComplexField for f64 {
     fn faer_simd_conj<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
         let _ = simd;
         values
+    }
+
+    #[inline(always)]
+    fn faer_simd_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+        amount: usize,
+    ) -> SimdGroupFor<Self, S> {
+        simd.f64s_rotate_left(values, amount)
     }
 
     #[inline(always)]
@@ -1326,6 +1481,37 @@ impl RealField for f32 {
     ) -> SimdIndexFor<Self, S> {
         simd.u32s_add(a, b)
     }
+
+    #[inline(always)]
+    fn faer_simd_index_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdIndexFor<Self, S>,
+        amount: usize,
+    ) -> SimdIndexFor<Self, S> {
+        simd.u32s_rotate_left(values, amount)
+    }
+
+    #[inline(always)]
+    fn faer_min_positive() -> Self {
+        Self::MIN_POSITIVE
+    }
+    #[inline(always)]
+    fn faer_min_positive_inv() -> Self {
+        Self::MIN_POSITIVE.recip()
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt() -> Self {
+        Self::MIN_POSITIVE.faer_sqrt()
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt_inv() -> Self {
+        Self::MIN_POSITIVE.faer_sqrt().recip()
+    }
+
+    #[inline(always)]
+    fn faer_simd_abs<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
+        simd.f32s_abs(values)
+    }
 }
 impl RealField for f64 {
     #[inline(always)]
@@ -1429,6 +1615,36 @@ impl RealField for f64 {
     ) -> SimdIndexFor<Self, S> {
         simd.u64s_add(a, b)
     }
+
+    #[inline(always)]
+    fn faer_simd_index_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdIndexFor<Self, S>,
+        amount: usize,
+    ) -> SimdIndexFor<Self, S> {
+        simd.u64s_rotate_left(values, amount)
+    }
+
+    #[inline(always)]
+    fn faer_min_positive() -> Self {
+        Self::MIN_POSITIVE
+    }
+    #[inline(always)]
+    fn faer_min_positive_inv() -> Self {
+        Self::MIN_POSITIVE.recip()
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt() -> Self {
+        Self::MIN_POSITIVE.faer_sqrt()
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt_inv() -> Self {
+        Self::MIN_POSITIVE.faer_sqrt().recip()
+    }
+    #[inline(always)]
+    fn faer_simd_abs<S: Simd>(simd: S, values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
+        simd.f64s_abs(values)
+    }
 }
 
 unsafe impl Conjugate for f32 {
@@ -1468,8 +1684,18 @@ unsafe impl Entity for f32 {
     type Group = IdentityGroup;
     type Iter<I: Iterator> = I;
 
+    type PrefixUnit<'a, S: Simd> = pulp::Prefix<'a, f32, S, S::m32s>;
+    type SuffixUnit<'a, S: Simd> = pulp::Suffix<'a, f32, S, S::m32s>;
+    type PrefixMutUnit<'a, S: Simd> = pulp::PrefixMut<'a, f32, S, S::m32s>;
+    type SuffixMutUnit<'a, S: Simd> = pulp::SuffixMut<'a, f32, S, S::m32s>;
+
     const N_COMPONENTS: usize = 1;
     const UNIT: GroupFor<Self, ()> = ();
+
+    #[inline(always)]
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+        group
+    }
 
     #[inline(always)]
     fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self {
@@ -1534,8 +1760,18 @@ unsafe impl Entity for f64 {
     type Group = IdentityGroup;
     type Iter<I: Iterator> = I;
 
+    type PrefixUnit<'a, S: Simd> = pulp::Prefix<'a, f64, S, S::m64s>;
+    type SuffixUnit<'a, S: Simd> = pulp::Suffix<'a, f64, S, S::m64s>;
+    type PrefixMutUnit<'a, S: Simd> = pulp::PrefixMut<'a, f64, S, S::m64s>;
+    type SuffixMutUnit<'a, S: Simd> = pulp::SuffixMut<'a, f64, S, S::m64s>;
+
     const N_COMPONENTS: usize = 1;
     const UNIT: GroupFor<Self, ()> = ();
+
+    #[inline(always)]
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+        group
+    }
 
     #[inline(always)]
     fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self {
@@ -1600,11 +1836,21 @@ unsafe impl<E: Entity> Entity for Complex<E> {
     type Group = ComplexGroup<E::Group>;
     type Iter<I: Iterator> = ComplexIter<E::Iter<I>>;
 
+    type PrefixUnit<'a, S: Simd> = E::PrefixUnit<'a, S>;
+    type SuffixUnit<'a, S: Simd> = E::SuffixUnit<'a, S>;
+    type PrefixMutUnit<'a, S: Simd> = E::PrefixMutUnit<'a, S>;
+    type SuffixMutUnit<'a, S: Simd> = E::SuffixMutUnit<'a, S>;
+
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
     const UNIT: GroupFor<Self, ()> = Complex {
         re: E::UNIT,
         im: E::UNIT,
     };
+
+    #[inline(always)]
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+        E::faer_first(group.re)
+    }
 
     #[inline(always)]
     fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self {
@@ -1694,11 +1940,21 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
     type Group = ComplexConjGroup<E::Group>;
     type Iter<I: Iterator> = ComplexConjIter<E::Iter<I>>;
 
+    type PrefixUnit<'a, S: Simd> = E::PrefixUnit<'a, S>;
+    type SuffixUnit<'a, S: Simd> = E::SuffixUnit<'a, S>;
+    type PrefixMutUnit<'a, S: Simd> = E::PrefixMutUnit<'a, S>;
+    type SuffixMutUnit<'a, S: Simd> = E::SuffixMutUnit<'a, S>;
+
     const N_COMPONENTS: usize = E::N_COMPONENTS * 2;
     const UNIT: GroupFor<Self, ()> = ComplexConj {
         re: E::UNIT,
         neg_im: E::UNIT,
     };
+
+    #[inline(always)]
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+        E::faer_first(group.re)
+    }
 
     #[inline(always)]
     fn faer_from_units(group: GroupFor<Self, UnitFor<Self>>) -> Self {
@@ -1846,13 +2102,27 @@ impl<E: RealField> ComplexField for Complex<E> {
         } else if self.re == inf || self.im == inf {
             Self::faer_zero()
         } else {
+            let half_small = E::faer_min_positive_sqrt();
+            let half_big = E::faer_min_positive_sqrt_inv();
+            let one = E::faer_one();
+
             let re = self.faer_real().faer_abs();
             let im = self.faer_imag().faer_abs();
-            let max = if re > im { re } else { im };
-            let max_inv = max.faer_inv();
-            let x = self.faer_scale_real(max_inv);
-            x.faer_conj()
-                .faer_scale_real(x.faer_abs2().faer_inv().faer_mul(max_inv))
+
+            if re > half_big || im > half_big {
+                let x = self.faer_scale_real(half_small);
+                x.faer_conj()
+                    .faer_scale_real(x.faer_abs2().faer_inv())
+                    .faer_scale_real(half_small)
+            } else if re > one || im > one {
+                let x = self;
+                x.faer_conj().faer_scale_real(x.faer_abs2().faer_inv())
+            } else {
+                let x = self.faer_scale_real(half_big);
+                x.faer_conj()
+                    .faer_scale_real(x.faer_abs2().faer_inv())
+                    .faer_scale_real(half_big)
+            }
         }
     }
 
@@ -1893,7 +2163,25 @@ impl<E: RealField> ComplexField for Complex<E> {
 
     #[inline(always)]
     fn faer_abs(self) -> Self::Real {
-        self.faer_abs2().faer_sqrt()
+        let half_small = E::faer_min_positive_sqrt();
+        let half_big = E::faer_min_positive_sqrt_inv();
+        let one = E::faer_one();
+        let re = self.faer_real().faer_abs();
+        let im = self.faer_imag().faer_abs();
+
+        if re > half_big || im > half_big {
+            self.faer_scale_real(half_small)
+                .faer_abs2()
+                .faer_sqrt()
+                .faer_scale_real(half_big)
+        } else if re > one || im > one {
+            self.faer_abs2().faer_sqrt()
+        } else {
+            self.faer_scale_real(half_big)
+                .faer_abs2()
+                .faer_sqrt()
+                .faer_scale_real(half_small)
+        }
     }
 
     #[inline(always)]
@@ -1944,6 +2232,40 @@ impl<E: RealField> ComplexField for Complex<E> {
     }
 
     #[inline(always)]
+    fn faer_align_offset<S: Simd>(
+        simd: S,
+        ptr: *const UnitFor<Self>,
+        len: usize,
+    ) -> pulp::Offset<SimdMaskFor<Self, S>> {
+        E::faer_align_offset(simd, ptr, len)
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd<S: Simd>(
+        simd: S,
+        slice: &[UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixUnit<'_, S>,
+        &[SimdUnitFor<Self, S>],
+        Self::SuffixUnit<'_, S>,
+    ) {
+        E::faer_slice_as_aligned_simd(simd, slice, offset)
+    }
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd_mut<S: Simd>(
+        simd: S,
+        slice: &mut [UnitFor<Self>],
+        offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixMutUnit<'_, S>,
+        &mut [SimdUnitFor<Self, S>],
+        Self::SuffixMutUnit<'_, S>,
+    ) {
+        E::faer_slice_as_aligned_simd_mut(simd, slice, offset)
+    }
+
+    #[inline(always)]
     fn faer_slice_as_simd<S: Simd>(
         slice: &[UnitFor<Self>],
     ) -> (&[SimdUnitFor<Self, S>], &[UnitFor<Self>]) {
@@ -1951,10 +2273,10 @@ impl<E: RealField> ComplexField for Complex<E> {
     }
 
     #[inline(always)]
-    fn faer_slice_as_mut_simd<S: Simd>(
+    fn faer_slice_as_simd_mut<S: Simd>(
         slice: &mut [UnitFor<Self>],
     ) -> (&mut [SimdUnitFor<Self, S>], &mut [UnitFor<Self>]) {
-        E::faer_slice_as_mut_simd(slice)
+        E::faer_slice_as_simd_mut(slice)
     }
 
     #[inline(always)]
@@ -2006,6 +2328,18 @@ impl<E: RealField> ComplexField for Complex<E> {
         Complex {
             re: values.re,
             im: E::faer_simd_neg(simd, values.im),
+        }
+    }
+
+    #[inline(always)]
+    fn faer_simd_rotate_left<S: Simd>(
+        simd: S,
+        values: SimdGroupFor<Self, S>,
+        amount: usize,
+    ) -> SimdGroupFor<Self, S> {
+        Complex {
+            re: E::faer_simd_rotate_left(simd, values.re, amount),
+            im: E::faer_simd_rotate_left(simd, values.im, amount),
         }
     }
 
@@ -2114,13 +2448,9 @@ impl<E: RealField> ComplexField for Complex<E> {
         Complex {
             re: E::faer_simd_mul_adde(
                 simd,
-                E::faer_copy(&lhs.re),
-                E::faer_copy(&rhs.re),
-                E::faer_simd_mul(
-                    simd,
-                    E::faer_simd_neg(simd, E::faer_copy(&lhs.im)),
-                    E::faer_copy(&rhs.im),
-                ),
+                lhs.re,
+                rhs.re,
+                E::faer_simd_mul(simd, E::faer_simd_neg(simd, lhs.im), rhs.im),
             ),
             im: E::faer_simd_mul_adde(simd, lhs.re, rhs.im, E::faer_simd_mul(simd, lhs.im, rhs.re)),
         }
@@ -2133,7 +2463,7 @@ impl<E: RealField> ComplexField for Complex<E> {
         rhs: SimdGroupFor<Self, S>,
     ) -> SimdGroupFor<Self, S> {
         Complex {
-            re: E::faer_simd_mul(simd, E::faer_copy(&lhs), rhs.re),
+            re: E::faer_simd_mul(simd, lhs, rhs.re),
             im: E::faer_simd_mul(simd, lhs, rhs.im),
         }
     }
@@ -2145,12 +2475,7 @@ impl<E: RealField> ComplexField for Complex<E> {
         rhs: SimdGroupFor<Self, S>,
     ) -> SimdGroupFor<Self, S> {
         Complex {
-            re: E::faer_simd_mul_adde(
-                simd,
-                E::faer_copy(&lhs.re),
-                E::faer_copy(&rhs.re),
-                E::faer_simd_mul(simd, E::faer_copy(&lhs.im), E::faer_copy(&rhs.im)),
-            ),
+            re: E::faer_simd_mul_adde(simd, lhs.re, rhs.re, E::faer_simd_mul(simd, lhs.im, rhs.im)),
             im: E::faer_simd_mul_adde(
                 simd,
                 lhs.re,
@@ -2170,14 +2495,9 @@ impl<E: RealField> ComplexField for Complex<E> {
         Complex {
             re: E::faer_simd_mul_adde(
                 simd,
-                E::faer_copy(&lhs.re),
-                E::faer_copy(&rhs.re),
-                E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_simd_neg(simd, E::faer_copy(&lhs.im)),
-                    E::faer_copy(&rhs.im),
-                    acc.re,
-                ),
+                lhs.re,
+                rhs.re,
+                E::faer_simd_mul_adde(simd, E::faer_simd_neg(simd, lhs.im), rhs.im, acc.re),
             ),
             im: E::faer_simd_mul_adde(
                 simd,
@@ -2198,9 +2518,9 @@ impl<E: RealField> ComplexField for Complex<E> {
         Complex {
             re: E::faer_simd_mul_adde(
                 simd,
-                E::faer_copy(&lhs.re),
-                E::faer_copy(&rhs.re),
-                E::faer_simd_mul_adde(simd, E::faer_copy(&lhs.im), E::faer_copy(&rhs.im), acc.re),
+                lhs.re,
+                rhs.re,
+                E::faer_simd_mul_adde(simd, lhs.im, rhs.im, acc.re),
             ),
             im: E::faer_simd_mul_adde(
                 simd,
@@ -2219,9 +2539,9 @@ impl<E: RealField> ComplexField for Complex<E> {
     ) -> SimdGroupFor<Self::Real, S> {
         E::faer_simd_mul_adde(
             simd,
-            E::faer_copy(&values.re),
             values.re,
-            E::faer_simd_mul_adde(simd, E::faer_copy(&values.im), values.im, acc),
+            values.re,
+            E::faer_simd_mul_adde(simd, values.im, values.im, acc),
         )
     }
     #[inline(always)]
@@ -2238,9 +2558,9 @@ impl<E: RealField> ComplexField for Complex<E> {
     ) -> SimdGroupFor<Self::Real, S> {
         E::faer_simd_mul_adde(
             simd,
-            E::faer_copy(&values.re),
             values.re,
-            E::faer_simd_mul(simd, E::faer_copy(&values.im), values.im),
+            values.re,
+            E::faer_simd_mul(simd, values.im, values.im),
         )
     }
 }
@@ -2348,6 +2668,16 @@ unsafe impl Entity for Symbolic {
     type Iter<I: Iterator> = I;
     const N_COMPONENTS: usize = 1;
     const UNIT: GroupCopyFor<Self, ()> = ();
+
+    type PrefixUnit<'a, S: Simd> = &'a [Self];
+    type SuffixUnit<'a, S: Simd> = &'a [Self];
+    type PrefixMutUnit<'a, S: Simd> = &'a mut [Self];
+    type SuffixMutUnit<'a, S: Simd> = &'a mut [Self];
+
+    #[inline(always)]
+    fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+        group
+    }
 
     #[inline(always)]
     fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
@@ -2523,6 +2853,37 @@ impl RealField for Symbolic {
     ) -> Self::SimdIndex<S> {
         a.wrapping_add(b)
     }
+
+    #[inline(always)]
+    fn faer_simd_index_rotate_left<S: Simd>(
+        _simd: S,
+        values: SimdIndexFor<Self, S>,
+        _amount: usize,
+    ) -> SimdIndexFor<Self, S> {
+        values
+    }
+
+    #[inline(always)]
+    fn faer_min_positive() -> Self {
+        Self
+    }
+    #[inline(always)]
+    fn faer_min_positive_inv() -> Self {
+        Self
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt() -> Self {
+        Self
+    }
+    #[inline(always)]
+    fn faer_min_positive_sqrt_inv() -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_abs<S: Simd>(_simd: S, _values: SimdGroupFor<Self, S>) -> SimdGroupFor<Self, S> {
+        Self
+    }
 }
 
 impl ComplexField for Symbolic {
@@ -2627,6 +2988,40 @@ impl ComplexField for Symbolic {
     }
 
     #[inline(always)]
+    fn faer_align_offset<S: Simd>(
+        _simd: S,
+        _ptr: *const UnitFor<Self>,
+        len: usize,
+    ) -> pulp::Offset<SimdMaskFor<Self, S>> {
+        pulp::Offset::unaligned(len)
+    }
+
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd<S: Simd>(
+        _simd: S,
+        slice: &[UnitFor<Self>],
+        _offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixUnit<'_, S>,
+        &[SimdUnitFor<Self, S>],
+        Self::SuffixUnit<'_, S>,
+    ) {
+        (&[], slice, &[])
+    }
+    #[inline(always)]
+    fn faer_slice_as_aligned_simd_mut<S: Simd>(
+        _simd: S,
+        slice: &mut [UnitFor<Self>],
+        _offset: pulp::Offset<SimdMaskFor<Self, S>>,
+    ) -> (
+        Self::PrefixMutUnit<'_, S>,
+        &mut [SimdUnitFor<Self, S>],
+        Self::SuffixMutUnit<'_, S>,
+    ) {
+        (&mut [], slice, &mut [])
+    }
+
+    #[inline(always)]
     fn faer_slice_as_simd<S: pulp::Simd>(
         slice: &[Self::Unit],
     ) -> (&[Self::SimdUnit<S>], &[Self::Unit]) {
@@ -2634,7 +3029,7 @@ impl ComplexField for Symbolic {
     }
 
     #[inline(always)]
-    fn faer_slice_as_mut_simd<S: pulp::Simd>(
+    fn faer_slice_as_simd_mut<S: pulp::Simd>(
         slice: &mut [Self::Unit],
     ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
         (slice, &mut [])
@@ -2718,6 +3113,15 @@ impl ComplexField for Symbolic {
         _values: SimdGroupFor<Self, S>,
     ) -> SimdGroupFor<Self, S> {
         Self
+    }
+
+    #[inline(always)]
+    fn faer_simd_rotate_left<S: Simd>(
+        _simd: S,
+        values: SimdGroupFor<Self, S>,
+        _amount: usize,
+    ) -> SimdGroupFor<Self, S> {
+        values
     }
 
     #[inline(always)]

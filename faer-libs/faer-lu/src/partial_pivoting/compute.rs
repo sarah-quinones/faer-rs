@@ -1,11 +1,11 @@
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert, debug_assert,
+    group_helpers::*,
     mul::matmul,
     permutation::{Index, PermutationMut, SignedIndex},
     solve::solve_unit_lower_triangular_in_place,
-    zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
+    unzipped, zipped, ComplexField, Entity, MatMut, Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -30,7 +30,7 @@ fn swap_two_elems_contiguous<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usi
     debug_assert!(i < m.nrows());
     debug_assert!(j < m.nrows());
     unsafe {
-        let ptr = m.as_ptr();
+        let ptr = m.as_ptr_mut();
         let ptr_a = E::faer_map(
             E::faer_copy(&ptr),
             #[inline(always)]
@@ -81,7 +81,7 @@ fn lu_in_place_unblocked<E: ComplexField, I: Index>(
             let mut max = E::Real::faer_zero();
 
             for i in 0..m {
-                let abs = unsafe { col.read_unchecked(i, 0) }.faer_score();
+                let abs = unsafe { col.read_unchecked(i) }.faer_score();
                 if abs > max {
                     imax = i;
                     max = abs;
@@ -108,8 +108,8 @@ fn lu_in_place_unblocked<E: ComplexField, I: Index>(
             }
         }
 
-        let [_, _, _, middle_right] = matrix.rb_mut().split_at(0, col_start);
-        let [_, _, middle, _] = middle_right.split_at(0, n);
+        let (_, _, _, middle_right) = matrix.rb_mut().split_at_mut(0, col_start);
+        let (_, _, middle, _) = middle_right.split_at_mut(0, n);
         update(arch, middle, k);
     }
 
@@ -137,67 +137,38 @@ impl<E: ComplexField> pulp::WithSimd for Update<'_, E> {
                 matrix.write_unchecked(i, j, matrix.read_unchecked(i, j).faer_mul(inv));
             }
         }
-        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
+        let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at_mut(j + 1, j + 1);
         let lhs = bottom_left.rb().col(j);
         let rhs = top_right.rb().row(j);
         let mut mat = bottom_right;
 
-        let m = mat.nrows();
-        let lhs = E::faer_map(
-            lhs.as_ptr(),
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-        );
+        let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col());
 
-        let lane_count =
-            core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
-
-        let prefix = m % lane_count;
-
-        let (lhs_head, lhs_tail) = E::faer_unzip(E::faer_map(
-            lhs,
-            #[inline(always)]
-            |slice| slice.split_at(prefix),
-        ));
-        let lhs_tail = faer_core::simd::slice_as_simd::<E, S>(lhs_tail).0;
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(lhs);
+        let (lhs_head, lhs_body, lhs_tail) = simd.as_aligned_simd(lhs, offset);
 
         for k in 0..mat.ncols() {
-            let acc = E::faer_map(
-                mat.rb_mut().ptr_at(0, k),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-            );
-            let (acc_head, acc_tail) = E::faer_unzip(E::faer_map(
-                acc,
-                #[inline(always)]
-                |slice| slice.split_at_mut(prefix),
-            ));
-            let acc_tail = faer_core::simd::slice_as_mut_simd::<E, S>(acc_tail).0;
+            let acc = SliceGroupMut::<'_, E>::new(mat.rb_mut().try_get_contiguous_col_mut(k));
+            let rhs = simd.splat(rhs.read(k).faer_neg());
+            let (acc_head, acc_body, acc_tail) = simd.as_aligned_simd_mut(acc, offset);
 
-            let rhs = E::faer_simd_splat(simd, unsafe { rhs.read_unchecked(0, k).faer_neg() });
-
-            let mut acc_head_ =
-                E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_head)));
-            acc_head_ = E::faer_simd_mul_adde(
-                simd,
-                E::faer_copy(&rhs),
-                E::faer_partial_load_last(simd, E::faer_copy(&lhs_head)),
-                acc_head_,
-            );
-            E::faer_partial_store_last(simd, acc_head, acc_head_);
-
-            for (acc, lhs) in
-                E::faer_into_iter(acc_tail).zip(E::faer_into_iter(E::faer_copy(&lhs_tail)))
-            {
-                let mut acc_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
-                let lhs = E::faer_deref(lhs);
-                acc_ = E::faer_simd_mul_adde(simd, E::faer_copy(&rhs), lhs, acc_);
-                E::faer_map(
-                    E::faer_zip(acc, acc_),
-                    #[inline(always)]
-                    |(acc, acc_)| *acc = acc_,
-                );
+            #[inline(always)]
+            fn process<E: ComplexField, S: pulp::Simd>(
+                simd: SimdFor<E, S>,
+                mut acc: impl Write<Output = SimdGroupFor<E, S>>,
+                lhs: impl Read<Output = SimdGroupFor<E, S>>,
+                rhs: SimdGroupFor<E, S>,
+            ) {
+                let zero = simd.splat(E::faer_zero());
+                acc.write(simd.mul_add_e(rhs, lhs.read_or(zero), acc.read_or(zero)));
             }
+
+            process(simd, acc_head, lhs_head, rhs);
+            for (acc, lhs) in acc_body.into_mut_iter().zip(lhs_body.into_ref_iter()) {
+                process(simd, acc, lhs, rhs);
+            }
+            process(simd, acc_tail, lhs_tail, rhs);
         }
     }
 }
@@ -211,16 +182,17 @@ fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
         for i in j + 1..m {
             matrix.write(i, j, matrix.read(i, j).faer_mul(inv));
         }
-        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(j + 1, j + 1);
+        let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at_mut(j + 1, j + 1);
         let lhs = bottom_left.rb().col(j);
         let rhs = top_right.rb().row(j);
         let mut mat = bottom_right;
 
         for k in 0..mat.ncols() {
-            let col = mat.rb_mut().col(k);
-            let rhs = rhs.read(0, k);
-            zipped!(col, lhs)
-                .for_each(|mut x, lhs| x.write(x.read().faer_sub(lhs.read().faer_mul(rhs))));
+            let col = mat.rb_mut().col_mut(k);
+            let rhs = rhs.read(k);
+            zipped!(col.as_2d_mut(), lhs.as_2d()).for_each(|unzipped!(mut x, lhs)| {
+                x.write(x.read().faer_sub(lhs.read().faer_mul(rhs)))
+            });
         }
     }
 }
@@ -269,17 +241,17 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
     let mut n_transpositions = 0;
 
     n_transpositions += lu_in_place_impl(
-        matrix.rb_mut().submatrix(0, col_start, m, n),
+        matrix.rb_mut().submatrix_mut(0, col_start, m, n),
         0,
         bs,
         &mut transpositions[..bs],
         parallelism,
     );
 
-    let [mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right] = matrix
+    let (mat_top_left, mut mat_top_right, mat_bot_left, mut mat_bot_right) = matrix
         .rb_mut()
-        .submatrix(0, col_start, m, n)
-        .split_at(bs, bs);
+        .submatrix_mut(0, col_start, m, n)
+        .split_at_mut(bs, bs);
 
     solve_unit_lower_triangular_in_place(mat_top_left.rb(), mat_top_right.rb_mut(), parallelism);
     matmul(
@@ -292,7 +264,7 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
     );
 
     n_transpositions += lu_in_place_impl(
-        matrix.rb_mut().submatrix(bs, col_start, m - bs, n),
+        matrix.rb_mut().submatrix_mut(bs, col_start, m - bs, n),
         bs,
         n - bs,
         &mut transpositions[bs..],
@@ -313,15 +285,15 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
                 let mut col = unsafe { matrix.rb().col(j).const_cast() };
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems_contiguous(
-                        col.rb_mut(),
+                        col.rb_mut().as_2d_mut(),
                         i,
                         t.to_signed().zx() + i.to_signed().zx(),
                     );
                 }
-                let [_, mut col] = col.split_at_row(bs);
+                let (_, mut col) = col.split_at_mut(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems_contiguous(
-                        col.rb_mut(),
+                        col.rb_mut().as_2d_mut(),
                         i,
                         t.to_signed().zx() + i.to_signed().zx(),
                     );
@@ -336,11 +308,19 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
                 let j = if j >= col_start { col_start + n + j } else { j };
                 let mut col = unsafe { matrix.rb().col(j).const_cast() };
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t.to_signed().zx() + i.to_signed().zx());
+                    swap_two_elems(
+                        col.rb_mut().as_2d_mut(),
+                        i,
+                        t.to_signed().zx() + i.to_signed().zx(),
+                    );
                 }
-                let [_, mut col] = col.split_at_row(bs);
+                let (_, mut col) = col.split_at_mut(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
-                    swap_two_elems(col.rb_mut(), i, t.to_signed().zx() + i.to_signed().zx());
+                    swap_two_elems(
+                        col.rb_mut().as_2d_mut(),
+                        i,
+                        t.to_signed().zx() + i.to_signed().zx(),
+                    );
                 }
             },
             parallelism,
@@ -440,7 +420,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
         perm.swap(idx, idx + t.to_signed().zx());
     }
 
-    let [_, _, left, right] = matrix.split_at(0, size);
+    let (_, _, left, right) = matrix.split_at_mut(0, size);
 
     if m < n {
         solve_unit_lower_triangular_in_place(left.rb(), right, parallelism);
@@ -462,10 +442,9 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 mod tests {
     use super::*;
     use crate::partial_pivoting::reconstruct;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::GlobalPodBuffer;
-    use faer_core::{permutation::PermutationRef, Mat, MatRef};
+    use faer_core::{assert, permutation::PermutationRef, Mat, MatRef};
     use rand::random;
 
     macro_rules! make_stack {
@@ -563,7 +542,7 @@ mod tests {
             (200, 200),
         ] {
             let mut mat = Mat::from_fn(m, n, |_, _| random::<f64>());
-            let mut mat = mat.as_mut().reverse_rows();
+            let mut mat = mat.as_mut().reverse_rows_mut();
             let mat_orig = mat.to_owned();
             let mut perm = vec![0usize; m];
             let mut perm_inv = vec![0; m];
@@ -613,7 +592,7 @@ mod tests {
             (200, 200),
         ] {
             let mut mat = Mat::from_fn(n, m, |_, _| random::<f64>());
-            let mut mat = mat.as_mut().transpose();
+            let mut mat = mat.as_mut().transpose_mut();
             let mat_orig = mat.to_owned();
             let mut perm = vec![0usize; m];
             let mut perm_inv = vec![0; m];

@@ -2,7 +2,8 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     permutation::{permute_rows, Index, PermutationRef},
     solve::*,
-    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism,
 };
 use reborrow::*;
 
@@ -45,7 +46,7 @@ fn solve_impl<I: Index, E: ComplexField>(
     solve_upper_triangular_in_place_with_conj(lu_factors, conj_lhs, temp.rb_mut(), parallelism);
 
     // dst <- ConjA?(U)^-1 ConjA?(L)^-1 P(row_fwd) B
-    zipped!(dst, temp.rb()).for_each(|mut dst, tmp| dst.write(tmp.read()));
+    zipped!(dst, temp.rb()).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
 }
 
 fn solve_transpose_impl<I: Index, E: ComplexField>(
@@ -74,7 +75,7 @@ fn solve_transpose_impl<I: Index, E: ComplexField>(
         Some(rhs) => rhs,
         None => dst.rb(),
     };
-    zipped!(temp.rb_mut(), src).for_each(|mut dst, tmp| dst.write(tmp.read()));
+    zipped!(temp.rb_mut(), src).for_each(|unzipped!(mut dst, tmp)| dst.write(tmp.read()));
 
     // temp <- ConjA?(U).T^-1 P(col_fwd) ConjB?(B)
     solve_lower_triangular_in_place_with_conj(
@@ -288,8 +289,7 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
 mod tests {
     use super::*;
     use crate::partial_pivoting::compute::{lu_in_place, lu_in_place_req};
-    use assert2::assert;
-    use faer_core::{c32, c64, mul::matmul_with_conj, Mat};
+    use faer_core::{assert, c32, c64, mul::matmul_with_conj, Mat};
     use std::cell::RefCell;
 
     macro_rules! make_stack {

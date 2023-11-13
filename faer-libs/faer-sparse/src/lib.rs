@@ -5,11 +5,11 @@
 #![forbid(elided_lifetimes_in_paths)]
 #![allow(non_snake_case)]
 
-use assert2::assert;
 use bytemuck::Pod;
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     group_helpers::*,
     permutation::PermutationRef,
     sparse::{windows2, *},
@@ -56,17 +56,18 @@ pub enum FaerError {
 
 impl core::fmt::Display for FaerError {
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Debug::fmt(self, f)
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for FaerError {}
 
 #[inline]
 #[track_caller]
-fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerError> {
-    let mut v = Vec::new();
+fn try_zeroed<I: Pod>(n: usize) -> Result<alloc::vec::Vec<I>, FaerError> {
+    let mut v = alloc::vec::Vec::new();
     v.try_reserve_exact(n).map_err(nomem)?;
     unsafe {
         core::ptr::write_bytes::<I>(v.as_mut_ptr(), 0u8, n);
@@ -77,9 +78,9 @@ fn try_zeroed<I: Pod>(n: usize) -> Result<Vec<I>, FaerError> {
 
 #[inline]
 #[track_caller]
-fn try_collect<I: IntoIterator>(iter: I) -> Result<Vec<I::Item>, FaerError> {
+fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, FaerError> {
     let iter = iter.into_iter();
-    let mut v = Vec::new();
+    let mut v = alloc::vec::Vec::new();
     v.try_reserve_exact(iter.size_hint().0).map_err(nomem)?;
     v.extend(iter);
     Ok(v)
@@ -134,16 +135,20 @@ macro_rules! monomorphize_test {
     };
 }
 
-pub mod colamd;
+extern crate alloc;
+
 pub mod amd;
+pub mod colamd;
 
 pub mod cholesky;
 
-// [wip]
 #[doc(hidden)]
 pub mod lu;
 #[doc(hidden)]
 pub mod qr;
+
+#[doc(hidden)]
+pub mod superlu;
 
 mod ghost;
 
@@ -551,6 +556,112 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
         N,
         M,
     )
+}
+
+fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    new_values: SliceGroupMut<'a, E>,
+    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+    stack: PodStack<'_>,
+) -> ghost::SparseColMatRef<'n, 'm, 'a, I, E> {
+    let M = A.nrows();
+    let N = A.ncols();
+    assert!(new_col_ptrs.len() == *M + 1);
+
+    let (col_count, _) = stack.make_raw::<I>(*M);
+    let col_count = ghost::Array::from_mut(col_count, M);
+    mem::fill_zero(col_count.as_mut());
+
+    // can't overflow because the total count is A.compute_nnz() <= I::MAX
+    // if A.into_inner().nnz_per_col().is_some()
+    {
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i] += I::truncate(1);
+            }
+        }
+    }
+    // else {
+    //     for i in A.compressed_row_indices() {
+    //         col_count[i] += I::truncate(1);
+    //     }
+    // }
+
+    // col_count elements are >= 0
+    for (j, [pj0, pj1]) in zip(
+        M.indices(),
+        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+    ) {
+        let cj = &mut col_count[j];
+        let pj = pj0.get();
+        // new_col_ptrs is non-decreasing
+        pj1.set(pj + *cj);
+        *cj = pj;
+    }
+
+    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
+    let current_row_position = &mut *col_count;
+    // current_row_position[i] == col_ptr[i]
+    for j in N.indices() {
+        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
+        for (i, val) in zip(
+            A.row_indices_of_col(j),
+            SliceGroup::<'_, E>::new(A.values_of_col(j)).into_ref_iter(),
+        ) {
+            let ci = &mut current_row_position[i];
+
+            // SAFETY: see below
+            unsafe {
+                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
+                new_values.write_unchecked(ci.zx(), val.read())
+            };
+            *ci += I::truncate(1);
+        }
+    }
+    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+    // so all the unchecked accesses were valid and non-overlapping, which means the entire
+    // array is filled
+    debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
+
+    // SAFETY:
+    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 1. all written row indices are less than n
+    ghost::SparseColMatRef::new(
+        unsafe {
+            SparseColMatRef::new(
+                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
+                new_values.into_const().into_inner(),
+            )
+        },
+        N,
+        M,
+    )
+}
+
+/// Computes the transpose of the matrix `A` and returns a view over it.
+///
+/// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+pub fn transpose<'a, I: Index, E: Entity>(
+    new_col_ptrs: &'a mut [I],
+    new_row_indices: &'a mut [I],
+    new_values: GroupFor<E, &'a mut [E::Unit]>,
+    A: SparseColMatRef<'_, I, E>,
+    stack: PodStack<'_>,
+) -> SparseColMatRef<'a, I, E> {
+    ghost::with_size(A.nrows(), |M| {
+        ghost::with_size(A.ncols(), |N| {
+            ghost_transpose(
+                new_col_ptrs,
+                new_row_indices,
+                SliceGroupMut::new(new_values),
+                ghost::SparseColMatRef::new(A, M, N),
+                stack,
+            )
+            .into_inner()
+        })
+    })
 }
 
 /// Computes the adjoint of the matrix `A` and returns a view over it.
@@ -983,6 +1094,9 @@ pub(crate) mod qd {
     impl ForCopyType for DoubleGroup {
         type FaerOfCopy<T: Copy> = Double<T>;
     }
+    impl ForDebugType for DoubleGroup {
+        type FaerOfDebug<T: core::fmt::Debug> = Double<T>;
+    }
 
     mod faer_impl {
         use super::*;
@@ -999,8 +1113,18 @@ pub(crate) mod qd {
             type Group = DoubleGroup;
             type Iter<I: Iterator> = Double<I>;
 
+            type PrefixUnit<'a, S: Simd> = pulp::Prefix<'a, f64, S, S::m64s>;
+            type SuffixUnit<'a, S: Simd> = pulp::Suffix<'a, f64, S, S::m64s>;
+            type PrefixMutUnit<'a, S: Simd> = pulp::PrefixMut<'a, f64, S, S::m64s>;
+            type SuffixMutUnit<'a, S: Simd> = pulp::SuffixMut<'a, f64, S, S::m64s>;
+
             const N_COMPONENTS: usize = 2;
             const UNIT: GroupCopyFor<Self, ()> = Double((), ());
+
+            #[inline(always)]
+            fn faer_first<T>(group: GroupFor<Self, T>) -> T {
+                group.0
+            }
 
             #[inline(always)]
             fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
@@ -1179,6 +1303,43 @@ pub(crate) mod qd {
             ) -> Self::SimdIndex<S> {
                 simd.u64s_add(a, b)
             }
+
+            #[inline(always)]
+            fn faer_min_positive() -> Self {
+                Self::MIN_POSITIVE
+            }
+
+            #[inline(always)]
+            fn faer_min_positive_inv() -> Self {
+                Self::MIN_POSITIVE.recip()
+            }
+
+            #[inline(always)]
+            fn faer_min_positive_sqrt() -> Self {
+                Self::MIN_POSITIVE.sqrt()
+            }
+
+            #[inline(always)]
+            fn faer_min_positive_sqrt_inv() -> Self {
+                Self::MIN_POSITIVE.sqrt().recip()
+            }
+
+            #[inline(always)]
+            fn faer_simd_index_rotate_left<S: Simd>(
+                simd: S,
+                values: SimdIndexFor<Self, S>,
+                amount: usize,
+            ) -> SimdIndexFor<Self, S> {
+                simd.u64s_rotate_left(values, amount)
+            }
+
+            #[inline(always)]
+            fn faer_simd_abs<S: Simd>(
+                simd: S,
+                values: SimdGroupFor<Self, S>,
+            ) -> SimdGroupFor<Self, S> {
+                double::simd_abs(simd, values)
+            }
         }
 
         impl ComplexField for Double<f64> {
@@ -1290,7 +1451,7 @@ pub(crate) mod qd {
             }
 
             #[inline(always)]
-            fn faer_slice_as_mut_simd<S: Simd>(
+            fn faer_slice_as_simd_mut<S: Simd>(
                 slice: &mut [Self::Unit],
             ) -> (&mut [Self::SimdUnit<S>], &mut [Self::Unit]) {
                 S::f64s_as_mut_simd(slice)
@@ -1471,6 +1632,52 @@ pub(crate) mod qd {
             ) -> Self {
                 let _ = simd;
                 lhs * rhs + acc
+            }
+
+            #[inline(always)]
+            fn faer_slice_as_aligned_simd<S: Simd>(
+                simd: S,
+                slice: &[UnitFor<Self>],
+                offset: pulp::Offset<SimdMaskFor<Self, S>>,
+            ) -> (
+                pulp::Prefix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+                &[SimdUnitFor<Self, S>],
+                pulp::Suffix<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+            ) {
+                simd.f64s_as_aligned_simd(slice, offset)
+            }
+            #[inline(always)]
+            fn faer_slice_as_aligned_simd_mut<S: Simd>(
+                simd: S,
+                slice: &mut [UnitFor<Self>],
+                offset: pulp::Offset<SimdMaskFor<Self, S>>,
+            ) -> (
+                pulp::PrefixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+                &mut [SimdUnitFor<Self, S>],
+                pulp::SuffixMut<'_, UnitFor<Self>, S, SimdMaskFor<Self, S>>,
+            ) {
+                simd.f64s_as_aligned_mut_simd(slice, offset)
+            }
+
+            #[inline(always)]
+            fn faer_simd_rotate_left<S: Simd>(
+                simd: S,
+                values: SimdGroupFor<Self, S>,
+                amount: usize,
+            ) -> SimdGroupFor<Self, S> {
+                Double(
+                    simd.f64s_rotate_left(values.0, amount),
+                    simd.f64s_rotate_left(values.1, amount),
+                )
+            }
+
+            #[inline(always)]
+            fn faer_align_offset<S: Simd>(
+                simd: S,
+                ptr: *const UnitFor<Self>,
+                len: usize,
+            ) -> pulp::Offset<SimdMaskFor<Self, S>> {
+                simd.f64s_align_offset(ptr, len)
             }
         }
     }

@@ -1,7 +1,6 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     mul::triangular,
     permutation::{Index, PermutationRef, SignedIndex},
     temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
@@ -30,10 +29,10 @@ fn reconstruct_impl<I: Index, E: ComplexField>(
     let (mut lu, _) = temp_mat_uninit::<E>(m, n, stack);
     let mut lu = lu.as_mut();
 
-    let [l_top, _, l_bot, _] = lu_factors.split_at(size, size);
-    let [u_left, u_right, _, _] = lu_factors.split_at(size, size);
+    let (l_top, _, l_bot, _) = lu_factors.split_at(size, size);
+    let (u_left, u_right, _, _) = lu_factors.split_at(size, size);
 
-    let [lu_topleft, lu_topright, lu_botleft, _] = lu.rb_mut().split_at(size, size);
+    let (lu_topleft, lu_topright, lu_botleft, _) = lu.rb_mut().split_at_mut(size, size);
 
     triangular::matmul(
         lu_topleft,

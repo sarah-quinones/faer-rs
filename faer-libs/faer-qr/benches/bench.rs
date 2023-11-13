@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::*;
-use faer_core::{c64, Mat, Parallelism};
+use faer_core::{c64, unzipped, Mat, Parallelism};
 use faer_qr::no_pivoting::compute::recommended_blocksize;
 use rand::random;
 
@@ -51,7 +51,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-st-qr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     no_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),
@@ -72,7 +72,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-mt-qr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     no_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),
@@ -93,7 +93,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-st-colqr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     col_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),
@@ -116,7 +116,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-mt-colqr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     col_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),
@@ -140,7 +140,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-st-cplx-colqr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     col_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),
@@ -163,7 +163,7 @@ pub fn qr(c: &mut Criterion) {
             c.bench_function(&format!("faer-mt-cplx-colqr-{m}x{n}"), |b| {
                 b.iter(|| {
                     faer_core::zipped!(copy.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                     col_pivoting::compute::qr_in_place(
                         copy.as_mut(),
                         householder.as_mut(),

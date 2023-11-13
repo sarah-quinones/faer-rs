@@ -13,12 +13,11 @@ use crate::{
     nomem, try_collect, try_zeroed, windows2, FaerError, Index, PermutationRef, Side, SliceGroup,
     SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
 };
-use assert2::assert;
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    permutation::SignedIndex, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity,
-    MatMut, MatRef, Parallelism,
+    assert, permutation::SignedIndex, temp_mat_req, temp_mat_uninit, unzipped, zipped,
+    ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use faer_entity::{GroupFor, Symbolic};
 use reborrow::*;
@@ -46,7 +45,7 @@ enum Ordering<'a, I> {
 
 pub mod simplicial {
     use super::*;
-    use assert2::assert;
+    use faer_core::assert;
     use faer_entity::GroupFor;
 
     /// Computes the elimination tree and column counts of the Cholesky factorization of the matrix
@@ -658,10 +657,10 @@ pub mod simplicial {
             self.values.into_inner()
         }
 
-        pub fn dense_solve_in_place_with_conj(
+        pub fn solve_in_place_with_conj(
             self,
-            rhs: MatMut<'_, E>,
             conj: Conj,
+            rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             stack: PodStack<'_>,
         ) where
@@ -676,7 +675,7 @@ pub mod simplicial {
             let slice_group = SliceGroup::<'_, E>::new;
 
             let mut x = rhs;
-            for mut x in x.rb_mut().into_col_chunks(4) {
+            for mut x in x.rb_mut().col_chunks_mut(4) {
                 match x.ncols() {
                     1 => {
                         for j in 0..n {
@@ -804,7 +803,7 @@ pub mod simplicial {
                 }
             }
 
-            for mut x in x.rb_mut().into_col_chunks(4) {
+            for mut x in x.rb_mut().col_chunks_mut(4) {
                 match x.ncols() {
                     1 => {
                         for j in (0..n).rev() {
@@ -1040,10 +1039,10 @@ pub mod simplicial {
             self.values.into_inner()
         }
 
-        pub fn dense_solve_in_place_with_conj(
+        pub fn solve_in_place_with_conj(
             self,
-            rhs: MatMut<'_, E>,
             conj: Conj,
+            rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             stack: PodStack<'_>,
         ) where
@@ -1058,7 +1057,7 @@ pub mod simplicial {
             let slice_group = SliceGroup::<'_, E>::new;
 
             let mut x = rhs;
-            for mut x in x.rb_mut().into_col_chunks(4) {
+            for mut x in x.rb_mut().col_chunks_mut(4) {
                 match x.ncols() {
                     1 => {
                         for j in 0..n {
@@ -1152,7 +1151,7 @@ pub mod simplicial {
                 }
             }
 
-            for mut x in x.rb_mut().into_col_chunks(1) {
+            for mut x in x.rb_mut().col_chunks_mut(1) {
                 for j in 0..n {
                     let d_inv = slice_group(ld.values_of_col(j))
                         .read(0)
@@ -1162,7 +1161,7 @@ pub mod simplicial {
                 }
             }
 
-            for mut x in x.rb_mut().into_col_chunks(4) {
+            for mut x in x.rb_mut().col_chunks_mut(4) {
                 match x.ncols() {
                     1 => {
                         for j in (0..n).rev() {
@@ -1424,9 +1423,9 @@ pub mod simplicial {
     #[derive(Debug)]
     pub struct SymbolicSimplicialCholesky<I: Index> {
         dimension: usize,
-        col_ptrs: Vec<I>,
-        row_indices: Vec<I>,
-        etree: Vec<I::Signed>,
+        col_ptrs: alloc::vec::Vec<I>,
+        row_indices: alloc::vec::Vec<I>,
+        etree: alloc::vec::Vec<I::Signed>,
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -1451,7 +1450,7 @@ pub mod simplicial {
 
 pub mod supernodal {
     use super::*;
-    use assert2::{assert, debug_assert};
+    use faer_core::{assert, debug_assert};
 
     fn ereach_super<'n, 'nsuper, I: Index>(
         A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
@@ -1600,7 +1599,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = MatRef::<E>::from_column_major_slice(
+            let Ls = faer_core::mat::from_column_major_slice::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -1620,10 +1619,10 @@ pub mod supernodal {
             }
         }
 
-        pub fn dense_solve_in_place_no_numeric_permute_with_conj(
+        pub fn solve_in_place_no_numeric_permute_with_conj(
             self,
-            rhs: MatMut<'_, E>,
             conj: Conj,
+            rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             stack: PodStack<'_>,
         ) where
@@ -1641,8 +1640,8 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::solve::solve_unit_lower_triangular_in_place_with_conj(
                     Ls_top,
                     conj,
@@ -1731,7 +1730,7 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
                 let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
                 let inv = self.perm.into_arrays().1;
@@ -1743,7 +1742,7 @@ pub mod supernodal {
                     }
                 }
 
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::mul::matmul_with_conj(
                     x_top.rb_mut(),
                     Ls_bot.transpose(),
@@ -1797,7 +1796,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = MatRef::<E>::from_column_major_slice(
+            let Ls = faer_core::mat::from_column_major_slice::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -1817,10 +1816,10 @@ pub mod supernodal {
             }
         }
 
-        pub fn dense_solve_in_place_with_conj(
+        pub fn solve_in_place_with_conj(
             self,
-            rhs: MatMut<'_, E>,
             conj: Conj,
+            rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             stack: PodStack<'_>,
         ) where
@@ -1837,8 +1836,8 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::solve::solve_unit_lower_triangular_in_place_with_conj(
                     Ls_top,
                     conj,
@@ -1868,10 +1867,10 @@ pub mod supernodal {
             for s in 0..symbolic.n_supernodes() {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
-                let Ds = s.matrix.diagonal().into_column_vector();
+                let Ds = s.matrix.diagonal().column_vector();
                 for j in 0..k {
                     for idx in 0..size {
-                        let d_inv = Ds.read(idx, 0).faer_real();
+                        let d_inv = Ds.read(idx).faer_real();
                         let i = idx + s.start();
                         x.write(i, j, x.read(i, j).faer_scale_real(d_inv))
                     }
@@ -1881,7 +1880,7 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
                 let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
                 for j in 0..k {
@@ -1891,7 +1890,7 @@ pub mod supernodal {
                     }
                 }
 
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::mul::matmul_with_conj(
                     x_top.rb_mut(),
                     Ls_bot.transpose(),
@@ -1945,7 +1944,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = MatRef::<E>::from_column_major_slice(
+            let Ls = faer_core::mat::from_column_major_slice::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -1965,10 +1964,10 @@ pub mod supernodal {
             }
         }
 
-        pub fn dense_solve_in_place_with_conj(
-            self,
-            rhs: MatMut<'_, E>,
+        pub fn solve_in_place_with_conj(
+            &self,
             conj: Conj,
+            rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             stack: PodStack<'_>,
         ) where
@@ -1985,8 +1984,8 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::solve::solve_lower_triangular_in_place_with_conj(
                     Ls_top,
                     conj,
@@ -2017,7 +2016,7 @@ pub mod supernodal {
                 let s = self.supernode(s);
                 let size = s.matrix.ncols();
                 let Ls = s.matrix;
-                let [Ls_top, Ls_bot] = Ls.split_at_row(size);
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
 
                 let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
                 for j in 0..k {
@@ -2027,7 +2026,7 @@ pub mod supernodal {
                     }
                 }
 
-                let mut x_top = x.rb_mut().subrows(s.start(), size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                 faer_core::mul::matmul_with_conj(
                     x_top.rb_mut(),
                     Ls_bot.transpose(),
@@ -2178,14 +2177,14 @@ pub mod supernodal {
             // would be funny if this allocation failed
             return Ok(SymbolicSupernodalCholesky {
                 dimension: n,
-                supernode_postorder: Vec::new(),
-                supernode_postorder_inv: Vec::new(),
-                descendant_count: Vec::new(),
+                supernode_postorder: alloc::vec::Vec::new(),
+                supernode_postorder_inv: alloc::vec::Vec::new(),
+                descendant_count: alloc::vec::Vec::new(),
 
                 supernode_begin: try_collect([zero])?,
                 col_ptrs_for_row_indices: try_collect([zero])?,
                 col_ptrs_for_values: try_collect([zero])?,
-                row_indices: Vec::new(),
+                row_indices: alloc::vec::Vec::new(),
             });
         }
         let mut original_stack = stack;
@@ -2223,7 +2222,7 @@ pub mod supernodal {
         // last n elements contain supernode degrees
         let supernode_begin__ = ghost::with_size(
             n_fundamental_supernodes,
-            |N_FUNDAMENTAL_SUPERNODES| -> Result<Vec<I>, FaerError> {
+            |N_FUNDAMENTAL_SUPERNODES| -> Result<alloc::vec::Vec<I>, FaerError> {
                 let supernode_sizes = Array::from_mut(
                     &mut supernode_sizes__[..n_fundamental_supernodes],
                     N_FUNDAMENTAL_SUPERNODES,
@@ -2478,7 +2477,15 @@ pub mod supernodal {
         let (supernode_begin__, col_ptrs_for_row_indices__, col_ptrs_for_values__, row_indices__) =
             ghost::with_size(
                 n_supernodes,
-                |N_SUPERNODES| -> Result<(Vec<I>, Vec<I>, Vec<I>, Vec<I>), FaerError> {
+                |N_SUPERNODES| -> Result<
+                    (
+                        alloc::vec::Vec<I>,
+                        alloc::vec::Vec<I>,
+                        alloc::vec::Vec<I>,
+                        alloc::vec::Vec<I>,
+                    ),
+                    FaerError,
+                > {
                     let supernode_sizes =
                         Array::from_mut(&mut supernode_sizes__[..n_supernodes], N_SUPERNODES);
 
@@ -2632,7 +2639,7 @@ pub mod supernodal {
                 },
             )?;
 
-        let mut supernode_etree__: Vec<I> = try_collect(
+        let mut supernode_etree__: alloc::vec::Vec<I> = try_collect(
             bytemuck::cast_slice(&super_etree__[..n_supernodes])
                 .iter()
                 .copied(),
@@ -2902,7 +2909,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = MatMut::<E>::from_column_major_slice(
+            let mut Ls = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -2935,7 +2942,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = MatRef::<E>::from_column_major_slice(
+                let Ld = faer_core::mat::from_column_major_slice::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -2947,15 +2954,15 @@ pub mod supernodal {
                     d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
                 let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
 
-                let [_, Ld_mid_bot] = Ld.split_at_row(d_ncols);
-                let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
-                let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
+                let (_, Ld_mid_bot) = Ld.split_at_row(d_ncols);
+                let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
+                let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
 
                 let stack = stack.rb_mut();
 
                 let (tmp, _) = temp_mat_uninit::<E>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack);
 
-                let [mut tmp_top, mut tmp_bot] = tmp.split_at_row(d_pattern_mid_len);
+                let (mut tmp_top, mut tmp_bot) = tmp.split_at_row_mut(d_pattern_mid_len);
 
                 use faer_core::{mul, mul::triangular};
                 triangular::matmul(
@@ -3020,7 +3027,7 @@ pub mod supernodal {
                 }
             }
 
-            let [mut Ls_top, mut Ls_bot] = Ls.rb_mut().split_at_row(s_ncols);
+            let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 
             let params = Default::default();
             dynamic_regularization_count += faer_cholesky::llt::compute::cholesky_in_place(
@@ -3033,7 +3040,7 @@ pub mod supernodal {
             .dynamic_regularization_count;
             faer_core::solve::solve_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),
-                Ls_bot.rb_mut().transpose(),
+                Ls_bot.rb_mut().transpose_mut(),
                 parallelism,
             );
 
@@ -3092,7 +3099,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = MatMut::<E>::from_column_major_slice(
+            let mut Ls = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -3125,7 +3132,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = MatRef::<E>::from_column_major_slice(
+                let Ld = faer_core::mat::from_column_major_slice::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -3137,17 +3144,17 @@ pub mod supernodal {
                     d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
                 let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
 
-                let [Ld_top, Ld_mid_bot] = Ld.split_at_row(d_ncols);
-                let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
-                let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
-                let D = Ld_top.diagonal().into_column_vector();
+                let (Ld_top, Ld_mid_bot) = Ld.split_at_row(d_ncols);
+                let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
+                let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
+                let D = Ld_top.diagonal().column_vector();
 
                 let stack = stack.rb_mut();
 
                 let (tmp, stack) =
                     temp_mat_uninit::<E>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack);
                 let (tmp2, _) = temp_mat_uninit::<E>(Ld_mid.ncols(), Ld_mid.nrows(), stack);
-                let mut Ld_mid_x_D = tmp2.transpose();
+                let mut Ld_mid_x_D = tmp2.transpose_mut();
 
                 for i in 0..d_pattern_mid_len {
                     for j in 0..d_ncols {
@@ -3156,12 +3163,12 @@ pub mod supernodal {
                             j,
                             Ld_mid
                                 .read(i, j)
-                                .faer_scale_real(D.read(j, 0).faer_real().faer_inv()),
+                                .faer_scale_real(D.read(j).faer_real().faer_inv()),
                         );
                     }
                 }
 
-                let [mut tmp_top, mut tmp_bot] = tmp.split_at_row(d_pattern_mid_len);
+                let (mut tmp_top, mut tmp_bot) = tmp.split_at_row_mut(d_pattern_mid_len);
 
                 use faer_core::{mul, mul::triangular};
                 triangular::matmul(
@@ -3226,7 +3233,7 @@ pub mod supernodal {
                 }
             }
 
-            let [mut Ls_top, mut Ls_bot] = Ls.rb_mut().split_at_row(s_ncols);
+            let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 
             let params = Default::default();
             dynamic_regularization_count +=
@@ -3244,12 +3251,12 @@ pub mod supernodal {
                 )
                 .dynamic_regularization_count;
             zipped!(Ls_top.rb_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| {
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
             faer_core::solve::solve_unit_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),
-                Ls_bot.rb_mut().transpose(),
+                Ls_bot.rb_mut().transpose_mut(),
                 parallelism,
             );
             for j in 0..s_ncols {
@@ -3322,7 +3329,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = MatMut::<E>::from_column_major_slice(
+            let mut Ls = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -3355,7 +3362,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = MatRef::<E>::from_column_major_slice(
+                let Ld = faer_core::mat::from_column_major_slice::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -3367,9 +3374,9 @@ pub mod supernodal {
                     d_pattern[d_pattern_start..].partition_point(partition_fn(s_end));
                 let d_pattern_mid = d_pattern_start + d_pattern_mid_len;
 
-                let [Ld_top, Ld_mid_bot] = Ld.split_at_row(d_ncols);
-                let [_, Ld_mid_bot] = Ld_mid_bot.split_at_row(d_pattern_start);
-                let [Ld_mid, Ld_bot] = Ld_mid_bot.split_at_row(d_pattern_mid_len);
+                let (Ld_top, Ld_mid_bot) = Ld.split_at_row(d_ncols);
+                let (_, Ld_mid_bot) = Ld_mid_bot.split_at_row(d_pattern_start);
+                let (Ld_mid, Ld_bot) = Ld_mid_bot.split_at_row(d_pattern_mid_len);
                 let d_subdiag = subdiag.rb().subslice(d_start..d_start + d_ncols);
 
                 let stack = stack.rb_mut();
@@ -3377,7 +3384,7 @@ pub mod supernodal {
                 let (tmp, stack) =
                     temp_mat_uninit::<E>(Ld_mid_bot.nrows(), d_pattern_mid_len, stack);
                 let (tmp2, _) = temp_mat_uninit::<E>(Ld_mid.ncols(), Ld_mid.nrows(), stack);
-                let mut Ld_mid_x_D = tmp2.transpose();
+                let mut Ld_mid_x_D = tmp2.transpose_mut();
 
                 let mut j = 0;
                 while j < d_ncols {
@@ -3431,7 +3438,7 @@ pub mod supernodal {
                     }
                 }
 
-                let [mut tmp_top, mut tmp_bot] = tmp.split_at_row(d_pattern_mid_len);
+                let (mut tmp_top, mut tmp_bot) = tmp.split_at_row_mut(d_pattern_mid_len);
 
                 use faer_core::{mul, mul::triangular};
                 triangular::matmul(
@@ -3496,13 +3503,13 @@ pub mod supernodal {
                 }
             }
 
-            let [mut Ls_top, mut Ls_bot] = Ls.rb_mut().split_at_row(s_ncols);
+            let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
             let mut s_subdiag = subdiag.rb_mut().subslice(s_start..s_end);
 
             let params = Default::default();
             let (info, perm) = faer_cholesky::bunch_kaufman::compute::cholesky_in_place(
                 Ls_top.rb_mut(),
-                MatMut::<'_, E>::from_column_major_slice(
+                faer_core::mat::from_column_major_slice_mut::<'_, E>(
                     s_subdiag.rb_mut().into_inner(),
                     s_ncols,
                     1,
@@ -3522,7 +3529,7 @@ pub mod supernodal {
             );
             dynamic_regularization_count += info.dynamic_regularization_count;
             zipped!(Ls_top.rb_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut x| {
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |unzipped!(mut x)| {
                     x.write(E::faer_zero())
                 });
 
@@ -3541,7 +3548,7 @@ pub mod supernodal {
 
             faer_core::solve::solve_unit_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),
-                Ls_bot.rb_mut().transpose(),
+                Ls_bot.rb_mut().transpose_mut(),
                 parallelism,
             );
 
@@ -3604,14 +3611,14 @@ pub mod supernodal {
     #[derive(Debug)]
     pub struct SymbolicSupernodalCholesky<I> {
         pub(crate) dimension: usize,
-        pub(crate) supernode_postorder: Vec<I>,
-        pub(crate) supernode_postorder_inv: Vec<I>,
-        pub(crate) descendant_count: Vec<I>,
+        pub(crate) supernode_postorder: alloc::vec::Vec<I>,
+        pub(crate) supernode_postorder_inv: alloc::vec::Vec<I>,
+        pub(crate) descendant_count: alloc::vec::Vec<I>,
 
-        pub(crate) supernode_begin: Vec<I>,
-        pub(crate) col_ptrs_for_row_indices: Vec<I>,
-        pub(crate) col_ptrs_for_values: Vec<I>,
-        pub(crate) row_indices: Vec<I>,
+        pub(crate) supernode_begin: alloc::vec::Vec<I>,
+        pub(crate) col_ptrs_for_row_indices: alloc::vec::Vec<I>,
+        pub(crate) col_ptrs_for_values: alloc::vec::Vec<I>,
+        pub(crate) row_indices: alloc::vec::Vec<I>,
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -3749,8 +3756,8 @@ pub enum SymbolicCholeskyRaw<I: Index> {
 #[derive(Debug)]
 pub struct SymbolicCholesky<I: Index> {
     raw: SymbolicCholeskyRaw<I>,
-    perm_fwd: Vec<I>,
-    perm_inv: Vec<I>,
+    perm_fwd: alloc::vec::Vec<I>,
+    perm_inv: alloc::vec::Vec<I>,
     A_nnz: usize,
 }
 
@@ -4281,10 +4288,10 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
         self.symbolic
     }
 
-    pub fn dense_solve_in_place_with_conj(
+    pub fn solve_in_place_with_conj(
         self,
-        rhs: MatMut<'_, E>,
         conj: Conj,
+        rhs: MatMut<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,
     ) where
@@ -4307,7 +4314,7 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
                         x.write(i, j, rhs.read(fwd.zx().zx(), j));
                     }
                 }
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
                 for j in 0..k {
                     for (i, inv) in inv.iter().enumerate() {
                         rhs.write(i, j, x.read(inv.zx().zx(), j));
@@ -4328,9 +4335,9 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
                     self.subdiag.into_inner(),
                     self.perm,
                 );
-                this.dense_solve_in_place_no_numeric_permute_with_conj(
-                    x.rb_mut(),
+                this.solve_in_place_no_numeric_permute_with_conj(
                     conj,
+                    x.rb_mut(),
                     parallelism,
                     stack,
                 );
@@ -4358,10 +4365,10 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
         self.symbolic
     }
 
-    pub fn dense_solve_in_place_with_conj(
+    pub fn solve_in_place_with_conj(
         self,
-        rhs: MatMut<'_, E>,
         conj: Conj,
+        rhs: MatMut<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,
     ) where
@@ -4384,11 +4391,11 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLltRef::new(symbolic, self.values.into_inner());
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
                 let this = supernodal::SupernodalLltRef::new(symbolic, self.values.into_inner());
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
             }
         }
 
@@ -4413,10 +4420,10 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         self.symbolic
     }
 
-    pub fn dense_solve_in_place_with_conj(
+    pub fn solve_in_place_with_conj(
         self,
-        rhs: MatMut<'_, E>,
         conj: Conj,
+        rhs: MatMut<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,
     ) where
@@ -4439,11 +4446,11 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLdltRef::new(symbolic, self.values.into_inner());
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
                 let this = supernodal::SupernodalLdltRef::new(symbolic, self.values.into_inner());
-                this.dense_solve_in_place_with_conj(x.rb_mut(), conj, parallelism, stack);
+                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
             }
         }
 
@@ -4661,9 +4668,8 @@ pub(crate) mod tests {
         cholesky::supernodal::{CholeskyInput, SupernodalIntranodeBunchKaufmanRef},
         qd::Double,
     };
-    use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
-    use faer_core::Mat;
+    use faer_core::{assert, Mat};
     use num_complex::Complex;
     use rand::{Rng, SeedableRng};
 
@@ -4787,11 +4793,11 @@ pub(crate) mod tests {
             let s = ldlt.supernode(s);
             let size = s.matrix().ncols();
 
-            let [Ls_top, Ls_bot] = s.matrix().split_at_row(size);
+            let (Ls_top, Ls_bot) = s.matrix().split_at_row(size);
             dense
                 .as_mut()
-                .submatrix(s.start(), s.start(), size, size)
-                .clone_from(Ls_top);
+                .submatrix_mut(s.start(), s.start(), size, size)
+                .copy_from(Ls_top);
 
             for col in 0..size {
                 for (i, row) in s.pattern().iter().enumerate() {
@@ -4818,11 +4824,11 @@ pub(crate) mod tests {
             let s = ldlt.supernode(s);
             let size = s.matrix().ncols();
 
-            let [Ls_top, Ls_bot] = s.matrix().split_at_row(size);
+            let (Ls_top, Ls_bot) = s.matrix().split_at_row(size);
             dense
                 .as_mut()
-                .submatrix(s.start(), s.start(), size, size)
-                .clone_from(Ls_top);
+                .submatrix_mut(s.start(), s.start(), size, size)
+                .copy_from(Ls_top);
 
             for col in 0..size {
                 for (i, row) in s.pattern().iter().enumerate() {
@@ -4833,14 +4839,14 @@ pub(crate) mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         zipped!(
-            D.as_mut().diagonal().into_column_vector(),
-            dense.as_ref().diagonal().into_column_vector()
+            D.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+            dense.as_ref().diagonal().column_vector().as_2d()
         )
-        .for_each(|mut dst, src| dst.write(src.read().faer_inv()));
+        .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_inv()));
         dense
             .as_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
         &dense * D * dense.adjoint()
     }
@@ -4908,13 +4914,13 @@ pub(crate) mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         D.as_mut()
-            .diagonal()
-            .into_column_vector()
-            .clone_from(dense.as_ref().diagonal().into_column_vector());
+            .diagonal_mut()
+            .column_vector_mut()
+            .copy_from(dense.as_ref().diagonal().column_vector());
         dense
             .as_mut()
-            .diagonal()
-            .into_column_vector()
+            .diagonal_mut()
+            .column_vector_mut()
             .fill(E::faer_one());
 
         &dense * D * dense.adjoint()
@@ -4942,7 +4948,7 @@ pub(crate) mod tests {
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat =
             faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
-        let values = values_mat.col_ref(0);
+        let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -4975,7 +4981,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
             let A_lower = crate::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
@@ -4986,7 +4992,7 @@ pub(crate) mod tests {
             let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
 
             supernodal::factorize_supernodal_numeric_ldlt(
-                values.col_mut(0),
+                values.col_as_slice_mut(0),
                 A_lower.into_inner(),
                 Default::default(),
                 &symbolic,
@@ -5006,7 +5012,8 @@ pub(crate) mod tests {
                 }
             }
 
-            let err = reconstruct_from_supernodal_ldlt::<I, E>(&symbolic, values.col_ref(0)) - A;
+            let err =
+                reconstruct_from_supernodal_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - A;
             let mut max = <E as ComplexField>::Real::faer_zero();
             for j in 0..n {
                 for i in 0..n {
@@ -5041,7 +5048,7 @@ pub(crate) mod tests {
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat =
             faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
-        let values = values_mat.col_ref(0);
+        let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5081,7 +5088,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
             let A_lower = crate::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
@@ -5092,7 +5099,7 @@ pub(crate) mod tests {
             let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
 
             supernodal::factorize_supernodal_numeric_ldlt(
-                values.col_mut(0),
+                values.col_as_slice_mut(0),
                 A_lower.into_inner(),
                 Default::default(),
                 &symbolic,
@@ -5112,10 +5119,10 @@ pub(crate) mod tests {
             });
             for conj in [Conj::Yes, Conj::No] {
                 let mut x = rhs.clone();
-                let ldlt = SupernodalLdltRef::new(&symbolic, values.col_ref(0));
-                ldlt.dense_solve_in_place_with_conj(
-                    x.as_mut(),
+                let ldlt = SupernodalLdltRef::new(&symbolic, values.col_as_slice(0));
+                ldlt.solve_in_place_with_conj(
                     conj,
+                    x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5166,7 +5173,7 @@ pub(crate) mod tests {
         };
         let values_mat =
             faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
-        let values = values_mat.col_ref(0);
+        let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5206,7 +5213,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
             let A_lower = crate::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
@@ -5221,8 +5228,8 @@ pub(crate) mod tests {
             let mut subdiag = Mat::<E>::zeros(n, 1);
 
             supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
-                values.col_mut(0),
-                subdiag.col_mut(0),
+                values.col_as_slice_mut(0),
+                subdiag.col_as_slice_mut(0),
                 &mut fwd,
                 &mut inv,
                 A_lower.into_inner(),
@@ -5246,8 +5253,8 @@ pub(crate) mod tests {
                 let mut x = rhs.clone();
                 let lblt = SupernodalIntranodeBunchKaufmanRef::new(
                     &symbolic,
-                    values.col_ref(0),
-                    subdiag.col_ref(0),
+                    values.col_as_slice(0),
+                    subdiag.col_as_slice(0),
                     PermutationRef::new_checked(&fwd, &inv),
                 );
                 faer_core::permutation::permute_rows_in_place(
@@ -5257,9 +5264,9 @@ pub(crate) mod tests {
                         faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
-                lblt.dense_solve_in_place_no_numeric_permute_with_conj(
-                    x.as_mut(),
+                lblt.solve_in_place_no_numeric_permute_with_conj(
                     conj,
+                    x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5307,7 +5314,7 @@ pub(crate) mod tests {
         let col_ptr = &*col_ptr.iter().copied().map(truncate).collect::<Vec<_>>();
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| values[i]);
-        let values = values_mat.col_ref(0);
+        let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5347,7 +5354,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower_values = SliceGroupMut::new(A_lower_values.col_mut(0));
+            let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
             let A_lower = crate::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
@@ -5362,8 +5369,8 @@ pub(crate) mod tests {
             let mut subdiag = Mat::<E>::zeros(n, 1);
 
             supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman(
-                values.col_mut(0),
-                subdiag.col_mut(0),
+                values.col_as_slice_mut(0),
+                subdiag.col_as_slice_mut(0),
                 &mut fwd,
                 &mut inv,
                 A_lower.into_inner(),
@@ -5387,8 +5394,8 @@ pub(crate) mod tests {
                 let mut x = rhs.clone();
                 let lblt = SupernodalIntranodeBunchKaufmanRef::new(
                     &symbolic,
-                    values.col_ref(0),
-                    subdiag.col_ref(0),
+                    values.col_as_slice(0),
+                    subdiag.col_as_slice(0),
                     PermutationRef::new_checked(&fwd, &inv),
                 );
                 faer_core::permutation::permute_rows_in_place(
@@ -5398,9 +5405,9 @@ pub(crate) mod tests {
                         faer_core::permutation::permute_rows_in_place_req::<I, E>(n, k).unwrap(),
                     )),
                 );
-                lblt.dense_solve_in_place_no_numeric_permute_with_conj(
-                    x.as_mut(),
+                lblt.solve_in_place_no_numeric_permute_with_conj(
                     conj,
+                    x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5456,7 +5463,7 @@ pub(crate) mod tests {
         let row_ind = &*row_ind.iter().copied().map(truncate).collect::<Vec<_>>();
         let values_mat =
             faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| complexify(E::faer_from_f64(values[i])));
-        let values = values_mat.col_ref(0);
+        let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5485,7 +5492,7 @@ pub(crate) mod tests {
             let mut values = faer_core::Mat::<E>::zeros(symbolic.len_values(), 1);
 
             simplicial::factorize_simplicial_numeric_ldlt::<I, E>(
-                values.col_mut(0),
+                values.col_as_slice_mut(0),
                 A.into_inner(),
                 Default::default(),
                 &symbolic,
@@ -5500,7 +5507,8 @@ pub(crate) mod tests {
                 }
             }
 
-            let err = reconstruct_from_simplicial_ldlt::<I, E>(&symbolic, values.col_ref(0)) - &A;
+            let err =
+                reconstruct_from_simplicial_ldlt::<I, E>(&symbolic, values.col_as_slice(0)) - &A;
 
             let mut max = <E as ComplexField>::Real::faer_zero();
             for j in 0..n {
@@ -5535,7 +5543,7 @@ pub(crate) mod tests {
             let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| {
                 complexify(E::faer_from_f64(values[i]))
             });
-            let values = values_mat.col_ref(0);
+            let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
                 SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5548,7 +5556,7 @@ pub(crate) mod tests {
             let A_lower = crate::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                A_lower_values.col_mut(0),
+                A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
@@ -5584,7 +5592,7 @@ pub(crate) mod tests {
 
                 symbolic
                     .factorize_numeric_llt::<E>(
-                        L_values.col_mut(0),
+                        L_values.col_as_slice_mut(0),
                         A,
                         side,
                         Default::default(),
@@ -5592,7 +5600,7 @@ pub(crate) mod tests {
                         PodStack::new(&mut mem),
                     )
                     .unwrap();
-                let L_values = L_values.col_ref(0);
+                let L_values = L_values.col_as_slice(0);
 
                 let A_reconstructed = match symbolic.raw() {
                     SymbolicCholeskyRaw::Simplicial(symbolic) => {
@@ -5625,9 +5633,9 @@ pub(crate) mod tests {
                     for conj in [Conj::Yes, Conj::No] {
                         let mut x = rhs.clone();
                         let llt = LltRef::new(&symbolic, L_values);
-                        llt.dense_solve_in_place_with_conj(
-                            x.as_mut(),
+                        llt.solve_in_place_with_conj(
                             conj,
+                            x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
                                 symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5678,7 +5686,7 @@ pub(crate) mod tests {
             let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| {
                 complexify(E::faer_from_f64(values[i]))
             });
-            let values = values_mat.col_ref(0);
+            let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
                 SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5691,7 +5699,7 @@ pub(crate) mod tests {
             let A_lower = crate::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                A_lower_values.col_mut(0),
+                A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
@@ -5726,14 +5734,14 @@ pub(crate) mod tests {
                 let mut L_values = Mat::<E>::zeros(symbolic.len_values(), 1);
 
                 symbolic.factorize_numeric_ldlt::<E>(
-                    L_values.col_mut(0),
+                    L_values.col_as_slice_mut(0),
                     A,
                     side,
                     Default::default(),
                     parallelism,
                     PodStack::new(&mut mem),
                 );
-                let L_values = L_values.col_ref(0);
+                let L_values = L_values.col_as_slice(0);
                 let A_reconstructed = match symbolic.raw() {
                     SymbolicCholeskyRaw::Simplicial(symbolic) => {
                         reconstruct_from_simplicial_ldlt::<I, E>(symbolic, L_values)
@@ -5765,9 +5773,9 @@ pub(crate) mod tests {
                     for conj in [Conj::Yes, Conj::No] {
                         let mut x = rhs.clone();
                         let ldlt = LdltRef::new(&symbolic, L_values);
-                        ldlt.dense_solve_in_place_with_conj(
-                            x.as_mut(),
+                        ldlt.solve_in_place_with_conj(
                             conj,
+                            x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
                                 symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5819,7 +5827,7 @@ pub(crate) mod tests {
             let values_mat = faer_core::Mat::<E>::from_fn(nnz, 1, |i, _| {
                 complexify(E::faer_from_f64(values[i]))
             });
-            let values = values_mat.col_ref(0);
+            let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
                 SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
@@ -5832,7 +5840,7 @@ pub(crate) mod tests {
             let A_lower = crate::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                A_lower_values.col_mut(0),
+                A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
@@ -5870,8 +5878,8 @@ pub(crate) mod tests {
                 let mut inv = vec![I::truncate(0); n];
 
                 let lblt = symbolic.factorize_numeric_intranode_bunch_kaufman::<E>(
-                    L_values.col_mut(0),
-                    subdiag.col_mut(0),
+                    L_values.col_as_slice_mut(0),
+                    subdiag.col_as_slice_mut(0),
                     &mut fwd,
                     &mut inv,
                     A,
@@ -5888,9 +5896,9 @@ pub(crate) mod tests {
                     });
                     for conj in [Conj::No, Conj::Yes] {
                         let mut x = rhs.clone();
-                        lblt.dense_solve_in_place_with_conj(
-                            x.as_mut(),
+                        lblt.solve_in_place_with_conj(
                             conj,
+                            x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
                                 symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
@@ -5933,7 +5941,7 @@ pub(crate) mod tests {
             let dynamic_regularization_epsilon = 1e-6;
             let dynamic_regularization_delta = 1e-2;
 
-            let values = values_mat.col_ref(0);
+            let values = values_mat.col_as_slice(0);
             let mut signs = vec![-1i8; n];
             signs[..8].fill(1);
 
@@ -5948,7 +5956,7 @@ pub(crate) mod tests {
             let A_lower = crate::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
-                A_lower_values.col_mut(0),
+                A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
             );
@@ -5982,7 +5990,7 @@ pub(crate) mod tests {
                         .unwrap(),
                 );
                 let mut L_values = Mat::<E>::zeros(symbolic.len_values(), 1);
-                let mut L_values = L_values.col_mut(0);
+                let mut L_values = L_values.col_as_slice_mut(0);
 
                 symbolic.factorize_numeric_ldlt(
                     L_values.rb_mut(),

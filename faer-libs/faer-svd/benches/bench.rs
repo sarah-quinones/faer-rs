@@ -37,11 +37,11 @@ pub fn bidiag(c: &mut Criterion) {
             let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-bidiag-{m}x{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     bidiagonalize_in_place(
                         copy.as_mut(),
-                        householder_left.as_mut().col(0),
-                        householder_right.as_mut().col(0),
+                        householder_left.as_mut().col_mut(0).as_2d_mut(),
+                        householder_right.as_mut().col_mut(0).as_2d_mut(),
                         Parallelism::None,
                         stack.rb_mut(),
                     )
@@ -61,11 +61,11 @@ pub fn bidiag(c: &mut Criterion) {
             let mut stack = PodStack::new(&mut mem);
             c.bench_function(&format!("faer-st-bidiag-{m}x{n}"), |b| {
                 b.iter(|| {
-                    copy.as_mut().clone_from(mat.as_ref());
+                    copy.as_mut().copy_from(mat.as_ref());
                     bidiagonalize_in_place(
                         copy.as_mut(),
-                        householder_left.as_mut().col(0),
-                        householder_right.as_mut().col(0),
+                        householder_left.as_mut().col_mut(0).as_2d_mut(),
+                        householder_right.as_mut().col_mut(0).as_2d_mut(),
                         Parallelism::Rayon(0),
                         stack.rb_mut(),
                     )
@@ -199,7 +199,7 @@ fn real_svd(c: &mut Criterion) {
                 bencher.iter(|| {
                     compute_svd(
                         mat,
-                        s.as_mut().col(0),
+                        s.as_mut().col_mut(0).as_2d_mut(),
                         Some(u.as_mut()),
                         Some(v.as_mut()),
                         Parallelism::None,
@@ -226,7 +226,7 @@ fn real_svd(c: &mut Criterion) {
                 bencher.iter(|| {
                     compute_svd(
                         mat,
-                        s.as_mut().col(0),
+                        s.as_mut().col_mut(0).as_2d_mut(),
                         Some(u.as_mut()),
                         Some(v.as_mut()),
                         Parallelism::Rayon(0),

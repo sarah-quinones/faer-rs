@@ -1,12 +1,11 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::{
         apply_block_householder_sequence_on_the_left_in_place_with_conj,
         apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
     },
-    solve, temp_mat_req, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    solve, temp_mat_req, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -107,7 +106,7 @@ pub fn solve_in_place<E: ComplexField>(
     solve::solve_upper_triangular_in_place_with_conj(
         qr_factors.submatrix(0, 0, size, size),
         conj_lhs,
-        rhs.subrows(0, size),
+        rhs.subrows_mut(0, size),
         parallelism,
     );
 }
@@ -194,7 +193,7 @@ pub fn solve<E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_in_place(
         qr_factors,
         householder_factor,
@@ -233,7 +232,7 @@ pub fn solve_transpose<E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let mut dst = dst;
-    zipped!(dst.rb_mut(), rhs).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     solve_transpose_in_place(
         qr_factors,
         householder_factor,
@@ -248,8 +247,7 @@ pub fn solve_transpose<E: ComplexField>(
 mod tests {
     use super::*;
     use crate::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
-    use assert2::assert;
-    use faer_core::{c32, c64, mul::matmul_with_conj, Mat};
+    use faer_core::{assert, c32, c64, mul::matmul_with_conj, Mat};
     use rand::random;
 
     macro_rules! make_stack {

@@ -1,9 +1,8 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     mul::triangular::{self, BlockStructure},
-    temp_mat_req, temp_mat_uninit,
+    temp_mat_req, temp_mat_uninit, unzipped,
     zip::Diag,
     zipped, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
@@ -78,5 +77,7 @@ pub fn reconstruct_lower_in_place<E: ComplexField>(
     let mut tmp = tmp.as_mut();
     reconstruct_lower(tmp.rb_mut(), cholesky_factor.rb(), parallelism, stack);
     zipped!(cholesky_factor, tmp.rb())
-        .for_each_triangular_lower(Diag::Include, |mut dst, src| dst.write(src.read()));
+        .for_each_triangular_lower(Diag::Include, |unzipped!(mut dst, src)| {
+            dst.write(src.read())
+        });
 }
