@@ -1,11 +1,10 @@
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use bytemuck::cast;
 use coe::Coerce;
 use core::slice;
 use dyn_stack::{PodStack, StackReq};
 use faer_core::{
-    c32, c64,
+    assert, c32, c64, debug_assert,
+    group_helpers::*,
     mul::matmul,
     permutation::{swap_cols, swap_rows, Index, PermutationMut, SignedIndex},
     simd, ComplexField, Entity, MatMut, MatRef, Parallelism, RealField,
@@ -167,235 +166,268 @@ fn best2d_f32<S: Simd>(
 
 #[inline(always)]
 fn best2d<E: RealField, S: Simd>(
-    simd: S,
-    best_value: GroupFor<E, SimdUnitFor<E, S>>,
+    simd: SimdFor<E, S>,
+    best_value: SimdGroupFor<E, S>,
     best_row_indices: SimdIndexFor<E, S>,
     best_col_indices: SimdIndexFor<E, S>,
-    value: GroupFor<E, SimdUnitFor<E, S>>,
+    value: SimdGroupFor<E, S>,
     row_indices: SimdIndexFor<E, S>,
     col_indices: SimdIndexFor<E, S>,
-) -> (
-    GroupFor<E, SimdUnitFor<E, S>>,
-    SimdIndexFor<E, S>,
-    SimdIndexFor<E, S>,
-) {
-    let is_better =
-        E::faer_simd_greater_than(simd, E::faer_copy(&value), E::faer_copy(&best_value));
+) -> (SimdGroupFor<E, S>, SimdIndexFor<E, S>, SimdIndexFor<E, S>) {
+    let is_better = simd.greater_than(value, best_value);
     (
-        E::faer_simd_select(simd, is_better, value, best_value),
-        E::faer_simd_index_select(simd, is_better, row_indices, best_row_indices),
-        E::faer_simd_index_select(simd, is_better, col_indices, best_col_indices),
+        simd.select(is_better, value, best_value),
+        simd.index_select(is_better, row_indices, best_row_indices),
+        simd.index_select(is_better, col_indices, best_col_indices),
     )
 }
 
 #[inline(always)]
 fn best_value<E: ComplexField, S: Simd>(
-    simd: S,
+    simd: SimdFor<E, S>,
     best_value: SimdGroupFor<E::Real, S>,
     best_indices: <E::Real as Entity>::SimdIndex<S>,
-    data: GroupFor<E, SimdUnitFor<E, S>>,
+    data: SimdGroupFor<E, S>,
     indices: <E::Real as Entity>::SimdIndex<S>,
 ) -> (SimdGroupFor<E::Real, S>, <E::Real as Entity>::SimdIndex<S>) {
-    let value = E::faer_simd_score(simd, data);
-    let is_better = E::Real::faer_simd_greater_than(
-        simd,
-        E::Real::faer_copy(&value),
-        E::Real::faer_copy(&best_value),
-    );
+    let simd_real = SimdFor::<E::Real, S>::new(simd.simd);
+    let value = simd.score(data);
+    let is_better = simd_real.greater_than(value, best_value);
     (
-        E::Real::faer_simd_select(simd, is_better, value, best_value),
-        E::Real::faer_simd_index_select(simd, is_better, indices, best_indices),
+        simd_real.select(is_better, value, best_value),
+        simd_real.index_select(is_better, indices, best_indices),
     )
 }
 
 #[inline(always)]
 fn best_score<E: RealField, S: Simd>(
-    simd: S,
-    best_value: GroupFor<E, SimdUnitFor<E, S>>,
+    simd: SimdFor<E, S>,
+    best_value: SimdGroupFor<E, S>,
     best_indices: SimdIndexFor<E, S>,
-    value: GroupFor<E, SimdUnitFor<E, S>>,
+    value: SimdGroupFor<E, S>,
     indices: SimdIndexFor<E, S>,
-) -> (GroupFor<E, SimdUnitFor<E, S>>, SimdIndexFor<E, S>) {
-    let is_better = E::Real::faer_simd_greater_than(
-        simd,
-        E::Real::faer_copy(&value),
-        E::Real::faer_copy(&best_value),
-    );
+) -> (SimdGroupFor<E, S>, SimdIndexFor<E, S>) {
+    let is_better = simd.greater_than(value, best_value);
     (
-        E::Real::faer_simd_select(simd, is_better, value, best_value),
-        E::Real::faer_simd_index_select(simd, is_better, indices, best_indices),
+        simd.select(is_better, value, best_value),
+        simd.index_select(is_better, indices, best_indices),
     )
 }
 
 #[inline(always)]
 fn best_in_col<E: ComplexField, S: Simd>(
-    simd: S,
+    simd: SimdFor<E, S>,
     data: GroupFor<E, &[UnitFor<E>]>,
+    offset: pulp::Offset<SimdMaskFor<E, S>>,
 ) -> (SimdGroupFor<E::Real, S>, SimdIndexFor<E::Real, S>) {
-    let (head, tail) = simd::slice_as_simd::<E, S>(data);
+    let simd_real = SimdFor::<E::Real, S>::new(simd.simd);
 
-    let iota = E::Real::faer_simd_index_seq(simd);
+    let (head, body, tail) = simd.as_aligned_simd(SliceGroup::<'_, E>::new(data), offset);
+    let (body4, body1) = body.as_arrays::<4>();
+
+    let iota = simd_real.index_seq();
     let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
-    let increment1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(lane_count));
-    let increment4 =
-        E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(4 * lane_count));
+    let increment1 = simd_real.index_splat(E::Real::faer_usize_to_index(lane_count));
+    let increment4 = simd_real.index_splat(E::Real::faer_usize_to_index(4 * lane_count));
 
-    let mut best_value0 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
-    let mut best_value1 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
-    let mut best_value2 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
-    let mut best_value3 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+    let mut best_value0 = simd_real.splat(E::Real::faer_one().faer_neg());
+    let mut best_value1 = simd_real.splat(E::Real::faer_one().faer_neg());
+    let mut best_value2 = simd_real.splat(E::Real::faer_one().faer_neg());
+    let mut best_value3 = simd_real.splat(E::Real::faer_one().faer_neg());
 
-    let mut best_indices0 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-    let mut best_indices1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-    let mut best_indices2 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-    let mut best_indices3 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
+    let mut best_indices0 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+    let mut best_indices1 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+    let mut best_indices2 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+    let mut best_indices3 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
 
-    let mut indices0 = iota;
-    let mut indices1 = E::Real::faer_simd_index_add(simd, indices0, increment1);
-    let mut indices2 = E::Real::faer_simd_index_add(simd, indices1, increment1);
-    let mut indices3 = E::Real::faer_simd_index_add(simd, indices2, increment1);
-
-    let (head4, tail4) = E::faer_as_arrays::<4, _>(head);
-    for data in E::faer_into_iter(head4) {
-        let [data0, data1, data2, data3] = E::faer_unzip4(E::faer_deref(data));
-        (best_value0, best_indices0) =
-            best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
-        (best_value1, best_indices1) =
-            best_value::<E, S>(simd, best_value1, best_indices1, data1, indices1);
-        (best_value2, best_indices2) =
-            best_value::<E, S>(simd, best_value2, best_indices2, data2, indices2);
-        (best_value3, best_indices3) =
-            best_value::<E, S>(simd, best_value3, best_indices3, data3, indices3);
-
-        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment4);
-        indices1 = E::Real::faer_simd_index_add(simd, indices1, increment4);
-        indices2 = E::Real::faer_simd_index_add(simd, indices2, increment4);
-        indices3 = E::Real::faer_simd_index_add(simd, indices3, increment4);
+    fn process<E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        data: impl Read<Output = SimdGroupFor<E, S>>,
+        indices: SimdIndexFor<E::Real, S>,
+        best_values: SimdGroupFor<E::Real, S>,
+        best_indices: SimdIndexFor<E::Real, S>,
+    ) -> (SimdGroupFor<E::Real, S>, SimdIndexFor<E::Real, S>) {
+        best_value::<E, S>(
+            simd,
+            best_values,
+            best_indices,
+            data.read_or(simd.splat(E::faer_zero())),
+            indices,
+        )
     }
 
-    (best_value0, best_indices0) =
-        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value1, best_indices1);
-    (best_value2, best_indices2) =
-        best_score::<E::Real, S>(simd, best_value2, best_indices2, best_value3, best_indices3);
+    let mut indices0 = simd_real.index_add(
+        iota,
+        simd_real.index_splat(E::Real::faer_usize_to_index(
+            offset.rotate_left_amount().wrapping_neg(),
+        )),
+    );
+    (best_value0, best_indices0) = process(simd, head, indices0, best_value0, best_indices0);
 
-    (best_value0, best_indices0) =
-        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value2, best_indices2);
+    indices0 = simd_real.index_add(indices0, increment1);
+    let mut indices1 = simd_real.index_add(indices0, increment1);
+    let mut indices2 = simd_real.index_add(indices1, increment1);
+    let mut indices3 = simd_real.index_add(indices2, increment1);
+    for [data0, data1, data2, data3] in body4.into_ref_iter().map(RefGroup::unzip) {
+        (best_value0, best_indices0) = process(simd, data0, indices0, best_value0, best_indices0);
+        (best_value1, best_indices1) = process(simd, data1, indices1, best_value1, best_indices1);
+        (best_value2, best_indices2) = process(simd, data2, indices2, best_value2, best_indices2);
+        (best_value3, best_indices3) = process(simd, data3, indices3, best_value3, best_indices3);
 
-    for data in E::faer_into_iter(tail4) {
-        let data0 = E::faer_deref(data);
-        (best_value0, best_indices0) =
-            best_value::<E, S>(simd, best_value0, best_indices0, data0, indices0);
-        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment1);
+        indices0 = simd_real.index_add(indices0, increment4);
+        indices1 = simd_real.index_add(indices1, increment4);
+        indices2 = simd_real.index_add(indices2, increment4);
+        indices3 = simd_real.index_add(indices3, increment4);
     }
+    for data0 in body1.into_ref_iter() {
+        (best_value0, best_indices0) = process(simd, data0, indices0, best_value0, best_indices0);
+        indices0 = simd_real.index_add(indices0, increment1);
+    }
+    (best_value0, best_indices0) = process(simd, tail, indices0, best_value0, best_indices0);
 
-    best_value::<E, S>(
-        simd,
+    (best_value0, best_indices0) = best_score::<E::Real, S>(
+        simd_real,
         best_value0,
         best_indices0,
-        E::faer_partial_load(simd, tail),
-        indices0,
+        best_value1,
+        best_indices1,
+    );
+    (best_value2, best_indices2) = best_score::<E::Real, S>(
+        simd_real,
+        best_value2,
+        best_indices2,
+        best_value3,
+        best_indices3,
+    );
+
+    best_score::<E::Real, S>(
+        simd_real,
+        best_value0,
+        best_indices0,
+        best_value2,
+        best_indices2,
     )
 }
 
 #[inline(always)]
 fn update_and_best_in_col<E: ComplexField, S: Simd>(
-    simd: S,
+    simd: SimdFor<E, S>,
     data: GroupFor<E, &mut [UnitFor<E>]>,
     lhs: GroupFor<E, &[UnitFor<E>]>,
     rhs: E,
+    offset: pulp::Offset<SimdMaskFor<E, S>>,
 ) -> (SimdGroupFor<E::Real, S>, <E::Real as Entity>::SimdIndex<S>) {
-    let mut len = 0;
-    E::faer_map(
-        E::faer_as_ref(&data),
-        #[inline(always)]
-        |slice| len = slice.len(),
-    );
+    let simd_real = SimdFor::<E::Real, S>::new(simd.simd);
 
-    let iota = E::Real::faer_simd_index_seq(simd);
+    let rhs = simd.splat(rhs);
+    let data = SliceGroupMut::<'_, E>::new(data);
+    let len = data.len();
     let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
-    let rhs = E::faer_simd_splat(simd, rhs);
+    let (dst_head, dst_body, dst_tail) = simd.as_aligned_simd_mut(data, offset);
 
-    if len <= lane_count {
-        let dst0 = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&data)));
-        let lhs0 = E::faer_partial_load(simd, lhs);
-        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
-        E::faer_partial_store(simd, data, E::faer_copy(&dst0));
+    let (dst_body3, dst_body1) = dst_body.as_arrays_mut::<3>();
+    let (lhs_head, lhs_body, lhs_tail) =
+        simd.as_aligned_simd(SliceGroup::<'_, E>::new(lhs), offset);
+    let (lhs_body3, lhs_body1) = lhs_body.as_arrays::<3>();
 
-        return (E::faer_simd_score(simd, dst0), iota);
+    let iota = simd_real.index_seq();
+    let increment1 = simd_real.index_splat(E::Real::faer_usize_to_index(lane_count));
+    let increment3 = simd_real.index_splat(E::Real::faer_usize_to_index(3 * lane_count));
+
+    let mut best_value0 = simd_real.splat(E::Real::faer_zero());
+    let mut best_value1 = simd_real.splat(E::Real::faer_zero());
+    let mut best_value2 = simd_real.splat(E::Real::faer_zero());
+
+    let mut best_indices0 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+    let mut best_indices1 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+    let mut best_indices2 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+
+    #[inline(always)]
+    fn process<E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        mut dst: impl Write<Output = SimdGroupFor<E, S>>,
+        lhs: impl Read<Output = SimdGroupFor<E, S>>,
+        rhs: SimdGroupFor<E, S>,
+        indices: SimdIndexFor<E::Real, S>,
+        best_values: SimdGroupFor<E::Real, S>,
+        best_indices: SimdIndexFor<E::Real, S>,
+    ) -> (SimdGroupFor<E::Real, S>, SimdIndexFor<E::Real, S>) {
+        let zero = simd.splat(E::faer_zero());
+        let mut dst_ = dst.read_or(zero);
+        let lhs = lhs.read_or(zero);
+        dst_ = simd.mul_add_e(rhs, lhs, dst_);
+        dst.write(dst_);
+        best_value::<E, S>(simd, best_values, best_indices, dst_, indices)
     }
 
-    let (dst_head, dst_tail) = simd::slice_as_mut_simd::<E, S>(data);
-    let (lhs_head, lhs_tail) = simd::slice_as_simd::<E, S>(lhs);
+    let mut indices0 = simd_real.index_add(
+        iota,
+        simd_real.index_splat(E::Real::faer_usize_to_index(
+            offset.rotate_left_amount().wrapping_neg(),
+        )),
+    );
+    (best_value0, best_indices0) = process(
+        simd,
+        dst_head,
+        lhs_head,
+        rhs,
+        indices0,
+        best_value0,
+        best_indices0,
+    );
 
-    let increment1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(lane_count));
-    let increment2 =
-        E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(2 * lane_count));
+    if len + offset.rotate_left_amount() == lane_count {
+        return (best_value0, best_indices0);
+    }
 
-    let mut best_value0 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
-    let mut best_value1 = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
-
-    let mut best_indices0 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-    let mut best_indices1 = E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-
-    let mut indices0 = iota;
-    let mut indices1 = E::Real::faer_simd_index_add(simd, indices0, increment1);
-
-    let (dst_head2, dst_tail2) = E::faer_as_arrays_mut::<2, _>(dst_head);
-    let (lhs_head2, lhs_tail2) = E::faer_as_arrays::<2, _>(lhs_head);
-
-    for (dst, lhs) in E::faer_into_iter(dst_head2).zip(E::faer_into_iter(lhs_head2)) {
-        let [dst0, dst1] = E::faer_unzip2(E::faer_deref(E::faer_rb(E::faer_as_ref(&dst))));
-        let [lhs0, lhs1] = E::faer_unzip2(E::faer_deref(lhs));
-
-        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
-        let dst1 = E::faer_simd_mul_adde(simd, lhs1, E::faer_copy(&rhs), dst1);
-
-        E::faer_map(
-            E::faer_zip(dst, E::faer_zip(E::faer_copy(&dst0), E::faer_copy(&dst1))),
-            #[inline(always)]
-            |(dst, (dst0, dst1))| {
-                dst[0] = dst0;
-                dst[1] = dst1;
-            },
-        );
-
+    indices0 = simd_real.index_add(indices0, increment1);
+    let mut indices1 = simd_real.index_add(indices0, increment1);
+    let mut indices2 = simd_real.index_add(indices1, increment1);
+    for ([dst0, dst1, dst2], [lhs0, lhs1, lhs2]) in dst_body3
+        .into_mut_iter()
+        .map(RefGroupMut::unzip)
+        .zip(lhs_body3.into_ref_iter().map(RefGroup::unzip))
+    {
         (best_value0, best_indices0) =
-            best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0);
+            process(simd, dst0, lhs0, rhs, indices0, best_value0, best_indices0);
         (best_value1, best_indices1) =
-            best_value::<E, S>(simd, best_value1, best_indices1, dst1, indices1);
-
-        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment2);
-        indices1 = E::Real::faer_simd_index_add(simd, indices1, increment2);
+            process(simd, dst1, lhs1, rhs, indices1, best_value1, best_indices1);
+        (best_value2, best_indices2) =
+            process(simd, dst2, lhs2, rhs, indices2, best_value2, best_indices2);
+        indices0 = simd_real.index_add(indices0, increment3);
+        indices1 = simd_real.index_add(indices1, increment3);
+        indices2 = simd_real.index_add(indices2, increment3);
     }
-
-    (best_value0, best_indices0) =
-        best_score::<E::Real, S>(simd, best_value0, best_indices0, best_value1, best_indices1);
-
-    for (dst, lhs) in E::faer_into_iter(dst_tail2).zip(E::faer_into_iter(lhs_tail2)) {
-        let dst0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&dst)));
-        let lhs0 = E::faer_deref(lhs);
-
-        let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
-
-        E::faer_map(
-            E::faer_zip(dst, E::faer_copy(&dst0)),
-            #[inline(always)]
-            |(dst, dst0)| *dst = dst0,
-        );
-
+    for (dst0, lhs0) in dst_body1.into_mut_iter().zip(lhs_body1.into_ref_iter()) {
         (best_value0, best_indices0) =
-            best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0);
-
-        indices0 = E::Real::faer_simd_index_add(simd, indices0, increment1);
+            process(simd, dst0, lhs0, rhs, indices0, best_value0, best_indices0);
+        indices0 = simd_real.index_add(indices0, increment1);
     }
+    (best_value0, best_indices0) = process(
+        simd,
+        dst_tail,
+        lhs_tail,
+        rhs,
+        indices0,
+        best_value0,
+        best_indices0,
+    );
 
-    let dst0 = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&dst_tail)));
-    let lhs0 = E::faer_partial_load(simd, lhs_tail);
-    let dst0 = E::faer_simd_mul_adde(simd, lhs0, E::faer_copy(&rhs), dst0);
-    E::faer_partial_store(simd, dst_tail, E::faer_copy(&dst0));
-
-    best_value::<E, S>(simd, best_value0, best_indices0, dst0, indices0)
+    (best_value0, best_indices0) = best_score::<E::Real, S>(
+        simd_real,
+        best_value0,
+        best_indices0,
+        best_value1,
+        best_indices1,
+    );
+    best_score::<E::Real, S>(
+        simd_real,
+        best_value0,
+        best_indices0,
+        best_value2,
+        best_indices2,
+    )
 }
 
 macro_rules! best_in_col_simd {
@@ -656,41 +688,41 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
             let matrix = self.0;
             debug_assert!(matrix.row_stride() == 1);
+            let simd_real = SimdFor::<E::Real, S>::new(simd);
+            let simd = SimdFor::<E, S>::new(simd);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row =
-                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-            let mut best_col =
-                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-            let mut best_value = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+            let mut best_row = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_col = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_value = simd_real.splat(E::Real::faer_one().faer_neg());
+            let offset = simd.align_offset(SliceGroup::<'_, E>::new(
+                matrix.rb().try_get_contiguous_col(0),
+            ));
 
             for j in 0..n {
-                let ptr = matrix.col(j).as_ptr();
-                let col = E::faer_map(
-                    ptr,
-                    #[inline(always)]
-                    |ptr| unsafe { slice::from_raw_parts(ptr, m) },
-                );
-                let (best_value_in_col, best_index_in_col) = best_in_col::<E, S>(simd, col);
+                let col = matrix.try_get_contiguous_col(j);
+                let (best_value_in_col, best_index_in_col) = best_in_col::<E, S>(simd, col, offset);
                 (best_value, best_row, best_col) = best2d::<E::Real, S>(
-                    simd,
+                    simd_real,
                     best_value,
                     best_row,
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(j)),
+                    simd_real.index_splat(E::Real::faer_usize_to_index(j)),
                 );
             }
 
             let len = Ord::min(
-                m,
+                m + offset.rotate_left_amount(),
                 core::mem::size_of::<SimdIndexFor<E, S>>() / core::mem::size_of::<IndexFor<E>>(),
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,
-                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(&best_value)),
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(
+                    &from_copy::<E::Real, _>(best_value),
+                )),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
@@ -706,11 +738,19 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
 }
 
 fn update_and_best_in_matrix_simd<E: ComplexField>(
-    matrix: MatMut<'_, E>,
+    mut matrix: MatMut<'_, E>,
     lhs: MatRef<'_, E>,
-    rhs: MatRef<'_, E>,
+    mut rhs: MatMut<'_, E>,
+    max_row: usize,
 ) -> (usize, usize, E::Real) {
-    struct UpdateAndBestInMat<'a, E: ComplexField>(MatMut<'a, E>, MatRef<'a, E>, MatRef<'a, E>);
+    struct UpdateAndBestInMatSwap<'a, E: ComplexField>(
+        MatMut<'a, E>,
+        MatRef<'a, E>,
+        MatMut<'a, E>,
+        usize,
+    );
+
+    struct UpdateAndBestInMat<'a, E: ComplexField>(MatMut<'a, E>, MatRef<'a, E>, MatMut<'a, E>);
     impl<E: ComplexField> pulp::WithSimd for UpdateAndBestInMat<'_, E> {
         type Output = (usize, usize, E::Real);
 
@@ -719,52 +759,52 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
             assert!(matrix.row_stride() == 1);
             assert!(lhs.row_stride() == 1);
+            let simd_real = SimdFor::<E::Real, S>::new(simd);
+            let simd = SimdFor::<E, S>::new(simd);
 
             let m = matrix.nrows();
             let n = matrix.ncols();
-            let mut best_row =
-                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-            let mut best_col =
-                E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(0));
-            let mut best_value = E::Real::faer_simd_splat(simd, E::Real::faer_zero());
+            assert!(matrix.ncols() == n);
+            assert!(rhs.ncols() == n);
+            let mut best_row = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_col = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_value = simd_real.splat(E::Real::faer_one().faer_neg());
 
-            let lhs = E::faer_map(
-                lhs.as_ptr(),
-                #[inline(always)]
-                |ptr| unsafe { slice::from_raw_parts(ptr, m) },
-            );
+            let offset = simd.align_offset(SliceGroup::<'_, E>::new(
+                matrix.rb().try_get_contiguous_col(0),
+            ));
+
+            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col(0));
 
             for j in 0..n {
                 let rhs = rhs.read(0, j).faer_neg();
 
-                let ptr = matrix.rb_mut().col(j).as_ptr();
-                let dst = E::faer_map(
-                    ptr,
-                    #[inline(always)]
-                    |ptr| unsafe { slice::from_raw_parts_mut(ptr, m) },
-                );
+                let dst =
+                    SliceGroupMut::<'_, E>::new(matrix.rb_mut().try_get_contiguous_col_mut(j));
 
                 let (best_value_in_col, best_index_in_col) =
-                    update_and_best_in_col(simd, dst, E::faer_copy(&lhs), rhs);
+                    update_and_best_in_col(simd, dst.into_inner(), lhs.into_inner(), rhs, offset);
 
                 (best_value, best_row, best_col) = best2d::<E::Real, S>(
-                    simd,
+                    simd_real,
                     best_value,
                     best_row,
                     best_col,
                     best_value_in_col,
                     best_index_in_col,
-                    E::Real::faer_simd_index_splat(simd, E::Real::faer_usize_to_index(j)),
+                    simd_real.index_splat(E::Real::faer_usize_to_index(j)),
                 );
             }
 
             let len = Ord::min(
-                m,
+                m + offset.rotate_left_amount(),
                 core::mem::size_of::<SimdIndexFor<E, S>>() / core::mem::size_of::<IndexFor<E>>(),
             );
             let (best_value, best_row, best_col) = reduce2d::<E::Real>(
                 len,
-                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(&best_value)),
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(
+                    &from_copy::<E::Real, _>(best_value),
+                )),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
                 simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
             );
@@ -777,7 +817,96 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
         }
     }
 
-    aarch64_nodispatch::<E, _>(UpdateAndBestInMat(matrix, lhs, rhs))
+    impl<E: ComplexField> pulp::WithSimd for UpdateAndBestInMatSwap<'_, E> {
+        type Output = (usize, usize, E::Real);
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let UpdateAndBestInMatSwap(mut matrix, lhs, mut rhs, max_row) = self;
+            assert!(matrix.row_stride() == 1);
+            assert!(lhs.row_stride() == 1);
+            let simd_real = SimdFor::<E::Real, S>::new(simd);
+            let simd = SimdFor::<E, S>::new(simd);
+
+            let m = matrix.nrows();
+            let n = matrix.ncols();
+            assert!(matrix.ncols() == n);
+            assert!(rhs.ncols() == n);
+            let mut best_row = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_col = simd_real.index_splat(E::Real::faer_usize_to_index(0));
+            let mut best_value = simd_real.splat(E::Real::faer_one().faer_neg());
+
+            let offset = simd.align_offset(SliceGroup::<'_, E>::new(
+                matrix.rb().try_get_contiguous_col(0),
+            ));
+
+            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col(0));
+
+            for j in 0..n {
+                let a = rhs.read(0, j);
+                let b = matrix.read(max_row, j);
+                rhs.write(0, j, b);
+                matrix.write(max_row, j, a);
+
+                let rhs = rhs.read(0, j).faer_neg();
+
+                let dst =
+                    SliceGroupMut::<'_, E>::new(matrix.rb_mut().try_get_contiguous_col_mut(j));
+
+                let (best_value_in_col, best_index_in_col) =
+                    update_and_best_in_col(simd, dst.into_inner(), lhs.into_inner(), rhs, offset);
+
+                (best_value, best_row, best_col) = best2d::<E::Real, S>(
+                    simd_real,
+                    best_value,
+                    best_row,
+                    best_col,
+                    best_value_in_col,
+                    best_index_in_col,
+                    simd_real.index_splat(E::Real::faer_usize_to_index(j)),
+                );
+            }
+
+            let len = Ord::min(
+                m + offset.rotate_left_amount(),
+                core::mem::size_of::<SimdIndexFor<E, S>>() / core::mem::size_of::<IndexFor<E>>(),
+            );
+            let (best_value, best_row, best_col) = reduce2d::<E::Real>(
+                len,
+                simd::one_simd_as_slice::<E::Real, S>(E::Real::faer_as_ref(
+                    &from_copy::<E::Real, _>(best_value),
+                )),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_row]),
+                simd::simd_index_as_slice::<E::Real, S>(&[best_col]),
+            );
+
+            (
+                E::Real::faer_index_to_usize(best_row),
+                E::Real::faer_index_to_usize(best_col),
+                best_value,
+            )
+        }
+    }
+
+    if max_row == 0 {
+        aarch64_nodispatch::<E, _>(UpdateAndBestInMat(matrix, lhs, rhs))
+    } else {
+        let max_row = max_row - 1;
+        let cs = matrix.col_stride().unsigned_abs();
+        let n = matrix.ncols();
+        let span = cs.saturating_mul(n);
+        if span >= 128 * 128 {
+            aarch64_nodispatch::<E, _>(UpdateAndBestInMatSwap(matrix, lhs, rhs, max_row))
+        } else {
+            for j in 0..n {
+                let a = rhs.read(0, j);
+                let b = matrix.read(max_row, j);
+                rhs.write(0, j, b);
+                matrix.write(max_row, j, a);
+            }
+            aarch64_nodispatch::<E, _>(UpdateAndBestInMat(matrix, lhs, rhs))
+        }
+    }
 }
 
 fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
@@ -826,15 +955,16 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
 fn update_and_best_in_matrix_c64(
     matrix: MatMut<'_, c64>,
     lhs: MatRef<'_, c64>,
-    rhs: MatRef<'_, c64>,
+    rhs: MatMut<'_, c64>,
+    max_row: usize,
 ) -> (usize, usize, f64) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, MatRef<'a, c64>, MatRef<'a, c64>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, MatRef<'a, c64>, MatMut<'a, c64>, usize);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f64);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
+            let UpdateAndBestInMat(mut matrix, lhs, mut rhs, max_row) = self;
             assert!(matrix.row_stride() == 1);
             assert!(lhs.row_stride() == 1);
 
@@ -847,9 +977,16 @@ fn update_and_best_in_matrix_c64(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
+                if max_row > 0 {
+                    let a = rhs.read(0, j);
+                    let b = matrix.read(max_row - 1, j);
+                    rhs.write(0, j, b);
+                    matrix.write(max_row - 1, j, a);
+                }
+
                 let rhs = -rhs.read(0, j);
 
-                let ptr = matrix.rb_mut().col(j).as_ptr();
+                let ptr = matrix.rb_mut().col_mut(j).as_ptr_mut();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
 
                 let (best_value_in_col, best_index_in_col) =
@@ -874,7 +1011,7 @@ fn update_and_best_in_matrix_c64(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    aarch64_nodispatch::<c64, _>(UpdateAndBestInMat(matrix, lhs, rhs))
+    aarch64_nodispatch::<c64, _>(UpdateAndBestInMat(matrix, lhs, rhs, max_row))
 }
 
 fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
@@ -923,15 +1060,16 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
 fn update_and_best_in_matrix_c32(
     matrix: MatMut<'_, c32>,
     lhs: MatRef<'_, c32>,
-    rhs: MatRef<'_, c32>,
+    rhs: MatMut<'_, c32>,
+    max_row: usize,
 ) -> (usize, usize, f32) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, MatRef<'a, c32>, MatRef<'a, c32>);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, MatRef<'a, c32>, MatMut<'a, c32>, usize);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f32);
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
+            let UpdateAndBestInMat(mut matrix, lhs, mut rhs, max_row) = self;
             debug_assert!(matrix.row_stride() == 1);
             debug_assert!(lhs.row_stride() == 1);
 
@@ -944,9 +1082,16 @@ fn update_and_best_in_matrix_c32(
             let lhs = unsafe { slice::from_raw_parts(lhs.as_ptr(), m) };
 
             for j in 0..n {
+                if max_row > 0 {
+                    let a = rhs.read(0, j);
+                    let b = matrix.read(max_row - 1, j);
+                    rhs.write(0, j, b);
+                    matrix.write(max_row - 1, j, a);
+                }
+
                 let rhs = -rhs.read(0, j);
 
-                let ptr = matrix.rb_mut().col(j).as_ptr();
+                let ptr = matrix.rb_mut().col_mut(j).as_ptr_mut();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
 
                 let (best_value_in_col, best_index_in_col) =
@@ -971,7 +1116,7 @@ fn update_and_best_in_matrix_c32(
             (best_row as usize, best_col as usize, best_value)
         }
     }
-    aarch64_nodispatch::<c32, _>(UpdateAndBestInMat(matrix, lhs, rhs))
+    aarch64_nodispatch::<c32, _>(UpdateAndBestInMat(matrix, lhs, rhs, max_row))
 }
 
 #[inline]
@@ -1014,32 +1159,34 @@ fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::R
 fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     mut dst: MatMut<'_, E>,
     lhs: MatRef<'_, E>,
-    rhs: MatRef<'_, E>,
+    rhs: MatMut<'_, E>,
+    max_row: usize,
 ) -> (usize, usize, E::Real) {
     let is_c64 = coe::is_same::<c64, E>();
     let is_c32 = coe::is_same::<c32, E>();
 
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
-
     if is_c64 && is_col_major {
         coe::coerce_static(update_and_best_in_matrix_c64(
             dst.coerce(),
             lhs.coerce(),
             rhs.coerce(),
+            max_row,
         ))
     } else if is_c32 && is_col_major {
         coe::coerce_static(update_and_best_in_matrix_c32(
             dst.coerce(),
             lhs.coerce(),
             rhs.coerce(),
+            max_row,
         ))
     } else if is_col_major {
-        update_and_best_in_matrix_simd(dst, lhs, rhs)
+        update_and_best_in_matrix_simd(dst, lhs, rhs, max_row)
     } else {
         matmul(
             dst.rb_mut(),
             lhs,
-            rhs,
+            rhs.rb(),
             Some(E::faer_one()),
             E::faer_one().faer_neg(),
             Parallelism::None,
@@ -1086,26 +1233,67 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
         row_transpositions[k] = I::from_signed(truncate(max_row));
         col_transpositions[k] = I::from_signed(truncate(max_col));
 
-        if max_row != k {
-            n_transpositions += 1;
-            swap_rows(matrix.rb_mut(), k, max_row);
-        }
-
         if max_col != k {
             n_transpositions += 1;
             swap_cols(matrix.rb_mut(), k, max_col);
         }
 
-        let inv = matrix.read(k, k).faer_inv();
+        if max_row != k {
+            n_transpositions += 1;
+            swap_rows(matrix.rb_mut().subcols_mut(0, k + 1), k, max_row);
+        }
+
         if !transposed {
-            for i in k + 1..m {
-                let elem = matrix.read(i, k);
-                matrix.write(i, k, elem.faer_mul(inv));
+            let inv = matrix.read(k, k).faer_inv();
+
+            if matrix.row_stride() == 1 {
+                let slice = SliceGroupMut::<'_, E>::new(
+                    matrix
+                        .rb_mut()
+                        .subrows_mut(k + 1, m - k - 1)
+                        .try_get_contiguous_col_mut(k),
+                );
+
+                struct Div<'a, E: Entity>(SliceGroupMut<'a, E>, E);
+                impl<E: ComplexField> pulp::WithSimd for Div<'_, E> {
+                    type Output = ();
+
+                    #[inline(always)]
+                    fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+                        let slice = self.0;
+                        let simd = SimdFor::<E, S>::new(simd);
+                        let inv = simd.splat(self.1);
+                        let offset = simd.align_offset(slice.rb());
+                        let (head, body, tail) = simd.as_aligned_simd_mut(slice, offset);
+                        #[inline(always)]
+                        fn process<E: ComplexField, S: Simd>(
+                            simd: SimdFor<E, S>,
+                            mut a: impl Write<Output = SimdGroupFor<E, S>>,
+                            inv: SimdGroupFor<E, S>,
+                        ) {
+                            a.write(simd.mul(inv, a.read_or(simd.splat(E::faer_zero()))));
+                        }
+
+                        process(simd, head, inv);
+                        for a in body.into_mut_iter() {
+                            process(simd, a, inv);
+                        }
+                        process(simd, tail, inv);
+                    }
+                }
+
+                aarch64_nodispatch::<E, _>(Div(slice, inv));
+            } else {
+                for i in k + 1..m {
+                    let elem = matrix.read(i, k);
+                    matrix.write(i, k, elem.faer_mul(inv));
+                }
             }
         } else {
-            for i in k + 1..n {
-                let elem = matrix.read(k, i);
-                matrix.write(k, i, elem.faer_mul(inv));
+            let inv = matrix.read(k, k).faer_inv();
+            for j in k + 1..n {
+                let elem = matrix.read(max_row, j);
+                matrix.write(max_row, j, elem.faer_mul(inv));
             }
         }
 
@@ -1113,7 +1301,7 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
             break;
         }
 
-        let [_, top_right, bottom_left, bottom_right] = matrix.rb_mut().split_at(k + 1, k + 1);
+        let (_, top_right, bottom_left, bottom_right) = matrix.rb_mut().split_at_mut(k + 1, k + 1);
 
         let parallelism = if disable_parallelism(m - k, n - k) {
             Parallelism::None
@@ -1125,8 +1313,9 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
             Parallelism::None => {
                 (max_row, max_col, biggest) = rank_one_update_and_best_in_matrix(
                     bottom_right,
-                    bottom_left.col(k).rb(),
-                    top_right.row(k).rb(),
+                    bottom_left.rb().col(k).as_2d(),
+                    top_right.row_mut(k).as_2d_mut(),
+                    max_row - k,
                 );
             }
             #[cfg(feature = "rayon")]
@@ -1137,8 +1326,8 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
 
                 let mut biggest_vec = vec![(0_usize, 0_usize, E::Real::faer_zero()); n_threads];
 
-                let lhs = bottom_left.col(k).into_const();
-                let rhs = top_right.row(k).into_const();
+                let lhs = bottom_left.rb().col(k);
+                let rhs = top_right.rb().row(k);
 
                 {
                     let biggest = Ptr(biggest_vec.as_mut_ptr());
@@ -1150,9 +1339,15 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
                                 par_split_indices(bottom_right.ncols(), idx, n_threads);
                             let matrix =
                                 unsafe { bottom_right.rb().subcols(col_start, ncols).const_cast() };
-                            let rhs = rhs.subcols(col_start, matrix.ncols());
+                            let rhs =
+                                unsafe { rhs.subcols(col_start, matrix.ncols()).const_cast() };
                             let biggest = unsafe { &mut *{ biggest }.0.add(idx) };
-                            *biggest = rank_one_update_and_best_in_matrix(matrix, lhs, rhs);
+                            *biggest = rank_one_update_and_best_in_matrix(
+                                matrix,
+                                lhs.as_2d(),
+                                rhs.as_2d_mut(),
+                                max_row - k,
+                            );
                             biggest.1 += col_start;
                         },
                         parallelism,
@@ -1293,7 +1488,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
         )
     } else {
         lu_in_place_unblocked(
-            matrix.transpose(),
+            matrix.transpose_mut(),
             col_transpositions,
             row_transpositions,
             parallelism,
@@ -1340,8 +1535,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 mod tests {
     use super::*;
     use crate::full_pivoting::reconstruct;
-    use assert2::assert;
-    use faer_core::{c32, c64, permutation::PermutationRef, Mat};
+    use faer_core::{assert, c32, c64, permutation::PermutationRef, Mat};
     use rand::random;
 
     macro_rules! make_stack {
@@ -1389,7 +1583,7 @@ mod tests {
             (1024, 1023),
         ] {
             let random_mat = Mat::from_fn(m, n, |_i, _j| random());
-            for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+            for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
                 let mut row_perm = vec![0usize; m];
@@ -1442,11 +1636,11 @@ mod tests {
             (1024, 1023),
         ] {
             let random_mat = Mat::from_fn(n, m, |_i, _j| random());
-            for parallelism in [Parallelism::None, Parallelism::Rayon(0)] {
+            for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
 
-                let mut mat = mat.as_mut().transpose();
+                let mut mat = mat.as_mut().transpose_mut();
                 let mat_orig = mat_orig.as_ref().transpose();
 
                 let mut row_perm = vec![0usize; m];
@@ -1470,15 +1664,7 @@ mod tests {
                     Default::default(),
                 );
                 let reconstructed = reconstruct_matrix(mat.rb(), row_perm.rb(), col_perm.rb());
-
-                for i in 0..m {
-                    for j in 0..n {
-                        assert!(
-                            (mat_orig.read(i, j).faer_sub(reconstructed.read(i, j))).faer_abs()
-                                < epsilon
-                        );
-                    }
-                }
+                assert!((&mat_orig - &reconstructed).norm_max() < epsilon);
             }
         }
     }

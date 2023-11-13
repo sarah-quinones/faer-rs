@@ -1,10 +1,9 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,
-    inverse::invert_upper_triangular, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj,
-    Entity, MatMut, MatRef, Parallelism,
+    inverse::invert_upper_triangular, temp_mat_req, temp_mat_uninit, unzipped, zipped,
+    ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use reborrow::*;
 
@@ -38,9 +37,8 @@ pub fn invert<E: ComplexField>(
     invert_upper_triangular(dst.rb_mut(), qr_factors, parallelism);
 
     // zero bottom part
-    dst.rb_mut()
-        .cwise()
-        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+    zipped!(dst.rb_mut())
+        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
             dst.write(E::faer_zero())
         });
 
@@ -82,7 +80,7 @@ pub fn invert_in_place<E: ComplexField>(
         stack,
     );
 
-    zipped!(qr_factors, dst.rb()).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 }
 
 /// Computes the size and alignment of required workspace for computing the inverse of a
@@ -116,9 +114,8 @@ pub fn invert_in_place_req<E: Entity>(
 mod tests {
     use super::*;
     use crate::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, mul::matmul, Mat};
+    use faer_core::{assert, c64, mul::matmul, Mat};
     use rand::prelude::*;
     use std::cell::RefCell;
 

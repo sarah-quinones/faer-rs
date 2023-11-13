@@ -1,11 +1,9 @@
-use crate::tridiag_real_evd::norm2;
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    mul::inner_prod::inner_prod_with_conj, parallelism_degree, temp_mat_req, temp_mat_zeroed,
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
+    assert, debug_assert, mul::inner_prod::inner_prod_with_conj, parallelism_degree, temp_mat_req,
+    temp_mat_zeroed, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -82,10 +80,16 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
         let lane_count =
             core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
-        let mut acc =
-            unsafe { E::faer_map(acc.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
-        let mut acct =
-            unsafe { E::faer_map(acct.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
+        let mut acc = unsafe {
+            E::faer_map(acc.as_ptr_mut(), |ptr| {
+                core::slice::from_raw_parts_mut(ptr, n)
+            })
+        };
+        let mut acct = unsafe {
+            E::faer_map(acct.as_ptr_mut(), |ptr| {
+                core::slice::from_raw_parts_mut(ptr, n)
+            })
+        };
         let rhs = unsafe { E::faer_map(rhs.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
         let u = unsafe { E::faer_map(u.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
         let y = unsafe { E::faer_map(y.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
@@ -95,26 +99,26 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
         let rem = (last_col - first_col) % 2;
 
         for j in first_col..first_col + rem {
-            let rhs_single_j = E::faer_map(
+            let rhs_single_j = into_copy::<E, _>(E::faer_map(
                 E::faer_copy(&rhs),
                 #[inline(always)]
                 |slice| E::faer_simd_splat_unit(simd, slice[j]),
-            );
+            ));
             let y_single_j = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&y),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j]),
-                ),
+                )),
             );
             let u_single_j = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&u),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j]),
-                ),
+                )),
             );
 
             let start = j;
@@ -128,7 +132,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             );
             let lhs_j = unsafe {
                 E::faer_map(
-                    lhs.rb_mut().ptr_at(0, j),
+                    lhs.rb_mut().ptr_at_mut(0, j),
                     #[inline(always)]
                     |ptr| core::slice::from_raw_parts_mut(ptr.wrapping_add(start), len),
                 )
@@ -194,32 +198,20 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             let mut lhs_prefix_ =
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&lhs_prefix)));
 
-            lhs_prefix_ =
-                E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y_prefix, lhs_prefix_);
-            lhs_prefix_ =
-                E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u_prefix, lhs_prefix_);
+            lhs_prefix_ = E::faer_simd_conj_mul_adde(simd, u_single_j, y_prefix, lhs_prefix_);
+            lhs_prefix_ = E::faer_simd_conj_mul_adde(simd, y_single_j, u_prefix, lhs_prefix_);
 
-            E::faer_partial_store_last(simd, lhs_prefix, E::faer_copy(&lhs_prefix_));
+            E::faer_partial_store_last(simd, lhs_prefix, lhs_prefix_);
 
             let rhs_prefix = E::faer_partial_load_last(simd, rhs_prefix);
             let acc_prefix = E::faer_map(acc_prefix, |slice| &mut slice[1..]);
             let mut acc_prefix_ =
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_prefix)));
 
-            acc_prefix_ = E::faer_simd_mul_adde(
-                simd,
-                E::faer_copy(&lhs_prefix_),
-                E::faer_copy(&rhs_single_j),
-                acc_prefix_,
-            );
+            acc_prefix_ = E::faer_simd_mul_adde(simd, lhs_prefix_, rhs_single_j, acc_prefix_);
             E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
 
-            sum0 = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&lhs_prefix_),
-                E::faer_copy(&rhs_prefix),
-                sum0,
-            );
+            sum0 = E::faer_simd_conj_mul_adde(simd, lhs_prefix_, rhs_prefix, sum0);
 
             let (acc_head, acc_tail) = E::faer_as_arrays_mut::<4, _>(acc_suffix);
             let (lhs_head, lhs_tail) = E::faer_as_arrays_mut::<4, _>(lhs_suffix);
@@ -243,14 +235,54 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let [u0, u1, u2, u3] = E::faer_unzip4(E::faer_deref(u));
                 let [y0, y1, y2, y3] = E::faer_unzip4(E::faer_deref(y));
 
-                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
-                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
-                lhs1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y1, lhs1);
-                lhs1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u1, lhs1);
-                lhs2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y2, lhs2);
-                lhs2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u2, lhs2);
-                lhs3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y3, lhs3);
-                lhs3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u3, lhs3);
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    u_single_j,
+                    into_copy::<E, _>(y0),
+                    into_copy::<E, _>(lhs0),
+                ));
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    y_single_j,
+                    into_copy::<E, _>(u0),
+                    into_copy::<E, _>(lhs0),
+                ));
+                lhs1 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    u_single_j,
+                    into_copy::<E, _>(y1),
+                    into_copy::<E, _>(lhs1),
+                ));
+                lhs1 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    y_single_j,
+                    into_copy::<E, _>(u1),
+                    into_copy::<E, _>(lhs1),
+                ));
+                lhs2 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    u_single_j,
+                    into_copy::<E, _>(y2),
+                    into_copy::<E, _>(lhs2),
+                ));
+                lhs2 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    y_single_j,
+                    into_copy::<E, _>(u2),
+                    into_copy::<E, _>(lhs2),
+                ));
+                lhs3 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    u_single_j,
+                    into_copy::<E, _>(y3),
+                    into_copy::<E, _>(lhs3),
+                ));
+                lhs3 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    y_single_j,
+                    into_copy::<E, _>(u3),
+                    into_copy::<E, _>(lhs3),
+                ));
 
                 E::faer_map(
                     E::faer_zip(
@@ -272,30 +304,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let [rhs0, rhs1, rhs2, rhs3] = E::faer_unzip4(E::faer_deref(rhs));
                 let [mut acc0, mut acc1, mut acc2, mut acc3] =
                     E::faer_unzip4(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc))));
-                acc0 = E::faer_simd_mul_adde(
+                acc0 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs0),
-                    E::faer_copy(&rhs_single_j),
-                    acc0,
-                );
-                acc1 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc0),
+                ));
+                acc1 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs1),
-                    E::faer_copy(&rhs_single_j),
-                    acc1,
-                );
-                acc2 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs1)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc1),
+                ));
+                acc2 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs2),
-                    E::faer_copy(&rhs_single_j),
-                    acc2,
-                );
-                acc3 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs2)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc2),
+                ));
+                acc3 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs3),
-                    E::faer_copy(&rhs_single_j),
-                    acc3,
-                );
+                    into_copy::<E, _>(E::faer_copy(&lhs3)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc3),
+                ));
                 E::faer_map(
                     E::faer_zip(
                         acc,
@@ -309,10 +341,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         acc[3] = acc3;
                     },
                 );
-                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
-                sum1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
-                sum2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
-                sum3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
+                sum0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    into_copy::<E, _>(rhs0),
+                    sum0,
+                );
+                sum1 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(E::faer_copy(&lhs1)),
+                    into_copy::<E, _>(rhs1),
+                    sum1,
+                );
+                sum2 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(E::faer_copy(&lhs2)),
+                    into_copy::<E, _>(rhs2),
+                    sum2,
+                );
+                sum3 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(E::faer_copy(&lhs3)),
+                    into_copy::<E, _>(rhs3),
+                    sum3,
+                );
             }
 
             sum0 = E::faer_simd_add(simd, sum0, sum1);
@@ -333,8 +385,18 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut lhs0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&lhs)));
                 let u0 = E::faer_deref(u);
                 let y0 = E::faer_deref(y);
-                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&u_single_j), y0, lhs0);
-                lhs0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&y_single_j), u0, lhs0);
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    u_single_j,
+                    into_copy::<E, _>(y0),
+                    into_copy::<E, _>(lhs0),
+                ));
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
+                    simd,
+                    y_single_j,
+                    into_copy::<E, _>(u0),
+                    into_copy::<E, _>(lhs0),
+                ));
 
                 E::faer_map(
                     E::faer_zip(lhs, E::faer_copy(&lhs0)),
@@ -346,12 +408,12 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
 
                 let rhs0 = E::faer_deref(rhs);
                 let mut acc0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
-                acc0 = E::faer_simd_mul_adde(
+                acc0 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs0),
-                    E::faer_copy(&rhs_single_j),
-                    acc0,
-                );
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc0),
+                ));
                 E::faer_map(
                     E::faer_zip(acc, acc0),
                     #[inline(always)]
@@ -359,7 +421,12 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         *acc = acc0;
                     },
                 );
-                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    into_copy::<E, _>(rhs0),
+                    sum0,
+                );
             }
 
             let sum = E::faer_simd_reduce_add(simd, sum0);
@@ -399,48 +466,48 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 ljj.faer_conj().faer_mul(rhs)
             };
 
-            let rhs_single_j0 = E::faer_map(
+            let rhs_single_j0 = into_copy::<E, _>(E::faer_map(
                 E::faer_copy(&rhs),
                 #[inline(always)]
                 |slice| E::faer_simd_splat_unit(simd, slice[j]),
-            );
+            ));
             let y_single_j0 = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&y),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j]),
-                ),
+                )),
             );
             let u_single_j0 = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&u),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j]),
-                ),
+                )),
             );
 
-            let rhs_single_j1 = E::faer_map(
+            let rhs_single_j1 = into_copy::<E, _>(E::faer_map(
                 E::faer_copy(&rhs),
                 #[inline(always)]
                 |slice| E::faer_simd_splat_unit(simd, slice[j + 1]),
-            );
+            ));
             let y_single_j1 = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&y),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j + 1]),
-                ),
+                )),
             );
             let u_single_j1 = E::faer_simd_neg(
                 simd,
-                E::faer_map(
+                into_copy::<E, _>(E::faer_map(
                     E::faer_copy(&u),
                     #[inline(always)]
                     |slice| E::faer_simd_splat_unit(simd, slice[j + 1]),
-                ),
+                )),
             );
 
             let start = j + 1;
@@ -454,14 +521,14 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             );
             let lhs_j0 = unsafe {
                 E::faer_map(
-                    lhs.rb_mut().ptr_at(0, j),
+                    lhs.rb_mut().ptr_at_mut(0, j),
                     #[inline(always)]
                     |ptr| core::slice::from_raw_parts_mut(ptr.wrapping_add(start), len),
                 )
             };
             let lhs_j1 = unsafe {
                 E::faer_map(
-                    lhs.rb_mut().ptr_at(0, j + 1),
+                    lhs.rb_mut().ptr_at_mut(0, j + 1),
                     #[inline(always)]
                     |ptr| core::slice::from_raw_parts_mut(ptr.wrapping_add(start), len),
                 )
@@ -533,34 +600,14 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
             let mut lhs1_prefix_ =
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&lhs1_prefix)));
 
-            lhs0_prefix_ = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&u_single_j0),
-                E::faer_copy(&y_prefix),
-                lhs0_prefix_,
-            );
-            lhs0_prefix_ = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&y_single_j0),
-                E::faer_copy(&u_prefix),
-                lhs0_prefix_,
-            );
+            lhs0_prefix_ = E::faer_simd_conj_mul_adde(simd, u_single_j0, y_prefix, lhs0_prefix_);
+            lhs0_prefix_ = E::faer_simd_conj_mul_adde(simd, y_single_j0, u_prefix, lhs0_prefix_);
 
-            lhs1_prefix_ = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&y_single_j1),
-                E::faer_copy(&u_prefix),
-                lhs1_prefix_,
-            );
-            lhs1_prefix_ = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&u_single_j1),
-                E::faer_copy(&y_prefix),
-                lhs1_prefix_,
-            );
+            lhs1_prefix_ = E::faer_simd_conj_mul_adde(simd, y_single_j1, u_prefix, lhs1_prefix_);
+            lhs1_prefix_ = E::faer_simd_conj_mul_adde(simd, u_single_j1, y_prefix, lhs1_prefix_);
 
-            E::faer_partial_store_last(simd, lhs0_prefix, E::faer_copy(&lhs0_prefix_));
-            E::faer_partial_store_last(simd, lhs1_prefix, E::faer_copy(&lhs1_prefix_));
+            E::faer_partial_store_last(simd, lhs0_prefix, lhs0_prefix_);
+            E::faer_partial_store_last(simd, lhs1_prefix, lhs1_prefix_);
 
             let rhs_prefix = E::faer_partial_load_last(simd, rhs_prefix);
             {
@@ -568,12 +615,7 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut acc_prefix_ =
                     E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_prefix)));
 
-                acc_prefix_ = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&lhs0_prefix_),
-                    E::faer_copy(&rhs_single_j0),
-                    acc_prefix_,
-                );
+                acc_prefix_ = E::faer_simd_mul_adde(simd, lhs0_prefix_, rhs_single_j0, acc_prefix_);
                 E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
             }
             {
@@ -581,27 +623,12 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut acc_prefix_ =
                     E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_prefix)));
 
-                acc_prefix_ = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&lhs1_prefix_),
-                    E::faer_copy(&rhs_single_j1),
-                    acc_prefix_,
-                );
+                acc_prefix_ = E::faer_simd_mul_adde(simd, lhs1_prefix_, rhs_single_j1, acc_prefix_);
                 E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
             }
 
-            sum0 = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&lhs0_prefix_),
-                E::faer_copy(&rhs_prefix),
-                sum0,
-            );
-            sum1 = E::faer_simd_conj_mul_adde(
-                simd,
-                E::faer_copy(&lhs1_prefix_),
-                E::faer_copy(&rhs_prefix),
-                sum1,
-            );
+            sum0 = E::faer_simd_conj_mul_adde(simd, lhs0_prefix_, rhs_prefix, sum0);
+            sum1 = E::faer_simd_conj_mul_adde(simd, lhs1_prefix_, rhs_prefix, sum1);
 
             for (acc, ((lhs_j0, lhs_j1), (rhs, (u, y)))) in zip(
                 E::faer_into_iter(acc_suffix),
@@ -620,30 +647,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                 let mut lhs1 = E::faer_deref(E::faer_rb(E::faer_as_ref(&lhs_j1)));
                 let u = E::faer_deref(u);
                 let y = E::faer_deref(y);
-                lhs0 = E::faer_simd_conj_mul_adde(
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
                     simd,
-                    E::faer_copy(&u_single_j0),
-                    E::faer_copy(&y),
-                    lhs0,
-                );
-                lhs0 = E::faer_simd_conj_mul_adde(
+                    u_single_j0,
+                    into_copy::<E, _>(E::faer_copy(&y)),
+                    into_copy::<E, _>(lhs0),
+                ));
+                lhs0 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
                     simd,
-                    E::faer_copy(&y_single_j0),
-                    E::faer_copy(&u),
-                    lhs0,
-                );
-                lhs1 = E::faer_simd_conj_mul_adde(
+                    y_single_j0,
+                    into_copy::<E, _>(E::faer_copy(&u)),
+                    into_copy::<E, _>(lhs0),
+                ));
+                lhs1 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
                     simd,
-                    E::faer_copy(&u_single_j1),
-                    E::faer_copy(&y),
-                    lhs1,
-                );
-                lhs1 = E::faer_simd_conj_mul_adde(
+                    u_single_j1,
+                    into_copy::<E, _>(y),
+                    into_copy::<E, _>(lhs1),
+                ));
+                lhs1 = from_copy::<E, _>(E::faer_simd_conj_mul_adde(
                     simd,
-                    E::faer_copy(&y_single_j1),
-                    E::faer_copy(&u),
-                    lhs1,
-                );
+                    y_single_j1,
+                    into_copy::<E, _>(u),
+                    into_copy::<E, _>(lhs1),
+                ));
 
                 E::faer_map(
                     E::faer_zip(lhs_j0, E::faer_copy(&lhs0)),
@@ -662,18 +689,18 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
 
                 let rhs = E::faer_deref(rhs);
                 let mut acc_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
-                acc_ = E::faer_simd_mul_adde(
+                acc_ = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs0),
-                    E::faer_copy(&rhs_single_j0),
-                    acc_,
-                );
-                acc_ = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    rhs_single_j0,
+                    into_copy::<E, _>(acc_),
+                ));
+                acc_ = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs1),
-                    E::faer_copy(&rhs_single_j1),
-                    acc_,
-                );
+                    into_copy::<E, _>(E::faer_copy(&lhs1)),
+                    rhs_single_j1,
+                    into_copy::<E, _>(acc_),
+                ));
                 E::faer_map(
                     E::faer_zip(acc, acc_),
                     #[inline(always)]
@@ -681,10 +708,18 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVecWithLhsUpdate<'_, E> {
                         *acc = acc_;
                     },
                 );
-                sum0 =
-                    E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), E::faer_copy(&rhs), sum0);
-                sum1 =
-                    E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), E::faer_copy(&rhs), sum1);
+                sum0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs0),
+                    into_copy::<E, _>(E::faer_copy(&rhs)),
+                    sum0,
+                );
+                sum1 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs1),
+                    into_copy::<E, _>(E::faer_copy(&rhs)),
+                    sum1,
+                );
             }
 
             {
@@ -739,8 +774,11 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
         let lane_count =
             core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
-        let mut acc =
-            unsafe { E::faer_map(acc.as_ptr(), |ptr| core::slice::from_raw_parts_mut(ptr, n)) };
+        let mut acc = unsafe {
+            E::faer_map(acc.as_ptr_mut(), |ptr| {
+                core::slice::from_raw_parts_mut(ptr, n)
+            })
+        };
         let rhs = unsafe { E::faer_map(rhs.as_ptr(), |ptr| core::slice::from_raw_parts(ptr, n)) };
 
         let zero = E::faer_zero();
@@ -786,11 +824,11 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
             let lhs_suffix = faer_core::simd::slice_as_simd::<E, S>(lhs_suffix).0;
             let rhs_suffix = faer_core::simd::slice_as_simd::<E, S>(rhs_suffix).0;
 
-            let rhs_single_j = E::faer_map(
+            let rhs_single_j = into_copy::<E, _>(E::faer_map(
                 E::faer_copy(&rhs),
                 #[inline(always)]
                 |slice| E::faer_simd_splat_unit(simd, slice[j]),
-            );
+            ));
 
             let mut sum0 = E::faer_simd_splat(simd, zero);
             let mut sum1 = E::faer_simd_splat(simd, zero);
@@ -802,15 +840,10 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
             let mut acc_prefix_ =
                 E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&acc_prefix)));
 
-            acc_prefix_ = E::faer_simd_mul_adde(
-                simd,
-                E::faer_copy(&lhs_prefix),
-                E::faer_copy(&rhs_single_j),
-                acc_prefix_,
-            );
+            acc_prefix_ = E::faer_simd_mul_adde(simd, lhs_prefix, rhs_single_j, acc_prefix_);
             E::faer_partial_store_last(simd, acc_prefix, acc_prefix_);
 
-            sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs_prefix), rhs_prefix, sum0);
+            sum0 = E::faer_simd_conj_mul_adde(simd, lhs_prefix, rhs_prefix, sum0);
 
             let (acc_head, acc_tail) = E::faer_as_arrays_mut::<4, _>(acc_suffix);
             let (lhs_head, lhs_tail) = E::faer_as_arrays::<4, _>(lhs_suffix);
@@ -824,30 +857,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                 let [rhs0, rhs1, rhs2, rhs3] = E::faer_unzip4(E::faer_deref(rhs));
                 let [mut acc0, mut acc1, mut acc2, mut acc3] =
                     E::faer_unzip4(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc))));
-                acc0 = E::faer_simd_mul_adde(
+                acc0 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs0),
-                    E::faer_copy(&rhs_single_j),
-                    acc0,
-                );
-                acc1 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc0),
+                ));
+                acc1 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs1),
-                    E::faer_copy(&rhs_single_j),
-                    acc1,
-                );
-                acc2 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs1)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc1),
+                ));
+                acc2 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs2),
-                    E::faer_copy(&rhs_single_j),
-                    acc2,
-                );
-                acc3 = E::faer_simd_mul_adde(
+                    into_copy::<E, _>(E::faer_copy(&lhs2)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc2),
+                ));
+                acc3 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs3),
-                    E::faer_copy(&rhs_single_j),
-                    acc3,
-                );
+                    into_copy::<E, _>(E::faer_copy(&lhs3)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc3),
+                ));
                 E::faer_map(
                     E::faer_zip(
                         acc,
@@ -861,10 +894,30 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                         acc[3] = acc3;
                     },
                 );
-                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
-                sum1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs1), rhs1, sum1);
-                sum2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs2), rhs2, sum2);
-                sum3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs3), rhs3, sum3);
+                sum0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs0),
+                    into_copy::<E, _>(rhs0),
+                    sum0,
+                );
+                sum1 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs1),
+                    into_copy::<E, _>(rhs1),
+                    sum1,
+                );
+                sum2 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs2),
+                    into_copy::<E, _>(rhs2),
+                    sum2,
+                );
+                sum3 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs3),
+                    into_copy::<E, _>(rhs3),
+                    sum3,
+                );
             }
 
             sum0 = E::faer_simd_add(simd, sum0, sum1);
@@ -879,12 +932,12 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                 let lhs0 = E::faer_deref(lhs);
                 let rhs0 = E::faer_deref(rhs);
                 let mut acc0 = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc)));
-                acc0 = E::faer_simd_mul_adde(
+                acc0 = from_copy::<E, _>(E::faer_simd_mul_adde(
                     simd,
-                    E::faer_copy(&lhs0),
-                    E::faer_copy(&rhs_single_j),
-                    acc0,
-                );
+                    into_copy::<E, _>(E::faer_copy(&lhs0)),
+                    rhs_single_j,
+                    into_copy::<E, _>(acc0),
+                ));
                 E::faer_map(
                     E::faer_zip(acc, acc0),
                     #[inline(always)]
@@ -892,7 +945,12 @@ impl<E: ComplexField> pulp::WithSimd for SymMatVec<'_, E> {
                         *acc = acc0;
                     },
                 );
-                sum0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&lhs0), rhs0, sum0);
+                sum0 = E::faer_simd_conj_mul_adde(
+                    simd,
+                    into_copy::<E, _>(lhs0),
+                    into_copy::<E, _>(rhs0),
+                    sum0,
+                );
             }
 
             let mut sum = E::faer_simd_reduce_add(simd, sum0);
@@ -941,8 +999,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 
     let arch = E::Simd::default();
     for k in 0..n - 1 {
-        let a_cur = a.rb_mut().submatrix(k, k, n - k, n - k);
-        let [mut a11, _, mut a21, a22] = a_cur.split_at(1, 1);
+        let a_cur = a.rb_mut().submatrix_mut(k, k, n - k, n - k);
+        let (mut a11, _, mut a21, a22) = a_cur.split_at_mut(1, 1);
 
         let parallelism = if n - k <= 256 {
             Parallelism::None
@@ -950,18 +1008,18 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             parallelism
         };
 
-        let [_, u] = u.rb_mut().split_at_row(k);
-        let [nu, mut u21] = u.split_at_row(1);
-        let [_, y] = y.rb_mut().split_at_row(k);
-        let [psi, mut y21] = y.split_at_row(1);
+        let (_, u) = u.rb_mut().split_at_row_mut(k);
+        let (nu, mut u21) = u.split_at_row_mut(1);
+        let (_, y) = y.rb_mut().split_at_row_mut(k);
+        let (psi, mut y21) = y.split_at_row_mut(1);
 
-        let [_, v] = v.rb_mut().split_at_row(k);
-        let [_, v21] = v.split_at_row(1);
-        let mut v21 = v21.subcols(0, parallelism_degree(parallelism));
+        let (_, v) = v.rb_mut().split_at_row_mut(k);
+        let (_, v21) = v.split_at_row_mut(1);
+        let mut v21 = v21.subcols_mut(0, parallelism_degree(parallelism));
 
-        let [_, w] = w.rb_mut().split_at_row(k);
-        let [_, w21] = w.split_at_row(1);
-        let w21 = w21.subcols(0, parallelism_degree(parallelism));
+        let (_, w) = w.rb_mut().split_at_row_mut(k);
+        let (_, w21) = w.split_at_row_mut(1);
+        let w21 = w21.subcols_mut(0, parallelism_degree(parallelism));
 
         if k > 0 {
             let nu = nu.read(0, 0);
@@ -975,7 +1033,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 ),
             );
 
-            zipped!(a21.rb_mut(), u21.rb(), y21.rb()).for_each(|mut a, u, y| {
+            zipped!(a21.rb_mut(), u21.rb(), y21.rb()).for_each(|unzipped!(mut a, u, y)| {
                 let u = u.read();
                 let y = y.read();
                 a.write(
@@ -988,9 +1046,9 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         }
 
         let (tau, new_head) = {
-            let [head, tail] = a21.rb_mut().split_at_row(1);
-            let norm2 = norm2(tail.rb());
-            faer_core::householder::make_householder_in_place(Some(tail), head.read(0, 0), norm2)
+            let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+            let norm = tail.rb().norm_l2();
+            faer_core::householder::make_householder_in_place_v2(Some(tail), head.read(0, 0), norm)
         };
         a21.write(0, 0, E::faer_one());
         let tau_inv = tau.faer_inv();
@@ -1016,11 +1074,11 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     let first_col = idx_to_col_start(idx);
                     let last_col = idx_to_col_start(idx + 1);
 
-                    let mut v21 = unsafe { v21.rb().col(idx).const_cast() };
-                    let mut w21 = unsafe { w21.rb().col(idx).const_cast() };
+                    let mut v21 = unsafe { v21.rb().col(idx).const_cast().as_2d_mut() };
+                    let mut w21 = unsafe { w21.rb().col(idx).const_cast().as_2d_mut() };
 
-                    zipped!(v21.rb_mut()).for_each(|mut z| z.write(E::faer_zero()));
-                    zipped!(w21.rb_mut()).for_each(|mut z| z.write(E::faer_zero()));
+                    zipped!(v21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
+                    zipped!(w21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
 
                     let acc = v21.rb_mut();
                     let acct = w21.rb_mut();
@@ -1044,15 +1102,24 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 parallelism,
             );
 
-            zipped!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
-                .for_each(|mut y, v, w| y.write(v.read().faer_add(w.read())));
+            zipped!(
+                y21.rb_mut(),
+                v21.rb().col(0).as_2d(),
+                w21.rb().col(0).as_2d()
+            )
+            .for_each(|unzipped!(mut y, v, w)| y.write(v.read().faer_add(w.read())));
             for i in 1..n_threads as usize {
-                zipped!(y21.rb_mut(), v21.rb().col(i), w21.rb().col(i)).for_each(|mut y, v, w| {
+                zipped!(
+                    y21.rb_mut(),
+                    v21.rb().col(i).as_2d(),
+                    w21.rb().col(i).as_2d()
+                )
+                .for_each(|unzipped!(mut y, v, w)| {
                     y.write(y.read().faer_add(v.read().faer_add(w.read())))
                 });
             }
         } else {
-            let mut acc = v21.rb_mut().col(0);
+            let mut acc = v21.rb_mut().col_mut(0).as_2d_mut();
             let lhs = a22.rb();
             let rhs = a21.rb();
 
@@ -1070,19 +1137,21 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             zipped!(
                 y21.rb_mut(),
                 acc.rb(),
-                a22.rb().diagonal().into_column_vector(),
-                a21.rb()
+                a22.rb().diagonal().column_vector().as_2d(),
+                a21.rb(),
             )
-            .for_each(|mut y, v, a, u| y.write(v.read().faer_add(a.read().faer_mul(u.read()))));
+            .for_each(|unzipped!(mut y, v, a, u)| {
+                y.write(v.read().faer_add(a.read().faer_mul(u.read())))
+            });
         }
 
-        zipped!(u21.rb_mut(), a21.rb()).for_each(|mut dst, src| dst.write(src.read()));
+        zipped!(u21.rb_mut(), a21.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         a21.write(0, 0, new_head);
 
         let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, y21.rb(), Conj::No)
             .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
 
-        zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
+        zipped!(y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
             let u = u.read();
             y.write(
                 y.read()
@@ -1096,10 +1165,9 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{
-        c64,
+        assert, c64,
         householder::{
             apply_block_householder_sequence_on_the_right_in_place_req,
             apply_block_householder_sequence_on_the_right_in_place_with_conj,
@@ -1122,7 +1190,7 @@ mod tests {
             let transpose = mat.transpose().to_owned();
 
             zipped!(mat.as_mut(), transpose.as_ref())
-                .for_each(|mut x, y| x.write(x.read() + y.read()));
+                .for_each(|unzipped!(mut x, y)| x.write(x.read() + y.read()));
 
             let n = mat.ncols();
 
@@ -1131,7 +1199,7 @@ mod tests {
 
             tridiagonalize_in_place(
                 trid.as_mut(),
-                tau_left.as_mut().col(0),
+                tau_left.as_mut().col_mut(0).as_2d_mut(),
                 parallelism,
                 make_stack!(tridiagonalize_in_place_req::<f64>(n, parallelism)),
             );
@@ -1141,7 +1209,7 @@ mod tests {
                 trid.as_ref().submatrix(1, 0, n - 1, n - 1),
                 tau_left.as_ref().transpose(),
                 Conj::No,
-                copy.as_mut().submatrix(1, 0, n - 1, n),
+                copy.as_mut().submatrix_mut(1, 0, n - 1, n),
                 Parallelism::None,
                 make_stack!(
                     apply_block_householder_sequence_transpose_on_the_left_in_place_req::<f64>(
@@ -1156,7 +1224,7 @@ mod tests {
                 trid.as_ref().submatrix(1, 0, n - 1, n - 1),
                 tau_left.as_ref().transpose(),
                 Conj::No,
-                copy.as_mut().submatrix(0, 1, n, n - 1),
+                copy.as_mut().submatrix_mut(0, 1, n, n - 1),
                 Parallelism::None,
                 make_stack!(
                     apply_block_householder_sequence_on_the_right_in_place_req::<f64>(n - 1, 1, n,)
@@ -1177,7 +1245,7 @@ mod tests {
             let mut mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
             let transpose = mat.adjoint().to_owned();
             zipped!(mat.as_mut(), transpose.as_ref())
-                .for_each(|mut x, y| x.write(x.read() + y.read()));
+                .for_each(|unzipped!(mut x, y)| x.write(x.read() + y.read()));
 
             let n = mat.ncols();
 
@@ -1186,7 +1254,7 @@ mod tests {
 
             tridiagonalize_in_place(
                 trid.as_mut(),
-                tau_left.as_mut().col(0),
+                tau_left.as_mut().col_mut(0).as_2d_mut(),
                 parallelism,
                 make_stack!(tridiagonalize_in_place_req::<c64>(n, parallelism)),
             );
@@ -1196,7 +1264,7 @@ mod tests {
                 trid.as_ref().submatrix(1, 0, n - 1, n - 1),
                 tau_left.as_ref().transpose(),
                 Conj::Yes,
-                copy.as_mut().submatrix(1, 0, n - 1, n),
+                copy.as_mut().submatrix_mut(1, 0, n - 1, n),
                 Parallelism::None,
                 make_stack!(
                     apply_block_householder_sequence_transpose_on_the_left_in_place_req::<c64>(
@@ -1211,7 +1279,7 @@ mod tests {
                 trid.as_ref().submatrix(1, 0, n - 1, n - 1),
                 tau_left.as_ref().transpose(),
                 Conj::No,
-                copy.as_mut().submatrix(0, 1, n, n - 1),
+                copy.as_mut().submatrix_mut(0, 1, n, n - 1),
                 Parallelism::None,
                 make_stack!(
                     apply_block_householder_sequence_on_the_right_in_place_req::<c64>(n - 1, 1, n,)

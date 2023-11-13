@@ -15,9 +15,11 @@ resolver = "2"
 [workspace.dependencies]
 faer-entity = { version = "0.14.1", default-features = false, path = "../faer-entity" }
 
+gemm = { version = "0.16.14", default-features = false }
+
 coe-rs = "0.1"
 reborrow = "0.5"
-pulp = { version = "0.17.1", default-features = false }
+pulp = { version = "0.18.3", default-features = false }
 dyn-stack = { version = "0.10", default-features = false }
 
 num-traits = { version = "0.2", default-features = false }
@@ -25,13 +27,14 @@ num-complex = { version = "0.4", default-features = false }
 libm = "0.2"
 bytemuck = { version = "1", default-features = false }
 
+rand = { version = "0.8", default-features = false }
 rayon = "1"
 assert2 = "0.3"
 log = { version = "0.4", default-features = false }
 
 criterion = { git = "https://github.com/sarah-ek/criterion.rs" }
 
-[profile.dev2]
+[profile.unopt]
 inherits = "dev"
 opt-level = 0
 debug = true
@@ -56,4 +59,4 @@ rpath = false
 
 [profile.bench]
 inherits = "release"
-debug = true
+debug = false

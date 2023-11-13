@@ -63,11 +63,11 @@ unsafe fn invert_lower_triangular_impl<E: ComplexField>(
         return;
     }
 
-    let [mut dst_tl, _, mut dst_bl, mut dst_br] = { dst.split_at(m / 2, n / 2) };
+    let (mut dst_tl, _, mut dst_bl, mut dst_br) = { dst.split_at_mut(m / 2, n / 2) };
 
     let m = src.nrows();
     let n = src.ncols();
-    let [src_tl, _, src_bl, src_br] = { src.split_at(m / 2, n / 2) };
+    let (src_tl, _, src_bl, src_br) = { src.split_at(m / 2, n / 2) };
 
     join_raw(
         |parallelism| invert_lower_triangular_impl(dst_tl.rb_mut(), src_tl, parallelism),
@@ -103,11 +103,11 @@ unsafe fn invert_unit_lower_triangular_impl<E: ComplexField>(
         return;
     }
 
-    let [mut dst_tl, _, mut dst_bl, mut dst_br] = { dst.split_at(m / 2, n / 2) };
+    let (mut dst_tl, _, mut dst_bl, mut dst_br) = { dst.split_at_mut(m / 2, n / 2) };
 
     let m = src.nrows();
     let n = src.ncols();
-    let [src_tl, _, src_bl, src_br] = { src.split_at(m / 2, n / 2) };
+    let (src_tl, _, src_bl, src_br) = { src.split_at(m / 2, n / 2) };
 
     join_raw(
         |parallelism| invert_unit_lower_triangular_impl(dst_tl.rb_mut(), src_tl, parallelism),
@@ -180,7 +180,7 @@ pub fn invert_unit_upper_triangular<E: ComplexField>(
     parallelism: Parallelism,
 ) {
     invert_unit_lower_triangular(
-        dst.reverse_rows_and_cols(),
+        dst.reverse_rows_and_cols_mut(),
         src.reverse_rows_and_cols(),
         parallelism,
     )
@@ -199,7 +199,7 @@ pub fn invert_upper_triangular<E: ComplexField>(
     parallelism: Parallelism,
 ) {
     invert_lower_triangular(
-        dst.reverse_rows_and_cols(),
+        dst.reverse_rows_and_cols_mut(),
         src.reverse_rows_and_cols(),
         parallelism,
     )

@@ -12,19 +12,18 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "std")]
-use assert2::assert;
 use bidiag_real_svd::bidiag_real_svd_req;
 use coe::Coerce;
 use core::mem::swap;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::{
         apply_block_householder_sequence_on_the_left_in_place_req,
         apply_block_householder_sequence_on_the_left_in_place_with_conj,
         upgrade_householder_factor,
     },
-    temp_mat_req, temp_mat_uninit,
+    temp_mat_req, temp_mat_uninit, unzipped,
     zip::Diag,
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
@@ -193,7 +192,8 @@ fn compute_real_svd_small<E: RealField>(
     if m == n {
         let (mut jacobi_mat, _) = temp_mat_uninit::<E>(m, n, stack);
         let mut jacobi_mat = jacobi_mat.as_mut();
-        zipped!(jacobi_mat.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
+        zipped!(jacobi_mat.rb_mut(), matrix)
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
         jacobi::jacobi_svd(
             jacobi_mat.rb_mut(),
@@ -203,8 +203,8 @@ fn compute_real_svd_small<E: RealField>(
             epsilon,
             zero_threshold,
         );
-        zipped!(s, jacobi_mat.rb().diagonal().into_column_vector())
-            .for_each(|mut dst, src| dst.write(src.read()));
+        zipped!(s, jacobi_mat.rb().diagonal().column_vector().as_2d())
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         return;
     }
 
@@ -219,7 +219,7 @@ fn compute_real_svd_small<E: RealField>(
         let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
         let mut r = r.as_mut();
 
-        zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
+        zipped!(qr.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
         // matrix = q * r
         faer_qr::no_pivoting::compute::qr_in_place(
@@ -230,36 +230,40 @@ fn compute_real_svd_small<E: RealField>(
             Default::default(),
         );
         zipped!(r.rb_mut())
-            .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
+            .for_each_triangular_lower(Diag::Skip, |unzipped!(mut dst)| dst.write(E::faer_zero()));
         zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-            .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
+            .for_each_triangular_upper(Diag::Include, |unzipped!(mut dst, src)| {
+                dst.write(src.read())
+            });
 
         // r = u s v
         jacobi::jacobi_svd(
             r.rb_mut(),
-            u.rb_mut().map(|u| u.submatrix(0, 0, n, n)),
+            u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
             v.rb_mut(),
             jacobi::Skip::None,
             epsilon,
             zero_threshold,
         );
-        zipped!(s, r.rb().diagonal().into_column_vector())
-            .for_each(|mut dst, src| dst.write(src.read()));
+        zipped!(s, r.rb().diagonal().column_vector().as_2d())
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
     }
 
     // matrix = q u s v
     if let Some(mut u) = u.rb_mut() {
         let ncols = u.ncols();
-        zipped!(u.rb_mut().submatrix(n, 0, m - n, n)).for_each(|mut dst| dst.write(E::faer_zero()));
-        zipped!(u.rb_mut().submatrix(0, n, m, ncols - n))
-            .for_each(|mut dst| dst.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, n))
+            .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix_mut(0, n, m, ncols - n))
+            .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
         if ncols == m {
             zipped!(u
                 .rb_mut()
-                .submatrix(n, n, m - n, m - n)
-                .diagonal()
-                .into_column_vector())
-            .for_each(|mut dst| dst.write(E::faer_one()));
+                .submatrix_mut(n, n, m - n, m - n)
+                .diagonal_mut()
+                .column_vector_mut()
+                .as_2d_mut())
+            .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
         }
 
         faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -317,7 +321,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
         col_mul[i] = col_normalized;
     }
 
-    compute_bidiag_real_svd(
+    compute_bidiag_real_svd::<E::Real>(
         diag_real,
         subdiag_real,
         u.is_some().then_some(u_real.rb_mut()),
@@ -337,32 +341,32 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     let v_real = v_real.rb();
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(u.rb_mut().row(0), u_real.row(0))
-            .for_each(|mut u, u_real| u.write(E::faer_from_real(u_real.read())));
-        zipped!(u.rb_mut().row(n), u_real.row(n))
-            .for_each(|mut u, u_real| u.write(E::faer_from_real(u_real.read())));
+        zipped!(u.rb_mut().row_mut(0).as_2d_mut(), u_real.row(0).as_2d())
+            .for_each(|unzipped!(mut u, u_real)| u.write(E::faer_from_real(u_real.read())));
+        zipped!(u.rb_mut().row_mut(n).as_2d_mut(), u_real.row(n).as_2d())
+            .for_each(|unzipped!(mut u, u_real)| u.write(E::faer_from_real(u_real.read())));
 
         for col_idx in 0..u.ncols() {
-            let mut u = u.rb_mut().col(col_idx).subrows(1, n - 1);
+            let mut u = u.rb_mut().col_mut(col_idx).subrows_mut(1, n - 1);
             let u_real = u_real.col(col_idx).subrows(1, n - 1);
 
             assert!(row_mul.len() == n - 1);
             unsafe {
                 for (i, &row_mul) in row_mul.iter().enumerate() {
-                    u.write_unchecked(i, 0, row_mul.faer_scale_real(u_real.read_unchecked(i, 0)));
+                    u.write_unchecked(i, row_mul.faer_scale_real(u_real.read_unchecked(i)));
                 }
             }
         }
     }
     if let Some(mut v) = v.rb_mut() {
         for col_idx in 0..v.ncols() {
-            let mut v = v.rb_mut().col(col_idx);
+            let mut v = v.rb_mut().col_mut(col_idx);
             let v_real = v_real.col(col_idx);
 
             assert!(col_mul.len() == n);
             unsafe {
                 for (i, &col_mul) in col_mul.iter().enumerate() {
-                    v.write_unchecked(i, 0, col_mul.faer_scale_real(v_real.read_unchecked(i, 0)));
+                    v.write_unchecked(i, col_mul.faer_scale_real(v_real.read_unchecked(i)));
                 }
             }
         }
@@ -431,12 +435,20 @@ fn compute_svd_big<E: ComplexField>(
         temp_mat_uninit::<E>(householder_blocksize, n - 1, stack);
     let mut householder_right = householder_right.as_mut();
 
-    zipped!(bid.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(bid.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
     bidiag::bidiagonalize_in_place(
         bid.rb_mut(),
-        householder_left.rb_mut().row(0).transpose(),
-        householder_right.rb_mut().row(0).transpose(),
+        householder_left
+            .rb_mut()
+            .row_mut(0)
+            .transpose_mut()
+            .as_2d_mut(),
+        householder_right
+            .rb_mut()
+            .row_mut(0)
+            .transpose_mut()
+            .as_2d_mut(),
         parallelism,
         stack.rb_mut(),
     );
@@ -455,7 +467,7 @@ fn compute_svd_big<E: ComplexField>(
     let mut j_base = 0;
     while j_base < n {
         let bs = Ord::min(householder_blocksize, n - j_base);
-        let mut householder = householder_left.rb_mut().submatrix(0, j_base, bs, bs);
+        let mut householder = householder_left.rb_mut().submatrix_mut(0, j_base, bs, bs);
         let essentials = bid.submatrix(j_base, j_base, m - j_base, bs);
         for j in 0..bs {
             householder.write(j, j, householder.read(0, j));
@@ -466,7 +478,7 @@ fn compute_svd_big<E: ComplexField>(
     let mut j_base = 0;
     while j_base < n - 1 {
         let bs = Ord::min(householder_blocksize, n - 1 - j_base);
-        let mut householder = householder_right.rb_mut().submatrix(0, j_base, bs, bs);
+        let mut householder = householder_right.rb_mut().submatrix_mut(0, j_base, bs, bs);
         let full_essentials = bid.submatrix(0, 1, m, n - 1).transpose();
         let essentials = full_essentials.submatrix(j_base, j_base, n - 1 - j_base, bs);
         for j in 0..bs {
@@ -500,19 +512,22 @@ fn compute_svd_big<E: ComplexField>(
     if let Some(mut u) = u {
         let ncols = u.ncols();
         zipped!(
-            u.rb_mut().submatrix(0, 0, n, n),
+            u.rb_mut().submatrix_mut(0, 0, n, n),
             v_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|mut dst, src| dst.write(src.read()));
+        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
-        zipped!(u.rb_mut().submatrix(n, 0, m - n, ncols)).for_each(|mut x| x.write(E::faer_zero()));
-        zipped!(u.rb_mut().submatrix(0, n, n, ncols - n)).for_each(|mut x| x.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, ncols))
+            .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+        zipped!(u.rb_mut().submatrix_mut(0, n, n, ncols - n))
+            .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
         zipped!(u
             .rb_mut()
-            .submatrix(n, n, ncols - n, ncols - n)
-            .diagonal()
-            .into_column_vector())
-        .for_each(|mut x| x.write(E::faer_one()));
+            .submatrix_mut(n, n, ncols - n, ncols - n)
+            .diagonal_mut()
+            .column_vector_mut()
+            .as_2d_mut())
+        .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
         apply_block_householder_sequence_on_the_left_in_place_with_conj(
             bid,
@@ -525,10 +540,10 @@ fn compute_svd_big<E: ComplexField>(
     };
     if let Some(mut v) = v {
         zipped!(
-            v.rb_mut().submatrix(0, 0, n, n),
+            v.rb_mut().submatrix_mut(0, 0, n, n),
             u_b.rb().submatrix(0, 0, n, n),
         )
-        .for_each(|mut dst, src| dst.write(src.read()));
+        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
         let (mut bid_col_major, mut stack) =
             faer_core::temp_mat_uninit::<E>(n - 1, m, stack.rb_mut());
@@ -537,7 +552,7 @@ fn compute_svd_big<E: ComplexField>(
             bid_col_major.rb_mut(),
             bid.submatrix(0, 1, m, n - 1).transpose()
         )
-        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst, src| {
+        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst, src)| {
             dst.write(src.read())
         });
 
@@ -545,7 +560,7 @@ fn compute_svd_big<E: ComplexField>(
             bid_col_major.rb(),
             householder_right.rb(),
             Conj::No,
-            v.submatrix(1, 0, n - 1, n),
+            v.submatrix_mut(1, 0, n - 1, n),
             parallelism,
             stack.rb_mut(),
         );
@@ -758,9 +773,13 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
 
     if n == 0 {
         if let Some(mut u) = u {
-            zipped!(u.rb_mut()).for_each(|mut dst| dst.write(E::faer_zero()));
-            zipped!(u.submatrix(0, 0, n, n).diagonal().into_column_vector())
-                .for_each(|mut dst| dst.write(E::faer_one()));
+            zipped!(u.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+            zipped!(u
+                .submatrix_mut(0, 0, n, n)
+                .diagonal_mut()
+                .column_vector_mut()
+                .as_2d_mut())
+            .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
         }
 
         return;
@@ -792,7 +811,7 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
             let (mut r, mut stack) = temp_mat_uninit::<E>(n, n, stack.rb_mut());
             let mut r = r.as_mut();
 
-            zipped!(qr.rb_mut(), matrix).for_each(|mut dst, src| dst.write(src.read()));
+            zipped!(qr.rb_mut(), matrix).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
             // matrix = q * r
             faer_qr::no_pivoting::compute::qr_in_place(
@@ -802,16 +821,19 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
                 stack.rb_mut(),
                 Default::default(),
             );
-            zipped!(r.rb_mut())
-                .for_each_triangular_lower(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
+            zipped!(r.rb_mut()).for_each_triangular_lower(Diag::Skip, |unzipped!(mut dst)| {
+                dst.write(E::faer_zero())
+            });
             zipped!(r.rb_mut(), qr.rb().submatrix(0, 0, n, n))
-                .for_each_triangular_upper(Diag::Include, |mut dst, src| dst.write(src.read()));
+                .for_each_triangular_upper(Diag::Include, |unzipped!(mut dst, src)| {
+                    dst.write(src.read())
+                });
 
             // r = u s v
             squareish_svd(
                 r.rb(),
                 s,
-                u.rb_mut().map(|u| u.submatrix(0, 0, n, n)),
+                u.rb_mut().map(|u| u.submatrix_mut(0, 0, n, n)),
                 v.rb_mut(),
                 epsilon,
                 zero_threshold,
@@ -823,17 +845,18 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
         // matrix = q u s v
         if let Some(mut u) = u.rb_mut() {
             let ncols = u.ncols();
-            zipped!(u.rb_mut().submatrix(n, 0, m - n, n))
-                .for_each(|mut dst| dst.write(E::faer_zero()));
-            zipped!(u.rb_mut().submatrix(0, n, m, ncols - n))
-                .for_each(|mut dst| dst.write(E::faer_zero()));
+            zipped!(u.rb_mut().submatrix_mut(n, 0, m - n, n))
+                .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+            zipped!(u.rb_mut().submatrix_mut(0, n, m, ncols - n))
+                .for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
             if ncols == m {
                 zipped!(u
                     .rb_mut()
-                    .submatrix(n, n, m - n, m - n)
-                    .diagonal()
-                    .into_column_vector())
-                .for_each(|mut dst| dst.write(E::faer_one()));
+                    .submatrix_mut(n, n, m - n, m - n)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut())
+                .for_each(|unzipped!(mut dst)| dst.write(E::faer_one()));
             }
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -850,10 +873,10 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     if do_transpose {
         // conjugate u and v
         if let Some(u) = u {
-            zipped!(u).for_each(|mut x| x.write(x.read().faer_conj()))
+            zipped!(u).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
         }
         if let Some(v) = v {
-            zipped!(v).for_each(|mut x| x.write(x.read().faer_conj()))
+            zipped!(v).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()))
         }
     }
 }
@@ -912,9 +935,8 @@ fn squareish_svd<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c32, c64, Mat};
+    use faer_core::{assert, c32, c64, Mat};
 
     macro_rules! make_stack {
         ($req: expr) => {
@@ -935,9 +957,10 @@ mod tests {
             compute_svd_big(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 compute_bidiag_real_svd::<f64>,
@@ -980,9 +1003,10 @@ mod tests {
             compute_svd_big(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 compute_bidiag_real_svd::<f64>,
@@ -1022,9 +1046,10 @@ mod tests {
             compute_svd_big(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 compute_bidiag_real_svd::<f64>,
@@ -1064,9 +1089,10 @@ mod tests {
             compute_real_svd_small(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 f64::EPSILON,
@@ -1105,9 +1131,10 @@ mod tests {
                 compute_svd(
                     mat.as_ref(),
                     s.as_mut()
-                        .submatrix(0, 0, size, size)
-                        .diagonal()
-                        .into_column_vector(),
+                        .submatrix_mut(0, 0, size, size)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                        .as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     Parallelism::None,
@@ -1147,9 +1174,10 @@ mod tests {
                 compute_svd(
                     mat.as_ref(),
                     s.as_mut()
-                        .submatrix(0, 0, size, size)
-                        .diagonal()
-                        .into_column_vector(),
+                        .submatrix_mut(0, 0, size, size)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                        .as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     Parallelism::None,
@@ -1207,9 +1235,10 @@ mod tests {
                         compute_svd(
                             mat.as_ref(),
                             s.as_mut()
-                                .submatrix(0, 0, size, size)
-                                .diagonal()
-                                .into_column_vector(),
+                                .submatrix_mut(0, 0, size, size)
+                                .diagonal_mut()
+                                .column_vector_mut()
+                                .as_2d_mut(),
                             if compute_u == No {
                                 None
                             } else {
@@ -1240,9 +1269,10 @@ mod tests {
                             mat.as_ref(),
                             s_target
                                 .as_mut()
-                                .submatrix(0, 0, size, size)
-                                .diagonal()
-                                .into_column_vector(),
+                                .submatrix_mut(0, 0, size, size)
+                                .diagonal_mut()
+                                .column_vector_mut()
+                                .as_2d_mut(),
                             Some(u_target.as_mut()),
                             Some(v_target.as_mut()),
                             Parallelism::None,
@@ -1292,9 +1322,10 @@ mod tests {
                 compute_svd(
                     mat.as_ref(),
                     s.as_mut()
-                        .submatrix(0, 0, size, size)
-                        .diagonal()
-                        .into_column_vector(),
+                        .submatrix_mut(0, 0, size, size)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                        .as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     Parallelism::None,
@@ -1334,9 +1365,10 @@ mod tests {
                 compute_svd(
                     mat.as_ref(),
                     s.as_mut()
-                        .submatrix(0, 0, size, size)
-                        .diagonal()
-                        .into_column_vector(),
+                        .submatrix_mut(0, 0, size, size)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                        .as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     Parallelism::None,
@@ -1395,9 +1427,10 @@ mod tests {
                         compute_svd(
                             mat.as_ref(),
                             s.as_mut()
-                                .submatrix(0, 0, size, size)
-                                .diagonal()
-                                .into_column_vector(),
+                                .submatrix_mut(0, 0, size, size)
+                                .diagonal_mut()
+                                .column_vector_mut()
+                                .as_2d_mut(),
                             if compute_u == No {
                                 None
                             } else {
@@ -1428,9 +1461,10 @@ mod tests {
                             mat.as_ref(),
                             s_target
                                 .as_mut()
-                                .submatrix(0, 0, size, size)
-                                .diagonal()
-                                .into_column_vector(),
+                                .submatrix_mut(0, 0, size, size)
+                                .diagonal_mut()
+                                .column_vector_mut()
+                                .as_2d_mut(),
                             Some(u_target.as_mut()),
                             Some(v_target.as_mut()),
                             Parallelism::None,
@@ -1482,9 +1516,10 @@ mod tests {
             compute_svd_big(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 compute_bidiag_cplx_svd::<c64>,
@@ -1524,9 +1559,10 @@ mod tests {
             compute_svd_big(
                 mat.as_ref(),
                 s.as_mut()
-                    .submatrix(0, 0, size, size)
-                    .diagonal()
-                    .into_column_vector(),
+                    .submatrix_mut(0, 0, size, size)
+                    .diagonal_mut()
+                    .column_vector_mut()
+                    .as_2d_mut(),
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 compute_bidiag_cplx_svd::<f64>,
@@ -1565,7 +1601,7 @@ mod tests {
 
                 compute_svd(
                     mat.as_ref(),
-                    s.as_mut().diagonal().into_column_vector(),
+                    s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     faer_core::Parallelism::None,
@@ -1603,7 +1639,7 @@ mod tests {
 
                 compute_svd(
                     mat.as_ref(),
-                    s.as_mut().diagonal().into_column_vector(),
+                    s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     faer_core::Parallelism::None,

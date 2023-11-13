@@ -1,5 +1,6 @@
-use crate::{zipped, MatMut, RealField};
-use faer_entity::SimdCtx;
+use crate::{group_helpers::*, unzipped, zipped, MatMut, RealField};
+use faer_entity::{SimdCtx, SimdGroupFor};
+use reborrow::*;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
@@ -108,116 +109,7 @@ impl<E: RealField> JacobiRotation<E> {
 
     #[inline]
     pub fn apply_on_the_left_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
-        struct ApplyOnLeft<'a, E: RealField> {
-            c: E,
-            s: E,
-            x: MatMut<'a, E>,
-            y: MatMut<'a, E>,
-        }
-
-        impl<E: RealField> pulp::WithSimd for ApplyOnLeft<'_, E> {
-            type Output = ();
-
-            #[inline(always)]
-            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                let Self { x, y, c, s } = self;
-                assert!(x.nrows() == 1);
-                assert!(y.nrows() == 1);
-                assert_eq!(x.ncols(), y.ncols());
-
-                if c == E::faer_one() && s == E::faer_zero() {
-                    return;
-                }
-
-                let n = x.ncols();
-                let x = E::faer_map(
-                    x.as_ptr(),
-                    #[inline(always)]
-                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
-                );
-                let y = E::faer_map(
-                    y.as_ptr(),
-                    #[inline(always)]
-                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
-                );
-
-                let c = E::faer_simd_splat(simd, c);
-                let s = E::faer_simd_splat(simd, s);
-
-                let (x_head, x_tail) = crate::simd::slice_as_mut_simd::<E, S>(x);
-                let (y_head, y_tail) = crate::simd::slice_as_mut_simd::<E, S>(y);
-
-                for (x, y) in E::faer_into_iter(x_head).zip(E::faer_into_iter(y_head)) {
-                    let mut x_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&x)));
-                    let mut y_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&y)));
-
-                    (x_, y_) = (
-                        E::faer_simd_mul_adde(
-                            simd,
-                            E::faer_copy(&c),
-                            E::faer_copy(&x_),
-                            E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&y_)),
-                        ),
-                        E::faer_simd_mul_adde(
-                            simd,
-                            E::faer_copy(&c),
-                            E::faer_copy(&y_),
-                            E::faer_simd_neg(
-                                simd,
-                                E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&x_)),
-                            ),
-                        ),
-                    );
-
-                    E::faer_map(
-                        E::faer_zip(x, x_),
-                        #[inline(always)]
-                        |(x, x_)| *x = x_,
-                    );
-                    E::faer_map(
-                        E::faer_zip(y, y_),
-                        #[inline(always)]
-                        |(y, y_)| *y = y_,
-                    );
-                }
-
-                let mut x_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&x_tail)));
-                let mut y_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&y_tail)));
-
-                (x_, y_) = (
-                    E::faer_simd_mul_adde(
-                        simd,
-                        E::faer_copy(&c),
-                        E::faer_copy(&x_),
-                        E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&y_)),
-                    ),
-                    E::faer_simd_mul_adde(
-                        simd,
-                        E::faer_copy(&c),
-                        E::faer_copy(&y_),
-                        E::faer_simd_neg(
-                            simd,
-                            E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&x_)),
-                        ),
-                    ),
-                );
-
-                E::faer_partial_store(simd, x_tail, x_);
-                E::faer_partial_store(simd, y_tail, y_);
-            }
-        }
-
-        let Self { c, s } = *self;
-        if x.col_stride() == 1 && y.col_stride() == 1 {
-            E::Simd::default().dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
-        } else {
-            zipped!(x, y).for_each(move |mut x, mut y| {
-                let x_ = x.read();
-                let y_ = y.read();
-                x.write(c.faer_mul(x_).faer_add(s.faer_mul(y_)));
-                y.write(s.faer_neg().faer_mul(x_).faer_add(c.faer_mul(y_)));
-            });
-        }
+        self.apply_on_the_left_in_place_arch(E::Simd::default(), x, y);
     }
 
     #[inline]
@@ -248,81 +140,41 @@ impl<E: RealField> JacobiRotation<E> {
                     return;
                 }
 
-                let n = x.ncols();
-                let x = E::faer_map(
-                    x.as_ptr(),
-                    #[inline(always)]
-                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
-                );
-                let y = E::faer_map(
-                    y.as_ptr(),
-                    #[inline(always)]
-                    |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, n) },
-                );
+                let simd = SimdFor::<E, S>::new(simd);
 
-                let c = E::faer_simd_splat(simd, c);
-                let s = E::faer_simd_splat(simd, s);
+                let x =
+                    SliceGroupMut::<'_, E>::new(x.transpose_mut().try_get_contiguous_col_mut(0));
+                let y =
+                    SliceGroupMut::<'_, E>::new(y.transpose_mut().try_get_contiguous_col_mut(0));
 
-                let (x_head, x_tail) = crate::simd::slice_as_mut_simd::<E, S>(x);
-                let (y_head, y_tail) = crate::simd::slice_as_mut_simd::<E, S>(y);
+                let offset = simd.align_offset(x.rb());
 
-                for (x, y) in E::faer_into_iter(x_head).zip(E::faer_into_iter(y_head)) {
-                    let mut x_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&x)));
-                    let mut y_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&y)));
+                let c = simd.splat(c);
+                let s = simd.splat(s);
 
-                    (x_, y_) = (
-                        E::faer_simd_mul_adde(
-                            simd,
-                            E::faer_copy(&c),
-                            E::faer_copy(&x_),
-                            E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&y_)),
-                        ),
-                        E::faer_simd_mul_adde(
-                            simd,
-                            E::faer_copy(&c),
-                            E::faer_copy(&y_),
-                            E::faer_simd_neg(
-                                simd,
-                                E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&x_)),
-                            ),
-                        ),
-                    );
+                let (x_head, x_body, x_tail) = simd.as_aligned_simd_mut(x, offset);
+                let (y_head, y_body, y_tail) = simd.as_aligned_simd_mut(y, offset);
 
-                    E::faer_map(
-                        E::faer_zip(x, x_),
-                        #[inline(always)]
-                        |(x, x_)| *x = x_,
-                    );
-                    E::faer_map(
-                        E::faer_zip(y, y_),
-                        #[inline(always)]
-                        |(y, y_)| *y = y_,
-                    );
+                #[inline(always)]
+                fn process<E: RealField, S: pulp::Simd>(
+                    simd: SimdFor<E, S>,
+                    mut x: impl Write<Output = SimdGroupFor<E, S>>,
+                    mut y: impl Write<Output = SimdGroupFor<E, S>>,
+                    c: SimdGroupFor<E, S>,
+                    s: SimdGroupFor<E, S>,
+                ) {
+                    let zero = simd.splat(E::faer_zero());
+                    let x_ = x.read_or(zero);
+                    let y_ = y.read_or(zero);
+                    x.write(simd.mul_add_e(c, x_, simd.mul(s, y_)));
+                    y.write(simd.mul_add_e(c, y_, simd.neg(simd.mul(s, x_))));
                 }
 
-                let mut x_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&x_tail)));
-                let mut y_ = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&y_tail)));
-
-                (x_, y_) = (
-                    E::faer_simd_mul_adde(
-                        simd,
-                        E::faer_copy(&c),
-                        E::faer_copy(&x_),
-                        E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&y_)),
-                    ),
-                    E::faer_simd_mul_adde(
-                        simd,
-                        E::faer_copy(&c),
-                        E::faer_copy(&y_),
-                        E::faer_simd_neg(
-                            simd,
-                            E::faer_simd_mul(simd, E::faer_copy(&s), E::faer_copy(&x_)),
-                        ),
-                    ),
-                );
-
-                E::faer_partial_store(simd, x_tail, x_);
-                E::faer_partial_store(simd, y_tail, y_);
+                process(simd, x_head, y_head, c, s);
+                for (x, y) in x_body.into_mut_iter().zip(y_body.into_mut_iter()) {
+                    process(simd, x, y, c, s);
+                }
+                process(simd, x_tail, y_tail, c, s);
             }
         }
 
@@ -330,7 +182,7 @@ impl<E: RealField> JacobiRotation<E> {
         if x.col_stride() == 1 && y.col_stride() == 1 {
             arch.dispatch(ApplyOnLeft::<'_, E> { c, s, x, y });
         } else {
-            zipped!(x, y).for_each(move |mut x, mut y| {
+            zipped!(x, y).for_each(move |unzipped!(mut x, mut y)| {
                 let x_ = x.read();
                 let y_ = y.read();
                 x.write(c.faer_mul(x_).faer_add(s.faer_mul(y_)));
@@ -342,7 +194,7 @@ impl<E: RealField> JacobiRotation<E> {
     #[inline]
     pub fn apply_on_the_right_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
         self.transpose()
-            .apply_on_the_left_in_place(x.transpose(), y.transpose());
+            .apply_on_the_left_in_place(x.transpose_mut(), y.transpose_mut());
     }
 
     #[inline]
@@ -352,8 +204,11 @@ impl<E: RealField> JacobiRotation<E> {
         x: MatMut<'_, E>,
         y: MatMut<'_, E>,
     ) {
-        self.transpose()
-            .apply_on_the_left_in_place_arch(arch, x.transpose(), y.transpose());
+        self.transpose().apply_on_the_left_in_place_arch(
+            arch,
+            x.transpose_mut(),
+            y.transpose_mut(),
+        );
     }
 
     #[inline]

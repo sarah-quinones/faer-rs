@@ -21,13 +21,13 @@ reborrow = { workspace = true }
 
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
-gemm = { version = "0.16.12", default-features = false, path = "../../../gemm/gemm" }
-
+gemm = { workspace = true, default-features = false }
 
 num-traits = { workspace = true, default-features = false }
 num-complex = { workspace = true, default-features = false }
 bytemuck = { workspace = true }
 
+rand = { workspace = true, optional = true, default-features = false }
 rayon = { workspace = true, optional = true }
 assert2 = { workspace = true, optional = true }
 log = { workspace = true, optional = true, default-features = false }
@@ -42,19 +42,17 @@ std = [
   "assert2",
   "matrixcompare-core",
 ]
-perf-warn = ["log"]
 rayon = [
   "std",
   "gemm/rayon",
   "dep:rayon",
 ]
-assert2 = ["dep:assert2"]
-matrixcompare-core = ["dep:matrixcompare-core"]
 nightly = [
   "faer-entity/nightly",
   "gemm/nightly",
   "pulp/nightly",
 ]
+perf-warn = ["log"]
 
 [dev-dependencies]
 criterion = "0.5"

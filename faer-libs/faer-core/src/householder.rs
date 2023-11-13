@@ -29,22 +29,25 @@
 //! documentation of the QR module.
 
 use crate::{
+    group_helpers::*,
     join_raw,
     mul::{
         inner_prod, matmul, matmul_with_conj,
         triangular::{self, BlockStructure},
     },
-    solve, temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, DivCeil, Entity, MatMut,
-    MatRef, Parallelism,
+    solve, temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Conj, DivCeil, Entity,
+    MatMut, MatRef, Parallelism,
 };
 #[cfg(feature = "std")]
 use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
+use num_complex::Complex;
 use reborrow::*;
 
 #[doc(hidden)]
 #[inline]
+#[deprecated]
 pub fn make_householder_in_place<E: ComplexField>(
     essential: Option<MatMut<'_, E>>,
     head: E,
@@ -72,11 +75,64 @@ pub fn make_householder_in_place<E: ComplexField>(
     if head_with_beta != E::faer_zero() {
         if let Some(essential) = essential {
             assert!(essential.ncols() == 1);
-            zipped!(essential).for_each(|mut e| e.write(e.read().faer_mul(head_with_beta_inv)));
+            zipped!(essential)
+                .for_each(|unzipped!(mut e)| e.write(e.read().faer_mul(head_with_beta_inv)));
         }
         let tau = one_half.faer_mul(
             E::Real::faer_one()
                 .faer_add(tail_squared_norm.faer_mul(head_with_beta_inv.faer_abs2())),
+        );
+        (E::faer_from_real(tau), signed_norm.faer_neg())
+    } else {
+        (
+            E::faer_from_real(E::Real::faer_zero().faer_inv()),
+            E::faer_zero(),
+        )
+    }
+}
+
+#[doc(hidden)]
+#[inline]
+pub fn make_householder_in_place_v2<E: ComplexField>(
+    essential: Option<MatMut<'_, E>>,
+    head: E,
+    tail_norm: E::Real,
+) -> (E, E) {
+    if tail_norm == E::Real::faer_zero() {
+        return (E::faer_from_real(E::Real::faer_zero().faer_inv()), head);
+    }
+
+    let one_half = E::Real::faer_from_f64(0.5);
+
+    let head_norm = head.faer_abs();
+    let norm = Complex {
+        re: head_norm,
+        im: tail_norm,
+    }
+    .faer_abs();
+
+    let sign = if head_norm != E::Real::faer_zero() {
+        head.faer_scale_real(head_norm.faer_inv())
+    } else {
+        E::faer_one()
+    };
+
+    let signed_norm = sign.faer_mul(E::faer_from_real(norm));
+    let head_with_beta = head.faer_add(signed_norm);
+    let head_with_beta_inv = head_with_beta.faer_inv();
+
+    if head_with_beta != E::faer_zero() {
+        if let Some(essential) = essential {
+            assert!(essential.ncols() == 1);
+            zipped!(essential)
+                .for_each(|unzipped!(mut e)| e.write(e.read().faer_mul(head_with_beta_inv)));
+        }
+        let tau = one_half.faer_mul(
+            E::Real::faer_one().faer_add(
+                tail_norm
+                    .faer_mul(head_with_beta_inv.faer_abs())
+                    .faer_abs2(),
+            ),
         );
         (E::faer_from_real(tau), signed_norm.faer_neg())
     } else {
@@ -107,8 +163,8 @@ pub fn upgrade_householder_factor<E: ComplexField>(
         assert!(blocksize > prev_blocksize);
         assert!(blocksize % prev_blocksize == 0);
         let idx = (block_count / 2) * blocksize;
-        let [tau_tl, _, _, tau_br] = householder_factor.split_at(idx, idx);
-        let [basis_left, basis_right] = essentials.split_at_col(idx);
+        let (tau_tl, _, _, tau_br) = householder_factor.split_at_mut(idx, idx);
+        let (basis_left, basis_right) = essentials.split_at_col(idx);
         let basis_right =
             basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
         join_raw(
@@ -138,7 +194,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
     if prev_blocksize < 8 {
         // pretend that prev_blocksize == 1, recompute whole top half of matrix
 
-        let [basis_top, basis_bot] = essentials.split_at_row(essentials.ncols());
+        let (basis_top, basis_bot) = essentials.split_at_row(essentials.ncols());
         triangular::matmul(
             householder_factor.rb_mut(),
             BlockStructure::UnitTriangularUpper,
@@ -165,8 +221,8 @@ pub fn upgrade_householder_factor<E: ComplexField>(
         let prev_block_count = householder_factor.nrows().msrv_div_ceil(prev_blocksize);
 
         let idx = (prev_block_count / 2) * prev_blocksize;
-        let [tau_tl, mut tau_tr, _, tau_br] = householder_factor.split_at(idx, idx);
-        let [basis_left, basis_right] = essentials.split_at_col(idx);
+        let (tau_tl, mut tau_tr, _, tau_br) = householder_factor.split_at_mut(idx, idx);
+        let (basis_left, basis_right) = essentials.split_at_col(idx);
         let basis_right =
             basis_right.submatrix(idx, 0, essentials.nrows() - idx, basis_right.ncols());
 
@@ -196,8 +252,8 @@ pub fn upgrade_householder_factor<E: ComplexField>(
             },
             |parallelism| {
                 let basis_left = basis_left.submatrix(idx, 0, basis_left.nrows() - idx, idx);
-                let [basis_left_top, basis_left_bot] = basis_left.split_at_row(basis_right.ncols());
-                let [basis_right_top, basis_right_bot] =
+                let (basis_left_top, basis_left_bot) = basis_left.split_at_row(basis_right.ncols());
+                let (basis_right_top, basis_right_bot) =
                     basis_right.split_at_row(basis_right.ncols());
 
                 triangular::matmul(
@@ -331,237 +387,102 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     if householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
         let arch = E::Simd::default();
 
-        if matches!(conj_lhs, Conj::No) {
-            struct ApplyOnLeftNoConj<'a, E: ComplexField> {
-                tau_inv: E,
-                essential: MatRef<'a, E>,
-                rhs: MatMut<'a, E>,
-            }
+        struct ApplyOnLeft<'a, C: ConjTy, E: ComplexField> {
+            tau_inv: E,
+            essential: MatRef<'a, E>,
+            rhs: MatMut<'a, E>,
+            conj: C,
+        }
 
-            impl<E: ComplexField> pulp::WithSimd for ApplyOnLeftNoConj<'_, E> {
-                type Output = ();
+        impl<C: ConjTy, E: ComplexField> pulp::WithSimd for ApplyOnLeft<'_, C, E> {
+            type Output = ();
 
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                    let Self {
-                        tau_inv,
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self {
+                    tau_inv,
+                    essential,
+                    mut rhs,
+                    conj,
+                } = self;
+                debug_assert_eq!(essential.row_stride(), 1);
+                debug_assert_eq!(rhs.row_stride(), 1);
+
+                let n = rhs.ncols();
+
+                if rhs.nrows() == 0 {
+                    return;
+                }
+
+                let simd = SimdFor::<E, S>::new(simd);
+
+                let essential = SliceGroup::<'_, E>::new(essential.try_get_contiguous_col(0));
+                let offset = simd.align_offset(essential.rb());
+                let (essential_head, essential_body, essential_tail) =
+                    simd.as_aligned_simd(essential, offset);
+                for idx in 0..n {
+                    let col =
+                        SliceGroupMut::<'_, E>::new(rhs.rb_mut().try_get_contiguous_col_mut(idx));
+
+                    let (col0, col) = col.split_at(1);
+                    let mut col0 = col0.get_mut(0);
+
+                    let dot = col0.read().faer_add(inner_prod::with_simd_and_offset(
+                        simd,
+                        conj.flip(),
                         essential,
-                        mut rhs,
-                    } = self;
-                    debug_assert_eq!(essential.row_stride(), 1);
-                    debug_assert_eq!(rhs.row_stride(), 1);
-
-                    let n = rhs.ncols();
-
-                    if rhs.nrows() == 0 {
-                        return;
-                    }
-
-                    let m = rhs.nrows() - 1;
-                    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>()
-                        / core::mem::size_of::<UnitFor<E>>();
-                    let prefix = m % lane_count;
-
-                    let essential = E::faer_map(
-                        essential.as_ptr(),
-                        #[inline(always)]
-                        |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-                    );
-
-                    let (essential_scalar, essential_simd) = E::faer_unzip(E::faer_map(
-                        E::faer_copy(&essential),
-                        #[inline(always)]
-                        |slice| slice.split_at(prefix),
+                        col.rb(),
+                        offset,
                     ));
-                    let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
 
-                    for idx in 0..n {
-                        let col = rhs.rb_mut().col(idx);
-                        let [mut col_head, col_tail] = col.split_at_row(1);
+                    let k = dot.faer_mul(tau_inv).faer_neg();
+                    col0.write(col0.read().faer_add(k));
 
-                        let col_head_ = col_head.read(0, 0);
-                        let col_tail = E::faer_map(
-                            col_tail.as_ptr(),
-                            #[inline(always)]
-                            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-                        );
+                    let (col_head, col_body, col_tail) = simd.as_aligned_simd_mut(col, offset);
 
-                        let dot = col_head_.faer_add(
-                            inner_prod::AccConjAxB::<'_, E> {
-                                a: E::faer_rb(E::faer_as_ref(&essential)),
-                                b: E::faer_rb(E::faer_as_ref(&col_tail)),
-                            }
-                            .with_simd(simd),
-                        );
-
-                        let k = (dot.faer_mul(tau_inv)).faer_neg();
-                        col_head.write(0, 0, col_head_.faer_add(k));
-
-                        let (col_tail_scalar, col_tail_simd) = E::faer_unzip(E::faer_map(
-                            col_tail,
-                            #[inline(always)]
-                            |slice| slice.split_at_mut(prefix),
+                    #[inline(always)]
+                    fn process<C: ConjTy, E: ComplexField, S: pulp::Simd>(
+                        simd: SimdFor<E, S>,
+                        conj: C,
+                        mut a: impl Write<Output = SimdGroupFor<E, S>>,
+                        b: impl Read<Output = SimdGroupFor<E, S>>,
+                        k: SimdGroupFor<E, S>,
+                    ) {
+                        a.write(simd.conditional_conj_mul_add_e(
+                            conj,
+                            b.read_or(simd.splat(E::faer_zero())),
+                            k,
+                            a.read_or(simd.splat(E::faer_zero())),
                         ));
-                        let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
-
-                        for (a, b) in E::faer_into_iter(col_tail_scalar)
-                            .zip(E::faer_into_iter(E::faer_copy(&essential_scalar)))
-                        {
-                            let mut a_ =
-                                E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
-                            let b = E::faer_from_units(E::faer_deref(b));
-                            a_ = a_.faer_add(k.faer_mul(b));
-
-                            E::faer_map(
-                                E::faer_zip(a, a_.faer_into_units()),
-                                #[inline(always)]
-                                |(a, a_)| *a = a_,
-                            );
-                        }
-
-                        let k = E::faer_simd_splat(simd, k);
-                        for (a, b) in E::faer_into_iter(col_tail_simd)
-                            .zip(E::faer_into_iter(E::faer_copy(&essential_simd)))
-                        {
-                            let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
-                            let b = E::faer_deref(b);
-                            a_ =
-                                E::faer_simd_mul_adde(simd, E::faer_copy(&k), E::faer_copy(&b), a_);
-
-                            E::faer_map(
-                                E::faer_zip(a, a_),
-                                #[inline(always)]
-                                |(a, a_)| *a = a_,
-                            );
-                        }
                     }
+
+                    let k = simd.splat(k);
+                    process(simd, conj, col_head, essential_head, k);
+                    for (a, b) in col_body.into_mut_iter().zip(essential_body.into_ref_iter()) {
+                        process(simd, conj, a, b, k);
+                    }
+                    process(simd, conj, col_tail, essential_tail, k);
                 }
             }
+        }
 
-            arch.dispatch(ApplyOnLeftNoConj {
+        if coe::is_same::<E, E::Real>() || matches!(conj_lhs, Conj::No) {
+            arch.dispatch(ApplyOnLeft {
                 tau_inv: E::faer_from_real(householder_factor.read(0, 0).faer_real().faer_inv()),
-                essential: householder_basis.split_at_row(1)[1],
+                essential: householder_basis.split_at_row(1).1,
                 rhs: matrix,
+                conj: NoConj,
             });
         } else {
-            struct ApplyOnLeftConj<'a, E: ComplexField> {
-                tau_inv: E,
-                essential: MatRef<'a, E>,
-                rhs: MatMut<'a, E>,
-            }
-
-            impl<E: ComplexField> pulp::WithSimd for ApplyOnLeftConj<'_, E> {
-                type Output = ();
-
-                #[inline(always)]
-                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-                    let Self {
-                        tau_inv,
-                        essential,
-                        mut rhs,
-                    } = self;
-                    debug_assert_eq!(essential.row_stride(), 1);
-                    debug_assert_eq!(rhs.row_stride(), 1);
-
-                    let n = rhs.ncols();
-
-                    if rhs.nrows() == 0 {
-                        return;
-                    }
-
-                    let m = rhs.nrows() - 1;
-                    let lane_count = core::mem::size_of::<SimdUnitFor<E, S>>()
-                        / core::mem::size_of::<UnitFor<E>>();
-                    let prefix = m % lane_count;
-
-                    let essential = E::faer_map(
-                        essential.as_ptr(),
-                        #[inline(always)]
-                        |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-                    );
-
-                    let (essential_scalar, essential_simd) = E::faer_unzip(E::faer_map(
-                        E::faer_copy(&essential),
-                        #[inline(always)]
-                        |slice| slice.split_at(prefix),
-                    ));
-                    let essential_simd = crate::simd::slice_as_simd::<E, S>(essential_simd).0;
-
-                    for idx in 0..n {
-                        let col = rhs.rb_mut().col(idx);
-                        let [mut col_head, col_tail] = col.split_at_row(1);
-
-                        let col_head_ = col_head.read(0, 0);
-                        let col_tail = E::faer_map(
-                            col_tail.as_ptr(),
-                            #[inline(always)]
-                            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-                        );
-
-                        let dot = col_head_.faer_add(
-                            inner_prod::AccNoConjAxB::<'_, E> {
-                                a: E::faer_rb(E::faer_as_ref(&essential)),
-                                b: E::faer_rb(E::faer_as_ref(&col_tail)),
-                            }
-                            .with_simd(simd),
-                        );
-
-                        let k = (dot.faer_mul(tau_inv)).faer_neg();
-                        col_head.write(0, 0, col_head_.faer_add(k));
-
-                        let (col_tail_scalar, col_tail_simd) = E::faer_unzip(E::faer_map(
-                            col_tail,
-                            #[inline(always)]
-                            |slice| slice.split_at_mut(prefix),
-                        ));
-                        let col_tail_simd = crate::simd::slice_as_mut_simd::<E, S>(col_tail_simd).0;
-
-                        for (a, b) in E::faer_into_iter(col_tail_scalar)
-                            .zip(E::faer_into_iter(E::faer_copy(&essential_scalar)))
-                        {
-                            let mut a_ =
-                                E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&a))));
-                            let b = E::faer_from_units(E::faer_deref(b));
-                            a_ = a_.faer_add(k.faer_mul(b.faer_conj()));
-
-                            E::faer_map(
-                                E::faer_zip(a, a_.faer_into_units()),
-                                #[inline(always)]
-                                |(a, a_)| *a = a_,
-                            );
-                        }
-
-                        let k = E::faer_simd_splat(simd, k);
-                        for (a, b) in E::faer_into_iter(col_tail_simd)
-                            .zip(E::faer_into_iter(E::faer_copy(&essential_simd)))
-                        {
-                            let mut a_ = E::faer_deref(E::faer_rb(E::faer_as_ref(&a)));
-                            let b = E::faer_deref(b);
-                            a_ = E::faer_simd_conj_mul_adde(
-                                simd,
-                                E::faer_copy(&b),
-                                E::faer_copy(&k),
-                                a_,
-                            );
-
-                            E::faer_map(
-                                E::faer_zip(a, a_),
-                                #[inline(always)]
-                                |(a, a_)| *a = a_,
-                            );
-                        }
-                    }
-                }
-            }
-
-            arch.dispatch(ApplyOnLeftConj {
+            arch.dispatch(ApplyOnLeft {
                 tau_inv: E::faer_from_real(householder_factor.read(0, 0).faer_real().faer_inv()),
-                essential: householder_basis.split_at_row(1)[1],
+                essential: householder_basis.split_at_row(1).1,
                 rhs: matrix,
+                conj: YesConj,
             });
         }
     } else {
-        let [essentials_top, essentials_bot] = householder_basis.split_at_row(bs);
+        let (essentials_top, essentials_bot) = householder_basis.split_at_row(bs);
         let m = matrix.nrows();
         let n = matrix.ncols();
 
@@ -595,12 +516,12 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                 let (tid_col, tid_n) = crate::par_split_indices(n, tid, n_tasks);
 
                 let mut tmp = unsafe { tmp.rb().subcols(tid_col, tid_n).const_cast() };
-                let [mut matrix_top, mut matrix_bot] = unsafe {
+                let (mut matrix_top, mut matrix_bot) = unsafe {
                     matrix
                         .rb()
                         .subcols(tid_col, tid_n)
                         .const_cast()
-                        .split_at_row(bs)
+                        .split_at_row_mut(bs)
                 };
 
                 triangular::matmul_with_conj(
@@ -689,7 +610,7 @@ pub fn apply_block_householder_on_the_right_in_place_with_conj<E: ComplexField>(
         householder_basis,
         householder_factor,
         conj_rhs,
-        matrix.transpose(),
+        matrix.transpose_mut(),
         parallelism,
         stack,
     )
@@ -710,7 +631,7 @@ pub fn apply_block_householder_transpose_on_the_right_in_place_with_conj<E: Comp
         householder_basis,
         householder_factor,
         conj_rhs,
-        matrix.transpose(),
+        matrix.transpose_mut(),
         parallelism,
         stack,
     )
@@ -799,7 +720,7 @@ pub fn apply_block_householder_sequence_on_the_left_in_place_with_conj<E: Comple
             essentials,
             householder,
             conj_lhs,
-            matrix.rb_mut().submatrix(j, 0, m - j, k),
+            matrix.rb_mut().submatrix_mut(j, 0, m - j, k),
             parallelism,
             stack.rb_mut(),
         );
@@ -842,7 +763,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
             essentials,
             householder,
             conj_lhs,
-            matrix.rb_mut().submatrix(j, 0, m - j, k),
+            matrix.rb_mut().submatrix_mut(j, 0, m - j, k),
             parallelism,
             stack.rb_mut(),
         );
@@ -866,7 +787,7 @@ pub fn apply_block_householder_sequence_on_the_right_in_place_with_conj<E: Compl
         householder_basis,
         householder_factor,
         conj_rhs,
-        matrix.transpose(),
+        matrix.transpose_mut(),
         parallelism,
         stack,
     )
@@ -890,7 +811,7 @@ pub fn apply_block_householder_sequence_transpose_on_the_right_in_place_with_con
         householder_basis,
         householder_factor,
         conj_rhs,
-        matrix.transpose(),
+        matrix.transpose_mut(),
         parallelism,
         stack,
     )

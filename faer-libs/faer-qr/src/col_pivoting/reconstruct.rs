@@ -1,10 +1,10 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::apply_block_householder_sequence_on_the_left_in_place_with_conj,
     permutation::{permute_cols_in_place, permute_cols_in_place_req, Index, PermutationRef},
-    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism,
 };
 use reborrow::*;
 
@@ -37,14 +37,15 @@ pub fn reconstruct<I: Index, E: ComplexField>(
 
     // copy R
     zipped!(dst.rb_mut(), qr_factors)
-        .for_each_triangular_upper(faer_core::zip::Diag::Include, |mut dst, src| {
+        .for_each_triangular_upper(faer_core::zip::Diag::Include, |unzipped!(mut dst, src)| {
             dst.write(src.read())
         });
 
     // zero bottom part
-    zipped!(dst.rb_mut()).for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
-        dst.write(E::faer_zero())
-    });
+    zipped!(dst.rb_mut())
+        .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
+            dst.write(E::faer_zero())
+        });
 
     apply_block_householder_sequence_on_the_left_in_place_with_conj(
         qr_factors,
@@ -88,7 +89,7 @@ pub fn reconstruct_in_place<I: Index, E: ComplexField>(
         stack,
     );
 
-    zipped!(qr_factors, dst.rb()).for_each(|mut dst, src| dst.write(src.read()));
+    zipped!(qr_factors, dst.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 }
 
 /// Computes the size and alignment of required workspace for reconstructing a matrix out of place,
@@ -125,9 +126,8 @@ pub fn reconstruct_in_place_req<I: Index, E: Entity>(
 mod tests {
     use super::*;
     use crate::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize};
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{c64, Mat};
+    use faer_core::{assert, c64, Mat};
     use rand::prelude::*;
     use std::cell::RefCell;
 

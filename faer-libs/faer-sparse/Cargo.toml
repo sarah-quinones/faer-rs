@@ -19,7 +19,6 @@ faer-lu = { version = "0.14.1", default-features = false, path = "../faer-lu" }
 
 reborrow = { workspace = true }
 dyn-stack = { workspace = true }
-assert2 = { workspace = true }
 log = { workspace = true, optional = true }
 rayon = { workspace = true }
 bytemuck = { workspace = true }

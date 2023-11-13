@@ -13,16 +13,14 @@ use faer_core::{
         solve_unit_lower_triangular_in_place_with_conj,
         solve_unit_upper_triangular_in_place_with_conj,
     },
-    temp_mat_req, temp_mat_uninit, zipped, Conj, MatMut, MatRef, Parallelism,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use faer_entity::{ComplexField, Entity, RealField};
 use reborrow::*;
 
 pub mod compute {
     use super::*;
-
-    #[cfg(feature = "assert2")]
-    use assert2::assert;
+    use faer_core::assert;
 
     #[derive(Copy, Clone)]
     #[non_exhaustive]
@@ -92,11 +90,11 @@ pub mod compute {
 
     fn assign_col<E: ComplexField>(a: MatMut<'_, E>, i: usize, j: usize) {
         if i < j {
-            let [ai, aj] = a.subcols(i, j - i + 1).split_at_col(1);
-            { ai }.clone_from(aj.rb().col(j - i - 1));
+            let (ai, aj) = a.subcols_mut(i, j - i + 1).split_at_col_mut(1);
+            ai.col_mut(0).copy_from(aj.rb().col(j - i - 1));
         } else if j < i {
-            let [aj, ai] = a.subcols(j, i - j + 1).split_at_col(1);
-            ai.col(i - j - 1).col(0).clone_from(aj.rb());
+            let (aj, ai) = a.subcols_mut(j, i - j + 1).split_at_col_mut(1);
+            ai.col_mut(i - j - 1).copy_from(aj.rb().col(0));
         }
     }
 
@@ -178,17 +176,20 @@ pub mod compute {
             };
 
             w.rb_mut()
-                .subrows(k, n - k)
-                .col(k)
-                .clone_from(a.rb().subrows(k, n - k).col(k));
+                .subrows_mut(k, n - k)
+                .col_mut(k)
+                .copy_from(a.rb().subrows(k, n - k).col(k));
 
-            let [w_left, w_right] = w.rb_mut().submatrix(k, 0, n - k, k + 1).split_at_col(k);
+            let (w_left, w_right) = w
+                .rb_mut()
+                .submatrix_mut(k, 0, n - k, k + 1)
+                .split_at_col_mut(k);
             let w_row = w_left.rb().row(0);
-            let w_col = w_right.col(0);
+            let w_col = w_right.col_mut(0);
             faer_core::mul::matmul(
-                w_col,
+                w_col.as_2d_mut(),
                 a.rb().submatrix(k, 0, n - k, k),
-                w_row.rb().transpose(),
+                w_row.rb().transpose().as_2d(),
                 Some(E::faer_one()),
                 E::faer_one().faer_neg(),
                 parallelism,
@@ -203,7 +204,7 @@ pub mod compute {
 
             if k + 1 < n {
                 (imax, _, colmax) =
-                    best_score_idx(w.rb().col(k).subrows(k + 1, n - k - 1)).unwrap();
+                    best_score_idx(w.rb().col(k).as_2d().subrows(k + 1, n - k - 1)).unwrap();
             } else {
                 imax = 0;
                 colmax = E::Real::faer_zero();
@@ -233,25 +234,30 @@ pub mod compute {
                     kp = k;
                 } else {
                     zipped!(
-                        w.rb_mut().subrows(k, imax - k).col(k + 1),
-                        a.rb().row(imax).subcols(k, imax - k).transpose(),
+                        w.rb_mut()
+                            .subrows_mut(k, imax - k)
+                            .col_mut(k + 1)
+                            .as_2d_mut(),
+                        a.rb().row(imax).subcols(k, imax - k).transpose().as_2d(),
                     )
-                    .for_each(|mut dst, src| dst.write(src.read().faer_conj()));
+                    .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_conj()));
 
                     w.rb_mut()
-                        .subrows(imax, n - imax)
-                        .col(k + 1)
-                        .clone_from(a.rb().subrows(imax, n - imax).col(imax));
+                        .subrows_mut(imax, n - imax)
+                        .col_mut(k + 1)
+                        .copy_from(a.rb().subrows(imax, n - imax).col(imax));
 
-                    let [w_left, w_right] =
-                        w.rb_mut().submatrix(k, 0, n - k, nb).split_at_col(k + 1);
+                    let (w_left, w_right) = w
+                        .rb_mut()
+                        .submatrix_mut(k, 0, n - k, nb)
+                        .split_at_col_mut(k + 1);
                     let w_row = w_left.rb().row(imax - k).subcols(0, k);
-                    let w_col = w_right.col(0);
+                    let w_col = w_right.col_mut(0);
 
                     faer_core::mul::matmul(
-                        w_col,
+                        w_col.as_2d_mut(),
                         a.rb().submatrix(k, 0, n - k, k),
-                        w_row.rb().transpose(),
+                        w_row.rb().transpose().as_2d(),
                         Some(E::faer_one()),
                         E::faer_one().faer_neg(),
                         parallelism,
@@ -259,15 +265,15 @@ pub mod compute {
                     make_real(w.rb_mut(), imax, k + 1);
 
                     let rowmax = max(
-                        best_score(w.rb().subrows(k, imax - k).col(k + 1)),
-                        best_score(w.rb().subrows(imax + 1, n - imax - 1).col(k + 1)),
+                        best_score(w.rb().subrows(k, imax - k).col(k + 1).as_2d()),
+                        best_score(w.rb().subrows(imax + 1, n - imax - 1).col(k + 1).as_2d()),
                     );
 
                     if abs_akk >= alpha.faer_mul(colmax).faer_mul(colmax.faer_div(rowmax)) {
                         kp = k;
                     } else if a.read(imax, imax).faer_real().faer_abs() >= alpha.faer_mul(rowmax) {
                         kp = imax;
-                        assign_col(w.rb_mut().subrows(k, n - k), k, k + 1);
+                        assign_col(w.rb_mut().subrows_mut(k, n - k), k, k + 1);
                     } else {
                         kp = imax;
                         k_step = 2;
@@ -285,17 +291,17 @@ pub mod compute {
                     for j in kk + 1..kp {
                         a.write(kp, j, a.read(j, kk).faer_conj());
                     }
-                    assign_col(a.rb_mut().subrows(kp + 1, n - kp - 1), kp, kk);
+                    assign_col(a.rb_mut().subrows_mut(kp + 1, n - kp - 1), kp, kk);
 
-                    swap_rows(a.rb_mut().subcols(0, k), kk, kp);
-                    swap_rows(w.rb_mut().subcols(0, kk + 1), kk, kp);
+                    swap_rows(a.rb_mut().subcols_mut(0, k), kk, kp);
+                    swap_rows(w.rb_mut().subcols_mut(0, kk + 1), kk, kp);
                 }
 
                 if k_step == 1 {
                     a.rb_mut()
-                        .subrows(k, n - k)
-                        .col(k)
-                        .clone_from(w.rb().subrows(k, n - k).col(k));
+                        .subrows_mut(k, n - k)
+                        .col_mut(k)
+                        .copy_from(w.rb().subrows(k, n - k).col(k));
 
                     let mut d11 = w.read(k, k).faer_real();
                     if has_eps {
@@ -321,10 +327,15 @@ pub mod compute {
                     let d11 = d11.faer_inv();
                     a.write(k, k, E::faer_from_real(d11));
 
-                    let x = a.rb_mut().subrows(k + 1, n - k - 1).col(k);
-                    zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
-                    zipped!(w.rb_mut().subrows(k + 1, n - k - 1).col(k))
-                        .for_each(|mut x| x.write(x.read().faer_conj()));
+                    let x = a.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k);
+                    zipped!(x.as_2d_mut())
+                        .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
+                    zipped!(w
+                        .rb_mut()
+                        .subrows_mut(k + 1, n - k - 1)
+                        .col_mut(k)
+                        .as_2d_mut())
+                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
                 } else {
                     let d21 = w.read(k + 1, k).faer_abs();
                     let d21_inv = d21.faer_inv();
@@ -395,10 +406,18 @@ pub mod compute {
                         a.write(j, k + 1, wkp1);
                     }
 
-                    zipped!(w.rb_mut().subrows(k + 1, n - k - 1).col(k))
-                        .for_each(|mut x| x.write(x.read().faer_conj()));
-                    zipped!(w.rb_mut().subrows(k + 2, n - k - 2).col(k + 1))
-                        .for_each(|mut x| x.write(x.read().faer_conj()));
+                    zipped!(w
+                        .rb_mut()
+                        .subrows_mut(k + 1, n - k - 1)
+                        .col_mut(k)
+                        .as_2d_mut())
+                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+                    zipped!(w
+                        .rb_mut()
+                        .subrows_mut(k + 2, n - k - 2)
+                        .col_mut(k + 1)
+                        .as_2d_mut())
+                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
                 }
             }
 
@@ -412,7 +431,7 @@ pub mod compute {
             k += k_step;
         }
 
-        let [a_left, mut a_right] = a.rb_mut().subrows(k, n - k).split_at_col(k);
+        let (a_left, mut a_right) = a.rb_mut().subrows_mut(k, n - k).split_at_col_mut(k);
         triangular::matmul(
             a_right.rb_mut(),
             BlockStructure::TriangularLower,
@@ -425,8 +444,8 @@ pub mod compute {
             parallelism,
         );
 
-        zipped!(a_right.diagonal().into_column_vector())
-            .for_each(|mut x| x.write(E::faer_from_real(x.read().faer_real())));
+        zipped!(a_right.diagonal_mut().column_vector_mut().as_2d_mut())
+            .for_each(|unzipped!(mut x)| x.write(E::faer_from_real(x.read().faer_real())));
 
         let mut j = k - 1;
         loop {
@@ -443,7 +462,7 @@ pub mod compute {
             j -= 1;
 
             if jp != jj {
-                swap_rows(a.rb_mut().subcols(0, j + 1), jp, jj);
+                swap_rows(a.rb_mut().subcols_mut(0, j + 1), jp, jj);
             }
             if j == 0 {
                 return (k, pivot_count, dynamic_regularization_count);
@@ -486,7 +505,7 @@ pub mod compute {
 
             if k + 1 < n {
                 (imax, _, colmax) =
-                    best_score_idx(a.rb().col(k).subrows(k + 1, n - k - 1)).unwrap();
+                    best_score_idx(a.rb().col(k).subrows(k + 1, n - k - 1).as_2d()).unwrap();
             } else {
                 imax = 0;
                 colmax = E::Real::faer_zero();
@@ -516,8 +535,8 @@ pub mod compute {
                     kp = k;
                 } else {
                     let rowmax = max(
-                        best_score(a.rb().row(imax).subcols(k, imax - k)),
-                        best_score(a.rb().subrows(imax + 1, n - imax - 1).col(imax)),
+                        best_score(a.rb().row(imax).subcols(k, imax - k).as_2d()),
+                        best_score(a.rb().subrows(imax + 1, n - imax - 1).col(imax).as_2d()),
                     );
 
                     if abs_akk >= alpha.faer_mul(colmax).faer_mul(colmax.faer_div(rowmax)) {
@@ -534,7 +553,7 @@ pub mod compute {
 
                 if kp != kk {
                     pivot_count += 1;
-                    swap_cols(a.rb_mut().subrows(kp + 1, n - kp - 1), kk, kp);
+                    swap_cols(a.rb_mut().subrows_mut(kp + 1, n - kp - 1), kk, kp);
                     for j in kk + 1..kp {
                         swap_elems_conj(a.rb_mut(), j, kk, kp, j);
                     }
@@ -572,11 +591,11 @@ pub mod compute {
                     let d11 = d11.faer_inv();
                     a.write(k, k, E::faer_from_real(d11));
 
-                    let [x, mut trailing] = a
+                    let (x, mut trailing) = a
                         .rb_mut()
-                        .subrows(k + 1, n - k - 1)
-                        .subcols(k, n - k)
-                        .split_at_col(1);
+                        .subrows_mut(k + 1, n - k - 1)
+                        .subcols_mut(k, n - k)
+                        .split_at_col_mut(1);
 
                     for j in 0..n - k - 1 {
                         let d11xj = x.read(j, 0).faer_conj().faer_scale_real(d11);
@@ -586,7 +605,7 @@ pub mod compute {
                         }
                         make_real(trailing.rb_mut(), j, j);
                     }
-                    zipped!(x).for_each(|mut x| x.write(x.read().faer_scale_real(d11)));
+                    zipped!(x).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
                 } else {
                     let d21 = a.read(k + 1, k).faer_abs();
                     let d21_inv = d21.faer_inv();
@@ -709,10 +728,10 @@ pub mod compute {
             let p = pivots[i].to_signed().sx();
             if (p as isize) < 0 {
                 let p = !p;
-                swap_rows(a.rb_mut().subcols(0, i), i + 1, p);
+                swap_rows(a.rb_mut().subcols_mut(0, i), i + 1, p);
                 i += 2;
             } else {
-                swap_rows(a.rb_mut().subcols(0, i), i, p);
+                swap_rows(a.rb_mut().subcols_mut(0, i), i, p);
                 i += 1;
             }
         }
@@ -814,7 +833,7 @@ pub mod compute {
             let piv_count;
             if bs >= 2 && bs < n - k {
                 (kb, piv_count, reg_count) = cholesky_diagonal_pivoting_blocked_step(
-                    matrix.rb_mut().submatrix(k, k, n - k, n - k),
+                    matrix.rb_mut().submatrix_mut(k, k, n - k, n - k),
                     regularization,
                     work.rb_mut(),
                     &mut pivots[k..],
@@ -823,7 +842,7 @@ pub mod compute {
                 );
             } else {
                 (piv_count, reg_count) = cholesky_diagonal_pivoting_unblocked(
-                    matrix.rb_mut().submatrix(k, k, n - k, n - k),
+                    matrix.rb_mut().submatrix_mut(k, k, n - k, n - k),
                     regularization,
                     &mut pivots[k..],
                     alpha,
@@ -878,9 +897,7 @@ pub mod compute {
 
 pub mod solve {
     use super::*;
-
-    #[cfg(feature = "assert2")]
-    use assert2::assert;
+    use faer_core::assert;
 
     #[track_caller]
     pub fn solve_in_place_req<I: Index, E: Entity>(
@@ -983,9 +1000,8 @@ mod tests {
     use crate::bunch_kaufman::compute::BunchKaufmanParams;
 
     use super::*;
-    use assert2::assert;
     use dyn_stack::GlobalPodBuffer;
-    use faer_core::{c64, Mat};
+    use faer_core::{assert, c64, Mat};
     use rand::random;
 
     #[test]
@@ -1032,7 +1048,7 @@ mod tests {
 
             let err = &a * &x - &rhs;
             let mut max = 0.0;
-            zipped!(err.as_ref()).for_each(|err| {
+            zipped!(err.as_ref()).for_each(|unzipped!(err)| {
                 let err = err.read().abs();
                 if err > max {
                     max = err
@@ -1089,7 +1105,7 @@ mod tests {
 
             let err = a.conjugate() * &x - &rhs;
             let mut max = 0.0;
-            zipped!(err.as_ref()).for_each(|err| {
+            zipped!(err.as_ref()).for_each(|unzipped!(err)| {
                 let err = err.read().abs();
                 if err > max {
                     max = err

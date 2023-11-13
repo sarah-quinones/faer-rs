@@ -1,11 +1,11 @@
 //! Matrix multiplication.
 
-use crate::{
-    c32, c64, transmute_unchecked, zipped, ComplexField, Conj, Conjugate, DivCeil, MatMut, MatRef,
-    Parallelism, SimdGroupFor,
-};
 #[cfg(feature = "std")]
-use assert2::assert;
+use crate::assert;
+use crate::{
+    c32, c64, group_helpers::*, transmute_unchecked, unzipped, zipped, ComplexField, Conj,
+    Conjugate, DivCeil, MatMut, MatRef, Parallelism, SimdGroupFor,
+};
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use faer_entity::{SimdCtx, *};
 use pulp::Simd;
@@ -14,341 +14,182 @@ use reborrow::*;
 #[doc(hidden)]
 pub mod inner_prod {
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::assert;
 
     #[inline(always)]
-    pub fn conditional_conj_mul_adde<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: SimdGroupFor<E, S>,
-        b: SimdGroupFor<E, S>,
-        acc: SimdGroupFor<E, S>,
+    fn a_x_b_accumulate1<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        a: SliceGroup<E>,
+        b: SliceGroup<E>,
+        offset: pulp::Offset<E::SimdMask<S>>,
     ) -> SimdGroupFor<E, S> {
-        if CONJ_A {
-            E::faer_simd_conj_mul_adde(simd, a, b, acc)
-        } else {
-            E::faer_simd_mul_adde(simd, a, b, acc)
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (b_head, b_body, b_tail) = simd.as_aligned_simd(b, offset);
+        let zero = simd.splat(E::faer_zero());
+        let mut acc0 = simd.conditional_conj_mul(conj, a_head.read_or(zero), b_head.read_or(zero));
+
+        let a_body1 = a_body;
+        let b_body1 = b_body;
+        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
         }
+        simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0)
     }
 
     #[inline(always)]
-    fn a_x_b_accumulate_prologue1<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
-        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    fn a_x_b_accumulate2<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        a: SliceGroup<E>,
+        b: SliceGroup<E>,
+        offset: pulp::Offset<E::SimdMask<S>>,
     ) -> SimdGroupFor<E, S> {
-        assert!(E::N_COMPONENTS > 0);
-        let mut len = usize::MAX;
-        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (b_head, b_body, b_tail) = simd.as_aligned_simd(b, offset);
+        let zero = simd.splat(E::faer_zero());
+        let mut acc0 = simd.conditional_conj_mul(conj, a_head.read_or(zero), b_head.read_or(zero));
+        let mut acc1 = zero;
 
-        let zero = E::faer_simd_splat(simd, E::faer_zero());
-        let mut acc = E::faer_copy(&zero);
-        for (a, b) in zip(E::faer_into_iter(a), E::faer_into_iter(b)) {
-            acc = conditional_conj_mul_adde::<CONJ_A, E, S>(
-                simd,
-                E::faer_deref(a),
-                E::faer_deref(b),
-                acc,
-            );
+        let (a_body2, a_body1) = a_body.as_arrays::<2>();
+        let (b_body2, b_body1) = b_body.as_arrays::<2>();
+        for ([a0, a1], [b0, b1]) in zip(
+            a_body2.into_ref_iter().map(RefGroup::unzip),
+            b_body2.into_ref_iter().map(RefGroup::unzip),
+        ) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
+            acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
         }
-        acc
+        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
+        }
+        acc0 =
+            simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0);
+        simd.add(acc0, acc1)
     }
 
     #[inline(always)]
-    fn a_x_b_accumulate_prologue2<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
-        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    fn a_x_b_accumulate4<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        a: SliceGroup<E>,
+        b: SliceGroup<E>,
+        offset: pulp::Offset<E::SimdMask<S>>,
     ) -> SimdGroupFor<E, S> {
-        assert!(E::N_COMPONENTS > 0);
-        let mut len = usize::MAX;
-        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (b_head, b_body, b_tail) = simd.as_aligned_simd(b, offset);
+        let zero = simd.splat(E::faer_zero());
+        let mut acc0 = simd.conditional_conj_mul(conj, a_head.read_or(zero), b_head.read_or(zero));
+        let mut acc1 = zero;
+        let mut acc2 = zero;
+        let mut acc3 = zero;
 
-        let zero = E::faer_simd_splat(simd, E::faer_zero());
-
-        let mut acc0 = E::faer_copy(&zero);
-        let mut acc1 = E::faer_copy(&zero);
-
-        let (a_head, a_tail) = E::faer_as_arrays::<2, _>(a);
-        let (b_head, b_tail) = E::faer_as_arrays::<2, _>(b);
-
-        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
-            let [a0, a1] = E::faer_unzip2(E::faer_deref(a));
-            let [b0, b1] = E::faer_unzip2(E::faer_deref(b));
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
-            acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
+        let (a_body4, a_body1) = a_body.as_arrays::<4>();
+        let (b_body4, b_body1) = b_body.as_arrays::<4>();
+        for ([a0, a1, a2, a3], [b0, b1, b2, b3]) in zip(
+            a_body4.into_ref_iter().map(RefGroup::unzip),
+            b_body4.into_ref_iter().map(RefGroup::unzip),
+        ) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
+            acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
+            acc2 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc2);
+            acc3 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc3);
         }
-        acc0 = E::faer_simd_add(simd, acc0, acc1);
-
-        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
-                simd,
-                E::faer_deref(a),
-                E::faer_deref(b),
-                acc0,
-            );
+        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
         }
-
-        acc0
+        acc0 =
+            simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0);
+        simd.add(simd.add(acc0, acc1), simd.add(acc2, acc3))
     }
 
     #[inline(always)]
-    fn a_x_b_accumulate_prologue4<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
-        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
+    fn a_x_b_accumulate8<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        a: SliceGroup<E>,
+        b: SliceGroup<E>,
+        offset: pulp::Offset<E::SimdMask<S>>,
     ) -> SimdGroupFor<E, S> {
-        assert!(E::N_COMPONENTS > 0);
-        let mut len = usize::MAX;
-        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (b_head, b_body, b_tail) = simd.as_aligned_simd(b, offset);
+        let zero = simd.splat(E::faer_zero());
+        let mut acc0 = simd.conditional_conj_mul(conj, a_head.read_or(zero), b_head.read_or(zero));
+        let mut acc1 = zero;
+        let mut acc2 = zero;
+        let mut acc3 = zero;
+        let mut acc4 = zero;
+        let mut acc5 = zero;
+        let mut acc6 = zero;
+        let mut acc7 = zero;
 
-        let zero = E::faer_simd_splat(simd, E::faer_zero());
-
-        let mut acc0 = E::faer_copy(&zero);
-        let mut acc1 = E::faer_copy(&zero);
-        let mut acc2 = E::faer_copy(&zero);
-        let mut acc3 = E::faer_copy(&zero);
-
-        let (a_head, a_tail) = E::faer_as_arrays::<4, _>(a);
-        let (b_head, b_tail) = E::faer_as_arrays::<4, _>(b);
-
-        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
-            let [a0, a1, a2, a3] = E::faer_unzip4(E::faer_deref(a));
-            let [b0, b1, b2, b3] = E::faer_unzip4(E::faer_deref(b));
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
-            acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
-            acc2 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a2, b2, acc2);
-            acc3 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a3, b3, acc3);
+        let (a_body8, a_body1) = a_body.as_arrays::<8>();
+        let (b_body8, b_body1) = b_body.as_arrays::<8>();
+        for ([a0, a1, a2, a3, a4, a5, a6, a7], [b0, b1, b2, b3, b4, b5, b6, b7]) in zip(
+            a_body8.into_ref_iter().map(RefGroup::unzip),
+            b_body8.into_ref_iter().map(RefGroup::unzip),
+        ) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
+            acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
+            acc2 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc2);
+            acc3 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc3);
+            acc4 = simd.conditional_conj_mul_add_e(conj, a4.read_or(zero), b4.read_or(zero), acc4);
+            acc5 = simd.conditional_conj_mul_add_e(conj, a5.read_or(zero), b5.read_or(zero), acc5);
+            acc6 = simd.conditional_conj_mul_add_e(conj, a6.read_or(zero), b6.read_or(zero), acc6);
+            acc7 = simd.conditional_conj_mul_add_e(conj, a7.read_or(zero), b7.read_or(zero), acc7);
         }
-        acc0 = E::faer_simd_add(simd, acc0, acc1);
-        acc2 = E::faer_simd_add(simd, acc2, acc3);
-
-        acc0 = E::faer_simd_add(simd, acc0, acc2);
-
-        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
-                simd,
-                E::faer_deref(a),
-                E::faer_deref(b),
-                acc0,
-            );
+        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
+            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
         }
-
-        acc0
+        acc0 =
+            simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0);
+        simd.add(
+            simd.add(simd.add(acc0, acc1), simd.add(acc2, acc3)),
+            simd.add(simd.add(acc4, acc5), simd.add(acc6, acc7)),
+        )
     }
 
     #[inline(always)]
-    fn a_x_b_accumulate_prologue8<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: GroupFor<E, &[SimdUnitFor<E, S>]>,
-        b: GroupFor<E, &[SimdUnitFor<E, S>]>,
-    ) -> SimdGroupFor<E, S> {
-        assert!(E::N_COMPONENTS > 0);
-        let mut len = usize::MAX;
-        E::faer_map(E::faer_as_ref(&a), |slice| len = (**slice).len());
-
-        let zero = E::faer_simd_splat(simd, E::faer_zero());
-
-        let mut acc0 = E::faer_copy(&zero);
-        let mut acc1 = E::faer_copy(&zero);
-        let mut acc2 = E::faer_copy(&zero);
-        let mut acc3 = E::faer_copy(&zero);
-        let mut acc4 = E::faer_copy(&zero);
-        let mut acc5 = E::faer_copy(&zero);
-        let mut acc6 = E::faer_copy(&zero);
-        let mut acc7 = E::faer_copy(&zero);
-
-        let (a_head, a_tail) = E::faer_as_arrays::<8, _>(a);
-        let (b_head, b_tail) = E::faer_as_arrays::<8, _>(b);
-
-        for (a, b) in zip(E::faer_into_iter(a_head), E::faer_into_iter(b_head)) {
-            let [a0, a1, a2, a3, a4, a5, a6, a7] = E::faer_unzip8(E::faer_deref(a));
-            let [b0, b1, b2, b3, b4, b5, b6, b7] = E::faer_unzip8(E::faer_deref(b));
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a0, b0, acc0);
-            acc1 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a1, b1, acc1);
-            acc2 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a2, b2, acc2);
-            acc3 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a3, b3, acc3);
-            acc4 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a4, b4, acc4);
-            acc5 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a5, b5, acc5);
-            acc6 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a6, b6, acc6);
-            acc7 = conditional_conj_mul_adde::<CONJ_A, E, S>(simd, a7, b7, acc7);
-        }
-        acc0 = E::faer_simd_add(simd, acc0, acc1);
-        acc2 = E::faer_simd_add(simd, acc2, acc3);
-        acc4 = E::faer_simd_add(simd, acc4, acc5);
-        acc6 = E::faer_simd_add(simd, acc6, acc7);
-
-        acc0 = E::faer_simd_add(simd, acc0, acc2);
-        acc4 = E::faer_simd_add(simd, acc4, acc6);
-
-        acc0 = E::faer_simd_add(simd, acc0, acc4);
-
-        for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
-            acc0 = conditional_conj_mul_adde::<CONJ_A, E, S>(
-                simd,
-                E::faer_deref(a),
-                E::faer_deref(b),
-                acc0,
-            );
-        }
-
-        acc0
-    }
-
-    #[inline(always)]
-    fn a_x_b_accumulate_simd<const CONJ_A: bool, E: ComplexField, S: Simd>(
-        simd: S,
-        a: GroupFor<E, &[UnitFor<E>]>,
-        b: GroupFor<E, &[UnitFor<E>]>,
+    pub fn with_simd_and_offset<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        a: SliceGroup<E>,
+        b: SliceGroup<E>,
+        offset: pulp::Offset<E::SimdMask<S>>,
     ) -> E {
         {
-            let mut len = 0;
-            E::faer_map(E::faer_as_ref(&a), |slice| len = slice.len());
-
-            let (a_head, a_tail) = slice_as_simd::<E, S>(a);
-            let (b_head, b_tail) = slice_as_simd::<E, S>(b);
             let prologue = if E::N_COMPONENTS == 1 {
-                a_x_b_accumulate_prologue8::<CONJ_A, E, S>(simd, a_head, b_head)
+                a_x_b_accumulate8(simd, conj, a, b, offset)
             } else if E::N_COMPONENTS == 2 {
-                a_x_b_accumulate_prologue4::<CONJ_A, E, S>(simd, a_head, b_head)
+                a_x_b_accumulate4(simd, conj, a, b, offset)
             } else if E::N_COMPONENTS == 4 {
-                a_x_b_accumulate_prologue2::<CONJ_A, E, S>(simd, a_head, b_head)
+                a_x_b_accumulate2(simd, conj, a, b, offset)
             } else {
-                a_x_b_accumulate_prologue1::<CONJ_A, E, S>(simd, a_head, b_head)
+                a_x_b_accumulate1(simd, conj, a, b, offset)
             };
 
-            let mut rem = 0;
-            E::faer_map(E::faer_as_ref(&a_tail), |slice| rem = slice.len());
-
-            let mut acc = if len > rem {
-                E::faer_simd_reduce_add(simd, prologue)
-            } else {
-                E::faer_zero()
-            };
-
-            let a = {
-                #[inline(always)]
-                |i: usize| unsafe {
-                    let a = E::faer_from_units(E::faer_deref(E::faer_map(
-                        E::faer_copy(&a_tail),
-                        |slice| slice.get_unchecked(i),
-                    )));
-
-                    if CONJ_A {
-                        a.faer_conj()
-                    } else {
-                        a
-                    }
-                }
-            };
-
-            let b = {
-                #[inline(always)]
-                |i: usize| unsafe {
-                    E::faer_from_units(E::faer_deref(E::faer_map(E::faer_copy(&b_tail), |slice| {
-                        slice.get_unchecked(i)
-                    })))
-                }
-            };
-
-            match rem {
-                0 => {}
-                1 => {
-                    acc = acc.faer_add(a(0).faer_mul(b(0)));
-                }
-                2 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-
-                    acc = acc.faer_add(x0.faer_add(x1));
-                }
-                3 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-                    let x2 = a(2).faer_mul(b(2));
-                    acc = acc.faer_add(x0.faer_add(x1).faer_add(x2));
-                }
-                4 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-                    let x2 = a(2).faer_mul(b(2));
-                    let x3 = a(3).faer_mul(b(3));
-                    acc = acc.faer_add(E::faer_add(x0.faer_add(x1), x2.faer_add(x3)));
-                }
-                5 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-                    let x2 = a(2).faer_mul(b(2));
-                    let x3 = a(3).faer_mul(b(3));
-                    let x4 = a(4).faer_mul(b(4));
-                    acc = acc.faer_add(E::faer_add(x0.faer_add(x1), x2.faer_add(x3).faer_add(x4)));
-                }
-                6 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-                    let x2 = a(2).faer_mul(b(2));
-                    let x3 = a(3).faer_mul(b(3));
-                    let x4 = a(4).faer_mul(b(4));
-                    let x5 = a(5).faer_mul(b(5));
-                    acc = acc.faer_add(E::faer_add(
-                        x0.faer_add(x1).faer_add(x2),
-                        x3.faer_add(x4).faer_add(x5),
-                    ));
-                }
-                7 => {
-                    let x0 = a(0).faer_mul(b(0));
-                    let x1 = a(1).faer_mul(b(1));
-                    let x2 = a(2).faer_mul(b(2));
-                    let x3 = a(3).faer_mul(b(3));
-                    let x4 = a(4).faer_mul(b(4));
-                    let x5 = a(5).faer_mul(b(5));
-                    let x6 = a(6).faer_mul(b(6));
-                    acc = acc.faer_add(E::faer_add(
-                        E::faer_add(E::faer_add(x0, x1), E::faer_add(x2, x3)),
-                        x4.faer_add(x5).faer_add(x6),
-                    ));
-                }
-                _ => {
-                    for (a, b) in zip(E::faer_into_iter(a_tail), E::faer_into_iter(b_tail)) {
-                        let a = E::faer_from_units(E::faer_deref(a));
-                        let a = if CONJ_A { a.faer_conj() } else { a };
-                        let b = E::faer_from_units(E::faer_deref(b));
-                        acc = E::faer_add(acc, E::faer_mul(a, b));
-                    }
-                }
-            }
-
-            acc
+            simd.reduce_add(simd.rotate_left(prologue, offset.rotate_left_amount()))
         }
     }
 
-    pub struct AccNoConjAxB<'a, E: ComplexField> {
-        pub a: GroupFor<E, &'a [UnitFor<E>]>,
-        pub b: GroupFor<E, &'a [UnitFor<E>]>,
-    }
-    pub struct AccConjAxB<'a, E: ComplexField> {
-        pub a: GroupFor<E, &'a [UnitFor<E>]>,
-        pub b: GroupFor<E, &'a [UnitFor<E>]>,
+    pub struct Impl<'a, C: ConjTy, E: ComplexField> {
+        pub a: SliceGroup<'a, E>,
+        pub b: SliceGroup<'a, E>,
+        pub conj: C,
     }
 
-    impl<E: ComplexField> pulp::WithSimd for AccNoConjAxB<'_, E> {
+    impl<C: ConjTy, E: ComplexField> pulp::WithSimd for Impl<'_, C, E> {
         type Output = E;
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            a_x_b_accumulate_simd::<false, E, S>(simd, self.a, self.b)
-        }
-    }
-    impl<E: ComplexField> pulp::WithSimd for AccConjAxB<'_, E> {
-        type Output = E;
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            a_x_b_accumulate_simd::<true, E, S>(simd, self.a, self.b)
+            let simd = SimdFor::new(simd);
+            with_simd_and_offset(simd, self.conj, self.a, self.b, simd.align_offset(self.a))
         }
     }
 
     #[inline(always)]
+    #[track_caller]
     pub fn inner_prod_with_conj_arch<E: ComplexField>(
         arch: E::Simd,
         lhs: MatRef<'_, E>,
@@ -368,36 +209,44 @@ pub mod inner_prod {
         }
 
         let res = if a.row_stride() == 1 && b.row_stride() == 1 {
-            let a = E::faer_map(a.as_ptr(), |ptr| unsafe {
-                core::slice::from_raw_parts(ptr, nrows)
-            });
-            let b = E::faer_map(b.as_ptr(), |ptr| unsafe {
-                core::slice::from_raw_parts(ptr, nrows)
-            });
-
+            let a = SliceGroup::<'_, E>::new(a.try_get_contiguous_col(0));
+            let b = SliceGroup::<'_, E>::new(b.try_get_contiguous_col(0));
             if conj_lhs == conj_rhs {
-                arch.dispatch(AccNoConjAxB::<E> { a, b })
+                arch.dispatch(Impl { a, b, conj: NoConj })
             } else {
-                arch.dispatch(AccConjAxB::<E> { a, b })
+                arch.dispatch(Impl {
+                    a,
+                    b,
+                    conj: YesConj,
+                })
             }
         } else {
-            unsafe {
-                let mut acc = E::faer_zero();
-                if conj_lhs == conj_rhs {
-                    for i in 0..nrows {
-                        acc = acc
-                            .faer_add(E::faer_mul(a.read_unchecked(i, 0), b.read_unchecked(i, 0)));
+            crate::constrained::Size::with2(
+                nrows,
+                1,
+                #[inline(always)]
+                |nrows, ncols| {
+                    let zero_idx = ncols.check(0);
+
+                    let a = crate::constrained::MatRef::new(a, nrows, ncols);
+                    let b = crate::constrained::MatRef::new(b, nrows, ncols);
+                    let mut acc = E::faer_zero();
+                    if conj_lhs == conj_rhs {
+                        for i in nrows.indices() {
+                            acc =
+                                acc.faer_add(E::faer_mul(a.read(i, zero_idx), b.read(i, zero_idx)));
+                        }
+                    } else {
+                        for i in nrows.indices() {
+                            acc = acc.faer_add(E::faer_mul(
+                                a.read(i, zero_idx).faer_conj(),
+                                b.read(i, zero_idx),
+                            ));
+                        }
                     }
-                } else {
-                    for i in 0..nrows {
-                        acc = acc.faer_add(E::faer_mul(
-                            a.read_unchecked(i, 0).faer_conj(),
-                            b.read_unchecked(i, 0),
-                        ));
-                    }
-                }
-                acc
-            }
+                    acc
+                },
+            )
         };
 
         match conj_rhs {
@@ -407,6 +256,7 @@ pub mod inner_prod {
     }
 
     #[inline]
+    #[track_caller]
     pub fn inner_prod_with_conj<E: ComplexField>(
         lhs: MatRef<'_, E>,
         conj_lhs: Conj,
@@ -417,10 +267,10 @@ pub mod inner_prod {
     }
 }
 
-mod matvec_rowmajor {
+#[doc(hidden)]
+pub mod matvec_rowmajor {
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::assert;
 
     fn matvec_with_conj_impl<E: ComplexField>(
         acc: MatMut<'_, E>,
@@ -483,77 +333,68 @@ mod matvec_rowmajor {
     }
 }
 
-mod matvec_colmajor {
+#[doc(hidden)]
+pub mod matvec_colmajor {
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::assert;
 
-    pub struct NoConjImpl<'a, E: ComplexField> {
-        pub acc: GroupFor<E, &'a mut [UnitFor<E>]>,
-        pub a: GroupFor<E, &'a [UnitFor<E>]>,
-        pub b: E,
-    }
-    pub struct ConjImpl<'a, E: ComplexField> {
-        pub acc: GroupFor<E, &'a mut [UnitFor<E>]>,
-        pub a: GroupFor<E, &'a [UnitFor<E>]>,
+    pub struct Impl<'a, C: ConjTy, E: ComplexField> {
+        pub conj: C,
+        pub acc: SliceGroupMut<'a, E>,
+        pub a: SliceGroup<'a, E>,
         pub b: E,
     }
 
-    impl<E: ComplexField> pulp::WithSimd for NoConjImpl<'_, E> {
-        type Output = ();
+    #[inline(always)]
+    pub fn with_simd_and_offset<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        acc: SliceGroupMut<'_, E>,
+        a: SliceGroup<'_, E>,
+        b: E,
+        offset: pulp::Offset<SimdMaskFor<E, S>>,
+    ) {
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (acc_head, acc_body, acc_tail) = simd.as_aligned_simd_mut(acc, offset);
+        let b = simd.splat(b);
 
         #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-            let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-            {
-                let b = E::faer_simd_splat(simd, self.b);
-
-                for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head)) {
-                    let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
-                    let a = E::faer_deref(a);
-                    acc = E::faer_simd_mul_adde(simd, E::faer_copy(&b), a, acc);
-                    E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                }
-            }
-
-            let b = self.b;
-            for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
-                let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_))));
-                let a = E::faer_from_units(E::faer_deref(a));
-                acc = acc.faer_add(E::faer_mul(b, a));
-                let acc = E::faer_into_units(acc);
-                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-            }
+        pub fn process<C: ConjTy, E: ComplexField, S: Simd>(
+            simd: SimdFor<E, S>,
+            conj: C,
+            mut acc: impl Write<Output = SimdGroupFor<E, S>>,
+            a: impl Read<Output = SimdGroupFor<E, S>>,
+            b: SimdGroupFor<E, S>,
+        ) {
+            acc.write(simd.conditional_conj_mul_add_e(
+                conj,
+                a.read_or(simd.splat(E::faer_zero())),
+                b,
+                acc.read_or(simd.splat(E::faer_zero())),
+            ))
         }
+
+        process(simd, conj, acc_head, a_head, b);
+        for (acc, a) in acc_body.into_mut_iter().zip(a_body.into_ref_iter()) {
+            process(simd, conj, acc, a, b);
+        }
+        process(simd, conj, acc_tail, a_tail, b);
     }
 
-    impl<E: ComplexField> pulp::WithSimd for ConjImpl<'_, E> {
+    impl<C: ConjTy, E: ComplexField> pulp::WithSimd for Impl<'_, C, E> {
         type Output = ();
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-            let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-            {
-                let b = E::faer_simd_splat(simd, self.b);
-
-                for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head)) {
-                    let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
-                    let a = E::faer_deref(a);
-                    acc = E::faer_simd_conj_mul_adde(simd, a, E::faer_copy(&b), acc);
-                    E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                }
-            }
-
-            let b = self.b;
-            for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
-                let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_))));
-                let a = E::faer_from_units(E::faer_deref(a));
-                acc = acc.faer_add(a.faer_conj().faer_mul(b));
-                let acc = E::faer_into_units(acc);
-                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-            }
+            let simd = SimdFor::new(simd);
+            with_simd_and_offset(
+                simd,
+                self.conj,
+                self.acc,
+                self.a,
+                self.b,
+                simd.align_offset(self.a),
+            )
         }
     }
 
@@ -576,22 +417,12 @@ mod matvec_colmajor {
         assert!(a.row_stride() == 1);
         assert!(acc.row_stride() == 1);
 
-        let mut acc = E::faer_map(
-            acc.as_ptr(),
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-        );
+        let mut acc = SliceGroupMut::<'_, E>::new(acc.try_get_contiguous_col_mut(0));
 
         let arch = E::Simd::default();
         for j in 0..n {
-            let a = a.submatrix(0, j, m, 1);
-            let acc = E::faer_rb_mut(E::faer_as_mut(&mut acc));
-
-            let a = E::faer_map(
-                a.as_ptr(),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-            );
+            let acc = acc.rb_mut();
+            let a = SliceGroup::<'_, E>::new(a.try_get_contiguous_col(j));
             let b = b.read(j, 0);
             let b = match conj_b {
                 Conj::Yes => b.faer_conj(),
@@ -600,8 +431,18 @@ mod matvec_colmajor {
             let b = b.faer_mul(beta);
 
             match conj_a {
-                Conj::Yes => arch.dispatch(ConjImpl { acc, a, b }),
-                Conj::No => arch.dispatch(NoConjImpl { acc, a, b }),
+                Conj::Yes => arch.dispatch(Impl {
+                    conj: YesConj,
+                    acc,
+                    a,
+                    b,
+                }),
+                Conj::No => arch.dispatch(Impl {
+                    conj: NoConj,
+                    acc,
+                    a,
+                    b,
+                }),
             }
         }
     }
@@ -675,7 +516,7 @@ pub mod matvec {
 
         if a.row_stride() < 0 {
             a = a.reverse_rows();
-            acc = acc.reverse_rows();
+            acc = acc.reverse_rows_mut();
         }
         if a.col_stride() < 0 {
             a = a.reverse_cols();
@@ -723,169 +564,104 @@ pub mod matvec {
 #[doc(hidden)]
 pub mod outer_prod {
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::assert;
 
-    struct NoConjImpl<'a, E: ComplexField> {
-        acc: GroupFor<E, &'a mut [UnitFor<E>]>,
-        alpha: Option<E>,
-        a: GroupFor<E, &'a [UnitFor<E>]>,
-        b: E,
-    }
-    struct ConjImpl<'a, E: ComplexField> {
-        acc: GroupFor<E, &'a mut [UnitFor<E>]>,
-        alpha: Option<E>,
-        a: GroupFor<E, &'a [UnitFor<E>]>,
-        b: E,
+    pub struct Impl<'a, C: ConjTy, E: ComplexField> {
+        pub conj: C,
+        pub acc: SliceGroupMut<'a, E>,
+        pub a: SliceGroup<'a, E>,
+        pub b: E,
+        pub alpha: Option<E>,
     }
 
-    impl<E: ComplexField> pulp::WithSimd for NoConjImpl<'_, E> {
-        type Output = ();
-
-        #[inline(always)]
-        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            match self.alpha {
-                Some(alpha) => {
-                    if alpha == E::faer_one() {
-                        matvec_colmajor::NoConjImpl {
-                            acc: self.acc,
-                            a: self.a,
-                            b: self.b,
-                        }
-                        .with_simd(simd);
-                    } else {
-                        let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-                        let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-                        {
-                            let alpha = E::faer_simd_splat(simd, alpha);
-                            let b = E::faer_simd_splat(simd, self.b);
-
-                            for (acc_, a) in
-                                zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
-                            {
-                                let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
-                                let a = E::faer_deref(a);
-                                acc = E::faer_simd_mul_adde(
-                                    simd,
-                                    E::faer_copy(&b),
-                                    a,
-                                    E::faer_simd_mul(simd, E::faer_copy(&alpha), acc),
-                                );
-                                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                            }
-                        }
-
-                        let b = self.b;
-                        for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail))
-                        {
-                            let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(
-                                E::faer_as_ref(&acc_),
-                            )));
-                            let a = E::faer_from_units(E::faer_deref(a));
-                            acc = E::faer_add(E::faer_mul(a, b), E::faer_mul(alpha, acc));
-                            let acc = E::faer_into_units(acc);
-                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                        }
-                    }
+    #[inline(always)]
+    pub fn with_simd_and_offset<C: ConjTy, E: ComplexField, S: Simd>(
+        simd: SimdFor<E, S>,
+        conj: C,
+        acc: SliceGroupMut<'_, E>,
+        a: SliceGroup<'_, E>,
+        b: E,
+        alpha: Option<E>,
+        offset: pulp::Offset<SimdMaskFor<E, S>>,
+    ) {
+        match alpha {
+            Some(alpha) => {
+                if alpha == E::faer_one() {
+                    return matvec_colmajor::with_simd_and_offset(simd, conj, acc, a, b, offset);
                 }
-                None => {
-                    let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-                    let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-                    {
-                        let b = E::faer_simd_splat(simd, self.b);
 
-                        for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
-                        {
-                            let a = E::faer_deref(a);
-                            let acc = E::faer_simd_mul(simd, E::faer_copy(&b), a);
-                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                        }
-                    }
+                let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+                let (acc_head, acc_body, acc_tail) = simd.as_aligned_simd_mut(acc, offset);
+                let b = simd.splat(b);
+                let alpha = simd.splat(alpha);
 
-                    let b = self.b;
-                    for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
-                        let a = E::faer_from_units(E::faer_deref(a));
-                        let acc = E::faer_mul(b, a);
-                        let acc = E::faer_into_units(acc);
-                        E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                    }
+                #[inline(always)]
+                pub fn process<C: ConjTy, E: ComplexField, S: Simd>(
+                    simd: SimdFor<E, S>,
+                    conj: C,
+                    mut acc: impl Write<Output = SimdGroupFor<E, S>>,
+                    a: impl Read<Output = SimdGroupFor<E, S>>,
+                    b: SimdGroupFor<E, S>,
+                    alpha: SimdGroupFor<E, S>,
+                ) {
+                    acc.write(simd.conditional_conj_mul_add_e(
+                        conj,
+                        a.read_or(simd.splat(E::faer_zero())),
+                        b,
+                        simd.mul(alpha, acc.read_or(simd.splat(E::faer_zero()))),
+                    ))
                 }
+
+                process(simd, conj, acc_head, a_head, b, alpha);
+                for (acc, a) in acc_body.into_mut_iter().zip(a_body.into_ref_iter()) {
+                    process(simd, conj, acc, a, b, alpha);
+                }
+                process(simd, conj, acc_tail, a_tail, b, alpha);
+            }
+            None => {
+                let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+                let (acc_head, acc_body, acc_tail) = simd.as_aligned_simd_mut(acc, offset);
+                let b = simd.splat(b);
+
+                #[inline(always)]
+                pub fn process<C: ConjTy, E: ComplexField, S: Simd>(
+                    simd: SimdFor<E, S>,
+                    conj: C,
+                    mut acc: impl Write<Output = SimdGroupFor<E, S>>,
+                    a: impl Read<Output = SimdGroupFor<E, S>>,
+                    b: SimdGroupFor<E, S>,
+                ) {
+                    acc.write(simd.conditional_conj_mul(
+                        conj,
+                        a.read_or(simd.splat(E::faer_zero())),
+                        b,
+                    ))
+                }
+
+                process(simd, conj, acc_head, a_head, b);
+                for (acc, a) in acc_body.into_mut_iter().zip(a_body.into_ref_iter()) {
+                    process(simd, conj, acc, a, b);
+                }
+                process(simd, conj, acc_tail, a_tail, b);
             }
         }
     }
 
-    impl<E: ComplexField> pulp::WithSimd for ConjImpl<'_, E> {
+    impl<C: ConjTy, E: ComplexField> pulp::WithSimd for Impl<'_, C, E> {
         type Output = ();
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-            match self.alpha {
-                Some(alpha) => {
-                    if alpha == E::faer_one() {
-                        matvec_colmajor::ConjImpl {
-                            acc: self.acc,
-                            a: self.a,
-                            b: self.b,
-                        }
-                        .with_simd(simd);
-                    } else {
-                        let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-                        let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-                        {
-                            let alpha = E::faer_simd_splat(simd, alpha);
-                            let b = E::faer_simd_splat(simd, self.b);
-
-                            for (acc_, a) in
-                                zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
-                            {
-                                let mut acc = E::faer_deref(E::faer_rb(E::faer_as_ref(&acc_)));
-                                let a = E::faer_deref(a);
-                                acc = E::faer_simd_conj_mul_adde(
-                                    simd,
-                                    a,
-                                    E::faer_copy(&b),
-                                    E::faer_simd_mul(simd, E::faer_copy(&alpha), acc),
-                                );
-                                E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                            }
-                        }
-
-                        let b = self.b;
-                        for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail))
-                        {
-                            let mut acc = E::faer_from_units(E::faer_deref(E::faer_rb(
-                                E::faer_as_ref(&acc_),
-                            )));
-                            let a = E::faer_from_units(E::faer_deref(a));
-                            acc = E::faer_add(a.faer_conj().faer_mul(b), alpha.faer_mul(acc));
-                            let acc = E::faer_into_units(acc);
-                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                        }
-                    }
-                }
-                None => {
-                    let (a_head, a_tail) = slice_as_simd::<E, S>(self.a);
-                    let (acc_head, acc_tail) = slice_as_mut_simd::<E, S>(self.acc);
-                    {
-                        let b = E::faer_simd_splat(simd, self.b);
-
-                        for (acc_, a) in zip(E::faer_into_iter(acc_head), E::faer_into_iter(a_head))
-                        {
-                            let a = E::faer_deref(a);
-                            let acc = E::faer_simd_conj_mul(simd, a, E::faer_copy(&b));
-                            E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                        }
-                    }
-
-                    let b = self.b;
-                    for (acc_, a) in zip(E::faer_into_iter(acc_tail), E::faer_into_iter(a_tail)) {
-                        let a = E::faer_from_units(E::faer_deref(a));
-                        let acc = E::faer_mul(a.faer_conj(), b);
-                        let acc = E::faer_into_units(acc);
-                        E::faer_map(E::faer_zip(acc_, acc), |(acc_, acc)| *acc_ = acc);
-                    }
-                }
-            }
+            let simd = SimdFor::new(simd);
+            with_simd_and_offset(
+                simd,
+                self.conj,
+                self.acc,
+                self.a,
+                self.b,
+                self.alpha,
+                simd.align_offset(self.a),
+            )
         }
     }
 
@@ -913,21 +689,10 @@ pub mod outer_prod {
 
         let arch = E::Simd::default();
 
-        let a = E::faer_map(
-            a.as_ptr(),
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-        );
+        let a = SliceGroup::new(a.try_get_contiguous_col(0));
 
         for j in 0..n {
-            let acc = acc.rb_mut();
-            let acc = E::faer_map(
-                acc.ptr_at(0, j),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-            );
-
-            let a = E::faer_copy(&a);
+            let acc = SliceGroupMut::new(acc.rb_mut().try_get_contiguous_col_mut(j));
             let b = b.read(j, 0);
             let b = match conj_b {
                 Conj::Yes => b.faer_conj(),
@@ -935,8 +700,20 @@ pub mod outer_prod {
             };
             let b = b.faer_mul(beta);
             match conj_a {
-                Conj::Yes => arch.dispatch(ConjImpl { acc, a, b, alpha }),
-                Conj::No => arch.dispatch(NoConjImpl { acc, a, b, alpha }),
+                Conj::Yes => arch.dispatch(Impl {
+                    conj: YesConj,
+                    acc,
+                    a,
+                    b,
+                    alpha,
+                }),
+                Conj::No => arch.dispatch(Impl {
+                    conj: NoConj,
+                    acc,
+                    a,
+                    b,
+                    alpha,
+                }),
             }
         }
     }
@@ -957,16 +734,16 @@ pub mod outer_prod {
         let mut conj_b = conj_rhs;
 
         if acc.row_stride() < 0 {
-            acc = acc.reverse_rows();
+            acc = acc.reverse_rows_mut();
             a = a.reverse_rows();
         }
         if acc.col_stride() < 0 {
-            acc = acc.reverse_cols();
+            acc = acc.reverse_cols_mut();
             b = b.reverse_rows();
         }
 
         if acc.row_stride() > a.col_stride() {
-            acc = acc.transpose();
+            acc = acc.transpose_mut();
             core::mem::swap(&mut a, &mut b);
             core::mem::swap(&mut conj_a, &mut conj_b);
         }
@@ -1064,20 +841,26 @@ impl<E: ComplexField> pulp::WithSimd for SimdLaneCount<E> {
     }
 }
 
-struct Ukr<'a, const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField> {
+struct Ukr<'a, const MR_DIV_N: usize, const NR: usize, CB: ConjTy, E: ComplexField> {
+    conj_b: CB,
     acc: MatMut<'a, E>,
     a: MatRef<'a, E>,
     b: MatRef<'a, E>,
 }
 
-impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField> pulp::WithSimd
-    for Ukr<'_, MR_DIV_N, NR, CONJ_B, E>
+impl<const MR_DIV_N: usize, const NR: usize, CB: ConjTy, E: ComplexField> pulp::WithSimd
+    for Ukr<'_, MR_DIV_N, NR, CB, E>
 {
     type Output = ();
 
     #[inline(always)]
     fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
-        let Self { mut acc, a, b } = self;
+        let Self {
+            mut acc,
+            a,
+            b,
+            conj_b,
+        } = self;
         let lane_count =
             core::mem::size_of::<SimdUnitFor<E, S>>() / core::mem::size_of::<UnitFor<E>>();
 
@@ -1094,8 +877,8 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
         assert!(acc.row_stride() == 1);
 
         let k = a.ncols();
-        let mut local_acc =
-            [[into_copy::<E, _>(E::faer_simd_splat(simd, E::faer_zero())); MR_DIV_N]; NR];
+        let mut local_acc = [[E::faer_simd_splat(simd, E::faer_zero()); MR_DIV_N]; NR];
+        let simd = SimdFor::<E, S>::new(simd);
 
         unsafe {
             let mut one_iter = {
@@ -1103,8 +886,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                 |depth| {
                     let a = a.ptr_inbounds_at(0, depth);
 
-                    let mut a_uninit =
-                        [MaybeUninit::<GroupCopyFor<E, SimdUnitFor<E, S>>>::uninit(); MR_DIV_N];
+                    let mut a_uninit = [MaybeUninit::<SimdGroupFor<E, S>>::uninit(); MR_DIV_N];
 
                     let mut i = 0usize;
                     loop {
@@ -1118,19 +900,18 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                         )));
                         i += 1;
                     }
-                    let a: [GroupFor<E, SimdUnitFor<E, S>>; MR_DIV_N] =
-                        transmute_unchecked(a_uninit);
+                    let a: [SimdGroupFor<E, S>; MR_DIV_N] = transmute_unchecked(a_uninit);
 
                     let mut j = 0usize;
                     loop {
                         if j == NR {
                             break;
                         }
-                        let b = E::faer_map(
+                        let b = simd.splat(E::faer_from_units(E::faer_map(
                             b.ptr_at(depth, j),
                             #[inline(always)]
-                            |ptr| E::faer_simd_splat_unit(simd, *ptr),
-                        );
+                            |ptr| *ptr,
+                        )));
                         let mut i = 0;
                         loop {
                             if i == MR_DIV_N {
@@ -1138,16 +919,7 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                             }
                             let local_acc = &mut local_acc[j][i];
                             *local_acc =
-                                into_copy::<E, _>(inner_prod::conditional_conj_mul_adde::<
-                                    CONJ_B,
-                                    E,
-                                    S,
-                                >(
-                                    simd,
-                                    E::faer_copy(&b),
-                                    E::faer_copy(&a[i]),
-                                    from_copy::<E, _>(*local_acc),
-                                ));
+                                simd.conditional_conj_mul_add_e(conj_b, b, a[i], *local_acc);
                             i += 1;
                         }
                         j += 1;
@@ -1178,14 +950,16 @@ impl<const MR_DIV_N: usize, const NR: usize, const CONJ_B: bool, E: ComplexField
                     if i == MR_DIV_N {
                         break;
                     }
-                    let acc = acc.rb_mut().ptr_inbounds_at(i * lane_count, j);
-                    let mut acc_value =
-                        E::faer_map(E::faer_copy(&acc), |acc| *(acc as *const SimdUnitFor<E, S>));
-                    acc_value =
-                        E::faer_simd_add(simd, acc_value, from_copy::<E, _>(local_acc[j][i]));
-                    E::faer_map(E::faer_zip(acc, acc_value), |(acc, new_acc)| {
-                        *(acc as *mut SimdUnitFor<E, S>) = new_acc
-                    });
+                    let acc = acc.rb_mut().ptr_inbounds_at_mut(i * lane_count, j);
+                    let mut acc_value = into_copy::<E, _>(E::faer_map(E::faer_copy(&acc), |acc| {
+                        *(acc as *const SimdUnitFor<E, S>)
+                    }));
+                    acc_value = simd.add(acc_value, local_acc[j][i]);
+                    E::faer_map(
+                        E::faer_zip(acc, from_copy::<E, _>(acc_value)),
+                        #[inline(always)]
+                        |(acc, new_acc)| *(acc as *mut SimdUnitFor<E, S>) = new_acc,
+                    );
                     i += 1;
                 }
                 j += 1;
@@ -1243,7 +1017,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
         let Complex {
             re: mut acc_re,
             im: mut acc_im,
-        } = acc.real_imag();
+        } = acc.real_imag_mut();
         let Complex { re: a_re, im: a_im } = a.real_imag();
         let Complex { re: b_re, im: b_im } = b.real_imag();
 
@@ -1306,7 +1080,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
         let n_chunk = min(NC, n - col_outer);
 
         let b_panel = b.submatrix(0, col_outer, k, n_chunk);
-        let acc = acc.rb_mut().submatrix(0, col_outer, m, n_chunk);
+        let acc = acc.rb_mut().submatrix_mut(0, col_outer, m, n_chunk);
 
         let mut depth_outer = 0usize;
         while depth_outer < k {
@@ -1347,23 +1121,38 @@ fn matmul_with_conj_impl<E: ComplexField>(
 
                     match conj_b {
                         Conj::Yes => {
+                            let conj_b = YesConj;
                             if MicroKernelShape::<E>::IS_2X2 {
                                 match (ukr_i, ukr_j) {
-                                    (2, 2) => arch.dispatch(Ukr::<2, 2, true, E> { acc, a, b }),
-                                    (2, 1) => arch.dispatch(Ukr::<2, 1, true, E> { acc, a, b }),
-                                    (1, 2) => arch.dispatch(Ukr::<1, 2, true, E> { acc, a, b }),
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, true, E> { acc, a, b }),
+                                    (2, 2) => {
+                                        arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (2, 1) => {
+                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 2) => {
+                                        arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else if MicroKernelShape::<E>::IS_2X1 {
                                 match (ukr_i, ukr_j) {
-                                    (2, 1) => arch.dispatch(Ukr::<2, 1, true, E> { acc, a, b }),
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, true, E> { acc, a, b }),
+                                    (2, 1) => {
+                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else if MicroKernelShape::<E>::IS_1X1 {
                                 match (ukr_i, ukr_j) {
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, true, E> { acc, a, b }),
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else {
@@ -1371,23 +1160,38 @@ fn matmul_with_conj_impl<E: ComplexField>(
                             }
                         }
                         Conj::No => {
+                            let conj_b = NoConj;
                             if MicroKernelShape::<E>::IS_2X2 {
                                 match (ukr_i, ukr_j) {
-                                    (2, 2) => arch.dispatch(Ukr::<2, 2, false, E> { acc, a, b }),
-                                    (2, 1) => arch.dispatch(Ukr::<2, 1, false, E> { acc, a, b }),
-                                    (1, 2) => arch.dispatch(Ukr::<1, 2, false, E> { acc, a, b }),
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, false, E> { acc, a, b }),
+                                    (2, 2) => {
+                                        arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (2, 1) => {
+                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 2) => {
+                                        arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else if MicroKernelShape::<E>::IS_2X1 {
                                 match (ukr_i, ukr_j) {
-                                    (2, 1) => arch.dispatch(Ukr::<2, 1, false, E> { acc, a, b }),
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, false, E> { acc, a, b }),
+                                    (2, 1) => {
+                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                    }
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else if MicroKernelShape::<E>::IS_1X1 {
                                 match (ukr_i, ukr_j) {
-                                    (1, 1) => arch.dispatch(Ukr::<1, 1, false, E> { acc, a, b }),
+                                    (1, 1) => {
+                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                    }
                                     _ => unreachable!(),
                                 }
                             } else {
@@ -1418,7 +1222,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
-    use_gemm: bool,
+    _use_gemm: bool,
 ) {
     assert!(acc.nrows() == lhs.nrows());
     assert!(acc.ncols() == rhs.ncols());
@@ -1468,7 +1272,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     }
     if m == 1 {
         matvec::matvec_with_conj(
-            acc.transpose(),
+            acc.transpose_mut(),
             rhs.transpose(),
             conj_rhs,
             lhs.transpose(),
@@ -1739,7 +1543,10 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         }
     }
 
-    if use_gemm {
+    #[cfg(not(test))]
+    let _use_gemm = true;
+
+    if _use_gemm {
         let gemm_parallelism = match parallelism {
             Parallelism::None => gemm::Parallelism::None,
             #[cfg(feature = "rayon")]
@@ -1758,7 +1565,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                     m,
                     n,
                     k,
-                    acc.rb_mut().as_ptr(),
+                    acc.rb_mut().as_ptr_mut(),
                     acc.col_stride(),
                     acc.row_stride(),
                     alpha.is_some(),
@@ -1789,7 +1596,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                     m,
                     n,
                     k,
-                    acc.rb_mut().as_ptr(),
+                    acc.rb_mut().as_ptr_mut(),
                     acc.col_stride(),
                     acc.row_stride(),
                     alpha.is_some(),
@@ -1820,7 +1627,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                     m,
                     n,
                     k,
-                    acc.rb_mut().as_ptr() as *mut gemm::c32,
+                    acc.rb_mut().as_ptr_mut() as *mut gemm::c32,
                     acc.col_stride(),
                     acc.row_stride(),
                     alpha.is_some(),
@@ -1851,7 +1658,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                     m,
                     n,
                     k,
-                    acc.rb_mut().as_ptr() as *mut gemm::c64,
+                    acc.rb_mut().as_ptr_mut() as *mut gemm::c64,
                     acc.col_stride(),
                     acc.row_stride(),
                     alpha.is_some(),
@@ -1886,7 +1693,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     if n < m {
         (a, b) = (b.transpose(), a.transpose());
         core::mem::swap(&mut conj_a, &mut conj_b);
-        acc = acc.transpose();
+        acc = acc.transpose_mut();
     }
 
     if b.row_stride() < 0 {
@@ -1918,13 +1725,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 
     match alpha {
         Some(alpha) => match conj_a {
-            Conj::Yes => zipped!(acc, tmp).for_each(|mut acc, tmp| {
+            Conj::Yes => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                 acc.write(E::faer_add(
                     acc.read().faer_mul(alpha),
                     tmp.read().faer_conj().faer_mul(beta),
                 ))
             }),
-            Conj::No => zipped!(acc, tmp).for_each(|mut acc, tmp| {
+            Conj::No => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
                 acc.write(E::faer_add(
                     acc.read().faer_mul(alpha),
                     tmp.read().faer_mul(beta),
@@ -1933,11 +1740,13 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         },
         None => match conj_a {
             Conj::Yes => {
-                zipped!(acc, tmp)
-                    .for_each(|mut acc, tmp| acc.write(tmp.read().faer_conj().faer_mul(beta)));
+                zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                    acc.write(tmp.read().faer_conj().faer_mul(beta))
+                });
             }
             Conj::No => {
-                zipped!(acc, tmp).for_each(|mut acc, tmp| acc.write(tmp.read().faer_mul(beta)));
+                zipped!(acc, tmp)
+                    .for_each(|unzipped!(mut acc, tmp)| acc.write(tmp.read().faer_mul(beta)));
             }
         },
     }
@@ -1968,7 +1777,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer_core::{mat, mul::matmul_with_conj, zipped, Conj, Mat, Parallelism};
+/// use faer_core::{mat, mul::matmul_with_conj, unzipped, zipped, Conj, Mat, Parallelism};
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
@@ -1997,7 +1806,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 /// );
 ///
 /// zipped!(acc.as_ref(), target.as_ref())
-///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[inline]
 #[track_caller]
@@ -2046,7 +1855,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer_core::{mat, mul::matmul, zipped, Mat, Parallelism};
+/// use faer_core::{mat, mul::matmul, unzipped, zipped, Mat, Parallelism};
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
@@ -2073,7 +1882,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// );
 ///
 /// zipped!(acc.as_ref(), target.as_ref())
-///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
 /// ```
 #[track_caller]
 pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
@@ -2113,19 +1922,21 @@ macro_rules! stack_mat_16x16_begin {
             ),
             #[inline(always)]
             |(__data, zero)| {
+                let __data: &mut _ = __data;
                 for __data in __data {
+                    let __data : &mut _ = __data;
                     *__data = ::core::mem::MaybeUninit::new(::core::clone::Clone::clone(&zero));
                 }
             },
         );
         let mut __data =
-            <$ty as $crate::Entity>::faer_map(<$ty as $crate::Entity>::faer_as_mut(&mut __data), |__data| {
+            <$ty as $crate::Entity>::faer_map(<$ty as $crate::Entity>::faer_as_mut(&mut __data), |__data: &mut _| {
                 (__data as *mut [::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; 16 * 16]
                     as *mut <$ty as $crate::Entity>::Unit)
             });
 
         let mut $name = unsafe {
-            $crate::MatMut::<'_, $ty>::from_raw_parts(__data, __nrows, __ncols, 1isize, 16isize)
+            $crate::mat::from_raw_parts_mut::<'_, $ty>(__data, __nrows, __ncols, 1isize, 16isize)
         };
     };
 }
@@ -2134,9 +1945,7 @@ macro_rules! stack_mat_16x16_begin {
 /// matrices.
 pub mod triangular {
     use super::*;
-    use crate::{join_raw, zip::Diag};
-    #[cfg(feature = "std")]
-    use assert2::{assert, debug_assert};
+    use crate::{assert, debug_assert, join_raw, zip::Diag};
 
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
@@ -2174,10 +1983,10 @@ pub mod triangular {
         };
 
         zipped!(dst.rb_mut())
-            .for_each_triangular_upper(Diag::Skip, |mut dst| dst.write(E::faer_zero()));
+            .for_each_triangular_upper(Diag::Skip, |unzipped!(mut dst)| dst.write(E::faer_zero()));
         zipped!(dst, src).for_each_triangular_lower(
             if strict { Diag::Skip } else { Diag::Include },
-            |mut dst, src| dst.write(src.read()),
+            |unzipped!(mut dst, src)| dst.write(src.read()),
         );
     }
 
@@ -2197,13 +2006,15 @@ pub mod triangular {
             Some(alpha) => {
                 zipped!(dst, src).for_each_triangular_lower(
                     if skip_diag { Diag::Skip } else { Diag::Include },
-                    |mut dst, src| dst.write(alpha.faer_mul(dst.read().faer_add(src.read()))),
+                    |unzipped!(mut dst, src)| {
+                        dst.write(alpha.faer_mul(dst.read().faer_add(src.read())))
+                    },
                 );
             }
             None => {
                 zipped!(dst, src).for_each_triangular_lower(
                     if skip_diag { Diag::Skip } else { Diag::Include },
-                    |mut dst, src| dst.write(src.read()),
+                    |unzipped!(mut dst, src)| dst.write(src.read()),
                 );
             }
         }
@@ -2215,7 +2026,7 @@ pub mod triangular {
         src: MatRef<'_, E>,
         src_diag: DiagonalKind,
     ) {
-        copy_lower(dst.transpose(), src.transpose(), src_diag)
+        copy_lower(dst.transpose_mut(), src.transpose(), src_diag)
     }
 
     #[inline]
@@ -2277,9 +2088,9 @@ pub mod triangular {
         } else {
             let bs = n / 2;
 
-            let [mut dst_top_left, _, mut dst_bot_left, dst_bot_right] = dst.split_at(bs, bs);
-            let [lhs_top_left, lhs_top_right, lhs_bot_left, lhs_bot_right] = lhs.split_at(bs, bs);
-            let [rhs_top_left, _, rhs_bot_left, rhs_bot_right] = rhs.split_at(bs, bs);
+            let (mut dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_at_mut(bs, bs);
+            let (lhs_top_left, lhs_top_right, lhs_bot_left, lhs_bot_right) = lhs.split_at(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at(bs, bs);
 
             // lhs_bot_right × rhs_bot_left  => dst_bot_left  | mat × mat => mat |   1
             // lhs_bot_right × rhs_bot_right => dst_bot_right | mat × low => low |   X
@@ -2401,9 +2212,9 @@ pub mod triangular {
 
             let bs = n / 2;
 
-            let [rhs_top_left, _, rhs_bot_left, rhs_bot_right] = rhs.split_at(bs, bs);
-            let [lhs_left, lhs_right] = lhs.split_at_col(bs);
-            let [mut dst_left, mut dst_right] = dst.split_at_col(bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at(bs, bs);
+            let (lhs_left, lhs_right) = lhs.split_at_col(bs);
+            let (mut dst_left, mut dst_right) = dst.split_at_col_mut(bs);
 
             join_raw(
                 |parallelism| {
@@ -2496,9 +2307,9 @@ pub mod triangular {
         } else {
             let bs = n / 2;
 
-            let [dst_top_left, _, mut dst_bot_left, dst_bot_right] = dst.split_at(bs, bs);
-            let [lhs_top_left, _, lhs_bot_left, lhs_bot_right] = lhs.split_at(bs, bs);
-            let [rhs_top_left, _, rhs_bot_left, rhs_bot_right] = rhs.split_at(bs, bs);
+            let (dst_top_left, _, mut dst_bot_left, dst_bot_right) = dst.split_at_mut(bs, bs);
+            let (lhs_top_left, _, lhs_bot_left, lhs_bot_right) = lhs.split_at(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at(bs, bs);
 
             // lhs_top_left  × rhs_top_left  => dst_top_left  | low × low => low |   X
             // lhs_bot_left  × rhs_top_left  => dst_bot_left  | mat × low => mat | 1/2
@@ -2530,7 +2341,7 @@ pub mod triangular {
                 parallelism,
             );
             mat_x_lower_impl_unchecked(
-                dst_bot_left.reverse_rows_and_cols().transpose(),
+                dst_bot_left.reverse_rows_and_cols_mut().transpose_mut(),
                 rhs_bot_left.reverse_rows_and_cols().transpose(),
                 lhs_bot_right.reverse_rows_and_cols().transpose(),
                 lhs_diag,
@@ -2602,10 +2413,10 @@ pub mod triangular {
         } else {
             let bs = n / 2;
 
-            let [mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right] =
-                dst.split_at(bs, bs);
-            let [lhs_top_left, lhs_top_right, _, lhs_bot_right] = lhs.split_at(bs, bs);
-            let [rhs_top_left, _, rhs_bot_left, rhs_bot_right] = rhs.split_at(bs, bs);
+            let (mut dst_top_left, dst_top_right, dst_bot_left, dst_bot_right) =
+                dst.split_at_mut(bs, bs);
+            let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_at(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at(bs, bs);
 
             // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => mat |   1
             // lhs_top_left  × rhs_top_left  => dst_top_left  | upp × low => mat |   X
@@ -2656,7 +2467,7 @@ pub mod triangular {
                         },
                         |_| {
                             mat_x_lower_impl_unchecked(
-                                dst_bot_left.transpose(),
+                                dst_bot_left.transpose_mut(),
                                 rhs_bot_left.transpose(),
                                 lhs_bot_right.transpose(),
                                 lhs_diag,
@@ -2738,9 +2549,9 @@ pub mod triangular {
         } else {
             let bs = n / 2;
 
-            let [mut dst_top_left, _, dst_bot_left, dst_bot_right] = dst.split_at(bs, bs);
-            let [lhs_top_left, lhs_top_right, _, lhs_bot_right] = lhs.split_at(bs, bs);
-            let [rhs_top_left, _, rhs_bot_left, rhs_bot_right] = rhs.split_at(bs, bs);
+            let (mut dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_mut(bs, bs);
+            let (lhs_top_left, lhs_top_right, _, lhs_bot_right) = lhs.split_at(bs, bs);
+            let (rhs_top_left, _, rhs_bot_left, rhs_bot_right) = rhs.split_at(bs, bs);
 
             // lhs_top_left  × rhs_top_left  => dst_top_left  | upp × low => low |   X
             // lhs_top_right × rhs_bot_left  => dst_top_left  | mat × mat => low | 1/2
@@ -2777,7 +2588,7 @@ pub mod triangular {
                 },
                 |_| {
                     mat_x_lower_impl_unchecked(
-                        dst_bot_left.transpose(),
+                        dst_bot_left.transpose_mut(),
                         rhs_bot_left.transpose(),
                         lhs_bot_right.transpose(),
                         lhs_diag,
@@ -2853,9 +2664,9 @@ pub mod triangular {
             op();
         } else {
             let bs = n / 2;
-            let [dst_top_left, _, dst_bot_left, dst_bot_right] = dst.split_at(bs, bs);
-            let [lhs_top, lhs_bot] = lhs.split_at_row(bs);
-            let [rhs_left, rhs_right] = rhs.split_at_col(bs);
+            let (dst_top_left, _, dst_bot_left, dst_bot_right) = dst.split_at_mut(bs, bs);
+            let (lhs_top, lhs_bot) = lhs.split_at_row(bs);
+            let (rhs_left, rhs_right) = rhs.split_at_col(bs);
 
             join_raw(
                 |_| {
@@ -3007,7 +2818,7 @@ pub mod triangular {
     /// use faer_core::{
     ///     mat,
     ///     mul::triangular::{matmul_with_conj, BlockStructure},
-    ///     zipped, Conj, Mat, Parallelism,
+    ///     unzipped, zipped, Conj, Mat, Parallelism,
     /// };
     ///
     /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
@@ -3040,7 +2851,7 @@ pub mod triangular {
     /// );
     ///
     /// zipped!(acc.as_ref(), target.as_ref())
-    ///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+    ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
     /// ```
     #[track_caller]
     #[inline]
@@ -3123,7 +2934,7 @@ pub mod triangular {
     /// use faer_core::{
     ///     mat,
     ///     mul::triangular::{matmul, BlockStructure},
-    ///     zipped, Conj, Mat, Parallelism,
+    ///     unzipped, zipped, Conj, Mat, Parallelism,
     /// };
     ///
     /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
@@ -3154,7 +2965,7 @@ pub mod triangular {
     /// );
     ///
     /// zipped!(acc.as_ref(), target.as_ref())
-    ///     .for_each(|acc, target| assert!((acc.read() - target.read()).abs() < 1e-10));
+    ///     .for_each(|unzipped!(acc, target)| assert!((acc.read() - target.read()).abs() < 1e-10));
     /// ```
     #[track_caller]
     #[inline]
@@ -3234,7 +3045,7 @@ pub mod triangular {
             false
         } else if rhs_structure.is_upper() {
             // invert acc, lhs and rhs
-            acc = acc.reverse_rows_and_cols();
+            acc = acc.reverse_rows_and_cols_mut();
             lhs = lhs.reverse_rows_and_cols();
             rhs = rhs.reverse_rows_and_cols();
             acc_structure = acc_structure.transpose();
@@ -3243,7 +3054,7 @@ pub mod triangular {
             false
         } else if lhs_structure.is_lower() {
             // invert and transpose
-            acc = acc.reverse_rows_and_cols().transpose();
+            acc = acc.reverse_rows_and_cols_mut().transpose_mut();
             (lhs, rhs) = (
                 rhs.reverse_rows_and_cols().transpose(),
                 lhs.reverse_rows_and_cols().transpose(),
@@ -3254,7 +3065,7 @@ pub mod triangular {
         } else if lhs_structure.is_upper() {
             // transpose
             acc_structure = acc_structure.transpose();
-            acc = acc.transpose();
+            acc = acc.transpose_mut();
             (lhs, rhs) = (rhs.transpose(), lhs.transpose());
             (conj_lhs, conj_rhs) = (conj_rhs, conj_lhs);
             (lhs_structure, rhs_structure) = (rhs_structure.transpose(), lhs_structure.transpose());
@@ -3265,14 +3076,14 @@ pub mod triangular {
         };
 
         let clear_upper = |acc: MatMut<'_, E>, skip_diag: bool| match &alpha {
-            Some(alpha) => zipped!(acc).for_each_triangular_upper(
+            &Some(alpha) => zipped!(acc).for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |mut acc| acc.write(alpha.faer_mul(acc.read())),
+                |unzipped!(mut acc)| acc.write(alpha.faer_mul(acc.read())),
             ),
 
             None => zipped!(acc).for_each_triangular_upper(
                 if skip_diag { Diag::Skip } else { Diag::Include },
-                |mut acc| acc.write(E::faer_zero()),
+                |unzipped!(mut acc)| acc.write(E::faer_zero()),
             ),
         };
 
@@ -3395,7 +3206,7 @@ pub mod triangular {
             }
         } else if lhs_structure.is_dense() && rhs_structure.is_dense() {
             mat_x_mat_into_lower_impl_unchecked(
-                acc.transpose(),
+                acc.transpose_mut(),
                 skip_diag,
                 rhs.transpose(),
                 lhs.transpose(),
@@ -3410,7 +3221,7 @@ pub mod triangular {
             if lhs_structure.is_dense() {
                 // lower part of lhs does not contribute to result
                 upper_x_lower_into_lower_impl_unchecked(
-                    acc.transpose(),
+                    acc.transpose_mut(),
                     skip_diag,
                     rhs.transpose(),
                     rhs_diag,
@@ -3427,26 +3238,31 @@ pub mod triangular {
                     match &alpha {
                         &Some(alpha) => {
                             zipped!(
-                                acc.rb_mut().diagonal().into_column_vector(),
-                                lhs.diagonal().into_column_vector(),
-                                rhs.diagonal().into_column_vector()
+                                acc.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                                lhs.diagonal().column_vector().as_2d(),
+                                rhs.diagonal().column_vector().as_2d(),
                             )
-                            .for_each(|mut acc, lhs, rhs| {
-                                acc.write(
-                                    (alpha.faer_mul(acc.read()))
-                                        .faer_add(beta.faer_mul(lhs.read().faer_mul(rhs.read()))),
-                                )
-                            });
+                            .for_each(
+                                |unzipped!(mut acc, lhs, rhs)| {
+                                    acc.write(
+                                        (alpha.faer_mul(acc.read())).faer_add(
+                                            beta.faer_mul(lhs.read().faer_mul(rhs.read())),
+                                        ),
+                                    )
+                                },
+                            );
                         }
                         None => {
                             zipped!(
-                                acc.rb_mut().diagonal().into_column_vector(),
-                                lhs.diagonal().into_column_vector(),
-                                rhs.diagonal().into_column_vector()
+                                acc.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                                lhs.diagonal().column_vector().as_2d(),
+                                rhs.diagonal().column_vector().as_2d(),
                             )
-                            .for_each(|mut acc, lhs, rhs| {
-                                acc.write(beta.faer_mul(lhs.read().faer_mul(rhs.read())))
-                            });
+                            .for_each(
+                                |unzipped!(mut acc, lhs, rhs)| {
+                                    acc.write(beta.faer_mul(lhs.read().faer_mul(rhs.read())))
+                                },
+                            );
                         }
                     }
                 }
@@ -3454,7 +3270,7 @@ pub mod triangular {
             } else {
                 debug_assert!(lhs_structure.is_upper());
                 upper_x_lower_into_lower_impl_unchecked(
-                    acc.transpose(),
+                    acc.transpose_mut(),
                     skip_diag,
                     rhs.transpose(),
                     rhs_diag,
@@ -3477,9 +3293,7 @@ mod tests {
         triangular::{BlockStructure, DiagonalKind},
         *,
     };
-    use crate::Mat;
-    #[cfg(feature = "std")]
-    use assert2::assert;
+    use crate::{assert, Mat};
     use assert_approx_eq::assert_approx_eq;
     use num_complex::Complex32;
 
@@ -3713,13 +3527,13 @@ mod tests {
         let mut acc = if acc_colmajor {
             acc.as_mut()
         } else {
-            acc.as_mut().transpose()
+            acc.as_mut().transpose_mut()
         };
         if reverse_acc_rows {
-            acc = acc.reverse_rows();
+            acc = acc.reverse_rows_mut();
         }
         if reverse_acc_cols {
-            acc = acc.reverse_cols();
+            acc = acc.reverse_cols_mut();
         }
         let mut target = acc.to_owned();
 

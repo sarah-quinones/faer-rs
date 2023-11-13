@@ -1,8 +1,6 @@
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    join_raw,
+    assert, debug_assert, join_raw,
     mul::triangular,
     permutation::{Index, PermutationRef, SignedIndex},
     temp_mat_req, temp_mat_uninit, ComplexField, Entity, MatMut, MatRef, Parallelism,
@@ -169,9 +167,8 @@ pub fn invert_in_place_req<I: Index, E: Entity>(
 mod tests {
     use super::*;
     use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{mul::matmul, Mat, Parallelism};
+    use faer_core::{assert, mul::matmul, Mat, Parallelism};
     use rand::random;
 
     macro_rules! make_stack {

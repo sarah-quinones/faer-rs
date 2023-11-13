@@ -303,8 +303,7 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
 mod tests {
     use super::*;
     use crate::full_pivoting::compute::{lu_in_place, lu_in_place_req};
-    use assert2::assert;
-    use faer_core::{c32, c64, mul::matmul_with_conj, Mat};
+    use faer_core::{assert, c32, c64, mul::matmul_with_conj, Mat};
     use std::cell::RefCell;
 
     macro_rules! make_stack {

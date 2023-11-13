@@ -1,6 +1,6 @@
 use criterion::*;
 use dyn_stack::{GlobalPodBuffer, PodStack};
-use faer_core::{c32, c64, zipped, ComplexField, Mat, Parallelism, RealField};
+use faer_core::{c32, c64, unzipped, zipped, ComplexField, Mat, Parallelism, RealField};
 use faer_evd::{
     tridiag::{tridiagonalize_in_place, tridiagonalize_in_place_req},
     tridiag_real_evd::{compute_tridiag_real_evd, compute_tridiag_real_evd_req},
@@ -52,7 +52,7 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().faer_add(y.read())));
+            .for_each(|unzipped!(mut x, y)| x.write(x.read().faer_add(y.read())));
 
         let mut trid = mat.clone();
         let mut tau_left = Mat::zeros(n - 1, 1);
@@ -68,10 +68,10 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
                 |bencher| {
                     bencher.iter(|| {
                         zipped!(trid.as_mut(), mat.as_ref())
-                            .for_each(|mut dst, src| dst.write(src.read()));
+                            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                         tridiagonalize_in_place(
                             trid.as_mut(),
-                            tau_left.as_mut().col(0),
+                            tau_left.as_mut().col_mut(0).as_2d_mut(),
                             parallelism,
                             stack.rb_mut(),
                         );
@@ -90,10 +90,10 @@ fn tridiagonalization<E: ComplexField>(criterion: &mut Criterion) {
                 |bencher| {
                     bencher.iter(|| {
                         zipped!(trid.as_mut(), mat.as_ref())
-                            .for_each(|mut dst, src| dst.write(src.read()));
+                            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                         tridiagonalize_in_place(
                             trid.as_mut(),
-                            tau_left.as_mut().col(0),
+                            tau_left.as_mut().col_mut(0).as_2d_mut(),
                             parallelism,
                             stack.rb_mut(),
                         );
@@ -164,7 +164,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
         let adjoint = mat.adjoint().to_owned();
 
         zipped!(mat.as_mut(), adjoint.as_ref())
-            .for_each(|mut x, y| x.write(x.read().faer_add(y.read())));
+            .for_each(|unzipped!(mut x, y)| x.write(x.read().faer_add(y.read())));
 
         let mut s = Mat::zeros(n, n);
         let mut u = Mat::zeros(n, n);
@@ -188,7 +188,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
                     bencher.iter(|| {
                         faer_evd::compute_hermitian_evd(
                             mat.as_ref(),
-                            s.as_mut().diagonal().into_column_vector(),
+                            s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                             Some(u.as_mut()),
                             parallelism,
                             stack.rb_mut(),
@@ -217,7 +217,7 @@ fn evd<E: ComplexField>(criterion: &mut Criterion) {
                     bencher.iter(|| {
                         faer_evd::compute_hermitian_evd(
                             mat.as_ref(),
-                            s.as_mut().diagonal().into_column_vector(),
+                            s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                             Some(u.as_mut()),
                             parallelism,
                             stack.rb_mut(),
@@ -269,10 +269,10 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
             criterion.bench_function(&format!("schur-st-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
-                    zipped!(z.as_mut().diagonal().into_column_vector())
-                        .for_each(|mut x| x.write(E::faer_one()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+                        .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_cplx_evd::multishift_qr(
                         true,
@@ -308,10 +308,10 @@ fn cplx_schur<E: ComplexField>(criterion: &mut Criterion) {
             criterion.bench_function(&format!("schur-mt-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
-                    zipped!(z.as_mut().diagonal().into_column_vector())
-                        .for_each(|mut x| x.write(E::faer_one()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+                        .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_cplx_evd::multishift_qr(
                         true,
@@ -358,10 +358,10 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
             criterion.bench_function(&format!("schur-st-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
-                    zipped!(z.as_mut().diagonal().into_column_vector())
-                        .for_each(|mut x| x.write(E::faer_one()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+                        .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_real_evd::multishift_qr(
                         true,
@@ -398,10 +398,10 @@ fn real_schur<E: RealField>(criterion: &mut Criterion) {
             criterion.bench_function(&format!("schur-mt-{}-{}", type_name::<E>(), n), |bencher| {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
-                    zipped!(z.as_mut()).for_each(|mut x| x.write(E::faer_zero()));
-                    zipped!(z.as_mut().diagonal().into_column_vector())
-                        .for_each(|mut x| x.write(E::faer_one()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                    zipped!(z.as_mut()).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+                    zipped!(z.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+                        .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
 
                     faer_evd::hessenberg_real_evd::multishift_qr(
                         true,
@@ -442,7 +442,7 @@ fn hessenberg<E: ComplexField>(criterion: &mut Criterion) {
             |bencher| {
                 bencher.iter(|| {
                     zipped!(t.as_mut(), mat.as_ref())
-                        .for_each(|mut dst, src| dst.write(src.read()));
+                        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                     faer_evd::hessenberg::make_hessenberg_in_place(
                         t.as_mut(),

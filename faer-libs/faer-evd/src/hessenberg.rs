@@ -1,21 +1,18 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     householder::{
         apply_block_householder_on_the_right_in_place_req,
-        apply_block_householder_on_the_right_in_place_with_conj, make_householder_in_place,
+        apply_block_householder_on_the_right_in_place_with_conj, make_householder_in_place_v2,
         upgrade_householder_factor,
     },
     mul::{inner_prod::inner_prod_with_conj, matmul},
-    parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField, Conj,
-    Entity, MatMut, MatRef, Parallelism, SimdCtx,
+    parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, unzipped, zipped,
+    ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
-
-use crate::tridiag_real_evd::norm2;
 
 pub fn make_hessenberg_in_place_req<E: Entity>(
     n: usize,
@@ -85,7 +82,7 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
             let x_ = x;
 
             let w = E::faer_map(
-                w.rb_mut().as_ptr(),
+                w.rb_mut().as_ptr_mut(),
                 #[inline(always)]
                 |ptr| slice::from_raw_parts_mut(ptr, m),
             );
@@ -140,7 +137,7 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
 
             for j in 0..n {
                 let a = E::faer_map(
-                    a.rb_mut().ptr_at(0, j),
+                    a.rb_mut().ptr_at_mut(0, j),
                     #[inline(always)]
                     |ptr| slice::from_raw_parts_mut(ptr, m),
                 );
@@ -167,29 +164,14 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 let u_prefix = E::faer_partial_load_last(simd, E::faer_copy(&u_prefix));
                 let z_prefix = E::faer_partial_load_last(simd, E::faer_copy(&z_prefix));
 
-                a_prefix_ = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&u_prefix),
-                    E::faer_copy(&y_rhs),
-                    a_prefix_,
-                );
-                a_prefix_ = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&z_prefix),
-                    E::faer_copy(&u_rhs),
-                    a_prefix_,
-                );
+                a_prefix_ = E::faer_simd_mul_adde(simd, u_prefix, y_rhs, a_prefix_);
+                a_prefix_ = E::faer_simd_mul_adde(simd, z_prefix, u_rhs, a_prefix_);
 
-                E::faer_partial_store_last(simd, a_prefix, E::faer_copy(&a_prefix_));
+                E::faer_partial_store_last(simd, a_prefix, a_prefix_);
 
                 let mut w_prefix_ =
                     E::faer_partial_load_last(simd, E::faer_rb(E::faer_as_ref(&w_prefix)));
-                w_prefix_ = E::faer_simd_mul_adde(
-                    simd,
-                    E::faer_copy(&a_prefix_),
-                    E::faer_copy(&x_rhs),
-                    w_prefix_,
-                );
+                w_prefix_ = E::faer_simd_mul_adde(simd, a_prefix_, x_rhs, w_prefix_);
                 E::faer_partial_store_last(
                     simd,
                     E::faer_rb_mut(E::faer_as_mut(&mut w_prefix)),
@@ -197,12 +179,7 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 );
 
                 let x_prefix = E::faer_partial_load_last(simd, E::faer_copy(&x_prefix));
-                sum0 = E::faer_simd_conj_mul_adde(
-                    simd,
-                    E::faer_copy(&a_prefix_),
-                    E::faer_copy(&x_prefix),
-                    sum0,
-                );
+                sum0 = E::faer_simd_conj_mul_adde(simd, a_prefix_, x_prefix, sum0);
 
                 for ((((a, w), x), u), z) in E::faer_into_iter(a_head)
                     .zip(E::faer_into_iter(E::faer_rb_mut(E::faer_as_mut(
@@ -221,17 +198,57 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                     let [u0, u1, u2, u3] = E::faer_unzip4(E::faer_deref(u));
                     let [z0, z1, z2, z3] = E::faer_unzip4(E::faer_deref(z));
 
-                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&u0), E::faer_copy(&y_rhs), a0);
-                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&z0), E::faer_copy(&u_rhs), a0);
+                    a0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(u0),
+                        y_rhs,
+                        into_copy::<E, _>(a0),
+                    ));
+                    a0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(z0),
+                        u_rhs,
+                        into_copy::<E, _>(a0),
+                    ));
 
-                    a1 = E::faer_simd_mul_adde(simd, E::faer_copy(&u1), E::faer_copy(&y_rhs), a1);
-                    a1 = E::faer_simd_mul_adde(simd, E::faer_copy(&z1), E::faer_copy(&u_rhs), a1);
+                    a1 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(u1),
+                        y_rhs,
+                        into_copy::<E, _>(a1),
+                    ));
+                    a1 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(z1),
+                        u_rhs,
+                        into_copy::<E, _>(a1),
+                    ));
 
-                    a2 = E::faer_simd_mul_adde(simd, E::faer_copy(&u2), E::faer_copy(&y_rhs), a2);
-                    a2 = E::faer_simd_mul_adde(simd, E::faer_copy(&z2), E::faer_copy(&u_rhs), a2);
+                    a2 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(u2),
+                        y_rhs,
+                        into_copy::<E, _>(a2),
+                    ));
+                    a2 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(z2),
+                        u_rhs,
+                        into_copy::<E, _>(a2),
+                    ));
 
-                    a3 = E::faer_simd_mul_adde(simd, E::faer_copy(&u3), E::faer_copy(&y_rhs), a3);
-                    a3 = E::faer_simd_mul_adde(simd, E::faer_copy(&z3), E::faer_copy(&u_rhs), a3);
+                    a3 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(u3),
+                        y_rhs,
+                        into_copy::<E, _>(a3),
+                    ));
+                    a3 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(z3),
+                        u_rhs,
+                        into_copy::<E, _>(a3),
+                    ));
 
                     E::faer_map(
                         E::faer_zip(
@@ -250,19 +267,33 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         },
                     );
 
-                    w0 = E::faer_simd_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x_rhs), w0);
-                    w1 = E::faer_simd_mul_adde(simd, E::faer_copy(&a1), E::faer_copy(&x_rhs), w1);
-                    w2 = E::faer_simd_mul_adde(simd, E::faer_copy(&a2), E::faer_copy(&x_rhs), w2);
-                    w3 = E::faer_simd_mul_adde(simd, E::faer_copy(&a3), E::faer_copy(&x_rhs), w3);
+                    w0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(E::faer_copy(&a0)),
+                        x_rhs,
+                        into_copy::<E, _>(w0),
+                    ));
+                    w1 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(E::faer_copy(&a1)),
+                        x_rhs,
+                        into_copy::<E, _>(w1),
+                    ));
+                    w2 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(E::faer_copy(&a2)),
+                        x_rhs,
+                        into_copy::<E, _>(w2),
+                    ));
+                    w3 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(E::faer_copy(&a3)),
+                        x_rhs,
+                        into_copy::<E, _>(w3),
+                    ));
 
                     E::faer_map(
-                        E::faer_zip(
-                            w,
-                            E::faer_zip(
-                                E::faer_zip(E::faer_copy(&w0), E::faer_copy(&w1)),
-                                E::faer_zip(E::faer_copy(&w2), E::faer_copy(&w3)),
-                            ),
-                        ),
+                        E::faer_zip(w, E::faer_zip(E::faer_zip(w0, w1), E::faer_zip(w2, w3))),
                         #[inline(always)]
                         |(w, ((w0, w1), (w2, w3)))| {
                             w[0] = w0;
@@ -274,26 +305,26 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
 
                     sum0 = E::faer_simd_conj_mul_adde(
                         simd,
-                        E::faer_copy(&a0),
-                        E::faer_copy(&x0),
+                        into_copy::<E, _>(a0),
+                        into_copy::<E, _>(x0),
                         sum0,
                     );
                     sum1 = E::faer_simd_conj_mul_adde(
                         simd,
-                        E::faer_copy(&a1),
-                        E::faer_copy(&x1),
+                        into_copy::<E, _>(a1),
+                        into_copy::<E, _>(x1),
                         sum1,
                     );
                     sum2 = E::faer_simd_conj_mul_adde(
                         simd,
-                        E::faer_copy(&a2),
-                        E::faer_copy(&x2),
+                        into_copy::<E, _>(a2),
+                        into_copy::<E, _>(x2),
                         sum2,
                     );
                     sum3 = E::faer_simd_conj_mul_adde(
                         simd,
-                        E::faer_copy(&a3),
-                        E::faer_copy(&x3),
+                        into_copy::<E, _>(a3),
+                        into_copy::<E, _>(x3),
                         sum3,
                     );
                 }
@@ -318,8 +349,18 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                     let u0 = E::faer_deref(u);
                     let z0 = E::faer_deref(z);
 
-                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&u0), E::faer_copy(&y_rhs), a0);
-                    a0 = E::faer_simd_mul_adde(simd, E::faer_copy(&z0), E::faer_copy(&u_rhs), a0);
+                    a0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(u0),
+                        y_rhs,
+                        into_copy::<E, _>(a0),
+                    ));
+                    a0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(z0),
+                        u_rhs,
+                        into_copy::<E, _>(a0),
+                    ));
 
                     E::faer_map(
                         E::faer_zip(a, E::faer_copy(&a0)),
@@ -327,18 +368,23 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                         |(a, a0)| *a = a0,
                     );
 
-                    w0 = E::faer_simd_mul_adde(simd, E::faer_copy(&a0), E::faer_copy(&x_rhs), w0);
+                    w0 = from_copy::<E, _>(E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(E::faer_copy(&a0)),
+                        x_rhs,
+                        into_copy::<E, _>(w0),
+                    ));
 
                     E::faer_map(
-                        E::faer_zip(w, E::faer_copy(&w0)),
+                        E::faer_zip(w, w0),
                         #[inline(always)]
                         |(w, w0)| *w = w0,
                     );
 
                     sum0 = E::faer_simd_conj_mul_adde(
                         simd,
-                        E::faer_copy(&a0),
-                        E::faer_copy(&x0),
+                        into_copy::<E, _>(a0),
+                        into_copy::<E, _>(x0),
                         sum0,
                     );
                 }
@@ -385,22 +431,22 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
 
         let arch = E::Simd::default();
         for k in 0..n - 1 {
-            let a_cur = a.rb_mut().submatrix(k, k, n - k, n - k);
-            let [mut a11, mut a12, mut a21, mut a22] = a_cur.split_at(1, 1);
+            let a_cur = a.rb_mut().submatrix_mut(k, k, n - k, n - k);
+            let (mut a11, mut a12, mut a21, mut a22) = a_cur.split_at_mut(1, 1);
 
-            let [_, u] = u.rb_mut().split_at_row(k);
-            let [nu, mut u21] = u.split_at_row(1);
-            let [_, y] = y.rb_mut().split_at_row(k);
-            let [psi, mut y21] = y.split_at_row(1);
-            let [_, z] = z.rb_mut().split_at_row(k);
-            let [zeta, mut z21] = z.split_at_row(1);
+            let (_, u) = u.rb_mut().split_at_row_mut(k);
+            let (nu, mut u21) = u.split_at_row_mut(1);
+            let (_, y) = y.rb_mut().split_at_row_mut(k);
+            let (psi, mut y21) = y.split_at_row_mut(1);
+            let (_, z) = z.rb_mut().split_at_row_mut(k);
+            let (zeta, mut z21) = z.split_at_row_mut(1);
 
-            let [_, v] = v.rb_mut().split_at_row(k);
-            let [_, mut v21] = v.split_at_row(1);
+            let (_, v) = v.rb_mut().split_at_row_mut(k);
+            let (_, mut v21) = v.split_at_row_mut(1);
 
-            let [_, w] = w.rb_mut().split_at_row(k);
-            let [_, w21] = w.split_at_row(1);
-            let mut w21 = w21.subcols(0, parallelism_degree(parallelism));
+            let (_, w) = w.rb_mut().split_at_row_mut(k);
+            let (_, w21) = w.split_at_row_mut(1);
+            let mut w21 = w21.subcols_mut(0, parallelism_degree(parallelism));
 
             if k > 0 {
                 let nu = nu.read(0, 0);
@@ -415,7 +461,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                     ),
                 );
                 zipped!(a12.rb_mut(), y21.rb().transpose(), u21.rb().transpose()).for_each(
-                    |mut a, y, u| {
+                    |unzipped!(mut a, y, u)| {
                         let y = y.read();
                         let u = u.read();
                         a.write(a.read().faer_sub(
@@ -423,7 +469,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                         ));
                     },
                 );
-                zipped!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|mut a, u, z| {
+                zipped!(a21.rb_mut(), u21.rb(), z21.rb()).for_each(|unzipped!(mut a, u, z)| {
                     let z = z.read();
                     let u = u.read();
                     a.write(a.read().faer_sub(
@@ -433,28 +479,28 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             }
 
             let (tau, new_head) = {
-                let [head, tail] = a21.rb_mut().split_at_row(1);
-                let norm2 = norm2(tail.rb());
-                make_householder_in_place(Some(tail), head.read(0, 0), norm2)
+                let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+                let norm = tail.rb().norm_l2();
+                make_householder_in_place_v2(Some(tail), head.read(0, 0), norm)
             };
             a21.write(0, 0, E::faer_one());
             let tau_inv = tau.faer_inv();
             householder.write(k, 0, tau);
 
             if k > 0 {
-                w21.fill_zeros();
+                w21.fill_zero();
                 arch.dispatch(HessenbergFusedUpdate {
                     a: a22.rb_mut(),
                     v: v21.rb_mut(),
-                    w: w21.rb_mut().col(0),
+                    w: w21.rb_mut().col_mut(0).as_2d_mut(),
                     u: u21.rb(),
                     y: y21.rb(),
                     z: z21.rb(),
                     x: a21.rb(),
                 });
 
-                y21.rb_mut().clone_from(v21.rb());
-                z21.rb_mut().clone_from(w21.rb().col(0));
+                y21.rb_mut().copy_from(v21.rb());
+                z21.rb_mut().copy_from(w21.rb().col(0).as_2d());
             } else {
                 matmul(
                     y21.rb_mut(),
@@ -474,13 +520,14 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                 );
             }
 
-            zipped!(u21.rb_mut(), a21.rb()).for_each(|mut dst, src| dst.write(src.read()));
+            zipped!(u21.rb_mut(), a21.rb())
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
             a21.write(0, 0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
                 .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
 
-            zipped!(y21.rb_mut(), u21.rb()).for_each(|mut y, u| {
+            zipped!(y21.rb_mut(), u21.rb()).for_each(|unzipped!(mut y, u)| {
                 let u = u.read();
                 let beta = beta.faer_conj();
                 y.write(
@@ -489,7 +536,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
                         .faer_mul(tau_inv),
                 );
             });
-            zipped!(z21.rb_mut(), u21.rb()).for_each(|mut z, u| {
+            zipped!(z21.rb_mut(), u21.rb()).for_each(|unzipped!(mut z, u)| {
                 let u = u.read();
                 z.write(
                     z.read()
@@ -500,13 +547,13 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
         }
     }
 
-    let mut householder = householder.transpose();
+    let mut householder = householder.transpose_mut();
     let householder_blocksize = householder.nrows();
     let mut k_base = 0;
     while k_base < n - 1 {
         let bs = Ord::min(householder_blocksize, n - 1 - k_base);
 
-        let mut householder = householder.rb_mut().submatrix(0, k_base, bs, bs);
+        let mut householder = householder.rb_mut().submatrix_mut(0, k_base, bs, bs);
         let full_essentials = a.rb().submatrix(1, 0, n - 1, n - 1);
         let essentials = full_essentials.submatrix(k_base, k_base, n - 1 - k_base, bs);
 
@@ -529,8 +576,8 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             let k = k_base + k_local;
 
             let mut a21 = unsafe { a.rb().col(k).subrows(k + 1, n - k - 1).const_cast() };
-            let old_head = a21.read(0, 0);
-            a21.write(0, 0, E::faer_one());
+            let old_head = a21.read(0);
+            a21.write(0, E::faer_one());
 
             let mut a_right = unsafe { a.rb().submatrix(0, k + 1, k + 1, n - k - 1).const_cast() };
             let tau_inv = householder.read(k_local, k_local).faer_inv();
@@ -541,21 +588,21 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
             matmul(
                 dot.rb_mut(),
                 a_right.rb().subrows(k_base, nrows),
-                a21.rb(),
+                a21.rb().as_2d(),
                 None,
                 tau_inv.faer_neg(),
                 parallelism,
             );
             matmul(
-                a_right.rb_mut().subrows(k_base, nrows),
+                a_right.rb_mut().subrows_mut(k_base, nrows),
                 dot.rb(),
-                a21.rb().adjoint(),
+                a21.rb().adjoint().as_2d(),
                 Some(E::faer_one()),
                 E::faer_one(),
                 parallelism,
             );
 
-            a21.write(0, 0, old_head);
+            a21.write(0, old_head);
         }
 
         let mut a_right = unsafe {
@@ -579,10 +626,9 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{
-        c64,
+        assert, c64,
         householder::{
             apply_block_householder_sequence_on_the_right_in_place_req,
             apply_block_householder_sequence_on_the_right_in_place_with_conj,
@@ -623,7 +669,7 @@ mod tests {
                     h.as_ref().submatrix(1, 0, n - 1, n - 1),
                     householder.as_ref().transpose(),
                     Conj::Yes,
-                    copy.as_mut().submatrix(1, 0, n - 1, n),
+                    copy.as_mut().submatrix_mut(1, 0, n - 1, n),
                     parallelism,
                     make_stack!(
                         apply_block_householder_sequence_transpose_on_the_left_in_place_req::<c64>(
@@ -637,7 +683,7 @@ mod tests {
                     h.as_ref().submatrix(1, 0, n - 1, n - 1),
                     householder.as_ref().transpose(),
                     Conj::No,
-                    copy.as_mut().submatrix(0, 1, n, n - 1),
+                    copy.as_mut().submatrix_mut(0, 1, n, n - 1),
                     parallelism,
                     make_stack!(
                         apply_block_householder_sequence_on_the_right_in_place_req::<c64>(

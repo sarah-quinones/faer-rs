@@ -17,6 +17,7 @@ fn main() -> PolarsResult<()> {
                 low_memory: false,
                 cloud_options: None,
                 use_statistics: true,
+                ..Default::default()
             },
         )
         .and_then(|lf| polars_to_faer_f64(lf))

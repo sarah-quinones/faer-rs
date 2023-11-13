@@ -169,6 +169,9 @@ use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity};
 use prelude::*;
 use solvers::*;
 
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use dbgf::dbgf;
 pub use faer_cholesky::llt::CholeskyError;
 
 /// Commonly used traits for a streamlined user experience.
@@ -181,8 +184,8 @@ pub mod prelude {
 }
 
 pub use faer_core::{
-    complex_native, get_global_parallelism, mat, scale, set_global_parallelism, Mat, MatMut,
-    MatRef, Parallelism, Side,
+    complex_native, get_global_parallelism, mat, scale, set_global_parallelism, unzipped, zipped,
+    Col, ColMut, ColRef, Mat, MatMut, MatRef, Parallelism, Row, RowMut, RowRef, Side,
 };
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
@@ -194,9 +197,7 @@ use alloc::{vec, vec::Vec};
 /// Matrix solvers and decompositions.
 pub mod solvers {
     use super::*;
-    #[cfg(feature = "std")]
-    use assert2::assert;
-    use faer_core::{permutation::PermutationRef, zipped};
+    use faer_core::{assert, permutation::PermutationRef, zipped};
 
     pub trait SolverCore<E: Entity> {
         /// Returns the number of rows of the matrix used to construct this decomposition.
@@ -463,7 +464,7 @@ pub mod solvers {
 
     /// Complex eigendecomposition.
     pub struct Eigendecomposition<E: Entity> {
-        s: Mat<E>,
+        s: Col<E>,
         u: Mat<E>,
     }
 
@@ -483,13 +484,13 @@ pub mod solvers {
                 Side::Lower => {
                     zipped!(factors.as_mut(), matrix).for_each_triangular_lower(
                         faer_core::zip::Diag::Include,
-                        |mut dst, src| dst.write(src.read().canonicalize()),
+                        |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                     );
                 }
                 Side::Upper => {
                     zipped!(factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
                         faer_core::zip::Diag::Include,
-                        |mut dst, src| dst.write(src.read().canonicalize()),
+                        |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                     );
                 }
             }
@@ -520,7 +521,7 @@ pub mod solvers {
         pub fn compute_l(&self) -> Mat<E> {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -625,13 +626,13 @@ pub mod solvers {
                 Side::Lower => {
                     zipped!(factors.as_mut(), matrix).for_each_triangular_lower(
                         faer_core::zip::Diag::Include,
-                        |mut dst, src| dst.write(src.read().canonicalize()),
+                        |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                     );
                 }
                 Side::Upper => {
                     zipped!(factors.as_mut(), matrix.adjoint()).for_each_triangular_lower(
                         faer_core::zip::Diag::Include,
-                        |mut dst, src| dst.write(src.read().canonicalize()),
+                        |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
                     );
                 }
             }
@@ -683,10 +684,10 @@ pub mod solvers {
             let subdiag = self.subdiag.as_ref();
             let mut mat = Mat::<E>::identity(n, n);
             let mut mat2 = Mat::<E>::identity(n, n);
-            zipped!(mat.as_mut(), lbl)
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst, src| {
-                    dst.write(src.read())
-                });
+            zipped!(mat.as_mut(), lbl).for_each_triangular_lower(
+                faer_core::zip::Diag::Skip,
+                |unzipped!(mut dst, src)| dst.write(src.read()),
+            );
 
             let mut j = 0;
             while j < n {
@@ -857,7 +858,7 @@ pub mod solvers {
         pub fn compute_l(&self) -> Mat<E> {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -865,13 +866,13 @@ pub mod solvers {
         pub fn compute_u(&self) -> Mat<E> {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
                 .as_mut()
-                .diagonal()
-                .into_column_vector()
+                .diagonal_mut()
+                .column_vector_mut()
                 .fill(E::faer_one());
             factor
         }
@@ -1040,7 +1041,7 @@ pub mod solvers {
                 .submatrix(0, 0, self.nrows(), size)
                 .to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_upper(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -1053,13 +1054,13 @@ pub mod solvers {
                 .submatrix(0, 0, size, self.ncols())
                 .to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
                 .as_mut()
-                .diagonal()
-                .into_column_vector()
+                .diagonal_mut()
+                .column_vector_mut()
                 .fill(E::faer_one());
             factor
         }
@@ -1217,7 +1218,7 @@ pub mod solvers {
         pub fn compute_r(&self) -> Mat<E> {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -1232,7 +1233,7 @@ pub mod solvers {
             let n = self.ncols();
             let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -1253,8 +1254,8 @@ pub mod solvers {
 
             let mut q = Mat::<E>::zeros(m, if thin { size } else { m });
             q.as_mut()
-                .diagonal()
-                .into_column_vector()
+                .diagonal_mut()
+                .column_vector_mut()
                 .fill(E::faer_one());
 
             faer_core::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -1444,7 +1445,7 @@ pub mod solvers {
         pub fn compute_r(&self) -> Mat<E> {
             let mut factor = self.factors.to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -1459,7 +1460,7 @@ pub mod solvers {
             let n = self.ncols();
             let mut factor = self.factors.as_ref().subrows(0, Ord::min(m, n)).to_owned();
             zipped!(factor.as_mut())
-                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |mut dst| {
+                .for_each_triangular_lower(faer_core::zip::Diag::Skip, |unzipped!(mut dst)| {
                     dst.write(E::faer_zero())
                 });
             factor
@@ -1626,8 +1627,8 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
-                zipped!(v.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+                zipped!(v.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
             }
 
             Self { s, u, v }
@@ -1651,7 +1652,7 @@ pub mod solvers {
     fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: MatRef<'_, E>) {
         let mut rhs = rhs;
         for j in 0..rhs.ncols() {
-            zipped!(rhs.rb_mut().col(j), s).for_each(|mut rhs, s| {
+            zipped!(rhs.rb_mut().col_mut(j).as_2d_mut(), s).for_each(|unzipped!(mut rhs, s)| {
                 rhs.write(rhs.read().faer_scale_real(s.read().faer_real().faer_inv()))
             });
         }
@@ -1702,14 +1703,14 @@ pub mod solvers {
 
             match conj {
                 Conj::Yes => {
-                    rhs.clone_from((u.transpose() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.transpose() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((v.conjugate() * rhs.rb()).as_ref());
+                    rhs.copy_from((v.conjugate() * rhs.rb()).as_ref());
                 }
                 Conj::No => {
-                    rhs.clone_from((u.adjoint() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.adjoint() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((v * rhs.rb()).as_ref());
+                    rhs.copy_from((v * rhs.rb()).as_ref());
                 }
             }
         }
@@ -1724,14 +1725,14 @@ pub mod solvers {
 
             match conj {
                 Conj::No => {
-                    rhs.clone_from((v.transpose() * rhs.rb()).as_ref());
+                    rhs.copy_from((v.transpose() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u.conjugate() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.conjugate() * rhs.rb()).as_ref());
                 }
                 Conj::Yes => {
-                    rhs.clone_from((v.adjoint() * rhs.rb()).as_ref());
+                    rhs.copy_from((v.adjoint() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u * rhs.rb()).as_ref());
+                    rhs.copy_from((u * rhs.rb()).as_ref());
                 }
             }
         }
@@ -1821,7 +1822,7 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
             }
 
             Self { s, u }
@@ -1880,14 +1881,14 @@ pub mod solvers {
 
             match conj {
                 Conj::Yes => {
-                    rhs.clone_from((u.transpose() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.transpose() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u.conjugate() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.conjugate() * rhs.rb()).as_ref());
                 }
                 Conj::No => {
-                    rhs.clone_from((u.adjoint() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.adjoint() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u * rhs.rb()).as_ref());
+                    rhs.copy_from((u * rhs.rb()).as_ref());
                 }
             }
         }
@@ -1901,14 +1902,14 @@ pub mod solvers {
 
             match conj {
                 Conj::No => {
-                    rhs.clone_from((u.transpose() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.transpose() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u.conjugate() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.conjugate() * rhs.rb()).as_ref());
                 }
                 Conj::Yes => {
-                    rhs.clone_from((u.adjoint() * rhs.rb()).as_ref());
+                    rhs.copy_from((u.adjoint() * rhs.rb()).as_ref());
                     div_by_s(rhs.rb_mut(), s);
-                    rhs.clone_from((u * rhs.rb()).as_ref());
+                    rhs.copy_from((u * rhs.rb()).as_ref());
                 }
             }
         }
@@ -1996,7 +1997,7 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(s.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
             }
 
             (0..dim).map(|i| s.read(i, 0)).collect()
@@ -2015,16 +2016,16 @@ pub mod solvers {
             let parallelism = get_global_parallelism();
 
             let dim = matrix.nrows();
-            let mut s_re = Mat::<E::Real>::zeros(dim, 1);
-            let mut s_im = Mat::<E::Real>::zeros(dim, 1);
+            let mut s_re = Col::<E::Real>::zeros(dim);
+            let mut s_im = Col::<E::Real>::zeros(dim);
             let mut u_real = Mat::<E::Real>::zeros(dim, dim);
 
             let params = Default::default();
 
             faer_evd::compute_evd_real(
                 matrix,
-                s_re.as_mut(),
-                s_im.as_mut(),
+                s_re.as_mut().as_2d_mut(),
+                s_im.as_mut().as_2d_mut(),
                 Some(u_real.as_mut()),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
@@ -2044,26 +2045,27 @@ pub mod solvers {
                 E::faer_from_real(re).faer_add(imag.faer_mul(E::faer_from_real(im)))
             };
 
-            let s = Mat::<E>::from_fn(dim, 1, |i, j| cplx(s_re.read(i, j), s_im.read(i, j)));
+            let s = Col::<E>::from_fn(dim, |i| cplx(s_re.read(i), s_im.read(i)));
             let mut u = Mat::<E>::zeros(dim, dim);
             let u_real = u_real.as_ref();
 
             let mut j = 0usize;
             while j < dim {
-                if s_im.read(j, 0) == E::Real::faer_zero() {
-                    zipped!(u.as_mut().col(j), u_real.col(j))
-                        .for_each(|mut dst, src| dst.write(E::faer_from_real(src.read())));
+                if s_im.read(j) == E::Real::faer_zero() {
+                    zipped!(u.as_mut().col_mut(j).as_2d_mut(), u_real.col(j).as_2d()).for_each(
+                        |unzipped!(mut dst, src)| dst.write(E::faer_from_real(src.read())),
+                    );
                     j += 1;
                 } else {
-                    let [u_left, u_right] = u.as_mut().split_at_col(j + 1);
+                    let (u_left, u_right) = u.as_mut().split_at_col_mut(j + 1);
 
                     zipped!(
-                        u_left.col(j),
-                        u_right.col(0),
-                        u_real.col(j),
-                        u_real.col(j + 1)
+                        u_left.col_mut(j).as_2d_mut(),
+                        u_right.col_mut(0).as_2d_mut(),
+                        u_real.col(j).as_2d(),
+                        u_real.col(j + 1).as_2d(),
                     )
-                    .for_each(|mut dst, mut dst_conj, re, im| {
+                    .for_each(|unzipped!(mut dst, mut dst_conj, re, im)| {
                         let re = re.read();
                         let im = im.read();
                         dst_conj.write(cplx(re, im.faer_neg()));
@@ -2090,14 +2092,14 @@ pub mod solvers {
             let parallelism = get_global_parallelism();
             let dim = matrix.nrows();
 
-            let mut s = Mat::<E>::zeros(dim, 1);
+            let mut s = Col::<E>::zeros(dim);
             let mut u = Mat::<E>::zeros(dim, dim);
 
             let params = Default::default();
 
             faer_evd::compute_evd_complex(
                 matrix,
-                s.as_mut(),
+                s.as_mut().as_2d_mut(),
                 Some(u.as_mut()),
                 parallelism,
                 PodStack::new(&mut GlobalPodBuffer::new(
@@ -2113,8 +2115,9 @@ pub mod solvers {
             );
 
             if matches!(conj, Conj::Yes) {
-                zipped!(s.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
-                zipped!(u.as_mut()).for_each(|mut x| x.write(x.read().faer_conj()));
+                zipped!(s.as_mut().as_2d_mut())
+                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+                zipped!(u.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
             }
 
             Self { s, u }
@@ -2130,7 +2133,7 @@ pub mod solvers {
         pub fn u(&self) -> MatRef<'_, E> {
             self.u.as_ref()
         }
-        pub fn s_diagonal(&self) -> MatRef<'_, E> {
+        pub fn s_diagonal(&self) -> ColRef<'_, E> {
             self.s.as_ref()
         }
     }
@@ -2709,7 +2712,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = self.as_ptr();
             unsafe {
-                MatRef::<'_, T>::from_raw_parts(
+                faer_core::mat::from_raw_parts(
                     ptr,
                     nrows,
                     ncols,
@@ -2732,7 +2735,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = { self }.as_mut_ptr();
             unsafe {
-                MatMut::<'_, T>::from_raw_parts(
+                faer_core::mat::from_raw_parts_mut::<'_, T>(
                     ptr,
                     nrows,
                     ncols,
@@ -2782,7 +2785,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
-            let ptr = self.as_ptr();
+            let ptr = self.as_ptr_mut();
             unsafe {
                 MatrixViewMut::<'_, T, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
@@ -2815,7 +2818,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = self.as_ptr() as *const c32;
             unsafe {
-                MatRef::<'_, c32>::from_raw_parts(
+                faer_core::mat::from_raw_parts(
                     ptr,
                     nrows,
                     ncols,
@@ -2838,7 +2841,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = { self }.as_mut_ptr() as *mut c32;
             unsafe {
-                MatMut::<'_, c32>::from_raw_parts(
+                faer_core::mat::from_raw_parts_mut(
                     ptr,
                     nrows,
                     ncols,
@@ -2888,7 +2891,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
-            let ptr = self.as_ptr() as *mut Complex32;
+            let ptr = self.as_ptr_mut() as *mut Complex32;
             unsafe {
                 MatrixViewMut::<'_, Complex32, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
@@ -2921,7 +2924,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = self.as_ptr() as *const c64;
             unsafe {
-                MatRef::<'_, c64>::from_raw_parts(
+                faer_core::mat::from_raw_parts(
                     ptr,
                     nrows,
                     ncols,
@@ -2944,7 +2947,7 @@ const _: () = {
             let strides = self.strides();
             let ptr = { self }.as_mut_ptr() as *mut c64;
             unsafe {
-                MatMut::<'_, c64>::from_raw_parts(
+                faer_core::mat::from_raw_parts_mut(
                     ptr,
                     nrows,
                     ncols,
@@ -2994,7 +2997,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
-            let ptr = self.as_ptr() as *mut Complex64;
+            let ptr = self.as_ptr_mut() as *mut Complex64;
             unsafe {
                 MatrixViewMut::<'_, Complex64, Dyn, Dyn, Dyn, Dyn>::from_data(ViewStorageMut::<
                     '_,
@@ -3033,7 +3036,7 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = self.as_ptr();
-            unsafe { MatRef::<'_, T>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe { faer_core::mat::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
         }
     }
 
@@ -3046,7 +3049,11 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = { self }.as_mut_ptr();
-            unsafe { MatMut::<'_, T>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe {
+                faer_core::mat::from_raw_parts_mut::<'_, T>(
+                    ptr, nrows, ncols, strides[0], strides[1],
+                )
+            }
         }
     }
 
@@ -3080,7 +3087,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride: usize = self.row_stride().try_into().unwrap();
             let col_stride: usize = self.col_stride().try_into().unwrap();
-            let ptr = self.as_ptr();
+            let ptr = self.as_ptr_mut();
             unsafe {
                 ArrayViewMut::<'_, T, Ix2>::from_shape_ptr(
                     (nrows, ncols)
@@ -3101,7 +3108,7 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = self.as_ptr() as *const c32;
-            unsafe { MatRef::<'_, c32>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe { faer_core::mat::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
         }
     }
 
@@ -3114,7 +3121,7 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = { self }.as_mut_ptr() as *mut c32;
-            unsafe { MatMut::<'_, c32>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe { faer_core::mat::from_raw_parts_mut(ptr, nrows, ncols, strides[0], strides[1]) }
         }
     }
 
@@ -3148,7 +3155,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride: usize = self.row_stride().try_into().unwrap();
             let col_stride: usize = self.col_stride().try_into().unwrap();
-            let ptr = self.as_ptr() as *mut Complex32;
+            let ptr = self.as_ptr_mut() as *mut Complex32;
             unsafe {
                 ArrayViewMut::<'_, Complex32, Ix2>::from_shape_ptr(
                     (nrows, ncols)
@@ -3169,7 +3176,7 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = self.as_ptr() as *const c64;
-            unsafe { MatRef::<'_, c64>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe { faer_core::mat::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
         }
     }
 
@@ -3182,7 +3189,7 @@ const _: () = {
             let ncols = self.ncols();
             let strides: [isize; 2] = self.strides().try_into().unwrap();
             let ptr = { self }.as_mut_ptr() as *mut c64;
-            unsafe { MatMut::<'_, c64>::from_raw_parts(ptr, nrows, ncols, strides[0], strides[1]) }
+            unsafe { faer_core::mat::from_raw_parts_mut(ptr, nrows, ncols, strides[0], strides[1]) }
         }
     }
 
@@ -3216,7 +3223,7 @@ const _: () = {
             let ncols = self.ncols();
             let row_stride: usize = self.row_stride().try_into().unwrap();
             let col_stride: usize = self.col_stride().try_into().unwrap();
-            let ptr = self.as_ptr() as *mut Complex64;
+            let ptr = self.as_ptr_mut() as *mut Complex64;
             unsafe {
                 ArrayViewMut::<'_, Complex64, Ix2>::from_shape_ptr(
                     (nrows, ncols)
@@ -3479,16 +3486,18 @@ pub mod polars {
             let test_no_nulls: bool = self
                 .clone()
                 .null_count()
-                .with_column(sum_horizontal(&[col("*")]))
+                .with_column(
+                    fold_exprs(lit(0u64), |acc, x| Ok(Some(acc + x)), [col("*")]).alias("sum"),
+                )
                 .select(&[col("sum")])
                 .collect()
                 .unwrap()
                 .column("sum")
                 .unwrap()
-                .u32()
+                .u64()
                 .unwrap()
                 .into_iter()
-                .map(|e| e.eq(&Some(0u32)))
+                .map(|e| e.eq(&Some(0u64)))
                 .collect::<Vec<_>>()[0];
             match (test_dtypes, test_no_nulls) {
                 (true, true) => Ok(self),
@@ -3545,7 +3554,7 @@ pub mod polars {
                             // `nrows` rows
                             let out_col = unsafe {
                                 core::slice::from_raw_parts_mut(
-                                    out.as_mut().ptr_at(0, j) as *mut MaybeUninit<$ty>,
+                                    out.as_mut().mut_ptr_at(0, j) as *mut MaybeUninit<$ty>,
                                     nrows,
                                 )
                             };
@@ -3666,9 +3675,8 @@ mod tests {
     #![allow(non_snake_case)]
 
     use super::*;
-    use assert2::assert;
     use complex_native::*;
-    use faer_core::RealField;
+    use faer_core::{assert, RealField};
 
     #[track_caller]
     fn assert_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
@@ -3826,6 +3834,24 @@ mod tests {
     }
 
     #[test]
+    fn test_qr_real() {
+        let n = 7;
+
+        let random = |_, _| rand::random::<f64>();
+        let H = Mat::from_fn(n, n, random);
+
+        let qr = H.qr();
+        test_solver_real(&H, &qr);
+
+        for (m, n) in [(7, 5), (5, 7), (7, 7)] {
+            let H = Mat::from_fn(m, n, random);
+            let qr = H.qr();
+            assert_approx_eq(qr.compute_q() * qr.compute_r(), &H);
+            assert_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
+        }
+    }
+
+    #[test]
     fn test_qr() {
         let n = 7;
 
@@ -3943,9 +3969,9 @@ mod tests {
             let eigen = H.eigendecomposition::<c64>();
             let mut s = Mat::zeros(n, n);
             s.as_mut()
-                .diagonal()
-                .into_column_vector()
-                .clone_from(eigen.s_diagonal());
+                .diagonal_mut()
+                .column_vector_mut()
+                .copy_from(eigen.s_diagonal());
             let u = eigen.u();
             assert_approx_eq(u * &s, &H * u);
         }
@@ -3954,9 +3980,9 @@ mod tests {
             let eigen = H.complex_eigendecomposition();
             let mut s = Mat::zeros(n, n);
             s.as_mut()
-                .diagonal()
-                .into_column_vector()
-                .clone_from(eigen.s_diagonal());
+                .diagonal_mut()
+                .column_vector_mut()
+                .copy_from(eigen.s_diagonal());
             let u = eigen.u();
             assert_approx_eq(u * &s, &H * u);
         }
@@ -3967,7 +3993,6 @@ mod tests {
             .into_iter()
             .fold(c64::faer_one(), |a, b| a * b);
 
-        dbg!(det, eigen_det);
         assert!((det - eigen_det).faer_abs() < 1e-8);
     }
 
@@ -3982,9 +4007,9 @@ mod tests {
         let eigen = H_real.eigendecomposition::<c64>();
         let mut s = Mat::zeros(n, n);
         s.as_mut()
-            .diagonal()
-            .into_column_vector()
-            .clone_from(eigen.s_diagonal());
+            .diagonal_mut()
+            .column_vector_mut()
+            .copy_from(eigen.s_diagonal());
         let u = eigen.u();
         assert_approx_eq(u * &s, &H * u);
     }
@@ -4134,5 +4159,69 @@ mod tests {
         let lf = DataFrame::new(vec![s0, s1, s2]).unwrap().lazy();
 
         polars_to_faer_f64(lf).unwrap();
+    }
+
+    #[test]
+    fn this_other_tree_has_correct_maximum_eigenvalue_20() {
+        let edges = [
+            (3, 2),
+            (6, 1),
+            (7, 4),
+            (7, 6),
+            (8, 5),
+            (9, 4),
+            (11, 2),
+            (12, 2),
+            (13, 2),
+            (15, 6),
+            (16, 2),
+            (16, 4),
+            (17, 8),
+            (18, 0),
+            (18, 8),
+            (18, 2),
+            (19, 6),
+            (19, 10),
+            (19, 14),
+        ];
+        let mut a = Mat::zeros(20, 20);
+        for (v, u) in edges.iter() {
+            a[(*v, *u)] = 1.0;
+            a[(*u, *v)] = 1.0;
+        }
+        let eigs_complex: Vec<c64> = a.eigenvalues();
+        println!("{eigs_complex:?}");
+        let eigs_real = eigs_complex.iter().map(|e| e.re).collect::<Vec<_>>();
+        println!("{eigs_real:?}");
+        let lambda_1 = *eigs_real
+            .iter()
+            .max_by(|a, b| a.partial_cmp(&b).unwrap())
+            .unwrap();
+        let correct_lamba_1 = 2.6148611139728866;
+        assert!(
+            (lambda_1 - correct_lamba_1).abs() < 1e-10,
+            "lambda_1 = {lambda_1}, correct_lamba_1 = {correct_lamba_1}",
+        );
+    }
+
+    #[test]
+    fn this_other_tree_has_correct_maximum_eigenvalue_3() {
+        let edges = [(1, 0), (0, 2)];
+        let mut a = Mat::zeros(3, 3);
+        for (v, u) in edges.iter() {
+            a[(*v, *u)] = 1.0;
+            a[(*u, *v)] = 1.0;
+        }
+        let eigs_complex: Vec<c64> = a.eigenvalues();
+        let eigs_real = eigs_complex.iter().map(|e| e.re).collect::<Vec<_>>();
+        let lambda_1 = *eigs_real
+            .iter()
+            .max_by(|a, b| a.partial_cmp(&b).unwrap())
+            .unwrap();
+        let correct_lamba_1 = 1.414213562373095;
+        assert!(
+            (lambda_1 - correct_lamba_1).abs() < 1e-10,
+            "lambda_1 = {lambda_1}, correct_lamba_1 = {correct_lamba_1}",
+        );
     }
 }

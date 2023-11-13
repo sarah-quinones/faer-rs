@@ -1,11 +1,9 @@
-#[cfg(feature = "std")]
-use assert2::assert;
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    for_each_raw, householder::make_householder_in_place, mul::matmul, par_split_indices,
-    parallelism_degree, simd, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, zipped, ComplexField,
-    Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
+    assert, for_each_raw, mul::matmul, par_split_indices, parallelism_degree, simd, temp_mat_req,
+    temp_mat_uninit, temp_mat_zeroed, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use pulp::Simd;
@@ -50,25 +48,25 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
     let mut a01 = E::faer_zero();
 
     for k in 0..n {
-        let [a_left, a_right] = a.rb_mut().split_at_col(k);
-        let [mut a_top, mut a_cur] = a_right.split_at_row(k);
+        let (a_left, a_right) = a.rb_mut().split_at_col_mut(k);
+        let (mut a_top, mut a_cur) = a_right.split_at_row_mut(k);
 
         let m = a_cur.nrows();
         let n = a_cur.ncols();
 
-        let [mut a_col, a_right] = a_cur.rb_mut().split_at_col(1);
-        let [mut a_row, mut a_next] = a_right.split_at_row(1);
+        let (mut a_col, a_right) = a_cur.rb_mut().split_at_col_mut(1);
+        let (mut a_row, mut a_next) = a_right.split_at_row_mut(1);
 
         if k > 0 {
             let u = a_left.rb().submatrix(k, k - 1, m, 1);
-            let mut v = a_top.rb_mut().submatrix(k - 1, 0, 1, n);
+            let mut v = a_top.rb_mut().submatrix_mut(k - 1, 0, 1, n);
             let y = y.rb().submatrix(k - 1, 0, n, 1);
             let z = z.rb().submatrix(k - 1, 0, m, 1);
 
             let f0 = y.read(0, 0).faer_conj().faer_mul(tl.faer_inv());
             let f1 = v.read(0, 0).faer_conj().faer_mul(tr.faer_inv());
 
-            zipped!(a_col.rb_mut(), u, z).for_each(|mut a, b, c| {
+            zipped!(a_col.rb_mut(), u, z).for_each(|unzipped!(mut a, b, c)| {
                 a.write(
                     a.read()
                         .faer_sub(f0.faer_mul(b.read()))
@@ -83,7 +81,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
                 y.submatrix(1, 0, n - 1, 1).transpose(),
                 v.rb().submatrix(0, 1, 1, n - 1),
             )
-            .for_each(|mut a, b, c| {
+            .for_each(|unzipped!(mut a, b, c)| {
                 a.write(
                     a.read()
                         .faer_sub(f0.faer_mul(b.read().faer_conj()))
@@ -94,22 +92,21 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
             v.write(0, 0, a01);
         }
 
-        let mut y = y.rb_mut().submatrix(k, 0, n - 1, 1);
-        let mut z = z.rb_mut().submatrix(k, 0, m - 1, 1);
-        let z_tmp = z_tmp.rb_mut().submatrix(k, 0, m - 1, n_threads);
+        let mut y = y.rb_mut().submatrix_mut(k, 0, n - 1, 1);
+        let mut z = z.rb_mut().submatrix_mut(k, 0, m - 1, 1);
+        let z_tmp = z_tmp.rb_mut().submatrix_mut(k, 0, m - 1, n_threads);
 
         let tl_prev = tl;
         let a00;
         (tl, a00) = {
             let head = a_col.read(0, 0);
-            let essential = a_col.rb_mut().col(0).subrows(1, m - 1);
-            let mut tail_squared_norm = E::Real::faer_zero();
-            for idx in 0..m - 1 {
-                let x = essential.read(idx, 0);
-                tail_squared_norm =
-                    tail_squared_norm.faer_add(x.faer_mul(x.faer_conj()).faer_real());
-            }
-            make_householder_in_place(Some(essential), head, tail_squared_norm)
+            let essential = a_col.rb_mut().col_mut(0).subrows_mut(1, m - 1);
+            let tail_norm = essential.norm_l2();
+            faer_core::householder::make_householder_in_place_v2(
+                Some(essential.as_2d_mut()),
+                head,
+                tail_norm,
+            )
         };
         a_col.write(0, 0, a00);
         householder_left.write(k, 0, tl);
@@ -141,13 +138,8 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
         (tr, a01) = {
             let head = a_row.read(0, 0);
             let essential = a_row.rb().row(0).subcols(1, n - 2).transpose();
-            let mut tail_squared_norm = E::Real::faer_zero();
-            for idx in 0..n - 2 {
-                let x = essential.read(idx, 0);
-                tail_squared_norm =
-                    tail_squared_norm.faer_add(x.faer_mul(x.faer_conj()).faer_real());
-            }
-            make_householder_in_place(None, head, tail_squared_norm)
+            let tail_norm = essential.norm_l2();
+            faer_core::householder::make_householder_in_place_v2(None, head, tail_norm)
         };
         householder_right.write(k, 0, tr);
 
@@ -155,25 +147,34 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
         if diff != E::faer_zero() {
             let f = diff.faer_inv().faer_conj();
-            zipped!(a_row.rb_mut().row(0).subcols(1, n - 2).transpose())
-                .for_each(|mut x| x.write(x.read().faer_conj().faer_mul(f)));
+            zipped!(a_row
+                .rb_mut()
+                .row_mut(0)
+                .subcols_mut(1, n - 2)
+                .transpose_mut()
+                .as_2d_mut())
+            .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj().faer_mul(f)));
 
-            zipped!(z.rb_mut().col(0), a_next.rb().col(0)).for_each(|mut z, a| {
+            zipped!(
+                z.rb_mut().col_mut(0).as_2d_mut(),
+                a_next.rb().col(0).as_2d(),
+            )
+            .for_each(|unzipped!(mut z, a)| {
                 z.write(f.faer_mul(z.read().faer_sub(a01.faer_conj().faer_mul(a.read()))))
             });
         }
 
         a_row.write(0, 0, E::faer_one());
         let b = faer_core::mul::inner_prod::inner_prod_with_conj(
-            y.rb().col(0),
+            y.rb().col(0).as_2d(),
             Conj::Yes,
-            a_row.rb().row(0).transpose(),
+            a_row.rb().row(0).transpose().as_2d(),
             Conj::No,
         );
 
         let factor = b.faer_mul(tl.faer_inv()).faer_neg();
         zipped!(z.rb_mut(), u)
-            .for_each(|mut z, u| z.write(z.read().faer_add(u.read().faer_mul(factor))));
+            .for_each(|unzipped!(mut z, u)| z.write(z.read().faer_add(u.read().faer_mul(factor))));
     }
 }
 
@@ -223,10 +224,11 @@ fn bidiag_fused_op_reference<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(y.rb_mut(), a_row.rb().transpose())
-            .for_each(|mut dst, src| dst.write(dst.read().faer_add(src.read().faer_conj())));
+        zipped!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+            dst.write(dst.read().faer_add(src.read().faer_conj()))
+        });
         let tl_inv = tl.faer_inv();
-        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|mut dst, src| {
+        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
         matmul(
@@ -246,10 +248,11 @@ fn bidiag_fused_op_reference<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(y.rb_mut(), a_row.rb().transpose())
-            .for_each(|mut dst, src| dst.write(dst.read().faer_add(src.read().faer_conj())));
+        zipped!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+            dst.write(dst.read().faer_add(src.read().faer_conj()))
+        });
         let tl_inv = tl.faer_inv();
-        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|mut dst, src| {
+        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
         matmul(
@@ -331,39 +334,59 @@ fn bidiag_fused_op_step0<E: ComplexField>(
 
                 let aij_new0 = E::faer_simd_mul_adde(
                     simd,
-                    u_prev_i0,
-                    E::faer_copy(&u_rhs_v),
-                    E::faer_simd_mul_adde(simd, zi0, E::faer_copy(&z_rhs_v), aij0),
+                    into_copy::<E, _>(u_prev_i0),
+                    u_rhs_v,
+                    E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(zi0),
+                        z_rhs_v,
+                        into_copy::<E, _>(aij0),
+                    ),
                 );
                 let aij_new1 = E::faer_simd_mul_adde(
                     simd,
-                    u_prev_i1,
-                    E::faer_copy(&u_rhs_v),
-                    E::faer_simd_mul_adde(simd, zi1, E::faer_copy(&z_rhs_v), aij1),
+                    into_copy::<E, _>(u_prev_i1),
+                    u_rhs_v,
+                    E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(zi1),
+                        z_rhs_v,
+                        into_copy::<E, _>(aij1),
+                    ),
                 );
                 let aij_new2 = E::faer_simd_mul_adde(
                     simd,
-                    u_prev_i2,
-                    E::faer_copy(&u_rhs_v),
-                    E::faer_simd_mul_adde(simd, zi2, E::faer_copy(&z_rhs_v), aij2),
+                    into_copy::<E, _>(u_prev_i2),
+                    u_rhs_v,
+                    E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(zi2),
+                        z_rhs_v,
+                        into_copy::<E, _>(aij2),
+                    ),
                 );
                 let aij_new3 = E::faer_simd_mul_adde(
                     simd,
-                    u_prev_i3,
-                    E::faer_copy(&u_rhs_v),
-                    E::faer_simd_mul_adde(simd, zi3, E::faer_copy(&z_rhs_v), aij3),
+                    into_copy::<E, _>(u_prev_i3),
+                    u_rhs_v,
+                    E::faer_simd_mul_adde(
+                        simd,
+                        into_copy::<E, _>(zi3),
+                        z_rhs_v,
+                        into_copy::<E, _>(aij3),
+                    ),
                 );
-                sum_v0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new0), ui0, sum_v0);
-                sum_v1 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new1), ui1, sum_v1);
-                sum_v2 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new2), ui2, sum_v2);
-                sum_v3 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new3), ui3, sum_v3);
+                sum_v0 = E::faer_simd_conj_mul_adde(simd, aij_new0, into_copy::<E, _>(ui0), sum_v0);
+                sum_v1 = E::faer_simd_conj_mul_adde(simd, aij_new1, into_copy::<E, _>(ui1), sum_v1);
+                sum_v2 = E::faer_simd_conj_mul_adde(simd, aij_new2, into_copy::<E, _>(ui2), sum_v2);
+                sum_v3 = E::faer_simd_conj_mul_adde(simd, aij_new3, into_copy::<E, _>(ui3), sum_v3);
 
                 E::faer_map(
                     E::faer_zip(
                         aij,
                         E::faer_zip(
-                            E::faer_zip(aij_new0, aij_new1),
-                            E::faer_zip(aij_new2, aij_new3),
+                            E::faer_zip(from_copy::<E, _>(aij_new0), from_copy::<E, _>(aij_new1)),
+                            E::faer_zip(from_copy::<E, _>(aij_new2), from_copy::<E, _>(aij_new3)),
                         ),
                     ),
                     #[inline(always)]
@@ -387,23 +410,23 @@ fn bidiag_fused_op_step0<E: ComplexField>(
             {
                 let aij_new = E::faer_simd_mul_adde(
                     simd,
-                    E::faer_deref(u_prev_i),
-                    E::faer_copy(&u_rhs_v),
+                    into_copy::<E, _>(E::faer_deref(u_prev_i)),
+                    u_rhs_v,
                     E::faer_simd_mul_adde(
                         simd,
-                        E::faer_deref(zi),
-                        E::faer_copy(&z_rhs_v),
-                        E::faer_deref(E::faer_rb(E::faer_as_ref(&aij))),
+                        into_copy::<E, _>(E::faer_deref(zi)),
+                        z_rhs_v,
+                        into_copy::<E, _>(E::faer_deref(E::faer_rb(E::faer_as_ref(&aij)))),
                     ),
                 );
                 sum_v0 = E::faer_simd_conj_mul_adde(
                     simd,
-                    E::faer_copy(&aij_new),
-                    E::faer_deref(ui),
+                    aij_new,
+                    into_copy::<E, _>(E::faer_deref(ui)),
                     sum_v0,
                 );
                 E::faer_map(
-                    E::faer_zip(aij, aij_new),
+                    E::faer_zip(aij, from_copy::<E, _>(aij_new)),
                     #[inline(always)]
                     |(aij, aij_new)| *aij = aij_new,
                 );
@@ -421,7 +444,7 @@ fn bidiag_fused_op_step0<E: ComplexField>(
                 E::faer_simd_mul_adde(simd, zi, z_rhs_v, aij_load),
             );
 
-            sum_v0 = E::faer_simd_conj_mul_adde(simd, E::faer_copy(&aij_new), ui, sum_v0);
+            sum_v0 = E::faer_simd_conj_mul_adde(simd, aij_new, ui, sum_v0);
             E::faer_partial_store(simd, a_j_tail, aij_new);
 
             E::faer_simd_reduce_add(simd, sum_v0)
@@ -464,12 +487,12 @@ fn bidiag_fused_op_step1<'a, E: ComplexField>(
             for (zi, aij) in E::faer_into_iter(z_head).zip(E::faer_into_iter(a_j_head)) {
                 let new_zi = E::faer_simd_mul_adde(
                     simd,
-                    E::faer_deref(aij),
-                    E::faer_copy(&rhs_v),
-                    E::faer_deref(E::faer_rb(E::faer_as_ref(&zi))),
+                    into_copy::<E, _>(E::faer_deref(aij)),
+                    rhs_v,
+                    into_copy::<E, _>(E::faer_deref(E::faer_rb(E::faer_as_ref(&zi)))),
                 );
                 E::faer_map(
-                    E::faer_zip(zi, new_zi),
+                    E::faer_zip(zi, from_copy::<E, _>(new_zi)),
                     #[inline(always)]
                     |(zi, new_zi)| *zi = new_zi,
                 );
@@ -477,7 +500,7 @@ fn bidiag_fused_op_step1<'a, E: ComplexField>(
 
             let aij = E::faer_partial_load(simd, a_j_tail);
             let zi_load = E::faer_partial_load(simd, E::faer_rb(E::faer_as_ref(&z_tail)));
-            let new_zi = E::faer_simd_mul_adde(simd, aij, E::faer_copy(&rhs_v), zi_load);
+            let new_zi = E::faer_simd_mul_adde(simd, aij, rhs_v, zi_load);
             E::faer_partial_store(simd, z_tail, new_zi);
         }
     }
@@ -510,7 +533,7 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
                 bidiag_fused_op_step0::<E>(
                     arch,
                     E::faer_map(
-                        a_next.ptr_at(0, j),
+                        a_next.ptr_at_mut(0, j),
                         #[inline(always)]
                         |ptr| slice::from_raw_parts_mut(ptr, nrows),
                     ),
@@ -550,7 +573,9 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
         unsafe {
             bidiag_fused_op_step1(
                 arch,
-                E::faer_map(z_tmp.as_ptr(), |ptr| slice::from_raw_parts_mut(ptr, nrows)),
+                E::faer_map(z_tmp.as_ptr_mut(), |ptr| {
+                    slice::from_raw_parts_mut(ptr, nrows)
+                }),
                 E::faer_map(a_next.ptr_at(0, j), |ptr| slice::from_raw_parts(ptr, nrows)),
                 rhs,
             );
@@ -602,14 +627,14 @@ fn bidiag_fused_op<E: ComplexField>(
                 1 => {
                     bidiag_fused_op_process_batch(
                         arch,
-                        z_tmp.rb_mut().col(0),
+                        z_tmp.rb_mut().col_mut(0).as_2d_mut(),
                         a_next,
-                        a_row.row(0),
-                        u.col(0),
-                        u_prev,
-                        v_prev,
-                        y.col(0),
-                        z.rb().col(0),
+                        a_row.row_mut(0).as_2d_mut(),
+                        u.col(0).as_2d(),
+                        u_prev.as_2d(),
+                        v_prev.as_2d(),
+                        y.col_mut(0).as_2d_mut(),
+                        z.rb().col(0).as_2d(),
                         tl_prev_inv,
                         tr_prev_inv,
                         tl_inv,
@@ -631,12 +656,12 @@ fn bidiag_fused_op<E: ComplexField>(
 
                             bidiag_fused_op_process_batch(
                                 arch,
-                                z_tmp,
+                                z_tmp.as_2d_mut(),
                                 a_next,
                                 a_row,
                                 u,
-                                u_prev,
-                                v_prev,
+                                u_prev.as_2d(),
+                                v_prev.as_2d(),
                                 y,
                                 z.rb(),
                                 tl_prev_inv,
@@ -653,38 +678,56 @@ fn bidiag_fused_op<E: ComplexField>(
             let mut first_init = true;
             while idx < n_threads {
                 let bs = Ord::min(2, n_threads - idx);
-                let z_block = z_tmp.rb_mut().submatrix(0, idx, m - 1, bs);
+                let z_block = z_tmp.rb_mut().submatrix_mut(0, idx, m - 1, bs);
 
                 match bs {
                     1 => {
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         if first_init {
-                            zipped!(z.rb_mut().col(0), z0).for_each(|mut z, mut z0| {
-                                z.write(z0.read());
-                                z0.write(E::faer_zero());
-                            });
+                            zipped!(z.rb_mut().col_mut(0).as_2d_mut(), z0.as_2d_mut()).for_each(
+                                |unzipped!(mut z, mut z0)| {
+                                    z.write(z0.read());
+                                    z0.write(E::faer_zero());
+                                },
+                            );
                         } else {
-                            zipped!(z.rb_mut().col(0), z0).for_each(|mut z, mut z0| {
-                                z.write(z.read().faer_add(z0.read()));
-                                z0.write(E::faer_zero());
-                            });
+                            zipped!(z.rb_mut().col_mut(0).as_2d_mut(), z0.as_2d_mut()).for_each(
+                                |unzipped!(mut z, mut z0)| {
+                                    z.write(z.read().faer_add(z0.read()));
+                                    z0.write(E::faer_zero());
+                                },
+                            );
                         }
                     }
                     2 => {
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         let z1 = unsafe { z_block.rb().col(1).const_cast() };
                         if first_init {
-                            zipped!(z.rb_mut().col(0), z0, z1).for_each(|mut z, mut z0, mut z1| {
-                                z.write(z0.read().faer_add(z1.read()));
-                                z0.write(E::faer_zero());
-                                z1.write(E::faer_zero());
-                            });
+                            zipped!(
+                                z.rb_mut().col_mut(0).as_2d_mut(),
+                                z0.as_2d_mut(),
+                                z1.as_2d_mut(),
+                            )
+                            .for_each(
+                                |unzipped!(mut z, mut z0, mut z1)| {
+                                    z.write(z0.read().faer_add(z1.read()));
+                                    z0.write(E::faer_zero());
+                                    z1.write(E::faer_zero());
+                                },
+                            );
                         } else {
-                            zipped!(z.rb_mut().col(0), z0, z1).for_each(|mut z, mut z0, mut z1| {
-                                z.write(z.read().faer_add(z0.read().faer_add(z1.read())));
-                                z0.write(E::faer_zero());
-                                z1.write(E::faer_zero());
-                            });
+                            zipped!(
+                                z.rb_mut().col_mut(0).as_2d_mut(),
+                                z0.as_2d_mut(),
+                                z1.as_2d_mut(),
+                            )
+                            .for_each(
+                                |unzipped!(mut z, mut z0, mut z1)| {
+                                    z.write(z.read().faer_add(z0.read().faer_add(z1.read())));
+                                    z0.write(E::faer_zero());
+                                    z1.write(E::faer_zero());
+                                },
+                            );
                         }
                     }
                     _ => unreachable!(),
@@ -720,10 +763,11 @@ fn bidiag_fused_op<E: ComplexField>(
                 E::faer_one(),
                 parallelism,
             );
-            zipped!(y.rb_mut(), a_row.rb().transpose())
-                .for_each(|mut dst, src| dst.write(dst.read().faer_add(src.read().faer_conj())));
+            zipped!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+                dst.write(dst.read().faer_add(src.read().faer_conj()))
+            });
             let tl_inv = tl.faer_inv();
-            zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|mut dst, src| {
+            zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
                 dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
             });
             matmul(
@@ -744,10 +788,11 @@ fn bidiag_fused_op<E: ComplexField>(
             E::faer_one(),
             parallelism,
         );
-        zipped!(y.rb_mut(), a_row.rb().transpose())
-            .for_each(|mut dst, src| dst.write(dst.read().faer_add(src.read().faer_conj())));
+        zipped!(y.rb_mut(), a_row.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
+            dst.write(dst.read().faer_add(src.read().faer_conj()))
+        });
         let tl_inv = tl.faer_inv();
-        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|mut dst, src| {
+        zipped!(a_row.rb_mut(), y.rb().transpose()).for_each(|unzipped!(mut dst, src)| {
             dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
         });
 
@@ -765,10 +810,9 @@ fn bidiag_fused_op<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
     use faer_core::{
-        c64,
+        assert, c64,
         householder::{
             apply_block_householder_sequence_on_the_right_in_place_with_conj,
             apply_block_householder_sequence_transpose_on_the_left_in_place_req,
@@ -797,8 +841,8 @@ mod tests {
 
         bidiagonalize_in_place(
             bid.as_mut(),
-            tau_left.as_mut().col(0),
-            tau_right.as_mut().col(0),
+            tau_left.as_mut().col_mut(0).as_2d_mut(),
+            tau_right.as_mut().col_mut(0).as_2d_mut(),
             Parallelism::None,
             make_stack!(bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)),
         );
@@ -819,7 +863,7 @@ mod tests {
             bid.as_ref().submatrix(0, 1, m, n - 1).transpose(),
             tau_right.as_ref().transpose(),
             Conj::No,
-            copy.as_mut().submatrix(0, 1, m, n - 1),
+            copy.as_mut().submatrix_mut(0, 1, m, n - 1),
             Parallelism::None,
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_right_in_place_req::<f64>(
@@ -850,8 +894,8 @@ mod tests {
 
         bidiagonalize_in_place(
             bid.as_mut(),
-            tau_left.as_mut().col(0),
-            tau_right.as_mut().col(0),
+            tau_left.as_mut().col_mut(0).as_2d_mut(),
+            tau_right.as_mut().col_mut(0).as_2d_mut(),
             Parallelism::Rayon(0),
             make_stack!(bidiagonalize_in_place_req::<c64>(
                 m,
@@ -876,7 +920,7 @@ mod tests {
             bid.as_ref().submatrix(0, 1, m, n - 1).transpose(),
             tau_right.as_ref().transpose(),
             Conj::No,
-            copy.as_mut().submatrix(0, 1, m, n - 1),
+            copy.as_mut().submatrix_mut(0, 1, m, n - 1),
             Parallelism::Rayon(0),
             make_stack!(
                 apply_block_householder_sequence_transpose_on_the_right_in_place_req::<c64>(

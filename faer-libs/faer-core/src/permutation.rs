@@ -2,13 +2,11 @@
 #![allow(clippy::len_without_is_empty)]
 
 use crate::{
-    constrained,
+    assert, constrained, debug_assert,
     inner::{PermMut, PermOwn, PermRef},
     seal::Seal,
-    temp_mat_req, temp_mat_uninit, zipped, ComplexField, Entity, MatMut, MatRef, Matrix,
+    temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Entity, MatMut, MatRef, Matrix,
 };
-#[cfg(feature = "std")]
-use assert2::{assert, debug_assert};
 use bytemuck::Pod;
 use core::fmt::Debug;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -292,7 +290,13 @@ pub fn swap_cols<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     let mat_a = mat.col(a);
     let mat_b = mat.col(b);
 
-    unsafe { zipped!(mat_a.const_cast(), mat_b.const_cast()) }.for_each(|mut a, mut b| {
+    unsafe {
+        zipped!(
+            mat_a.const_cast().as_2d_mut(),
+            mat_b.const_cast().as_2d_mut(),
+        )
+    }
+    .for_each(|unzipped!(mut a, mut b)| {
         let (a_read, b_read) = (a.read(), b.read());
         a.write(b_read);
         b.write(a_read);
@@ -331,7 +335,7 @@ pub fn swap_cols<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
 #[track_caller]
 #[inline]
 pub fn swap_rows<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
-    swap_cols(mat.transpose(), a, b)
+    swap_cols(mat.transpose_mut(), a, b)
 }
 
 pub type PermutationRef<'a, I, E> = Matrix<PermRef<'a, I, E>>;
@@ -372,7 +376,7 @@ impl<I: Index, E: Entity> Permutation<I, E> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub fn new_checked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
+    pub fn new_checked(forward: alloc::boxed::Box<[I]>, inverse: alloc::boxed::Box<[I]>) -> Self {
         PermutationRef::<'_, I, E>::new_checked(&forward, &inverse);
         Self {
             inner: PermOwn {
@@ -391,7 +395,10 @@ impl<I: Index, E: Entity> Permutation<I, E> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub unsafe fn new_unchecked(forward: Box<[I]>, inverse: Box<[I]>) -> Self {
+    pub unsafe fn new_unchecked(
+        forward: alloc::boxed::Box<[I]>,
+        inverse: alloc::boxed::Box<[I]>,
+    ) -> Self {
         let n = forward.len();
         assert!(forward.len() == inverse.len());
         assert!(n <= I::Signed::MAX.zx());
@@ -406,7 +413,7 @@ impl<I: Index, E: Entity> Permutation<I, E> {
 
     /// Returns the permutation as an array.
     #[inline]
-    pub fn into_arrays(self) -> (Box<[I]>, Box<[I]>) {
+    pub fn into_arrays(self) -> (alloc::boxed::Box<[I]>, alloc::boxed::Box<[I]>) {
         (self.inner.forward, self.inner.inverse)
     }
 
@@ -746,7 +753,7 @@ pub fn permute_cols<I: Index, E: ComplexField>(
     assert!(perm_indices.into_arrays().0.len() == src.ncols());
 
     permute_rows(
-        dst.transpose(),
+        dst.transpose_mut(),
         src.transpose(),
         perm_indices.canonicalize(),
     );
@@ -793,9 +800,9 @@ pub fn permute_rows<I: Index, E: ComplexField>(
             } else {
                 for i in m.indices() {
                     let src_i = src.into_inner().row(perm[i].zx().into_inner());
-                    let mut dst_i = dst.rb_mut().into_inner().row(i.into_inner());
+                    let mut dst_i = dst.rb_mut().into_inner().row_mut(i.into_inner());
 
-                    dst_i.clone_from(src_i);
+                    dst_i.copy_from(src_i);
                 }
             }
         });
@@ -844,7 +851,7 @@ pub fn permute_rows_in_place<I: Index, E: ComplexField>(
     ) {
         let mut matrix = matrix;
         let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);
-        tmp.rb_mut().clone_from(matrix.rb());
+        tmp.rb_mut().copy_from(matrix.rb());
         permute_rows(matrix.rb_mut(), tmp.rb(), perm_indices);
     }
 
@@ -873,7 +880,7 @@ pub fn permute_cols_in_place<I: Index, E: ComplexField>(
     ) {
         let mut matrix = matrix;
         let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);
-        tmp.rb_mut().clone_from(matrix.rb());
+        tmp.rb_mut().copy_from(matrix.rb());
         permute_cols(matrix.rb_mut(), tmp.rb(), perm_indices);
     }
 

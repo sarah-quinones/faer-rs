@@ -8,7 +8,9 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use faer_core::{jacobi::JacobiRotation, permutation::swap_cols, zipped, MatMut, RealField};
+use faer_core::{
+    jacobi::JacobiRotation, permutation::swap_cols, unzipped, zipped, MatMut, RealField,
+};
 use reborrow::*;
 
 pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
@@ -25,16 +27,18 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     let mut end = n - 1;
     let mut start = 0;
+
+    // use size_of::<E> as a proxy for the max precision of E
+    let nbits = core::mem::size_of::<E>() * 8;
+    let max_iter = n.saturating_mul(Ord::max(30, nbits / 2));
     let mut iter = 0;
-    // TODO: abort after too many iterations
-    let _ = &iter;
 
     let mut u = u;
 
     if let Some(mut u) = u.rb_mut() {
-        zipped!(u.rb_mut()).for_each(|mut u| u.write(E::faer_zero()));
-        zipped!(u.rb_mut().diagonal().into_column_vector())
-            .for_each(|mut u| u.write(E::faer_one()));
+        zipped!(u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
+        zipped!(u.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+            .for_each(|unzipped!(mut u)| u.write(E::faer_one()));
     }
 
     let arch = E::Simd::default();
@@ -60,6 +64,9 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
         }
 
         iter += 1;
+        if iter >= max_iter {
+            return;
+        }
 
         start = end - 1;
         while start > 0 && offdiag[start - 1] != E::faer_zero() {
@@ -68,7 +75,9 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
         {
             // Wilkinson Shift.
-            let td = diag[end - 1];
+            let td = diag[end - 1]
+                .faer_sub(diag[end])
+                .faer_scale_power_of_two(E::faer_from_f64(0.5));
             let e = offdiag[end - 1];
 
             let mut mu = diag[end];
@@ -128,7 +137,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
                     unsafe {
                         let x = u.rb().col(k).const_cast();
                         let y = u.rb().col(k + 1).const_cast();
-                        rot.apply_on_the_right_in_place_arch(arch, x, y);
+                        rot.apply_on_the_right_in_place_arch(arch, x.as_2d_mut(), y.as_2d_mut());
                     }
                 }
                 k += 1;
@@ -159,9 +168,8 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::Mat;
+    use faer_core::{assert, Mat};
 
     #[track_caller]
     fn test_evd(diag: &[f64], offdiag: &[f64]) {
@@ -196,7 +204,7 @@ mod tests {
                     0.0
                 };
 
-                assert_approx_eq!(reconstructed.read(i, j), target, 1e-14);
+                assert_approx_eq!(reconstructed.read(i, j), target, 1e-13);
             }
         }
     }
@@ -246,6 +254,64 @@ mod tests {
         let offdiag = [
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, x, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         ];
+        test_evd(&diag, &offdiag);
+    }
+
+    // https://github.com/sarah-ek/faer-rs/issues/82
+    #[test]
+    fn test_gh_82() {
+        let diag = [
+            0.0,
+            0.0,
+            1.0769230769230773,
+            -0.4290761869709236,
+            -0.8278050499098524,
+            0.07994922044020283,
+            -0.35579623371016944,
+            0.6487378508167678,
+            -0.9347442346214521,
+            -0.08624745233962683,
+            -0.4999243909534632,
+            1.3708277457481026,
+            -0.2592167303689501,
+            -0.5929351972647323,
+            -0.5863220906879729,
+            0.15069873027683844,
+            0.2449309426221532,
+            0.5599151389028441,
+            0.440084861097156,
+            9.811634162559901e-17,
+        ];
+        let offdiag = [
+            1.7320508075688772,
+            2.081665999466133,
+            2.0303418353670932,
+            1.2463948607107287,
+            1.5895840148470526,
+            1.3810057029812097,
+            1.265168346300635,
+            0.8941431038915991,
+            1.007512301091709,
+            0.5877505835309086,
+            1.0370970338888965,
+            0.8628932798233644,
+            1.1935059937001073,
+            1.1614143449715744,
+            0.41040224297074174,
+            0.561318309959268,
+            3.1807090401145072e-15,
+            0.4963971959331084,
+            1.942890293094024e-16,
+        ];
+
+        test_evd(&diag, &offdiag);
+    }
+
+    #[test]
+    fn test_gh_82_mini() {
+        let diag = [1.0000000000000002, 1.0000000000000002];
+        let offdiag = [7.216449660063518e-16];
+
         test_evd(&diag, &offdiag);
     }
 }

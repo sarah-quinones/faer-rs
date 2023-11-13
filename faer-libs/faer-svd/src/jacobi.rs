@@ -8,9 +8,7 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#[cfg(feature = "std")]
-use assert2::assert;
-use faer_core::{jacobi::JacobiRotation, permutation::swap_cols, MatMut, RealField};
+use faer_core::{assert, jacobi::JacobiRotation, permutation::swap_cols, MatMut, RealField};
 use reborrow::*;
 
 fn compute_2x2<E: RealField>(
@@ -97,7 +95,7 @@ pub fn jacobi_svd<E: RealField>(
             for i in 0..n - 1 {
                 v.rb_mut().write(i, 0, E::faer_zero());
             }
-            v = v.submatrix(0, 1, n - 1, n - 1);
+            v = v.submatrix_mut(0, 1, n - 1, n - 1);
         }
 
         let m = v.nrows();
@@ -118,9 +116,9 @@ pub fn jacobi_svd<E: RealField>(
 
     let mut max_diag = E::faer_zero();
     {
-        let diag = matrix.rb().diagonal().into_column_vector();
+        let diag = matrix.rb().diagonal().column_vector();
         for idx in 0..diag.nrows() {
-            let d = diag.read(idx, 0).faer_abs();
+            let d = diag.read(idx).faer_abs();
             max_diag = if d > max_diag { d } else { max_diag };
         }
     }
@@ -148,20 +146,30 @@ pub fn jacobi_svd<E: RealField>(
                         matrix.read(q, q),
                     );
 
-                    let [top, bottom] = matrix.rb_mut().split_at_row(p);
-                    j_left.apply_on_the_left_in_place(bottom.row(0), top.row(q));
-                    let [left, right] = matrix.rb_mut().split_at_col(p);
-                    j_right.apply_on_the_right_in_place(right.col(0), left.col(q));
+                    let (top, bottom) = matrix.rb_mut().split_at_row_mut(p);
+                    j_left.apply_on_the_left_in_place(
+                        bottom.row_mut(0).as_2d_mut(),
+                        top.row_mut(q).as_2d_mut(),
+                    );
+                    let (left, right) = matrix.rb_mut().split_at_col_mut(p);
+                    j_right.apply_on_the_right_in_place(
+                        right.col_mut(0).as_2d_mut(),
+                        left.col_mut(q).as_2d_mut(),
+                    );
 
                     if let Some(u) = u.rb_mut() {
-                        let [left, right] = u.split_at_col(p);
-                        j_left
-                            .transpose()
-                            .apply_on_the_right_in_place(right.col(0), left.col(q))
+                        let (left, right) = u.split_at_col_mut(p);
+                        j_left.transpose().apply_on_the_right_in_place(
+                            right.col_mut(0).as_2d_mut(),
+                            left.col_mut(q).as_2d_mut(),
+                        )
                     }
                     if let Some(v) = v.rb_mut() {
-                        let [left, right] = v.split_at_col(p);
-                        j_right.apply_on_the_right_in_place(right.col(0), left.col(q))
+                        let (left, right) = v.split_at_col_mut(p);
+                        j_right.apply_on_the_right_in_place(
+                            right.col_mut(0).as_2d_mut(),
+                            left.col_mut(q).as_2d_mut(),
+                        )
                     }
 
                     for idx in [p, q] {
@@ -196,11 +204,11 @@ pub fn jacobi_svd<E: RealField>(
         Skip::Last => (0, n - 1),
     };
 
-    let mut matrix = matrix.submatrix(start, start, new_n, new_n);
-    let mut u = u.map(|u| u.submatrix(0, start, n, new_n));
+    let mut matrix = matrix.submatrix_mut(start, start, new_n, new_n);
+    let mut u = u.map(|u| u.submatrix_mut(0, start, n, new_n));
     let mut v = v.map(|v| {
         let vn = v.nrows();
-        v.submatrix(0, start, vn, new_n)
+        v.submatrix_mut(0, start, vn, new_n)
     });
 
     let n = new_n;
@@ -240,9 +248,8 @@ pub fn jacobi_svd<E: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
     use assert_approx_eq::assert_approx_eq;
-    use faer_core::{Mat, MatRef};
+    use faer_core::{assert, Mat, MatRef};
 
     #[track_caller]
     fn check_svd(mat: MatRef<'_, f64>, u: MatRef<'_, f64>, v: MatRef<'_, f64>, s: MatRef<'_, f64>) {
