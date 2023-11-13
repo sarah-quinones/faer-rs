@@ -1,3 +1,15 @@
+# 0.15
+- Implemented initial API of `Row`/`RowRef`/`RowMut` and `Col`/`ColRef`/`ColMut` structs for handling matrices with a single row or column.
+- Implemented `[Mat|Col|Row]::norm_l2` and `[Mat|Col|Row]::norm_max` for computing the L2 norm of a matrix or its maximum absolute value.
+- Fixed several bugs in the eigenvalue decompositions. Special thanks to `@AlexMath` for tracking down the errors.
+- Updated `zipped!` macro API, which now requires a matching `unzipped!` for matching the closure arguments.
+- Removed the limitation on the number of matrices that can be passed to `zipped!`.
+- Added a `zipped!(...).map(|unzipped!(...)| { ... })` API to allow mapping a zipped pack of matrices and returns the result as a matrix.
+- Updated `polars` dependency to 0.34.
+- Speed improvements for complex matrix multiplication on AMD cpus.
+- New SIMD functions in the Entity trait for aligned loads and stores.
+- Renamed multiple methods such as `MatMut::transpose` to `MatMut::transpose_mut`.
+
 # 0.14
 - Implemented sparse data structures in `faer_core::sparse`.
 - Implemented sparse Cholesky decompositions, simplicial and supernodal. Only the low level API is currently exposed in `faer-sparse`.
