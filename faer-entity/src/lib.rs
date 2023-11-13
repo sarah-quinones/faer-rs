@@ -186,6 +186,12 @@ pub fn from_copy<E: Entity, T: Copy>(x: GroupCopyFor<E, T>) -> GroupFor<E, T> {
     unsafe { transmute_unchecked(x) }
 }
 
+pub trait UniversalReborrow: for<'a> Reborrow<'a> {}
+pub trait UniversalReborrowMut: for<'a> ReborrowMut<'a> {}
+
+impl<T> UniversalReborrow for T where for<'a> T: Reborrow<'a> {}
+impl<T> UniversalReborrowMut for T where for<'a> T: ReborrowMut<'a> {}
+
 /// Unstable core trait for describing how a scalar value may be split up into individual
 /// component.
 ///
@@ -205,14 +211,16 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     type SimdIndex<S: Simd>: Copy + Send + Sync + Debug + 'static;
     type Iter<I: Iterator>: Iterator<Item = GroupFor<Self, I::Item>>;
 
-    type PrefixUnit<'a, S: Simd>: pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
-    type SuffixUnit<'a, S: Simd>: pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
+    type PrefixUnit<'a, S: Simd>: Copy + pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
+    type SuffixUnit<'a, S: Simd>: Copy + pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
     type PrefixMutUnit<'a, S: Simd>: pulp::Write<Output = SimdUnitFor<Self, S>>
-        + for<'short> ReborrowMut<'short, Target = <Self as Entity>::PrefixMutUnit<'short, S>>
-        + for<'short> Reborrow<'short, Target = <Self as Entity>::PrefixUnit<'short, S>>;
+        + IntoConst<Target = Self::PrefixUnit<'a, S>>
+        + UniversalReborrow
+        + UniversalReborrowMut;
     type SuffixMutUnit<'a, S: Simd>: pulp::Write<Output = SimdUnitFor<Self, S>>
-        + for<'short> ReborrowMut<'short, Target = <Self as Entity>::SuffixMutUnit<'short, S>>
-        + for<'short> Reborrow<'short, Target = <Self as Entity>::SuffixUnit<'short, S>>;
+        + IntoConst<Target = Self::SuffixUnit<'a, S>>
+        + UniversalReborrow
+        + UniversalReborrowMut;
 
     const N_COMPONENTS: usize;
     const UNIT: GroupFor<Self, ()>;
