@@ -19,7 +19,7 @@ gemm = { version = "0.16.14", default-features = false }
 
 coe-rs = "0.1"
 reborrow = "0.5"
-pulp = { version = "0.18.3", default-features = false }
+pulp = { version = "0.18.4", default-features = false }
 dyn-stack = { version = "0.10", default-features = false }
 
 num-traits = { version = "0.2", default-features = false }
