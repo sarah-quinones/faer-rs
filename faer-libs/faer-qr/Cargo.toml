@@ -1,6 +1,6 @@
 [package]
 name = "faer-qr"
-version = "0.14.1"
+version = "0.15.0"
 edition = "2021"
 authors = ["sarah <>"]
 description = "Basic linear algebra routines"
@@ -12,7 +12,7 @@ keywords = ["math", "matrix", "linear-algebra"]
 [dependencies]
 faer-entity = { workspace = true, default-features = false }
 
-faer-core = { version = "0.14.1", default-features = false, path = "../faer-core" }
+faer-core = { version = "0.15.0", default-features = false, path = "../faer-core" }
 
 coe-rs = { workspace = true }
 reborrow = { workspace = true }
