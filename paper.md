@@ -1,5 +1,5 @@
 ---
-title: 'Faer: A linear algebra library for the Rust programming language'
+title: 'faer: A linear algebra library for the Rust programming language'
 tags:
   - Rust
   - linear algebra
