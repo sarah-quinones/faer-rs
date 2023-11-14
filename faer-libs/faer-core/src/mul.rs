@@ -1899,9 +1899,11 @@ pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<C
 }
 
 macro_rules! stack_mat_16x16_begin {
-    ($name: ident, $nrows: expr, $ncols: expr, $ty: ty) => {
-        let __nrows = $nrows;
-        let __ncols = $ncols;
+    ($name: ident, $nrows: expr, $ncols: expr, $rs: expr, $cs: expr, $ty: ty) => {
+        let __nrows: usize = $nrows;
+        let __ncols: usize = $ncols;
+        let __rs: isize = $rs;
+        let __cs: isize = $cs;
         let mut __data = <$ty as $crate::Entity>::faer_map(
             <$ty as $crate::Entity>::UNIT,
             #[inline(always)]
@@ -1938,6 +1940,16 @@ macro_rules! stack_mat_16x16_begin {
         let mut $name = unsafe {
             $crate::mat::from_raw_parts_mut::<'_, $ty>(__data, __nrows, __ncols, 1isize, 16isize)
         };
+
+        if __cs.unsigned_abs() < __rs.unsigned_abs() {
+            $name = $name.transpose_mut();
+        }
+        if __rs == -1 {
+            $name = $name.reverse_rows_mut();
+        }
+        if __cs == -1 {
+            $name = $name.reverse_cols_mut();
+        }
     };
 }
 
@@ -2067,8 +2079,8 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_dst, n, n, E);
-                    stack_mat_16x16_begin!(temp_rhs, n, n, E);
+                    stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
 
                     copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
                     mul(
@@ -2189,7 +2201,7 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_rhs, n, n, E);
+                    stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
 
                     copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
@@ -2283,9 +2295,9 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_dst, n, n, E);
-                    stack_mat_16x16_begin!(temp_lhs, n, n, E);
-                    stack_mat_16x16_begin!(temp_rhs, n, n, E);
+                    stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
 
                     copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
                     copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -2391,8 +2403,8 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_lhs, n, n, E);
-                    stack_mat_16x16_begin!(temp_rhs, n, n, E);
+                    stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
 
                     copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                     copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -2524,9 +2536,9 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_dst, n, n, E);
-                    stack_mat_16x16_begin!(temp_lhs, n, n, E);
-                    stack_mat_16x16_begin!(temp_rhs, n, n, E);
+                    stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
+                    stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
 
                     copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                     copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -2646,7 +2658,7 @@ pub mod triangular {
             let op = {
                 #[inline(never)]
                 || {
-                    stack_mat_16x16_begin!(temp_dst, n, n, E);
+                    stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
 
                     mul(
                         temp_dst.rb_mut(),
@@ -3299,7 +3311,7 @@ mod tests {
 
     #[test]
     fn test_stack_mat() {
-        stack_mat_16x16_begin!(m, 3, 3, f64);
+        stack_mat_16x16_begin!(m, 3, 3, 1, 3, f64);
         {
             let _ = &mut m;
             dbg!(&m);

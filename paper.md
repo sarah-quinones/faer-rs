@@ -7,6 +7,10 @@ tags:
 authors:
   - name: Sarah El Kazdadi
     orcid: 0000-0002-5657-0710
+    affiliation: 1
+affiliations:
+ - name: Independent Researcher, France
+   index: 1
 date: 5 October 2023
 bibliography: paper.bib
 ---
