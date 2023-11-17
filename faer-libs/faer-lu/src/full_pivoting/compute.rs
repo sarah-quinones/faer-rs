@@ -756,6 +756,7 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
 
         #[inline(always)]
         fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            dbg!(simd);
             let UpdateAndBestInMat(mut matrix, lhs, rhs) = self;
             assert!(matrix.row_stride() == 1);
             assert!(lhs.row_stride() == 1);
@@ -1159,7 +1160,7 @@ fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::R
 fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     mut dst: MatMut<'_, E>,
     lhs: MatRef<'_, E>,
-    rhs: MatMut<'_, E>,
+    mut rhs: MatMut<'_, E>,
     max_row: usize,
 ) -> (usize, usize, E::Real) {
     let is_c64 = coe::is_same::<c64, E>();
@@ -1183,6 +1184,15 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     } else if is_col_major {
         update_and_best_in_matrix_simd(dst, lhs, rhs, max_row)
     } else {
+        if max_row > 0 {
+            let n = dst.ncols();
+            for j in 0..n {
+                let a = rhs.read(0, j);
+                let b = dst.read(max_row, j);
+                rhs.write(0, j, b);
+                dst.write(max_row, j, a);
+            }
+        }
         matmul(
             dst.rb_mut(),
             lhs,
