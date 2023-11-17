@@ -1593,7 +1593,10 @@ mod tests {
             (1024, 1023),
         ] {
             let random_mat = Mat::from_fn(m, n, |_i, _j| random());
+            dbg!(m, n);
+            dbg!(&random_mat);
             for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
+                dbg!(parallelism);
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
                 let mut row_perm = vec![0usize; m];
@@ -1646,7 +1649,9 @@ mod tests {
             (1024, 1023),
         ] {
             let random_mat = Mat::from_fn(n, m, |_i, _j| random());
+            dbg!(m, n);
             for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
+                dbg!(parallelism);
                 let mut mat = random_mat.clone();
                 let mat_orig = mat.clone();
 

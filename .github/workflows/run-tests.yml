@@ -70,7 +70,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Collect coverage data
-        run: cd faer-libs && cargo llvm-cov nextest --lcov --output-path lcov.info --workspace
+        run: cd faer-libs && cargo llvm-cov nextest --lcov --output-path lcov.info --workspace -- test_compute_lu_row_major
 
       - name: Upload coverage data to codecov
         uses: codecov/codecov-action@v3
