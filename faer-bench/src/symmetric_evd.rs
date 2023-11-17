@@ -1,6 +1,6 @@
 use super::timeit;
 use crate::random;
-use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
+use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::Eigh;
 use std::time::Duration;
@@ -83,7 +83,11 @@ pub fn faer<T: faer_core::ComplexField>(
             let time = timeit(|| {
                 faer_evd::compute_hermitian_evd(
                     c.as_ref(),
-                    s.as_mut().diagonal(),
+                    s.as_mut()
+                        .submatrix_mut(0, 0, n, n)
+                        .diagonal_mut()
+                        .column_vector_mut()
+                        .as_2d_mut(),
                     Some(u.as_mut()),
                     parallelism,
                     stack.rb_mut(),

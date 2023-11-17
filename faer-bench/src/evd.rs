@@ -1,6 +1,6 @@
 use super::timeit;
 use crate::random;
-use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
+use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 use ndarray_linalg::Eig;
 use std::time::Duration;
@@ -69,8 +69,8 @@ pub fn faer<T: faer_core::ComplexField>(
                 if coe::is_same::<T, T::Real>() {
                     faer_evd::compute_evd_real::<T::Real>(
                         coe::coerce(c.as_ref()),
-                        coe::coerce(s.as_mut().diagonal()),
-                        coe::coerce(s_im.as_mut().diagonal()),
+                        coe::coerce(s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut()),
+                        coe::coerce(s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut()),
                         Some(coe::coerce(u.as_mut())),
                         parallelism,
                         stack.rb_mut(),
@@ -79,7 +79,7 @@ pub fn faer<T: faer_core::ComplexField>(
                 } else {
                     faer_evd::compute_evd_complex(
                         c.as_ref(),
-                        s.as_mut().diagonal(),
+                        s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                         Some(u.as_mut()),
                         parallelism,
                         stack.rb_mut(),

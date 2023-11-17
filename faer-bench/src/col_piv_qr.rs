@@ -1,7 +1,7 @@
 use super::timeit;
 use crate::random;
 use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
-use faer_core::{Mat, Parallelism};
+use faer_core::{unzipped, zipped, Mat, Parallelism};
 use faer_qr::no_pivoting::compute::recommended_blocksize;
 use std::time::Duration;
 
@@ -53,11 +53,11 @@ pub fn faer<T: faer_core::ComplexField>(
             let mut qr = Mat::<T>::zeros(n, n);
             let blocksize = recommended_blocksize::<T>(n, n);
             let mut householder = Mat::<T>::zeros(blocksize, n);
-            let mut perm = vec![0; n];
-            let mut perm_inv = vec![0; n];
+            let mut perm = vec![0u32; n];
+            let mut perm_inv = vec![0u32; n];
 
             let mut mem = GlobalPodBuffer::new(
-                faer_qr::col_pivoting::compute::qr_in_place_req::<T>(
+                faer_qr::col_pivoting::compute::qr_in_place_req::<u32, T>(
                     n,
                     n,
                     blocksize,
@@ -69,10 +69,8 @@ pub fn faer<T: faer_core::ComplexField>(
             let mut stack = PodStack::new(&mut mem);
 
             let mut block = || {
-                qr.as_mut()
-                    .cwise()
-                    .zip(c.as_ref())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                zipped!(qr.as_mut(), c.as_ref())
+                    .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                 faer_qr::col_pivoting::compute::qr_in_place(
                     qr.as_mut(),
                     householder.as_mut(),

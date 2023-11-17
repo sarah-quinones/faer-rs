@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
-use pulp::{Scalar, Simd};
+use faer_core::pulp::Simd;
+use pulp::Scalar;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(C)]

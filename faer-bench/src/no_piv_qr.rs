@@ -1,7 +1,7 @@
 use super::timeit;
 use crate::random;
-use dyn_stack::{PodStack, GlobalPodBuffer, ReborrowMut};
-use faer_core::{Mat, Parallelism};
+use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
+use faer_core::{unzipped, zipped, Mat, Parallelism};
 use ndarray_linalg::QR;
 use std::time::Duration;
 
@@ -80,10 +80,8 @@ pub fn faer<T: faer_core::ComplexField>(
             let mut stack = PodStack::new(&mut mem);
 
             let mut block = || {
-                qr.as_mut()
-                    .cwise()
-                    .zip(c.as_ref())
-                    .for_each(|mut dst, src| dst.write(src.read()));
+                zipped!(qr.as_mut(), c.as_ref())
+                    .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                 faer_qr::no_pivoting::compute::qr_in_place(
                     qr.as_mut(),
                     householder.as_mut(),

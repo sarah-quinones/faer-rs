@@ -5,7 +5,8 @@ use faer_core::{c32, c64, Parallelism};
 use human_repr::HumanDuration;
 use std::{fs::File, io::Write, time::Duration};
 
-use double_f64::DoubleF64 as f128;
+// use double_f64::DoubleF64 as f128;
+type f128 = f64;
 #[allow(non_camel_case_types)]
 type c128 = num_complex::Complex<f128>;
 
@@ -17,17 +18,17 @@ fn random<T: 'static>() -> T {
         coe::coerce_static(rand::random::<f32>())
     } else if is_same::<f64, T>() {
         coe::coerce_static(rand::random::<f64>())
-    } else if is_same::<f128, T>() {
-        coe::coerce_static(double_f64::Double(rand::random::<f64>(), 0.0))
+    // } else if is_same::<f128, T>() {
+    //     coe::coerce_static(double_f64::Double(rand::random::<f64>(), 0.0))
     } else if is_same::<c32, T>() {
         coe::coerce_static(c32::new(rand::random(), rand::random()))
     } else if is_same::<c64, T>() {
         coe::coerce_static(c64::new(rand::random(), rand::random()))
-    } else if is_same::<c128, T>() {
-        coe::coerce_static(c128::new(
-            double_f64::Double(rand::random(), 0.0),
-            double_f64::Double(rand::random(), 0.0),
-        ))
+    // } else if is_same::<c128, T>() {
+    //     coe::coerce_static(c128::new(
+    //         double_f64::Double(rand::random(), 0.0),
+    //         double_f64::Double(rand::random(), 0.0),
+    //     ))
     } else if is_same::<Cplx32, T>() {
         coe::coerce_static(Cplx32::new(rand::random(), rand::random()))
     } else if is_same::<Cplx64, T>() {
@@ -69,7 +70,7 @@ fn timeit(f: impl FnMut()) -> f64 {
     }) / n as f64
 }
 
-mod double_f64;
+// mod double_f64;
 
 mod gemm;
 mod tr_inverse;
