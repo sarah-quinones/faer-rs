@@ -240,6 +240,7 @@ fn best_in_col<E: ComplexField, S: Simd>(
     let mut best_indices2 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
     let mut best_indices3 = simd_real.index_splat(E::Real::faer_usize_to_index(0));
 
+    #[inline(always)]
     fn process<E: ComplexField, S: Simd>(
         simd: SimdFor<E, S>,
         data: impl Read<Output = SimdGroupFor<E, S>>,
