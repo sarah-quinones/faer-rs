@@ -4,7 +4,22 @@
 
 #show heading: set block(above: 1.4em, below: 1em)
 
+#show link: underline
+
+#set page(numbering: "1")
+
 #set par(leading: 0.55em, justify: true)
+
+#set heading(numbering: "1.1")
+
+#show heading.where(level: 1): it => pagebreak(weak:true) + block({
+    set text(font: "New Computer Modern", weight: "black")
+    v(2cm)
+    block(text(18pt)[Chapter #counter(heading).display()])
+    v(1cm)
+    block(text(22pt)[#it.body])
+    v(1cm)
+})
 
 #import "@preview/codly:0.1.0"
 
@@ -18,13 +33,18 @@
 }
 
 #show: codly.codly-init.with()
+
 #codly.codly(
   languages: (
     rust: (name: "Rust", icon: icon("brand-rust.svg"), color: rgb("#CE412B")),
-  )
+  ),
+  breakable: false,
+  width-numbers: none,
 )
 
-= Introduction
+#outline()
+
+== Introduction
 `faer-rs` is a general-purpose linear algebra library for the Rust programming language.
 With a focus on correctness, portability, and performance. In this book, we'll
 be assuming version `0.15.0` of the library.
@@ -113,7 +133,7 @@ support but can still be vectorized by combining more primitive operations
 prefer to be laid out in SoA layout.
 
 Types that are not vectorizable may be in either one, but the AoS layout is
-typically easier to work with, in that scenario.
+typically easier to work with in that scenario.
 
 == `Entity` trait
 The `Entity` trait determines how a type prefers to be stored in memory,
@@ -180,8 +200,6 @@ matrices (`Mat`) which are always stored in column-major layout, and matrix view
 Note that even though matrix views allow for any row and column stride, they
 are still typically optimized for column major layout, since that happens to be
 the preferred layout for most matrix decompositions.
-
-#pagebreak()
 
 Matrix views are roughly defined as:
 ```rust
@@ -278,9 +296,8 @@ how much storage we have for resizing the matrix without having to reallocate.
 `Mat` can be converted to `MatRef` using `Mat::as_ref(&self)` or `MatMut` using
 `Mat::as_mut(&mut self)`.
 
-#pagebreak()
-
-= Componentwise operations
+= Vector operations
+== Componentwise operations
 Componentwise operations are operations that take $n$ matrices with matching
 dimensions, producing an output of the same shape. Addition and subtraction
 are examples of commonly used componentwise operations.
@@ -314,6 +331,383 @@ order.
 
 Currently, `zipped!` determines the iteration order based on the preferred
 iteration order of the first matrix, but this may change in a future release.
+
+== Vectorized operations
+SIMD (Single Instruction, Multiple Data) refers to the usage of CPU instructions
+that take vectors of inputs, packed together in CPU registers, and perform the
+same operation on all of them. As an example, classic addition takes two scalars
+as an input and produces one output, while SIMD addition could take two vectors,
+each containing 4 scalars, and adds them componentwise, producing an output vector
+of 4 scalars. Correct SIMD usage is a crucial part of any linear algebra
+library, given that most linear algebra operations lend themselves well to
+vectorization.
+
+== SIMD with `pulp`
+
+`faer` provides a common interface for generic and composable SIMD, using the
+`pulp` crate as a backend. `pulp`'s high level API abstracts away the differences
+between various instruction sets and provides a common API that's generic over
+them (but not the scalar type). This allows users to write a generic implementation
+that gets turned into several functions, one for each possible instruction set
+among a predetermined subset. Finally, the generic implementation can be used along
+with an `Arch` structure that determines the best implementation at runtime.
+
+Here's an example of how `pulp` could be used to compute the expression $x^2 +
+2y - |z|$, and store it into an output vector.
+
+```rust
+use core::iter::zip;
+
+fn compute_expr(out: &mut[f64], x: &[f64], y: &[f64], z: &[f64]) {
+    struct Impl<'a> {
+        out: &'a mut [f64],
+        x: &'a [f64],
+        y: &'a [f64],
+        z: &'a [f64],
+    }
+
+    impl pulp::WithSimd for Impl<'_> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, simd: S) {
+            let Self { out, x, y, z } = self;
+
+            let (out_head, out_tail) = S::f64s_as_mut_simd(out);
+            let (x_head, x_tail) = S::f64s_as_simd(x);
+            let (y_head, y_tail) = S::f64s_as_simd(y);
+            let (z_head, z_tail) = S::f64s_as_simd(z);
+
+            let two = simd.f64s_splat(2.0);
+            for (out, (&x, (&y, &z))) in zip(
+                out_head,
+                zip(x_head, zip(y_head, z_head)),
+            ) {
+                *out = simd.f64s_add(
+                    x,
+                    simd.f64s_sub(simd.f64s_mul(two, y), simd.f64s_abs(z)),
+                );
+            }
+
+            for (out, (&x, (&y, &z))) in zip(
+                out_tail,
+                zip(x_tail, zip(y_tail, z_tail)),
+            ) {
+                *out = x - 2.0 * y - z.abs();
+            }
+        }
+    }
+
+    pulp::Arch::new().dispatch(Impl { out, x, y, z });
+}
+```
+
+There's a lot of things going on at the same time in this code example. Let us
+go over them step by step.
+
+`pulp`'s generic SIMD implementation happens through the `WithSimd` trait,
+which takes `self` by value to pass in the function parameters. It additionally
+provides another parameter to `with_simd` describing the instruction set being
+used. `WithSimd::with_simd` *must* be marked with the `#[inline(always)]` attribute.
+Forgetting to do so could lead to a significant performance drop.
+
+Inside the body of the function, we split up each of `out`, `x`, `y` and
+`z` into two parts using `S::f64s_as[_mut]_simd`. The first part (`head`) is a
+slice of `S::f64s`, representing the vectorizable part of the original slice.
+The second part (`tail`) contains the remainder that doesn't fit into a vector
+register.
+
+Handling the head section is done using vectorized operation. Currently these
+need to take `simd` as a parameter, in order to guarantee its availability in a
+sound way. This is what allows the API to be safe. The tail section is handled
+using scalar operations.
+
+The final step is actually calling into our SIMD implementation. This is done
+by creating an instance of `pulp::Arch` that performs the runtime detection
+(and caches the result, so that future invocations are as fast as possible),
+then calling `Arch::dispatch` which takes a type that implements `WithSimd`,
+and chooses the best SIMD implementation for it.
+
+=== Memory alignment
+
+Instead of splitting the input and output slices into two sections
+(vectorizable head + non-vectorizable tail), an alternative approach would be
+to split them up into three sections instead (vectorizable head + vectorizable
+body + vectorizable tail). This can be accomplished using masked loads and
+stores, which can speed things up if the slices are _similarly aligned_.
+
+Similarly aligned slices are slices which have the same base address modulo
+the byte size of the CPU's vector registers. The simplest way to guarantee this
+is to allocate the slices in aligned memory (such that the base address is a
+multiple of the register size in bytes), in which case the slices are similarly
+aligned, and any subslices of them (with a shared offset and size) will also be
+similarly aligned. Aligned allocation is done automatically for matrices in `faer`,
+which helps uphold these guarantees for maximum performance.
+
+Here's an example of how one might write an implementation that makes use of
+memory alignment, using `pulp`.
+
+```rust
+use core::iter::zip;
+use pulp::{Read, Write};
+
+#[inline(always)]
+fn compute_expr_register<S: pulp::Simd>(
+    simd: S,
+    mut out: impl Write<Output = S::f64s>,
+    x: impl Read<Output = S::f64s>,
+    y: impl Read<Output = S::f64s>,
+    z: impl Read<Output = S::f64s>,
+) {
+    let zero = simd.f64s_splat(0.0);
+    let x = x.read_or(zero);
+    let y = y.read_or(zero);
+    let z = z.read_or(zero);
+    let two = simd.f64s_splat(2.0);
+    out.write(simd.f64s_add(
+        x,
+        simd.f64s_sub(simd.f64s_mul(two, y), simd.f64s_abs(z)),
+    ));
+}
+impl pulp::WithSimd for Impl<'_> {
+    type Output = ();
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) {
+        let Self { out, x, y, z } = self;
+        let offset = simd.f64s_align_offset(out.as_ptr(), out.len());
+
+        let (out_head, out_body, out_tail) =
+            simd.f64s_as_aligned_mut_simd(out, offset);
+        let (x_head, x_body, x_tail) = simd.f64s_as_aligned_simd(x, offset);
+        let (y_head, y_body, y_tail) = simd.f64s_as_aligned_simd(y, offset);
+        let (z_head, z_body, z_tail) = simd.f64s_as_aligned_simd(z, offset);
+
+        compute_expr_register(simd, out_head, x_head, y_head, z_head);
+        for (out, (x, (y, z))) in zip(
+            out_body,
+            zip(x_body, zip(y_body, z_body)),
+        ) {
+            compute_expr_register(simd, out, x, y, z);
+        }
+        compute_expr_register(simd, out_tail, x_tail, y_tail, z_tail);
+    }
+}
+```
+
+`faer` adds one more abstraction layer on top of `pulp`, in order to make the
+SIMD operations generic over the scalar type. This is done using the
+`faer_core::group_helpers::SimdFor<E, S>` struct that's effectively a thin
+wrapper over `S`, and only exposes operations specific to the type `E`.
+
+Here's how one might implement the previous operation for a generic real scalar type.
+
+```rust
+use faer_core::group_helpers::{SliceGroup, SliceGroupMut};
+use faer_core::RealField;
+
+struct Impl<'a, E: RealField> {
+    out: SliceGroupMut<'a, E>,
+    x: SliceGroup<'a, E>,
+    y: SliceGroup<'a, E>,
+    z: SliceGroup<'a, E>,
+}
+```
+
+`&[f64]` and `&mut [f64]` are replaced by `SliceGroup<'_, E>` and
+`SliceGroupMut<'_, E>`, to accomodate the fact that `E` might be an SoA type
+that wants to be decomposed into multiple units. Aside from that change, most
+of the code looks similar to what we had before.
+
+```rust
+use core::iter::zip;
+use faer_core::{RealField, SimdGroupFor, group_helpers::SimdFor};
+use pulp::{Read, Write};
+use reborrow::*;
+#[inline(always)]
+fn compute_expr_register<E: RealField, S: pulp::Simd>(
+    simd: SimdFor<E, S>,
+    mut out: impl Write<Output = SimdGroupFor<E, S>>,
+    x: impl Read<Output = SimdGroupFor<E, S>>,
+    y: impl Read<Output = SimdGroupFor<E, S>>,
+    z: impl Read<Output = SimdGroupFor<E, S>>,
+) {
+    let zero = simd.splat(E::faer_zero());
+    let two = simd.splat(E::faer_from_f64(2.0));
+    let x = x.read_or(zero);
+    let y = y.read_or(zero);
+    let z = z.read_or(zero);
+    out.write(simd.add(x, simd.sub(simd.mul(two, y), simd.abs(z))));
+}
+
+```
+
+```rust
+impl<E: RealField> pulp::WithSimd for Impl<'_, E> {
+    type Output = ();
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) {
+        let Self { out, x, y, z } = self;
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(out.rb());
+        let (out_head, out_body, out_tail) =
+            simd.as_aligned_simd_mut(out, offset);
+        let (x_head, x_body, x_tail) = simd.as_aligned_simd(x, offset);
+        let (y_head, y_body, y_tail) = simd.as_aligned_simd(y, offset);
+        let (z_head, z_body, z_tail) = simd.as_aligned_simd(z, offset);
+        compute_expr_register(simd, out_head, x_head, y_head, z_head);
+        for (out, (x, (y, z))) in zip(
+            out_body.into_mut_iter(),
+            zip(
+                x_body.into_ref_iter(),
+                zip(y_body.into_ref_iter(), z_body.into_ref_iter())
+            ),
+        ) {
+            compute_expr_register(simd, out, x, y, z);
+        }
+        compute_expr_register(simd, out_tail, x_tail, y_tail, z_tail);
+    }
+}
+```
+
+== SIMD reductions
+The previous examples focused on _vertical_ operations, which compute the
+output of a componentwise operation and storing the result in an output vector.
+Another interesting kind of operations is _horizontal_ ones, which accumulate
+the result of one or more vector into one or more scalar values.
+
+One example of this is the dot product, which takes two vectors $a$ and $b$ of
+size $n$ and computes $sum_(i = 0)^n a_i b_i$.
+
+One way to implement it would be like this:
+
+```rust
+use faer_core::group_helpers::{SliceGroup, SliceGroupMut};
+use faer_core::RealField;
+
+struct Impl<'a, E: RealField> {
+    a: SliceGroup<'a, E>,
+    b: SliceGroup<'a, E>,
+}
+#[inline(always)]
+fn dot_register<E: RealField, S: pulp::Simd>(
+    simd: SimdFor<E, S>,
+    acc: SimdGroupFor<E, S>,
+    b: impl Read<Output = SimdGroupFor<E, S>>,
+    a: impl Read<Output = SimdGroupFor<E, S>>,
+) -> SimdGroupFor<E, S> {
+    let zero = simd.splat(E::faer_zero());
+    let a = a.read_or(zero);
+    let b = b.read_or(zero);
+    simd.mul_add(a, b, acc)
+}
+
+impl<E: RealField> pulp::WithSimd for Impl<'_, E> {
+    type Output = ();
+    #[inline(always)]
+    fn with_simd<S: pulp::Simd>(self, simd: S) {
+        let Self { a, b } = self;
+        let simd = SimdFor::<E, S>::new(simd);
+        let offset = simd.align_offset(a);
+
+        let (a_head, a_body, a_tail) = simd.as_aligned_simd(a, offset);
+        let (b_head, b_body, b_tail) = simd.as_aligned_simd(b, offset);
+
+        let mut acc = simd.splat(E::faer_zero());
+        acc = dot_register(simd, acc, a_head, b_head);
+        for (a, b) in zip(a_body, b_body) {
+            acc = dot_register(simd, acc, a, b);
+        }
+        acc = dot_register(simd, acc, a_tail, b_tail);
+
+        simd.reduce_add(simd.rotate_left(acc, offset.rotate_left_amount()))
+    }
+}
+```
+The code looks similar to what we've written before. An interesting addition
+is the use of `simd.rotate_left` in the last line. The reason for this is to
+make sure our computed reduction doesn't depend on the memory offset, which can
+help avoid variations in the output due to the non-associativity of floating point
+arithmetic.
+
+For example, suppose our register size is 4 elements, and we want to compute
+the dot product of 13 elements from each of $a$ and $b$.
+
+In the case where the memory is aligned, this is what the head, body and tail
+of $a$ and $b$ look like:
+
+$
+a_("head") &= (a_1, a_2, a_3, a_4),\
+b_("head") &= (b_1, b_2, b_3, b_4),\
+\
+a_("body") &= [(a_5, a_6, a_7, a_8), (a_9, a_10, a_11, a_12)],\
+b_("body") &= [(b_5, b_6, b_7, b_8), (b_9, b_10, b_11, b_12)],\
+\
+a_("tail") &= (a_13, 0, 0, 0),\
+b_("tail") &= (b_13, 0, 0, 0).\
+$
+
+Right before we perform the rotation, the accumulator contains the following result
+$
+  "acc"_1 &= a_1 b_1 + a_5 b_5 + a_9 b_9 + a_13 b_13,\
+  "acc"_2 &= a_2 b_2 + a_6 b_6 + a_10 b_10 ,\
+  "acc"_3 &= a_3 b_3 + a_7 b_7 + a_11 b_11 ,\
+  "acc"_4 &= a_4 b_4 + a_8 b_8 + a_12 b_12 .\
+$
+
+If we assume the reduction operation `simd.reduce_add` sums the elements
+sequentially, we get the final result:
+$
+  "acc"_"aligned" = &(a_1 b_1 + a_5 b_5 + a_9 b_9 + a_13 b_13)\
+  &+ (a_2 b_2 + a_6 b_6 + a_10 b_10 )\
+  &+ (a_3 b_3 + a_7 b_7 + a_11 b_11 )\
+  &+ (a_4 b_4 + a_8 b_8 + a_12 b_12 ).\
+$
+
+Now let's take a look at the case where the memory is unaligned, for example
+with an offset of 1. In this case $a$ and $b$ look like:
+
+$
+a'_("head") &= (0, a_1, a_2, a_3),\
+b'_("head") &= (0, b_1, b_2, b_3),\
+\
+a'_("body") &= [(a_4, a_5, a_6, a_7), (a_8, a_9, a_10, a_11)],\
+b'_("body") &= [(a_4, b_5, b_6, b_7), (b_8, b_9, b_10, b_11)],\
+\
+a'_("tail") &= (a_12, a_13, 0, 0),\
+b'_("tail") &= (b_12, b_13, 0, 0).\
+$
+
+Right before we perform the rotation, the accumulator contains the following result
+$
+  "acc'"_1 &=  a_4 b_4 + a_8 b_8 + a_12 b_12,\
+  "acc'"_2 &= a_1 b_1 + a_5 b_5 + a_9 b_9 + a_13 b_13,\
+  "acc'"_3 &= a_2 b_2 + a_6 b_6 + a_10 b_10 ,\
+  "acc'"_4 &= a_3 b_3 + a_7 b_7 + a_11 b_11 .\
+$
+
+If we use `simd.reduce_add` directly, without going through `simd.rotate_left` first, we get
+this result:
+
+$
+  "result"_("unaligned"(1)) = &( a_4 b_4 + a_8 b_8 + a_12 b_12)\
+  +&(a_1 b_1 + a_5 b_5 + a_9 b_9 + a_13 b_13)\
+  +&(a_2 b_2 + a_6 b_6 + a_10 b_10 )\
+  +&(a_3 b_3 + a_7 b_7 + a_11 b_11 )\
+$
+
+Mathematically, the result is equivalent, but since floating point operations round the result,
+we would get a slightly different result for the aligned and unaligned cases.
+
+Our solution is to first rotate the accumulator to the left by the alignment offset.
+Doing this right before the accumulation would give us the rotated accumulator:
+$
+  "rotate"_1 &=& "acc'"_2 &= a_1 b_1 + a_5 b_5 + a_9 b_9 + a_13 b_13 &&= "acc"_1,\
+  "rotate"_2 &=& "acc'"_3 &= a_2 b_2 + a_6 b_6 + a_10 b_10  &&= "acc"_2,\
+  "rotate"_3 &=& "acc'"_4 &= a_3 b_3 + a_7 b_7 + a_11 b_11  &&= "acc"_3,\
+  "rotate"_4 &=& "acc'"_1 &=  a_4 b_4 + a_8 b_8 + a_12 b_12 &&= "acc"_4.\
+$
+
+Summing these sequentially would then give us the exact result as $"acc"_"aligned"$.
 
 #pagebreak()
 
@@ -413,7 +807,7 @@ registers, while $A'_(i' p)$ is brought from the L2 cache into registers,
 so that the computation can be performed.
 
 This last step is done using a vectorized microkernel, which heavily uses
-SIMD instructions (single instruction, multiple data) to maximize efficiency.
+SIMD instructions to maximize efficiency.
 The number of registers limits the size of the microkernel.
 
 During each iteration $p'$ of the microkernel, we can bring in $m_r$ elements
