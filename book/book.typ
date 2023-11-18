@@ -74,7 +74,8 @@ $ (
 `faer`, on the other hand, first splits each scalar into its atomic units,
 then stores each unit matrix separately in a contiguous fashion. The library
 does not mandate the usage of one layout or the other, but heavily prefers to receive
-data in column-major layout (with notable exceptions).
+data in column-major layout, with the notable exception of matrix multiplication which
+we try to optimize for both column-major and row-major layouts.
 
 The way in which a scalar can be split is chosen by the scalar type itself.
 For example, a complex floating point type may choose to either be stored as one unit
@@ -332,13 +333,13 @@ A = mat(
  A_21   , A_22   , ...      , A_(2 k);
  dots.v , dots.v , dots.down, dots.v ;
  A_(m 1), A_(m 2), ...      , A_(m k);
-),
+),\
 B = mat(
  B_11   , B_12   , ...      , B_(1 n);
  B_21   , B_22   , ...      , B_(2 n);
  dots.v , dots.v , dots.down, dots.v ;
  B_(k 1), B_(k 2), ...      , B_(k n);
-),
+),\
 C = mat(
  C_11   , C_12   , ...      , C_(1 n);
  C_21   , C_22   , ...      , C_(2 n);
@@ -346,3 +347,129 @@ C = mat(
  C_(m 1), C_(m 2), ...      , C_(m n);
 ).
 $
+
+Then the $C += A B$ operation may be decomposed into:
+#set math.mat(delim: none, column-gap: 2.0em)
+$
+mat(
+ C_(1 1) += sum_(p = 1)^(k) A_(1 p) B_(p 1), C_(1 2) += sum_(p = 1)^(k) A_(1 p) B_(p 2), ...      , C_(1 n) += sum_(p = 1)^(k) A_(1 p) B_(p n);
+ C_(2 1) += sum_(p = 1)^(k) A_(2 p) B_(p 1), C_(2 2) += sum_(p = 1)^(k) A_(2 p) B_(p 2), ...      , C_(2 n) += sum_(p = 1)^(k) A_(2 p) B_(p n);
+ dots.v , dots.v , dots.down, dots.v ;
+ C_(m 1) += sum_(p = 1)^(k) A_(m p) B_(p 1), C_(m 2) += sum_(p = 1)^(k) A_(m p) B_(p 2), ...      , C_(m n) += sum_(p = 1)^(k) A_(m p) B_(p n);
+).
+$
+
+#set math.mat(delim: "(", column-gap: 0.5em)
+
+Doing so does not decrease the number of flops (floating point operations). But
+this restructuring step can lead to a large speedup if done correctly, by
+making use of cache locality on modern CPUs/GPUs.
+
+The general idea revolves around memory reuse. For now, let us consider the
+case of a single thread executing the entire operation. The multithreaded case
+can be handled with a few adjustments.
+
+ - The algorithm we use computes sequentially $C$ by column blocks. In other words, we first compute $C_(: 1)$, then $C_(: 2)$ and so on.
+ - For each column block $j$, we sequentially iterate over $p$, computing all the terms $A_(: p) B_(p j)$, and accumulate them to the output.
+ - Then for each row block $i$, we compute $A_(i p) B_(p j)$ and accumulate it to $C_(i j)$.
+
+Since most modern CPUs have a hierarchical cache structure (usually ranging
+from L1 (smallest) to L3 (largest)), we would like to make use of this in our
+algorithm for maximum efficiency.
+
+The way we exploit this is by choosing the chunk dimensions so that $B_(p j)$
+remains in the L3 cache during each iteration of the second loop, and $A_(i p)$
+remains in the L2 cache during each iteration of the third loop. This leaves us
+with one more cache level to use: the L1 cache.
+
+We make the most use out of this by chunking the inner product once again, resulting in
+two more loop levels:
+$
+A_(i p) = mat(
+ A'_1p     ;
+ A'_2p     ;
+ dots.v    ;
+ A'_(m' p);
+),\
+B_(p j) = mat(
+ B'_(p 1)   , B_(p 2)   , ...      , B_(p n');
+),\
+C_(i j) = mat(
+  C'_(1 1)  , C'_(1 2)  , ...      , C'_(1 n')  ;
+  C'_(2 1)  , C'_(2 2)  , ...      , C'_(2 n')  ;
+  dots.v    , dots.v    , dots.down, dots.v      ;
+  C'_(m' 1), C'_(m' 2), ...      , C'_(m' n');
+).
+$
+
+We iterate over each column block $B'_(p j')$, then over each row block
+$A'_(i' p)$,
+and accumulate the product $A'_(i' p) B'_(p j')$ to $C'_(i' j')$.
+
+In the outer loop, $B'_(p j')$ is brought from the L3 cache into the L1 cache,
+and stays there until the outer loop iteration is done.
+Then in the inner loop, it is brought once again from the L1 cache into
+registers, while $A'_(i' p)$ is brought from the L2 cache into registers,
+so that the computation can be performed.
+
+This last step is done using a vectorized microkernel, which heavily uses
+SIMD instructions (single instruction, multiple data) to maximize efficiency.
+The number of registers limits the size of the microkernel.
+
+During each iteration $p'$ of the microkernel, we can bring in $m_r$ elements
+from the $A'_(i' p')$, and $n_r$ elements from $B'_(p' j')$, where $m_r$
+and $n_r$ are the dimensions of the microkernel (as well as the dimensions of
+each block $C'_(i' j')$). We use the following algorithm:
+
+
+ - Load one element from $B'$,
+ - Load $m_r$ elements from $A'$,
+ - Multiply the $m_r$ elements from $A'$ by the element from $B'$, and accumulate the result to $C'$
+
+Consider x86-64 as an example, with the AVX2+FMA instruction set (256-bit
+registers), and suppose the scalar type has a size of 64 bits so that each
+register can hold $N = 256/64 = 4$ scalars. We have 16 available registers in
+total, this means we can load one element from $B'$ into one register, and $m_r$
+elements from $A'$ into $m_r / N$ registers.
+
+Since we don't want to constantly read and write to $C'$ from main memory, we use a local accumulator
+that occupies $m_r / N n_r$ registers.
+
+In this case we have a total of 16 available registers, which need to hold $1 +
+m_r / N + m_r / N n_r$ registers. A good choice for our case is $m_r = 3N$,
+$n_r = 4$, which requires exactly 16 registers.
+
+To determine the chunk sizes, we compute them starting from the innermost loop
+to the outermost loop.
+
+Given that we've already computed $m_r$ and $n_r$, we determine $k_c$ (the
+number of columns of $A_(i p)$, and also the number of rows of $B_(p j)$) so
+that $B'_(p, j')$ fits into the L1 cache, then we determine $m_c$ (the number
+of rows of $A_(i p)$) so that $A_(i p)$ fits into the L2 cache.
+And finally we determine $n_c$ (the number of columns of $B_(p j)$) so that
+$B_(: j)$ fits into the L3 cache.
+
+Note that bringing data into the cache is typically done automatically by the CPU.
+However, in our case, we want to perform that explicitly by packing each L3/L2 chunk
+into packed storage, which allows for contiguous access that's friendly to the CPU's
+hardware prefetcher and minimizes TLB (Translation Lookaside Buffer) misses.
+
+In order to parallelize the algorithm, we have a few options. The second
+loop can't be easily parallelized without allocating extra storage for the
+accumulators, since we have a data dependency in the second loop.
+The microkernel also doesn't perform enough work to compensate for the overhead
+of core synchronization, so it also makes for a poor multithreading candidate.
+
+This leaves us with the first loop, as well as the third, fourth and fifth
+loops. The first loop stores its data in the L3 cache, which is typically
+shared between cores. So it's not usually a very attractive candidate for
+parallelization.
+
+Loops three through five however can be parallelized in a straightforward way,
+and make good use of each core's separate L1 (and often L2) cache, which leads
+to a significant speedup.
+
+Since data is packed explicitly during matrix multiplication, the original
+layout of the input matrices has little effect on efficiency when the
+dimensions are medium or large. This has the side-effect of matrix multiplication
+being highly efficient regardless of the matrix layout.
