@@ -91,7 +91,7 @@ pub use faer_entity::pulp;
 
 use coe::Coerce;
 use core::{
-    fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
+    fmt::{Debug, Display}, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use group_helpers::SliceGroup;
@@ -581,33 +581,66 @@ unsafe impl bytemuck::Pod for c64conj {}
 
 impl Debug for c32 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.re.fmt(f)?;
+        Debug::fmt(&self.re, f)?;
         f.write_str(" + ")?;
-        self.im.fmt(f)?;
+        Debug::fmt(&self.im, f)?;
         f.write_str(" * I")
     }
 }
 impl Debug for c64 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.re.fmt(f)?;
+        Debug::fmt(&self.re, f)?;
         f.write_str(" + ")?;
-        self.im.fmt(f)?;
+        Debug::fmt(&self.im, f)?;
         f.write_str(" * I")
     }
 }
 impl Debug for c32conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.re.fmt(f)?;
+        Debug::fmt(&self.re, f)?;
         f.write_str(" - ")?;
-        self.neg_im.fmt(f)?;
+        Debug::fmt(&self.neg_im, f)?;
         f.write_str(" * I")
     }
 }
 impl Debug for c64conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.re.fmt(f)?;
+        Debug::fmt(&self.re, f)?;
         f.write_str(" - ")?;
-        self.neg_im.fmt(f)?;
+        Debug::fmt(&self.neg_im, f)?;
+        f.write_str(" * I")
+    }
+}
+
+impl Display for c32 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Display::fmt(&self.re, f)?;
+        f.write_str(" + ")?;
+        Display::fmt(&self.im, f)?;
+        f.write_str(" * I")
+    }
+}
+impl Display for c64 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Display::fmt(&self.re, f)?;
+        f.write_str(" + ")?;
+        Display::fmt(&self.im, f)?;
+        f.write_str(" * I")
+    }
+}
+impl Display for c32conj {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Display::fmt(&self.re, f)?;
+        f.write_str(" - ")?;
+        Display::fmt(&self.neg_im, f)?;
+        f.write_str(" * I")
+    }
+}
+impl Display for c64conj {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Display::fmt(&self.re, f)?;
+        f.write_str(" - ")?;
+        Display::fmt(&self.neg_im, f)?;
         f.write_str(" * I")
     }
 }
@@ -13327,7 +13360,7 @@ pub mod constrained {
     impl Debug for Size<'_> {
         #[inline]
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            self.0.inner.fmt(f)
+            Debug::fmt(&self.0.inner, f)
         }
     }
     impl<I: Debug> Debug for Idx<'_, I> {
