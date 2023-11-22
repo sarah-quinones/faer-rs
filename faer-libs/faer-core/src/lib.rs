@@ -419,6 +419,16 @@ impl core::ops::Div for c32 {
     }
 }
 
+impl num_traits::Zero for c32 {
+    fn zero() -> Self {
+        c32::faer_zero()
+    }
+
+    fn is_zero(&self) -> bool {
+        self == &c32::faer_zero()
+    }
+}
+
 impl core::ops::Neg for c64 {
     type Output = c64;
 
@@ -514,6 +524,17 @@ impl core::ops::Div<f64> for c64 {
         Self::new(self.re / rhs, self.im / rhs)
     }
 }
+
+impl num_traits::Zero for c64 {
+    fn zero() -> Self {
+        c64::faer_zero()
+    }
+
+    fn is_zero(&self) -> bool {
+        self == &c64::faer_zero()
+    }
+}
+
 impl core::ops::Div<c64> for f64 {
     type Output = c64;
 
