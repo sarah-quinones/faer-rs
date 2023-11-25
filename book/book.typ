@@ -1,5 +1,7 @@
 #set text(font: "New Computer Modern")
 
+#show raw: set text(font: "New Computer Modern Mono", size: 1.2em)
+
 #show par: set block(spacing: 0.55em)
 
 #show heading: set block(above: 1.4em, below: 1em)
@@ -22,6 +24,8 @@
 })
 
 #import "@preview/codly:0.1.0"
+#import "@preview/tablex:0.0.6": tablex, rowspanx, colspanx, gridx, hlinex, vlinex
+#import "@preview/colorful-boxes:1.2.0": colorbox
 
 #let icon(codepoint) = {
   box(
@@ -45,24 +49,26 @@
 #outline()
 
 == Introduction
-`faer-rs` is a general-purpose linear algebra library for the Rust programming language.
+_`faer-rs`_ is a general-purpose linear algebra library for the Rust programming language.
 With a focus on correctness, portability, and performance. In this book, we'll
 be assuming version `0.15.0` of the library.
 
-`faer` is designed around a high level API that sacrifices some amount of
+_`faer`_ is designed around a high level API that sacrifices some amount of
 performance and customizability in exchange for ease of use, as well as a low
 level API that offers more control over memory allocations and multithreading
 capabilities. The two APIs share the same data structures and can be used
 together or separately, depending on the user's needs.
 
-This book assumes some level of familiarity with Rust, linear algebra and `faer`'s API.
+
+This book assumes some level of familiarity with Rust, linear algebra and _`faer`_'s API.
 Users who are new to the library are encouraged to get started by taking a look
 at the library's examples directory #footnote[`faer-rs/faer-libs/faer/examples`] and
 browsing the `docs.rs` documentation #footnote[https://docs.rs/faer/0.15.0/faer/index.html].
 
+
 We will go into detail over the various operations and matrix decompositions
 that are provided by the library, as well as their implementation details. We
-will also explain the architecture of `faer`'s data structures and how low
+will also explain the architecture of _`faer`_'s data structures and how low
 level operations are handled using vectorized SIMD instructions.
 
 #pagebreak()
@@ -91,7 +97,7 @@ $ (
   a_12, a_22, a_32
 ). $
 
-`faer`, on the other hand, first splits each scalar into its atomic units,
+_`faer`_, on the other hand, first splits each scalar into its atomic units,
 then stores each unit matrix separately in a contiguous fashion. The library
 does not mandate the usage of one layout or the other, but heavily prefers to receive
 data in column-major layout, with the notable exception of matrix multiplication which
@@ -103,9 +109,9 @@ or as a group of two units.
 
 Given the following complex matrix:
 $ mat(
-  a_11 + b_11, a_12 + b_12;
-  a_21 + b_21, a_22 + b_22;
-  a_31 + b_31, a_32 + b_32;
+  a_11 + i b_11, a_12 + i b_12;
+  a_21 + i b_21, a_22 + i b_22;
+  a_31 + i b_31, a_32 + i b_32;
 ), $
 and assuming column-major layout, we can either choose the following storage scheme in which
 the full number is considered a single unit:
@@ -118,7 +124,7 @@ or the following scheme in which the real and imaginary parts are considered two
 $ (
   a_11, a_21, a_31,
   a_12, a_22, a_32
-)\
+),\
 (
   b_11, b_21, b_31,
   b_12, b_22, b_32
@@ -193,7 +199,7 @@ unsafe fn split_at<E: Entity>(
 ```
 
 == Matrix layout
-Matrices in `faer` fall into two broad categories with respect to layout. Owned
+Matrices in _`faer`_ fall into two broad categories with respect to layout. Owned
 matrices (`Mat`) which are always stored in column-major layout, and matrix views
 (`MatRef`/`MatMut`) which allow any strided layout.
 
@@ -302,7 +308,7 @@ Componentwise operations are operations that take $n$ matrices with matching
 dimensions, producing an output of the same shape. Addition and subtraction
 are examples of commonly used componentwise operations.
 
-Componentwise operations can be expressed in `faer` using the `zipped!`
+Componentwise operations can be expressed in _`faer`_ using the `zipped!`
 macro, followed by a call to `for_each` (for in-place iteration) or `map` (for
 producing an output value).
 
@@ -342,17 +348,17 @@ of 4 scalars. Correct SIMD usage is a crucial part of any linear algebra
 library, given that most linear algebra operations lend themselves well to
 vectorization.
 
-== SIMD with `pulp`
+== SIMD with _`pulp`_
 
-`faer` provides a common interface for generic and composable SIMD, using the
-`pulp` crate as a backend. `pulp`'s high level API abstracts away the differences
+_`faer`_ provides a common interface for generic and composable SIMD, using the
+_`pulp`_ crate as a backend. _`pulp`_'s high level API abstracts away the differences
 between various instruction sets and provides a common API that's generic over
 them (but not the scalar type). This allows users to write a generic implementation
 that gets turned into several functions, one for each possible instruction set
 among a predetermined subset. Finally, the generic implementation can be used along
 with an `Arch` structure that determines the best implementation at runtime.
 
-Here's an example of how `pulp` could be used to compute the expression $x^2 +
+Here's an example of how _`pulp`_ could be used to compute the expression $x^2 +
 2y - |z|$, and store it into an output vector.
 
 ```rust
@@ -405,7 +411,7 @@ fn compute_expr(out: &mut[f64], x: &[f64], y: &[f64], z: &[f64]) {
 There's a lot of things going on at the same time in this code example. Let us
 go over them step by step.
 
-`pulp`'s generic SIMD implementation happens through the `WithSimd` trait,
+_`pulp`_'s generic SIMD implementation happens through the `WithSimd` trait,
 which takes `self` by value to pass in the function parameters. It additionally
 provides another parameter to `with_simd` describing the instruction set being
 used. `WithSimd::with_simd` *must* be marked with the `#[inline(always)]` attribute.
@@ -441,11 +447,11 @@ the byte size of the CPU's vector registers. The simplest way to guarantee this
 is to allocate the slices in aligned memory (such that the base address is a
 multiple of the register size in bytes), in which case the slices are similarly
 aligned, and any subslices of them (with a shared offset and size) will also be
-similarly aligned. Aligned allocation is done automatically for matrices in `faer`,
+similarly aligned. Aligned allocation is done automatically for matrices in _`faer`_,
 which helps uphold these guarantees for maximum performance.
 
 Here's an example of how one might write an implementation that makes use of
-memory alignment, using `pulp`.
+memory alignment, using _`pulp`_.
 
 ```rust
 use core::iter::zip;
@@ -494,7 +500,7 @@ impl pulp::WithSimd for Impl<'_> {
 }
 ```
 
-`faer` adds one more abstraction layer on top of `pulp`, in order to make the
+_`faer`_ adds one more abstraction layer on top of _`pulp`_, in order to make the
 SIMD operations generic over the scalar type. This is done using the
 `faer_core::group_helpers::SimdFor<E, S>` struct that's effectively a thin
 wrapper over `S`, and only exposes operations specific to the type `E`.
@@ -713,12 +719,12 @@ Summing these sequentially would then give us the exact result as $"acc"_"aligne
 
 = Matrix multiplication
 In this section we will give a detailed overview of the techniques used to
-speed up matrix multiplication in `faer`. The approach we use is a
+speed up matrix multiplication in _`faer`_. The approach we use is a
 reimplementation of BLIS's matrix multiplication algorithm with some
 modifications.
 
 Consider three matrices $A$, $B$ and $C$, such that we want to perform the operation
-$ C += A B. $
+$ C "+=" A B. $
 
 We can chunk $A$, $B$ and $C$ in a way that is compatible with matrix multiplication:
 $
@@ -742,14 +748,14 @@ C = mat(
 ).
 $
 
-Then the $C += A B$ operation may be decomposed into:
+Then the $C "+=" A B$ operation may be decomposed into:
 #set math.mat(delim: none, column-gap: 2.0em)
 $
 mat(
- C_(1 1) += sum_(p = 1)^(k) A_(1 p) B_(p 1), C_(1 2) += sum_(p = 1)^(k) A_(1 p) B_(p 2), ...      , C_(1 n) += sum_(p = 1)^(k) A_(1 p) B_(p n);
- C_(2 1) += sum_(p = 1)^(k) A_(2 p) B_(p 1), C_(2 2) += sum_(p = 1)^(k) A_(2 p) B_(p 2), ...      , C_(2 n) += sum_(p = 1)^(k) A_(2 p) B_(p n);
+ C_(1 1) "+=" sum_(p = 1)^(k) A_(1 p) B_(p 1), C_(1 2) "+=" sum_(p = 1)^(k) A_(1 p) B_(p 2), ...      , C_(1 n) "+=" sum_(p = 1)^(k) A_(1 p) B_(p n);
+ C_(2 1) "+=" sum_(p = 1)^(k) A_(2 p) B_(p 1), C_(2 2) "+=" sum_(p = 1)^(k) A_(2 p) B_(p 2), ...      , C_(2 n) "+=" sum_(p = 1)^(k) A_(2 p) B_(p n);
  dots.v , dots.v , dots.down, dots.v ;
- C_(m 1) += sum_(p = 1)^(k) A_(m p) B_(p 1), C_(m 2) += sum_(p = 1)^(k) A_(m p) B_(p 2), ...      , C_(m n) += sum_(p = 1)^(k) A_(m p) B_(p n);
+ C_(m 1) "+=" sum_(p = 1)^(k) A_(m p) B_(p 1), C_(m 2) "+=" sum_(p = 1)^(k) A_(m p) B_(p 2), ...      , C_(m n) "+=" sum_(p = 1)^(k) A_(m p) B_(p n);
 ).
 $
 
@@ -844,7 +850,7 @@ And finally we determine $n_c$ (the number of columns of $B_(p j)$) so that
 $B_(: j)$ fits into the L3 cache.
 
 Note that bringing data into the cache is typically done automatically by the CPU.
-However, in our case, we want to perform that explicitly by packing each L3/L2 chunk
+However, in our case, we want to perform that explicitly by storing each L3/L2 chunk
 into packed storage, which allows for contiguous access that's friendly to the CPU's
 hardware prefetcher and minimizes TLB (Translation Lookaside Buffer) misses.
 
@@ -867,3 +873,136 @@ Since data is packed explicitly during matrix multiplication, the original
 layout of the input matrices has little effect on efficiency when the
 dimensions are medium or large. This has the side-effect of matrix multiplication
 being highly efficient regardless of the matrix layout.
+
+== Special cases
+In this section, we will refer to matrix multiplication with dimensions $(m, n)
+× (n, k)$ with $(m, n, k)$ as a shorthand.
+
+For special common matrix dimensions, we do not usually want to go through the
+aforementioned strategy, because the packing and unpacking steps, as well as
+the microkernel indirection can add considerable overhead.
+
+Such cases include:
+- inner product $(1, 1, k)$,
+- outer product: $(m, n, 1)$,
+- matrix-vector: $(m, 1, k)$,
+- vector-matrix: $(1, n, k)$, which can be rewritten in terms of matrix-vector by transposing, if we assume that the scalar multiplication is commutative (which _`faer`_ generally does), since $C "+=" A B <=> C^top "+=" B^top A^top$.
+
+The $(1, 1, k)$ case can be optimized for when $A$ is row-major and $B$ is
+column-major, and is written similarly to our previous dot product example,
+with one difference: Instead of using one accumulator for the result, we use
+multiple accumulators, and then sum them together at the end. This can speed up
+the computation by making use of instruction level parallelism, since each
+accumulator can be computed independently from the others.
+
+For the $(m, n, 1)$ case, we assume $C$ is column-major. If it is row-major, we
+can implicitly transpose the matrix multiply operation. The algorithm we use
+consists of computing $C$ column by column, which is equivalent to $C_(: j) "+="
+A b_(1 j)$. This can be vectorized as a vertical operation, if $A$ is column-major.
+If it is not, we can store it to contiguous temporary storage before performing
+the computation. Note that this is a relatively cheap operation since its
+dimensions are $(m, 1)$, which is usually much smaller than the size of $C$:
+$(m, n)$.
+
+For the $(m, 1, k)$ case, there are two interesting cases. The first one is
+when $A$ is column major. In this case we assume $C$ is column major
+(otherwise, we can compute the result in a temporary vector and accumulate it
+to $C$ afterwards). For each column of $A$, we multiply it by the corresponding
+element of $B$ and accumulate it to $C$. The inner kernel for this operation is
+$C "+=" A_(: k) b_(k 1)$, which is essentially the same as the one from the outer
+product.
+
+When $A$ is row-major, we assume $B$ is column-major, and compute $C_(i 1) "+="
+A_(i :) B_(: 1)$, which uses the same kernel as the $(1, 1, k)$ case.
+
+== Triangular matrix products
+In some cases, one of the matrices $A$ and $B$ is triangular (with a possibly
+implicit zero or one diagonal), or we only want to compute the lower or upper
+half of the output. _`faer`_ currently uses recursive implementations that are
+padded and handled as rectangular matrix multiplication in the base case. For
+example, we may want to compute $A B$ where $A$ is lower triangular and $B$ is
+upper triangular:
+
+$
+mat(
+  C_(1 1), C_(1 2);
+  C_(2 1), C_(2 2);
+) "+="
+mat(
+  A_(1 1), 0;
+  A_(2 1), A_(2 2);
+)
+mat(
+  B_(1 1), B_(1 2);
+  0      , B_(2 2);
+)
+$
+
+This can be split up into a sequence of products:
+
+$
+C_(1 1) & "+=" A_(1 1) B_(1 1),\
+C_(1 2) & "+=" A_(1 1) B_(1 2),\
+C_(2 1) & "+=" A_(2 1) B_(1 1),\
+C_(2 2) & "+=" A_(2 1) B_(1 2) + A_(2 2) B_(2 2).
+$
+
+The steps $C_(1 1) "+=" A_(1 1) B_(1 1)$ and $C_(2 2) "+=" A_(2 2) B_(2 2)$
+are also matrix prodcuts where the LHS is lower triangular and the RHS is upper
+triangular, so we call the algorithm recursively for them.
+
+All of these products can be performed either sequentially or in parallel.
+In the parallel case, we group them like this to avoid load imbalances between
+threads.
+
+#set align(center)
+#gridx(
+  columns: (auto, auto),
+  align: center,
+  "Thread 1", vlinex(), "Thread 2",
+  $
+  C_(1 1) & "+=" A_(1 1) B_(1 1)\
+  C_(2 2) & "+=" A_(2 1) B_(1 2) + A_(2 2) B_(2 2)
+  $, (),
+  $
+  C_(1 2) & "+=" A_(1 1) B_(1 2)\
+  C_(2 1) & "+=" A_(2 1) B_(1 1)\
+  $,
+)
+#set align(left)
+
+This way each thread performs roughtly the same number of flops, which helps
+avoid idling threads that spend time waiting for the others to finish.
+Every time we recurse to another triangular matrix multiplication, we can split
+up the work again. And if we perform a rectangular matrix multiply, we can rely on
+its inherent parallelism.
+
+This is one of the scenarios where _`faer`_'s fine control over multithreading shines,
+as we can provide a hint for each nested operation that it doesn't need to use
+all the available cores, which can reduce synchronization overhead and conflict
+over shared resources by the different threads.
+
+#colorbox(
+  title: "PERF",
+  color: "blue",
+  radius: 2pt,
+  width: auto
+)[
+  The current strategy doesn't take advantage of the CPU's cache hierarchy for
+  deciding how to split up the work between threads. This could lead to
+  multiple threads contending over the L3 cache for very large matrices.
+
+  In that case it could be worth investigating if it's better to only use
+  triangular threading when the sizes fall below a certain threshold.
+]
+
+#colorbox(
+  title: "PERF",
+  color: "blue",
+  radius: 2pt,
+  width: auto
+)[
+  Specialized implementations for specific dimensions, similarly to what is
+  done for the rectangular matrix multiply. For example a lower triangular
+  matrix times a column vector.
+]
