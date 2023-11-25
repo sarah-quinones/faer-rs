@@ -3554,7 +3554,7 @@ pub mod polars {
                             // `nrows` rows
                             let out_col = unsafe {
                                 core::slice::from_raw_parts_mut(
-                                    out.as_mut().mut_ptr_at(0, j) as *mut MaybeUninit<$ty>,
+                                    out.as_mut().ptr_at_mut(0, j) as *mut MaybeUninit<$ty>,
                                     nrows,
                                 )
                             };

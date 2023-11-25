@@ -271,7 +271,7 @@ pub mod compute {
 
                     if abs_akk >= alpha.faer_mul(colmax).faer_mul(colmax.faer_div(rowmax)) {
                         kp = k;
-                    } else if a.read(imax, imax).faer_real().faer_abs() >= alpha.faer_mul(rowmax) {
+                    } else if w.read(imax, k + 1).faer_real().faer_abs() >= alpha.faer_mul(rowmax) {
                         kp = imax;
                         assign_col(w.rb_mut().subrows_mut(k, n - k), k, k + 1);
                     } else {
@@ -599,7 +599,7 @@ pub mod compute {
 
                     for j in 0..n - k - 1 {
                         let d11xj = x.read(j, 0).faer_conj().faer_scale_real(d11);
-                        for i in 0..n - k - 1 {
+                        for i in j..n - k - 1 {
                             let xi = x.read(i, 0);
                             trailing.write(i, j, trailing.read(i, j).faer_sub(d11xj.faer_mul(xi)));
                         }

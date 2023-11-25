@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use dyn_stack::{GlobalPodBuffer, PodStack};
+use faer_cholesky::bunch_kaufman;
 use faer_core::{c64, ComplexField};
 use reborrow::*;
 
@@ -11,7 +12,130 @@ use nalgebra::DMatrix;
 pub fn cholesky(c: &mut Criterion) {
     use faer_cholesky::{ldlt_diagonal, llt};
 
-    for n in [6, 8, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 4096] {
+    for n in [6, 8, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 2000, 4096] {
+        c.bench_function(&format!("faer-st-bk-{n}"), |b| {
+            let mut mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+            let mut subdiag = Mat::zeros(n, 1);
+
+            let mut perm = vec![0usize; n];
+            let mut perm_inv = vec![0; n];
+
+            let mut mem = GlobalPodBuffer::new(
+                bunch_kaufman::compute::cholesky_in_place_req::<usize, f64>(
+                    n,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = PodStack::new(&mut mem);
+
+            b.iter(|| {
+                bunch_kaufman::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    subdiag.as_mut(),
+                    Default::default(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::None,
+                    stack.rb_mut(),
+                    Default::default(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-mt-bk-{n}"), |b| {
+            let mut mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+            let mut subdiag = Mat::zeros(n, 1);
+
+            let mut perm = vec![0usize; n];
+            let mut perm_inv = vec![0; n];
+
+            let mut mem = GlobalPodBuffer::new(
+                bunch_kaufman::compute::cholesky_in_place_req::<usize, f64>(
+                    n,
+                    Parallelism::Rayon(0),
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = PodStack::new(&mut mem);
+
+            b.iter(|| {
+                bunch_kaufman::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    subdiag.as_mut(),
+                    Default::default(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::Rayon(0),
+                    stack.rb_mut(),
+                    Default::default(),
+                );
+            })
+        });
+
+        c.bench_function(&format!("faer-st-cplx-bk-{n}"), |b| {
+            let mut mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
+            let mut subdiag = Mat::zeros(n, 1);
+
+            let mut perm = vec![0usize; n];
+            let mut perm_inv = vec![0; n];
+
+            let mut mem = GlobalPodBuffer::new(
+                bunch_kaufman::compute::cholesky_in_place_req::<usize, c64>(
+                    n,
+                    Parallelism::None,
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = PodStack::new(&mut mem);
+
+            b.iter(|| {
+                bunch_kaufman::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    subdiag.as_mut(),
+                    Default::default(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::None,
+                    stack.rb_mut(),
+                    Default::default(),
+                );
+            })
+        });
+        c.bench_function(&format!("faer-mt-cplx-bk-{n}"), |b| {
+            let mut mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
+            let mut subdiag = Mat::zeros(n, 1);
+
+            let mut perm = vec![0usize; n];
+            let mut perm_inv = vec![0; n];
+
+            let mut mem = GlobalPodBuffer::new(
+                bunch_kaufman::compute::cholesky_in_place_req::<usize, c64>(
+                    n,
+                    Parallelism::Rayon(0),
+                    Default::default(),
+                )
+                .unwrap(),
+            );
+            let mut stack = PodStack::new(&mut mem);
+
+            b.iter(|| {
+                bunch_kaufman::compute::cholesky_in_place(
+                    mat.as_mut(),
+                    subdiag.as_mut(),
+                    Default::default(),
+                    &mut perm,
+                    &mut perm_inv,
+                    Parallelism::Rayon(0),
+                    stack.rb_mut(),
+                    Default::default(),
+                );
+            })
+        });
+
         c.bench_function(&format!("faer-st-ldlt-{n}"), |b| {
             let mut mat = Mat::new();
 

@@ -92,6 +92,8 @@ pub use assert2::{assert, debug_assert};
 #[doc(hidden)]
 pub use core::{assert, debug_assert};
 
+pub use faer_entity::pulp;
+
 use coe::Coerce;
 use core::{
     fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
@@ -1638,9 +1640,6 @@ impl ComplexField for c64 {
         simd.c64s_rotate_left(values, amount)
     }
 }
-
-#[doc(hidden)]
-pub use pulp;
 
 unsafe impl Entity for c32 {
     type Unit = Self;

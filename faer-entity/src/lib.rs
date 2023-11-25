@@ -1,6 +1,8 @@
 #![allow(clippy::type_complexity)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub use ::pulp;
+
 use bytemuck::Pod;
 use core::{fmt::Debug, marker::PhantomData, mem::ManuallyDrop};
 use num_complex::Complex;
