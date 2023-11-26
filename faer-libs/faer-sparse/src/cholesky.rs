@@ -3636,7 +3636,7 @@ pub mod supernodal {
     }
 }
 
-// workspace: I*(n)
+// workspace: I×(n)
 fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
     etree: &'out mut Array<'n, I::Signed>,
     col_counts: &mut Array<'n, I>,
@@ -4492,7 +4492,7 @@ fn postorder_depth_first_search<'n, I: Index>(
     start_index
 }
 
-/// workspace: I×(3*n)
+/// workspace: I×(3×n)
 pub(crate) fn ghost_postorder<'n, I: Index>(
     post: &mut Array<'n, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,

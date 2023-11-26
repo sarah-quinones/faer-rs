@@ -187,28 +187,28 @@ fn main() {
         )
         .unwrap();
 
-        let n_supernodes = symbolic.l().n_supernodes();
-
-        let mut col_end_for_row_indices_in_panel = vec![zero; n_supernodes];
         let householder_nnz = symbolic.householder().len_householder_row_indices();
-
         let mut row_indices_in_panel = vec![zero; householder_nnz];
-        let mut min_col_in_panel = vec![zero; householder_nnz];
         let mut min_col_in_panel_perm = vec![zero; householder_nnz];
 
         dbg!(&file);
         dbg!(m, n, A.compute_nnz());
-        let mut L_values = vec![0.0; symbolic.l().len_values()];
+        let mut L_values = vec![0.0; symbolic.r_adjoint().len_values()];
         let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
         let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
+
+        let mut tau_blocksize = vec![I(0); n];
+        let mut householder_nrows = vec![I(0); n];
+        let mut householder_ncols = vec![I(0); n];
 
         let multithread = timeit(
             || {
                 factorize_supernodal_numeric_qr::<I, f64>(
-                    &mut col_end_for_row_indices_in_panel,
                     &mut row_indices_in_panel,
-                    &mut min_col_in_panel,
                     &mut min_col_in_panel_perm,
+                    &mut tau_blocksize,
+                    &mut householder_nrows,
+                    &mut householder_ncols,
                     &mut L_values,
                     &mut householder_values,
                     &mut tau_values,
@@ -217,7 +217,7 @@ fn main() {
                     &symbolic,
                     faer_core::Parallelism::Rayon(0),
                     PodStack::new(&mut mem),
-                )
+                );
             },
             time_limit,
         );
@@ -225,10 +225,11 @@ fn main() {
         let single_thread = timeit(
             || {
                 factorize_supernodal_numeric_qr::<I, f64>(
-                    &mut col_end_for_row_indices_in_panel,
                     &mut row_indices_in_panel,
-                    &mut min_col_in_panel,
                     &mut min_col_in_panel_perm,
+                    &mut tau_blocksize,
+                    &mut householder_nrows,
+                    &mut householder_ncols,
                     &mut L_values,
                     &mut householder_values,
                     &mut tau_values,
@@ -237,7 +238,7 @@ fn main() {
                     &symbolic,
                     faer_core::Parallelism::None,
                     PodStack::new(&mut mem),
-                )
+                );
             },
             time_limit,
         );

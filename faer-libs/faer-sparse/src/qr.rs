@@ -56,6 +56,7 @@ pub(crate) fn ghost_col_etree<'m, 'n, I: Index>(
     }
 }
 
+/// workspace: I×(A.nrows() + A.ncols())
 #[inline]
 pub fn col_etree<'out, I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
@@ -110,7 +111,8 @@ pub(crate) fn ghost_least_common_ancestor<'n, I: Index>(
     *lca as isize
 }
 
-pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
+/// workspace: I×(5×A.nrows() + A.ncols())
+pub fn ghost_column_counts_aat<'m, 'n, I: Index>(
     col_counts: &mut Array<'m, I>,
     min_row: &mut Array<'n, I::Signed>,
     A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
@@ -278,6 +280,7 @@ pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, sta
 pub mod supernodal {
     use core::iter::zip;
 
+    use dyn_stack::{SizeOverflow, StackReq};
     use faer_core::{
         group_helpers::{SliceGroup, SliceGroupMut},
         householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
@@ -303,6 +306,8 @@ pub mod supernodal {
         col_ptrs_for_tau_values: alloc::vec::Vec<I>,
         col_ptrs_for_values: alloc::vec::Vec<I>,
         super_etree: alloc::vec::Vec<I>,
+        max_blocksize: alloc::vec::Vec<I>,
+        nrows: usize,
     }
 
     impl<I: Index> SymbolicSupernodalHouseholder<I> {
@@ -351,9 +356,9 @@ pub mod supernodal {
         child_next: alloc::vec::Vec<I>,
     }
 
-    impl<I> SymbolicSupernodalQr<I> {
+    impl<I: Index> SymbolicSupernodalQr<I> {
         #[inline]
-        pub fn r_transposed(&self) -> &SymbolicSupernodalCholesky<I> {
+        pub fn r_adjoint(&self) -> &SymbolicSupernodalCholesky<I> {
             &self.L
         }
 
@@ -361,6 +366,40 @@ pub mod supernodal {
         pub fn householder(&self) -> &SymbolicSupernodalHouseholder<I> {
             &self.H
         }
+
+        pub fn solve_in_place_req<E: Entity>(
+            &self,
+            rhs_ncols: usize,
+            parallelism: Parallelism,
+        ) -> Result<StackReq, SizeOverflow> {
+            let _ = parallelism;
+            let L_symbolic = self.r_adjoint();
+            let H_symbolic = self.householder();
+            let n_supernodes = L_symbolic.n_supernodes();
+
+            let init_req = faer_core::temp_mat_req::<E>(self.householder().nrows, rhs_ncols)?;
+            let mut loop_req = StackReq::empty();
+            for s in 0..n_supernodes {
+                let s_h_row_begin = H_symbolic.col_ptrs_for_row_indices[s].zx();
+                let s_h_row_full_end = H_symbolic.col_ptrs_for_row_indices[s + 1].zx();
+                let max_blocksize = H_symbolic.max_blocksize[s].zx();
+
+                loop_req = loop_req.try_or(faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<E>(s_h_row_full_end - s_h_row_begin, max_blocksize, rhs_ncols)?)?;
+            }
+
+            init_req.try_and(loop_req)
+        }
+    }
+
+    pub fn factorize_supernodal_symbolic_req<I: Index>(
+        nrows: usize,
+        ncols: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let _ = nrows;
+        StackReq::try_all_of([
+            crate::cholesky::supernodal::factorize_supernodal_symbolic_req::<I>(ncols)?,
+            crate::cholesky::supernodal::factorize_supernodal_symbolic_req::<I>(ncols)?,
+        ])
     }
 
     pub fn factorize_supernodal_symbolic<I: Index>(
@@ -454,6 +493,7 @@ pub mod supernodal {
             let mut col_ptrs_for_tau_values = try_zeroed::<I>(n_supernodes + 1)?;
             let mut col_ptrs_for_values = try_zeroed::<I>(n_supernodes + 1)?;
             let mut super_etree_ = try_zeroed::<I>(n_supernodes)?;
+            let mut max_blocksize = try_zeroed::<I>(n_supernodes)?;
             let super_etree = bytemuck::cast_slice_mut::<I, I::Signed>(&mut super_etree_);
 
             let to_wide = |i: I| i.zx() as u128;
@@ -532,6 +572,7 @@ pub mod supernodal {
                     s_row_count.zx(),
                     s_col_count.zx(),
                 ) as u128;
+                max_blocksize[*s] = from_wide(blocksize);
                 tau_count += blocksize * to_wide(Ord::min(s_row_count, s_col_count));
                 *next_val_ptr = from_wide(val_count);
                 *next_row_ptr = from_wide(row_count);
@@ -546,6 +587,8 @@ pub mod supernodal {
                 col_ptrs_for_values,
                 super_etree: super_etree_,
                 col_ptrs_for_tau_values,
+                max_blocksize,
+                nrows: *M,
             })
         })
     }
@@ -556,6 +599,11 @@ pub mod supernodal {
         rt_values: SliceGroup<'a, E>,
         householder_values: SliceGroup<'a, E>,
         tau_values: SliceGroup<'a, E>,
+        row_indices_in_panel: &'a [I],
+        min_col_in_panel_perm: &'a [I],
+        tau_blocksize: &'a [I],
+        householder_nrows: &'a [I],
+        householder_ncols: &'a [I],
     }
 
     impl<I, E: Entity> Copy for SupernodalQrRef<'_, I, E> {}
@@ -570,6 +618,11 @@ pub mod supernodal {
         #[inline]
         pub fn new(
             symbolic: &'a SymbolicSupernodalQr<I>,
+            row_indices_in_panel: &'a [I],
+            min_col_in_panel_perm: &'a [I],
+            tau_blocksize: &'a [I],
+            householder_nrows: &'a [I],
+            householder_ncols: &'a [I],
             r_values: GroupFor<E, &'a [E::Unit]>,
             householder_values: GroupFor<E, &'a [E::Unit]>,
             tau_values: GroupFor<E, &'a [E::Unit]>,
@@ -577,20 +630,31 @@ pub mod supernodal {
             let rt_values = SliceGroup::new(r_values);
             let householder_values = SliceGroup::new(householder_values);
             let tau_values = SliceGroup::new(tau_values);
-            assert!(rt_values.len() == symbolic.r_transposed().len_values());
+            assert!(rt_values.len() == symbolic.r_adjoint().len_values());
             assert!(tau_values.len() == symbolic.householder().len_tau_values());
             assert!(householder_values.len() == symbolic.householder().len_householder_values());
+            assert!(tau_blocksize.len() == householder_nrows.len());
             Self {
                 symbolic,
+                tau_blocksize,
+                min_col_in_panel_perm,
+                householder_nrows,
+                householder_ncols,
                 rt_values,
                 householder_values,
                 tau_values,
+                row_indices_in_panel,
             }
         }
 
         #[inline]
         pub fn symbolic(self) -> &'a SymbolicSupernodalQr<I> {
             self.symbolic
+        }
+
+        #[inline]
+        pub fn block_count(&self) -> usize {
+            self.tau_blocksize.len()
         }
 
         #[inline]
@@ -617,23 +681,126 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
+            let L_symbolic = self.symbolic().r_adjoint();
+            let H_symbolic = self.symbolic().householder();
+            let n_supernodes = L_symbolic.n_supernodes();
+
+            assert!(rhs.nrows() == self.symbolic().householder().nrows);
+
             let mut x = rhs;
             let k = x.ncols();
-            let mut stack = stack;
+
+            let (mut tmp, mut stack) = temp_mat_uninit::<E>(x.nrows(), x.ncols(), stack);
+            tmp.fill_zero();
+
             // x <- Q^T x
-            {}
+            {
+                let H = self.householder_values;
+                let tau = self.tau_values();
+
+                let mut block_count = 0usize;
+                for s in 0..n_supernodes {
+                    let tau_begin = H_symbolic.col_ptrs_for_tau_values[s].zx();
+                    let tau_end = H_symbolic.col_ptrs_for_tau_values[s + 1].zx();
+
+                    let s_h_row_begin = H_symbolic.col_ptrs_for_row_indices[s].zx();
+                    let s_h_row_full_end = H_symbolic.col_ptrs_for_row_indices[s + 1].zx();
+
+                    let s_col_begin = L_symbolic.supernode_begin()[s].zx();
+                    let s_col_end = L_symbolic.supernode_end()[s].zx();
+                    let s_ncols = s_col_end - s_col_begin;
+
+                    let s_row_indices_in_panel =
+                        &self.row_indices_in_panel[s_h_row_begin..s_h_row_full_end];
+                    let s_min_col_in_panel_perm =
+                        &self.min_col_in_panel_perm[s_h_row_begin..s_h_row_full_end];
+
+                    let mut tmp = tmp
+                        .rb_mut()
+                        .subrows_mut(s_col_begin, s_h_row_full_end - s_h_row_begin);
+                    for j in 0..k {
+                        for idx in 0..s_h_row_full_end - s_h_row_begin {
+                            let pi = s_min_col_in_panel_perm[idx].zx();
+                            let i = s_row_indices_in_panel[pi].zx();
+                            tmp.write(idx, j, x.read(i, j));
+                        }
+                    }
+
+                    let s_H = H.subslice(
+                        H_symbolic.col_ptrs_for_values[s].zx()
+                            ..H_symbolic.col_ptrs_for_values[s + 1].zx(),
+                    );
+
+                    let s_H = faer_core::mat::from_column_major_slice::<'_, E>(
+                        s_H.into_inner(),
+                        s_h_row_full_end - s_h_row_begin,
+                        s_ncols
+                            + (L_symbolic.col_ptrs_for_row_indices()[s + 1].zx()
+                                - L_symbolic.col_ptrs_for_row_indices()[s].zx()),
+                    );
+                    let s_tau = tau.subslice(tau_begin..tau_end);
+                    let max_blocksize = H_symbolic.max_blocksize[s].zx();
+                    let s_tau = faer_core::mat::from_column_major_slice::<'_, E>(
+                        s_tau.into_inner(),
+                        max_blocksize,
+                        Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin),
+                    );
+
+                    let mut start = 0;
+                    let end = s_H.ncols();
+                    while start < end {
+                        let bs = self.tau_blocksize[block_count].zx();
+                        let nrows = self.householder_nrows[block_count].zx();
+                        let ncols = self.householder_ncols[block_count].zx();
+
+                        let b_H = s_H.submatrix(start, start, nrows, ncols);
+                        let b_tau = s_tau.subcols(start, ncols).subrows(0, bs);
+
+                        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
+                            b_H.rb(),
+                            b_tau.rb(),
+                            faer_core::Conj::Yes.compose(conj),
+                            tmp.rb_mut().subrows_mut(start, nrows),
+                            parallelism,
+                            stack.rb_mut(),
+                        );
+
+                        start += ncols;
+                        block_count += 1;
+
+                        if start >= s_H.nrows() {
+                            break;
+                        }
+                    }
+
+                    for j in 0..k {
+                        for idx in 0..s_h_row_full_end - s_h_row_begin {
+                            let pi = s_min_col_in_panel_perm[idx].zx();
+                            let i = s_row_indices_in_panel[pi].zx();
+                            x.write(i, j, tmp.read(idx, j));
+                        }
+                    }
+                }
+            }
+            for j in 0..k {
+                for i in 0..L_symbolic.nrows() {
+                    x.write(i, j, tmp.read(i, j));
+                }
+                for i in L_symbolic.nrows()..x.nrows() {
+                    x.write(i, j, E::faer_zero());
+                }
+            }
             // x <- R^-1 x = L^-T x
             {
-                let l_symbolic = self.symbolic().r_transposed();
-                let L = SupernodalLltRef::<'_, I, E>::new(l_symbolic, self.rt_values.into_inner());
+                let L = SupernodalLltRef::<'_, I, E>::new(L_symbolic, self.rt_values.into_inner());
 
-                for s in (0..l_symbolic.n_supernodes()).rev() {
+                for s in (0..n_supernodes).rev() {
                     let s = L.supernode(s);
                     let size = s.matrix().ncols();
-                    let Ls = s.matrix();
-                    let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+                    let s_L = s.matrix();
+                    let (s_L_top, s_L_bot) = s_L.split_at_row(size);
 
-                    let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
+                    let mut tmp = tmp.rb_mut().subrows_mut(0, s.pattern().len());
                     for j in 0..k {
                         for (idx, i) in s.pattern().iter().enumerate() {
                             let i = i.zx();
@@ -644,7 +811,7 @@ pub mod supernodal {
                     let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
                     faer_core::mul::matmul_with_conj(
                         x_top.rb_mut(),
-                        Ls_bot.transpose(),
+                        s_L_bot.transpose(),
                         conj.compose(Conj::Yes),
                         tmp.rb(),
                         Conj::No,
@@ -652,8 +819,8 @@ pub mod supernodal {
                         E::faer_one().faer_neg(),
                         parallelism,
                     );
-                    faer_core::solve::solve_unit_upper_triangular_in_place_with_conj(
-                        Ls_top.transpose(),
+                    faer_core::solve::solve_upper_triangular_in_place_with_conj(
+                        s_L_top.transpose(),
                         conj.compose(Conj::Yes),
                         x_top.rb_mut(),
                         parallelism,
@@ -664,13 +831,55 @@ pub mod supernodal {
     }
 
     #[track_caller]
+    pub fn factorize_supernodal_numeric_qr_req<'a, I: Index, E: Entity>(
+        symbolic: &'a SymbolicSupernodalQr<I>,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let n_supernodes = symbolic.L.n_supernodes();
+        let n = symbolic.L.dimension;
+        let m = symbolic.H.nrows;
+        let init_req = StackReq::try_all_of([
+            StackReq::try_new::<I>(symbolic.H.len_householder_row_indices())?,
+            StackReq::try_new::<I>(n_supernodes)?,
+            StackReq::try_new::<I>(n)?,
+            StackReq::try_new::<I>(n)?,
+            StackReq::try_new::<I>(m)?,
+        ])?;
+
+        let mut loop_req = StackReq::empty();
+        for s in 0..n_supernodes {
+            let s_h_row_begin = symbolic.H.col_ptrs_for_row_indices[s].zx();
+            let s_h_row_full_end = symbolic.H.col_ptrs_for_row_indices[s + 1].zx();
+            let max_blocksize = symbolic.H.max_blocksize[s].zx();
+            let s_col_begin = symbolic.L.supernode_begin()[s].zx();
+            let s_col_end = symbolic.L.supernode_end()[s].zx();
+            let s_ncols = s_col_end - s_col_begin;
+            let s_pattern_len = symbolic.L.col_ptrs_for_row_indices()[s + 1].zx()
+                - symbolic.L.col_ptrs_for_row_indices()[s].zx();
+
+            loop_req = loop_req.try_or(faer_qr::no_pivoting::compute::qr_in_place_req::<E>(
+                s_h_row_full_end - s_h_row_begin,
+                s_ncols + s_pattern_len,
+                max_blocksize,
+                parallelism,
+                Default::default(),
+            )?)?;
+
+            loop_req = loop_req.try_or(faer_core::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<E>(s_h_row_full_end - s_h_row_begin, max_blocksize, s_ncols + s_pattern_len)?)?;
+        }
+
+        init_req.try_and(loop_req)
+    }
+
+    #[track_caller]
     pub fn factorize_supernodal_numeric_qr<'a, I: Index, E: ComplexField>(
-        // len: n_supernodes
-        col_end_for_row_indices_in_panel: &mut [I],
         // len: symbolic.householder().len_householder_row_indices()
-        row_indices_in_panel: &mut [I],
-        min_col_in_panel: &mut [I],
-        min_col_in_panel_perm: &mut [I],
+        row_indices_in_panel: &'a mut [I],
+        min_col_in_panel_perm: &'a mut [I],
+        // len: ncols
+        tau_blocksize: &'a mut [I],
+        householder_nrows: &'a mut [I],
+        householder_ncols: &'a mut [I],
 
         r_values: GroupFor<E, &'a mut [E::Unit]>,
         householder_values: GroupFor<E, &'a mut [E::Unit]>,
@@ -683,31 +892,30 @@ pub mod supernodal {
         stack: PodStack<'_>,
     ) -> SupernodalQrRef<'a, I, E> {
         {
-            let n_supernodes = symbolic.r_transposed().n_supernodes();
             let L_values = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&r_values)));
             let householder_values =
                 SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&householder_values)));
             let tau_values = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&tau_values)));
-            assert!(col_end_for_row_indices_in_panel.len() == n_supernodes);
             assert!(
                 row_indices_in_panel.len() == symbolic.householder().len_householder_row_indices()
             );
-            assert!(min_col_in_panel.len() == symbolic.householder().len_householder_row_indices());
             assert!(
                 min_col_in_panel_perm.len() == symbolic.householder().len_householder_row_indices()
             );
-            assert!(L_values.len() == symbolic.r_transposed().len_values());
+            assert!(L_values.len() == symbolic.r_adjoint().len_values());
             assert!(householder_values.len() == symbolic.householder().len_householder_values());
             assert!(tau_values.len() == symbolic.householder().len_tau_values());
         }
         let mut r_values = r_values;
         let mut tau_values = tau_values;
         let mut householder_values = householder_values;
-        factorize_supernodal_numeric_qr_impl(
-            col_end_for_row_indices_in_panel,
+
+        let block_count = factorize_supernodal_numeric_qr_impl(
             row_indices_in_panel,
-            min_col_in_panel,
             min_col_in_panel_perm,
+            tau_blocksize,
+            householder_nrows,
+            householder_ncols,
             E::faer_rb_mut(E::faer_as_mut(&mut r_values)),
             E::faer_rb_mut(E::faer_as_mut(&mut householder_values)),
             E::faer_rb_mut(E::faer_as_mut(&mut tau_values)),
@@ -726,6 +934,11 @@ pub mod supernodal {
 
         SupernodalQrRef::<'_, I, E>::new(
             symbolic,
+            row_indices_in_panel,
+            min_col_in_panel_perm,
+            &tau_blocksize[..block_count],
+            &householder_nrows[..block_count],
+            &householder_ncols[..block_count],
             E::faer_into_const(r_values),
             E::faer_into_const(householder_values),
             E::faer_into_const(tau_values),
@@ -733,12 +946,13 @@ pub mod supernodal {
     }
 
     pub(crate) fn factorize_supernodal_numeric_qr_impl<I: Index, E: ComplexField>(
-        // len: n_supernodes
-        col_end_for_row_indices_in_panel: &mut [I],
         // len: col_ptrs_for_row_indices[n_supernodes]
         row_indices_in_panel: &mut [I],
-        min_col_in_panel: &mut [I],
         min_col_in_panel_perm: &mut [I],
+
+        tau_blocksize: &mut [I],
+        householder_nrows: &mut [I],
+        householder_ncols: &mut [I],
 
         L_values: GroupFor<E, &mut [E::Unit]>,
         householder_values: GroupFor<E, &mut [E::Unit]>,
@@ -756,11 +970,16 @@ pub mod supernodal {
 
         parallelism: Parallelism,
         stack: PodStack<'_>,
-    ) {
+    ) -> usize {
         let n_supernodes = L_symbolic.n_supernodes();
         let mut L_values = SliceGroupMut::<'_, E>::new(L_values);
         let mut householder_values = SliceGroupMut::<'_, E>::new(householder_values);
         let mut tau_values = SliceGroupMut::<'_, E>::new(tau_values);
+        let mut block_count = 0;
+
+        let (min_col_in_panel, stack) =
+            stack.make_raw::<I>(H_symbolic.len_householder_row_indices());
+        let (col_end_for_row_indices_in_panel, stack) = stack.make_raw::<I>(n_supernodes);
 
         tau_values.fill_zero();
         L_values.fill_zero();
@@ -952,13 +1171,10 @@ pub mod supernodal {
                 let s_tau = tau_values.rb_mut().subslice(tau_begin..tau_end);
                 let s_L = L_values.rb_mut().subslice(L_begin..L_end);
 
-                let blocksize = faer_qr::no_pivoting::compute::recommended_blocksize::<Symbolic>(
-                    s_H.ncols(),
-                    s_h_row_full_end - s_h_row_begin,
-                );
+                let max_blocksize = H_symbolic.max_blocksize[s].zx();
                 let mut s_tau = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                     s_tau.into_inner(),
-                    blocksize,
+                    max_blocksize,
                     Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin),
                 );
 
@@ -980,7 +1196,7 @@ pub mod supernodal {
 
                         if idx_min_col == s_H.ncols()
                             || idx_min_col
-                                >= current_min_col.saturating_add(Ord::max(1, blocksize / 2))
+                                >= current_min_col.saturating_add(Ord::max(1, max_blocksize / 2))
                         {
                             let nrows = idx.saturating_sub(current_start);
                             let full_ncols = s_H.ncols() - current_start;
@@ -998,7 +1214,11 @@ pub mod supernodal {
                                 left.nrows(),
                                 left.ncols(),
                             );
-                            let bs = Ord::min(blocksize, bs);
+                            let bs = Ord::min(max_blocksize, bs);
+                            tau_blocksize[block_count] = I::truncate(bs);
+                            householder_nrows[block_count] = I::truncate(nrows);
+                            householder_ncols[block_count] = I::truncate(ncols);
+                            block_count += 1;
 
                             let mut s_tau = s_tau
                                 .rb_mut()
@@ -1021,7 +1241,7 @@ pub mod supernodal {
                                     right.rb_mut(),
                                     parallelism,
                                     stack.rb_mut(),
-                                    );
+                                );
                             }
 
                             current_min_col = idx_min_col;
@@ -1104,11 +1324,11 @@ pub mod supernodal {
                 col_global_to_local[row.zx()] = I::Signed::truncate(NONE);
             }
         }
+        block_count
     }
 }
 
 #[cfg(test)]
-#[cfg(__false)]
 mod tests {
     use core::iter::zip;
 
@@ -1119,18 +1339,17 @@ mod tests {
             simplicial::EliminationTreeRef,
             supernodal::{SupernodalLdltRef, SymbolicSupernodalCholesky},
         },
-        ghost_adjoint, ghost_adjoint_symbolic,
+        ghost_adjoint, ghost_adjoint_symbolic, ghost_transpose,
         qr::supernodal::{
-            factorize_supernodal_numeric_qr, factorize_supernodal_symbolic,
-            ghost_factorize_supernodal_householder_symbolic,
+            factorize_supernodal_numeric_qr, factorize_supernodal_numeric_qr_req,
+            factorize_supernodal_symbolic,
         },
         SymbolicSparseColMatRef,
     };
     use dyn_stack::{GlobalPodBuffer, StackReq};
     use faer_core::{
-        assert,
+        assert, c64,
         group_helpers::{SliceGroup, SliceGroupMut},
-        permutation::Permutation,
         sparse::SparseColMatRef,
         Mat,
     };
@@ -1235,326 +1454,6 @@ mod tests {
             );
 
             assert!(col_counts == [7, 6, 8, 8, 7, 6, 5, 4, 3, 2, 1].map(I));
-        });
-    }
-
-    #[test]
-    fn test_symbolic_qr_medium() {
-        type I = usize;
-        let I = I::truncate;
-
-        let m = 32;
-
-        let col_ptr = &[
-            0, 1, 6, 7, 7, 12, 17, 20, 22, 25, 25, 27, 29, 33, 36, 40, 42usize,
-        ];
-        let row_ind = &[
-            20, 16, 19, 24, 25, 27, 7, 12, 14, 24, 27, 28, 2, 9, 11, 12, 25, 2, 17, 26, 11, 23, 9,
-            13, 25, 21, 27, 21, 28, 3, 4, 10, 11, 0, 1, 13, 3, 17, 29, 30, 4, 5,
-        ];
-        let n = col_ptr.len() - 1;
-        let nnz = row_ind.len();
-
-        let A = SymbolicSparseColMatRef::new_checked(m, n, col_ptr, None, row_ind);
-        let zero = I(0);
-        let mut etree = vec![zero.to_signed(); n];
-        let mut post = vec![zero; n];
-        let mut col_counts = vec![zero; n];
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
-            ghost_col_etree(
-                A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(2 * *N))),
-            );
-            let etree = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let mut min_row = vec![zero.to_signed(); m];
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-
-            let AT = ghost_adjoint_symbolic(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(&mut min_row, M),
-                AT,
-                None,
-                etree,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let min_col = Array::from_ref(
-                MaybeIdx::<'_, usize>::from_slice_ref_checked(&min_row, N),
-                M,
-            );
-
-            let L_symbolic = crate::cholesky::supernodal::ghost_factorize_supernodal_symbolic(
-                A,
-                None,
-                Some(min_col),
-                crate::cholesky::supernodal::CholeskyInput::ATA,
-                etree,
-                Array::from_ref(&col_counts, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-                Default::default(),
-            )
-            .unwrap();
-
-            let H_symbolic = ghost_factorize_supernodal_householder_symbolic(
-                &L_symbolic,
-                M,
-                N,
-                min_col,
-                etree,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            )
-            .unwrap();
-        });
-    }
-
-    #[test]
-    fn test_numeric_qr_0_no_transpose() {
-        type I = usize;
-        let I = I::truncate;
-
-        let m = 32;
-
-        let col_ptr = &[
-            0, 1, 6, 7, 7, 12, 17, 20, 22, 25, 25, 27, 29, 33, 36, 40, 42usize,
-        ];
-        let row_ind = &[
-            20, 16, 19, 24, 25, 27, 7, 12, 14, 24, 27, 28, 2, 9, 11, 12, 25, 2, 17, 26, 11, 23, 9,
-            13, 25, 21, 27, 21, 28, 3, 4, 10, 11, 0, 1, 13, 3, 17, 29, 30, 4, 5,
-        ];
-        let values = &vec![1.0; row_ind.len()];
-
-        let n = col_ptr.len() - 1;
-        let nnz = row_ind.len();
-
-        let col_perm = Permutation::<I, Symbolic>::new_checked(
-            Box::new([6, 2, 15, 14, 3, 4, 9, 1, 13, 10, 0, 5, 7, 11, 12, 8]),
-            Box::new([10, 7, 1, 4, 5, 11, 0, 12, 15, 6, 9, 13, 14, 8, 3, 2]),
-        );
-        let perm = col_perm.as_ref();
-
-        let A = SparseColMatRef::<'_, I, f64>::new(
-            SymbolicSparseColMatRef::new_checked(m, n, col_ptr, None, row_ind),
-            &values,
-        );
-        let zero = I(0);
-        let mut etree = vec![zero.to_signed(); n];
-        let mut post = vec![zero; n];
-        let mut col_counts = vec![zero; n];
-        let mut min_row = vec![zero; m];
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SparseColMatRef::new(A, M, N);
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![0.0; nnz];
-
-            let AT = ghost_adjoint(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                SliceGroupMut::<'_, f64>::new(&mut new_values),
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let perm = ghost::PermutationRef::new(perm, N);
-
-            ghost_col_etree(
-                *A,
-                Some(perm),
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
-            );
-            let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-                *AT,
-                Some(perm),
-                etree_,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let min_col = min_row;
-
-            let symbolic = factorize_supernodal_symbolic::<I>(
-                *A.into_inner(),
-                Some(perm.cast().into_inner()),
-                min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-                Default::default(),
-            )
-            .unwrap();
-
-            let n_supernodes = symbolic.r_transposed().n_supernodes();
-
-            let mut col_end_for_row_indices_in_panel = vec![zero; n_supernodes];
-            let mut row_indices_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel_perm =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-
-            let mut L_values = vec![0.0; symbolic.r_transposed().len_values()];
-            let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
-            let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
-
-            factorize_supernodal_numeric_qr::<I, f64>(
-                &mut col_end_for_row_indices_in_panel,
-                &mut row_indices_in_panel,
-                &mut min_col_in_panel,
-                &mut min_col_in_panel_perm,
-                &mut L_values,
-                &mut householder_values,
-                &mut tau_values,
-                AT.into_inner(),
-                Some(perm.into_inner().cast()),
-                &symbolic,
-                faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_transposed(), &L_values);
-        });
-    }
-
-    #[test]
-    fn test_numeric_qr_0_transpose() {
-        type I = usize;
-        let I = I::truncate;
-
-        let m = 32;
-
-        let col_ptr = &[
-            0, 1, 6, 7, 7, 12, 17, 20, 22, 25, 25, 27, 29, 33, 36, 40, 42usize,
-        ];
-        let row_ind = &[
-            20, 16, 19, 24, 25, 27, 7, 12, 14, 24, 27, 28, 2, 9, 11, 12, 25, 2, 17, 26, 11, 23, 9,
-            13, 25, 21, 27, 21, 28, 3, 4, 10, 11, 0, 1, 13, 3, 17, 29, 30, 4, 5,
-        ];
-        let values = &vec![1.0; row_ind.len()];
-
-        let n = col_ptr.len() - 1;
-        let nnz = row_ind.len();
-
-        let A = SparseColMatRef::<'_, I, f64>::new(
-            SymbolicSparseColMatRef::new_checked(m, n, col_ptr, None, row_ind),
-            &values,
-        );
-
-        let zero = I(0);
-        Size::with2(m, n, |M, N| {
-            let A = ghost::SparseColMatRef::new(A, M, N);
-            let mut new_col_ptrs = vec![zero; m + 1];
-            let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![0.0; nnz];
-
-            let AT = ghost_adjoint(
-                &mut new_col_ptrs,
-                &mut new_row_ind,
-                SliceGroupMut::<'_, f64>::new(&mut new_values),
-                A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let (A, AT) = (AT, A);
-            let (M, N) = (N, M);
-            let (m, n) = (n, m);
-
-            let mut etree = vec![zero.to_signed(); n];
-            let mut post = vec![zero; n];
-            let mut col_counts = vec![zero; n];
-            let mut min_row = vec![zero; m];
-
-            ghost_col_etree(
-                *A,
-                None,
-                Array::from_mut(&mut etree, N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M + *N))),
-            );
-            let etree_ = Array::from_ref(MaybeIdx::from_slice_ref_checked(&etree, N), N);
-            ghost_postorder(
-                Array::from_mut(&mut post, N),
-                etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            ghost_column_counts_aat(
-                Array::from_mut(&mut col_counts, N),
-                Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
-                *AT,
-                None,
-                etree_,
-                Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-
-            let min_col = min_row;
-
-            let symbolic = factorize_supernodal_symbolic::<I>(
-                *A.into_inner(),
-                None,
-                min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-                Default::default(),
-            )
-            .unwrap();
-
-            let n_supernodes = symbolic.r_transposed().n_supernodes();
-
-            let mut col_end_for_row_indices_in_panel = vec![zero; n_supernodes];
-            let mut row_indices_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel_perm =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-
-            let mut L_values = vec![0.0; symbolic.r_transposed().len_values()];
-            let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
-            let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
-
-            factorize_supernodal_numeric_qr::<I, f64>(
-                &mut col_end_for_row_indices_in_panel,
-                &mut row_indices_in_panel,
-                &mut min_col_in_panel,
-                &mut min_col_in_panel_perm,
-                &mut L_values,
-                &mut householder_values,
-                &mut tau_values,
-                AT.into_inner(),
-                None,
-                &symbolic,
-                faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
-            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_transposed(), &L_values);
         });
     }
 
@@ -1690,25 +1589,25 @@ mod tests {
             )
             .unwrap();
 
-            let n_supernodes = symbolic.r_transposed().n_supernodes();
-
-            let mut col_end_for_row_indices_in_panel = vec![zero; n_supernodes];
             let mut row_indices_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel =
                 vec![zero; symbolic.householder().len_householder_row_indices()];
             let mut min_col_in_panel_perm =
                 vec![zero; symbolic.householder().len_householder_row_indices()];
 
-            let mut L_values = vec![0.0; symbolic.r_transposed().len_values()];
+            let mut L_values = vec![0.0; symbolic.r_adjoint().len_values()];
             let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
             let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
 
+            let mut tau_blocksize = vec![I(0); n];
+            let mut householder_nrows = vec![I(0); n];
+            let mut householder_ncols = vec![I(0); n];
+
             factorize_supernodal_numeric_qr::<I, f64>(
-                &mut col_end_for_row_indices_in_panel,
                 &mut row_indices_in_panel,
-                &mut min_col_in_panel,
                 &mut min_col_in_panel_perm,
+                &mut tau_blocksize,
+                &mut householder_nrows,
+                &mut householder_ncols,
                 &mut L_values,
                 &mut householder_values,
                 &mut tau_values,
@@ -1716,25 +1615,40 @@ mod tests {
                 None,
                 &symbolic,
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    factorize_supernodal_numeric_qr_req::<usize, f64>(
+                        &symbolic,
+                        faer_core::Parallelism::None,
+                    )
+                    .unwrap(),
+                )),
             );
-            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_transposed(), &L_values);
+            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_adjoint(), &L_values);
             let a = sparse_to_dense(A.into_inner());
-            let ata = a.transpose() * &a;
+            let ata = a.adjoint() * &a;
+
+            let llt_diff = &llt - &ata;
+            assert!(llt_diff.norm_max() <= 1e-10);
         });
     }
 
     #[test]
     fn test_numeric_qr_1_transpose() {
         type I = usize;
+        type E = c64;
+
         let I = I::truncate;
 
         let (m, n, col_ptr, row_ind, values) =
             load_mtx::<usize>(MtxData::from_file("test_data/lp_share2b.mtx").unwrap());
+        let values = values
+            .iter()
+            .map(|&x| c64::new(x, rand::random()))
+            .collect::<Vec<_>>();
 
         let nnz = row_ind.len();
 
-        let A = SparseColMatRef::<'_, I, f64>::new(
+        let A = SparseColMatRef::<'_, I, E>::new(
             SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_ind),
             &values,
         );
@@ -1743,14 +1657,14 @@ mod tests {
             let A = ghost::SparseColMatRef::new(A, M, N);
             let mut new_col_ptrs = vec![zero; m + 1];
             let mut new_row_ind = vec![zero; nnz];
-            let mut new_values = vec![0.0; nnz];
+            let mut new_values = vec![E::faer_zero(); nnz];
 
-            let AT = ghost_adjoint(
+            let AT = ghost_transpose(
                 &mut new_col_ptrs,
                 &mut new_row_ind,
-                SliceGroupMut::<'_, f64>::new(&mut new_values),
+                SliceGroupMut::<'_, E>::new(&mut new_values),
                 A,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
             );
 
             let (A, AT) = (AT, A);
@@ -1772,7 +1686,7 @@ mod tests {
             ghost_postorder(
                 Array::from_mut(&mut post, N),
                 etree_,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(3 * *N))),
             );
 
             ghost_column_counts_aat(
@@ -1782,7 +1696,7 @@ mod tests {
                 None,
                 etree_,
                 Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * *N + *M))),
             );
 
             let min_col = min_row;
@@ -1793,30 +1707,33 @@ mod tests {
                 min_col,
                 EliminationTreeRef::<'_, I> { inner: &etree },
                 &col_counts,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    supernodal::factorize_supernodal_symbolic_req::<usize>(*M, *N).unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
 
-            let n_supernodes = symbolic.r_transposed().n_supernodes();
-
-            let mut col_end_for_row_indices_in_panel = vec![zero; n_supernodes];
             let mut row_indices_in_panel =
-                vec![zero; symbolic.householder().len_householder_row_indices()];
-            let mut min_col_in_panel =
                 vec![zero; symbolic.householder().len_householder_row_indices()];
             let mut min_col_in_panel_perm =
                 vec![zero; symbolic.householder().len_householder_row_indices()];
 
-            let mut L_values = vec![0.0; symbolic.r_transposed().len_values()];
-            let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
-            let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
+            let mut L_values = vec![E::faer_zero(); symbolic.r_adjoint().len_values()];
+            let mut householder_values =
+                vec![E::faer_zero(); symbolic.householder().len_householder_values()];
+            let mut tau_values = vec![E::faer_zero(); symbolic.householder().len_tau_values()];
 
-            factorize_supernodal_numeric_qr::<I, f64>(
-                &mut col_end_for_row_indices_in_panel,
+            let mut tau_blocksize = vec![I(0); n];
+            let mut householder_nrows = vec![I(0); n];
+            let mut householder_ncols = vec![I(0); n];
+
+            let qr = factorize_supernodal_numeric_qr::<I, E>(
                 &mut row_indices_in_panel,
-                &mut min_col_in_panel,
                 &mut min_col_in_panel_perm,
+                &mut tau_blocksize,
+                &mut householder_nrows,
+                &mut householder_ncols,
                 &mut L_values,
                 &mut householder_values,
                 &mut tau_values,
@@ -1824,11 +1741,39 @@ mod tests {
                 None,
                 &symbolic,
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    factorize_supernodal_numeric_qr_req::<usize, E>(
+                        &symbolic,
+                        faer_core::Parallelism::None,
+                    )
+                    .unwrap(),
+                )),
             );
-            let llt = reconstruct_from_supernodal_llt::<I, f64>(symbolic.r_transposed(), &L_values);
+
             let a = sparse_to_dense(A.into_inner());
-            let ata = a.transpose() * &a;
+
+            let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(rand::random(), rand::random()));
+            let mut x = rhs.clone();
+            qr.solve_in_place_with_conj(
+                x.as_mut(),
+                faer_core::Conj::No,
+                faer_core::Parallelism::None,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    symbolic
+                        .solve_in_place_req::<E>(2, faer_core::Parallelism::None)
+                        .unwrap(),
+                )),
+            );
+            let x = x.as_ref().subrows(0, n);
+
+            let linsolve_diff = a.adjoint() * (&a * &x - &rhs);
+
+            let llt = reconstruct_from_supernodal_llt::<I, E>(symbolic.r_adjoint(), &L_values);
+            let ata = a.adjoint() * &a;
+
+            let llt_diff = &llt - &ata;
+            assert!(llt_diff.norm_max() <= 1e-10);
+            assert!(linsolve_diff.norm_max() <= 1e-10);
         });
     }
 
