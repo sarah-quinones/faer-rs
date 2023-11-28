@@ -129,7 +129,7 @@ fn main() {
         let mut auto = "";
         time(|| {
             let symbolic_cholesky =
-                &factorize_symbolic(A.symbolic(), side, Default::default()).unwrap();
+                &factorize_symbolic_cholesky(A.symbolic(), side, Default::default()).unwrap();
             auto = match symbolic_cholesky.raw() {
                 SymbolicCholeskyRaw::Simplicial(_) => "simplicial",
                 SymbolicCholeskyRaw::Supernodal(_) => "supernodal",
@@ -138,7 +138,7 @@ fn main() {
         });
 
         let times = methods.map(|(method, supernodal_flop_ratio_threshold, parallelism)| {
-            let symbolic = factorize_symbolic(
+            let symbolic = factorize_symbolic_cholesky(
                 A.symbolic(),
                 side,
                 CholeskySymbolicParams {

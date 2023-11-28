@@ -11,7 +11,7 @@ use faer_sparse::{
     adjoint,
     qr::{
         col_etree, column_counts_aat, postorder,
-        supernodal::{factorize_supernodal_numeric_qr, factorize_supernodal_symbolic},
+        supernodal::{factorize_supernodal_numeric_qr, factorize_supernodal_symbolic_qr},
     },
     Index,
 };
@@ -176,7 +176,7 @@ fn main() {
 
         let min_col = min_row;
 
-        let symbolic = factorize_supernodal_symbolic::<I>(
+        let symbolic = factorize_supernodal_symbolic_qr::<I>(
             *A,
             Some(p),
             min_col,
@@ -189,7 +189,6 @@ fn main() {
 
         let householder_nnz = symbolic.householder().len_householder_row_indices();
         let mut row_indices_in_panel = vec![zero; householder_nnz];
-        let mut min_col_in_panel_perm = vec![zero; householder_nnz];
 
         dbg!(&file);
         dbg!(m, n, A.compute_nnz());
@@ -205,7 +204,6 @@ fn main() {
             || {
                 factorize_supernodal_numeric_qr::<I, f64>(
                     &mut row_indices_in_panel,
-                    &mut min_col_in_panel_perm,
                     &mut tau_blocksize,
                     &mut householder_nrows,
                     &mut householder_ncols,
@@ -226,7 +224,6 @@ fn main() {
             || {
                 factorize_supernodal_numeric_qr::<I, f64>(
                     &mut row_indices_in_panel,
-                    &mut min_col_in_panel_perm,
                     &mut tau_blocksize,
                     &mut householder_nrows,
                     &mut householder_ncols,

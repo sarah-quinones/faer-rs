@@ -50,7 +50,7 @@ pub mod simplicial {
 
     /// Computes the elimination tree and column counts of the Cholesky factorization of the matrix
     /// `A`.
-    pub fn prefactorize_symbolic<'out, I: Index>(
+    pub fn prefactorize_symbolic_cholesky<'out, I: Index>(
         etree: &'out mut [I::Signed],
         col_counts: &mut [I],
         A: SymbolicSparseColMatRef<'_, I>,
@@ -62,7 +62,7 @@ pub mod simplicial {
         assert!(col_counts.len() == n);
 
         ghost::with_size(n, |N| {
-            ghost_prefactorize_symbolic(
+            ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(etree, N),
                 Array::from_mut(col_counts, N),
                 ghost::SymbolicSparseColMatRef::new(A, N, N),
@@ -126,7 +126,7 @@ pub mod simplicial {
         StackReq::try_all_of([n_req, n_req, n_req])
     }
 
-    pub fn factorize_simplicial_symbolic<I: Index>(
+    pub fn factorize_simplicial_symbolic_cholesky<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
@@ -138,7 +138,7 @@ pub mod simplicial {
         assert!(col_counts.len() == n);
 
         ghost::with_size(n, |N| {
-            ghost_factorize_simplicial_symbolic(
+            ghost_factorize_simplicial_symbolic_cholesky(
                 ghost::SymbolicSparseColMatRef::new(A, N, N),
                 etree.ghost_inner(N),
                 Array::from_ref(col_counts, N),
@@ -147,7 +147,7 @@ pub mod simplicial {
         })
     }
 
-    pub(crate) fn ghost_factorize_simplicial_symbolic<'n, I: Index>(
+    pub(crate) fn ghost_factorize_simplicial_symbolic_cholesky<'n, I: Index>(
         A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
         etree: &Array<'n, MaybeIdx<'n, I>>,
         col_counts: &Array<'n, I>,
@@ -2115,7 +2115,9 @@ pub mod supernodal {
         }
     }
 
-    pub fn factorize_supernodal_symbolic_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
+    pub fn factorize_supernodal_symbolic_cholesky_req<I: Index>(
+        n: usize,
+    ) -> Result<StackReq, SizeOverflow> {
         let n_req = StackReq::try_new::<I>(n)?;
         StackReq::try_all_of([n_req, n_req, n_req, n_req])
     }
@@ -3637,7 +3639,7 @@ pub mod supernodal {
 }
 
 // workspace: I×(n)
-fn ghost_prefactorize_symbolic<'n, 'out, I: Index>(
+fn ghost_prefactorize_symbolic_cholesky<'n, 'out, I: Index>(
     etree: &'out mut Array<'n, I::Signed>,
     col_counts: &mut Array<'n, I>,
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
@@ -4492,7 +4494,6 @@ fn postorder_depth_first_search<'n, I: Index>(
     start_index
 }
 
-/// workspace: I×(3×n)
 pub(crate) fn ghost_postorder<'n, I: Index>(
     post: &mut Array<'n, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
@@ -4556,7 +4557,7 @@ impl Default for CholeskySymbolicParams<'_> {
 
 /// Computes the symbolic factorization of the matrix `A`, or returns an error if the operation
 /// could not be completed.
-pub fn factorize_symbolic<I: Index>(
+pub fn factorize_symbolic_cholesky<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     side: Side,
     params: CholeskySymbolicParams<'_>,
@@ -4589,7 +4590,7 @@ pub fn factorize_symbolic<I: Index>(
                     n_req,
                     // ghost_factorize_*_symbolic
                     StackReq::try_or(
-                        supernodal::factorize_supernodal_symbolic_req::<I>(n)?,
+                        supernodal::factorize_supernodal_symbolic_cholesky_req::<I>(n)?,
                         simplicial::factorize_simplicial_symbolic_req::<I>(n)?,
                     )?,
                 ])?,
@@ -4629,7 +4630,8 @@ pub fn factorize_symbolic<I: Index>(
         let (col_counts, mut stack) = stack.make_raw::<I>(n);
         let etree = Array::from_mut(etree, N);
         let col_counts = Array::from_mut(col_counts, N);
-        let etree = &*ghost_prefactorize_symbolic::<I>(etree, col_counts, A, stack.rb_mut());
+        let etree =
+            &*ghost_prefactorize_symbolic_cholesky::<I>(etree, col_counts, A, stack.rb_mut());
         let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
 
         let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold {
@@ -4644,12 +4646,14 @@ pub fn factorize_symbolic<I: Index>(
                 params.supernodal_params,
             )?)
         } else {
-            SymbolicCholeskyRaw::Simplicial(simplicial::ghost_factorize_simplicial_symbolic(
-                A,
-                etree,
-                col_counts,
-                stack.rb_mut(),
-            )?)
+            SymbolicCholeskyRaw::Simplicial(
+                simplicial::ghost_factorize_simplicial_symbolic_cholesky(
+                    A,
+                    etree,
+                    col_counts,
+                    stack.rb_mut(),
+                )?,
+            )
         };
 
         Ok(SymbolicCholesky {
@@ -4699,7 +4703,7 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 A,
@@ -4959,7 +4963,7 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 *A,
@@ -5066,7 +5070,7 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 *A,
@@ -5191,7 +5195,7 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 *A,
@@ -5332,7 +5336,7 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 *A,
@@ -5474,14 +5478,14 @@ pub(crate) mod tests {
         let mut col_count = vec![zero; n];
         ghost::with_size(n, |N| {
             let A = ghost::SparseColMatRef::new(A, N, N);
-            let etree = ghost_prefactorize_symbolic(
+            let etree = ghost_prefactorize_symbolic_cholesky(
                 Array::from_mut(&mut etree, N),
                 Array::from_mut(&mut col_count, N),
                 *A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(5 * n))),
             );
 
-            let symbolic = simplicial::ghost_factorize_simplicial_symbolic(
+            let symbolic = simplicial::ghost_factorize_simplicial_symbolic_cholesky(
                 *A,
                 etree,
                 Array::from_ref(&col_count, N),
@@ -5574,7 +5578,7 @@ pub(crate) mod tests {
                 (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
                 (A_lower, Side::Lower, 0.0, Parallelism::None),
             ] {
-                let symbolic = factorize_symbolic(
+                let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
                     CholeskySymbolicParams {
@@ -5717,7 +5721,7 @@ pub(crate) mod tests {
                 (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
                 (A_lower, Side::Lower, 0.0, Parallelism::None),
             ] {
-                let symbolic = factorize_symbolic(
+                let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
                     CholeskySymbolicParams {
@@ -5858,7 +5862,7 @@ pub(crate) mod tests {
                 (A_lower, Side::Lower, 0.0, Parallelism::None),
                 (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
             ] {
-                let symbolic = factorize_symbolic(
+                let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
                     CholeskySymbolicParams {
@@ -5975,7 +5979,7 @@ pub(crate) mod tests {
                 (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
                 (A_lower, Side::Lower, 0.0, Parallelism::None),
             ] {
-                let symbolic = factorize_symbolic(
+                let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
                     CholeskySymbolicParams {

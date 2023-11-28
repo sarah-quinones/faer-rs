@@ -8,7 +8,7 @@ use crate::{
     try_zeroed, FaerError, Index, SymbolicSparseColMatRef,
 };
 use core::{iter::zip, mem::MaybeUninit};
-use dyn_stack::PodStack;
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     constrained::Size,
     group_helpers::{SliceGroup, SliceGroupMut},
@@ -122,7 +122,10 @@ pub mod supernodal {
         pub(super) supernode_postorder: alloc::vec::Vec<I>,
         pub(super) supernode_postorder_inv: alloc::vec::Vec<I>,
         pub(super) descendant_count: alloc::vec::Vec<I>,
+        nrows: usize,
+        ncols: usize,
     }
+
     pub struct SupernodalLu<I, E: Entity> {
         nrows: usize,
         ncols: usize,
@@ -204,7 +207,7 @@ pub mod supernodal {
             self.nsupernodes
         }
 
-        // #[track_caller]
+        #[track_caller]
         pub fn solve_in_place_with_conj(
             &self,
             row_perm: PermutationRef<'_, I, E>,
@@ -212,23 +215,22 @@ pub mod supernodal {
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            work: MatMut<'_, E>,
         ) where
             E: ComplexField,
         {
             assert!(self.nrows() == self.ncols());
             assert!(self.nrows() == rhs.nrows());
             let mut X = rhs;
-            let (mut temp, mut stack) =
-                faer_core::temp_mat_uninit::<E>(self.nrows(), X.ncols(), stack);
+            let mut temp = work;
 
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), row_perm);
-            self.l_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), parallelism, stack.rb_mut());
-            self.u_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), parallelism, stack.rb_mut());
+            self.l_solve_in_place_with_conj(conj_lhs, X.rb_mut(), temp.rb_mut(), parallelism);
+            self.u_solve_in_place_with_conj(conj_lhs, X.rb_mut(), temp.rb_mut(), parallelism);
             faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm);
         }
 
-        // #[track_caller]
+        #[track_caller]
         pub fn solve_transpose_in_place_with_conj(
             &self,
             row_perm: PermutationRef<'_, I, E>,
@@ -236,38 +238,37 @@ pub mod supernodal {
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            work: MatMut<'_, E>,
         ) where
             E: ComplexField,
         {
             assert!(self.nrows() == self.ncols());
             assert!(self.nrows() == rhs.nrows());
             let mut X = rhs;
-            let (mut temp, mut stack) =
-                faer_core::temp_mat_uninit::<E>(self.nrows(), X.ncols(), stack);
+            let mut temp = work;
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
             self.u_solve_transpose_in_place_with_conj(
                 conj_lhs,
+                X.rb_mut(),
                 temp.rb_mut(),
                 parallelism,
-                stack.rb_mut(),
             );
             self.l_solve_transpose_in_place_with_conj(
                 conj_lhs,
+                X.rb_mut(),
                 temp.rb_mut(),
                 parallelism,
-                stack.rb_mut(),
             );
             faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), row_perm.inverse());
         }
 
-        // #[track_caller]
-        pub fn l_solve_in_place_with_conj(
+        #[track_caller]
+        pub(crate) fn l_solve_in_place_with_conj(
             &self,
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
+            mut work: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
         ) where
             E: ComplexField,
         {
@@ -275,8 +276,6 @@ pub mod supernodal {
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
-
-            let (mut work, _) = faer_core::temp_mat_uninit::<E>(rhs.nrows(), rhs.ncols(), stack);
 
             let mut X = rhs;
             let nrhs = X.ncols();
@@ -329,13 +328,13 @@ pub mod supernodal {
             }
         }
 
-        // #[track_caller]
-        pub fn l_solve_transpose_in_place_with_conj(
+        #[track_caller]
+        pub(crate) fn l_solve_transpose_in_place_with_conj(
             &self,
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
+            mut work: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
         ) where
             E: ComplexField,
         {
@@ -343,8 +342,6 @@ pub mod supernodal {
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
-
-            let (mut work, _) = faer_core::temp_mat_uninit::<E>(rhs.nrows(), rhs.ncols(), stack);
 
             let mut X = rhs;
             let nrhs = X.ncols();
@@ -399,13 +396,13 @@ pub mod supernodal {
             }
         }
 
-        // #[track_caller]
-        pub fn u_solve_in_place_with_conj(
+        #[track_caller]
+        pub(crate) fn u_solve_in_place_with_conj(
             &self,
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
+            mut work: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
         ) where
             E: ComplexField,
         {
@@ -413,8 +410,6 @@ pub mod supernodal {
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
-
-            let (mut work, _) = faer_core::temp_mat_uninit::<E>(rhs.nrows(), rhs.ncols(), stack);
 
             let mut X = rhs;
             let nrhs = X.ncols();
@@ -477,13 +472,13 @@ pub mod supernodal {
             }
         }
 
-        // #[track_caller]
-        pub fn u_solve_transpose_in_place_with_conj(
+        #[track_caller]
+        pub(crate) fn u_solve_transpose_in_place_with_conj(
             &self,
             conj_lhs: Conj,
             rhs: MatMut<'_, E>,
+            mut work: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
         ) where
             E: ComplexField,
         {
@@ -491,8 +486,6 @@ pub mod supernodal {
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
-
-            let (mut work, _) = faer_core::temp_mat_uninit::<E>(rhs.nrows(), rhs.ncols(), stack);
 
             let mut X = rhs;
             let nrhs = X.ncols();
@@ -556,8 +549,16 @@ pub mod supernodal {
         }
     }
 
+    pub fn factorize_supernodal_symbolic_lu_req<I: Index>(
+        nrows: usize,
+        ncols: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let _ = nrows;
+        crate::cholesky::supernodal::factorize_supernodal_symbolic_cholesky_req::<I>(ncols)
+    }
+
     #[track_caller]
-    pub fn factorize_supernodal_symbolic<I: Index>(
+    pub fn factorize_supernodal_symbolic_lu<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
         col_perm: Option<PermutationRef<'_, I, Symbolic>>,
         min_col: &[I],
@@ -612,6 +613,8 @@ pub mod supernodal {
                 supernode_postorder: L.supernode_postorder,
                 supernode_postorder_inv: L.supernode_postorder_inv,
                 descendant_count: L.descendant_count,
+                nrows: *A.nrows(),
+                ncols: *A.ncols(),
             })
         })
     }
@@ -651,6 +654,14 @@ pub mod supernodal {
         f()
     }
 
+    pub fn factorize_supernodal_numeric_lu_req<I: Index, E: ComplexField>(
+        symbolic: &SymbolicSupernodalLu<I>,
+    ) -> Result<StackReq, SizeOverflow> {
+        let m = StackReq::try_new::<I>(symbolic.nrows)?;
+        let n = StackReq::try_new::<I>(symbolic.ncols)?;
+        StackReq::try_all_of([n, m, m, m, m, m])
+    }
+
     pub fn factorize_supernodal_numeric_lu<I: Index, E: ComplexField>(
         row_perm: &mut [I],
         row_perm_inv: &mut [I],
@@ -671,6 +682,8 @@ pub mod supernodal {
             supernode_postorder,
             supernode_postorder_inv,
             descendant_count,
+            nrows: _,
+            ncols: _,
         } = symbolic;
 
         let I = I::truncate;
@@ -1325,11 +1338,11 @@ pub mod supernodal {
 }
 
 #[cfg(test)]
-#[cfg(__false)]
 mod tests {
-    use super::*;
     use crate::{
-        lu::supernodal::{factorize_supernodal_numeric_lu, SupernodalLu},
+        lu::supernodal::{
+            factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req, SupernodalLu,
+        },
         qr::col_etree,
         SymbolicSparseColMatRef,
     };
@@ -1422,103 +1435,12 @@ mod tests {
         (m, n, col_ptr, row_ind, values)
     }
 
-    fn naive_lu_perm(mut A: faer_core::MatMut<'_, f64>, p: &mut [usize], p_inv: &mut [usize]) {
-        let m = A.nrows();
-        let n = A.ncols();
-        assert!(m >= n);
-
-        for i in 0..m {
-            p[i] = NONE;
-            p_inv[i] = NONE;
-        }
-
-        let mut p2 = vec![0usize; m];
-        let mut p_inv2 = vec![0usize; m];
-
-        for i in 0..m {
-            p2[i] = i;
-            p_inv2[i] = i;
-        }
-
-        for k in 0..n {
-            for j in 0..k {
-                let jpiv = p[j];
-                for i in k..m {
-                    let i = p2[i];
-                    let prod = A[(i, j)] * A[(jpiv, k)];
-                    if prod != 0.0 {
-                        dbg!(i, j, jpiv, k);
-                        dbg!(A[(i, j)], A[(jpiv, k)], prod);
-                    }
-                    A[(i, k)] -= prod;
-                }
-            }
-            dbgf::dbgf!("16.10?", &A);
-
-            let mut max = -1.0;
-            let mut kpiv = NONE;
-            for i in 0..m {
-                if p_inv[i] == NONE {
-                    let val = A[(i, k)].abs();
-                    if val > max {
-                        max = val;
-                        kpiv = i;
-                    }
-                }
-            }
-
-            dbgf::dbgf!("16.10?", A.rb().get(kpiv, k + 1..m).rb());
-            for j in 0..k {
-                let jpiv = p2[j];
-                for jj in k + 1..m {
-                    let prod = dbg!(A[(kpiv, j)]) * dbg!(A[(jpiv, jj)]);
-                    dbg!(A[(kpiv, jj)]);
-                    A[(kpiv, jj)] -= dbg!(prod);
-                    dbg!(A[(kpiv, jj)]);
-                }
-            }
-            dbgf::dbgf!("16.10?", A.rb().get(kpiv, k + 1..m).rb());
-
-            p[k] = kpiv;
-            p_inv[kpiv] = k;
-
-            let kk = p_inv2[kpiv];
-            p2.swap(k, kk);
-            p_inv2.swap(p2[k], p2[kk]);
-            dbgf::dbgf!("?", &p2, &p_inv2);
-            dbg!(p2[k], p2[kk], p_inv2[kpiv]);
-            dbgf::dbgf!("?", &p2, &p_inv2);
-
-            for k in 0..n {
-                assert!(p2[p_inv2[k]] == k);
-            }
-
-            let diag = A[(kpiv, k)];
-            for i in 0..m {
-                if p_inv[i] == NONE {
-                    A[(i, k)] /= diag;
-                }
-            }
-
-            // for j in k + 1..n {
-            //     for i in 0..m {
-            //         if p_inv[i] == NONE {
-            //             let prod = A[(i, k)] * A[(piv, j)];
-            //             A[(i, j)] -= prod;
-            //         }
-            //     }
-            // }
-        }
-        let p = PermutationRef::<'_, usize, f64>::new_checked(p, p_inv);
-        dbgf::dbgf!("16.10?", p * A.rb());
-    }
-
     #[test]
     fn test_numeric_lu_multifrontal() {
         type E = faer_core::c64;
 
         let (m, n, col_ptr, row_ind, val) =
-            load_mtx::<usize>(MtxData::from_file("bench_data/VALUES.mtx").unwrap());
+            load_mtx::<usize>(MtxData::from_file("test_data/YAO.mtx").unwrap());
 
         let mut rng = StdRng::seed_from_u64(0);
         let mut gen = || E::new(rng.gen::<f64>(), rng.gen::<f64>());
@@ -1528,8 +1450,6 @@ mod tests {
             SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_ind),
             &val,
         );
-        let mut mem = GlobalPodBuffer::new(StackReq::new::<u8>(1024 * 1024 * 1024));
-
         let mut row_perm = vec![0usize; n];
         let mut row_perm_inv = vec![0usize; n];
         let mut col_perm = vec![0usize; n];
@@ -1553,14 +1473,23 @@ mod tests {
             &mut new_row_ind,
             &mut new_values,
             A,
-            PodStack::new(&mut mem),
+            PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(m))),
         );
 
         let etree = {
             let mut post = vec![0usize; n];
 
-            let etree = col_etree(*A, Some(col_perm), &mut etree, PodStack::new(&mut mem));
-            crate::qr::postorder(&mut post, etree, PodStack::new(&mut mem));
+            let etree = col_etree(
+                *A,
+                Some(col_perm),
+                &mut etree,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(m + n))),
+            );
+            crate::qr::postorder(
+                &mut post,
+                etree,
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(3 * n))),
+            );
             crate::qr::column_counts_aat(
                 &mut col_counts,
                 &mut min_col,
@@ -1568,18 +1497,20 @@ mod tests {
                 Some(col_perm),
                 etree,
                 &post,
-                PodStack::new(&mut mem),
+                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(5 * n + m))),
             );
             etree
         };
 
-        let symbolic = crate::lu::supernodal::factorize_supernodal_symbolic::<usize>(
+        let symbolic = crate::lu::supernodal::factorize_supernodal_symbolic_lu::<usize>(
             *A,
             Some(col_perm),
             &min_col,
             etree,
             &col_counts,
-            PodStack::new(&mut mem),
+            PodStack::new(&mut GlobalPodBuffer::new(
+                super::supernodal::factorize_supernodal_symbolic_lu_req::<usize>(m, n).unwrap(),
+            )),
             crate::cholesky::supernodal::CholeskySymbolicSupernodalParams {
                 relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
             },
@@ -1596,16 +1527,20 @@ mod tests {
             col_perm.cast(),
             &symbolic,
             faer_core::Parallelism::None,
-            PodStack::new(&mut mem),
+            PodStack::new(&mut GlobalPodBuffer::new(
+                factorize_supernodal_numeric_lu_req::<usize, E>(&symbolic).unwrap(),
+            )),
         )
         .unwrap();
 
         let k = 2;
         let rhs = Mat::from_fn(n, k, |_, _| gen());
 
+        let mut work = rhs.clone();
+        let A_dense = sparse_to_dense(A);
+        let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
+
         {
-            let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
-            let A_dense = sparse_to_dense(A);
             let mut x = rhs.clone();
 
             lu.solve_in_place_with_conj(
@@ -1614,15 +1549,11 @@ mod tests {
                 Conj::No,
                 x.as_mut(),
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(
-                    1024 * 1024,
-                ))),
+                work.as_mut(),
             );
             assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
         }
         {
-            let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
-            let A_dense = sparse_to_dense(A);
             let mut x = rhs.clone();
 
             lu.solve_in_place_with_conj(
@@ -1631,15 +1562,11 @@ mod tests {
                 Conj::Yes,
                 x.as_mut(),
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(
-                    1024 * 1024,
-                ))),
+                work.as_mut(),
             );
             assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
         }
         {
-            let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
-            let A_dense = sparse_to_dense(A);
             let mut x = rhs.clone();
 
             lu.solve_transpose_in_place_with_conj(
@@ -1648,15 +1575,11 @@ mod tests {
                 Conj::No,
                 x.as_mut(),
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(
-                    1024 * 1024,
-                ))),
+                work.as_mut(),
             );
             assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
         }
         {
-            let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
-            let A_dense = sparse_to_dense(A);
             let mut x = rhs.clone();
 
             lu.solve_transpose_in_place_with_conj(
@@ -1665,9 +1588,7 @@ mod tests {
                 Conj::Yes,
                 x.as_mut(),
                 faer_core::Parallelism::None,
-                PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(
-                    1024 * 1024,
-                ))),
+                work.as_mut(),
             );
             assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
         }

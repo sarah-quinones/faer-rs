@@ -185,7 +185,7 @@ fn main() {
 
         let mut mem = GlobalPodBuffer::new(StackReq::new::<u8>(4 * 1024 * 1024 * 1024));
 
-        let symbolic = faer_sparse::lu::supernodal::factorize_supernodal_symbolic::<usize>(
+        let symbolic = faer_sparse::lu::supernodal::factorize_supernodal_symbolic_lu::<usize>(
             *A,
             Some(fill_col_perm),
             &min_col,
