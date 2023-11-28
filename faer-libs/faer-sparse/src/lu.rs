@@ -225,8 +225,8 @@ pub mod supernodal {
             let mut temp = work;
 
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), row_perm);
-            self.l_solve_in_place_with_conj(conj_lhs, X.rb_mut(), temp.rb_mut(), parallelism);
-            self.u_solve_in_place_with_conj(conj_lhs, X.rb_mut(), temp.rb_mut(), parallelism);
+            self.l_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), X.rb_mut(), parallelism);
+            self.u_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), X.rb_mut(), parallelism);
             faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm);
         }
 
@@ -249,14 +249,14 @@ pub mod supernodal {
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
             self.u_solve_transpose_in_place_with_conj(
                 conj_lhs,
-                X.rb_mut(),
                 temp.rb_mut(),
+                X.rb_mut(),
                 parallelism,
             );
             self.l_solve_transpose_in_place_with_conj(
                 conj_lhs,
-                X.rb_mut(),
                 temp.rb_mut(),
+                X.rb_mut(),
                 parallelism,
             );
             faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), row_perm.inverse());
