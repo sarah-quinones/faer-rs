@@ -18,6 +18,40 @@ use faer_core::{
 use faer_entity::*;
 use reborrow::*;
 
+const CHOLESKY_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
+const QR_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
+const LU_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
+
+#[derive(Copy, Clone, Debug)]
+pub struct SymbolicSupernodalParams<'a> {
+    pub relax: Option<&'a [(usize, f64)]>,
+}
+
+impl Default for SymbolicSupernodalParams<'_> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct SupernodalThreshold(pub f64);
+
+impl Default for SupernodalThreshold {
+    #[inline]
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+impl SupernodalThreshold {
+    pub const FORCE_SIMPLICIAL: Self = Self(f64::INFINITY);
+    pub const FORCE_SUPERNODAL: Self = Self(0.0);
+    pub const AUTO: Self = Self(1.0);
+}
+
 pub use faer_core::permutation::{Index, SignedIndex};
 
 #[allow(unused_macros)]
@@ -136,6 +170,8 @@ macro_rules! monomorphize_test {
 }
 
 extern crate alloc;
+
+pub mod triangular_solve;
 
 pub mod amd;
 pub mod colamd;
@@ -492,20 +528,13 @@ fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     mem::fill_zero(col_count.as_mut());
 
     // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    // if A.into_inner().nnz_per_col().is_some()
-    {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i] += I::truncate(1);
-            }
+    for j in N.indices() {
+        for i in A.row_indices_of_col(j) {
+            col_count[i] += I::truncate(1);
         }
     }
-    // else {
-    //     for i in A.compressed_row_indices() {
-    //         col_count[i] += I::truncate(1);
-    //     }
-    // }
 
+    new_col_ptrs[0] = I::truncate(0);
     // col_count elements are >= 0
     for (j, [pj0, pj1]) in zip(
         M.indices(),
@@ -574,20 +603,13 @@ fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
     mem::fill_zero(col_count.as_mut());
 
     // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    // if A.into_inner().nnz_per_col().is_some()
-    {
-        for j in N.indices() {
-            for i in A.row_indices_of_col(j) {
-                col_count[i] += I::truncate(1);
-            }
+    for j in N.indices() {
+        for i in A.row_indices_of_col(j) {
+            col_count[i] += I::truncate(1);
         }
     }
-    // else {
-    //     for i in A.compressed_row_indices() {
-    //         col_count[i] += I::truncate(1);
-    //     }
-    // }
 
+    new_col_ptrs[0] = I::truncate(0);
     // col_count elements are >= 0
     for (j, [pj0, pj1]) in zip(
         M.indices(),

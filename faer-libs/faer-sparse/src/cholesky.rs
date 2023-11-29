@@ -1,7 +1,7 @@
 //! Computes the Cholesky decomposition (either LLT, LDLT, or Bunch-Kaufman) of a given sparse
 //! matrix. See [`faer_cholesky`] for more info.
 //!
-//! The entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic`].
+//! The entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic_cholesky`].
 
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
@@ -10,23 +10,23 @@ use crate::{
     ghost::{self, Array, Idx, MaybeIdx},
     ghost_permute_hermitian, ghost_permute_hermitian_symbolic, make_raw_req, mem,
     mem::NONE,
-    nomem, try_collect, try_zeroed, windows2, FaerError, Index, PermutationRef, Side, SliceGroup,
-    SliceGroupMut, SparseColMatRef, SymbolicSparseColMatRef,
+    nomem, triangular_solve, try_collect, try_zeroed, windows2, FaerError, Index, PermutationRef,
+    Side, SliceGroup, SliceGroupMut, SparseColMatRef, SupernodalThreshold, SymbolicSparseColMatRef,
+    SymbolicSupernodalParams,
 };
 use core::{cell::Cell, iter::zip};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
+pub use faer_cholesky::{
+    bunch_kaufman::compute::BunchKaufmanRegularization,
+    ldlt_diagonal::compute::LdltRegularization,
+    llt::{compute::LltRegularization, CholeskyError},
+};
 use faer_core::{
     assert, permutation::SignedIndex, temp_mat_req, temp_mat_uninit, unzipped, zipped,
     ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use faer_entity::{GroupFor, Symbolic};
 use reborrow::*;
-
-pub use faer_cholesky::{
-    bunch_kaufman::compute::BunchKaufmanRegularization,
-    ldlt_diagonal::compute::LdltRegularization,
-    llt::{compute::LltRegularization, CholeskyError},
-};
 
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
@@ -46,7 +46,6 @@ enum Ordering<'a, I> {
 pub mod simplicial {
     use super::*;
     use faer_core::assert;
-    use faer_entity::GroupFor;
 
     /// Computes the elimination tree and column counts of the Cholesky factorization of the matrix
     /// `A`.
@@ -669,352 +668,17 @@ pub mod simplicial {
             let _ = parallelism;
             let _ = stack;
             let n = self.symbolic().nrows();
-            let ld = SparseColMatRef::<'_, I, E>::new(self.symbolic().ld_factors(), self.values());
             assert!(rhs.nrows() == n);
+            let l = SparseColMatRef::<'_, I, E>::new(self.symbolic().ld_factors(), self.values());
 
-            let slice_group = SliceGroup::<'_, E>::new;
-
-            let mut x = rhs;
-            for mut x in x.rb_mut().col_chunks_mut(4) {
-                match x.ncols() {
-                    1 => {
-                        for j in 0..n {
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-
-                            let xj0 = x.read(j, 0).faer_scale_real(d);
-                            x.write(j, 0, xj0);
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                            }
-                        }
-                    }
-                    2 => {
-                        for j in 0..n {
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-
-                            let xj0 = x.read(j, 0).faer_scale_real(d);
-                            x.write(j, 0, xj0);
-                            let xj1 = x.read(j, 1).faer_scale_real(d);
-                            x.write(j, 1, xj1);
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                            }
-                        }
-                    }
-                    3 => {
-                        for j in 0..n {
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-
-                            let xj0 = x.read(j, 0).faer_scale_real(d);
-                            x.write(j, 0, xj0);
-                            let xj1 = x.read(j, 1).faer_scale_real(d);
-                            x.write(j, 1, xj1);
-                            let xj2 = x.read(j, 2).faer_scale_real(d);
-                            x.write(j, 2, xj2);
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
-                            }
-                        }
-                    }
-                    4 => {
-                        for j in 0..n {
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-
-                            let xj0 = x.read(j, 0).faer_scale_real(d);
-                            x.write(j, 0, xj0);
-                            let xj1 = x.read(j, 1).faer_scale_real(d);
-                            x.write(j, 1, xj1);
-                            let xj2 = x.read(j, 2).faer_scale_real(d);
-                            x.write(j, 2, xj2);
-                            let xj3 = x.read(j, 3).faer_scale_real(d);
-                            x.write(j, 3, xj3);
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
-                                x.write(i, 3, x.read(i, 3).faer_sub(lij.faer_mul(xj3)));
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
-
-            for mut x in x.rb_mut().col_chunks_mut(4) {
-                match x.ncols() {
-                    1 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc0c = E::faer_zero();
-                            let mut acc0d = E::faer_zero();
-
-                            let a = 0;
-                            let b = 1;
-                            let c = 2;
-                            let d = 3;
-
-                            let nrows = ld.row_indices_of_col_raw(j).len();
-                            let rows_head = ld.row_indices_of_col_raw(j)[1..].chunks_exact(4);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(ld.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(4);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lijc = lij.read(c);
-                                let lijd = lij.read(d);
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                let lijb = if conj == Conj::No {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                let lijc = if conj == Conj::No {
-                                    lijc.faer_conj()
-                                } else {
-                                    lijc
-                                };
-                                let lijd = if conj == Conj::No {
-                                    lijd.faer_conj()
-                                } else {
-                                    lijd
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
-                                acc0c = acc0c.faer_add(lijc.faer_mul(x.read(i[c].zx(), 0)));
-                                acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), 0)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
-                            }
-
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-                            x.write(
-                                j,
-                                0,
-                                x.read(j, 0)
-                                    .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)))
-                                    .faer_scale_real(d),
-                            );
-                        }
-                    }
-                    2 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc1b = E::faer_zero();
-
-                            let a = 0;
-                            let b = 1;
-
-                            let nrows = ld.row_indices_of_col_raw(j).len();
-                            let rows_head = ld.row_indices_of_col_raw(j)[1..].chunks_exact(2);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(ld.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(2);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                let lijb = if conj == Conj::No {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i[a].zx(), 1)));
-                                acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 1)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i.zx(), 1)));
-                            }
-
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-                            x.write(
-                                j,
-                                0,
-                                x.read(j, 0)
-                                    .faer_sub(acc0a.faer_add(acc0b))
-                                    .faer_scale_real(d),
-                            );
-                            x.write(
-                                j,
-                                1,
-                                x.read(j, 1)
-                                    .faer_sub(acc1a.faer_add(acc1b))
-                                    .faer_scale_real(d),
-                            );
-                        }
-                    }
-                    3 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc2a = E::faer_zero();
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::No {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
-                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
-                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
-                            }
-
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a).faer_scale_real(d));
-                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a).faer_scale_real(d));
-                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a).faer_scale_real(d));
-                        }
-                    }
-                    4 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc2a = E::faer_zero();
-                            let mut acc3a = E::faer_zero();
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::No {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
-                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
-                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
-                                acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, 3)));
-                            }
-
-                            let d = slice_group(ld.values_of_col(j))
-                                .read(0)
-                                .faer_real()
-                                .faer_inv();
-                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a).faer_scale_real(d));
-                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a).faer_scale_real(d));
-                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a).faer_scale_real(d));
-                            x.write(j, 3, x.read(j, 3).faer_sub(acc3a).faer_scale_real(d));
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
+            let mut rhs = rhs;
+            triangular_solve::solve_lower_triangular_in_place(l, conj, rhs.rb_mut(), parallelism);
+            triangular_solve::solve_lower_triangular_transpose_in_place(
+                l,
+                conj.compose(Conj::Yes),
+                rhs.rb_mut(),
+                parallelism,
+            );
         }
     }
 
@@ -1057,100 +721,12 @@ pub mod simplicial {
             let slice_group = SliceGroup::<'_, E>::new;
 
             let mut x = rhs;
-            for mut x in x.rb_mut().col_chunks_mut(4) {
-                match x.ncols() {
-                    1 => {
-                        for j in 0..n {
-                            let xj0 = x.read(j, 0);
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                            }
-                        }
-                    }
-                    2 => {
-                        for j in 0..n {
-                            let xj0 = x.read(j, 0);
-                            let xj1 = x.read(j, 1);
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                            }
-                        }
-                    }
-                    3 => {
-                        for j in 0..n {
-                            let xj0 = x.read(j, 0);
-                            let xj1 = x.read(j, 1);
-                            let xj2 = x.read(j, 2);
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
-                            }
-                        }
-                    }
-                    4 => {
-                        for j in 0..n {
-                            let xj0 = x.read(j, 0);
-                            let xj1 = x.read(j, 1);
-                            let xj2 = x.read(j, 2);
-                            let xj3 = x.read(j, 3);
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::Yes {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                x.write(i, 0, x.read(i, 0).faer_sub(lij.faer_mul(xj0)));
-                                x.write(i, 1, x.read(i, 1).faer_sub(lij.faer_mul(xj1)));
-                                x.write(i, 2, x.read(i, 2).faer_sub(lij.faer_mul(xj2)));
-                                x.write(i, 3, x.read(i, 3).faer_sub(lij.faer_mul(xj3)));
-                            }
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
-
+            triangular_solve::solve_unit_lower_triangular_in_place(
+                ld,
+                conj,
+                x.rb_mut(),
+                parallelism,
+            );
             for mut x in x.rb_mut().col_chunks_mut(1) {
                 for j in 0..n {
                     let d_inv = slice_group(ld.values_of_col(j))
@@ -1160,191 +736,12 @@ pub mod simplicial {
                     x.write(j, 0, x.read(j, 0).faer_scale_real(d_inv));
                 }
             }
-
-            for mut x in x.rb_mut().col_chunks_mut(4) {
-                match x.ncols() {
-                    1 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc0c = E::faer_zero();
-                            let mut acc0d = E::faer_zero();
-
-                            let a = 0;
-                            let b = 1;
-                            let c = 2;
-                            let d = 3;
-
-                            let nrows = ld.row_indices_of_col_raw(j).len();
-                            let rows_head = ld.row_indices_of_col_raw(j)[1..].chunks_exact(4);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(ld.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(4);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lijc = lij.read(c);
-                                let lijd = lij.read(d);
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                let lijb = if conj == Conj::No {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                let lijc = if conj == Conj::No {
-                                    lijc.faer_conj()
-                                } else {
-                                    lijc
-                                };
-                                let lijd = if conj == Conj::No {
-                                    lijd.faer_conj()
-                                } else {
-                                    lijd
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
-                                acc0c = acc0c.faer_add(lijc.faer_mul(x.read(i[c].zx(), 0)));
-                                acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), 0)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
-                            }
-
-                            x.write(
-                                j,
-                                0,
-                                x.read(j, 0).faer_sub(
-                                    acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)),
-                                ),
-                            );
-                        }
-                    }
-                    2 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc1b = E::faer_zero();
-
-                            let a = 0;
-                            let b = 1;
-
-                            let nrows = ld.row_indices_of_col_raw(j).len();
-                            let rows_head = ld.row_indices_of_col_raw(j)[1..].chunks_exact(2);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(ld.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(2);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                let lijb = if conj == Conj::No {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), 0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i[a].zx(), 1)));
-                                acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), 1)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::No {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), 0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i.zx(), 1)));
-                            }
-
-                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a.faer_add(acc0b)));
-                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a.faer_add(acc1b)));
-                        }
-                    }
-                    3 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc2a = E::faer_zero();
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::No {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
-                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
-                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
-                            }
-
-                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a));
-                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a));
-                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a));
-                        }
-                    }
-                    4 => {
-                        for j in (0..n).rev() {
-                            let mut acc0a = E::faer_zero();
-                            let mut acc1a = E::faer_zero();
-                            let mut acc2a = E::faer_zero();
-                            let mut acc3a = E::faer_zero();
-
-                            for (i, lij) in zip(
-                                ld.row_indices_of_col(j),
-                                slice_group(ld.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
-                                let lij = lij.read();
-                                let lij = if conj == Conj::No {
-                                    lij.faer_conj()
-                                } else {
-                                    lij
-                                };
-                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, 0)));
-                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, 1)));
-                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, 2)));
-                                acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, 3)));
-                            }
-
-                            x.write(j, 0, x.read(j, 0).faer_sub(acc0a));
-                            x.write(j, 1, x.read(j, 1).faer_sub(acc1a));
-                            x.write(j, 2, x.read(j, 2).faer_sub(acc2a));
-                            x.write(j, 3, x.read(j, 3).faer_sub(acc3a));
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
+            triangular_solve::solve_unit_lower_triangular_transpose_in_place(
+                ld,
+                conj.compose(Conj::Yes),
+                x.rb_mut(),
+                parallelism,
+            );
         }
     }
 
@@ -2127,7 +1524,7 @@ pub mod supernodal {
         etree: simplicial::EliminationTreeRef<'_, I>,
         col_counts: &[I],
         stack: PodStack<'_>,
-        params: CholeskySymbolicSupernodalParams<'_>,
+        params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
         let n = A.nrows();
         assert!(A.nrows() == A.ncols());
@@ -2160,7 +1557,7 @@ pub mod supernodal {
         etree: &Array<'n, MaybeIdx<'n, I>>,
         col_counts: &Array<'n, I>,
         stack: PodStack<'_>,
-        params: CholeskySymbolicSupernodalParams<'_>,
+        params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
         let to_wide = |i: I| i.zx() as u128;
         let from_wide = |i: u128| I::truncate(i as usize);
@@ -3622,20 +3019,6 @@ pub mod supernodal {
         pub(crate) col_ptrs_for_values: alloc::vec::Vec<I>,
         pub(crate) row_indices: alloc::vec::Vec<I>,
     }
-
-    #[derive(Copy, Clone, Debug)]
-    pub struct CholeskySymbolicSupernodalParams<'a> {
-        pub relax: Option<&'a [(usize, f64)]>,
-    }
-
-    impl Default for CholeskySymbolicSupernodalParams<'_> {
-        #[inline]
-        fn default() -> Self {
-            Self {
-                relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
-            }
-        }
-    }
 }
 
 // workspace: I×(n)
@@ -3916,7 +3299,7 @@ impl<I: Index> SymbolicCholesky<I> {
 
     /// Computes a numerical LLT factorization of A, or returns a [`CholeskyError`] if the matrix
     /// is not numerically positive definite.
-    #[inline]
+    #[track_caller]
     pub fn factorize_numeric_llt<'out, E: ComplexField>(
         &'out self,
         L_values: GroupFor<E, &'out mut [E::Unit]>,
@@ -4538,25 +3921,15 @@ pub(crate) fn ghost_postorder<'n, I: Index>(
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct CholeskySymbolicParams<'a> {
     pub amd_params: Control,
-    pub supernodal_flop_ratio_threshold: f64,
-    pub supernodal_params: supernodal::CholeskySymbolicSupernodalParams<'a>,
+    pub supernodal_flop_ratio_threshold: SupernodalThreshold,
+    pub supernodal_params: SymbolicSupernodalParams<'a>,
 }
 
-impl Default for CholeskySymbolicParams<'_> {
-    fn default() -> Self {
-        Self {
-            supernodal_flop_ratio_threshold: 40.0,
-            amd_params: Default::default(),
-            supernodal_params: Default::default(),
-        }
-    }
-}
-
-/// Computes the symbolic factorization of the matrix `A`, or returns an error if the operation
-/// could not be completed.
+/// Computes the symbolic Cholesky factorization of the matrix `A`, or returns an error if the
+/// operation could not be completed.
 pub fn factorize_symbolic_cholesky<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     side: Side,
@@ -4634,7 +4007,9 @@ pub fn factorize_symbolic_cholesky<I: Index>(
             &*ghost_prefactorize_symbolic_cholesky::<I>(etree, col_counts, A, stack.rb_mut());
         let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
 
-        let raw = if (flops / L_nnz.zx() as f64) > params.supernodal_flop_ratio_threshold {
+        let raw = if (flops / L_nnz.zx() as f64)
+            > params.supernodal_flop_ratio_threshold.0 * crate::CHOLESKY_SUPERNODAL_RATIO_FACTOR
+        {
             SymbolicCholeskyRaw::Supernodal(supernodal::ghost_factorize_supernodal_symbolic(
                 A,
                 None,
@@ -5573,10 +4948,30 @@ pub(crate) mod tests {
             }
 
             for (A, side, supernodal_flop_ratio_threshold, parallelism) in [
-                (A_upper, Side::Upper, 0.0, Parallelism::None),
-                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
-                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
-                (A_lower, Side::Lower, 0.0, Parallelism::None),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
             ] {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
@@ -5716,10 +5111,30 @@ pub(crate) mod tests {
             }
 
             for (A, side, supernodal_flop_ratio_threshold, parallelism) in [
-                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
-                (A_upper, Side::Upper, 0.0, Parallelism::None),
-                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
-                (A_lower, Side::Lower, 0.0, Parallelism::None),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
             ] {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
@@ -5857,10 +5272,30 @@ pub(crate) mod tests {
             }
 
             for (A, side, supernodal_flop_ratio_threshold, parallelism) in [
-                (A_upper, Side::Upper, 0.0, Parallelism::None),
-                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
-                (A_lower, Side::Lower, 0.0, Parallelism::None),
-                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
             ] {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
@@ -5974,10 +5409,30 @@ pub(crate) mod tests {
             }
 
             for (A, side, supernodal_flop_ratio_threshold, parallelism) in [
-                (A_upper, Side::Upper, f64::INFINITY, Parallelism::None),
-                (A_upper, Side::Upper, 0.0, Parallelism::None),
-                (A_lower, Side::Lower, f64::INFINITY, Parallelism::None),
-                (A_lower, Side::Lower, 0.0, Parallelism::None),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_upper,
+                    Side::Upper,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SIMPLICIAL,
+                    Parallelism::None,
+                ),
+                (
+                    A_lower,
+                    Side::Lower,
+                    SupernodalThreshold::FORCE_SUPERNODAL,
+                    Parallelism::None,
+                ),
             ] {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),

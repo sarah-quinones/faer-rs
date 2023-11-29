@@ -192,7 +192,7 @@ fn main() {
             etree,
             &col_counts,
             PodStack::new(&mut mem),
-            faer_sparse::cholesky::supernodal::CholeskySymbolicSupernodalParams {
+            faer_sparse::SymbolicSupernodalParams {
                 relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
             },
         )

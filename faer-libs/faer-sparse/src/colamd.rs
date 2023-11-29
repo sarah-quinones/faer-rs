@@ -31,7 +31,7 @@ use crate::{
     mem::{self, NONE},
     FaerError, Index, SignedIndex, SymbolicSparseColMatRef,
 };
-use dyn_stack::PodStack;
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{assert, permutation::PermutationRef};
 use reborrow::*;
 
@@ -84,6 +84,42 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
     } else {
         tag_mark
     }
+}
+
+pub fn order_req<I: Index>(
+    nrows: usize,
+    ncols: usize,
+    A_nnz: usize,
+) -> Result<StackReq, SizeOverflow> {
+    let m = nrows;
+    let n = ncols;
+    let n_req = StackReq::try_new::<I>(n)?;
+    let m_req = StackReq::try_new::<I>(m)?;
+    let np1_req = StackReq::try_new::<I>(n + 1)?;
+    let size = StackReq::try_new::<I>(
+        A_nnz
+            .checked_mul(2)
+            .and_then(|x| x.checked_add(A_nnz / 5))
+            .and_then(|p| p.checked_add(n))
+            .ok_or(SizeOverflow)?,
+    )?;
+
+    StackReq::try_or(
+        StackReq::try_all_of([
+            StackReq::try_new::<ColamdCol<I>>(n + 1)?,
+            StackReq::try_new::<ColamdRow<I>>(m + 1)?,
+            np1_req,
+            size,
+        ])?,
+        StackReq::try_all_of([
+            n_req,
+            n_req,
+            StackReq::try_or(
+                StackReq::try_and(n_req, m_req)?,
+                StackReq::try_all_of([n_req; 3])?,
+            )?,
+        ])?,
+    )
 }
 
 pub fn order<I: Index>(

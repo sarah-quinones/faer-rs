@@ -1,11 +1,11 @@
 use crate::{
-    cholesky::{simplicial::EliminationTreeRef, supernodal::CholeskySymbolicSupernodalParams},
+    cholesky::simplicial::EliminationTreeRef,
     ghost,
     ghost::{Array, MaybeIdx},
     mem::{
         NONE, {self},
     },
-    try_zeroed, FaerError, Index, SymbolicSparseColMatRef,
+    try_zeroed, FaerError, Index, SymbolicSparseColMatRef, SymbolicSupernodalParams,
 };
 use core::{iter::zip, mem::MaybeUninit};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -14,106 +14,107 @@ use faer_core::{
     group_helpers::{SliceGroup, SliceGroupMut},
     mul,
     permutation::{PermutationRef, SignedIndex},
+    solve,
     sparse::SparseColMatRef,
     Conj, MatMut, Parallelism,
 };
 use faer_entity::*;
 use reborrow::*;
 
-pub mod supernodal {
-    use super::*;
-    use faer_core::{assert, solve};
+#[inline(never)]
+fn resize_scalar<E: Entity>(
+    v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
+    n: usize,
+    exact: bool,
+    reserve_only: bool,
+) -> Result<(), FaerError> {
+    let mut failed = false;
+    let reserve = if exact {
+        alloc::vec::Vec::try_reserve_exact
+    } else {
+        alloc::vec::Vec::try_reserve
+    };
 
-    #[inline(never)]
-    fn resize_scalar<E: Entity>(
-        v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
-        n: usize,
-        exact: bool,
-        reserve_only: bool,
-    ) -> Result<(), FaerError> {
-        let mut failed = false;
-        let reserve = if exact {
-            alloc::vec::Vec::try_reserve_exact
-        } else {
-            alloc::vec::Vec::try_reserve
-        };
-
-        E::faer_map(E::faer_as_mut(v), |v| {
-            if !failed {
-                failed = reserve(v, n.saturating_sub(v.len())).is_err();
-                if !reserve_only {
-                    v.resize(Ord::max(n, v.len()), unsafe { core::mem::zeroed() });
-                }
+    E::faer_map(E::faer_as_mut(v), |v| {
+        if !failed {
+            failed = reserve(v, n.saturating_sub(v.len())).is_err();
+            if !reserve_only {
+                v.resize(Ord::max(n, v.len()), unsafe { core::mem::zeroed() });
             }
-        });
-        if failed {
-            Err(FaerError::OutOfMemory)
-        } else {
-            Ok(())
         }
-    }
-
-    #[inline(never)]
-    fn resize_maybe_uninit_scalar<E: Entity>(
-        v: &mut GroupFor<E, alloc::vec::Vec<MaybeUninit<E::Unit>>>,
-        n: usize,
-    ) -> Result<(), FaerError> {
-        let mut failed = false;
-        E::faer_map(E::faer_as_mut(v), |v| {
-            if !failed {
-                failed = v.try_reserve(n.saturating_sub(v.len())).is_err();
-                unsafe { v.set_len(n) };
-            }
-        });
-        if failed {
-            Err(FaerError::OutOfMemory)
-        } else {
-            Ok(())
-        }
-    }
-
-    #[inline(never)]
-    fn resize_index<I: Index>(
-        v: &mut alloc::vec::Vec<I>,
-        n: usize,
-        exact: bool,
-        reserve_only: bool,
-    ) -> Result<(), FaerError> {
-        let reserve = if exact {
-            alloc::vec::Vec::try_reserve_exact
-        } else {
-            alloc::vec::Vec::try_reserve
-        };
-        reserve(v, n.saturating_sub(v.len())).map_err(|_| FaerError::OutOfMemory)?;
-        if !reserve_only {
-            v.resize(Ord::max(n, v.len()), I::truncate(0));
-        }
+    });
+    if failed {
+        Err(FaerError::OutOfMemory)
+    } else {
         Ok(())
     }
+}
 
-    #[derive(Copy, Clone, Debug)]
-    pub enum LuError {
-        Generic(FaerError),
-        SymbolicSingular(usize),
-    }
-
-    impl From<FaerError> for LuError {
-        #[inline]
-        fn from(value: FaerError) -> Self {
-            Self::Generic(value)
+#[inline(never)]
+fn resize_maybe_uninit_scalar<E: Entity>(
+    v: &mut GroupFor<E, alloc::vec::Vec<MaybeUninit<E::Unit>>>,
+    n: usize,
+) -> Result<(), FaerError> {
+    let mut failed = false;
+    E::faer_map(E::faer_as_mut(v), |v| {
+        if !failed {
+            failed = v.try_reserve(n.saturating_sub(v.len())).is_err();
+            unsafe { v.set_len(n) };
         }
+    });
+    if failed {
+        Err(FaerError::OutOfMemory)
+    } else {
+        Ok(())
     }
+}
 
-    #[inline]
-    fn to_slice_group_mut<E: Entity>(
-        v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
-    ) -> SliceGroupMut<'_, E> {
-        SliceGroupMut::<'_, E>::new(E::faer_map(E::faer_as_mut(v), |v| &mut **v))
+#[inline(never)]
+fn resize_index<I: Index>(
+    v: &mut alloc::vec::Vec<I>,
+    n: usize,
+    exact: bool,
+    reserve_only: bool,
+) -> Result<(), FaerError> {
+    let reserve = if exact {
+        alloc::vec::Vec::try_reserve_exact
+    } else {
+        alloc::vec::Vec::try_reserve
+    };
+    reserve(v, n.saturating_sub(v.len())).map_err(|_| FaerError::OutOfMemory)?;
+    if !reserve_only {
+        v.resize(Ord::max(n, v.len()), I::truncate(0));
     }
+    Ok(())
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum LuError {
+    Generic(FaerError),
+    SymbolicSingular(usize),
+}
+
+impl From<FaerError> for LuError {
     #[inline]
-    fn to_slice_group<E: Entity>(v: &GroupFor<E, alloc::vec::Vec<E::Unit>>) -> SliceGroup<'_, E> {
-        SliceGroup::<'_, E>::new(E::faer_map(E::faer_as_ref(v), |v| &**v))
+    fn from(value: FaerError) -> Self {
+        Self::Generic(value)
     }
+}
+
+#[inline]
+fn to_slice_group_mut<E: Entity>(
+    v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
+) -> SliceGroupMut<'_, E> {
+    SliceGroupMut::<'_, E>::new(E::faer_map(E::faer_as_mut(v), |v| &mut **v))
+}
+#[inline]
+fn to_slice_group<E: Entity>(v: &GroupFor<E, alloc::vec::Vec<E::Unit>>) -> SliceGroup<'_, E> {
+    SliceGroup::<'_, E>::new(E::faer_map(E::faer_as_ref(v), |v| &**v))
+}
+
+pub mod supernodal {
+    use super::*;
+    use faer_core::assert;
 
     #[derive(Debug)]
     pub struct SymbolicSupernodalLu<I> {
@@ -246,7 +247,7 @@ pub mod supernodal {
             assert!(self.nrows() == rhs.nrows());
             let mut X = rhs;
             let mut temp = work;
-            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
+            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm.inverse());
             self.u_solve_transpose_in_place_with_conj(
                 conj_lhs,
                 temp.rb_mut(),
@@ -565,7 +566,7 @@ pub mod supernodal {
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
         stack: PodStack<'_>,
-        params: CholeskySymbolicSupernodalParams<'_>,
+        params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalLu<I>, FaerError> {
         let m = A.nrows();
         let n = A.ncols();
@@ -983,7 +984,6 @@ pub mod supernodal {
             if s_L.nrows() < s_L.ncols() {
                 return Err(LuError::SymbolicSingular(s_begin + s_L.nrows()));
             }
-            assert!(s_L.nrows() >= s_L.ncols());
             let transpositions = &mut transpositions[s_begin..s_end];
             faer_lu::partial_pivoting::compute::lu_in_place_impl(
                 s_L.rb_mut(),
@@ -1337,11 +1337,465 @@ pub mod supernodal {
     }
 }
 
+pub mod simplicial {
+    use crate::triangular_solve;
+
+    use super::*;
+    use faer_core::assert;
+
+    pub struct SimplicialLu<I, E: Entity> {
+        nrows: usize,
+        ncols: usize,
+
+        l_col_ptr: alloc::vec::Vec<I>,
+        l_row_ind: alloc::vec::Vec<I>,
+        l_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+
+        u_col_ptr: alloc::vec::Vec<I>,
+        u_row_ind: alloc::vec::Vec<I>,
+        u_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+    }
+    impl<I: Index, E: Entity> core::fmt::Debug for SimplicialLu<I, E> {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.debug_struct("SimplicialLu")
+                .field("nrows", &self.nrows)
+                .field("ncols", &self.ncols)
+                .field("l_col_ptr", &self.l_col_ptr)
+                .field("l_row_ind", &self.l_row_ind)
+                .field("l_val", &to_slice_group::<E>(&self.l_val))
+                .field("u_col_ptr", &self.u_col_ptr)
+                .field("u_row_ind", &self.u_row_ind)
+                .field("u_val", &to_slice_group::<E>(&self.u_val))
+                .finish()
+        }
+    }
+
+    unsafe impl<I: Index, E: Entity> Send for SimplicialLu<I, E> {}
+    unsafe impl<I: Index, E: Entity> Sync for SimplicialLu<I, E> {}
+
+    impl<I: Index, E: Entity> SimplicialLu<I, E> {
+        #[inline]
+        pub fn new() -> Self {
+            Self {
+                nrows: 0,
+                ncols: 0,
+
+                l_col_ptr: alloc::vec::Vec::new(),
+                u_col_ptr: alloc::vec::Vec::new(),
+
+                l_row_ind: alloc::vec::Vec::new(),
+                u_row_ind: alloc::vec::Vec::new(),
+
+                l_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
+                u_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
+            }
+        }
+
+        #[inline]
+        pub fn nrows(&self) -> usize {
+            self.nrows
+        }
+
+        #[inline]
+        pub fn ncols(&self) -> usize {
+            self.ncols
+        }
+
+        #[inline]
+        pub fn l_factor(&self) -> SparseColMatRef<'_, I, E> {
+            SparseColMatRef::<'_, I, E>::new(
+                unsafe {
+                    SymbolicSparseColMatRef::new_unchecked(
+                        self.nrows(),
+                        self.ncols(),
+                        &self.l_col_ptr,
+                        None,
+                        &self.l_row_ind,
+                    )
+                },
+                to_slice_group::<E>(&self.l_val).into_inner(),
+            )
+        }
+
+        #[inline]
+        pub fn u_factor(&self) -> SparseColMatRef<'_, I, E> {
+            SparseColMatRef::<'_, I, E>::new(
+                unsafe {
+                    SymbolicSparseColMatRef::new_unchecked(
+                        self.ncols(),
+                        self.ncols(),
+                        &self.u_col_ptr,
+                        None,
+                        &self.u_row_ind,
+                    )
+                },
+                to_slice_group::<E>(&self.u_val).into_inner(),
+            )
+        }
+
+        #[track_caller]
+        pub fn solve_in_place_with_conj(
+            &self,
+            row_perm: PermutationRef<'_, I, E>,
+            col_perm: PermutationRef<'_, I, E>,
+            conj_lhs: Conj,
+            rhs: MatMut<'_, E>,
+            parallelism: Parallelism,
+            work: MatMut<'_, E>,
+        ) where
+            E: ComplexField,
+        {
+            assert!(self.nrows() == self.ncols());
+            assert!(self.nrows() == rhs.nrows());
+            let mut X = rhs;
+            let mut temp = work;
+
+            let l = self.l_factor();
+            let u = self.u_factor();
+
+            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), row_perm);
+            triangular_solve::solve_unit_lower_triangular_in_place(
+                l,
+                conj_lhs,
+                temp.rb_mut(),
+                parallelism,
+            );
+            triangular_solve::solve_upper_triangular_in_place(
+                u,
+                conj_lhs,
+                temp.rb_mut(),
+                parallelism,
+            );
+            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm);
+        }
+
+        #[track_caller]
+        pub fn solve_transpose_in_place_with_conj(
+            &self,
+            row_perm: PermutationRef<'_, I, E>,
+            col_perm: PermutationRef<'_, I, E>,
+            conj_lhs: Conj,
+            rhs: MatMut<'_, E>,
+            parallelism: Parallelism,
+            work: MatMut<'_, E>,
+        ) where
+            E: ComplexField,
+        {
+            assert!(self.nrows() == self.ncols());
+            assert!(self.nrows() == rhs.nrows());
+            let mut X = rhs;
+            let mut temp = work;
+
+            let l = self.l_factor();
+            let u = self.u_factor();
+
+            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm.inverse());
+            triangular_solve::solve_upper_triangular_transpose_in_place(
+                u,
+                conj_lhs,
+                temp.rb_mut(),
+                parallelism,
+            );
+            triangular_solve::solve_unit_lower_triangular_transpose_in_place(
+                l,
+                conj_lhs,
+                temp.rb_mut(),
+                parallelism,
+            );
+            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), row_perm.inverse());
+        }
+    }
+
+    fn depth_first_search<I: Index>(
+        marked: &mut [I],
+        mark: I,
+
+        xi: &mut [I],
+        l: SymbolicSparseColMatRef<'_, I>,
+        row_perm_inv: &[I],
+        b: usize,
+        stack: &mut [I],
+    ) -> usize {
+        let I = I::truncate;
+
+        let mut tail_start = xi.len();
+        let mut head_len = 1usize;
+        xi[0] = I(b);
+
+        let li = l.row_indices();
+
+        'dfs_loop: while head_len > 0 {
+            let b = xi[head_len - 1].zx().zx();
+            let pb = row_perm_inv[b].zx();
+
+            let range = if pb < l.ncols() {
+                l.col_range(pb)
+            } else {
+                0..0
+            };
+            if marked[b] < mark {
+                marked[b] = mark;
+                stack[head_len - 1] = I(range.start);
+            }
+
+            let start = stack[head_len - 1].zx();
+            let end = range.end;
+            for ptr in start..end {
+                let i = li[ptr].zx();
+                if marked[i] == mark {
+                    continue;
+                }
+                stack[head_len - 1] = I(ptr);
+                xi[head_len] = I(i);
+                head_len += 1;
+                continue 'dfs_loop;
+            }
+
+            head_len -= 1;
+            tail_start -= 1;
+            xi[tail_start] = I(b);
+        }
+
+        tail_start
+    }
+
+    fn reach<I: Index>(
+        marked: &mut [I],
+        mark: I,
+
+        xi: &mut [I],
+        l: SymbolicSparseColMatRef<'_, I>,
+        row_perm_inv: &[I],
+        bi: &[I],
+        stack: &mut [I],
+    ) -> usize {
+        let n = l.nrows();
+        let mut tail_start = n;
+
+        for b in bi {
+            let b = b.zx();
+            if marked[b] < mark {
+                tail_start = depth_first_search(
+                    marked,
+                    mark,
+                    &mut xi[..tail_start],
+                    l,
+                    row_perm_inv,
+                    b,
+                    stack,
+                );
+            }
+        }
+
+        tail_start
+    }
+
+    fn l_incomplete_solve_sparse<I: Index, E: ComplexField>(
+        marked: &mut [I],
+        mark: I,
+
+        xi: &mut [I],
+        x: SliceGroupMut<'_, E>,
+        l: SparseColMatRef<'_, I, E>,
+        row_perm_inv: &[I],
+        bi: &[I],
+        bx: SliceGroup<'_, E>,
+        stack: &mut [I],
+    ) -> usize {
+        let mut x = x;
+        let tail_start = reach(marked, mark, xi, l.symbolic(), row_perm_inv, bi, stack);
+
+        let xi = &xi[tail_start..];
+        for (i, b) in zip(bi, bx.into_ref_iter()) {
+            let i = i.zx();
+            x.write(i, x.read(i).faer_add(b.read()));
+        }
+
+        for i in xi {
+            let i = i.zx();
+            let pi = row_perm_inv[i].zx();
+            if pi >= l.ncols() {
+                continue;
+            }
+
+            let li = l.row_indices_of_col_raw(pi);
+            let lx = SliceGroup::<'_, E>::new(l.values_of_col(pi));
+            let len = li.len();
+
+            let xi = x.read(i);
+            for (li, lx) in zip(&li[1..], lx.subslice(1..len).into_ref_iter()) {
+                let li = li.zx();
+                let lx = lx.read();
+                x.write(li, x.read(li).faer_sub(E::faer_mul(lx, xi)));
+            }
+        }
+
+        tail_start
+    }
+
+    pub fn factorize_simplicial_numeric_lu_req<I: Index, E: ComplexField>(
+        nrows: usize,
+        ncols: usize,
+    ) -> Result<StackReq, SizeOverflow> {
+        let idx = StackReq::try_new::<I>(nrows)?;
+        let val = crate::make_raw_req::<E>(nrows)?;
+        let _ = ncols;
+        StackReq::try_all_of([val, idx, idx, idx])
+    }
+
+    pub fn factorize_simplicial_numeric_lu<I: Index, E: ComplexField>(
+        row_perm: &mut [I],
+        row_perm_inv: &mut [I],
+        lu: &mut SimplicialLu<I, E>,
+
+        A: SparseColMatRef<'_, I, E>,
+        col_perm: PermutationRef<'_, I, E>,
+        stack: PodStack<'_>,
+    ) -> Result<(), LuError> {
+        let I = I::truncate;
+
+        assert!(A.nrows() == row_perm.len());
+        assert!(A.nrows() == row_perm_inv.len());
+        assert!(A.ncols() == col_perm.len());
+        assert!(A.nrows() == A.ncols());
+
+        lu.nrows = 0;
+        lu.ncols = 0;
+
+        let m = A.nrows();
+        let n = A.ncols();
+
+        resize_index(&mut lu.l_col_ptr, n + 1, true, false)?;
+        resize_index(&mut lu.u_col_ptr, n + 1, true, false)?;
+
+        let (mut x, stack) = crate::make_raw::<E>(m, stack);
+        let (marked, stack) = stack.make_raw::<I>(m);
+        let (xj, stack) = stack.make_raw::<I>(m);
+        let (stack, _) = stack.make_raw::<I>(m);
+
+        mem::fill_zero(marked);
+        x.fill_zero();
+
+        row_perm_inv.fill(I(n));
+
+        let mut l_pos = 0usize;
+        let mut u_pos = 0usize;
+        lu.l_col_ptr[0] = I(0);
+        lu.u_col_ptr[0] = I(0);
+        for j in 0..n {
+            let l = SparseColMatRef::<'_, I, E>::new(
+                unsafe {
+                    SymbolicSparseColMatRef::new_unchecked(
+                        m,
+                        j,
+                        &lu.l_col_ptr[..j + 1],
+                        None,
+                        &lu.l_row_ind,
+                    )
+                },
+                to_slice_group::<E>(&lu.l_val).into_inner(),
+            );
+
+            let pj = col_perm.into_arrays().0[j].zx();
+            let tail_start = l_incomplete_solve_sparse(
+                marked,
+                I(j + 1),
+                xj,
+                x.rb_mut(),
+                l,
+                row_perm_inv,
+                A.row_indices_of_col_raw(pj),
+                SliceGroup::new(A.values_of_col(pj)),
+                stack,
+            );
+            let xj = &xj[tail_start..];
+
+            resize_scalar::<E>(&mut lu.l_val, l_pos + xj.len() + 1, false, false)?;
+            resize_index(&mut lu.l_row_ind, l_pos + xj.len() + 1, false, false)?;
+            resize_scalar::<E>(&mut lu.u_val, u_pos + xj.len() + 1, false, false)?;
+            resize_index(&mut lu.u_row_ind, u_pos + xj.len() + 1, false, false)?;
+
+            let mut l_val = to_slice_group_mut::<E>(&mut lu.l_val);
+            let mut u_val = to_slice_group_mut::<E>(&mut lu.u_val);
+
+            let mut pivot_idx = n;
+            let mut pivot_val = E::Real::faer_one().faer_neg();
+            for i in xj {
+                let i = i.zx();
+                let xi = x.read(i);
+                if row_perm_inv[i] == I(n) {
+                    let val = xi.faer_abs();
+                    if matches!(
+                        val.partial_cmp(&pivot_val),
+                        None | Some(core::cmp::Ordering::Greater)
+                    ) {
+                        pivot_idx = i;
+                        pivot_val = val;
+                    }
+                } else {
+                    lu.u_row_ind[u_pos] = row_perm_inv[i];
+                    u_val.write(u_pos, xi);
+                    u_pos += 1;
+                }
+            }
+            if pivot_idx == n {
+                return Err(LuError::SymbolicSingular(j));
+            }
+
+            let x_piv = x.read(pivot_idx);
+            if x_piv == E::faer_zero() {
+                panic!();
+            }
+            row_perm_inv[pivot_idx] = I(j);
+
+            lu.u_row_ind[u_pos] = I(j);
+            u_val.write(u_pos, x_piv);
+            u_pos += 1;
+            lu.u_col_ptr[j + 1] = I(u_pos);
+
+            lu.l_row_ind[l_pos] = I(pivot_idx);
+            l_val.write(l_pos, E::faer_one());
+            l_pos += 1;
+
+            let x_piv_inv = x_piv.faer_inv();
+            for i in xj {
+                let i = i.zx();
+                let xi = x.read(i);
+                if row_perm_inv[i] == I(n) {
+                    lu.l_row_ind[l_pos] = I(i);
+                    l_val.write(l_pos, xi.faer_mul(x_piv_inv));
+                    l_pos += 1;
+                }
+                x.write(i, E::faer_zero());
+            }
+            lu.l_col_ptr[j + 1] = I(l_pos);
+        }
+
+        for i in &mut lu.l_row_ind[..l_pos] {
+            *i = row_perm_inv[(*i).zx()];
+        }
+
+        for (idx, p) in row_perm_inv.iter().enumerate() {
+            row_perm[p.zx()] = I(idx);
+        }
+
+        lu.nrows = m;
+        lu.ncols = n;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        lu::supernodal::{
-            factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req, SupernodalLu,
+        lu::{
+            simplicial::{
+                factorize_simplicial_numeric_lu, factorize_simplicial_numeric_lu_req, SimplicialLu,
+            },
+            supernodal::{
+                factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req, SupernodalLu,
+            },
         },
         qr::col_etree,
         SymbolicSparseColMatRef,
@@ -1511,7 +1965,7 @@ mod tests {
             PodStack::new(&mut GlobalPodBuffer::new(
                 super::supernodal::factorize_supernodal_symbolic_lu_req::<usize>(m, n).unwrap(),
             )),
-            crate::cholesky::supernodal::CholeskySymbolicSupernodalParams {
+            crate::SymbolicSupernodalParams {
                 relax: Some(&[(4, 1.0), (16, 0.8), (48, 0.1), (usize::MAX, 0.05)]),
             },
         )
@@ -1566,6 +2020,106 @@ mod tests {
             );
             assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
         }
+        {
+            let mut x = rhs.clone();
+
+            lu.solve_transpose_in_place_with_conj(
+                row_perm.cast(),
+                col_perm.cast(),
+                Conj::No,
+                x.as_mut(),
+                faer_core::Parallelism::None,
+                work.as_mut(),
+            );
+            assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
+        }
+        {
+            let mut x = rhs.clone();
+
+            lu.solve_transpose_in_place_with_conj(
+                row_perm.cast(),
+                col_perm.cast(),
+                Conj::Yes,
+                x.as_mut(),
+                faer_core::Parallelism::None,
+                work.as_mut(),
+            );
+            assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_numeric_lu_simplicial() {
+        type E = faer_core::c64;
+
+        let (m, n, col_ptr, row_ind, val) =
+            load_mtx::<usize>(MtxData::from_file("test_data/YAO.mtx").unwrap());
+
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut gen = || E::new(rng.gen::<f64>(), rng.gen::<f64>());
+
+        let val = val.iter().map(|_| gen()).collect::<alloc::vec::Vec<_>>();
+        let A = SparseColMatRef::<'_, usize, E>::new(
+            SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_ind),
+            &val,
+        );
+        let mut row_perm = vec![0usize; n];
+        let mut row_perm_inv = vec![0usize; n];
+        let mut col_perm = vec![0usize; n];
+        let mut col_perm_inv = vec![0usize; n];
+        for i in 0..n {
+            col_perm[i] = i;
+            col_perm_inv[i] = i;
+        }
+        let col_perm = PermutationRef::<'_, usize, Symbolic>::new_checked(&col_perm, &col_perm_inv);
+
+        let mut lu = SimplicialLu::<usize, E>::new();
+        factorize_simplicial_numeric_lu(
+            &mut row_perm,
+            &mut row_perm_inv,
+            &mut lu,
+            A,
+            col_perm.cast(),
+            PodStack::new(&mut GlobalPodBuffer::new(
+                factorize_simplicial_numeric_lu_req::<usize, E>(m, n).unwrap(),
+            )),
+        )
+        .unwrap();
+
+        let k = 1;
+        let rhs = Mat::from_fn(n, k, |_, _| gen());
+
+        let mut work = rhs.clone();
+        let A_dense = sparse_to_dense(A);
+        let row_perm = PermutationRef::<'_, _, Symbolic>::new_checked(&row_perm, &row_perm_inv);
+
+        {
+            let mut x = rhs.clone();
+
+            lu.solve_in_place_with_conj(
+                row_perm.cast(),
+                col_perm.cast(),
+                Conj::No,
+                x.as_mut(),
+                faer_core::Parallelism::None,
+                work.as_mut(),
+            );
+            assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
+        }
+        {
+            let mut x = rhs.clone();
+
+            lu.solve_in_place_with_conj(
+                row_perm.cast(),
+                col_perm.cast(),
+                Conj::Yes,
+                x.as_mut(),
+                faer_core::Parallelism::None,
+                work.as_mut(),
+            );
+            assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
+        }
+
         {
             let mut x = rhs.clone();
 

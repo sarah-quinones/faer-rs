@@ -6,7 +6,7 @@ use faer_core::{
     sparse::{SparseColMatRef, SymbolicSparseColMatRef},
     Parallelism, Side,
 };
-use faer_sparse::{cholesky::*, Index};
+use faer_sparse::{cholesky::*, Index, SupernodalThreshold};
 use matrix_market_rs::MtxData;
 use reborrow::*;
 use regex::Regex;
@@ -83,9 +83,21 @@ fn main() {
     let matches = |s: &str| regexes.is_empty() || regexes.iter().any(|regex| regex.is_match(s));
 
     let methods = [
-        ("simplicial   ", f64::INFINITY, Parallelism::None),
-        ("supernodal   ", 0.0, Parallelism::None),
-        ("supernodal-bk", 0.0, Parallelism::None),
+        (
+            "simplicial   ",
+            SupernodalThreshold::FORCE_SIMPLICIAL,
+            Parallelism::None,
+        ),
+        (
+            "supernodal   ",
+            SupernodalThreshold::FORCE_SUPERNODAL,
+            Parallelism::None,
+        ),
+        (
+            "supernodal-bk",
+            SupernodalThreshold::FORCE_SUPERNODAL,
+            Parallelism::None,
+        ),
     ];
 
     let time_limit = Duration::from_secs_f64(0.1);
