@@ -1283,6 +1283,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatMul<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn mul(self, rhs: &Matrix<Rhs>) -> Self::Output {
             <Lhs::Kind as MatMul<Rhs::Kind>>::mat_mul(
                 GenericMatrix::as_ref(self),
@@ -1300,6 +1301,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatMul<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn mul(self, rhs: &Matrix<Rhs>) -> Self::Output {
             &self * rhs
         }
@@ -1314,6 +1316,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatMul<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn mul(self, rhs: Matrix<Rhs>) -> Self::Output {
             self * &rhs
         }
@@ -1329,6 +1332,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatMul<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn mul(self, rhs: Matrix<Rhs>) -> Self::Output {
             &self * &rhs
         }
@@ -1344,6 +1348,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatAdd<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn add(self, rhs: &Matrix<Rhs>) -> Self::Output {
             <Lhs::Kind as MatAdd<Rhs::Kind>>::mat_add(
                 GenericMatrix::as_ref(self),
@@ -1361,6 +1366,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatAdd<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn add(self, rhs: &Matrix<Rhs>) -> Self::Output {
             &self + rhs
         }
@@ -1375,6 +1381,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatAdd<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn add(self, rhs: Matrix<Rhs>) -> Self::Output {
             self + &rhs
         }
@@ -1389,6 +1396,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatAdd<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn add(self, rhs: Matrix<Rhs>) -> Self::Output {
             &self + &rhs
         }
@@ -1404,6 +1412,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatSub<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn sub(self, rhs: &Matrix<Rhs>) -> Self::Output {
             <Lhs::Kind as MatSub<Rhs::Kind>>::mat_sub(
                 GenericMatrix::as_ref(self),
@@ -1422,6 +1431,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatSub<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn sub(self, rhs: &Matrix<Rhs>) -> Self::Output {
             &self - rhs
         }
@@ -1436,6 +1446,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatSub<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn sub(self, rhs: Matrix<Rhs>) -> Self::Output {
             self - &rhs
         }
@@ -1450,6 +1461,7 @@ const _: () = {
         type Output =
             KindOwn<<Lhs::Elem as Conjugate>::Canonical, <Lhs::Kind as MatSub<Rhs::Kind>>::Output>;
 
+        #[track_caller]
         fn sub(self, rhs: Matrix<Rhs>) -> Self::Output {
             &self - &rhs
         }
@@ -1499,6 +1511,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatMulAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn mul_assign(&mut self, rhs: &Matrix<Rhs>) {
             <Lhs::Kind as MatMulAssign<Rhs::Kind>>::mat_mul_assign(
                 GenericMatrixMut::as_mut(self),
@@ -1512,6 +1525,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatMulAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn mul_assign(&mut self, rhs: Matrix<Rhs>) {
             *self *= &rhs;
         }
@@ -1523,6 +1537,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatAddAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn add_assign(&mut self, rhs: &Matrix<Rhs>) {
             <Lhs::Kind as MatAddAssign<Rhs::Kind>>::mat_add_assign(
                 GenericMatrixMut::as_mut(self),
@@ -1536,6 +1551,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatAddAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn add_assign(&mut self, rhs: Matrix<Rhs>) {
             *self += &rhs;
         }
@@ -1547,6 +1563,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatSubAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn sub_assign(&mut self, rhs: &Matrix<Rhs>) {
             <Lhs::Kind as MatSubAssign<Rhs::Kind>>::mat_sub_assign(
                 GenericMatrixMut::as_mut(self),
@@ -1560,6 +1577,7 @@ const _: () = {
         Rhs::Elem: Conjugate<Canonical = Lhs::Elem>,
         Lhs::Kind: MatSubAssign<Rhs::Kind>,
     {
+        #[track_caller]
         fn sub_assign(&mut self, rhs: Matrix<Rhs>) {
             *self -= &rhs;
         }

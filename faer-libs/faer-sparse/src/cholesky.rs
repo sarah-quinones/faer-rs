@@ -287,7 +287,7 @@ pub mod simplicial {
                                 A.row_indices_of_col(k),
                                 SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
                             ) {
-                                x.write(i, aik.read().faer_conj());
+                                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
                             }
 
                             let mut d = x.read(k).faer_real();
@@ -451,7 +451,7 @@ pub mod simplicial {
                                 A.row_indices_of_col(k),
                                 SliceGroup::<'_, E>::new(A.values_of_col(k)).into_ref_iter(),
                             ) {
-                                x.write(i, aik.read().faer_conj());
+                                x.write(i, x.read(i).faer_add(aik.read().faer_conj()));
                             }
 
                             let mut d = x.read(k).faer_real();
@@ -783,7 +783,7 @@ pub mod simplicial {
             }
         }
 
-        pub fn dense_solve_in_place_req<E: Entity>(
+        pub fn solve_in_place_req<E: Entity>(
             &self,
             rhs_ncols: usize,
         ) -> Result<StackReq, SizeOverflow> {
@@ -1498,7 +1498,7 @@ pub mod supernodal {
             supernodal::SymbolicSupernodeRef { start, pattern }
         }
 
-        pub fn dense_solve_in_place_req<E: Entity>(
+        pub fn solve_in_place_req<E: Entity>(
             &self,
             rhs_ncols: usize,
         ) -> Result<StackReq, SizeOverflow> {
@@ -2322,11 +2322,12 @@ pub mod supernodal {
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
                     let val = val.read();
-                    if i >= s_end {
-                        Ls.write(global_to_local[i].sx(), j_shifted, val);
-                    } else if i >= j {
-                        Ls.write(i - s_start, j_shifted, val);
-                    }
+                    let (ix, iy) = if i >= s_end {
+                        (global_to_local[i].sx(), j_shifted)
+                    } else {
+                        (i - s_start, j_shifted)
+                    };
+                    Ls.write(ix, iy, Ls.read(ix, iy).faer_add(val));
                 }
             }
 
@@ -2512,11 +2513,12 @@ pub mod supernodal {
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
                     let val = val.read();
-                    if i >= s_end {
-                        Ls.write(global_to_local[i].sx(), j_shifted, val);
-                    } else if i >= j {
-                        Ls.write(i - s_start, j_shifted, val);
-                    }
+                    let (ix, iy) = if i >= s_end {
+                        (global_to_local[i].sx(), j_shifted)
+                    } else {
+                        (i - s_start, j_shifted)
+                    };
+                    Ls.write(ix, iy, Ls.read(ix, iy).faer_add(val));
                 }
             }
 
@@ -2742,11 +2744,12 @@ pub mod supernodal {
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
                     let val = val.read();
-                    if i >= s_end {
-                        Ls.write(global_to_local[i].sx(), j_shifted, val);
-                    } else if i >= j {
-                        Ls.write(i - s_start, j_shifted, val);
-                    }
+                    let (ix, iy) = if i >= s_end {
+                        (global_to_local[i].sx(), j_shifted)
+                    } else {
+                        (i - s_start, j_shifted)
+                    };
+                    Ls.write(ix, iy, Ls.read(ix, iy).faer_add(val));
                 }
             }
 
@@ -3575,17 +3578,13 @@ impl<I: Index> SymbolicCholesky<I> {
 
     /// Computes the required workspace size and alignment for a dense solve in place using an LLT,
     /// LDLT or intranodal Bunch-Kaufman factorization.
-    pub fn dense_solve_in_place_req<E: Entity>(
+    pub fn solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
     ) -> Result<StackReq, SizeOverflow> {
         temp_mat_req::<E>(self.nrows(), rhs_ncols)?.try_and(match self.raw() {
-            SymbolicCholeskyRaw::Simplicial(this) => {
-                this.dense_solve_in_place_req::<E>(rhs_ncols)?
-            }
-            SymbolicCholeskyRaw::Supernodal(this) => {
-                this.dense_solve_in_place_req::<E>(rhs_ncols)?
-            }
+            SymbolicCholeskyRaw::Simplicial(this) => this.solve_in_place_req::<E>(rhs_ncols)?,
+            SymbolicCholeskyRaw::Supernodal(this) => this.solve_in_place_req::<E>(rhs_ncols)?,
         })
     }
 }
@@ -4504,7 +4503,7 @@ pub(crate) mod tests {
                     x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                        symbolic.solve_in_place_req::<E>(k).unwrap(),
                     )),
                 );
 
@@ -4648,7 +4647,7 @@ pub(crate) mod tests {
                     x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                        symbolic.solve_in_place_req::<E>(k).unwrap(),
                     )),
                 );
                 faer_core::permutation::permute_rows_in_place(
@@ -4789,7 +4788,7 @@ pub(crate) mod tests {
                     x.as_mut(),
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
-                        symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                        symbolic.solve_in_place_req::<E>(k).unwrap(),
                     )),
                 );
                 faer_core::permutation::permute_rows_in_place(
@@ -5037,7 +5036,7 @@ pub(crate) mod tests {
                             x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
-                                symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                                symbolic.solve_in_place_req::<E>(k).unwrap(),
                             )),
                         );
 
@@ -5197,7 +5196,7 @@ pub(crate) mod tests {
                             x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
-                                symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                                symbolic.solve_in_place_req::<E>(k).unwrap(),
                             )),
                         );
 
@@ -5340,7 +5339,7 @@ pub(crate) mod tests {
                             x.as_mut(),
                             parallelism,
                             PodStack::new(&mut GlobalPodBuffer::new(
-                                symbolic.dense_solve_in_place_req::<E>(k).unwrap(),
+                                symbolic.solve_in_place_req::<E>(k).unwrap(),
                             )),
                         );
 

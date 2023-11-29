@@ -829,6 +829,7 @@ pub mod supernodal {
             StackReq::try_new::<I>(n)?,
             StackReq::try_new::<I>(n)?,
             StackReq::try_new::<I>(m)?,
+            StackReq::try_new::<I>(m)?,
         ])?;
 
         let mut loop_req = StackReq::empty();
@@ -1087,7 +1088,9 @@ pub mod supernodal {
                         let pj = col_perm
                             .map(|perm| perm.into_arrays().1[j].zx())
                             .unwrap_or(j);
-                        s_H.write(idx, col_global_to_local[pj].zx(), value.read());
+                        let ix = idx;
+                        let iy = col_global_to_local[pj].zx();
+                        s_H.write(ix, iy, s_H.read(ix, iy).faer_add(value.read()));
                     }
                 }
             }
@@ -1827,6 +1830,7 @@ pub struct QrRef<'a, I: Index, E: Entity> {
     indices: &'a [I],
     values: SliceGroup<'a, E>,
 }
+impl_copy!(<'a><I: Index, E: Entity><QrRef<'a, I, E>>);
 
 impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
     #[inline]
@@ -1870,7 +1874,7 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
 
         let (mut x, stack) = temp_mat_uninit::<E>(m, k, stack);
 
-        let (fwd, inv) = self.symbolic.col_perm().into_arrays();
+        let (_, inv) = self.symbolic.col_perm().into_arrays();
         x.copy_from(rhs.rb());
 
         let indices = self.indices;
@@ -1956,8 +1960,6 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
     }
 }
 
-impl_copy!(<'a><I: Index, E: Entity><QrRef<'a, I, E>>);
-
 impl<I: Index> SymbolicQr<I> {
     #[inline]
     pub fn nrows(&self) -> usize {
@@ -2011,7 +2013,7 @@ impl<I: Index> SymbolicQr<I> {
         }
     }
 
-    pub fn dense_solve_in_place_req<E: Entity>(
+    pub fn solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
         parallelism: Parallelism,
@@ -2138,6 +2140,7 @@ impl<I: Index> SymbolicQr<I> {
 
 /// Computes the symbolic QR factorization of the matrix `A`, or returns an error if the
 /// operation could not be completed.
+#[track_caller]
 pub fn factorize_symbolic_qr<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     params: QrSymbolicParams<'_>,
@@ -2931,6 +2934,7 @@ mod tests {
         let rhs = Mat::<E>::from_fn(m, 2, |_, _| c64::new(gen.gen(), gen.gen()));
 
         for supernodal_flop_ratio_threshold in [
+            SupernodalThreshold::AUTO,
             SupernodalThreshold::FORCE_SUPERNODAL,
             SupernodalThreshold::FORCE_SIMPLICIAL,
         ] {
@@ -2964,7 +2968,7 @@ mod tests {
                     faer_core::Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .dense_solve_in_place_req::<E>(2, Parallelism::None)
+                            .solve_in_place_req::<E>(2, Parallelism::None)
                             .unwrap(),
                     )),
                 );
@@ -2981,7 +2985,7 @@ mod tests {
                     faer_core::Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .dense_solve_in_place_req::<E>(2, Parallelism::None)
+                            .solve_in_place_req::<E>(2, Parallelism::None)
                             .unwrap(),
                     )),
                 );
@@ -2990,6 +2994,64 @@ mod tests {
                 let a = a.conjugate();
                 let linsolve_diff = a.adjoint() * (a * &x - &rhs);
                 assert!(linsolve_diff.norm_max() <= 1e-10);
+            }
+        }
+    }
+
+    #[test]
+    fn test_solver_qr_edge_case() {
+        type I = usize;
+        type E = c64;
+
+        let I = I::truncate;
+        let mut gen = rand::rngs::StdRng::seed_from_u64(0);
+
+        let a0_col_ptr = vec![0usize; 21];
+        let A0 = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(40, 20, &a0_col_ptr, None, &[]),
+            &[],
+        );
+
+        let a1_val = [
+            c64::new(gen.gen(), gen.gen()),
+            c64::new(gen.gen(), gen.gen()),
+        ];
+        let A1 = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(40, 5, &[0, 1, 2, 2, 2, 2], None, &[0, 0]),
+            &a1_val,
+        );
+        let A2 = SparseColMatRef::<'_, I, E>::new(
+            SymbolicSparseColMatRef::new_checked(40, 5, &[0, 1, 2, 2, 2, 2], None, &[4, 4]),
+            &a1_val,
+        );
+
+        for A in [A0, A1, A2] {
+            for supernodal_flop_ratio_threshold in [
+                SupernodalThreshold::AUTO,
+                SupernodalThreshold::FORCE_SUPERNODAL,
+                SupernodalThreshold::FORCE_SIMPLICIAL,
+            ] {
+                let symbolic = super::factorize_symbolic_qr(
+                    A.symbolic(),
+                    QrSymbolicParams {
+                        supernodal_flop_ratio_threshold,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let mut indices = vec![I(0); symbolic.len_indices()];
+                let mut values = vec![E::faer_zero(); symbolic.len_values()];
+                symbolic.factorize_numeric_qr::<E>(
+                    &mut indices,
+                    &mut values,
+                    A,
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .factorize_numeric_qr_req::<E>(Parallelism::None)
+                            .unwrap(),
+                    )),
+                );
             }
         }
     }

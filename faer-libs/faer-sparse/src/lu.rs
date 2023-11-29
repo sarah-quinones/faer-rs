@@ -1,11 +1,13 @@
 use crate::{
     cholesky::simplicial::EliminationTreeRef,
+    colamd::Control,
     ghost,
-    ghost::{Array, MaybeIdx},
+    ghost::{Array, Idx, MaybeIdx},
     mem::{
         NONE, {self},
     },
-    try_zeroed, FaerError, Index, SymbolicSparseColMatRef, SymbolicSupernodalParams,
+    nomem, try_zeroed, FaerError, Index, SupernodalThreshold, SymbolicSparseColMatRef,
+    SymbolicSupernodalParams,
 };
 use core::{iter::zip, mem::MaybeUninit};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -16,7 +18,7 @@ use faer_core::{
     permutation::{PermutationRef, SignedIndex},
     solve,
     sparse::SparseColMatRef,
-    Conj, MatMut, Parallelism,
+    temp_mat_req, temp_mat_uninit, Conj, MatMut, Parallelism,
 };
 use faer_entity::*;
 use reborrow::*;
@@ -123,8 +125,8 @@ pub mod supernodal {
         pub(super) supernode_postorder: alloc::vec::Vec<I>,
         pub(super) supernode_postorder_inv: alloc::vec::Vec<I>,
         pub(super) descendant_count: alloc::vec::Vec<I>,
-        nrows: usize,
-        ncols: usize,
+        pub(super) nrows: usize,
+        pub(super) ncols: usize,
     }
 
     pub struct SupernodalLu<I, E: Entity> {
@@ -143,8 +145,6 @@ pub mod supernodal {
         ut_col_ptr_for_val: alloc::vec::Vec<I>,
         ut_row_ind: alloc::vec::Vec<I>,
         ut_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
-        // iwork: alloc::vec::Vec<I>,
-        // work: GroupFor<E, alloc::vec::Vec<E::Unit>>,
     }
     unsafe impl<I: Index, E: Entity> Send for SupernodalLu<I, E> {}
     unsafe impl<I: Index, E: Entity> Sync for SupernodalLu<I, E> {}
@@ -188,8 +188,6 @@ pub mod supernodal {
 
                 l_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
                 ut_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
-                // iwork: alloc::vec::Vec::new(),
-                // work: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
             }
         }
 
@@ -228,7 +226,7 @@ pub mod supernodal {
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), row_perm);
             self.l_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), X.rb_mut(), parallelism);
             self.u_solve_in_place_with_conj(conj_lhs, temp.rb_mut(), X.rb_mut(), parallelism);
-            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm);
+            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm.inverse());
         }
 
         #[track_caller]
@@ -247,7 +245,7 @@ pub mod supernodal {
             assert!(self.nrows() == rhs.nrows());
             let mut X = rhs;
             let mut temp = work;
-            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm.inverse());
+            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
             self.u_solve_transpose_in_place_with_conj(
                 conj_lhs,
                 temp.rb_mut(),
@@ -655,7 +653,7 @@ pub mod supernodal {
         f()
     }
 
-    pub fn factorize_supernodal_numeric_lu_req<I: Index, E: ComplexField>(
+    pub fn factorize_supernodal_numeric_lu_req<I: Index, E: Entity>(
         symbolic: &SymbolicSupernodalLu<I>,
     ) -> Result<StackReq, SizeOverflow> {
         let m = StackReq::try_new::<I>(symbolic.nrows)?;
@@ -906,7 +904,9 @@ pub mod supernodal {
                     }
                     assert!(A_leftover > 0);
                     A_leftover -= 1;
-                    s_L.write(row_global_to_local[i].zx(), j - s_begin, val);
+                    let ix = row_global_to_local[i].zx();
+                    let iy = j - s_begin;
+                    s_L.write(ix, iy, s_L.read(ix, iy).faer_add(val));
                 }
             }
 
@@ -1104,7 +1104,9 @@ pub mod supernodal {
                     }
                     assert!(A_leftover > 0);
                     A_leftover -= 1;
-                    s_U.write(i - s_begin, col_global_to_local[pj].zx(), val);
+                    let ix = i - s_begin;
+                    let iy = col_global_to_local[pj].zx();
+                    s_U.write(ix, iy, s_U.read(ix, iy).faer_add(val));
                 }
             }
 
@@ -1466,7 +1468,7 @@ pub mod simplicial {
                 temp.rb_mut(),
                 parallelism,
             );
-            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm);
+            faer_core::permutation::permute_rows(X.rb_mut(), temp.rb(), col_perm.inverse());
         }
 
         #[track_caller]
@@ -1489,7 +1491,7 @@ pub mod simplicial {
             let l = self.l_factor();
             let u = self.u_factor();
 
-            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm.inverse());
+            faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
             triangular_solve::solve_upper_triangular_transpose_in_place(
                 u,
                 conj_lhs,
@@ -1633,7 +1635,7 @@ pub mod simplicial {
         tail_start
     }
 
-    pub fn factorize_simplicial_numeric_lu_req<I: Index, E: ComplexField>(
+    pub fn factorize_simplicial_numeric_lu_req<I: Index, E: Entity>(
         nrows: usize,
         ncols: usize,
     ) -> Result<StackReq, SizeOverflow> {
@@ -1786,6 +1788,455 @@ pub mod simplicial {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct LuSymbolicParams<'a> {
+    pub colamd_params: Control,
+    pub supernodal_flop_ratio_threshold: SupernodalThreshold,
+    pub supernodal_params: SymbolicSupernodalParams<'a>,
+}
+
+/// The inner factorization used for the symbolic LU, either simplicial or symbolic.
+#[derive(Debug)]
+pub enum SymbolicLuRaw<I: Index> {
+    Simplicial { nrows: usize, ncols: usize },
+    Supernodal(supernodal::SymbolicSupernodalLu<I>),
+}
+
+/// The symbolic structure of a sparse LU decomposition.
+#[derive(Debug)]
+pub struct SymbolicLu<I: Index> {
+    raw: SymbolicLuRaw<I>,
+    col_perm_fwd: alloc::vec::Vec<I>,
+    col_perm_inv: alloc::vec::Vec<I>,
+    A_nnz: usize,
+}
+
+#[derive(Debug)]
+enum NumericLuRaw<I: Index, E: Entity> {
+    None,
+    Supernodal(supernodal::SupernodalLu<I, E>),
+    Simplicial(simplicial::SimplicialLu<I, E>),
+}
+
+#[derive(Debug)]
+pub struct NumericLu<I: Index, E: Entity> {
+    raw: NumericLuRaw<I, E>,
+    row_perm_fwd: alloc::vec::Vec<I>,
+    row_perm_inv: alloc::vec::Vec<I>,
+}
+
+impl<I: Index, E: Entity> NumericLu<I, E> {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            raw: NumericLuRaw::None,
+            row_perm_fwd: alloc::vec::Vec::new(),
+            row_perm_inv: alloc::vec::Vec::new(),
+        }
+    }
+}
+
+/// Sparse LU factorization wrapper.
+#[derive(Debug)]
+pub struct LuRef<'a, I: Index, E: Entity> {
+    symbolic: &'a SymbolicLu<I>,
+    numeric: &'a NumericLu<I, E>,
+}
+impl_copy!(<'a><I: Index, E: Entity><LuRef<'a, I, E>>);
+
+impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
+    #[inline]
+    pub unsafe fn new_unchecked(symbolic: &'a SymbolicLu<I>, numeric: &'a NumericLu<I, E>) -> Self {
+        match (&symbolic.raw, &numeric.raw) {
+            (SymbolicLuRaw::Simplicial { .. }, NumericLuRaw::Simplicial(_)) => {}
+            (SymbolicLuRaw::Supernodal { .. }, NumericLuRaw::Supernodal(_)) => {}
+            _ => panic!("incompatible symbolic and numeric variants"),
+        }
+        Self { symbolic, numeric }
+    }
+
+    #[inline]
+    pub fn symbolic(self) -> &'a SymbolicLu<I> {
+        self.symbolic
+    }
+
+    #[inline]
+    pub fn row_perm(self) -> PermutationRef<'a, I, E> {
+        unsafe {
+            PermutationRef::new_unchecked(&self.numeric.row_perm_fwd, &self.numeric.row_perm_inv)
+        }
+    }
+
+    #[inline]
+    pub fn col_perm(self) -> PermutationRef<'a, I, E> {
+        self.symbolic.col_perm().cast()
+    }
+
+    #[track_caller]
+    pub fn solve_in_place_with_conj(
+        self,
+        conj: Conj,
+        rhs: MatMut<'_, E>,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) where
+        E: ComplexField,
+    {
+        let (work, _) = temp_mat_uninit(rhs.nrows(), rhs.ncols(), stack);
+        match (&self.symbolic.raw, &self.numeric.raw) {
+            (SymbolicLuRaw::Simplicial { .. }, NumericLuRaw::Simplicial(numeric)) => numeric
+                .solve_in_place_with_conj(
+                    self.row_perm(),
+                    self.col_perm(),
+                    conj,
+                    rhs,
+                    parallelism,
+                    work,
+                ),
+            (SymbolicLuRaw::Supernodal(_), NumericLuRaw::Supernodal(numeric)) => numeric
+                .solve_in_place_with_conj(
+                    self.row_perm(),
+                    self.col_perm(),
+                    conj,
+                    rhs,
+                    parallelism,
+                    work,
+                ),
+            _ => unreachable!(),
+        }
+    }
+
+    #[track_caller]
+    pub fn solve_transpose_in_place_with_conj(
+        self,
+        conj: Conj,
+        rhs: MatMut<'_, E>,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) where
+        E: ComplexField,
+    {
+        let (work, _) = temp_mat_uninit(rhs.nrows(), rhs.ncols(), stack);
+        match (&self.symbolic.raw, &self.numeric.raw) {
+            (SymbolicLuRaw::Simplicial { .. }, NumericLuRaw::Simplicial(numeric)) => numeric
+                .solve_transpose_in_place_with_conj(
+                    self.row_perm(),
+                    self.col_perm(),
+                    conj,
+                    rhs,
+                    parallelism,
+                    work,
+                ),
+            (SymbolicLuRaw::Supernodal(_), NumericLuRaw::Supernodal(numeric)) => numeric
+                .solve_transpose_in_place_with_conj(
+                    self.row_perm(),
+                    self.col_perm(),
+                    conj,
+                    rhs,
+                    parallelism,
+                    work,
+                ),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl<I: Index> SymbolicLu<I> {
+    #[inline]
+    pub fn nrows(&self) -> usize {
+        match &self.raw {
+            SymbolicLuRaw::Simplicial { nrows, .. } => *nrows,
+            SymbolicLuRaw::Supernodal(this) => this.nrows,
+        }
+    }
+
+    #[inline]
+    pub fn ncols(&self) -> usize {
+        match &self.raw {
+            SymbolicLuRaw::Simplicial { ncols, .. } => *ncols,
+            SymbolicLuRaw::Supernodal(this) => this.ncols,
+        }
+    }
+
+    /// Returns the fill-reducing column permutation that was computed during symbolic analysis.
+    #[inline]
+    pub fn col_perm(&self) -> PermutationRef<'_, I, Symbolic> {
+        unsafe { PermutationRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv) }
+    }
+
+    pub fn factorize_numeric_lu_req<E: Entity>(
+        &self,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        match &self.raw {
+            SymbolicLuRaw::Simplicial { nrows, ncols } => {
+                simplicial::factorize_simplicial_numeric_lu_req::<I, E>(*nrows, *ncols)
+            }
+            SymbolicLuRaw::Supernodal(symbolic) => {
+                let _ = parallelism;
+                let m = symbolic.nrows;
+
+                let A_nnz = self.A_nnz;
+                let AT_req = StackReq::try_all_of([
+                    crate::make_raw_req::<E>(A_nnz)?,
+                    StackReq::try_new::<I>(m + 1)?,
+                    StackReq::try_new::<I>(A_nnz)?,
+                ])?;
+                StackReq::try_and(
+                    AT_req,
+                    supernodal::factorize_supernodal_numeric_lu_req::<I, E>(symbolic)?,
+                )
+            }
+        }
+    }
+
+    pub fn solve_in_place_req<E: Entity>(
+        &self,
+        rhs_ncols: usize,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let _ = parallelism;
+        temp_mat_req::<E>(self.nrows(), rhs_ncols)
+    }
+
+    pub fn solve_transpose_in_place_req<E: Entity>(
+        &self,
+        rhs_ncols: usize,
+        parallelism: Parallelism,
+    ) -> Result<StackReq, SizeOverflow> {
+        let _ = parallelism;
+        temp_mat_req::<E>(self.nrows(), rhs_ncols)
+    }
+
+    #[track_caller]
+    pub fn factorize_numeric_lu<'out, E: ComplexField>(
+        &'out self,
+        numeric: &'out mut NumericLu<I, E>,
+        A: SparseColMatRef<'_, I, E>,
+        parallelism: Parallelism,
+        stack: PodStack<'_>,
+    ) -> Result<LuRef<'out, I, E>, LuError> {
+        if matches!(self.raw, SymbolicLuRaw::Simplicial { .. })
+            && !matches!(numeric.raw, NumericLuRaw::Simplicial(_))
+        {
+            numeric.raw = NumericLuRaw::Simplicial(simplicial::SimplicialLu::new());
+        }
+        if matches!(self.raw, SymbolicLuRaw::Supernodal(_))
+            && !matches!(numeric.raw, NumericLuRaw::Supernodal(_))
+        {
+            numeric.raw = NumericLuRaw::Supernodal(supernodal::SupernodalLu::new());
+        }
+
+        let nrows = self.nrows();
+
+        numeric
+            .row_perm_fwd
+            .try_reserve_exact(nrows.saturating_sub(numeric.row_perm_fwd.len()))
+            .map_err(nomem)?;
+        numeric
+            .row_perm_inv
+            .try_reserve_exact(nrows.saturating_sub(numeric.row_perm_inv.len()))
+            .map_err(nomem)?;
+        numeric.row_perm_fwd.resize(nrows, I::truncate(0));
+        numeric.row_perm_inv.resize(nrows, I::truncate(0));
+
+        match (&self.raw, &mut numeric.raw) {
+            (SymbolicLuRaw::Simplicial { nrows, ncols }, NumericLuRaw::Simplicial(lu)) => {
+                assert!(A.nrows() == *nrows);
+                assert!(A.ncols() == *ncols);
+
+                simplicial::factorize_simplicial_numeric_lu(
+                    &mut numeric.row_perm_fwd,
+                    &mut numeric.row_perm_inv,
+                    lu,
+                    A,
+                    self.col_perm().cast(),
+                    stack,
+                )?;
+            }
+            (SymbolicLuRaw::Supernodal(symbolic), NumericLuRaw::Supernodal(lu)) => {
+                let m = symbolic.nrows;
+                let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
+                let (new_row_ind, stack) = stack.make_raw::<I>(self.A_nnz);
+                let (new_values, mut stack) = crate::make_raw::<E>(self.A_nnz, stack);
+                let AT = crate::transpose::<I, E>(
+                    new_col_ptr,
+                    new_row_ind,
+                    new_values.into_inner(),
+                    A,
+                    stack.rb_mut(),
+                );
+
+                supernodal::factorize_supernodal_numeric_lu(
+                    &mut numeric.row_perm_fwd,
+                    &mut numeric.row_perm_inv,
+                    lu,
+                    A,
+                    AT,
+                    self.col_perm().cast(),
+                    symbolic,
+                    parallelism,
+                    stack,
+                )?;
+            }
+            _ => unreachable!(),
+        }
+
+        Ok(unsafe { LuRef::new_unchecked(self, numeric) })
+    }
+}
+
+/// Computes the symbolic LU factorization of the matrix `A`, or returns an error if the
+/// operation could not be completed.
+#[track_caller]
+pub fn factorize_symbolic_lu<I: Index>(
+    A: SymbolicSparseColMatRef<'_, I>,
+    params: LuSymbolicParams<'_>,
+) -> Result<SymbolicLu<I>, FaerError> {
+    assert!(A.nrows() == A.ncols());
+    let m = A.nrows();
+    let n = A.ncols();
+    let A_nnz = A.compute_nnz();
+
+    Size::with2(m, n, |M, N| {
+        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+
+        let req = || -> Result<StackReq, SizeOverflow> {
+            let n_req = StackReq::try_new::<I>(n)?;
+            let m_req = StackReq::try_new::<I>(m)?;
+            let AT_req = StackReq::try_and(
+                // new_col_ptr
+                StackReq::try_new::<I>(m + 1)?,
+                // new_row_ind
+                StackReq::try_new::<I>(A_nnz)?,
+            )?;
+
+            StackReq::try_or(
+                crate::colamd::order_req::<I>(m, n, A_nnz)?,
+                StackReq::try_all_of([
+                    n_req,
+                    n_req,
+                    n_req,
+                    n_req,
+                    AT_req,
+                    StackReq::try_any_of([
+                        StackReq::try_and(n_req, m_req)?,
+                        StackReq::try_all_of([n_req; 3])?,
+                        StackReq::try_all_of([n_req, n_req, n_req, n_req, n_req, m_req])?,
+                        supernodal::factorize_supernodal_symbolic_lu_req::<I>(m, n)?,
+                    ])?,
+                ])?,
+            )
+        };
+
+        let req = req().map_err(nomem)?;
+        let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
+        let mut stack = PodStack::new(&mut mem);
+
+        let mut col_perm_fwd = try_zeroed::<I>(n)?;
+        let mut col_perm_inv = try_zeroed::<I>(n)?;
+        let mut min_row = try_zeroed::<I>(m)?;
+
+        crate::colamd::order(
+            &mut col_perm_fwd,
+            &mut col_perm_inv,
+            A.into_inner(),
+            params.colamd_params,
+            stack.rb_mut(),
+        )?;
+
+        let col_perm = ghost::PermutationRef::new(
+            PermutationRef::new_checked(&col_perm_fwd, &col_perm_inv),
+            N,
+        );
+
+        let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
+        let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
+        let AT = crate::ghost_adjoint_symbolic(new_col_ptr, new_row_ind, A, stack.rb_mut());
+
+        let (etree, stack) = stack.make_raw::<I::Signed>(n);
+        let (post, stack) = stack.make_raw::<I>(n);
+        let (col_counts, stack) = stack.make_raw::<I>(n);
+        let (h_col_counts, mut stack) = stack.make_raw::<I>(n);
+
+        crate::qr::ghost_col_etree(A, Some(col_perm), Array::from_mut(etree, N), stack.rb_mut());
+        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(&etree, N), N);
+        crate::cholesky::ghost_postorder(Array::from_mut(post, N), etree_, stack.rb_mut());
+
+        crate::qr::ghost_column_counts_aat(
+            Array::from_mut(col_counts, N),
+            Array::from_mut(bytemuck::cast_slice_mut(&mut min_row), M),
+            AT,
+            Some(col_perm),
+            etree_,
+            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            stack.rb_mut(),
+        );
+        let min_col = min_row;
+
+        let mut threshold = params.supernodal_flop_ratio_threshold;
+        if threshold != SupernodalThreshold::FORCE_SIMPLICIAL
+            && threshold != SupernodalThreshold::FORCE_SUPERNODAL
+        {
+            mem::fill_zero(h_col_counts);
+            for i in 0..m {
+                let min_col = min_col[i];
+                if min_col.to_signed() < I::Signed::truncate(0) {
+                    continue;
+                }
+                h_col_counts[min_col.zx()] += I::truncate(1);
+            }
+            for j in 0..n {
+                let parent = etree[j];
+                if parent < I::Signed::truncate(0) {
+                    continue;
+                }
+                h_col_counts[parent.zx()] += h_col_counts[j] - I::truncate(1);
+            }
+
+            let mut nnz = 0.0f64;
+            let mut flops = 0.0f64;
+            for j in 0..n {
+                let hj = h_col_counts[j].zx() as f64;
+                let rj = col_counts[j].zx() as f64;
+                flops += hj + hj * rj;
+                nnz += hj + rj;
+            }
+
+            if flops / nnz > threshold.0 * crate::LU_SUPERNODAL_RATIO_FACTOR {
+                threshold = SupernodalThreshold::FORCE_SUPERNODAL;
+            } else {
+                threshold = SupernodalThreshold::FORCE_SIMPLICIAL;
+            }
+        }
+
+        if threshold == SupernodalThreshold::FORCE_SUPERNODAL {
+            let symbolic = supernodal::factorize_supernodal_symbolic_lu::<I>(
+                A.into_inner(),
+                Some(col_perm.into_inner()),
+                &*min_col,
+                EliminationTreeRef::<'_, I> { inner: &etree },
+                &col_counts,
+                stack.rb_mut(),
+                params.supernodal_params,
+            )?;
+            Ok(SymbolicLu {
+                raw: SymbolicLuRaw::Supernodal(symbolic),
+                col_perm_fwd,
+                col_perm_inv,
+                A_nnz,
+            })
+        } else {
+            Ok(SymbolicLu {
+                raw: SymbolicLuRaw::Simplicial { nrows: m, ncols: n },
+                col_perm_fwd,
+                col_perm_inv,
+                A_nnz,
+            })
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -1796,9 +2247,10 @@ mod tests {
             supernodal::{
                 factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req, SupernodalLu,
             },
+            LuSymbolicParams, NumericLu,
         },
         qr::col_etree,
-        SymbolicSparseColMatRef,
+        SupernodalThreshold, SymbolicSparseColMatRef,
     };
     use core::iter::zip;
     use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
@@ -1807,11 +2259,13 @@ mod tests {
         group_helpers::SliceGroup,
         permutation::{Index, PermutationRef},
         sparse::SparseColMatRef,
-        Conj, Mat,
+        Conj, Mat, Parallelism,
     };
     use faer_entity::{ComplexField, Symbolic};
     use matrix_market_rs::MtxData;
     use rand::{rngs::StdRng, Rng, SeedableRng};
+
+    use super::factorize_symbolic_lu;
 
     fn sparse_to_dense<I: Index, E: ComplexField>(sparse: SparseColMatRef<'_, I, E>) -> Mat<E> {
         let m = sparse.nrows();
@@ -1980,7 +2434,7 @@ mod tests {
             AT,
             col_perm.cast(),
             &symbolic,
-            faer_core::Parallelism::None,
+            Parallelism::None,
             PodStack::new(&mut GlobalPodBuffer::new(
                 factorize_supernodal_numeric_lu_req::<usize, E>(&symbolic).unwrap(),
             )),
@@ -2002,7 +2456,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::No,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
@@ -2015,7 +2469,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::Yes,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
@@ -2028,7 +2482,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::No,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
@@ -2041,7 +2495,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::Yes,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
@@ -2101,7 +2555,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::No,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((&A_dense * &x - &rhs).norm_max() < 1e-10);
@@ -2114,7 +2568,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::Yes,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.conjugate() * &x - &rhs).norm_max() < 1e-10);
@@ -2128,7 +2582,7 @@ mod tests {
                 col_perm.cast(),
                 Conj::No,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.transpose() * &x - &rhs).norm_max() < 1e-10);
@@ -2141,10 +2595,126 @@ mod tests {
                 col_perm.cast(),
                 Conj::Yes,
                 x.as_mut(),
-                faer_core::Parallelism::None,
+                Parallelism::None,
                 work.as_mut(),
             );
             assert!((A_dense.adjoint() * &x - &rhs).norm_max() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_solver_lu_simplicial() {
+        type E = faer_core::c64;
+
+        let (m, n, col_ptr, row_ind, val) =
+            load_mtx::<usize>(MtxData::from_file("test_data/YAO.mtx").unwrap());
+
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut gen = || E::new(rng.gen::<f64>(), rng.gen::<f64>());
+
+        let val = val.iter().map(|_| gen()).collect::<alloc::vec::Vec<_>>();
+        let A = SparseColMatRef::<'_, usize, E>::new(
+            SymbolicSparseColMatRef::new_checked(m, n, &col_ptr, None, &row_ind),
+            &val,
+        );
+
+        let a = sparse_to_dense(A);
+        let rhs = Mat::<E>::from_fn(m, 2, |_, _| gen());
+
+        for supernodal_flop_ratio_threshold in [
+            SupernodalThreshold::AUTO,
+            SupernodalThreshold::FORCE_SUPERNODAL,
+            SupernodalThreshold::FORCE_SIMPLICIAL,
+        ] {
+            let symbolic = factorize_symbolic_lu(
+                A.symbolic(),
+                LuSymbolicParams {
+                    supernodal_flop_ratio_threshold,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let mut numeric = NumericLu::<usize, E>::new();
+            let lu = symbolic
+                .factorize_numeric_lu(
+                    &mut numeric,
+                    A,
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .factorize_numeric_lu_req::<E>(Parallelism::None)
+                            .unwrap(),
+                    )),
+                )
+                .unwrap();
+
+            {
+                let mut x = rhs.clone();
+                lu.solve_in_place_with_conj(
+                    faer_core::Conj::No,
+                    x.as_mut(),
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .solve_in_place_req::<E>(2, Parallelism::None)
+                            .unwrap(),
+                    )),
+                );
+
+                let linsolve_diff = &a * &x - &rhs;
+                assert!(linsolve_diff.norm_max() <= 1e-10);
+            }
+            {
+                let mut x = rhs.clone();
+                lu.solve_in_place_with_conj(
+                    faer_core::Conj::Yes,
+                    x.as_mut(),
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .solve_in_place_req::<E>(2, Parallelism::None)
+                            .unwrap(),
+                    )),
+                );
+
+                let a = a.conjugate();
+                let linsolve_diff = a * &x - &rhs;
+                assert!(linsolve_diff.norm_max() <= 1e-10);
+            }
+
+            {
+                let mut x = rhs.clone();
+                lu.solve_transpose_in_place_with_conj(
+                    faer_core::Conj::No,
+                    x.as_mut(),
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .solve_transpose_in_place_req::<E>(2, Parallelism::None)
+                            .unwrap(),
+                    )),
+                );
+
+                let linsolve_diff = a.transpose() * &x - &rhs;
+                assert!(linsolve_diff.norm_max() <= 1e-10);
+            }
+            {
+                let mut x = rhs.clone();
+                lu.solve_transpose_in_place_with_conj(
+                    faer_core::Conj::Yes,
+                    x.as_mut(),
+                    Parallelism::None,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .solve_transpose_in_place_req::<E>(2, Parallelism::None)
+                            .unwrap(),
+                    )),
+                );
+
+                let a = a.conjugate();
+                let linsolve_diff = a.transpose() * &x - &rhs;
+                assert!(linsolve_diff.norm_max() <= 1e-10);
+            }
         }
     }
 }
