@@ -4957,6 +4957,87 @@ const __ROW_INDEX: () = {
             unsafe { <Self as RowIndex<usize>>::get_unchecked(this, col) }
         }
     }
+
+    impl<E: Entity> RowIndex<RangeFull> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: RangeFull) -> Self {
+            let _ = col;
+            this
+        }
+    }
+
+    impl<E: Entity> RowIndex<Range> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: Range) -> Self {
+            this.subcols_mut(col.start, col.end - col.start)
+        }
+    }
+
+    impl<E: Entity> RowIndex<RangeInclusive> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: RangeInclusive) -> Self {
+            assert!(*col.end() != usize::MAX);
+            <Self as RowIndex<Range>>::get(this, *col.start()..*col.end() + 1)
+        }
+    }
+
+    impl<E: Entity> RowIndex<RangeFrom> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: RangeFrom) -> Self {
+            let ncols = this.ncols();
+            <Self as RowIndex<Range>>::get(this, col.start..ncols)
+        }
+    }
+
+    impl<E: Entity> RowIndex<RangeTo> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: RangeTo) -> Self {
+            <Self as RowIndex<Range>>::get(this, 0..col.end)
+        }
+    }
+
+    impl<E: Entity> RowIndex<RangeToInclusive> for RowMut<'_, E> {
+        type Target = Self;
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: RangeToInclusive) -> Self {
+            assert!(col.end != usize::MAX);
+            <Self as RowIndex<Range>>::get(this, 0..col.end + 1)
+        }
+    }
+
+    impl<'a, E: Entity> RowIndex<usize> for RowMut<'a, E> {
+        type Target = GroupFor<E, &'a mut E::Unit>;
+
+        #[track_caller]
+        #[inline(always)]
+        unsafe fn get_unchecked(this: Self, col: usize) -> Self::Target {
+            unsafe { E::faer_map(this.ptr_inbounds_at_mut(col), |ptr: *mut _| &mut *ptr) }
+        }
+
+        #[track_caller]
+        #[inline(always)]
+        fn get(this: Self, col: usize) -> Self::Target {
+            assert!(col < this.ncols());
+            unsafe { <Self as RowIndex<usize>>::get_unchecked(this, col) }
+        }
+    }
 };
 
 impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
@@ -5468,6 +5549,52 @@ const __COL_IMPL: () = {
                     __marker: PhantomData,
                 },
             }
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for ColRef<'_, E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, row: usize) -> &E {
+            self.get(row)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for ColMut<'_, E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, row: usize) -> &E {
+            (*self).rb().get(row)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::IndexMut<usize> for ColMut<'_, E> {
+        #[inline]
+        #[track_caller]
+        fn index_mut(&mut self, row: usize) -> &mut E {
+            (*self).rb_mut().get_mut(row)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for Col<E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, row: usize) -> &E {
+            self.as_ref().get(row)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::IndexMut<usize> for Col<E> {
+        #[inline]
+        #[track_caller]
+        fn index_mut(&mut self, row: usize) -> &mut E {
+            self.as_mut().get_mut(row)
         }
     }
 
@@ -6216,6 +6343,52 @@ const __ROW_IMPL: () = {
                     __marker: PhantomData,
                 },
             }
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for RowRef<'_, E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, col: usize) -> &E {
+            self.get(col)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for RowMut<'_, E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, col: usize) -> &E {
+            (*self).rb().get(col)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::IndexMut<usize> for RowMut<'_, E> {
+        #[inline]
+        #[track_caller]
+        fn index_mut(&mut self, col: usize) -> &mut E {
+            (*self).rb_mut().get_mut(col)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::Index<usize> for Row<E> {
+        type Output = E;
+
+        #[inline]
+        #[track_caller]
+        fn index(&self, col: usize) -> &E {
+            self.as_ref().get(col)
+        }
+    }
+
+    impl<E: SimpleEntity> core::ops::IndexMut<usize> for Row<E> {
+        #[inline]
+        #[track_caller]
+        fn index_mut(&mut self, col: usize) -> &mut E {
+            self.as_mut().get_mut(col)
         }
     }
 
@@ -13893,6 +14066,32 @@ mod tests {
         let mat = Col::from_fn(10000000, |_| 0.3);
         let target = (0.3 * 0.3 * 10000000.0f64).sqrt();
         assert!(relative_err(mat.norm_l2(), target) < 1e-14);
+    }
+
+    #[test]
+    fn test_col_index() {
+        let mut col_32: Col<f32> = Col::from_fn(3, |i| i as f32);
+        col_32.as_mut()[1] = 10f32;
+        let tval: f32 = (10f32 - col_32[1]).abs();
+        assert!(tval < 1e-14);
+
+        let mut col_64: Col<f64> = Col::from_fn(3, |i| i as f64);
+        col_64.as_mut()[1] = 10f64;
+        let tval: f64 = (10f64 - col_64[1]).abs();
+        assert!(tval < 1e-14);
+    }
+
+    #[test]
+    fn test_row_index() {
+        let mut row_32: Row<f32> = Row::from_fn(3, |i| i as f32);
+        row_32.as_mut()[1] = 10f32;
+        let tval: f32 = (10f32 - row_32[1]).abs();
+        assert!(tval < 1e-14);
+
+        let mut row_64: Row<f64> = Row::from_fn(3, |i| i as f64);
+        row_64.as_mut()[1] = 10f64;
+        let tval: f64 = (10f64 - row_64[1]).abs();
+        assert!(tval < 1e-14);
     }
 }
 
