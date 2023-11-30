@@ -95,7 +95,10 @@ pub fn invert_lower<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack,
 ) {
-    assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
-    assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
+    assert!(all(
+        cholesky_factor.nrows() == cholesky_factor.ncols(),
+        dst.nrows() == cholesky_factor.nrows(),
+        dst.ncols() == cholesky_factor.ncols(),
+    ));
     invert_lower_impl(dst, Some(cholesky_factor), parallelism, stack);
 }

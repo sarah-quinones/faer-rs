@@ -156,14 +156,15 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     params: SymmetricEvdParams,
 ) {
     let _ = params;
-    assert!(matrix.nrows() == matrix.ncols());
     let n = matrix.nrows();
 
-    assert!(s.nrows() == n);
-    assert!(s.ncols() == 1);
+    assert!(all(
+        matrix.nrows() == matrix.ncols(),
+        s.nrows() == n,
+        s.ncols() == 1
+    ));
     if let Some(u) = u.rb() {
-        assert!(u.nrows() == n);
-        assert!(u.ncols() == n);
+        assert!(all(u.nrows() == n, u.ncols() == n));
     }
 
     if n == 0 {
@@ -567,16 +568,17 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     stack: PodStack<'_>,
     params: EvdParams,
 ) {
-    assert!(matrix.nrows() == matrix.ncols());
     let n = matrix.nrows();
 
-    assert!(s_re.nrows() == n);
-    assert!(s_re.ncols() == 1);
-    assert!(s_im.nrows() == n);
-    assert!(s_im.ncols() == 1);
+    assert!(all(
+        matrix.nrows() == matrix.ncols(),
+        s_re.nrows() == n,
+        s_re.ncols() == 1,
+        s_im.nrows() == n,
+        s_im.ncols() == 1,
+    ));
     if let Some(u) = u.rb() {
-        assert!(u.nrows() == n);
-        assert!(u.ncols() == n);
+        assert!(all(u.nrows() == n, u.ncols() == n));
     }
 
     if n == 0 {
@@ -1067,14 +1069,15 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     params: EvdParams,
 ) {
     assert!(!coe::is_same::<E, E::Real>());
-    assert!(matrix.nrows() == matrix.ncols());
     let n = matrix.nrows();
 
-    assert!(s.nrows() == n);
-    assert!(s.ncols() == 1);
+    assert!(all(
+        matrix.nrows() == matrix.ncols(),
+        s.nrows() == n,
+        s.ncols() == 1,
+    ));
     if let Some(u) = u.rb() {
-        assert!(u.nrows() == n);
-        assert!(u.ncols() == n);
+        assert!(all(u.nrows() == n, u.ncols() == n));
     }
 
     if n == 0 {

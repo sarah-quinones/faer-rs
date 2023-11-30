@@ -1,9 +1,7 @@
 //! Matrix multiplication.
 
-#[cfg(feature = "std")]
-use crate::assert;
 use crate::{
-    c32, c64, group_helpers::*, transmute_unchecked, unzipped, zipped, ComplexField, Conj,
+    assert, c32, c64, group_helpers::*, transmute_unchecked, unzipped, zipped, ComplexField, Conj,
     Conjugate, DivCeil, MatMut, MatRef, Parallelism, SimdGroupFor,
 };
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
@@ -197,9 +195,11 @@ pub mod inner_prod {
         rhs: MatRef<'_, E>,
         conj_rhs: Conj,
     ) -> E {
-        assert!(lhs.nrows() == rhs.nrows());
-        assert!(lhs.ncols() == 1);
-        assert!(rhs.ncols() == 1);
+        assert!(all(
+            lhs.nrows() == rhs.nrows(),
+            lhs.ncols() == 1,
+            rhs.ncols() == 1,
+        ));
         let nrows = lhs.nrows();
         let mut a = lhs;
         let mut b = rhs;
@@ -284,13 +284,14 @@ pub mod matvec_rowmajor {
         let m = a.nrows();
         let n = a.ncols();
 
-        assert!(b.nrows() == n);
-        assert!(b.ncols() == 1);
-        assert!(acc.nrows() == m);
-        assert!(acc.ncols() == 1);
-
-        assert!(a.col_stride() == 1);
-        assert!(b.row_stride() == 1);
+        assert!(all(
+            b.nrows() == n,
+            b.ncols() == 1,
+            acc.nrows() == m,
+            acc.ncols() == 1,
+            a.col_stride() == 1,
+            b.row_stride() == 1,
+        ));
 
         let mut acc = acc;
 
@@ -409,13 +410,14 @@ pub mod matvec_colmajor {
         let m = a.nrows();
         let n = a.ncols();
 
-        assert!(b.nrows() == n);
-        assert!(b.ncols() == 1);
-        assert!(acc.nrows() == m);
-        assert!(acc.ncols() == 1);
-
-        assert!(a.row_stride() == 1);
-        assert!(acc.row_stride() == 1);
+        assert!(all(
+            b.nrows() == n,
+            b.ncols() == 1,
+            acc.nrows() == m,
+            acc.ncols() == 1,
+            a.row_stride() == 1,
+            acc.row_stride() == 1,
+        ));
 
         let mut acc = SliceGroupMut::<'_, E>::new(acc.try_get_contiguous_col_mut(0));
 
@@ -677,13 +679,14 @@ pub mod outer_prod {
         let m = acc.nrows();
         let n = acc.ncols();
 
-        assert!(a.nrows() == m);
-        assert!(a.ncols() == 1);
-        assert!(b.nrows() == n);
-        assert!(b.ncols() == 1);
-
-        assert!(acc.row_stride() == 1);
-        assert!(a.row_stride() == 1);
+        assert!(all(
+            a.nrows() == m,
+            a.ncols() == 1,
+            b.nrows() == n,
+            b.ncols() == 1,
+            acc.row_stride() == 1,
+            a.row_stride() == 1,
+        ));
 
         let mut acc = acc;
 
@@ -867,14 +870,16 @@ impl<const MR_DIV_N: usize, const NR: usize, CB: ConjTy, E: ComplexField> pulp::
         let mr = MR_DIV_N * lane_count;
         let nr = NR;
 
-        assert!(acc.nrows() == mr);
-        assert!(acc.ncols() == nr);
-        assert!(a.nrows() == mr);
-        assert!(b.ncols() == nr);
-        assert!(a.ncols() == b.nrows());
-        assert!(a.row_stride() == 1);
-        assert!(b.row_stride() == 1);
-        assert!(acc.row_stride() == 1);
+        assert!(all(
+            acc.nrows() == mr,
+            acc.ncols() == nr,
+            a.nrows() == mr,
+            b.ncols() == nr,
+            a.ncols() == b.nrows(),
+            a.row_stride() == 1,
+            b.row_stride() == 1,
+            acc.row_stride() == 1
+        ));
 
         let k = a.ncols();
         let mut local_acc = [[E::faer_simd_splat(simd, E::faer_zero()); MR_DIV_N]; NR];
@@ -1068,10 +1073,12 @@ fn matmul_with_conj_impl<E: ComplexField>(
     let mr_div_n = MicroKernelShape::<E>::MAX_MR_DIV_N;
     let mr = mr_div_n * lane_count;
 
-    assert!(acc.row_stride() == 1);
-    assert!(a.row_stride() == 1);
-    assert!(b.row_stride() == 1);
-    assert!(m % lane_count == 0);
+    assert!(all(
+        acc.row_stride() == 1,
+        a.row_stride() == 1,
+        b.row_stride() == 1,
+        m % lane_count == 0,
+    ));
 
     let mut acc = acc;
 
@@ -1095,9 +1102,11 @@ fn matmul_with_conj_impl<E: ComplexField>(
             let job_count = n_job_count * chunk_count;
 
             let job = |idx: usize| {
-                assert!(acc.row_stride() == 1);
-                assert!(a.row_stride() == 1);
-                assert!(b.row_stride() == 1);
+                assert!(all(
+                    acc.row_stride() == 1,
+                    a.row_stride() == 1,
+                    b.row_stride() == 1,
+                ));
 
                 let col_inner = (idx % n_job_count) * nr;
                 let row_outer = (idx / n_job_count) * MC;
@@ -1224,9 +1233,11 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     parallelism: Parallelism,
     _use_gemm: bool,
 ) {
-    assert!(acc.nrows() == lhs.nrows());
-    assert!(acc.ncols() == rhs.ncols());
-    assert!(lhs.ncols() == rhs.nrows());
+    assert!(all(
+        acc.nrows() == lhs.nrows(),
+        acc.ncols() == rhs.ncols(),
+        lhs.ncols() == rhs.nrows(),
+    ));
 
     let m = acc.nrows();
     let n = acc.ncols();
@@ -1820,9 +1831,11 @@ pub fn matmul_with_conj<E: ComplexField>(
     beta: E,
     parallelism: Parallelism,
 ) {
-    assert!(acc.nrows() == lhs.nrows());
-    assert!(acc.ncols() == rhs.ncols());
-    assert!(lhs.ncols() == rhs.nrows());
+    assert!(all(
+        acc.nrows() == lhs.nrows(),
+        acc.ncols() == rhs.ncols(),
+        lhs.ncols() == rhs.nrows(),
+    ));
     matmul_with_conj_gemm_dispatch(
         acc,
         lhs,
@@ -2880,9 +2893,11 @@ pub mod triangular {
         beta: E,
         parallelism: Parallelism,
     ) {
-        assert!(acc.nrows() == lhs.nrows());
-        assert!(acc.ncols() == rhs.ncols());
-        assert!(lhs.ncols() == rhs.nrows());
+        assert!(all(
+            acc.nrows() == lhs.nrows(),
+            acc.ncols() == rhs.ncols(),
+            lhs.ncols() == rhs.nrows(),
+        ));
 
         if !acc_structure.is_dense() {
             assert!(acc.nrows() == acc.ncols());

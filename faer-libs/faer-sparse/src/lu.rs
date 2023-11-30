@@ -12,6 +12,7 @@ use crate::{
 use core::{iter::zip, mem::MaybeUninit};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     constrained::Size,
     group_helpers::{SliceGroup, SliceGroupMut},
     mul,
@@ -218,8 +219,10 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            assert!(self.nrows() == self.ncols());
-            assert!(self.nrows() == rhs.nrows());
+            assert!(all(
+                self.nrows() == self.ncols(),
+                self.nrows() == rhs.nrows()
+            ));
             let mut X = rhs;
             let mut temp = work;
 
@@ -241,8 +244,10 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            assert!(self.nrows() == self.ncols());
-            assert!(self.nrows() == rhs.nrows());
+            assert!(all(
+                self.nrows() == self.ncols(),
+                self.nrows() == rhs.nrows()
+            ));
             let mut X = rhs;
             let mut temp = work;
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
@@ -707,10 +712,8 @@ pub mod supernodal {
         let m = A.nrows();
         let n = A.ncols();
         assert!(m >= n);
-        assert!(AT.nrows() == n);
-        assert!(AT.ncols() == m);
-        assert!(row_perm.len() == m);
-        assert!(row_perm_inv.len() == m);
+        assert!(all(AT.nrows() == n, AT.ncols() == m));
+        assert!(all(row_perm.len() == m, row_perm_inv.len() == m));
         let n_supernodes = super_etree.len();
         assert!(supernode_postorder.len() == n_supernodes);
         assert!(supernode_postorder_inv.len() == n_supernodes);
@@ -1483,8 +1486,10 @@ pub mod simplicial {
         ) where
             E: ComplexField,
         {
-            assert!(self.nrows() == self.ncols());
-            assert!(self.nrows() == rhs.nrows());
+            assert!(all(
+                self.nrows() == self.ncols(),
+                self.nrows() == rhs.nrows()
+            ));
             let mut X = rhs;
             let mut temp = work;
 
@@ -1656,10 +1661,12 @@ pub mod simplicial {
     ) -> Result<(), LuError> {
         let I = I::truncate;
 
-        assert!(A.nrows() == row_perm.len());
-        assert!(A.nrows() == row_perm_inv.len());
-        assert!(A.ncols() == col_perm.len());
-        assert!(A.nrows() == A.ncols());
+        assert!(all(
+            A.nrows() == row_perm.len(),
+            A.nrows() == row_perm_inv.len(),
+            A.ncols() == col_perm.len(),
+            A.nrows() == A.ncols()
+        ));
 
         lu.nrows = 0;
         lu.ncols = 0;
@@ -2042,8 +2049,7 @@ impl<I: Index> SymbolicLu<I> {
 
         match (&self.raw, &mut numeric.raw) {
             (SymbolicLuRaw::Simplicial { nrows, ncols }, NumericLuRaw::Simplicial(lu)) => {
-                assert!(A.nrows() == *nrows);
-                assert!(A.ncols() == *ncols);
+                assert!(all(A.nrows() == *nrows, A.ncols() == *ncols));
 
                 simplicial::factorize_simplicial_numeric_lu(
                     &mut numeric.row_perm_fwd,

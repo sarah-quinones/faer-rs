@@ -785,11 +785,13 @@ pub mod compute {
         let mut regularization = regularization;
 
         let n = matrix.nrows();
-        assert!(matrix.nrows() == matrix.ncols());
-        assert!(subdiag.nrows() == n);
-        assert!(subdiag.ncols() == 1);
-        assert!(perm.len() == n);
-        assert!(perm_inv.len() == n);
+        assert!(all(
+            matrix.nrows() == matrix.ncols(),
+            subdiag.nrows() == n,
+            subdiag.ncols() == 1,
+            perm.len() == n,
+            perm_inv.len() == n
+        ));
 
         #[cfg(feature = "perf-warn")]
         if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(CHOLESKY_WARN) {
@@ -922,11 +924,13 @@ pub mod solve {
         let n = lb_factors.nrows();
         let k = rhs.ncols();
 
-        assert!(lb_factors.nrows() == lb_factors.ncols());
-        assert!(rhs.nrows() == n);
-        assert!(subdiag.nrows() == n);
-        assert!(subdiag.ncols() == 1);
-        assert!(perm.len() == n);
+        assert!(all(
+            lb_factors.nrows() == lb_factors.ncols(),
+            rhs.nrows() == n,
+            subdiag.nrows() == n,
+            subdiag.ncols() == 1,
+            perm.len() == n
+        ));
 
         let a = lb_factors;
         let par = parallelism;

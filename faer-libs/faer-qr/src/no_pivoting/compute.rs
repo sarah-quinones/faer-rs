@@ -317,8 +317,11 @@ pub fn qr_in_place<E: ComplexField>(
 ) {
     let blocksize = householder_factor.nrows();
     let size = Ord::min(matrix.nrows(), matrix.ncols());
-    assert!(blocksize > 0);
-    assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
+    assert!(all(
+        blocksize > 0,
+        householder_factor.nrows() == blocksize,
+        householder_factor.ncols() == size,
+    ));
 
     #[cfg(feature = "perf-warn")]
     if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {
@@ -409,7 +412,7 @@ mod tests {
         let mut q = Mat::<E>::zeros(m, m);
         let mut r = Mat::<E>::zeros(m, n);
 
-        zipped!(r.as_mut(), (qr_factors))
+        zipped!(r.as_mut(), qr_factors)
             .for_each_triangular_upper(Diag::Include, |unzipped!(mut a, b)| a.write(b.read()));
 
         zipped!(q.as_mut().diagonal_mut().column_vector_mut().as_2d_mut())

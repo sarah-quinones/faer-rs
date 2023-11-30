@@ -1,4 +1,4 @@
-use crate::{group_helpers::*, unzipped, zipped, MatMut, RealField};
+use crate::{assert, group_helpers::*, unzipped, zipped, MatMut, RealField};
 use faer_entity::{SimdCtx, SimdGroupFor};
 use reborrow::*;
 
@@ -132,9 +132,7 @@ impl<E: RealField> JacobiRotation<E> {
             #[inline(always)]
             fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
                 let Self { x, y, c, s } = self;
-                assert!(x.nrows() == 1);
-                assert!(y.nrows() == 1);
-                assert_eq!(x.ncols(), y.ncols());
+                assert!(all(x.nrows() == 1, y.nrows() == 1, x.ncols() == y.ncols()));
 
                 if c == E::faer_one() && s == E::faer_zero() {
                     return;

@@ -1,12 +1,10 @@
 //! Triangular matrix inversion.
 
 use crate::{
-    join_raw,
+    assert, join_raw,
     mul::triangular::{self, BlockStructure},
     solve, ComplexField, MatMut, MatRef, Parallelism,
 };
-#[cfg(feature = "std")]
-use assert2::assert;
 use reborrow::*;
 
 unsafe fn invert_lower_triangular_impl_small<E: ComplexField>(
@@ -141,9 +139,11 @@ pub fn invert_unit_lower_triangular<E: ComplexField>(
     src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(dst.nrows() == src.nrows());
-    assert!(dst.ncols() == src.ncols());
-    assert!(dst.nrows() == dst.ncols());
+    assert!(all(
+        dst.nrows() == src.nrows(),
+        dst.ncols() == src.ncols(),
+        dst.nrows() == dst.ncols()
+    ));
 
     unsafe { invert_unit_lower_triangular_impl(dst, src, parallelism) }
 }
@@ -160,9 +160,11 @@ pub fn invert_lower_triangular<E: ComplexField>(
     src: MatRef<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(dst.nrows() == src.nrows());
-    assert!(dst.ncols() == src.ncols());
-    assert!(dst.nrows() == dst.ncols());
+    assert!(all(
+        dst.nrows() == src.nrows(),
+        dst.ncols() == src.ncols(),
+        dst.nrows() == dst.ncols()
+    ));
 
     unsafe { invert_lower_triangular_impl(dst, src, parallelism) }
 }
@@ -208,8 +210,7 @@ pub fn invert_upper_triangular<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Mat;
-    use assert2::assert;
+    use crate::{assert, Mat};
     use assert_approx_eq::assert_approx_eq;
     use rand::random;
 

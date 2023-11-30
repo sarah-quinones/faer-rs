@@ -122,7 +122,7 @@ mod x86 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert2::assert;
+    use crate::assert;
 
     #[test]
     fn test_sum_i32() {

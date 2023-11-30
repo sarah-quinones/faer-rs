@@ -1038,7 +1038,7 @@ impl MatAdd<DenseCol> for DenseCol {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Col::<E>::zeros(lhs.nrows());
         zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
             |unzipped!(mut out, lhs, rhs)| {
@@ -1059,7 +1059,7 @@ impl MatSub<DenseCol> for DenseCol {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Col::<E>::zeros(lhs.nrows());
         zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
             |unzipped!(mut out, lhs, rhs)| {
@@ -1117,7 +1117,7 @@ impl MatAdd<DenseRow> for DenseRow {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Row::<E>::zeros(lhs.nrows());
         zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
             |unzipped!(mut out, lhs, rhs)| {
@@ -1138,7 +1138,7 @@ impl MatSub<DenseRow> for DenseRow {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Row::<E>::zeros(lhs.nrows());
         zipped!(out.as_mut().as_2d_mut(), lhs.as_2d(), rhs.as_2d()).for_each(
             |unzipped!(mut out, lhs, rhs)| {
@@ -1196,7 +1196,7 @@ impl MatAdd<Dense> for Dense {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Mat::<E>::zeros(lhs.nrows(), rhs.ncols());
         zipped!(out.as_mut(), lhs, rhs).for_each(|unzipped!(mut out, lhs, rhs)| {
             out.write(E::faer_add(
@@ -1215,7 +1215,7 @@ impl MatSub<Dense> for Dense {
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Self>,
     ) -> KindOwn<E, Self::Output> {
-        assert!((lhs.nrows(), lhs.ncols()) == (rhs.nrows(), rhs.ncols()));
+        assert!(all(lhs.nrows() == rhs.nrows(), lhs.ncols() == rhs.ncols()));
         let mut out = Mat::<E>::zeros(lhs.nrows(), rhs.ncols());
         zipped!(out.as_mut(), lhs, rhs).for_each(|unzipped!(mut out, lhs, rhs)| {
             out.write(E::faer_sub(

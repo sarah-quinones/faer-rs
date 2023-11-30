@@ -84,8 +84,10 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
     let _ = &stack;
     let n = cholesky_factor.nrows();
 
-    assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
-    assert!(rhs.nrows() == n);
+    assert!(all(
+        cholesky_factor.nrows() == cholesky_factor.ncols(),
+        rhs.nrows() == n,
+    ));
 
     let mut rhs = rhs;
 

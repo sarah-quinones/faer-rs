@@ -279,8 +279,7 @@ impl SignedIndex for isize {
 #[track_caller]
 #[inline]
 pub fn swap_cols<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
-    assert!(a < mat.ncols());
-    assert!(b < mat.ncols());
+    assert!(all(a < mat.ncols(), b < mat.ncols()));
 
     if a == b {
         return;
@@ -400,8 +399,10 @@ impl<I: Index, E: Entity> Permutation<I, E> {
         inverse: alloc::boxed::Box<[I]>,
     ) -> Self {
         let n = forward.len();
-        assert!(forward.len() == inverse.len());
-        assert!(n <= I::Signed::MAX.zx());
+        assert!(all(
+            forward.len() == inverse.len(),
+            n <= I::Signed::MAX.zx(),
+        ));
         Self {
             inner: PermOwn {
                 forward,
@@ -419,7 +420,6 @@ impl<I: Index, E: Entity> Permutation<I, E> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        debug_assert!(self.inner.inverse.len() == self.inner.forward.len());
         self.inner.forward.len()
     }
 
@@ -461,8 +461,10 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
         #[track_caller]
         fn check<I: Index>(forward: &[I], inverse: &[I]) {
             let n = forward.len();
-            assert!(forward.len() == inverse.len());
-            assert!(n <= I::Signed::MAX.zx());
+            assert!(all(
+                forward.len() == inverse.len(),
+                n <= I::Signed::MAX.zx()
+            ));
             for (i, &p) in forward.iter().enumerate() {
                 let p = p.to_signed().zx();
                 assert!(p < n);
@@ -490,8 +492,10 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
     #[track_caller]
     pub unsafe fn new_unchecked(forward: &'a [I], inverse: &'a [I]) -> Self {
         let n = forward.len();
-        assert!(forward.len() == inverse.len());
-        assert!(n <= I::Signed::MAX.zx());
+        assert!(all(
+            forward.len() == inverse.len(),
+            n <= I::Signed::MAX.zx(),
+        ));
 
         Self {
             inner: PermRef {
@@ -592,8 +596,10 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
     #[track_caller]
     pub unsafe fn new_unchecked(forward: &'a mut [I], inverse: &'a mut [I]) -> Self {
         let n = forward.len();
-        assert!(forward.len() == inverse.len());
-        assert!(n <= I::Signed::MAX.zx());
+        assert!(all(
+            forward.len() == inverse.len(),
+            n <= I::Signed::MAX.zx(),
+        ));
 
         Self {
             inner: PermMut {
@@ -749,8 +755,11 @@ pub fn permute_cols<I: Index, E: ComplexField>(
     src: MatRef<'_, E>,
     perm_indices: PermutationRef<'_, I, E>,
 ) {
-    assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
-    assert!(perm_indices.into_arrays().0.len() == src.ncols());
+    assert!(all(
+        src.nrows() == dst.nrows(),
+        src.ncols() == dst.ncols(),
+        perm_indices.into_arrays().0.len() == src.ncols(),
+    ));
 
     permute_rows(
         dst.transpose_mut(),
@@ -779,8 +788,11 @@ pub fn permute_rows<I: Index, E: ComplexField>(
         src: MatRef<'_, E>,
         perm_indices: PermutationRef<'_, I, E>,
     ) {
-        assert!((src.nrows(), src.ncols()) == (dst.nrows(), dst.ncols()));
-        assert!(perm_indices.into_arrays().0.len() == src.nrows());
+        assert!(all(
+            src.nrows() == dst.nrows(),
+            src.ncols() == dst.ncols(),
+            perm_indices.into_arrays().0.len() == src.nrows(),
+        ));
 
         constrained::Size::with2(src.nrows(), src.ncols(), |m, n| {
             let mut dst = constrained::MatMut::new(dst, m, n);

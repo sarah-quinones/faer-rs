@@ -12,6 +12,7 @@ use crate::{
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
+    assert,
     constrained::Size,
     group_helpers::{SliceGroup, SliceGroupMut},
     householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
@@ -1642,8 +1643,10 @@ pub mod simplicial {
         symbolic: &'a SymbolicSimplicialQr<I>,
         stack: PodStack<'_>,
     ) -> SimplicialQrRef<'a, I, E> {
-        assert!(A.nrows() == symbolic.nrows);
-        assert!(A.ncols() == symbolic.ncols);
+        assert!(all(
+            A.nrows() == symbolic.nrows,
+            A.ncols() == symbolic.ncols,
+        ));
 
         let I = I::truncate;
         let m = A.nrows();
@@ -1840,8 +1843,10 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
         values: GroupFor<E, &'a [E::Unit]>,
     ) -> Self {
         let values = SliceGroup::<'_, E>::new(values);
-        assert!(symbolic.len_values() == values.len());
-        assert!(symbolic.len_indices() == indices.len());
+        assert!(all(
+            symbolic.len_values() == values.len(),
+            symbolic.len_indices() == indices.len(),
+        ));
         Self {
             symbolic,
             values,
@@ -1868,8 +1873,10 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
         let m = self.symbolic.nrows();
         let n = self.symbolic.ncols();
 
-        assert!(rhs.nrows() == self.symbolic.nrows());
-        assert!(self.symbolic.nrows() >= self.symbolic.ncols());
+        assert!(all(
+            rhs.nrows() == self.symbolic.nrows(),
+            self.symbolic.nrows() >= self.symbolic.ncols(),
+        ));
         let mut rhs = rhs;
 
         let (mut x, stack) = temp_mat_uninit::<E>(m, k, stack);
@@ -2059,10 +2066,11 @@ impl<I: Index> SymbolicQr<I> {
         stack: PodStack<'_>,
     ) -> QrRef<'out, I, E> {
         let mut values = SliceGroupMut::<'_, E>::new(values);
-        assert!(values.len() == self.len_values());
-        assert!(indices.len() == self.len_indices());
-        assert!(A.nrows() == self.nrows());
-        assert!(A.ncols() == self.ncols());
+        assert!(all(
+            values.len() == self.len_values(),
+            indices.len() == self.len_indices(),
+        ));
+        assert!(all(A.nrows() == self.nrows(), A.ncols() == self.ncols()));
 
         let m = A.nrows();
         let n = A.ncols();
@@ -2298,8 +2306,6 @@ pub fn factorize_symbolic_qr<I: Index>(
 
 #[cfg(test)]
 mod tests {
-    use core::iter::zip;
-
     use super::*;
     use crate::{
         cholesky::{
@@ -2320,6 +2326,7 @@ mod tests {
         },
         SymbolicSparseColMatRef,
     };
+    use core::iter::zip;
     use dyn_stack::{GlobalPodBuffer, StackReq};
     use faer_core::{
         assert, c64,

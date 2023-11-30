@@ -29,6 +29,7 @@
 //! documentation of the QR module.
 
 use crate::{
+    assert,
     group_helpers::*,
     join_raw,
     mul::{
@@ -38,8 +39,6 @@ use crate::{
     solve, temp_mat_req, temp_mat_uninit, unzipped, zipped, ComplexField, Conj, DivCeil, Entity,
     MatMut, MatRef, Parallelism,
 };
-#[cfg(feature = "std")]
-use assert2::assert;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
 use num_complex::Complex;
@@ -160,8 +159,10 @@ pub fn upgrade_householder_factor<E: ComplexField>(
     let block_count = householder_factor.nrows().msrv_div_ceil(blocksize);
 
     if block_count > 1 {
-        assert!(blocksize > prev_blocksize);
-        assert!(blocksize % prev_blocksize == 0);
+        assert!(all(
+            blocksize > prev_blocksize,
+            blocksize % prev_blocksize == 0,
+        ));
         let idx = (block_count / 2) * blocksize;
         let (tau_tl, _, _, tau_br) = householder_factor.split_at_mut(idx, idx);
         let (basis_left, basis_right) = essentials.split_at_col(idx);
@@ -379,9 +380,11 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    assert!(householder_factor.nrows() == householder_factor.ncols());
-    assert!(householder_basis.ncols() == householder_factor.nrows());
-    assert!(matrix.nrows() == householder_basis.nrows());
+    assert!(all(
+        householder_factor.nrows() == householder_factor.ncols(),
+        householder_basis.ncols() == householder_factor.nrows(),
+        matrix.nrows() == householder_basis.nrows(),
+    ));
 
     let bs = householder_factor.nrows();
     if householder_basis.row_stride() == 1 && matrix.row_stride() == 1 && bs == 1 {
@@ -746,8 +749,10 @@ pub fn apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj
     let mut matrix = matrix;
     let mut stack = stack;
     let blocksize = householder_factor.nrows();
-    assert!(blocksize > 0);
-    assert!(matrix.nrows() == householder_basis.nrows());
+    assert!(all(
+        blocksize > 0,
+        matrix.nrows() == householder_basis.nrows()
+    ));
     let m = householder_basis.nrows();
     let k = matrix.ncols();
 

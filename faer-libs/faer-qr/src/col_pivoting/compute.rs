@@ -738,8 +738,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
             let m = matrix.nrows();
             let n = matrix.ncols();
 
-            assert!(col_perm.len() == n);
-            assert!(col_perm_inv.len() == n);
+            assert!(all(col_perm.len() == n, col_perm_inv.len() == n));
 
             #[cfg(feature = "perf-warn")]
             if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(QR_WARN) {

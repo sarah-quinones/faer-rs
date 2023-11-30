@@ -88,9 +88,12 @@ pub fn solve_in_place<E: ComplexField>(
     let n = qr_factors.ncols();
     let size = Ord::min(m, n);
     let blocksize = householder_factor.nrows();
-    assert!(qr_factors.nrows() >= qr_factors.ncols());
-    assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
-    assert!(rhs.nrows() == qr_factors.nrows());
+    assert!(all(
+        qr_factors.nrows() >= qr_factors.ncols(),
+        householder_factor.nrows() == blocksize,
+        householder_factor.ncols() == size,
+        rhs.nrows() == qr_factors.nrows(),
+    ));
 
     let mut rhs = rhs;
     let mut stack = stack;
@@ -140,11 +143,15 @@ pub fn solve_transpose_in_place<E: ComplexField>(
     // conjᵃ(H₀ × ... × Hₖ₋₁ × R)ᵀ X = conjᵇ(B)
     // conjᵃ(Rᵀ × Hₖ₋₁ᵀ × ... × H₀ᵀ) X = conjᵇ(B)
     // X = conj(conjᵃ(H₀)) × ... × conj(conjᵃ(Hₖ₋₁)) × (conjᵃ(R)ᵀ)⁻¹ × conjᵇ(B)
-    assert!(qr_factors.nrows() == qr_factors.ncols());
     let size = qr_factors.nrows();
     let blocksize = householder_factor.nrows();
-    assert!((householder_factor.nrows(), householder_factor.ncols()) == (blocksize, size));
-    assert!(rhs.nrows() == qr_factors.nrows());
+
+    assert!(all(
+        qr_factors.nrows() == qr_factors.ncols(),
+        householder_factor.nrows() == blocksize,
+        householder_factor.ncols() == size,
+        rhs.nrows() == qr_factors.nrows(),
+    ));
 
     let mut rhs = rhs;
     let mut stack = stack;

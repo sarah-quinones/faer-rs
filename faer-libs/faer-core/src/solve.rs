@@ -301,8 +301,10 @@ pub fn solve_lower_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(all(
+        triangular_lower.nrows() == triangular_lower.ncols(),
+        rhs.nrows() == triangular_lower.ncols(),
+    ));
 
     unsafe {
         solve_lower_triangular_in_place_unchecked(triangular_lower, conj_lhs, rhs, parallelism);
@@ -379,8 +381,10 @@ pub fn solve_upper_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(all(
+        triangular_upper.nrows() == triangular_upper.ncols(),
+        rhs.nrows() == triangular_upper.ncols(),
+    ));
 
     unsafe {
         solve_upper_triangular_in_place_unchecked(triangular_upper, conj_lhs, rhs, parallelism);
@@ -457,8 +461,10 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(triangular_lower.nrows() == triangular_lower.ncols());
-    assert!(rhs.nrows() == triangular_lower.ncols());
+    assert!(all(
+        triangular_lower.nrows() == triangular_lower.ncols(),
+        rhs.nrows() == triangular_lower.ncols(),
+    ));
 
     unsafe {
         solve_unit_lower_triangular_in_place_unchecked(
@@ -538,8 +544,10 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<E: ComplexField>(
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
 ) {
-    assert!(triangular_upper.nrows() == triangular_upper.ncols());
-    assert!(rhs.nrows() == triangular_upper.ncols());
+    assert!(all(
+        triangular_upper.nrows() == triangular_upper.ncols(),
+        rhs.nrows() == triangular_upper.ncols(),
+    ));
 
     unsafe {
         solve_unit_upper_triangular_in_place_unchecked(
@@ -602,8 +610,10 @@ unsafe fn solve_unit_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    debug_assert!(tril.nrows() == tril.ncols());
-    debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(all(
+        tril.nrows() == tril.ncols(),
+        rhs.nrows() == tril.ncols(),
+    ));
 
     if n <= recursion_threshold() {
         E::Simd::default().dispatch(
@@ -703,8 +713,10 @@ unsafe fn solve_lower_triangular_in_place_unchecked<E: ComplexField>(
         return;
     }
 
-    debug_assert!(tril.nrows() == tril.ncols());
-    debug_assert!(rhs.nrows() == tril.ncols());
+    debug_assert!(all(
+        tril.nrows() == tril.ncols(),
+        rhs.nrows() == tril.ncols(),
+    ));
 
     let n = tril.nrows();
 

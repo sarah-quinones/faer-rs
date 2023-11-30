@@ -84,13 +84,8 @@ pub use faer_entity::{
     ComplexField, Conjugate, Entity, GroupFor, IdentityGroup, RealField, SimdCtx, SimpleEntity,
 };
 
-#[cfg(feature = "std")]
 #[doc(hidden)]
-pub use assert2::{assert, debug_assert};
-
-#[cfg(not(feature = "std"))]
-#[doc(hidden)]
-pub use core::{assert, debug_assert};
+pub use equator::{assert, debug_assert};
 
 pub use faer_entity::pulp;
 
@@ -3138,8 +3133,7 @@ pub mod group_helpers {
         #[inline(always)]
         #[track_caller]
         pub fn subslice(self, range: Range<usize>) -> Self {
-            assert!(range.start <= range.end);
-            assert!(range.end <= self.len());
+            assert!(all(range.start <= range.end, range.end <= self.len()));
             unsafe { self.subslice_unchecked(range) }
         }
 
@@ -3158,8 +3152,7 @@ pub mod group_helpers {
         #[inline(always)]
         #[track_caller]
         pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
-            debug_assert!(range.start <= range.end);
-            debug_assert!(range.end <= self.len());
+            debug_assert!(all(range.start <= range.end, range.end <= self.len()));
             Self::new(E::faer_map(
                 self.into_inner(),
                 #[inline(always)]
@@ -3280,16 +3273,14 @@ pub mod group_helpers {
         #[inline(always)]
         #[track_caller]
         pub fn subslice(self, range: Range<usize>) -> Self {
-            assert!(range.start <= range.end);
-            assert!(range.end <= self.len());
+            assert!(all(range.start <= range.end, range.end <= self.len()));
             unsafe { self.subslice_unchecked(range) }
         }
 
         #[inline(always)]
         #[track_caller]
         pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
-            debug_assert!(range.start <= range.end);
-            debug_assert!(range.end <= self.len());
+            debug_assert!(all(range.start <= range.end, range.end <= self.len()));
             Self::new(E::faer_map(
                 self.into_inner(),
                 #[inline(always)]
@@ -3497,8 +3488,10 @@ pub mod sparse {
             nnz_per_col: Option<&'a [I]>,
             row_indices: &'a [I],
         ) -> Self {
-            assert!(ncols <= I::Signed::MAX.zx());
-            assert!(nrows <= I::Signed::MAX.zx());
+            assert!(all(
+                ncols <= I::Signed::MAX.zx(),
+                nrows <= I::Signed::MAX.zx(),
+            ));
             assert!(col_ptrs.len() == ncols + 1);
             for &[c, c_next] in windows2(col_ptrs) {
                 assert!(c <= c_next);
@@ -3543,8 +3536,10 @@ pub mod sparse {
             nnz_per_col: Option<&'a [I]>,
             row_indices: &'a [I],
         ) -> Self {
-            assert!(ncols <= <I::Signed as SignedIndex>::MAX.zx());
-            assert!(nrows <= <I::Signed as SignedIndex>::MAX.zx());
+            assert!(all(
+                ncols <= <I::Signed as SignedIndex>::MAX.zx(),
+                nrows <= <I::Signed as SignedIndex>::MAX.zx(),
+            ));
             assert!(col_ptrs.len() == ncols + 1);
             assert!(col_ptrs[ncols].zx() <= row_indices.len());
 
@@ -4669,8 +4664,7 @@ const __MAT_INDEX: () = {
         #[track_caller]
         #[inline(always)]
         fn get(this: Self, row: usize, col: usize) -> Self::Target {
-            assert!(row < this.nrows());
-            assert!(col < this.ncols());
+            assert!(all(row < this.nrows(), col < this.ncols()));
             unsafe { <Self as MatIndex<usize, usize>>::get_unchecked(this, row, col) }
         }
     }
@@ -4687,8 +4681,7 @@ const __MAT_INDEX: () = {
         #[track_caller]
         #[inline(always)]
         fn get(this: Self, row: usize, col: usize) -> Self::Target {
-            assert!(row < this.nrows());
-            assert!(col < this.ncols());
+            assert!(all(row < this.nrows(), col < this.ncols()));
             unsafe { <Self as MatIndex<usize, usize>>::get_unchecked(this, row, col) }
         }
     }
@@ -4968,7 +4961,7 @@ const __ROW_INDEX: () = {
 
 impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
     #[inline(always)]
-    #[deprecated = "replaced by Matrix<DiagRef<'_, E>>::column_vector"]
+    #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector`"]
     pub fn into_column_vector(self) -> ColRef<'a, E> {
         self.inner.inner
     }
@@ -4981,7 +4974,7 @@ impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
 
 impl<'a, E: Entity> Matrix<DiagMut<'a, E>> {
     #[inline(always)]
-    #[deprecated = "replaced by Matrix<DiagRef<'_, E>>::column_vector_mut"]
+    #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector_mut`"]
     pub fn into_column_vector(self) -> ColMut<'a, E> {
         self.inner.inner
     }
@@ -5058,8 +5051,7 @@ fn from_strided_column_major_slice_mut_assert(
     let last = usize::checked_mul(col_stride, ncols - 1)
         .and_then(|last_col| last_col.checked_add(nrows - 1))
         .unwrap_or(usize::MAX);
-    assert!(col_stride >= nrows);
-    assert!(last < len);
+    assert!(all(col_stride >= nrows, last < len));
 }
 
 #[inline(always)]
@@ -5120,6 +5112,7 @@ const __COL_IMPL: () = {
             self.inner.inner.stride
         }
 
+        /// Returns `self` as a matrix view.
         #[inline(always)]
         pub fn as_2d(self) -> MatRef<'a, E> {
             let nrows = self.nrows();
@@ -5375,8 +5368,10 @@ const __COL_IMPL: () = {
         #[track_caller]
         #[inline(always)]
         pub unsafe fn subrows_unchecked(self, row_start: usize, nrows: usize) -> Self {
-            debug_assert!(row_start <= self.nrows());
-            debug_assert!(nrows <= self.nrows() - row_start);
+            debug_assert!(all(
+                row_start <= self.nrows(),
+                nrows <= self.nrows() - row_start
+            ));
             let row_stride = self.row_stride();
             unsafe { col::from_raw_parts(self.overflowing_ptr_at(row_start), nrows, row_stride) }
         }
@@ -5391,8 +5386,10 @@ const __COL_IMPL: () = {
         #[track_caller]
         #[inline(always)]
         pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
-            assert!(row_start <= self.nrows());
-            assert!(nrows <= self.nrows() - row_start);
+            assert!(all(
+                row_start <= self.nrows(),
+                nrows <= self.nrows() - row_start
+            ));
             unsafe { self.subrows_unchecked(row_start, nrows) }
         }
 
@@ -5513,6 +5510,7 @@ const __COL_IMPL: () = {
             self.inner.inner.stride
         }
 
+        /// Returns `self` as a mutable matrix view.
         #[inline(always)]
         pub fn as_2d_mut(self) -> MatMut<'a, E> {
             let nrows = self.nrows();
@@ -5876,6 +5874,7 @@ const __ROW_IMPL: () = {
             self.inner.inner.stride
         }
 
+        /// Returns `self` as a matrix view.
         #[inline(always)]
         pub fn as_2d(self) -> MatRef<'a, E> {
             let ncols = self.ncols();
@@ -6246,6 +6245,7 @@ const __ROW_IMPL: () = {
             self.inner.inner.stride
         }
 
+        /// Returns `self` as a mutable matrix view.
         #[inline(always)]
         pub fn as_2d_mut(self) -> MatMut<'a, E> {
             let ncols = self.ncols();
@@ -6597,7 +6597,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by faer_core::mat::from_column_major_slice"]
+        #[deprecated = "replaced by `faer_core::mat::from_column_major_slice`"]
         pub fn from_column_major_slice(
             slice: GroupFor<E, &'a [E::Unit]>,
             nrows: usize,
@@ -6608,7 +6608,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by faer_core::mat::from_row_major_slice"]
+        #[deprecated = "replaced by `faer_core::mat::from_row_major_slice`"]
         pub fn from_row_major_slice(
             slice: GroupFor<E, &'a [E::Unit]>,
             nrows: usize,
@@ -6619,7 +6619,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by faer_core::mat::from_raw_parts"]
+        #[deprecated = "replaced by `faer_core::mat::from_raw_parts`"]
         pub unsafe fn from_raw_parts(
             ptr: GroupFor<E, *const E::Unit>,
             nrows: usize,
@@ -6722,8 +6722,7 @@ const __MAT_IMPL: () = {
         #[inline(always)]
         #[track_caller]
         pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
-            debug_assert!(row < self.nrows());
-            debug_assert!(col < self.ncols());
+            debug_assert!(all(row < self.nrows(), col < self.ncols()));
             self.unchecked_ptr_at(row, col)
         }
 
@@ -6741,8 +6740,7 @@ const __MAT_IMPL: () = {
         #[inline(always)]
         #[track_caller]
         pub unsafe fn split_at_unchecked(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
-            debug_assert!(row <= self.nrows());
-            debug_assert!(col <= self.ncols());
+            debug_assert!(all(row <= self.nrows(), col <= self.ncols()));
 
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
@@ -6785,8 +6783,7 @@ const __MAT_IMPL: () = {
         #[inline(always)]
         #[track_caller]
         pub fn split_at(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
-            assert!(row <= self.nrows());
-            assert!(col <= self.ncols());
+            assert!(all(row <= self.nrows(), col <= self.ncols()));
             unsafe { self.split_at_unchecked(row, col) }
         }
 
@@ -7141,10 +7138,11 @@ const __MAT_IMPL: () = {
             nrows: usize,
             ncols: usize,
         ) -> Self {
-            debug_assert!(row_start <= self.nrows());
-            debug_assert!(col_start <= self.ncols());
-            debug_assert!(nrows <= self.nrows() - row_start);
-            debug_assert!(ncols <= self.ncols() - col_start);
+            debug_assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
+            debug_assert!(all(
+                nrows <= self.nrows() - row_start,
+                ncols <= self.ncols() - col_start,
+            ));
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
 
@@ -7195,10 +7193,11 @@ const __MAT_IMPL: () = {
             nrows: usize,
             ncols: usize,
         ) -> Self {
-            assert!(row_start <= self.nrows());
-            assert!(col_start <= self.ncols());
-            assert!(nrows <= self.nrows() - row_start);
-            assert!(ncols <= self.ncols() - col_start);
+            assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
+            assert!(all(
+                nrows <= self.nrows() - row_start,
+                ncols <= self.ncols() - col_start,
+            ));
             unsafe { self.submatrix_unchecked(row_start, col_start, nrows, ncols) }
         }
 
@@ -7500,7 +7499,7 @@ const __MAT_IMPL: () = {
 
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatRef::col_chunks"]
+        #[deprecated = "replaced by `MatRef::col_chunks`"]
         pub fn into_col_chunks(
             self,
             chunk_size: usize,
@@ -7526,7 +7525,7 @@ const __MAT_IMPL: () = {
 
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatRef::row_chunks"]
+        #[deprecated = "replaced by `MatRef::row_chunks`"]
         pub fn into_row_chunks(
             self,
             chunk_size: usize,
@@ -7563,7 +7562,7 @@ const __MAT_IMPL: () = {
         #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatRef::par_col_chunks"]
+        #[deprecated = "replaced by `MatRef::par_col_chunks`"]
         pub fn into_par_col_chunks(
             self,
             chunk_size: usize,
@@ -7604,7 +7603,7 @@ const __MAT_IMPL: () = {
         #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatRef::par_row_chunks"]
+        #[deprecated = "replaced by `MatRef::par_row_chunks`"]
         pub fn into_par_row_chunks(
             self,
             chunk_size: usize,
@@ -7683,7 +7682,7 @@ const __MAT_IMPL: () = {
         }
 
         #[track_caller]
-        #[deprecated = "replaced by faer_core::mat::from_column_major_slice_mut"]
+        #[deprecated = "replaced by `faer_core::mat::from_column_major_slice_mut`"]
         pub fn from_column_major_slice(
             slice: GroupFor<E, &'a mut [E::Unit]>,
             nrows: usize,
@@ -7694,7 +7693,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by faer_core::mat::from_row_major_slice_mut"]
+        #[deprecated = "replaced by `faer_core::mat::from_row_major_slice_mut`"]
         pub fn from_row_major_slice(
             slice: GroupFor<E, &'a mut [E::Unit]>,
             nrows: usize,
@@ -7705,7 +7704,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by faer_core::mat::from_raw_parts_mut"]
+        #[deprecated = "replaced by `faer_core::mat::from_raw_parts_mut`"]
         pub unsafe fn from_raw_parts(
             ptr: GroupFor<E, *mut E::Unit>,
             nrows: usize,
@@ -7740,7 +7739,7 @@ const __MAT_IMPL: () = {
         }
 
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::as_ptr_mut"]
+        #[deprecated = "replaced by `MatMut::as_ptr_mut`"]
         pub fn as_ptr(self) -> GroupFor<E, *mut E::Unit> {
             self.as_ptr_mut()
         }
@@ -7770,7 +7769,7 @@ const __MAT_IMPL: () = {
         }
 
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::ptr_at_mut"]
+        #[deprecated = "replaced by `MatMut::ptr_at_mut`"]
         pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
             self.ptr_at_mut(row, col)
         }
@@ -7802,14 +7801,13 @@ const __MAT_IMPL: () = {
             row: usize,
             col: usize,
         ) -> GroupFor<E, *mut E::Unit> {
-            debug_assert!(row < self.nrows());
-            debug_assert!(col < self.ncols());
+            debug_assert!(all(row < self.nrows(), col < self.ncols()));
             self.ptr_at_mut_unchecked(row, col)
         }
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::ptr_inbounds_at_mut"]
+        #[deprecated = "replaced by `MatMut::ptr_inbounds_at_mut`"]
         pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
             self.ptr_inbounds_at_mut(row, col)
         }
@@ -7929,14 +7927,14 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::split_at_mut"]
+        #[deprecated = "replaced by `MatMut::split_at_mut`"]
         pub fn split_at(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
             self.split_at_mut(row, col)
         }
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::split_at_row_mut"]
+        #[deprecated = "replaced by `MatMut::split_at_row_mut`"]
         pub fn split_at_row(self, row: usize) -> (Self, Self) {
             let (top, bot) = self.into_const().split_at_row(row);
             unsafe { (top.const_cast(), bot.const_cast()) }
@@ -7944,7 +7942,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::split_at_col_mut"]
+        #[deprecated = "replaced by `MatMut::split_at_col_mut`"]
         pub fn split_at_col(self, col: usize) -> (Self, Self) {
             let (left, right) = self.into_const().split_at_col(col);
             unsafe { (left.const_cast(), right.const_cast()) }
@@ -7976,7 +7974,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::get_mut_unchecked"]
+        #[deprecated = "replaced by `MatMut::get_mut_unchecked`"]
         pub unsafe fn get_unchecked<RowRange, ColRange>(
             self,
             row: RowRange,
@@ -8014,7 +8012,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::get_mut"]
+        #[deprecated = "replaced by `MatMut::get_mut`"]
         pub fn get<RowRange, ColRange>(
             self,
             row: RowRange,
@@ -8077,8 +8075,7 @@ const __MAT_IMPL: () = {
         #[inline(always)]
         #[track_caller]
         pub fn write(&mut self, row: usize, col: usize, value: E) {
-            assert!(row < self.nrows());
-            assert!(col < self.ncols());
+            assert!(all(row < self.nrows(), col < self.ncols()));
             unsafe { self.write_unchecked(row, col, value) };
         }
 
@@ -8230,7 +8227,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::transpose_mut"]
+        #[deprecated = "replaced by `MatMut::transpose_mut`"]
         pub fn transpose(self) -> Self {
             self.transpose_mut()
         }
@@ -8247,7 +8244,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::conjugate_mut"]
+        #[deprecated = "replaced by `MatMut::conjugate_mut`"]
         pub fn conjugate(self) -> MatMut<'a, E::Conj>
         where
             E: Conjugate,
@@ -8267,7 +8264,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::adjoint_mut"]
+        #[deprecated = "replaced by `MatMut::adjoint_mut`"]
         pub fn adjoint(self) -> MatMut<'a, E::Conj>
         where
             E: Conjugate,
@@ -8289,7 +8286,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::canonicalize_mut"]
+        #[deprecated = "replaced by `MatMut::canonicalize_mut`"]
         pub fn canonicalize(self) -> (MatMut<'a, E::Canonical>, Conj)
         where
             E: Conjugate,
@@ -8318,7 +8315,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::reverse_rows_mut"]
+        #[deprecated = "replaced by `MatMut::reverse_rows_mut`"]
         pub fn reverse_rows(self) -> Self {
             self.reverse_rows_mut()
         }
@@ -8344,7 +8341,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::reverse_cols_mut"]
+        #[deprecated = "replaced by `MatMut::reverse_cols_mut`"]
         pub fn reverse_cols(self) -> Self {
             unsafe { self.into_const().reverse_cols().const_cast() }
         }
@@ -8370,7 +8367,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[must_use]
-        #[deprecated = "replaced by MatMut::reverse_rows_and_cols_mut"]
+        #[deprecated = "replaced by `MatMut::reverse_rows_and_cols_mut`"]
         pub fn reverse_rows_and_cols(self) -> Self {
             unsafe { self.into_const().reverse_rows_and_cols().const_cast() }
         }
@@ -8420,7 +8417,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::submatrix_mut"]
+        #[deprecated = "replaced by `MatMut::submatrix_mut`"]
         pub fn submatrix(
             self,
             row_start: usize,
@@ -8464,7 +8461,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::subrows_mut"]
+        #[deprecated = "replaced by `MatMut::subrows_mut`"]
         pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
             self.subrows_mut(row_start, nrows)
         }
@@ -8502,7 +8499,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::subcols_mut"]
+        #[deprecated = "replaced by `MatMut::subcols_mut`"]
         pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
             self.subcols_mut(col_start, ncols)
         }
@@ -8520,7 +8517,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::row_mut"]
+        #[deprecated = "replaced by `MatMut::row_mut`"]
         pub fn row(self, row_idx: usize) -> RowMut<'a, E> {
             self.row_mut(row_idx)
         }
@@ -8538,7 +8535,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::col_mut"]
+        #[deprecated = "replaced by `MatMut::col_mut`"]
         pub fn col(self, col_idx: usize) -> ColMut<'a, E> {
             self.col_mut(col_idx)
         }
@@ -8558,7 +8555,7 @@ const __MAT_IMPL: () = {
 
         #[track_caller]
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::column_vector_as_diagonal_mut"]
+        #[deprecated = "replaced by `MatMut::column_vector_as_diagonal_mut`"]
         pub fn column_vector_as_diagonal(self) -> Matrix<DiagMut<'a, E>> {
             self.column_vector_as_diagonal_mut()
         }
@@ -8582,7 +8579,7 @@ const __MAT_IMPL: () = {
         }
 
         #[inline(always)]
-        #[deprecated = "replaced by MatMut::diagonal_mut"]
+        #[deprecated = "replaced by `MatMut::diagonal_mut`"]
         pub fn diagonal(self) -> Matrix<DiagMut<'a, E>> {
             self.diagonal_mut()
         }
@@ -8661,7 +8658,7 @@ const __MAT_IMPL: () = {
 
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::col_chunks_mut"]
+        #[deprecated = "replaced by `MatMut::col_chunks_mut`"]
         pub fn into_col_chunks(
             self,
             chunk_size: usize,
@@ -8687,7 +8684,7 @@ const __MAT_IMPL: () = {
 
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::row_chunks_mut"]
+        #[deprecated = "replaced by `MatMut::row_chunks_mut`"]
         pub fn into_row_chunks(
             self,
             chunk_size: usize,
@@ -8720,7 +8717,7 @@ const __MAT_IMPL: () = {
         #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::par_col_chunks_mut"]
+        #[deprecated = "replaced by `MatMut::par_col_chunks_mut`"]
         pub fn into_par_col_chunks(
             self,
             chunk_size: usize,
@@ -8753,7 +8750,7 @@ const __MAT_IMPL: () = {
         #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
         #[inline]
         #[track_caller]
-        #[deprecated = "replaced by MatMut::par_row_chunks_mut"]
+        #[deprecated = "replaced by `MatMut::par_row_chunks_mut`"]
         pub fn into_par_row_chunks(
             self,
             chunk_size: usize,
@@ -10361,8 +10358,7 @@ impl<E: Entity> Mat<E> {
         col_start: usize,
         col_end: usize,
     ) {
-        debug_assert!(row_start <= row_end);
-        debug_assert!(col_start <= col_end);
+        debug_assert!(all(row_start <= row_end, col_start <= col_end));
 
         let ptr = self.as_ptr_mut();
 
@@ -10495,7 +10491,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    #[deprecated = "replaced by Mat::col_as_slice"]
+    #[deprecated = "replaced by `Mat::col_as_slice`"]
     pub fn col_ref(&self, col: usize) -> GroupFor<E, &[E::Unit]> {
         self.col_as_slice(col)
     }
@@ -10503,7 +10499,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a mutable reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    #[deprecated = "replaced by Mat::col_as_slice_mut"]
+    #[deprecated = "replaced by `Mat::col_as_slice_mut`"]
     pub fn col_mut(&mut self, col: usize) -> GroupFor<E, &mut [E::Unit]> {
         self.col_as_slice_mut(col)
     }
@@ -11285,11 +11281,11 @@ impl<'a, FromE: Entity, ToE: Entity> Coerce<MatMut<'a, ToE>> for MatMut<'a, From
 #[macro_export]
 macro_rules! zipped {
     ($head: expr $(,)?) => {
-        $crate::zip::LastEq($head)
+        $crate::zip::LastEq($crate::zip::ViewMut::view_mut(&mut { $head }))
     };
 
     ($head: expr, $($tail: expr),* $(,)?) => {
-        $crate::zip::ZipEq::new($head, $crate::zipped!($($tail,)*))
+        $crate::zip::ZipEq::new($crate::zip::ViewMut::view_mut(&mut { $head }), $crate::zipped!($($tail,)*))
     };
 }
 
@@ -11459,8 +11455,10 @@ pub mod constrained {
             #[track_caller]
             pub fn new(perm: crate::permutation::PermutationRef<'a, I, E>, size: Size<'n>) -> Self {
                 let (fwd, inv) = perm.into_arrays();
-                assert!(fwd.len() == size.into_inner());
-                assert!(inv.len() == size.into_inner());
+                assert!(all(
+                    fwd.len() == size.into_inner(),
+                    inv.len() == size.into_inner(),
+                ));
                 Self(Branded {
                     __marker: PhantomData,
                     inner: perm,
@@ -11540,7 +11538,10 @@ pub mod constrained {
                 nrows: Size<'nrows>,
                 ncols: Size<'ncols>,
             ) -> Self {
-                assert!((inner.nrows(), inner.ncols()) == (nrows.into_inner(), ncols.into_inner()));
+                assert!(all(
+                    inner.nrows() == nrows.into_inner(),
+                    inner.ncols() == ncols.into_inner(),
+                ));
                 Self(Branded {
                     __marker: PhantomData,
                     inner: Branded {
@@ -11607,7 +11608,10 @@ pub mod constrained {
                 nrows: Size<'nrows>,
                 ncols: Size<'ncols>,
             ) -> Self {
-                assert!((inner.nrows(), inner.ncols()) == (nrows.into_inner(), ncols.into_inner()));
+                assert!(all(
+                    inner.nrows() == nrows.into_inner(),
+                    inner.ncols() == ncols.into_inner(),
+                ));
                 Self {
                     symbolic: SymbolicSparseColMatRef::new(inner.symbolic(), nrows, ncols),
                     values: SliceGroup::new(inner.values()),
@@ -12153,7 +12157,10 @@ pub mod constrained {
         #[inline]
         #[track_caller]
         pub fn new(inner: super::MatRef<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
-            assert!((inner.nrows(), inner.ncols()) == (nrows.into_inner(), ncols.into_inner()));
+            assert!(all(
+                inner.nrows() == nrows.into_inner(),
+                inner.ncols() == ncols.into_inner(),
+            ));
             Self(Branded {
                 __marker: PhantomData,
                 inner: Branded {
@@ -12194,7 +12201,10 @@ pub mod constrained {
         #[inline]
         #[track_caller]
         pub fn new(inner: super::MatMut<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
-            assert!((inner.nrows(), inner.ncols()) == (nrows.into_inner(), ncols.into_inner()));
+            assert!(all(
+                inner.nrows() == nrows.into_inner(),
+                inner.ncols() == ncols.into_inner(),
+            ));
             Self(Branded {
                 __marker: PhantomData,
                 inner: Branded {
@@ -12876,6 +12886,7 @@ fn norm_max<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
     }
 }
 
+/// Matrix view creation module.
 pub mod mat {
     use super::*;
 
@@ -13211,6 +13222,7 @@ pub mod mat {
     }
 }
 
+/// Column view creation module.
 pub mod col {
     use super::*;
 
@@ -13303,6 +13315,7 @@ pub mod col {
     }
 }
 
+/// Row view creation module.
 pub mod row {
     use super::*;
 
@@ -13894,6 +13907,290 @@ pub mod zip {
     /// Read-write view over a single matrix element.
     pub struct ReadWrite<'a, E: Entity> {
         ptr: GroupFor<E, &'a mut MaybeUninit<E::Unit>>,
+    }
+
+    pub trait ViewMut {
+        type Target<'a>
+        where
+            Self: 'a;
+
+        fn view_mut(&mut self) -> Self::Target<'_>;
+    }
+
+    impl<E: Entity> ViewMut for Row<E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            self.as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &Row<E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut Row<E> {
+        type Target<'a> = RowMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_mut()
+        }
+    }
+
+    impl<E: Entity> ViewMut for RowRef<'_, E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            *self
+        }
+    }
+    impl<E: Entity> ViewMut for RowMut<'_, E> {
+        type Target<'a> = RowMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut RowRef<'_, E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &mut RowMut<'_, E> {
+        type Target<'a> = RowMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &RowRef<'_, E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &RowMut<'_, E> {
+        type Target<'a> = RowRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb()
+        }
+    }
+
+    impl<E: Entity> ViewMut for Col<E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            self.as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &Col<E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut Col<E> {
+        type Target<'a> = ColMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_mut()
+        }
+    }
+
+    impl<E: Entity> ViewMut for ColRef<'_, E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            *self
+        }
+    }
+    impl<E: Entity> ViewMut for ColMut<'_, E> {
+        type Target<'a> = ColMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut ColRef<'_, E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &mut ColMut<'_, E> {
+        type Target<'a> = ColMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &ColRef<'_, E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &ColMut<'_, E> {
+        type Target<'a> = ColRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb()
+        }
+    }
+
+    impl<E: Entity> ViewMut for Mat<E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            self.as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &Mat<E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_ref()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut Mat<E> {
+        type Target<'a> = MatMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).as_mut()
+        }
+    }
+
+    impl<E: Entity> ViewMut for MatRef<'_, E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            *self
+        }
+    }
+    impl<E: Entity> ViewMut for MatMut<'_, E> {
+        type Target<'a> = MatMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (*self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &mut MatRef<'_, E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &mut MatMut<'_, E> {
+        type Target<'a> = MatMut<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb_mut()
+        }
+    }
+    impl<E: Entity> ViewMut for &MatRef<'_, E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            **self
+        }
+    }
+    impl<E: Entity> ViewMut for &MatMut<'_, E> {
+        type Target<'a> = MatRef<'a, E>
+        where
+            Self: 'a;
+
+        #[inline]
+        fn view_mut(&mut self) -> Self::Target<'_> {
+            (**self).rb()
+        }
     }
 
     impl<E: SimpleEntity> core::ops::Deref for Read<'_, E> {
@@ -15124,8 +15421,7 @@ pub mod zip {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::{unzipped, zipped, ComplexField, Mat};
-        use assert2::assert;
+        use crate::{assert, unzipped, zipped, ComplexField, Mat};
 
         #[test]
         fn test_zip() {
@@ -15241,7 +15537,7 @@ pub mod zip {
                             src = src.reverse_cols();
                         }
 
-                        zipped!(dst.rb_mut(), src)
+                        zipped!(&mut dst, src)
                             .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
 
                         assert!(dst.rb() == target.as_ref());

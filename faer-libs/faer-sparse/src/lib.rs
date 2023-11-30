@@ -476,7 +476,6 @@ pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
 ) -> SparseColMatRef<'out, I, E> {
     ghost::with_size(A.nrows(), |N| {
         assert!(A.nrows() == A.ncols());
-        assert!(A.nrows() == A.ncols());
         ghost_permute_hermitian(
             SliceGroupMut::new(new_values),
             new_col_ptrs,

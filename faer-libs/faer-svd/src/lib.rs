@@ -723,8 +723,7 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     params: SvdParams,
 ) {
     let size = Ord::min(matrix.nrows(), matrix.ncols());
-    assert!(s.nrows() == size);
-    assert!(s.ncols() == 1);
+    assert!(all(s.nrows() == size, s.ncols() == 1));
     if let Some(u) = u.rb() {
         assert!(u.nrows() == matrix.nrows());
         assert!(u.ncols() == matrix.nrows() || u.ncols() == size);

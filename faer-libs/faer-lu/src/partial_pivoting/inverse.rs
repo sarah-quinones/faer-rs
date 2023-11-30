@@ -100,9 +100,12 @@ pub fn invert<I: Index, E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    assert!(lu_factors.ncols() == lu_factors.nrows());
-    assert!(row_perm.len() == n);
-    assert!((dst.nrows(), dst.ncols()) == (n, n));
+    assert!(all(
+        lu_factors.ncols() == lu_factors.nrows(),
+        row_perm.len() == n,
+        dst.nrows() == n,
+        dst.ncols() == n,
+    ));
     invert_impl(dst, Some(lu_factors), row_perm, parallelism, stack)
 }
 
@@ -123,8 +126,10 @@ pub fn invert_in_place<I: Index, E: ComplexField>(
     stack: PodStack<'_>,
 ) {
     let n = lu_factors.nrows();
-    assert!(lu_factors.ncols() == n);
-    assert!(row_perm.len() == n);
+    assert!(all(
+        lu_factors.nrows() == lu_factors.ncols(),
+        row_perm.len() == n,
+    ));
     invert_impl(lu_factors, None, row_perm, parallelism, stack)
 }
 

@@ -26,10 +26,13 @@ pub fn invert<E: ComplexField>(
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    assert!(qr_factors.nrows() == qr_factors.ncols());
-    assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
-    assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
-    assert!(householder_factor.nrows() > 0);
+    assert!(all(
+        qr_factors.nrows() == qr_factors.ncols(),
+        dst.ncols() == qr_factors.ncols(),
+        dst.nrows() == qr_factors.nrows(),
+        householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()),
+        householder_factor.nrows() > 0
+    ));
 
     let mut dst = dst;
 
