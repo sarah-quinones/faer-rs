@@ -2428,7 +2428,7 @@ pub mod sparse {
                 symbolic: SymbolicCholesky<I>,
                 mat: SparseColMatRef<'_, I, E>,
                 side: Side,
-            ) -> Result<Self, CholeskyError> {
+            ) -> Result<Self, sparse::CholeskyError> {
                 let len_values = symbolic.inner.len_values();
                 let mut values = VecGroup::new();
                 values
@@ -2735,7 +2735,7 @@ pub mod sparse {
         }
 
         /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
-        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, CholeskyError>;
+        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError>;
 
         /// Returns the LU decomposition of `self` with partial (row) pivoting.
         fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError>;
@@ -2784,7 +2784,7 @@ pub mod sparse {
 
         /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
         #[track_caller]
-        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, CholeskyError> {
+        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
             solvers::Cholesky::try_new_with_symbolic(
                 solvers::SymbolicCholesky::try_new(self.symbolic(), side)?,
                 *self,
