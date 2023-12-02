@@ -23,7 +23,7 @@ reborrow = { workspace = true }
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
 
-dbgf = { version = "0.1.0", optional = true }
+dbgf = "0.1.1"
 
 num-complex = { workspace = true, default-features = false }
 
@@ -45,7 +45,6 @@ std = [
   "faer-svd/std",
   "faer-evd/std",
   "matrixcompare",
-  "dbgf",
 ]
 perf-warn = [
   "log",
@@ -85,7 +84,6 @@ rand = "0.8.5"
 nalgebra = "0.32"
 ndarray = "0.15"
 polars = { version = "0.34", features = ["lazy", "parquet"] }
-dbgf = "0.1.0"
 
 [[example]]
 name = "conversions"
