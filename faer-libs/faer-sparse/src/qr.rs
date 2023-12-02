@@ -1812,14 +1812,14 @@ pub struct QrSymbolicParams<'a> {
 
 /// The inner factorization used for the symbolic QR, either simplicial or symbolic.
 #[derive(Debug)]
-pub enum SymbolicQrRaw<I: Index> {
+pub enum SymbolicQrRaw<I> {
     Simplicial(simplicial::SymbolicSimplicialQr<I>),
     Supernodal(supernodal::SymbolicSupernodalQr<I>),
 }
 
 /// The symbolic structure of a sparse QR decomposition.
 #[derive(Debug)]
-pub struct SymbolicQr<I: Index> {
+pub struct SymbolicQr<I> {
     raw: SymbolicQrRaw<I>,
     col_perm_fwd: alloc::vec::Vec<I>,
     col_perm_inv: alloc::vec::Vec<I>,

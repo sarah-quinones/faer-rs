@@ -4,6 +4,7 @@ use super::*;
 use crate::{
     assert,
     permutation::{Index, SignedIndex},
+    sparse,
 };
 
 pub struct Scalar {
@@ -17,6 +18,12 @@ pub struct DenseRow {
 }
 pub struct Dense {
     __private: (),
+}
+pub struct SparseColMat<I: Index> {
+    __private: PhantomData<I>,
+}
+pub struct SparseRowMat<I: Index> {
+    __private: PhantomData<I>,
 }
 pub struct Diag {
     __private: (),
@@ -56,6 +63,16 @@ impl MatrixKind for Dense {
     type Ref<'a, E: Entity> = MatRef<'a, E>;
     type Mut<'a, E: Entity> = MatMut<'a, E>;
     type Own<E: Entity> = Mat<E>;
+}
+impl<I: Index> MatrixKind for SparseColMat<I> {
+    type Ref<'a, E: Entity> = sparse::SparseColMatRef<'a, I, E>;
+    type Mut<'a, E: Entity> = ();
+    type Own<E: Entity> = ();
+}
+impl<I: Index> MatrixKind for SparseRowMat<I> {
+    type Ref<'a, E: Entity> = sparse::SparseRowMatRef<'a, I, E>;
+    type Mut<'a, E: Entity> = ();
+    type Own<E: Entity> = ();
 }
 impl MatrixKind for Scale {
     type Ref<'a, E: Entity> = &'a MatScale<E>;
@@ -862,6 +879,200 @@ mod __matmul {
                 out.as_mut(),
                 lhs.as_2d(),
                 rhs.as_2d(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+
+    impl<I: Index> MatMul<SparseColMat<I>> for Dense {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
+            sparse::mul::dense_sparse_matmul(
+                out.as_mut(),
+                lhs,
+                rhs,
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<SparseColMat<I>> for DenseRow {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Row::zeros(rhs.ncols());
+            sparse::mul::dense_sparse_matmul(
+                out.as_mut().as_2d_mut(),
+                lhs.as_2d(),
+                rhs,
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<SparseRowMat<I>> for Dense {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
+            sparse::mul::sparse_dense_matmul(
+                out.as_mut().transpose_mut(),
+                rhs.transpose(),
+                lhs.transpose(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<SparseRowMat<I>> for DenseRow {
+        type Output = DenseRow;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Row::zeros(rhs.ncols());
+            sparse::mul::sparse_dense_matmul(
+                out.as_mut().transpose_mut().as_2d_mut(),
+                rhs.transpose(),
+                lhs.transpose().as_2d(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+
+    impl<I: Index> MatMul<Dense> for SparseColMat<I> {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, Dense>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
+            sparse::mul::sparse_dense_matmul(
+                out.as_mut(),
+                lhs,
+                rhs,
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<DenseCol> for SparseColMat<I> {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Col::zeros(lhs.nrows());
+            sparse::mul::sparse_dense_matmul(
+                out.as_mut().as_2d_mut(),
+                lhs,
+                rhs.as_2d(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<Dense> for SparseRowMat<I> {
+        type Output = Dense;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, Dense>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
+            sparse::mul::dense_sparse_matmul(
+                out.as_mut().transpose_mut(),
+                rhs.transpose(),
+                lhs.transpose(),
+                None,
+                E::faer_one(),
+                get_global_parallelism(),
+            );
+            out
+        }
+    }
+    impl<I: Index> MatMul<DenseCol> for SparseRowMat<I> {
+        type Output = DenseCol;
+
+        #[track_caller]
+        fn mat_mul<
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            lhs: KindRef<'_, LhsE, Self>,
+            rhs: KindRef<'_, RhsE, DenseCol>,
+        ) -> KindOwn<E, Self::Output> {
+            let mut out = Col::zeros(lhs.nrows());
+            sparse::mul::dense_sparse_matmul(
+                out.as_mut().transpose_mut().as_2d_mut(),
+                rhs.transpose().as_2d(),
+                lhs.transpose(),
                 None,
                 E::faer_one(),
                 get_global_parallelism(),

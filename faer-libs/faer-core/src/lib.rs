@@ -2174,11 +2174,222 @@ pub mod inner {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct Scale<E: Entity>(pub E);
+
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct SparseColMatRefInner<'a, I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
+        pub(crate) values: SliceGroup<'a, E>,
+    }
+
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct SparseRowMatRefInner<'a, I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
+        pub(crate) values: SliceGroup<'a, E>,
+    }
+
+    impl<I, E: Entity> Copy for SparseRowMatRefInner<'_, I, E> {}
+    impl<I, E: Entity> Clone for SparseRowMatRefInner<'_, I, E> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<I, E: Entity> Copy for SparseColMatRefInner<'_, I, E> {}
+    impl<I, E: Entity> Clone for SparseColMatRefInner<'_, I, E> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
 }
 
 /// Advanced: Helper types for working with [`GroupFor`] in generic contexts.
 pub mod group_helpers {
     pub use pulp::{Read, Write};
+
+    pub struct VecGroup<E: Entity, T = UnitFor<E>> {
+        inner: GroupFor<E, alloc::vec::Vec<T>>,
+    }
+
+    impl<E: Entity, T: Clone> Clone for VecGroup<E, T> {
+        #[inline]
+        fn clone(&self) -> Self {
+            Self {
+                inner: E::faer_map(E::faer_as_ref(&self.inner), |v| (*v).clone()),
+            }
+        }
+    }
+
+    impl<E: Entity, T: Debug> Debug for VecGroup<E, T> {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            self.as_slice().fmt(f)
+        }
+    }
+
+    unsafe impl<E: Entity, T: Sync> Sync for VecGroup<E, T> {}
+    unsafe impl<E: Entity, T: Send> Send for VecGroup<E, T> {}
+
+    impl<E: Entity, T> VecGroup<E, T> {
+        #[inline]
+        pub fn from_inner(inner: GroupFor<E, alloc::vec::Vec<T>>) -> Self {
+            Self { inner }
+        }
+
+        #[inline]
+        pub fn as_inner_ref(&self) -> GroupFor<E, &alloc::vec::Vec<T>> {
+            E::faer_as_ref(&self.inner)
+        }
+
+        #[inline]
+        pub fn as_inner_mut(&mut self) -> GroupFor<E, &mut alloc::vec::Vec<T>> {
+            E::faer_as_mut(&mut self.inner)
+        }
+
+        #[inline]
+        pub fn as_slice(&self) -> SliceGroup<'_, E, T> {
+            SliceGroup::new(E::faer_map(
+                E::faer_as_ref(&self.inner),
+                #[inline]
+                |slice| &**slice,
+            ))
+        }
+
+        #[inline]
+        pub fn as_slice_mut(&mut self) -> SliceGroupMut<'_, E, T> {
+            SliceGroupMut::new(E::faer_map(
+                E::faer_as_mut(&mut self.inner),
+                #[inline]
+                |slice| &mut **slice,
+            ))
+        }
+
+        #[inline]
+        pub fn new() -> Self {
+            Self {
+                inner: E::faer_map(E::UNIT, |()| alloc::vec::Vec::new()),
+            }
+        }
+
+        #[inline]
+        pub fn len(&self) -> usize {
+            let mut len = usize::MAX;
+            E::faer_map(
+                E::faer_as_ref(&self.inner),
+                #[inline(always)]
+                |slice| len = Ord::min(len, slice.len()),
+            );
+            len
+        }
+
+        #[inline]
+        pub fn capacity(&self) -> usize {
+            let mut cap = usize::MAX;
+            E::faer_map(
+                E::faer_as_ref(&self.inner),
+                #[inline(always)]
+                |slice| cap = Ord::min(cap, slice.capacity()),
+            );
+            cap
+        }
+
+        pub fn reserve(&mut self, additional: usize) {
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.reserve(additional));
+        }
+
+        pub fn reserve_exact(&mut self, additional: usize) {
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| {
+                v.reserve_exact(additional)
+            });
+        }
+
+        pub fn try_reserve(
+            &mut self,
+            additional: usize,
+        ) -> Result<(), alloc::collections::TryReserveError> {
+            let mut result = Ok(());
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| match &result {
+                Ok(()) => result = v.try_reserve(additional),
+                Err(_) => {}
+            });
+            result
+        }
+
+        pub fn try_reserve_exact(
+            &mut self,
+            additional: usize,
+        ) -> Result<(), alloc::collections::TryReserveError> {
+            let mut result = Ok(());
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| match &result {
+                Ok(()) => result = v.try_reserve_exact(additional),
+                Err(_) => {}
+            });
+            result
+        }
+
+        pub fn truncate(&mut self, len: usize) {
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.truncate(len));
+        }
+
+        pub fn clear(&mut self) {
+            E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.clear());
+        }
+
+        pub fn resize(&mut self, new_len: usize, value: GroupFor<E, T>)
+        where
+            T: Clone,
+        {
+            E::faer_map(
+                E::faer_zip(E::faer_as_mut(&mut self.inner), value),
+                |(v, value)| v.resize(new_len, value),
+            );
+        }
+
+        pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> GroupFor<E, T>) {
+            let len = self.len();
+            let mut f = f;
+            if new_len <= len {
+                self.truncate(new_len);
+            } else {
+                self.reserve(new_len - len);
+                for _ in len..new_len {
+                    self.push(f())
+                }
+            }
+        }
+
+        #[inline]
+        pub fn push(&mut self, value: GroupFor<E, T>) {
+            E::faer_map(
+                E::faer_zip(E::faer_as_mut(&mut self.inner), value),
+                #[inline]
+                |(v, value)| v.push(value),
+            );
+        }
+
+        #[inline]
+        pub fn pop(&mut self) -> Option<GroupFor<E, T>> {
+            if self.len() >= 1 {
+                Some(E::faer_map(
+                    E::faer_as_mut(&mut self.inner),
+                    #[inline]
+                    |v| v.pop().unwrap(),
+                ))
+            } else {
+                None
+            }
+        }
+
+        #[inline]
+        pub fn remove(&mut self, index: usize) -> GroupFor<E, T> {
+            E::faer_map(
+                E::faer_as_mut(&mut self.inner),
+                #[inline]
+                |v| v.remove(index),
+            )
+        }
+    }
 
     #[derive(Copy, Clone, Debug)]
     pub struct YesConj;
@@ -2290,9 +2501,21 @@ pub mod group_helpers {
 
             unsafe {
                 (
-                    Prefix(transmute_unchecked(head), PhantomData),
+                    Prefix(
+                        transmute_unchecked::<
+                            GroupCopyFor<E, E::PrefixUnit<'_, S>>,
+                            GroupCopyFor<E, E::PrefixUnit<'static, S>>,
+                        >(into_copy::<E, _>(head)),
+                        PhantomData,
+                    ),
                     SliceGroup::new(body),
-                    Suffix(transmute_unchecked(tail), PhantomData),
+                    Suffix(
+                        transmute_unchecked::<
+                            GroupCopyFor<E, E::SuffixUnit<'_, S>>,
+                            GroupCopyFor<E, E::SuffixUnit<'static, S>>,
+                        >(into_copy::<E, _>(tail)),
+                        PhantomData,
+                    ),
                 )
             }
         }
@@ -2316,9 +2539,25 @@ pub mod group_helpers {
             let (head, tail) = E::faer_unzip(head_tail);
 
             (
-                PrefixMut(unsafe { transmute_unchecked(head) }, PhantomData),
+                PrefixMut(
+                    unsafe {
+                        transmute_unchecked::<
+                            GroupFor<E, E::PrefixMutUnit<'_, S>>,
+                            GroupFor<E, E::PrefixMutUnit<'static, S>>,
+                        >(head)
+                    },
+                    PhantomData,
+                ),
                 SliceGroupMut::new(body),
-                SuffixMut(unsafe { transmute_unchecked(tail) }, PhantomData),
+                SuffixMut(
+                    unsafe {
+                        transmute_unchecked::<
+                            GroupFor<E, E::SuffixMutUnit<'_, S>>,
+                            GroupFor<E, E::SuffixMutUnit<'static, S>>,
+                        >(tail)
+                    },
+                    PhantomData,
+                ),
             )
         }
 
@@ -2544,12 +2783,12 @@ pub mod group_helpers {
         }
     }
 
-    pub struct SliceGroup<'a, E: Entity, T: 'static = <E as Entity>::Unit>(
-        GroupCopyFor<E, &'static [T]>,
+    pub struct SliceGroup<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
+        GroupCopyFor<E, *const [T]>,
         PhantomData<&'a ()>,
     );
-    pub struct SliceGroupMut<'a, E: Entity, T: 'static = <E as Entity>::Unit>(
-        GroupFor<E, &'static mut [T]>,
+    pub struct SliceGroupMut<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
+        GroupFor<E, *mut [T]>,
         PhantomData<&'a mut ()>,
     );
 
@@ -2655,7 +2894,13 @@ pub mod group_helpers {
         fn rb(&'short self) -> Self::Target {
             unsafe {
                 Prefix(
-                    transmute_unchecked(E::faer_map(E::faer_as_ref(&self.0), |x| (*x).rb())),
+                    into_copy::<E, _>(transmute_unchecked::<
+                        GroupFor<E, <E::PrefixMutUnit<'static, S> as Reborrow<'_>>::Target>,
+                        GroupFor<E, E::PrefixUnit<'static, S>>,
+                    >(E::faer_map(
+                        E::faer_as_ref(&self.0),
+                        |x| (*x).rb(),
+                    ))),
                     PhantomData,
                 )
             }
@@ -2667,7 +2912,10 @@ pub mod group_helpers {
         fn rb_mut(&'short mut self) -> Self::Target {
             unsafe {
                 PrefixMut(
-                    transmute_unchecked(E::faer_map(E::faer_as_mut(&mut self.0), |x| {
+                    transmute_unchecked::<
+                        GroupFor<E, <E::PrefixMutUnit<'static, S> as ReborrowMut<'_>>::Target>,
+                        GroupFor<E, E::PrefixMutUnit<'static, S>>,
+                    >(E::faer_map(E::faer_as_mut(&mut self.0), |x| {
                         (*x).rb_mut()
                     })),
                     PhantomData,
@@ -2681,7 +2929,13 @@ pub mod group_helpers {
         fn rb(&'short self) -> Self::Target {
             unsafe {
                 Suffix(
-                    transmute_unchecked(E::faer_map(E::faer_as_ref(&self.0), |x| (*x).rb())),
+                    into_copy::<E, _>(transmute_unchecked::<
+                        GroupFor<E, <E::SuffixMutUnit<'static, S> as Reborrow<'_>>::Target>,
+                        GroupFor<E, E::SuffixUnit<'static, S>>,
+                    >(E::faer_map(
+                        E::faer_as_ref(&self.0),
+                        |x| (*x).rb(),
+                    ))),
                     PhantomData,
                 )
             }
@@ -2693,7 +2947,10 @@ pub mod group_helpers {
         fn rb_mut(&'short mut self) -> Self::Target {
             unsafe {
                 SuffixMut(
-                    transmute_unchecked(E::faer_map(E::faer_as_mut(&mut self.0), |x| {
+                    transmute_unchecked::<
+                        GroupFor<E, <E::SuffixMutUnit<'static, S> as ReborrowMut<'_>>::Target>,
+                        GroupFor<E, E::SuffixMutUnit<'static, S>>,
+                    >(E::faer_map(E::faer_as_mut(&mut self.0), |x| {
                         (*x).rb_mut()
                     })),
                     PhantomData,
@@ -2746,51 +3003,55 @@ pub mod group_helpers {
         }
     }
 
-    pub struct RefGroup<'a, E: Entity, T: 'static = <E as Entity>::Unit>(
-        GroupCopyFor<E, &'static T>,
+    pub struct RefGroup<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
+        GroupCopyFor<E, *const T>,
         PhantomData<&'a ()>,
     );
-    pub struct RefGroupMut<'a, E: Entity, T: 'static = <E as Entity>::Unit>(
-        GroupFor<E, &'static mut T>,
+    pub struct RefGroupMut<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
+        GroupFor<E, *mut T>,
         PhantomData<&'a mut ()>,
     );
 
-    unsafe impl<E: Entity, T: Sync + 'static> Send for SliceGroup<'_, E, T> {}
-    unsafe impl<E: Entity, T: Sync + 'static> Sync for SliceGroup<'_, E, T> {}
-    unsafe impl<E: Entity, T: Send + 'static> Send for SliceGroupMut<'_, E, T> {}
-    unsafe impl<E: Entity, T: Sync + 'static> Sync for SliceGroupMut<'_, E, T> {}
+    unsafe impl<E: Entity, T: Sync> Send for SliceGroup<'_, E, T> {}
+    unsafe impl<E: Entity, T: Sync> Sync for SliceGroup<'_, E, T> {}
+    unsafe impl<E: Entity, T: Send> Send for SliceGroupMut<'_, E, T> {}
+    unsafe impl<E: Entity, T: Sync> Sync for SliceGroupMut<'_, E, T> {}
 
-    impl<E: Entity, T: 'static> Copy for SliceGroup<'_, E, T> {}
-    impl<E: Entity, T: 'static> Copy for RefGroup<'_, E, T> {}
-    impl<E: Entity, T: 'static> Clone for SliceGroup<'_, E, T> {
+    impl<E: Entity, T> Copy for SliceGroup<'_, E, T> {}
+    impl<E: Entity, T> Copy for RefGroup<'_, E, T> {}
+    impl<E: Entity, T> Clone for SliceGroup<'_, E, T> {
         #[inline]
         fn clone(&self) -> Self {
             *self
         }
     }
-    impl<E: Entity, T: 'static> Clone for RefGroup<'_, E, T> {
+    impl<E: Entity, T> Clone for RefGroup<'_, E, T> {
         #[inline]
         fn clone(&self) -> Self {
             *self
         }
     }
 
-    impl<'a, E: Entity, T: 'static> RefGroup<'a, E, T> {
+    impl<'a, E: Entity, T> RefGroup<'a, E, T> {
         #[inline(always)]
-        pub fn new(slice: GroupFor<E, &'a T>) -> Self {
+        pub fn new(reference: GroupFor<E, &'a T>) -> Self {
             Self(
-                unsafe {
-                    transmute_unchecked::<GroupFor<E, &'a T>, GroupCopyFor<E, &'static T>>(slice)
-                },
+                into_copy::<E, _>(E::faer_map(
+                    reference,
+                    #[inline(always)]
+                    |reference| reference as *const T,
+                )),
                 PhantomData,
             )
         }
 
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a T> {
-            unsafe {
-                transmute_unchecked::<GroupCopyFor<E, &'static T>, GroupFor<E, &'a T>>(self.0)
-            }
+            E::faer_map(
+                from_copy::<E, _>(self.0),
+                #[inline(always)]
+                |ptr| unsafe { &*ptr },
+            )
         }
 
         #[inline(always)]
@@ -2802,7 +3063,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'a, E: Entity, T: 'static, const N: usize> RefGroup<'a, E, [T; N]> {
+    impl<'a, E: Entity, T, const N: usize> RefGroup<'a, E, [T; N]> {
         #[inline(always)]
         pub fn unzip(self) -> [RefGroup<'a, E, T>; N] {
             unsafe {
@@ -2817,12 +3078,15 @@ pub mod group_helpers {
                 {
                     out.write(RefGroup::new(inp));
                 }
-                transmute_unchecked(out)
+                transmute_unchecked::<
+                    [core::mem::MaybeUninit<RefGroup<'a, E, T>>; N],
+                    [RefGroup<'a, E, T>; N],
+                >(out)
             }
         }
     }
 
-    impl<'a, E: Entity, T: 'static, const N: usize> RefGroupMut<'a, E, [T; N]> {
+    impl<'a, E: Entity, T, const N: usize> RefGroupMut<'a, E, [T; N]> {
         #[inline(always)]
         pub fn unzip(self) -> [RefGroupMut<'a, E, T>; N] {
             unsafe {
@@ -2837,29 +3101,34 @@ pub mod group_helpers {
                 {
                     out.write(RefGroupMut::new(inp));
                 }
-                transmute_unchecked(out)
+                transmute_unchecked::<
+                    [core::mem::MaybeUninit<RefGroupMut<'a, E, T>>; N],
+                    [RefGroupMut<'a, E, T>; N],
+                >(out)
             }
         }
     }
 
-    impl<'a, E: Entity, T: 'static> RefGroupMut<'a, E, T> {
+    impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
         #[inline(always)]
-        pub fn new(slice: GroupFor<E, &'a mut T>) -> Self {
+        pub fn new(reference: GroupFor<E, &'a mut T>) -> Self {
             Self(
-                unsafe {
-                    transmute_unchecked::<GroupFor<E, &'a mut T>, GroupFor<E, &'static mut T>>(
-                        slice,
-                    )
-                },
+                E::faer_map(
+                    reference,
+                    #[inline(always)]
+                    |reference| reference as *mut T,
+                ),
                 PhantomData,
             )
         }
 
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a mut T> {
-            unsafe {
-                transmute_unchecked::<GroupFor<E, &'static mut T>, GroupFor<E, &'a mut T>>(self.0)
-            }
+            E::faer_map(
+                self.0,
+                #[inline(always)]
+                |ptr| unsafe { &mut *ptr },
+            )
         }
 
         #[inline(always)]
@@ -2883,7 +3152,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'a, E: Entity, T: 'static> IntoConst for SliceGroup<'a, E, T> {
+    impl<'a, E: Entity, T> IntoConst for SliceGroup<'a, E, T> {
         type Target = SliceGroup<'a, E, T>;
 
         #[inline(always)]
@@ -2891,7 +3160,7 @@ pub mod group_helpers {
             self
         }
     }
-    impl<'a, E: Entity, T: 'static> IntoConst for SliceGroupMut<'a, E, T> {
+    impl<'a, E: Entity, T> IntoConst for SliceGroupMut<'a, E, T> {
         type Target = SliceGroup<'a, E, T>;
 
         #[inline(always)]
@@ -2904,7 +3173,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'a, E: Entity, T: 'static> IntoConst for RefGroup<'a, E, T> {
+    impl<'a, E: Entity, T> IntoConst for RefGroup<'a, E, T> {
         type Target = RefGroup<'a, E, T>;
 
         #[inline(always)]
@@ -2912,7 +3181,7 @@ pub mod group_helpers {
             self
         }
     }
-    impl<'a, E: Entity, T: 'static> IntoConst for RefGroupMut<'a, E, T> {
+    impl<'a, E: Entity, T> IntoConst for RefGroupMut<'a, E, T> {
         type Target = RefGroup<'a, E, T>;
 
         #[inline(always)]
@@ -2925,7 +3194,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> ReborrowMut<'short> for RefGroup<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for RefGroup<'a, E, T> {
         type Target = RefGroup<'short, E, T>;
 
         #[inline(always)]
@@ -2934,7 +3203,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> Reborrow<'short> for RefGroup<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> Reborrow<'short> for RefGroup<'a, E, T> {
         type Target = RefGroup<'short, E, T>;
 
         #[inline(always)]
@@ -2943,7 +3212,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> ReborrowMut<'short> for RefGroupMut<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for RefGroupMut<'a, E, T> {
         type Target = RefGroupMut<'short, E, T>;
 
         #[inline(always)]
@@ -2951,12 +3220,12 @@ pub mod group_helpers {
             RefGroupMut::new(E::faer_map(
                 E::faer_as_mut(&mut self.0),
                 #[inline(always)]
-                |this| &mut **this,
+                |this| unsafe { &mut **this },
             ))
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> Reborrow<'short> for RefGroupMut<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> Reborrow<'short> for RefGroupMut<'a, E, T> {
         type Target = RefGroup<'short, E, T>;
 
         #[inline(always)]
@@ -2964,20 +3233,23 @@ pub mod group_helpers {
             RefGroup::new(E::faer_map(
                 E::faer_as_ref(&self.0),
                 #[inline(always)]
-                |this| &**this,
+                |this| unsafe { &**this },
             ))
         }
     }
 
-    impl<'a, E: Entity, T: 'static> SliceGroup<'a, E, T> {
+    impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
         #[inline(always)]
         pub fn new(slice: GroupFor<E, &'a [T]>) -> Self {
-            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+            Self(
+                into_copy::<E, _>(E::faer_map(slice, |slice| slice as *const [T])),
+                PhantomData,
+            )
         }
 
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a [T]> {
-            unsafe { transmute_unchecked(self.0) }
+            unsafe { E::faer_map(from_copy::<E, _>(self.0), |ptr| &*ptr) }
         }
 
         #[inline(always)]
@@ -2989,15 +3261,15 @@ pub mod group_helpers {
         }
     }
 
-    impl<'a, E: Entity, T: 'static> SliceGroupMut<'a, E, T> {
+    impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
         #[inline(always)]
         pub fn new(slice: GroupFor<E, &'a mut [T]>) -> Self {
-            Self(unsafe { transmute_unchecked(slice) }, PhantomData)
+            Self(E::faer_map(slice, |slice| slice as *mut [T]), PhantomData)
         }
 
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a mut [T]> {
-            unsafe { transmute_unchecked(self.0) }
+            unsafe { E::faer_map(self.0, |ptr| &mut *ptr) }
         }
 
         #[inline(always)]
@@ -3009,7 +3281,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> ReborrowMut<'short> for SliceGroup<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for SliceGroup<'a, E, T> {
         type Target = SliceGroup<'short, E, T>;
 
         #[inline(always)]
@@ -3018,7 +3290,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> Reborrow<'short> for SliceGroup<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> Reborrow<'short> for SliceGroup<'a, E, T> {
         type Target = SliceGroup<'short, E, T>;
 
         #[inline(always)]
@@ -3027,7 +3299,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> ReborrowMut<'short> for SliceGroupMut<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for SliceGroupMut<'a, E, T> {
         type Target = SliceGroupMut<'short, E, T>;
 
         #[inline(always)]
@@ -3035,12 +3307,12 @@ pub mod group_helpers {
             SliceGroupMut::new(E::faer_map(
                 E::faer_as_mut(&mut self.0),
                 #[inline(always)]
-                |this| &mut **this,
+                |this| unsafe { &mut **this },
             ))
         }
     }
 
-    impl<'short, 'a, E: Entity, T: 'static> Reborrow<'short> for SliceGroupMut<'a, E, T> {
+    impl<'short, 'a, E: Entity, T> Reborrow<'short> for SliceGroupMut<'a, E, T> {
         type Target = SliceGroup<'short, E, T>;
 
         #[inline(always)]
@@ -3048,7 +3320,7 @@ pub mod group_helpers {
             SliceGroup::new(E::faer_map(
                 E::faer_as_ref(&self.0),
                 #[inline(always)]
-                |this| &**this,
+                |this| unsafe { &**this },
             ))
         }
     }
@@ -3095,7 +3367,7 @@ pub mod group_helpers {
             ))
         }
     }
-    impl<'a, E: Entity, T: 'static> SliceGroup<'a, E, T> {
+    impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
         #[inline(always)]
         #[track_caller]
         pub fn get(self, idx: usize) -> RefGroup<'a, E, T> {
@@ -3229,7 +3501,7 @@ pub mod group_helpers {
         }
     }
 
-    impl<'a, E: Entity, T: 'static> SliceGroupMut<'a, E, T> {
+    impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
         #[inline(always)]
         #[track_caller]
         pub fn get_mut(self, idx: usize) -> RefGroupMut<'a, E, T> {
@@ -3363,26 +3635,27 @@ pub mod group_helpers {
             self.rb().fmt(f)
         }
     }
-    impl<E: Entity, T: Debug + Copy> core::fmt::Debug for RefGroup<'_, E, T> {
+    impl<E: Entity, T: Debug> core::fmt::Debug for RefGroup<'_, E, T> {
         #[inline]
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             unsafe {
-                transmute_unchecked::<GroupCopyFor<E, T>, GroupDebugFor<E, T>>(self.get()).fmt(f)
+                transmute_unchecked::<GroupFor<E, &T>, GroupDebugFor<E, &T>>(self.into_inner())
+                    .fmt(f)
             }
         }
     }
-    impl<E: Entity, T: Debug + Copy> core::fmt::Debug for RefGroupMut<'_, E, T> {
+    impl<E: Entity, T: Debug> core::fmt::Debug for RefGroupMut<'_, E, T> {
         #[inline]
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             self.rb().fmt(f)
         }
     }
-    impl<E: Entity, T: Debug + Copy> core::fmt::Debug for SliceGroup<'_, E, T> {
+    impl<E: Entity, T: Debug> core::fmt::Debug for SliceGroup<'_, E, T> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             f.debug_list().entries(self.into_ref_iter()).finish()
         }
     }
-    impl<E: Entity, T: Debug + Copy> core::fmt::Debug for SliceGroupMut<'_, E, T> {
+    impl<E: Entity, T: Debug> core::fmt::Debug for SliceGroupMut<'_, E, T> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             self.rb().fmt(f)
         }
@@ -3446,9 +3719,9 @@ pub mod sparse {
     /// Requires:
     /// * `nrows <= I::Signed::MAX` (always checked)
     /// * `ncols <= I::Signed::MAX` (always checked)
-    /// * `col_ptrs` has length n (always checked)
+    /// * `col_ptrs` has length `ncols + 1` (always checked)
     /// * `col_ptrs` is non-decreasing
-    /// * `col_ptrs[0]..col_ptrs[n]` is a valid range in row_indices (always checked, assuming
+    /// * `col_ptrs[0]..col_ptrs[ncols]` is a valid range in row_indices (always checked, assuming
     ///   non-decreasing)
     /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are
     ///   less than `nrows`
@@ -3465,11 +3738,232 @@ pub mod sparse {
         row_ind: &'a [I],
     }
 
+    /// Symbolic structure of sparse matrix in row format, either compressed or uncompressed.
+    ///
+    /// Requires:
+    /// * `nrows <= I::Signed::MAX` (always checked)
+    /// * `ncols <= I::Signed::MAX` (always checked)
+    /// * `row_ptrs` has length `nrows + 1` (always checked)
+    /// * `row_ptrs` is non-decreasing
+    /// * `row_ptrs[0]..row_ptrs[nrows]` is a valid range in row_indices (always checked, assuming
+    ///   non-decreasing)
+    /// * if `nnz_per_row` is `None`, elements of `col_indices[row_ptrs[i]..row_ptrs[i + 1]]` are
+    ///   less than `ncols`
+    ///
+    /// * `nnz_per_row[i] <= row_ptrs[i+1] - row_ptrs[i]`
+    /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]`
+    ///   are less than `ncols`
+    #[derive(Debug)]
+    pub struct SymbolicSparseRowMatRef<'a, I> {
+        nrows: usize,
+        ncols: usize,
+        row_ptr: &'a [I],
+        row_nnz: Option<&'a [I]>,
+        col_ind: &'a [I],
+    }
+
     impl<I> Copy for SymbolicSparseColMatRef<'_, I> {}
     impl<I> Clone for SymbolicSparseColMatRef<'_, I> {
         #[inline]
         fn clone(&self) -> Self {
             *self
+        }
+    }
+    impl<I> Copy for SymbolicSparseRowMatRef<'_, I> {}
+    impl<I> Clone for SymbolicSparseRowMatRef<'_, I> {
+        #[inline]
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
+        /// Creates a new symbolic matrix view after asserting its invariants.
+        ///
+        /// # Panics
+        ///
+        /// See type level documentation.
+        #[inline]
+        #[track_caller]
+        pub fn new_checked(
+            nrows: usize,
+            ncols: usize,
+            row_ptrs: &'a [I],
+            nnz_per_row: Option<&'a [I]>,
+            col_indices: &'a [I],
+        ) -> Self {
+            assert!(all(
+                ncols <= I::Signed::MAX.zx(),
+                nrows <= I::Signed::MAX.zx(),
+            ));
+            assert!(row_ptrs.len() == nrows + 1);
+            for &[c, c_next] in windows2(row_ptrs) {
+                assert!(c <= c_next);
+            }
+            assert!(row_ptrs[ncols].zx() <= col_indices.len());
+
+            if let Some(nnz_per_row) = nnz_per_row {
+                for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
+                    assert!(nnz_i <= c_next - c);
+                    for &j in &col_indices[c.zx()..c.zx() + nnz_i.zx()] {
+                        assert!(j < I::truncate(ncols));
+                    }
+                }
+            } else {
+                let c0 = row_ptrs[0].zx();
+                let cn = row_ptrs[ncols].zx();
+                for &j in &col_indices[c0..cn] {
+                    assert!(j < I::truncate(ncols));
+                }
+            }
+
+            Self {
+                nrows,
+                ncols,
+                row_ptr: row_ptrs,
+                row_nnz: nnz_per_row,
+                col_ind: col_indices,
+            }
+        }
+
+        /// Creates a new symbolic matrix view without asserting its invariants.
+        ///
+        /// # Safety
+        ///
+        /// See type level documentation.
+        #[inline(always)]
+        #[track_caller]
+        pub unsafe fn new_unchecked(
+            nrows: usize,
+            ncols: usize,
+            row_ptrs: &'a [I],
+            nnz_per_row: Option<&'a [I]>,
+            col_indices: &'a [I],
+        ) -> Self {
+            assert!(all(
+                ncols <= <I::Signed as SignedIndex>::MAX.zx(),
+                nrows <= <I::Signed as SignedIndex>::MAX.zx(),
+            ));
+            assert!(row_ptrs.len() == nrows + 1);
+            assert!(row_ptrs[nrows].zx() <= col_indices.len());
+
+            Self {
+                nrows,
+                ncols,
+                row_ptr: row_ptrs,
+                row_nnz: nnz_per_row,
+                col_ind: col_indices,
+            }
+        }
+
+        /// Returns the number of rows of the matrix.
+        #[inline]
+        pub fn nrows(&self) -> usize {
+            self.nrows
+        }
+        /// Returns the number of columns of the matrix.
+        #[inline]
+        pub fn ncols(&self) -> usize {
+            self.ncols
+        }
+
+        #[inline]
+        pub fn transpose(self) -> SymbolicSparseColMatRef<'a, I> {
+            SymbolicSparseColMatRef {
+                nrows: self.ncols,
+                ncols: self.nrows,
+                col_ptr: self.row_ptr,
+                col_nnz: self.row_nnz,
+                row_ind: self.col_ind,
+            }
+        }
+
+        /// Returns the number of symbolic non-zeros in the matrix.
+        ///
+        /// The value is guaranteed to be less than `I::Signed::MAX`.
+        #[inline]
+        pub fn compute_nnz(&self) -> usize {
+            self.transpose().compute_nnz()
+        }
+
+        /// Returns the column pointers.
+        #[inline]
+        pub fn row_ptrs(&self) -> &'a [I] {
+            self.row_ptr
+        }
+
+        /// Returns the count of non-zeros per column of the matrix.
+        #[inline]
+        pub fn nnz_per_row(&self) -> Option<&'a [I]> {
+            self.row_nnz
+        }
+
+        /// Returns the column indices.
+        #[inline]
+        pub fn col_indices(&self) -> &'a [I] {
+            self.col_ind
+        }
+
+        /// Returns the column indices of row i.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `i >= self.nrows()`
+        #[inline]
+        #[track_caller]
+        pub fn col_indices_of_row_raw(&self, i: usize) -> &'a [I] {
+            &self.col_ind[self.row_range(i)]
+        }
+
+        /// Returns the column indices of row i.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `i >= self.ncols()`
+        #[inline]
+        #[track_caller]
+        pub fn col_indices_of_row(
+            &self,
+            i: usize,
+        ) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = usize> {
+            self.col_indices_of_row_raw(i).iter().map(
+                #[inline(always)]
+                |&i| i.zx(),
+            )
+        }
+
+        /// Returns the range that the row `i` occupies in `self.col_indices().
+        ///
+        /// # Panics
+        ///
+        /// Panics if `i >= self.nrows()`
+        #[inline]
+        #[track_caller]
+        pub fn row_range(&self, i: usize) -> Range<usize> {
+            let start = self.row_ptr[i].zx();
+            let end = self
+                .row_nnz
+                .map(|row_nnz| row_nnz[i].zx() + start)
+                .unwrap_or(self.row_ptr[i + 1].zx());
+
+            start..end
+        }
+
+        /// Returns the range that the row `i` occupies in `self.col_indices().
+        ///
+        /// # Safety
+        ///
+        /// The behavior is undefined if `i >= self.nrows()`
+        #[inline]
+        #[track_caller]
+        pub unsafe fn row_range_unchecked(&self, i: usize) -> Range<usize> {
+            let start = __get_unchecked(self.row_ptr, i).zx();
+            let end = self
+                .row_nnz
+                .map(|row_nnz| (__get_unchecked(row_nnz, i).zx() + start))
+                .unwrap_or(__get_unchecked(self.row_ptr, i + 1).zx());
+
+            start..end
         }
     }
 
@@ -3561,6 +4055,17 @@ pub mod sparse {
         #[inline]
         pub fn ncols(&self) -> usize {
             self.ncols
+        }
+
+        #[inline]
+        pub fn transpose(self) -> SymbolicSparseRowMatRef<'a, I> {
+            SymbolicSparseRowMatRef {
+                nrows: self.ncols,
+                ncols: self.nrows,
+                row_ptr: self.col_ptr,
+                row_nnz: self.col_nnz,
+                col_ind: self.row_ind,
+            }
         }
 
         /// Returns the number of symbolic non-zeros in the matrix.
@@ -3663,17 +4168,103 @@ pub mod sparse {
     }
 
     /// Sparse matrix in column format, either compressed or uncompressed.
-    #[derive(Debug)]
-    pub struct SparseColMatRef<'a, I, E: Entity> {
-        symbolic: SymbolicSparseColMatRef<'a, I>,
-        values: SliceGroup<'a, E>,
-    }
+    pub type SparseRowMatRef<'a, I, E> = Matrix<inner::SparseRowMatRefInner<'a, I, E>>;
 
-    impl<I, E: Entity> Copy for SparseColMatRef<'_, I, E> {}
-    impl<I, E: Entity> Clone for SparseColMatRef<'_, I, E> {
+    /// Sparse matrix in column format, either compressed or uncompressed.
+    pub type SparseColMatRef<'a, I, E> = Matrix<inner::SparseColMatRefInner<'a, I, E>>;
+
+    impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
+        /// Creates a new sparse matrix view.
+        ///
+        /// # Panics
+        ///
+        /// Panics if the length of `values` is not equal to the length of
+        /// `symbolic.col_indices()`.
         #[inline]
-        fn clone(&self) -> Self {
-            *self
+        #[track_caller]
+        pub fn new(
+            symbolic: SymbolicSparseRowMatRef<'a, I>,
+            values: GroupFor<E, &'a [E::Unit]>,
+        ) -> Self {
+            let values = SliceGroup::new(values);
+            assert!(symbolic.col_indices().len() == values.len());
+            Self {
+                inner: inner::SparseRowMatRefInner { symbolic, values },
+            }
+        }
+
+        /// Returns the numerical values of the matrix.
+        #[inline]
+        pub fn values(&self) -> GroupFor<E, &'a [E::Unit]> {
+            self.inner.values.into_inner()
+        }
+
+        #[inline]
+        pub fn transpose(self) -> SparseColMatRef<'a, I, E> {
+            SparseColMatRef {
+                inner: inner::SparseColMatRefInner {
+                    symbolic: SymbolicSparseColMatRef {
+                        nrows: self.inner.symbolic.ncols,
+                        ncols: self.inner.symbolic.nrows,
+                        col_ptr: self.inner.symbolic.row_ptr,
+                        col_nnz: self.inner.symbolic.row_nnz,
+                        row_ind: self.inner.symbolic.col_ind,
+                    },
+                    values: self.inner.values,
+                },
+            }
+        }
+
+        #[inline]
+        pub fn conjugate(self) -> SparseRowMatRef<'a, I, E::Conj>
+        where
+            E: Conjugate,
+        {
+            SparseRowMatRef {
+                inner: inner::SparseRowMatRefInner {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
+                            GroupFor<E, &[UnitFor<E::Conj>]>,
+                            GroupFor<E::Conj, &[UnitFor<E::Conj>]>,
+                        >(E::faer_map(
+                            self.inner.values.into_inner(),
+                            |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts(
+                                    slice.as_ptr() as *const UnitFor<E> as *const UnitFor<E::Conj>,
+                                    len,
+                                )
+                            },
+                        )))
+                    },
+                },
+            }
+        }
+
+        #[inline]
+        pub fn adjoint(self) -> SparseColMatRef<'a, I, E::Conj>
+        where
+            E: Conjugate,
+        {
+            self.transpose().conjugate()
+        }
+
+        /// Returns the numerical values of row `i` of the matrix.
+        ///
+        /// # Panics:
+        ///
+        /// Panics if `i >= nrows`.
+        #[inline]
+        #[track_caller]
+        pub fn values_of_row(&self, i: usize) -> GroupFor<E, &'a [E::Unit]> {
+            self.inner.values.subslice(self.row_range(i)).into_inner()
+        }
+
+        /// Returns the symbolic structure of the matrix.
+        #[inline]
+        pub fn symbolic(&self) -> SymbolicSparseRowMatRef<'a, I> {
+            self.inner.symbolic
         }
     }
 
@@ -3692,30 +4283,91 @@ pub mod sparse {
         ) -> Self {
             let values = SliceGroup::new(values);
             assert!(symbolic.row_indices().len() == values.len());
-            Self { symbolic, values }
+            Self {
+                inner: inner::SparseColMatRefInner { symbolic, values },
+            }
+        }
+
+        #[inline]
+        pub fn transpose(self) -> SparseRowMatRef<'a, I, E> {
+            SparseRowMatRef {
+                inner: inner::SparseRowMatRefInner {
+                    symbolic: SymbolicSparseRowMatRef {
+                        nrows: self.inner.symbolic.ncols,
+                        ncols: self.inner.symbolic.nrows,
+                        row_ptr: self.inner.symbolic.col_ptr,
+                        row_nnz: self.inner.symbolic.col_nnz,
+                        col_ind: self.inner.symbolic.row_ind,
+                    },
+                    values: self.inner.values,
+                },
+            }
+        }
+
+        #[inline]
+        pub fn conjugate(self) -> SparseColMatRef<'a, I, E::Conj>
+        where
+            E: Conjugate,
+        {
+            SparseColMatRef {
+                inner: inner::SparseColMatRefInner {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
+                            GroupFor<E, &[UnitFor<E::Conj>]>,
+                            GroupFor<E::Conj, &[UnitFor<E::Conj>]>,
+                        >(E::faer_map(
+                            self.inner.values.into_inner(),
+                            |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts(
+                                    slice.as_ptr() as *const UnitFor<E> as *const UnitFor<E::Conj>,
+                                    len,
+                                )
+                            },
+                        )))
+                    },
+                },
+            }
+        }
+
+        #[inline]
+        pub fn adjoint(self) -> SparseRowMatRef<'a, I, E::Conj>
+        where
+            E: Conjugate,
+        {
+            self.transpose().conjugate()
         }
 
         /// Returns the numerical values of the matrix.
         #[inline]
         pub fn values(&self) -> GroupFor<E, &'a [E::Unit]> {
-            self.values.into_inner()
+            self.inner.values.into_inner()
         }
 
         /// Returns the numerical values of column `j` of the matrix.
         ///
         /// # Panics:
         ///
-        /// Panics if `j >= n`.
+        /// Panics if `j >= ncols`.
         #[inline]
         #[track_caller]
         pub fn values_of_col(&self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
-            self.values.subslice(self.col_range(j)).into_inner()
+            self.inner.values.subslice(self.col_range(j)).into_inner()
         }
 
         /// Returns the symbolic structure of the matrix.
         #[inline]
         pub fn symbolic(&self) -> SymbolicSparseColMatRef<'a, I> {
-            self.symbolic
+            self.inner.symbolic
+        }
+    }
+
+    impl<'a, I, E: Entity> core::ops::Deref for SparseRowMatRef<'a, I, E> {
+        type Target = SymbolicSparseRowMatRef<'a, I>;
+        #[inline]
+        fn deref(&self) -> &Self::Target {
+            &self.inner.symbolic
         }
     }
 
@@ -3723,7 +4375,147 @@ pub mod sparse {
         type Target = SymbolicSparseColMatRef<'a, I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
-            &self.symbolic
+            &self.inner.symbolic
+        }
+    }
+
+    // TODO: sparse_sparse_matmul
+    //
+    // PERF: optimize matmul
+    // - parallelization
+    // - simd(?)
+    pub mod mul {
+        use super::*;
+        use crate::{
+            assert,
+            constrained::{self, Size},
+        };
+
+        #[track_caller]
+        pub fn sparse_dense_matmul<
+            I: Index,
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            acc: MatMut<'_, E>,
+            lhs: SparseColMatRef<'_, I, LhsE>,
+            rhs: MatRef<'_, RhsE>,
+            alpha: Option<E>,
+            beta: E,
+            parallelism: Parallelism,
+        ) {
+            assert!(all(
+                acc.nrows() == lhs.nrows(),
+                acc.ncols() == rhs.ncols(),
+                lhs.ncols() == rhs.nrows(),
+            ));
+
+            let _ = parallelism;
+            let m = acc.nrows();
+            let n = acc.ncols();
+            let k = lhs.ncols();
+
+            let mut acc = acc;
+
+            match alpha {
+                Some(alpha) => {
+                    if alpha != E::faer_one() {
+                        zipped!(acc.rb_mut())
+                            .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
+                    }
+                }
+                None => acc.fill_zero(),
+            }
+
+            Size::with2(m, n, |m, n| {
+                Size::with(k, |k| {
+                    let mut acc = constrained::MatMut::new(acc, m, n);
+                    let lhs = constrained::sparse::SparseColMatRef::new(lhs, m, k);
+                    let rhs = constrained::MatRef::new(rhs, k, n);
+
+                    for j in n.indices() {
+                        for depth in k.indices() {
+                            let rhs_kj = rhs.read(depth, j).canonicalize().faer_mul(beta);
+                            for (i, lhs_ik) in zip(
+                                lhs.row_indices_of_col(depth),
+                                SliceGroup::<'_, LhsE>::new(lhs.values_of_col(depth))
+                                    .into_ref_iter(),
+                            ) {
+                                acc.write(
+                                    i,
+                                    j,
+                                    acc.read(i, j)
+                                        .faer_add(lhs_ik.read().canonicalize().faer_mul(rhs_kj)),
+                                );
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        #[track_caller]
+        pub fn dense_sparse_matmul<
+            I: Index,
+            E: ComplexField,
+            LhsE: Conjugate<Canonical = E>,
+            RhsE: Conjugate<Canonical = E>,
+        >(
+            acc: MatMut<'_, E>,
+            lhs: MatRef<'_, LhsE>,
+            rhs: SparseColMatRef<'_, I, RhsE>,
+            alpha: Option<E>,
+            beta: E,
+            parallelism: Parallelism,
+        ) {
+            assert!(all(
+                acc.nrows() == lhs.nrows(),
+                acc.ncols() == rhs.ncols(),
+                lhs.ncols() == rhs.nrows(),
+            ));
+
+            let _ = parallelism;
+            let m = acc.nrows();
+            let n = acc.ncols();
+            let k = lhs.ncols();
+
+            let mut acc = acc;
+
+            match alpha {
+                Some(alpha) => {
+                    if alpha != E::faer_one() {
+                        zipped!(acc.rb_mut())
+                            .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
+                    }
+                }
+                None => acc.fill_zero(),
+            }
+
+            Size::with2(m, n, |m, n| {
+                Size::with(k, |k| {
+                    let mut acc = constrained::MatMut::new(acc, m, n);
+                    let lhs = constrained::MatRef::new(lhs, m, k);
+                    let rhs = constrained::sparse::SparseColMatRef::new(rhs, k, n);
+
+                    for i in m.indices() {
+                        for j in n.indices() {
+                            let mut acc_ij = E::faer_zero();
+                            for (depth, rhs_kj) in zip(
+                                rhs.row_indices_of_col(j),
+                                SliceGroup::<'_, RhsE>::new(rhs.values_of_col(j)).into_ref_iter(),
+                            ) {
+                                let lhs_ik = lhs.read(i, depth);
+                                acc_ij = acc_ij.faer_add(
+                                    lhs_ik.canonicalize().faer_mul(rhs_kj.read().canonicalize()),
+                                );
+                            }
+
+                            acc.write(i, j, acc.read(i, j).faer_add(beta.faer_mul(acc_ij)));
+                        }
+                    }
+                });
+            });
         }
     }
 }
@@ -11411,14 +12203,14 @@ impl<'a, FromE: Entity, ToE: Entity> Coerce<MatRef<'a, ToE>> for MatRef<'a, From
     #[inline(always)]
     fn coerce(self) -> MatRef<'a, ToE> {
         assert!(coe::is_same::<FromE, ToE>());
-        unsafe { transmute_unchecked(self) }
+        unsafe { transmute_unchecked::<MatRef<'a, FromE>, MatRef<'a, ToE>>(self) }
     }
 }
 impl<'a, FromE: Entity, ToE: Entity> Coerce<MatMut<'a, ToE>> for MatMut<'a, FromE> {
     #[inline(always)]
     fn coerce(self) -> MatMut<'a, ToE> {
         assert!(coe::is_same::<FromE, ToE>());
-        unsafe { transmute_unchecked(self) }
+        unsafe { transmute_unchecked::<MatMut<'a, FromE>, MatMut<'a, ToE>>(self) }
     }
 }
 
@@ -11741,6 +12533,7 @@ pub mod constrained {
 
             #[inline]
             #[track_caller]
+            #[doc(hidden)]
             pub fn col_range(&self, j: Idx<'ncols, usize>) -> Range<usize> {
                 unsafe { self.into_inner().col_range_unchecked(j.into_inner()) }
             }

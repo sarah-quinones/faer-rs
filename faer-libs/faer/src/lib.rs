@@ -2,7 +2,7 @@
 //! for algebraic operations on medium/large matrices, as well as matrix decompositions.
 //!
 //! Most of the high-level functionality in this library is provided through associated functions in
-//! its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`], as well as the [`Faer`] extension trait.
+//! its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`], as well as the [`FaerMat`] extension trait.
 //! The parent crates (`faer-core`, `faer-cholesky`, `faer-lu`, etc.), on the other hand, offer a
 //! lower-level of abstraction in exchange for more control over memory allocations and
 //! multithreading behavior.
@@ -59,18 +59,18 @@
 //! `faer` provides a variety of matrix factorizations, each with its own advantages and drawbacks:
 //!
 //! ## Cholesky decomposition
-//! [`Faer::cholesky`] decomposes a self-adjoint positive definite matrix $A$ such that
+//! [`FaerMat::cholesky`] decomposes a self-adjoint positive definite matrix $A$ such that
 //! $$A = LL^H,$$
 //! where $L$ is a lower triangular matrix. This decomposition is highly efficient and has good
 //! stability properties.
 //! ## Bunch-Kaufman decomposition
-//! [`Faer::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
+//! [`FaerMat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
 //! $$P A P^\top = LBL^H,$$
 //! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block
 //! diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal blocks.
 //! This decomposition is efficient and has good stability properties.
 //! ## LU decomposition with partial pivoting
-//! [`Faer::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
+//! [`FaerMat::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
 //! matrix $L$, a unit upper triangular matrix $U$, and a permutation matrix $P$, such that
 //! $$PA = LU.$$
 //! It is used by default for computing the determinant, and is generally the recommended method
@@ -78,20 +78,20 @@
 //! recommend using a [`Solver`] instead of computing the inverse explicitly).
 //!
 //! ## LU decomposition with full pivoting
-//! [`Faer::full_piv_lu`] Decomposes a generic rectangular matrix $A$ into a lower triangular matrix
-//! $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
+//! [`FaerMat::full_piv_lu`] Decomposes a generic rectangular matrix $A$ into a lower triangular
+//! matrix $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
 //! $$PAQ^\top = LU.$$
 //! It can be more stable than the LU decomposition with partial pivoting, in exchange for being
 //! more computationally expensive.
 //!
 //! ## QR decomposition
-//! The QR decomposition ([`Faer::qr`]) decomposes a matrix $A$ into the product
+//! The QR decomposition ([`FaerMat::qr`]) decomposes a matrix $A$ into the product
 //! $$A = QR,$$
 //! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. It is often used for
 //! solving least squares problems.
 //!
 //! ## QR decomposition with column pivoting
-//! The QR decomposition with column pivoting ([`Faer::col_piv_qr`]) decomposes a matrix $A$ into
+//! The QR decomposition with column pivoting ([`FaerMat::col_piv_qr`]) decomposes a matrix $A$ into
 //! the product
 //! $$AP^T = QR,$$
 //! where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is an upper trapezoidal
@@ -113,10 +113,11 @@
 //! $$M = U S V^H.$$
 //!
 //! The SVD is provided in two forms: either the full matrices $U$ and $V$ are computed, using
-//! [`Faer::svd`], or only their first $\min(m, n)$ columns are computed, using [`Faer::thin_svd`].
+//! [`FaerMat::svd`], or only their first $\min(m, n)$ columns are computed, using
+//! [`FaerMat::thin_svd`].
 //!
 //! If only the singular values (elements of $S$) are desired, they can be obtained in
-//! nonincreasing order using [`Faer::singular_values`].
+//! nonincreasing order using [`FaerMat::singular_values`].
 //!
 //! ## Eigendecomposition
 //! **Note**: The order of the eigenvalues is currently unspecified and may be changed in a future
@@ -135,16 +136,18 @@
 //!
 //! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
 //! are provided to compute the eigendecomposition:
-//! * [`Faer::selfadjoint_eigendecomposition`] can be used with either real or complex matrices,
+//! * [`FaerMat::selfadjoint_eigendecomposition`] can be used with either real or complex matrices,
 //! producing an eigendecomposition of the same type.
-//! * [`Faer::eigendecomposition`] can be used with either real or complex matrices, but the output
+//! * [`FaerMat::eigendecomposition`] can be used with either real or complex matrices, but the
+//!   output
 //! complex type has to be specified.
-//! * [`Faer::complex_eigendecomposition`] can only be used with complex matrices, with the output
+//! * [`FaerMat::complex_eigendecomposition`] can only be used with complex matrices, with the
+//!   output
 //! having the same type.
 //!
 //! If only the eigenvalues (elements of $S$) are desired, they can be obtained in
-//! nonincreasing order using [`Faer::selfadjoint_eigenvalues`], [`Faer::eigenvalues`], or
-//! [`Faer::complex_eigenvalues`], with the same conditions described above.
+//! nonincreasing order using [`FaerMat::selfadjoint_eigenvalues`], [`FaerMat::eigenvalues`], or
+//! [`FaerMat::complex_eigenvalues`], with the same conditions described above.
 //!
 //! # Crate features
 //!
@@ -178,7 +181,8 @@ pub use faer_cholesky::llt::CholeskyError;
 pub mod prelude {
     pub use crate::{
         solvers::{Solver, SolverCore, SolverLstsq, SolverLstsqCore},
-        Faer, IntoFaer, IntoFaerComplex,
+        sparse::solvers::{SpSolver, SpSolverCore, SpSolverLstsq, SpSolverLstsqCore},
+        FaerMat, IntoFaer, IntoFaerComplex,
     };
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 }
@@ -198,13 +202,9 @@ use alloc::{vec, vec::Vec};
 pub mod solvers {
     use super::*;
     use faer_core::{assert, permutation::PermutationRef, zipped};
+    use sparse::solvers::{SpSolverCore, SpSolverLstsqCore};
 
-    pub trait SolverCore<E: Entity> {
-        /// Returns the number of rows of the matrix used to construct this decomposition.
-        fn nrows(&self) -> usize;
-        /// Returns the number of columns of the matrix used to construct this decomposition.
-        fn ncols(&self) -> usize;
-
+    pub trait SolverCore<E: Entity>: SpSolverCore<E> {
         /// Reconstructs the original matrix using the decomposition.
         fn reconstruct(&self) -> Mat<E>;
         /// Computes the inverse of the original matrix using the decomposition.
@@ -212,81 +212,11 @@ pub mod solvers {
         /// # Panics
         /// Panics if the matrix is not square.
         fn inverse(&self) -> Mat<E>;
-
-        #[doc(hidden)]
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
-        #[doc(hidden)]
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
     }
+    pub trait SolverLstsqCore<E: Entity>: SolverCore<E> + SpSolverLstsqCore<E> {}
 
-    pub trait SolverLstsqCore<E: Entity>: SolverCore<E> {
-        #[doc(hidden)]
-        fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
-    }
-
-    pub trait SolverLstsq<E: Entity>: SolverLstsqCore<E> {
-        /// Solves the equation `self * X = rhs`, in the sense of least squares, and stores the
-        /// result in the top rows of `rhs`.
-        fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `conjugate(self) * X = rhs`, in the sense of least squares, and
-        /// stores the result in the top rows of `rhs`.
-        fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `self * X = rhs`, and returns the result.
-        fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>)
-            -> Mat<E>;
-        /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
-        fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E>;
-    }
-
-    #[track_caller]
-    fn solve_lstsq_with_conj_impl<
-        E: ComplexField,
-        D: ?Sized + SolverLstsqCore<E>,
-        ViewE: Conjugate<Canonical = E>,
-    >(
-        d: &D,
-        rhs: MatRef<'_, ViewE>,
-        conj: Conj,
-    ) -> Mat<E> {
-        let mut rhs = rhs.to_owned();
-        let k = rhs.ncols();
-        d.solve_lstsq_in_place_with_conj_impl(rhs.as_mut(), conj);
-        rhs.resize_with(d.ncols(), k, |_, _| unreachable!());
-        rhs
-    }
-
-    #[track_caller]
-    fn solve_with_conj_impl<
-        E: ComplexField,
-        D: ?Sized + SolverCore<E>,
-        ViewE: Conjugate<Canonical = E>,
-    >(
-        d: &D,
-        rhs: MatRef<'_, ViewE>,
-        conj: Conj,
-    ) -> Mat<E> {
-        let mut rhs = rhs.to_owned();
-        d.solve_in_place_with_conj_impl(rhs.as_mut(), conj);
-        rhs
-    }
-
-    #[track_caller]
-    fn solve_transpose_with_conj_impl<
-        E: ComplexField,
-        D: ?Sized + SolverCore<E>,
-        ViewE: Conjugate<Canonical = E>,
-    >(
-        d: &D,
-        rhs: MatRef<'_, ViewE>,
-        conj: Conj,
-    ) -> Mat<E> {
-        let mut rhs = rhs.to_owned();
-        d.solve_transpose_in_place_with_conj_impl(rhs.as_mut(), conj);
-        rhs
-    }
+    pub trait Solver<E: ComplexField>: SolverCore<E> + SpSolver<E> {}
+    pub trait SolverLstsq<E: Entity>: SolverLstsqCore<E> + SpSolverLstsq<E> {}
 
     const _: () = {
         fn __assert_object_safe<E: ComplexField>() {
@@ -295,112 +225,9 @@ pub mod solvers {
         }
     };
 
-    pub trait Solver<E: ComplexField>: SolverCore<E> {
-        /// Solves the equation `self * X = rhs`, and stores the result in `rhs`.
-        fn solve_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `conjugate(self) * X = rhs`, and stores the result in `rhs`.
-        fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `transpose(self) * X = rhs`, and stores the result in `rhs`.
-        fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `adjoint(self) * X = rhs`, and stores the result in `rhs`.
-        fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>);
-        /// Solves the equation `self * X = rhs`, and returns the result.
-        fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
-        /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
-        fn solve_conj<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
-        /// Solves the equation `transpose(self) * X = rhs`, and returns the result.
-        fn solve_transpose<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E>;
-        /// Solves the equation `adjoint(self) * X = rhs`, and returns the result.
-        fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E>;
-    }
+    impl<E: ComplexField, Dec: ?Sized + SolverLstsqCore<E>> SolverLstsq<E> for Dec {}
 
-    impl<E: ComplexField, Dec: ?Sized + SolverLstsqCore<E>> SolverLstsq<E> for Dec {
-        #[track_caller]
-        fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
-        }
-
-        #[track_caller]
-        fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E> {
-            solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E> {
-            solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
-        }
-    }
-
-    impl<E: ComplexField, Dec: ?Sized + SolverCore<E>> Solver<E> for Dec {
-        #[track_caller]
-        fn solve_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
-        }
-
-        #[track_caller]
-        fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
-            let mut rhs = rhs;
-            self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
-        }
-
-        #[track_caller]
-        fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
-            solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_conj<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
-            solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
-        }
-
-        #[track_caller]
-        fn solve_transpose<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E> {
-            solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
-        }
-
-        #[track_caller]
-        fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
-            &self,
-            rhs: impl AsMatRef<ViewE>,
-        ) -> Mat<E> {
-            solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
-        }
-    }
+    impl<E: ComplexField, Dec: ?Sized + SolverCore<E>> Solver<E> for Dec {}
 
     /// Cholesky decomposition.
     pub struct Cholesky<E: Entity> {
@@ -527,6 +354,41 @@ pub mod solvers {
             factor
         }
     }
+    impl<E: ComplexField> SpSolverCore<E> for Cholesky<E> {
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_cholesky::llt::solve::solve_in_place_with_conj(
+                self.factors.as_ref(),
+                conj,
+                rhs,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_cholesky::llt::solve::solve_in_place_req::<E>(
+                        self.dim(),
+                        rhs_ncols,
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            self.solve_in_place_with_conj_impl(rhs, conj.compose(Conj::Yes))
+        }
+
+        fn nrows(&self) -> usize {
+            self.factors.nrows()
+        }
+
+        fn ncols(&self) -> usize {
+            self.factors.ncols()
+        }
+    }
     impl<E: ComplexField> SolverCore<E> for Cholesky<E> {
         fn inverse(&self) -> Mat<E> {
             let mut inv = Mat::<E>::zeros(self.dim(), self.dim());
@@ -572,40 +434,6 @@ pub mod solvers {
             }
 
             rec
-        }
-
-        #[track_caller]
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_cholesky::llt::solve::solve_in_place_with_conj(
-                self.factors.as_ref(),
-                conj,
-                rhs,
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_cholesky::llt::solve::solve_in_place_req::<E>(
-                        self.dim(),
-                        rhs_ncols,
-                        parallelism,
-                    )
-                    .unwrap(),
-                )),
-            );
-        }
-
-        #[track_caller]
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            self.solve_in_place_with_conj_impl(rhs, conj.compose(Conj::Yes))
-        }
-
-        fn nrows(&self) -> usize {
-            self.factors.nrows()
-        }
-
-        fn ncols(&self) -> usize {
-            self.factors.ncols()
         }
     }
 
@@ -669,6 +497,43 @@ pub mod solvers {
         }
     }
 
+    impl<E: ComplexField> SpSolverCore<E> for Lblt<E> {
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
+                self.factors.as_ref(),
+                self.subdiag.as_ref(),
+                conj,
+                unsafe { PermutationRef::new_unchecked(&self.perm, &self.perm_inv) },
+                rhs,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_cholesky::bunch_kaufman::solve::solve_in_place_req::<usize, E>(
+                        self.dim(),
+                        rhs_ncols,
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            self.solve_in_place_with_conj_impl(rhs, conj.compose(Conj::Yes))
+        }
+
+        fn nrows(&self) -> usize {
+            self.factors.nrows()
+        }
+
+        fn ncols(&self) -> usize {
+            self.factors.ncols()
+        }
+    }
     impl<E: ComplexField> SolverCore<E> for Lblt<E> {
         fn inverse(&self) -> Mat<E> {
             let n = self.dim();
@@ -765,42 +630,6 @@ pub mod solvers {
 
             mat
         }
-
-        #[track_caller]
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_cholesky::bunch_kaufman::solve::solve_in_place_with_conj(
-                self.factors.as_ref(),
-                self.subdiag.as_ref(),
-                conj,
-                unsafe { PermutationRef::new_unchecked(&self.perm, &self.perm_inv) },
-                rhs,
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_cholesky::bunch_kaufman::solve::solve_in_place_req::<usize, E>(
-                        self.dim(),
-                        rhs_ncols,
-                        parallelism,
-                    )
-                    .unwrap(),
-                )),
-            );
-        }
-
-        #[track_caller]
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            self.solve_in_place_with_conj_impl(rhs, conj.compose(Conj::Yes))
-        }
-
-        fn nrows(&self) -> usize {
-            self.factors.nrows()
-        }
-
-        fn ncols(&self) -> usize {
-            self.factors.ncols()
-        }
     }
 
     impl<E: ComplexField> PartialPivLu<E> {
@@ -877,51 +706,7 @@ pub mod solvers {
             factor
         }
     }
-    impl<E: ComplexField> SolverCore<E> for PartialPivLu<E> {
-        fn inverse(&self) -> Mat<E> {
-            let mut inv = Mat::<E>::zeros(self.dim(), self.dim());
-            let parallelism = get_global_parallelism();
-
-            faer_lu::partial_pivoting::inverse::invert(
-                inv.as_mut(),
-                self.factors.as_ref(),
-                self.row_permutation(),
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::inverse::invert_req::<usize, E>(
-                        self.dim(),
-                        self.dim(),
-                        parallelism,
-                    )
-                    .unwrap(),
-                )),
-            );
-
-            inv
-        }
-
-        fn reconstruct(&self) -> Mat<E> {
-            let mut rec = Mat::<E>::zeros(self.dim(), self.dim());
-            let parallelism = get_global_parallelism();
-
-            faer_lu::partial_pivoting::reconstruct::reconstruct(
-                rec.as_mut(),
-                self.factors.as_ref(),
-                self.row_permutation(),
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::partial_pivoting::reconstruct::reconstruct_req::<usize, E>(
-                        self.dim(),
-                        self.dim(),
-                        parallelism,
-                    )
-                    .unwrap(),
-                )),
-            );
-
-            rec
-        }
-
+    impl<E: ComplexField> SpSolverCore<E> for PartialPivLu<E> {
         #[track_caller]
         fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             let parallelism = get_global_parallelism();
@@ -974,6 +759,51 @@ pub mod solvers {
 
         fn ncols(&self) -> usize {
             self.factors.ncols()
+        }
+    }
+    impl<E: ComplexField> SolverCore<E> for PartialPivLu<E> {
+        fn inverse(&self) -> Mat<E> {
+            let mut inv = Mat::<E>::zeros(self.dim(), self.dim());
+            let parallelism = get_global_parallelism();
+
+            faer_lu::partial_pivoting::inverse::invert(
+                inv.as_mut(),
+                self.factors.as_ref(),
+                self.row_permutation(),
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_lu::partial_pivoting::inverse::invert_req::<usize, E>(
+                        self.dim(),
+                        self.dim(),
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            inv
+        }
+
+        fn reconstruct(&self) -> Mat<E> {
+            let mut rec = Mat::<E>::zeros(self.dim(), self.dim());
+            let parallelism = get_global_parallelism();
+
+            faer_lu::partial_pivoting::reconstruct::reconstruct(
+                rec.as_mut(),
+                self.factors.as_ref(),
+                self.row_permutation(),
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_lu::partial_pivoting::reconstruct::reconstruct_req::<usize, E>(
+                        self.dim(),
+                        self.dim(),
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            rec
         }
     }
 
@@ -1065,54 +895,7 @@ pub mod solvers {
             factor
         }
     }
-    impl<E: ComplexField> SolverCore<E> for FullPivLu<E> {
-        #[track_caller]
-        fn inverse(&self) -> Mat<E> {
-            assert!(self.nrows() == self.ncols());
-
-            let dim = self.nrows();
-
-            let mut inv = Mat::<E>::zeros(dim, dim);
-            let parallelism = get_global_parallelism();
-
-            faer_lu::full_pivoting::inverse::invert(
-                inv.as_mut(),
-                self.factors.as_ref(),
-                self.row_permutation(),
-                self.col_permutation(),
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::inverse::invert_req::<usize, E>(dim, dim, parallelism)
-                        .unwrap(),
-                )),
-            );
-
-            inv
-        }
-
-        fn reconstruct(&self) -> Mat<E> {
-            let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
-            let parallelism = get_global_parallelism();
-
-            faer_lu::full_pivoting::reconstruct::reconstruct(
-                rec.as_mut(),
-                self.factors.as_ref(),
-                self.row_permutation(),
-                self.col_permutation(),
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_lu::full_pivoting::reconstruct::reconstruct_req::<usize, E>(
-                        self.nrows(),
-                        self.ncols(),
-                        parallelism,
-                    )
-                    .unwrap(),
-                )),
-            );
-
-            rec
-        }
-
+    impl<E: ComplexField> SpSolverCore<E> for FullPivLu<E> {
         #[track_caller]
         fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             assert!(self.nrows() == self.ncols());
@@ -1171,6 +954,54 @@ pub mod solvers {
 
         fn ncols(&self) -> usize {
             self.factors.ncols()
+        }
+    }
+    impl<E: ComplexField> SolverCore<E> for FullPivLu<E> {
+        #[track_caller]
+        fn inverse(&self) -> Mat<E> {
+            assert!(self.nrows() == self.ncols());
+
+            let dim = self.nrows();
+
+            let mut inv = Mat::<E>::zeros(dim, dim);
+            let parallelism = get_global_parallelism();
+
+            faer_lu::full_pivoting::inverse::invert(
+                inv.as_mut(),
+                self.factors.as_ref(),
+                self.row_permutation(),
+                self.col_permutation(),
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_lu::full_pivoting::inverse::invert_req::<usize, E>(dim, dim, parallelism)
+                        .unwrap(),
+                )),
+            );
+
+            inv
+        }
+
+        fn reconstruct(&self) -> Mat<E> {
+            let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
+            let parallelism = get_global_parallelism();
+
+            faer_lu::full_pivoting::reconstruct::reconstruct(
+                rec.as_mut(),
+                self.factors.as_ref(),
+                self.row_permutation(),
+                self.col_permutation(),
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_lu::full_pivoting::reconstruct::reconstruct_req::<usize, E>(
+                        self.nrows(),
+                        self.ncols(),
+                        parallelism,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            rec
         }
     }
 
@@ -1277,6 +1108,45 @@ pub mod solvers {
             q
         }
     }
+    impl<E: ComplexField> SpSolverCore<E> for Qr<E> {
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+            self.solve_lstsq_in_place_with_conj_impl(rhs, conj)
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_qr::no_pivoting::solve::solve_transpose_in_place(
+                self.factors.as_ref(),
+                self.householder.as_ref(),
+                conj,
+                rhs,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_qr::no_pivoting::solve::solve_transpose_in_place_req::<E>(
+                        self.nrows(),
+                        self.blocksize(),
+                        rhs_ncols,
+                    )
+                    .unwrap(),
+                )),
+            );
+        }
+
+        fn nrows(&self) -> usize {
+            self.factors.nrows()
+        }
+
+        fn ncols(&self) -> usize {
+            self.factors.ncols()
+        }
+    }
     impl<E: ComplexField> SolverCore<E> for Qr<E> {
         fn reconstruct(&self) -> Mat<E> {
             let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
@@ -1325,47 +1195,9 @@ pub mod solvers {
 
             inv
         }
-
-        #[track_caller]
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-            self.solve_lstsq_in_place_with_conj_impl(rhs, conj)
-        }
-
-        #[track_caller]
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_qr::no_pivoting::solve::solve_transpose_in_place(
-                self.factors.as_ref(),
-                self.householder.as_ref(),
-                conj,
-                rhs,
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::no_pivoting::solve::solve_transpose_in_place_req::<E>(
-                        self.nrows(),
-                        self.blocksize(),
-                        rhs_ncols,
-                    )
-                    .unwrap(),
-                )),
-            );
-        }
-
-        fn nrows(&self) -> usize {
-            self.factors.nrows()
-        }
-
-        fn ncols(&self) -> usize {
-            self.factors.ncols()
-        }
     }
 
-    impl<E: ComplexField> SolverLstsqCore<E> for Qr<E> {
+    impl<E: ComplexField> SpSolverLstsqCore<E> for Qr<E> {
         #[track_caller]
         fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             let parallelism = get_global_parallelism();
@@ -1388,6 +1220,7 @@ pub mod solvers {
             );
         }
     }
+    impl<E: ComplexField> SolverLstsqCore<E> for Qr<E> {}
 
     impl<E: ComplexField> ColPivQr<E> {
         #[track_caller]
@@ -1470,6 +1303,46 @@ pub mod solvers {
             Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
         }
     }
+    impl<E: ComplexField> SpSolverCore<E> for ColPivQr<E> {
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+            self.solve_lstsq_in_place_with_conj_impl(rhs, conj);
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+
+            let parallelism = get_global_parallelism();
+            let rhs_ncols = rhs.ncols();
+
+            faer_qr::col_pivoting::solve::solve_transpose_in_place(
+                self.factors.as_ref(),
+                self.householder.as_ref(),
+                self.col_permutation(),
+                conj,
+                rhs,
+                parallelism,
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    faer_qr::col_pivoting::solve::solve_transpose_in_place_req::<usize, E>(
+                        self.nrows(),
+                        self.blocksize(),
+                        rhs_ncols,
+                    )
+                    .unwrap(),
+                )),
+            );
+        }
+
+        fn nrows(&self) -> usize {
+            self.factors.nrows()
+        }
+
+        fn ncols(&self) -> usize {
+            self.factors.ncols()
+        }
+    }
     impl<E: ComplexField> SolverCore<E> for ColPivQr<E> {
         fn reconstruct(&self) -> Mat<E> {
             let mut rec = Mat::<E>::zeros(self.nrows(), self.ncols());
@@ -1520,48 +1393,9 @@ pub mod solvers {
 
             inv
         }
-
-        #[track_caller]
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-            self.solve_lstsq_in_place_with_conj_impl(rhs, conj);
-        }
-
-        #[track_caller]
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-
-            let parallelism = get_global_parallelism();
-            let rhs_ncols = rhs.ncols();
-
-            faer_qr::col_pivoting::solve::solve_transpose_in_place(
-                self.factors.as_ref(),
-                self.householder.as_ref(),
-                self.col_permutation(),
-                conj,
-                rhs,
-                parallelism,
-                PodStack::new(&mut GlobalPodBuffer::new(
-                    faer_qr::col_pivoting::solve::solve_transpose_in_place_req::<usize, E>(
-                        self.nrows(),
-                        self.blocksize(),
-                        rhs_ncols,
-                    )
-                    .unwrap(),
-                )),
-            );
-        }
-
-        fn nrows(&self) -> usize {
-            self.factors.nrows()
-        }
-
-        fn ncols(&self) -> usize {
-            self.factors.ncols()
-        }
     }
 
-    impl<E: ComplexField> SolverLstsqCore<E> for ColPivQr<E> {
+    impl<E: ComplexField> SpSolverLstsqCore<E> for ColPivQr<E> {
         #[track_caller]
         fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             let parallelism = get_global_parallelism();
@@ -1585,6 +1419,7 @@ pub mod solvers {
             );
         }
     }
+    impl<E: ComplexField> SolverLstsqCore<E> for ColPivQr<E> {}
 
     impl<E: ComplexField> Svd<E> {
         #[track_caller]
@@ -1657,7 +1492,7 @@ pub mod solvers {
             });
         }
     }
-    impl<E: ComplexField> SolverCore<E> for Svd<E> {
+    impl<E: ComplexField> SpSolverCore<E> for Svd<E> {
         fn nrows(&self) -> usize {
             self.u.nrows()
         }
@@ -1666,6 +1501,53 @@ pub mod solvers {
             self.v.nrows()
         }
 
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+            let mut rhs = rhs;
+
+            let u = self.u.as_ref();
+            let v = self.v.as_ref();
+            let s = self.s.as_ref();
+
+            match conj {
+                Conj::Yes => {
+                    rhs.copy_from((u.transpose() * rhs.rb()).as_ref());
+                    div_by_s(rhs.rb_mut(), s);
+                    rhs.copy_from((v.conjugate() * rhs.rb()).as_ref());
+                }
+                Conj::No => {
+                    rhs.copy_from((u.adjoint() * rhs.rb()).as_ref());
+                    div_by_s(rhs.rb_mut(), s);
+                    rhs.copy_from((v * rhs.rb()).as_ref());
+                }
+            }
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            assert!(self.nrows() == self.ncols());
+            let mut rhs = rhs;
+
+            let u = self.u.as_ref();
+            let v = self.v.as_ref();
+            let s = self.s.as_ref();
+
+            match conj {
+                Conj::No => {
+                    rhs.copy_from((v.transpose() * rhs.rb()).as_ref());
+                    div_by_s(rhs.rb_mut(), s);
+                    rhs.copy_from((u.conjugate() * rhs.rb()).as_ref());
+                }
+                Conj::Yes => {
+                    rhs.copy_from((v.adjoint() * rhs.rb()).as_ref());
+                    div_by_s(rhs.rb_mut(), s);
+                    rhs.copy_from((u * rhs.rb()).as_ref());
+                }
+            }
+        }
+    }
+    impl<E: ComplexField> SolverCore<E> for Svd<E> {
         fn reconstruct(&self) -> Mat<E> {
             let m = self.nrows();
             let n = self.ncols();
@@ -1692,50 +1574,6 @@ pub mod solvers {
 
             vs_inv * u.adjoint()
         }
-
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-            let mut rhs = rhs;
-
-            let u = self.u.as_ref();
-            let v = self.v.as_ref();
-            let s = self.s.as_ref();
-
-            match conj {
-                Conj::Yes => {
-                    rhs.copy_from((u.transpose() * rhs.rb()).as_ref());
-                    div_by_s(rhs.rb_mut(), s);
-                    rhs.copy_from((v.conjugate() * rhs.rb()).as_ref());
-                }
-                Conj::No => {
-                    rhs.copy_from((u.adjoint() * rhs.rb()).as_ref());
-                    div_by_s(rhs.rb_mut(), s);
-                    rhs.copy_from((v * rhs.rb()).as_ref());
-                }
-            }
-        }
-
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            assert!(self.nrows() == self.ncols());
-            let mut rhs = rhs;
-
-            let u = self.u.as_ref();
-            let v = self.v.as_ref();
-            let s = self.s.as_ref();
-
-            match conj {
-                Conj::No => {
-                    rhs.copy_from((v.transpose() * rhs.rb()).as_ref());
-                    div_by_s(rhs.rb_mut(), s);
-                    rhs.copy_from((u.conjugate() * rhs.rb()).as_ref());
-                }
-                Conj::Yes => {
-                    rhs.copy_from((v.adjoint() * rhs.rb()).as_ref());
-                    div_by_s(rhs.rb_mut(), s);
-                    rhs.copy_from((u * rhs.rb()).as_ref());
-                }
-            }
-        }
     }
 
     impl<E: ComplexField> ThinSvd<E> {
@@ -1756,7 +1594,7 @@ pub mod solvers {
             self.inner.v.as_ref()
         }
     }
-    impl<E: ComplexField> SolverCore<E> for ThinSvd<E> {
+    impl<E: ComplexField> SpSolverCore<E> for ThinSvd<E> {
         fn nrows(&self) -> usize {
             self.inner.nrows()
         }
@@ -1765,21 +1603,24 @@ pub mod solvers {
             self.inner.ncols()
         }
 
+        #[track_caller]
+        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            self.inner.solve_in_place_with_conj_impl(rhs, conj)
+        }
+
+        #[track_caller]
+        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+            self.inner
+                .solve_transpose_in_place_with_conj_impl(rhs, conj)
+        }
+    }
+    impl<E: ComplexField> SolverCore<E> for ThinSvd<E> {
         fn reconstruct(&self) -> Mat<E> {
             self.inner.reconstruct()
         }
 
         fn inverse(&self) -> Mat<E> {
             self.inner.inverse()
-        }
-
-        fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            self.inner.solve_in_place_with_conj_impl(rhs, conj)
-        }
-
-        fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
-            self.inner
-                .solve_transpose_in_place_with_conj_impl(rhs, conj)
         }
     }
 
@@ -1840,7 +1681,7 @@ pub mod solvers {
             self.s.as_ref()
         }
     }
-    impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
+    impl<E: ComplexField> SpSolverCore<E> for SelfAdjointEigendecomposition<E> {
         fn nrows(&self) -> usize {
             self.u.nrows()
         }
@@ -1849,29 +1690,7 @@ pub mod solvers {
             self.u.nrows()
         }
 
-        fn reconstruct(&self) -> Mat<E> {
-            let size = self.nrows();
-
-            let u = self.u.as_ref();
-            let s = self.s.as_ref();
-            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).faer_mul(s.read(j, 0)));
-
-            us * u.adjoint()
-        }
-
-        fn inverse(&self) -> Mat<E> {
-            let dim = self.nrows();
-
-            let u = self.u.as_ref();
-            let s = self.s.as_ref();
-
-            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
-                u.read(i, j).faer_mul(s.read(j, 0).faer_inv())
-            });
-
-            us_inv * u.adjoint()
-        }
-
+        #[track_caller]
         fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             assert!(self.nrows() == self.ncols());
             let mut rhs = rhs;
@@ -1893,6 +1712,7 @@ pub mod solvers {
             }
         }
 
+        #[track_caller]
         fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
             assert!(self.nrows() == self.ncols());
             let mut rhs = rhs;
@@ -1912,6 +1732,30 @@ pub mod solvers {
                     rhs.copy_from((u * rhs.rb()).as_ref());
                 }
             }
+        }
+    }
+    impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
+        fn reconstruct(&self) -> Mat<E> {
+            let size = self.nrows();
+
+            let u = self.u.as_ref();
+            let s = self.s.as_ref();
+            let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).faer_mul(s.read(j, 0)));
+
+            us * u.adjoint()
+        }
+
+        fn inverse(&self) -> Mat<E> {
+            let dim = self.nrows();
+
+            let u = self.u.as_ref();
+            let s = self.s.as_ref();
+
+            let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
+                u.read(i, j).faer_mul(s.read(j, 0).faer_inv())
+            });
+
+            us_inv * u.adjoint()
         }
     }
 
@@ -2140,7 +1984,7 @@ pub mod solvers {
 }
 
 /// Extension trait for `faer` types.
-pub trait Faer<E: ComplexField> {
+pub trait FaerMat<E: ComplexField> {
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
@@ -2240,7 +2084,735 @@ pub trait Faer<E: ComplexField> {
     fn complex_eigenvalues(&self) -> Vec<E::Canonical>;
 }
 
-impl<E: Conjugate> Faer<E::Canonical> for MatRef<'_, E>
+pub mod sparse {
+    use super::*;
+    use faer_core::group_helpers::VecGroup;
+
+    pub use faer_core::{
+        permutation::Index,
+        sparse::{
+            SparseColMatRef, SparseRowMatRef, SymbolicSparseColMatRef, SymbolicSparseRowMatRef,
+        },
+    };
+    pub use faer_sparse::{lu::LuError, FaerError};
+
+    #[derive(Copy, Clone, Debug)]
+    pub enum CholeskyError {
+        Generic(FaerError),
+        SymbolicSingular,
+        NotPositiveDefinite,
+    }
+
+    impl core::fmt::Display for CholeskyError {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            core::fmt::Debug::fmt(self, f)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl std::error::Error for CholeskyError {}
+
+    impl From<FaerError> for CholeskyError {
+        #[inline]
+        fn from(value: FaerError) -> Self {
+            Self::Generic(value)
+        }
+    }
+
+    impl From<crate::CholeskyError> for CholeskyError {
+        #[inline]
+        fn from(_: crate::CholeskyError) -> Self {
+            Self::NotPositiveDefinite
+        }
+    }
+
+    pub mod solvers {
+        use super::*;
+
+        pub trait SpSolverCore<E: Entity> {
+            /// Returns the number of rows of the matrix used to construct this decomposition.
+            fn nrows(&self) -> usize;
+            /// Returns the number of columns of the matrix used to construct this decomposition.
+            fn ncols(&self) -> usize;
+
+            #[doc(hidden)]
+            fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+            #[doc(hidden)]
+            fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+        }
+
+        pub trait SpSolverLstsqCore<E: Entity>: SpSolverCore<E> {
+            #[doc(hidden)]
+            fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj);
+        }
+
+        pub trait SpSolver<E: ComplexField>: SpSolverCore<E> {
+            /// Solves the equation `self * X = rhs`, and stores the result in `rhs`.
+            fn solve_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `conjugate(self) * X = rhs`, and stores the result in `rhs`.
+            fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `transpose(self) * X = rhs`, and stores the result in `rhs`.
+            fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `adjoint(self) * X = rhs`, and stores the result in `rhs`.
+            fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `self * X = rhs`, and returns the result.
+            fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
+            /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
+            fn solve_conj<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E>;
+            /// Solves the equation `transpose(self) * X = rhs`, and returns the result.
+            fn solve_transpose<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E>;
+            /// Solves the equation `adjoint(self) * X = rhs`, and returns the result.
+            fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E>;
+        }
+
+        pub trait SpSolverLstsq<E: Entity>: SpSolverLstsqCore<E> {
+            /// Solves the equation `self * X = rhs`, in the sense of least squares, and stores the
+            /// result in the top rows of `rhs`.
+            fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `conjugate(self) * X = rhs`, in the sense of least squares, and
+            /// stores the result in the top rows of `rhs`.
+            fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>);
+            /// Solves the equation `self * X = rhs`, and returns the result.
+            fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E>;
+            /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
+            fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E>;
+        }
+
+        #[track_caller]
+        fn solve_with_conj_impl<
+            E: ComplexField,
+            D: ?Sized + SpSolverCore<E>,
+            ViewE: Conjugate<Canonical = E>,
+        >(
+            d: &D,
+            rhs: MatRef<'_, ViewE>,
+            conj: Conj,
+        ) -> Mat<E> {
+            let mut rhs = rhs.to_owned();
+            d.solve_in_place_with_conj_impl(rhs.as_mut(), conj);
+            rhs
+        }
+
+        #[track_caller]
+        fn solve_transpose_with_conj_impl<
+            E: ComplexField,
+            D: ?Sized + SpSolverCore<E>,
+            ViewE: Conjugate<Canonical = E>,
+        >(
+            d: &D,
+            rhs: MatRef<'_, ViewE>,
+            conj: Conj,
+        ) -> Mat<E> {
+            let mut rhs = rhs.to_owned();
+            d.solve_transpose_in_place_with_conj_impl(rhs.as_mut(), conj);
+            rhs
+        }
+
+        #[track_caller]
+        fn solve_lstsq_with_conj_impl<
+            E: ComplexField,
+            D: ?Sized + SpSolverLstsqCore<E>,
+            ViewE: Conjugate<Canonical = E>,
+        >(
+            d: &D,
+            rhs: MatRef<'_, ViewE>,
+            conj: Conj,
+        ) -> Mat<E> {
+            let mut rhs = rhs.to_owned();
+            let k = rhs.ncols();
+            d.solve_lstsq_in_place_with_conj_impl(rhs.as_mut(), conj);
+            rhs.resize_with(d.ncols(), k, |_, _| unreachable!());
+            rhs
+        }
+
+        impl<E: ComplexField, Dec: ?Sized + SpSolverCore<E>> SpSolver<E> for Dec {
+            #[track_caller]
+            fn solve_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+            }
+
+            #[track_caller]
+            fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+            }
+
+            #[track_caller]
+            fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
+                solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_conj<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E> {
+                solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+            }
+
+            #[track_caller]
+            fn solve_transpose<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E> {
+                solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E> {
+                solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+            }
+        }
+
+        impl<E: ComplexField, Dec: ?Sized + SpSolverLstsqCore<E>> SpSolverLstsq<E> for Dec {
+            #[track_caller]
+            fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>) {
+                let mut rhs = rhs;
+                self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+            }
+
+            #[track_caller]
+            fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E> {
+                solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+            }
+
+            #[track_caller]
+            fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+                &self,
+                rhs: impl AsMatRef<ViewE>,
+            ) -> Mat<E> {
+                solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+            }
+        }
+
+        #[derive(Debug)]
+        pub struct SymbolicCholesky<I> {
+            inner: alloc::sync::Arc<faer_sparse::cholesky::SymbolicCholesky<I>>,
+        }
+        #[derive(Clone, Debug)]
+        pub struct Cholesky<I, E: Entity> {
+            symbolic: SymbolicCholesky<I>,
+            values: VecGroup<E>,
+        }
+
+        #[derive(Debug)]
+        pub struct SymbolicQr<I> {
+            inner: alloc::sync::Arc<faer_sparse::qr::SymbolicQr<I>>,
+        }
+        #[derive(Clone, Debug)]
+        pub struct Qr<I, E: Entity> {
+            symbolic: SymbolicQr<I>,
+            indices: alloc::vec::Vec<I>,
+            values: VecGroup<E>,
+        }
+
+        #[derive(Debug)]
+        pub struct SymbolicLu<I> {
+            inner: alloc::sync::Arc<faer_sparse::lu::SymbolicLu<I>>,
+        }
+        #[derive(Clone, Debug)]
+        pub struct Lu<I, E: Entity> {
+            symbolic: SymbolicLu<I>,
+            numeric: faer_sparse::lu::NumericLu<I, E>,
+        }
+
+        impl<I> Clone for SymbolicCholesky<I> {
+            #[inline]
+            fn clone(&self) -> Self {
+                Self {
+                    inner: self.inner.clone(),
+                }
+            }
+        }
+        impl<I> Clone for SymbolicQr<I> {
+            #[inline]
+            fn clone(&self) -> Self {
+                Self {
+                    inner: self.inner.clone(),
+                }
+            }
+        }
+        impl<I> Clone for SymbolicLu<I> {
+            #[inline]
+            fn clone(&self) -> Self {
+                Self {
+                    inner: self.inner.clone(),
+                }
+            }
+        }
+
+        impl<I: Index> SymbolicCholesky<I> {
+            #[track_caller]
+            pub fn try_new(
+                mat: SymbolicSparseColMatRef<'_, I>,
+                side: Side,
+            ) -> Result<Self, FaerError> {
+                Ok(Self {
+                    inner: alloc::sync::Arc::new(
+                        faer_sparse::cholesky::factorize_symbolic_cholesky(
+                            mat,
+                            side,
+                            Default::default(),
+                        )?,
+                    ),
+                })
+            }
+        }
+        impl<I: Index> SymbolicQr<I> {
+            #[track_caller]
+            pub fn try_new(mat: SymbolicSparseColMatRef<'_, I>) -> Result<Self, FaerError> {
+                Ok(Self {
+                    inner: alloc::sync::Arc::new(faer_sparse::qr::factorize_symbolic_qr(
+                        mat,
+                        Default::default(),
+                    )?),
+                })
+            }
+        }
+        impl<I: Index> SymbolicLu<I> {
+            #[track_caller]
+            pub fn try_new(mat: SymbolicSparseColMatRef<'_, I>) -> Result<Self, FaerError> {
+                Ok(Self {
+                    inner: alloc::sync::Arc::new(faer_sparse::lu::factorize_symbolic_lu(
+                        mat,
+                        Default::default(),
+                    )?),
+                })
+            }
+        }
+
+        impl<I: Index, E: ComplexField> Cholesky<I, E> {
+            #[track_caller]
+            pub fn try_new_with_symbolic(
+                symbolic: SymbolicCholesky<I>,
+                mat: SparseColMatRef<'_, I, E>,
+                side: Side,
+            ) -> Result<Self, CholeskyError> {
+                let len_values = symbolic.inner.len_values();
+                let mut values = VecGroup::new();
+                values
+                    .try_reserve_exact(len_values)
+                    .map_err(|_| FaerError::OutOfMemory)?;
+                values.resize(len_values, E::faer_zero().faer_into_units());
+                let parallelism = get_global_parallelism();
+                symbolic.inner.factorize_numeric_llt::<E>(
+                    values.as_slice_mut().into_inner(),
+                    mat,
+                    side,
+                    Default::default(),
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .inner
+                            .factorize_numeric_llt_req::<E>(parallelism)
+                            .map_err(|_| FaerError::OutOfMemory)?,
+                    )),
+                )?;
+                Ok(Self { symbolic, values })
+            }
+        }
+
+        impl<I: Index, E: ComplexField> Qr<I, E> {
+            #[track_caller]
+            pub fn try_new_with_symbolic(
+                symbolic: SymbolicQr<I>,
+                mat: SparseColMatRef<'_, I, E>,
+            ) -> Result<Self, FaerError> {
+                let len_values = symbolic.inner.len_values();
+                let len_indices = symbolic.inner.len_indices();
+                let mut values = VecGroup::new();
+                let mut indices = alloc::vec::Vec::new();
+                values
+                    .try_reserve_exact(len_values)
+                    .map_err(|_| FaerError::OutOfMemory)?;
+                indices
+                    .try_reserve_exact(len_indices)
+                    .map_err(|_| FaerError::OutOfMemory)?;
+                values.resize(len_values, E::faer_zero().faer_into_units());
+                indices.resize(len_indices, I::truncate(0));
+                let parallelism = get_global_parallelism();
+                symbolic.inner.factorize_numeric_qr::<E>(
+                    &mut indices,
+                    values.as_slice_mut().into_inner(),
+                    mat,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .inner
+                            .factorize_numeric_qr_req::<E>(parallelism)
+                            .map_err(|_| FaerError::OutOfMemory)?,
+                    )),
+                );
+                Ok(Self {
+                    symbolic,
+                    indices,
+                    values,
+                })
+            }
+        }
+
+        impl<I: Index, E: ComplexField> Lu<I, E> {
+            #[track_caller]
+            pub fn try_new_with_symbolic(
+                symbolic: SymbolicLu<I>,
+                mat: SparseColMatRef<'_, I, E>,
+            ) -> Result<Self, LuError> {
+                let mut numeric = faer_sparse::lu::NumericLu::new();
+                let parallelism = get_global_parallelism();
+                symbolic.inner.factorize_numeric_lu::<E>(
+                    &mut numeric,
+                    mat,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        symbolic
+                            .inner
+                            .factorize_numeric_lu_req::<E>(parallelism)
+                            .map_err(|_| FaerError::OutOfMemory)?,
+                    )),
+                )?;
+                Ok(Self { symbolic, numeric })
+            }
+        }
+
+        impl<I: Index, E: ComplexField> SpSolverCore<E> for Cholesky<I, E> {
+            #[inline]
+            fn nrows(&self) -> usize {
+                self.symbolic.inner.nrows()
+            }
+            #[inline]
+            fn ncols(&self) -> usize {
+                self.symbolic.inner.ncols()
+            }
+
+            #[track_caller]
+            fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let parallelism = get_global_parallelism();
+                let rhs_ncols = rhs.ncols();
+                faer_sparse::cholesky::LltRef::<'_, I, E>::new(
+                    &self.symbolic.inner,
+                    self.values.as_slice().into_inner(),
+                )
+                .solve_in_place_with_conj(
+                    conj,
+                    rhs,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        self.symbolic
+                            .inner
+                            .solve_in_place_req::<E>(rhs_ncols)
+                            .unwrap(),
+                    )),
+                );
+            }
+
+            #[track_caller]
+            fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let parallelism = get_global_parallelism();
+                let rhs_ncols = rhs.ncols();
+                faer_sparse::cholesky::LltRef::<'_, I, E>::new(
+                    &self.symbolic.inner,
+                    self.values.as_slice().into_inner(),
+                )
+                .solve_in_place_with_conj(
+                    conj.compose(Conj::Yes),
+                    rhs,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        self.symbolic
+                            .inner
+                            .solve_in_place_req::<E>(rhs_ncols)
+                            .unwrap(),
+                    )),
+                );
+            }
+        }
+
+        impl<I: Index, E: ComplexField> SpSolverCore<E> for Qr<I, E> {
+            #[inline]
+            fn nrows(&self) -> usize {
+                self.symbolic.inner.nrows()
+            }
+            #[inline]
+            fn ncols(&self) -> usize {
+                self.symbolic.inner.ncols()
+            }
+
+            #[track_caller]
+            fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                self.solve_lstsq_in_place_with_conj_impl(rhs, conj);
+            }
+
+            #[track_caller]
+            fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let _ = (&rhs, &conj);
+                todo!()
+            }
+        }
+
+        impl<I: Index, E: ComplexField> SpSolverLstsqCore<E> for Qr<I, E> {
+            #[track_caller]
+            fn solve_lstsq_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let parallelism = get_global_parallelism();
+                let rhs_ncols = rhs.ncols();
+                unsafe {
+                    faer_sparse::qr::QrRef::<'_, I, E>::new_unchecked(
+                        &self.symbolic.inner,
+                        &self.indices,
+                        self.values.as_slice().into_inner(),
+                    )
+                }
+                .solve_in_place_with_conj(
+                    conj,
+                    rhs,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        self.symbolic
+                            .inner
+                            .solve_in_place_req::<E>(rhs_ncols, parallelism)
+                            .unwrap(),
+                    )),
+                );
+            }
+        }
+
+        impl<I: Index, E: ComplexField> SpSolverCore<E> for Lu<I, E> {
+            #[inline]
+            fn nrows(&self) -> usize {
+                self.symbolic.inner.nrows()
+            }
+            #[inline]
+            fn ncols(&self) -> usize {
+                self.symbolic.inner.ncols()
+            }
+
+            #[track_caller]
+            fn solve_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let parallelism = get_global_parallelism();
+                let rhs_ncols = rhs.ncols();
+                unsafe {
+                    faer_sparse::lu::LuRef::<'_, I, E>::new_unchecked(
+                        &self.symbolic.inner,
+                        &self.numeric,
+                    )
+                }
+                .solve_in_place_with_conj(
+                    conj,
+                    rhs,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        self.symbolic
+                            .inner
+                            .solve_in_place_req::<E>(rhs_ncols, parallelism)
+                            .unwrap(),
+                    )),
+                );
+            }
+
+            #[track_caller]
+            fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
+                let parallelism = get_global_parallelism();
+                let rhs_ncols = rhs.ncols();
+                unsafe {
+                    faer_sparse::lu::LuRef::<'_, I, E>::new_unchecked(
+                        &self.symbolic.inner,
+                        &self.numeric,
+                    )
+                }
+                .solve_transpose_in_place_with_conj(
+                    conj,
+                    rhs,
+                    parallelism,
+                    PodStack::new(&mut GlobalPodBuffer::new(
+                        self.symbolic
+                            .inner
+                            .solve_in_place_req::<E>(rhs_ncols, parallelism)
+                            .unwrap(),
+                    )),
+                );
+            }
+        }
+    }
+
+    /// Extension trait for sparse `faer` types.
+    pub trait FaerSparseMat<I: Index, E: ComplexField> {
+        /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+        /// stores the result in `rhs`.
+        fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
+        /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+        /// stores the result in `rhs`.
+        fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
+        /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
+        /// and stores the result in `rhs`.
+        fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
+        /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
+        /// and stores the result in `rhs`.
+        fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
+
+        /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+        /// returns the result.
+        #[track_caller]
+        fn sp_solve_lower_triangular<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            let mut rhs = rhs.as_mat_ref().to_owned();
+            self.sp_solve_lower_triangular_in_place(rhs.as_mut());
+            rhs
+        }
+        /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+        /// returns the result.
+        #[track_caller]
+        fn sp_solve_upper_triangular<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            let mut rhs = rhs.as_mat_ref().to_owned();
+            self.sp_solve_upper_triangular_in_place(rhs.as_mut());
+            rhs
+        }
+        /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
+        /// and returns the result.
+        #[track_caller]
+        fn sp_solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            let mut rhs = rhs.as_mat_ref().to_owned();
+            self.sp_solve_unit_lower_triangular_in_place(rhs.as_mut());
+            rhs
+        }
+        /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
+        /// and returns the result.
+        #[track_caller]
+        fn sp_solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E>>(
+            &self,
+            rhs: impl AsMatRef<ViewE>,
+        ) -> Mat<E> {
+            let mut rhs = rhs.as_mat_ref().to_owned();
+            self.sp_solve_unit_upper_triangular_in_place(rhs.as_mut());
+            rhs
+        }
+
+        /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
+        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, CholeskyError>;
+
+        /// Returns the LU decomposition of `self` with partial (row) pivoting.
+        fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError>;
+
+        /// Returns the QR decomposition of `self`.
+        fn sp_qr(&self) -> Result<solvers::Qr<I, E>, FaerError>;
+    }
+
+    impl<I: Index, E: ComplexField> FaerSparseMat<I, E> for SparseColMatRef<'_, I, E> {
+        #[track_caller]
+        fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_lower_triangular_in_place(
+                *self,
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_upper_triangular_in_place(
+                *self,
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_unit_lower_triangular_in_place(
+                *self,
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_unit_upper_triangular_in_place(
+                *self,
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+
+        /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
+        #[track_caller]
+        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, CholeskyError> {
+            solvers::Cholesky::try_new_with_symbolic(
+                solvers::SymbolicCholesky::try_new(self.symbolic(), side)?,
+                *self,
+                side,
+            )
+        }
+
+        /// Returns the LU decomposition of `self` with partial (row) pivoting.
+        #[track_caller]
+        fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError> {
+            solvers::Lu::try_new_with_symbolic(
+                solvers::SymbolicLu::try_new(self.symbolic())?,
+                *self,
+            )
+        }
+
+        /// Returns the QR decomposition of `self`.
+        #[track_caller]
+        fn sp_qr(&self) -> Result<solvers::Qr<I, E>, FaerError> {
+            solvers::Qr::try_new_with_symbolic(
+                solvers::SymbolicQr::try_new(self.symbolic())?,
+                *self,
+            )
+        }
+    }
+}
+
+impl<E: Conjugate> FaerMat<E::Canonical> for MatRef<'_, E>
 where
     E::Canonical: ComplexField,
 {
@@ -2446,7 +3018,7 @@ where
     }
 }
 
-impl<E: Conjugate> Faer<E::Canonical> for MatMut<'_, E>
+impl<E: Conjugate> FaerMat<E::Canonical> for MatMut<'_, E>
 where
     E::Canonical: ComplexField,
 {
@@ -2547,7 +3119,7 @@ where
     }
 }
 
-impl<E: Conjugate> Faer<E::Canonical> for Mat<E>
+impl<E: Conjugate> FaerMat<E::Canonical> for Mat<E>
 where
     E::Canonical: ComplexField,
 {

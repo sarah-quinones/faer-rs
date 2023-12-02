@@ -14,7 +14,7 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
     assert,
     constrained::Size,
-    group_helpers::{SliceGroup, SliceGroupMut},
+    group_helpers::{SliceGroup, SliceGroupMut, VecGroup},
     mul,
     permutation::{PermutationRef, SignedIndex},
     solve,
@@ -26,31 +26,25 @@ use reborrow::*;
 
 #[inline(never)]
 fn resize_scalar<E: Entity>(
-    v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
+    v: &mut VecGroup<E>,
     n: usize,
     exact: bool,
     reserve_only: bool,
 ) -> Result<(), FaerError> {
-    let mut failed = false;
     let reserve = if exact {
-        alloc::vec::Vec::try_reserve_exact
+        VecGroup::try_reserve_exact
     } else {
-        alloc::vec::Vec::try_reserve
+        VecGroup::try_reserve
     };
-
-    E::faer_map(E::faer_as_mut(v), |v| {
-        if !failed {
-            failed = reserve(v, n.saturating_sub(v.len())).is_err();
-            if !reserve_only {
-                v.resize(Ord::max(n, v.len()), unsafe { core::mem::zeroed() });
-            }
-        }
-    });
-    if failed {
-        Err(FaerError::OutOfMemory)
-    } else {
-        Ok(())
+    reserve(v, n.saturating_sub(v.len())).map_err(|_| FaerError::OutOfMemory)?;
+    if !reserve_only {
+        v.resize(
+            Ord::max(n, v.len()),
+            unsafe { core::mem::zeroed::<E>() }.faer_into_units(),
+        );
     }
+
+    Ok(())
 }
 
 #[inline(never)]
@@ -97,6 +91,16 @@ pub enum LuError {
     SymbolicSingular(usize),
 }
 
+impl core::fmt::Display for LuError {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(self, f)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for LuError {}
+
 impl From<FaerError> for LuError {
     #[inline]
     fn from(value: FaerError) -> Self {
@@ -104,22 +108,11 @@ impl From<FaerError> for LuError {
     }
 }
 
-#[inline]
-fn to_slice_group_mut<E: Entity>(
-    v: &mut GroupFor<E, alloc::vec::Vec<E::Unit>>,
-) -> SliceGroupMut<'_, E> {
-    SliceGroupMut::<'_, E>::new(E::faer_map(E::faer_as_mut(v), |v| &mut **v))
-}
-#[inline]
-fn to_slice_group<E: Entity>(v: &GroupFor<E, alloc::vec::Vec<E::Unit>>) -> SliceGroup<'_, E> {
-    SliceGroup::<'_, E>::new(E::faer_map(E::faer_as_ref(v), |v| &**v))
-}
-
 pub mod supernodal {
     use super::*;
     use faer_core::assert;
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct SymbolicSupernodalLu<I> {
         pub(super) supernode_ptr: alloc::vec::Vec<I>,
         pub(super) super_etree: alloc::vec::Vec<I>,
@@ -130,6 +123,7 @@ pub mod supernodal {
         pub(super) ncols: usize,
     }
 
+    #[derive(Debug, Clone)]
     pub struct SupernodalLu<I, E: Entity> {
         nrows: usize,
         ncols: usize,
@@ -140,32 +134,12 @@ pub mod supernodal {
         l_col_ptr_for_row_ind: alloc::vec::Vec<I>,
         l_col_ptr_for_val: alloc::vec::Vec<I>,
         l_row_ind: alloc::vec::Vec<I>,
-        l_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+        l_val: VecGroup<E>,
 
         ut_col_ptr_for_row_ind: alloc::vec::Vec<I>,
         ut_col_ptr_for_val: alloc::vec::Vec<I>,
         ut_row_ind: alloc::vec::Vec<I>,
-        ut_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
-    }
-    unsafe impl<I: Index, E: Entity> Send for SupernodalLu<I, E> {}
-    unsafe impl<I: Index, E: Entity> Sync for SupernodalLu<I, E> {}
-
-    impl<I: Index, E: Entity> core::fmt::Debug for SupernodalLu<I, E> {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            f.debug_struct("SupernodalLu")
-                .field("nrows", &self.nrows)
-                .field("ncols", &self.ncols)
-                .field("nsupernodes", &self.nsupernodes)
-                .field("l_col_ptr_for_row_ind", &self.l_col_ptr_for_row_ind)
-                .field("l_col_ptr_for_val", &self.l_col_ptr_for_val)
-                .field("l_row_ind", &self.l_row_ind)
-                .field("l_val", &to_slice_group::<E>(&self.l_val))
-                .field("ut_col_ptr_for_row_ind", &self.ut_col_ptr_for_row_ind)
-                .field("ut_col_ptr_for_val", &self.ut_col_ptr_for_val)
-                .field("ut_row_ind", &self.ut_row_ind)
-                .field("ut_val", &to_slice_group::<E>(&self.ut_val))
-                .finish()
-        }
+        ut_val: VecGroup<E>,
     }
 
     impl<I: Index, E: Entity> SupernodalLu<I, E> {
@@ -187,8 +161,8 @@ pub mod supernodal {
                 l_row_ind: alloc::vec::Vec::new(),
                 ut_row_ind: alloc::vec::Vec::new(),
 
-                l_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
-                ut_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
+                l_val: VecGroup::new(),
+                ut_val: VecGroup::new(),
             }
         }
 
@@ -293,7 +267,9 @@ pub mod supernodal {
                 let s_row_index_count =
                     (lu.l_col_ptr_for_row_ind[s + 1] - lu.l_col_ptr_for_row_ind[s]).zx();
 
-                let L = to_slice_group::<E>(&lu.l_val)
+                let L = lu
+                    .l_val
+                    .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
                 let L = faer_core::mat::from_column_major_slice::<'_, E>(
                     L.into_inner(),
@@ -359,7 +335,9 @@ pub mod supernodal {
                 let s_row_index_count =
                     (lu.l_col_ptr_for_row_ind[s + 1] - lu.l_col_ptr_for_row_ind[s]).zx();
 
-                let L = to_slice_group::<E>(&lu.l_val)
+                let L = lu
+                    .l_val
+                    .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
                 let L = faer_core::mat::from_column_major_slice::<'_, E>(
                     L.into_inner(),
@@ -429,14 +407,18 @@ pub mod supernodal {
                 let s_col_index_count =
                     (lu.ut_col_ptr_for_row_ind[s + 1] - lu.ut_col_ptr_for_row_ind[s]).zx();
 
-                let L = to_slice_group::<E>(&lu.l_val)
+                let L = lu
+                    .l_val
+                    .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
                 let L = faer_core::mat::from_column_major_slice::<'_, E>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
                 );
-                let U = to_slice_group::<E>(&lu.ut_val)
+                let U = lu
+                    .ut_val
+                    .as_slice()
                     .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
                 let U_right = faer_core::mat::from_column_major_slice::<'_, E>(
                     U.into_inner(),
@@ -505,14 +487,18 @@ pub mod supernodal {
                 let s_col_index_count =
                     (lu.ut_col_ptr_for_row_ind[s + 1] - lu.ut_col_ptr_for_row_ind[s]).zx();
 
-                let L = to_slice_group::<E>(&lu.l_val)
+                let L = lu
+                    .l_val
+                    .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
                 let L = faer_core::mat::from_column_major_slice::<'_, E>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
                 );
-                let U = to_slice_group::<E>(&lu.ut_val)
+                let U = lu
+                    .ut_val
+                    .as_slice()
                     .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
                 let U_right = faer_core::mat::from_column_major_slice::<'_, E>(
                     U.into_inner(),
@@ -707,8 +693,6 @@ pub mod supernodal {
             }
         };
 
-        let to_slice_group_mut = to_slice_group_mut::<E>;
-
         let m = A.nrows();
         let n = A.ncols();
         assert!(m >= n);
@@ -885,7 +869,9 @@ pub mod supernodal {
             for (idx, i) in s_row_indices.iter().enumerate() {
                 row_global_to_local[i.zx()] = I(idx);
             }
-            let s_L = to_slice_group_mut(&mut lu.l_val)
+            let s_L = lu
+                .l_val
+                .as_slice_mut()
                 .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
             let mut s_L = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                 s_L.into_inner(),
@@ -1084,7 +1070,9 @@ pub mod supernodal {
                 col_global_to_local[j.zx()] = I(idx);
             }
 
-            let s_U = to_slice_group_mut(&mut lu.ut_val)
+            let s_U = lu
+                .ut_val
+                .as_slice_mut()
                 .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
             let mut s_U = faer_core::mat::from_column_major_slice_mut::<'_, E>(
                 s_U.into_inner(),
@@ -1348,35 +1336,19 @@ pub mod simplicial {
     use super::*;
     use faer_core::assert;
 
+    #[derive(Debug, Clone)]
     pub struct SimplicialLu<I, E: Entity> {
         nrows: usize,
         ncols: usize,
 
         l_col_ptr: alloc::vec::Vec<I>,
         l_row_ind: alloc::vec::Vec<I>,
-        l_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+        l_val: VecGroup<E>,
 
         u_col_ptr: alloc::vec::Vec<I>,
         u_row_ind: alloc::vec::Vec<I>,
-        u_val: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+        u_val: VecGroup<E>,
     }
-    impl<I: Index, E: Entity> core::fmt::Debug for SimplicialLu<I, E> {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            f.debug_struct("SimplicialLu")
-                .field("nrows", &self.nrows)
-                .field("ncols", &self.ncols)
-                .field("l_col_ptr", &self.l_col_ptr)
-                .field("l_row_ind", &self.l_row_ind)
-                .field("l_val", &to_slice_group::<E>(&self.l_val))
-                .field("u_col_ptr", &self.u_col_ptr)
-                .field("u_row_ind", &self.u_row_ind)
-                .field("u_val", &to_slice_group::<E>(&self.u_val))
-                .finish()
-        }
-    }
-
-    unsafe impl<I: Index, E: Entity> Send for SimplicialLu<I, E> {}
-    unsafe impl<I: Index, E: Entity> Sync for SimplicialLu<I, E> {}
 
     impl<I: Index, E: Entity> SimplicialLu<I, E> {
         #[inline]
@@ -1391,8 +1363,8 @@ pub mod simplicial {
                 l_row_ind: alloc::vec::Vec::new(),
                 u_row_ind: alloc::vec::Vec::new(),
 
-                l_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
-                u_val: E::faer_map(E::UNIT, |()| alloc::vec::Vec::<E::Unit>::new()),
+                l_val: VecGroup::new(),
+                u_val: VecGroup::new(),
             }
         }
 
@@ -1418,7 +1390,7 @@ pub mod simplicial {
                         &self.l_row_ind,
                     )
                 },
-                to_slice_group::<E>(&self.l_val).into_inner(),
+                self.l_val.as_slice().into_inner(),
             )
         }
 
@@ -1434,7 +1406,7 @@ pub mod simplicial {
                         &self.u_row_ind,
                     )
                 },
-                to_slice_group::<E>(&self.u_val).into_inner(),
+                self.u_val.as_slice().into_inner(),
             )
         }
 
@@ -1702,7 +1674,7 @@ pub mod simplicial {
                         &lu.l_row_ind,
                     )
                 },
-                to_slice_group::<E>(&lu.l_val).into_inner(),
+                lu.l_val.as_slice().into_inner(),
             );
 
             let pj = col_perm.into_arrays().0[j].zx();
@@ -1724,8 +1696,8 @@ pub mod simplicial {
             resize_scalar::<E>(&mut lu.u_val, u_pos + xj.len() + 1, false, false)?;
             resize_index(&mut lu.u_row_ind, u_pos + xj.len() + 1, false, false)?;
 
-            let mut l_val = to_slice_group_mut::<E>(&mut lu.l_val);
-            let mut u_val = to_slice_group_mut::<E>(&mut lu.u_val);
+            let mut l_val = lu.l_val.as_slice_mut();
+            let mut u_val = lu.u_val.as_slice_mut();
 
             let mut pivot_idx = n;
             let mut pivot_val = E::Real::faer_one().faer_neg();
@@ -1803,30 +1775,30 @@ pub struct LuSymbolicParams<'a> {
 }
 
 /// The inner factorization used for the symbolic LU, either simplicial or symbolic.
-#[derive(Debug)]
-pub enum SymbolicLuRaw<I: Index> {
+#[derive(Debug, Clone)]
+pub enum SymbolicLuRaw<I> {
     Simplicial { nrows: usize, ncols: usize },
     Supernodal(supernodal::SymbolicSupernodalLu<I>),
 }
 
 /// The symbolic structure of a sparse LU decomposition.
-#[derive(Debug)]
-pub struct SymbolicLu<I: Index> {
+#[derive(Debug, Clone)]
+pub struct SymbolicLu<I> {
     raw: SymbolicLuRaw<I>,
     col_perm_fwd: alloc::vec::Vec<I>,
     col_perm_inv: alloc::vec::Vec<I>,
     A_nnz: usize,
 }
 
-#[derive(Debug)]
-enum NumericLuRaw<I: Index, E: Entity> {
+#[derive(Debug, Clone)]
+enum NumericLuRaw<I, E: Entity> {
     None,
     Supernodal(supernodal::SupernodalLu<I, E>),
     Simplicial(simplicial::SimplicialLu<I, E>),
 }
 
-#[derive(Debug)]
-pub struct NumericLu<I: Index, E: Entity> {
+#[derive(Debug, Clone)]
+pub struct NumericLu<I, E: Entity> {
     raw: NumericLuRaw<I, E>,
     row_perm_fwd: alloc::vec::Vec<I>,
     row_perm_inv: alloc::vec::Vec<I>,

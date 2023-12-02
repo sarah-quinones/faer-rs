@@ -905,7 +905,10 @@ impl<const MR_DIV_N: usize, const NR: usize, CB: ConjTy, E: ComplexField> pulp::
                         )));
                         i += 1;
                     }
-                    let a: [SimdGroupFor<E, S>; MR_DIV_N] = transmute_unchecked(a_uninit);
+                    let a: [SimdGroupFor<E, S>; MR_DIV_N] = transmute_unchecked::<
+                        [MaybeUninit<SimdGroupFor<E, S>>; MR_DIV_N],
+                        [SimdGroupFor<E, S>; MR_DIV_N],
+                    >(a_uninit);
 
                     let mut j = 0usize;
                     loop {

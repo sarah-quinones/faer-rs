@@ -198,7 +198,11 @@ pub mod simplicial {
                     L_row_indices[k_start] = *k.truncate();
                 }
 
-                let etree = try_collect(MaybeIdx::as_slice_ref(etree.as_ref()).iter().copied())?;
+                let etree = try_collect(
+                    bytemuck::cast_slice::<I::Signed, I>(MaybeIdx::as_slice_ref(etree.as_ref()))
+                        .iter()
+                        .copied(),
+                )?;
 
                 let _ = SymbolicSparseColMatRef::new_checked(n, n, &L_col_ptrs, None, &L_row_ind);
 
@@ -411,7 +415,13 @@ pub mod simplicial {
                     l_nnz,
                     #[inline(always)]
                     move |L_NNZ| {
-                        let etree = Array::from_ref(MaybeIdx::from_slice_ref_checked(etree, N), N);
+                        let etree = Array::from_ref(
+                            MaybeIdx::from_slice_ref_checked(
+                                bytemuck::cast_slice::<I, I::Signed>(etree),
+                                N,
+                            ),
+                            N,
+                        );
                         let A = ghost::SparseColMatRef::new(A, N, N);
 
                         let eps = regularization.dynamic_regularization_epsilon.faer_abs();
@@ -818,11 +828,11 @@ pub mod simplicial {
     }
 
     #[derive(Debug)]
-    pub struct SymbolicSimplicialCholesky<I: Index> {
+    pub struct SymbolicSimplicialCholesky<I> {
         dimension: usize,
         col_ptrs: alloc::vec::Vec<I>,
         row_indices: alloc::vec::Vec<I>,
-        etree: alloc::vec::Vec<I::Signed>,
+        etree: alloc::vec::Vec<I>,
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -3135,14 +3145,14 @@ impl ComputationModel {
 
 /// The inner factorization used for the symbolic Cholesky, either simplicial or symbolic.
 #[derive(Debug)]
-pub enum SymbolicCholeskyRaw<I: Index> {
+pub enum SymbolicCholeskyRaw<I> {
     Simplicial(simplicial::SymbolicSimplicialCholesky<I>),
     Supernodal(supernodal::SymbolicSupernodalCholesky<I>),
 }
 
 /// The symbolic structure of a sparse Cholesky decomposition.
 #[derive(Debug)]
-pub struct SymbolicCholesky<I: Index> {
+pub struct SymbolicCholesky<I> {
     raw: SymbolicCholeskyRaw<I>,
     perm_fwd: alloc::vec::Vec<I>,
     perm_inv: alloc::vec::Vec<I>,
