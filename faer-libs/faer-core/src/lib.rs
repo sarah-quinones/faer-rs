@@ -3676,7 +3676,7 @@ pub mod group_helpers {
 /// # Example
 ///
 /// Consider the 4-by-5 matrix:
-/// ```
+/// ```notcode
 /// 10.0  0.0  12.0  -1.0  13.0
 ///  0.0  0.0  25.0  -2.0   0.0
 ///  1.0  0.0   0.0   0.0   0.0
@@ -3684,7 +3684,7 @@ pub mod group_helpers {
 /// ```
 ///
 /// The matrix is stored as follows:
-/// ```
+/// ```notcode
 /// column pointers:  0 |  3 |  3 |  5 |  7 |  9
 ///
 /// row indices:    0 |    2 |    3 |    0 |    1 |    0 |    1 |    0 |    3
