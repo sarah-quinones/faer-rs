@@ -3663,6 +3663,33 @@ pub mod group_helpers {
 }
 
 /// Sparse matrix data structures.
+///
+/// Most sparse matrix algorithms accept matrices in sparse column-oriented format.
+/// This format represents each column of the matrix by storing the row indices of its non-zero
+/// elements, as well as their values.
+///
+/// The indices and the values are each stored in a contiguous slice (or group of slices for
+/// arbitrary values). In order to specify where each column starts and ends, a slice of size
+/// `ncols + 1` stores the start of each column, with the last element being equal to the total
+/// number of non-zeros (or the capacity in uncompressed mode).
+///
+/// # Example
+///
+/// Consider the 4-by-5 matrix:
+/// ```
+/// 10.0  0.0  12.0  -1.0  13.0
+///  0.0  0.0  25.0  -2.0   0.0
+///  1.0  0.0   0.0   0.0   0.0
+///  4.0  0.0   0.0   0.0   5.0
+/// ```
+///
+/// The matrix is stored as follows:
+/// ```
+/// column pointers:  0 |  3 |  3 |  5 |  7 |  9
+///
+/// row indices:    0 |    2 |    3 |    0 |    1 |    0 |    1 |    0 |    3
+/// values     : 10.0 |  1.0 |  4.0 | 12.0 | 25.0 | -1.0 | -2.0 | 13.0 |  5.0
+/// ```
 pub mod sparse {
     use super::*;
     use crate::assert;
@@ -4379,18 +4406,22 @@ pub mod sparse {
         }
     }
 
-    // TODO: sparse_sparse_matmul
-    //
-    // PERF: optimize matmul
-    // - parallelization
-    // - simd(?)
+    /// Sparse matrix multiplication.
     pub mod mul {
+        // TODO: sparse_sparse_matmul
+        //
+        // PERF: optimize matmul
+        // - parallelization
+        // - simd(?)
+
         use super::*;
         use crate::{
             assert,
             constrained::{self, Size},
         };
 
+        /// Multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores the result in
+        /// `acc`. See [`crate::mul::matmul`] for more details.
         #[track_caller]
         pub fn sparse_dense_matmul<
             I: Index,
@@ -4455,6 +4486,8 @@ pub mod sparse {
             });
         }
 
+        /// Multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores the result in
+        /// `acc`. See [`crate::mul::matmul`] for more details.
         #[track_caller]
         pub fn dense_sparse_matmul<
             I: Index,
