@@ -1,17 +1,18 @@
-use faer_core::{Entity, MatMut, MatRef};
+use faer_core::{Entity, MatMut, MatRef, mat::{from_raw_parts, from_raw_parts_mut}, GroupFor};
 
 use crate::{CblasInt, CblasLayout};
 
 #[inline(always)]
 pub unsafe fn from_blas<'a, E: Entity>(
     layout: CblasLayout,
-    ptr: E::Group<*const E::Unit>,
+    ptr: GroupFor<E, *const E::Unit>,
     nrows: CblasInt,
     ncols: CblasInt,
     leading_dim: CblasInt,
 ) -> MatRef<'a, E> {
     let stride = Stride::from_leading_dim(layout, leading_dim);
-    MatRef::<E>::from_raw_parts(
+
+    from_raw_parts(
         ptr,
         nrows as usize,
         ncols as usize,
@@ -23,13 +24,13 @@ pub unsafe fn from_blas<'a, E: Entity>(
 #[inline(always)]
 pub unsafe fn from_blas_mut<'a, E: Entity>(
     layout: CblasLayout,
-    ptr: E::Group<*mut E::Unit>,
+    ptr: GroupFor<E, *mut E::Unit>,
     nrows: CblasInt,
     ncols: CblasInt,
     leading_dim: CblasInt,
 ) -> MatMut<'a, E> {
     let stride = Stride::from_leading_dim(layout, leading_dim);
-    MatMut::<E>::from_raw_parts(
+    from_raw_parts_mut(
         ptr,
         nrows as usize,
         ncols as usize,
@@ -40,20 +41,20 @@ pub unsafe fn from_blas_mut<'a, E: Entity>(
 
 #[inline(always)]
 pub unsafe fn from_blas_vec<'a, E: Entity>(
-    ptr: E::Group<*const E::Unit>,
+    ptr: GroupFor<E, *const E::Unit>,
     n: CblasInt,
     inc: CblasInt,
 ) -> MatRef<'a, E> {
-    MatRef::<E>::from_raw_parts(ptr, n as usize, 1, inc as isize, 0)
+    from_raw_parts(ptr, n as usize, 1, inc as isize, 0)
 }
 
 #[inline(always)]
 pub unsafe fn from_blas_vec_mut<'a, E: Entity>(
-    ptr: E::Group<*mut E::Unit>,
+    ptr: GroupFor<E, *mut E::Unit>,
     n: CblasInt,
     inc: CblasInt,
 ) -> MatMut<'a, E> {
-    MatMut::<E>::from_raw_parts(ptr, n as usize, 1, inc as isize, 0)
+    from_raw_parts_mut(ptr, n as usize, 1, inc as isize, 0)
 }
 
 #[derive(Debug, Clone, Copy)]

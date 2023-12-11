@@ -67,14 +67,14 @@ macro_rules! impl_fn {
                 type SCALAR_TY = scalar_type!($prefix);
                 #[no_mangle]
                 pub unsafe extern "C" fn [< cblas_ $prefix $f >]($($arg:$arg_ty),*) {
-                    crate::impls::$f::<ELEM_TY>($(
+                    $f::<ELEM_TY>($(
                         deref_arg!($prefix $arg:$arg_ty),
                     )*);
                 }
             }
             pub use [< mod_ $prefix $f >]::*;
         }
-        impl_fn!({$($tail) *} $f($($arg : $arg_ty),*));
+        impl_fn!({$($tail) *} $f($($arg:$arg_ty),*));
     }
 }
 

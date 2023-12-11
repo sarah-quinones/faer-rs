@@ -1,7 +1,7 @@
 use crate::conversions::{from_blas, from_blas_mut, from_blas_vec, from_blas_vec_mut};
 use faer_core::{
     mul::{matmul_with_conj, matvec::matvec_with_conj},
-    ComplexField, Conj, Entity, Parallelism,
+    ComplexField, Conj, Entity, Parallelism, GroupFor,
 };
 
 #[cfg(not(ilp64))]
@@ -62,12 +62,12 @@ pub unsafe fn gemv<E>(
     m: CblasInt,
     n: CblasInt,
     alpha: E,
-    a: E::Group<*const E::Unit>,
+    a: GroupFor<E, *const E::Unit>,
     lda: CblasInt,
-    x: E::Group<*const E::Unit>,
+    x: GroupFor<E, *const E::Unit>,
     incx: CblasInt,
     beta: E,
-    y: E::Group<*mut E::Unit>,
+    y: GroupFor<E, *mut E::Unit>,
     incy: CblasInt,
 ) where
     E: ComplexField + Entity,
@@ -82,7 +82,7 @@ pub unsafe fn gemv<E>(
     let x = unsafe { from_blas_vec::<E>(x, n, incx) };
     let y = unsafe { from_blas_vec_mut::<E>(y, m, incy) };
 
-    let faer_alpha = (faer_alpha != <E>::zero()).then_some(faer_alpha);
+    let faer_alpha = (faer_alpha != <E>::faer_zero()).then_some(faer_alpha);
     matvec_with_conj(y, a, trans.conj(), x, Conj::No, faer_alpha, faer_beta);
 }
 
@@ -99,12 +99,12 @@ pub unsafe fn gemm<E>(
     n: CblasInt,
     k: CblasInt,
     alpha: E,
-    a: E::Group<*const E::Unit>,
+    a: GroupFor<E, *const E::Unit>,
     lda: CblasInt,
-    b: E::Group<*const E::Unit>,
+    b: GroupFor<E, *const E::Unit>,
     ldb: CblasInt,
     beta: E,
-    c: E::Group<*mut E::Unit>,
+    c: GroupFor<E, *mut E::Unit>,
     ldc: CblasInt,
 ) where
     E: ComplexField + Entity,
@@ -129,7 +129,7 @@ pub unsafe fn gemm<E>(
 
     let c = from_blas_mut::<E>(layout, c, m, n, ldc);
 
-    let faer_alpha = (faer_alpha != <E>::zero()).then_some(faer_alpha);
+    let faer_alpha = (faer_alpha != <E>::faer_zero()).then_some(faer_alpha);
     matmul_with_conj(
         c,
         a,
@@ -150,12 +150,12 @@ pub unsafe fn symm<E>(
     m: CblasInt,
     n: CblasInt,
     alpha: E,
-    a: E::Group<*const E::Unit>,
+    a: GroupFor<E, *const E::Unit>,
     lda: CblasInt,
-    b: E::Group<*const E::Unit>,
+    b: GroupFor<E, *const E::Unit>,
     ldb: CblasInt,
     beta: E,
-    c: E::Group<*mut E::Unit>,
+    c: GroupFor<E, *mut E::Unit>,
     ldc: CblasInt,
 ) where
     E: ComplexField + Entity,
