@@ -195,6 +195,9 @@ pub mod prelude {
     pub use reborrow::{IntoConst, Reborrow, ReborrowMut};
 }
 
+#[cfg(test)]
+mod proptest_support;
+
 pub use faer_core::{
     complex_native, get_global_parallelism, mat, scale, set_global_parallelism, unzipped, zipped,
     Col, ColMut, ColRef, Mat, MatMut, MatRef, Parallelism, Row, RowMut, RowRef, Side,
@@ -4295,6 +4298,41 @@ mod tests {
     use super::*;
     use complex_native::*;
     use faer_core::{assert, RealField};
+    use matrixcompare::prop_assert_matrix_eq;
+    use proptest::prelude::*;
+    use proptest::strategy::Strategy;
+
+    use crate::proptest_support::*;
+
+    fn prop_real() -> impl Strategy<Value = f64> + Clone {
+        -1e12..=1e12
+    }
+
+    #[allow(unused)]
+    fn prop_complex() -> impl Strategy<Value = c64> + Clone {
+        (prop_real(), prop_real()).prop_map(|(re, im)| c64::new(re, im))
+    }
+
+    #[allow(unused)]
+    fn mat_rhs<E: ComplexField>(
+        element: impl Strategy<Value = E> + Clone,
+        mat_structure: MatrixStructure,
+    ) -> impl Strategy<Value = (Mat<E>, Mat<E>)> {
+        let m = square_mat_with(
+            element.clone(),
+            Parameters::default().structure(mat_structure),
+        );
+        let rhs = mat(element);
+        (m, rhs).prop_map(|(mut m, mut rhs)| {
+            // Force compatible dimensions.
+            let dim = core::cmp::min(m.nrows(), rhs.nrows());
+
+            m.resize_with(dim, dim, |_, _| unreachable!());
+            rhs.resize_with(dim, rhs.ncols(), |_, _| unreachable!());
+
+            (m, rhs)
+        })
+    }
 
     #[track_caller]
     fn assert_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
@@ -4841,5 +4879,54 @@ mod tests {
             (lambda_1 - correct_lamba_1).abs() < 1e-10,
             "lambda_1 = {lambda_1}, correct_lamba_1 = {correct_lamba_1}",
         );
+    }
+
+    proptest! {
+        // #[test]
+        // fn prop_solve_lower_triangular((m, rhs) in mat_rhs(prop_real(), structure().unit_triangular(Triangular::Lower))) {
+        //     let sol = m.solve_lower_triangular(rhs.clone());
+        //     let tol = relative_epsilon_cond(&m, &rhs, 10.0);
+        //     let m_times_sol = m * sol;
+        //     prop_assert_matrix_eq!(m_times_sol, rhs, comp = abs, tol = tol);
+        // }
+
+        #[test]
+        fn prop_qr_real(H in square_mat(prop_real())) {
+            let qr = H.qr();
+
+            let q_times_r = qr.compute_q() * qr.compute_r();
+            let tol = relative_epsilon_norms(&q_times_r, &H, 10.0);
+            prop_assert_matrix_eq!(q_times_r, &H, comp = abs, tol = tol);
+
+            let q_times_r_thin = qr.compute_thin_q() * qr.compute_thin_r();
+            let tol = relative_epsilon_norms(&q_times_r_thin, &H, 10.0);
+            prop_assert_matrix_eq!(q_times_r_thin, &H, comp = abs, tol = tol);
+        }
+
+        #[test]
+        fn prop_real_eigendecomposition(H_real in square_mat(prop_real())) {
+            let n = H_real.nrows();
+            let H = Mat::from_fn(n, n, |i, j| c64::new(H_real.read(i, j), 0.0));
+
+            let eigen = H_real.eigendecomposition::<c64>();
+            let mut s = Mat::zeros(n, n);
+            s.as_mut()
+                .diagonal_mut()
+                .column_vector_mut()
+                .copy_from(eigen.s_diagonal());
+            let u = eigen.u();
+
+            let u_times_s = u * &s;
+            let h_times_u = &H * u;
+            let tol = relative_epsilon_norms(&u_times_s, &h_times_u, 10.0);
+
+            let u_times_s_re = zipped!(u_times_s.as_ref()).map(|unzipped!(x)| x.read().faer_real());
+            let h_times_u_re = zipped!(u_times_s.as_ref()).map(|unzipped!(x)| x.read().faer_real());
+            prop_assert_matrix_eq!(u_times_s_re, h_times_u_re, comp = abs, tol = tol);
+
+            let u_times_s_im = zipped!(u_times_s.as_ref()).map(|unzipped!(x)| x.read().faer_imag());
+            let h_times_u_im = zipped!(u_times_s.as_ref()).map(|unzipped!(x)| x.read().faer_imag());
+            prop_assert_matrix_eq!(u_times_s_im, h_times_u_im, comp = abs, tol = tol);
+        }
     }
 }

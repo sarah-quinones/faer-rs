@@ -84,6 +84,9 @@ rand = "0.8.5"
 nalgebra = "0.32"
 ndarray = "0.15"
 polars = { version = "0.34", features = ["lazy", "parquet"] }
+dbgf = "0.1.0"
+proptest = "1.4.0"
+matrixcompare = { version = "0.3.0", features = ["proptest-support"] }
 
 [[example]]
 name = "conversions"
