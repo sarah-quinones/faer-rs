@@ -1,3 +1,21 @@
+use crate::complex_native::c64conj_impl::c64conj;
+use faer_entity::*;
+use num_traits::{One, Zero};
+use pulp::{cast, Simd};
+
+#[cfg(feature = "std")]
+use num_complex::ComplexFloat;
+
+macro_rules! impl_from_num_complex {
+    ($( $method:ident ( self $( , $arg:ident : $ty:ty )* ) -> $ret:ty ; )*) => {
+        $(
+            #[inline(always)]
+            pub fn $method(self $( , $arg : $ty )* ) -> $ret {
+                self.to_num_complex().$method( $( $arg , )* ).into()
+            }
+        )*
+    };
+}
 
 // 64-bit complex floating point type. See the module-level documentation for more details.
 #[allow(non_camel_case_types)]
@@ -9,21 +27,143 @@ pub struct c64 {
 }
 
 impl c64 {
+    /// Create a new complex number.
     #[inline(always)]
     pub fn new(re: f64, im: f64) -> Self {
         Self { re, im }
     }
 
+    /// Construct the imaginary number.
     #[inline(always)]
-    pub fn to_num_complex(self) -> Complex<f64> {
+    pub fn i() -> Self {
+        Self::new(0.0, 1.0)
+    }
+
+    /// Create a complex number from a phase.
+    #[inline(always)]
+    pub fn cis(phase: f64) -> Self {
+        Self::new(phase.cos(), phase.sin())
+    }
+
+    /// Create a complex number from polar coordinates.
+    #[inline(always)]
+    pub fn from_polar(r: f64, theta: f64) -> Self {
+        Self::new(r * theta.cos(), r * theta.sin())
+    }
+
+    /// Convert the number to a num_complex::Complex64.
+    #[inline(always)]
+    pub fn to_num_complex(self) -> num_complex::Complex<f64> {
         self.into()
     }
 
+    /// Returns the real part of the complex number.
     #[inline(always)]
-    pub fn abs(self) -> f64 {
-        self.faer_abs()
+    pub fn re(self) -> f64 {
+        self.re
+    }
+
+    /// Returns the imaginary part of the complex number.
+    #[inline(always)]
+    pub fn im(self) -> f64 {
+        self.im
+    }
+
+    /// Calculate the complex conjugate of self.
+    #[inline(always)]
+    pub fn conj(self) -> Self {
+        self.faer_conj()
+    }
+
+    impl_from_num_complex!(
+        is_nan(self) -> bool;
+        is_infinite(self) -> bool;
+        is_finite(self) -> bool;
+        is_normal(self) -> bool;
+        recip(self) -> Self;
+        powi(self, exp: i32) -> Self;
+        powu(self, exp: u32) -> Self;
+        powf(self, exp: f64) -> Self;
+        powc(self, exp: num_complex::Complex<f64>) -> Self;
+        sqrt(self) -> Self;
+        exp(self) -> Self;
+        exp2(self) -> Self;
+        expf(self, base: f64) -> Self;
+        ln(self) -> Self;
+        log(self, base: f64) -> Self;
+        log2(self) -> Self;
+        log10(self) -> Self;
+        cbrt(self) -> Self;
+        sin(self) -> Self;
+        cos(self) -> Self;
+        tan(self) -> Self;
+        asin(self) -> Self;
+        acos(self) -> Self;
+        atan(self) -> Self;
+        sinh(self) -> Self;
+        cosh(self) -> Self;
+        tanh(self) -> Self;
+        asinh(self) -> Self;
+        acosh(self) -> Self;
+        atanh(self) -> Self;
+        abs(self) -> f64;
+        arg(self) -> f64;
+        norm(self) -> f64;
+    );
+
+    #[inline(always)]
+    pub fn l1_norm(&self) -> f64 {
+        self.re.abs() + self.im.abs()
+    }
+
+    #[inline(always)]
+    pub fn norm_sqr(&self) -> f64 {
+        self.re * self.re + self.im * self.im
+    }
+
+    #[inline(always)]
+    pub fn inv(&self) -> Self {
+        let norm_sqr = self.norm_sqr();
+        Self::new(self.re / norm_sqr, -self.im / norm_sqr)
     }
 }
+
+impl num_traits::Zero for c64 {
+    #[inline(always)]
+    fn zero() -> Self {
+        Self::new(0.0, 0.0)
+    }
+
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.re.is_zero() && self.im.is_zero()
+    }
+
+    #[inline(always)]
+    fn set_zero(&mut self) {
+        self.re.set_zero();
+        self.im.set_zero();
+    }
+}
+
+impl One for c64 {
+    #[inline(always)]
+    fn one() -> Self {
+        Self::new(1.0, 0.0)
+    }
+
+    #[inline(always)]
+    fn is_one(&self) -> bool {
+        self.re.is_one() && self.im.is_zero()
+    }
+
+    #[inline(always)]
+    fn set_one(&mut self) {
+        self.re.set_one();
+        self.im.set_zero();
+    }
+}
+
 impl core::ops::Neg for c64 {
     type Output = c64;
 
@@ -41,6 +181,7 @@ impl core::ops::Add<f64> for c64 {
         Self::new(self.re + rhs, self.im)
     }
 }
+
 impl core::ops::Add<c64> for f64 {
     type Output = c64;
 
@@ -49,6 +190,7 @@ impl core::ops::Add<c64> for f64 {
         Self::Output::new(self + rhs.re, rhs.im)
     }
 }
+
 impl core::ops::Add for c64 {
     type Output = c64;
 
@@ -66,6 +208,7 @@ impl core::ops::Sub<f64> for c64 {
         Self::new(self.re - rhs, self.im)
     }
 }
+
 impl core::ops::Sub<c64> for f64 {
     type Output = c64;
 
@@ -74,6 +217,7 @@ impl core::ops::Sub<c64> for f64 {
         Self::Output::new(self - rhs.re, -rhs.im)
     }
 }
+
 impl core::ops::Sub for c64 {
     type Output = c64;
 
@@ -91,6 +235,7 @@ impl core::ops::Mul<f64> for c64 {
         Self::new(self.re * rhs, self.im * rhs)
     }
 }
+
 impl core::ops::Mul<c64> for f64 {
     type Output = c64;
 
@@ -99,6 +244,7 @@ impl core::ops::Mul<c64> for f64 {
         Self::Output::new(self * rhs.re, self * rhs.im)
     }
 }
+
 impl core::ops::Mul for c64 {
     type Output = c64;
 
@@ -119,22 +265,150 @@ impl core::ops::Div<f64> for c64 {
         Self::new(self.re / rhs, self.im / rhs)
     }
 }
+
 impl core::ops::Div<c64> for f64 {
     type Output = c64;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c64) -> Self::Output {
-        self * <c64 as ComplexField>::faer_inv(rhs)
+        self * rhs.faer_inv()
     }
 }
+
 impl core::ops::Div for c64 {
     type Output = c64;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
-        self * <Self as ComplexField>::faer_inv(rhs)
+        self * rhs.faer_inv()
+    }
+}
+
+impl core::ops::Rem<f64> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn rem(self, rhs: f64) -> Self::Output {
+        Self::new(self.re % rhs, self.im % rhs)
+    }
+}
+
+impl core::ops::Rem<c64> for f64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn rem(self, rhs: c64) -> Self::Output {
+        self.rem(rhs.to_num_complex()).into()
+    }
+}
+
+impl core::ops::Rem for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn rem(self, rhs: Self) -> Self::Output {
+        self.to_num_complex().rem(rhs.to_num_complex()).into()
+    }
+}
+
+impl core::ops::AddAssign<f64> for c64 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: f64) {
+        self.re += rhs;
+    }
+}
+
+impl core::ops::AddAssign for c64 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: c64) {
+        self.re += rhs.re;
+        self.im += rhs.im;
+    }
+}
+
+impl core::ops::SubAssign<f64> for c64 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: f64) {
+        self.re -= rhs;
+    }
+}
+
+impl core::ops::SubAssign for c64 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: c64) {
+        self.re -= rhs.re;
+        self.im -= rhs.im;
+    }
+}
+
+impl core::ops::MulAssign<f64> for c64 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: f64) {
+        self.re *= rhs;
+        self.im *= rhs;
+    }
+}
+
+impl core::ops::MulAssign for c64 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: c64) {
+        let tmp = self.re;
+        self.re *= rhs.re;
+        self.re -= rhs.im * self.im;
+        self.im *= rhs.re;
+        self.im += rhs.im * tmp;
+    }
+}
+
+impl core::ops::DivAssign<f64> for c64 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: f64) {
+        self.re /= rhs;
+        self.im /= rhs;
+    }
+}
+
+impl core::ops::DivAssign for c64 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: c64) {
+        *self *= rhs.faer_inv();
+    }
+}
+
+impl core::ops::RemAssign<f64> for c64 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: f64) {
+        self.re %= rhs;
+        self.im %= rhs;
+    }
+}
+
+impl core::ops::RemAssign for c64 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: c64) {
+        *self = *self % rhs;
+    }
+}
+
+impl num_traits::Inv for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn inv(self) -> Self::Output {
+        self.faer_inv()
+    }
+}
+
+impl num_traits::Num for c64 {
+    type FromStrRadixErr =
+        num_complex::ParseComplexError<<f64 as num_traits::Num>::FromStrRadixErr>;
+
+    #[inline(always)]
+    fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        let num_complex = num_complex::Complex64::from_str_radix(str, radix)?;
+        Ok(num_complex.into())
     }
 }
 
@@ -147,6 +421,7 @@ impl From<c64> for num_complex::Complex64 {
         }
     }
 }
+
 impl From<num_complex::Complex64> for c64 {
     #[inline(always)]
     fn from(value: num_complex::Complex64) -> Self {
@@ -156,13 +431,36 @@ impl From<num_complex::Complex64> for c64 {
         }
     }
 }
+
+impl From<f64> for c64 {
+    #[inline(always)]
+    fn from(value: f64) -> Self {
+        Self::new(value, 0.0)
+    }
+}
+
+impl<'a> From<&'a f64> for c64 {
+    #[inline(always)]
+    fn from(value: &'a f64) -> Self {
+        Self::new(value.clone(), 0.0)
+    }
+}
+
 unsafe impl bytemuck::Zeroable for c64 {}
 unsafe impl bytemuck::Pod for c64 {}
-impl Debug for c64 {
+
+impl core::fmt::Debug for c64 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        f.write_str(" + ")?;
-        self.im.fmt(f)?;
+        if self.im < 0.0 {
+            f.write_str(" - ")?;
+            (-self.im).fmt(f)?;
+        } else if self.im == 0.0 {
+            f.write_str(" + 0.0")?;
+        } else {
+            f.write_str(" + ")?;
+            self.im.fmt(f)?;
+        }
         f.write_str(" * I")
     }
 }
@@ -214,21 +512,11 @@ impl ComplexField for c64 {
     }
 
     #[inline(always)]
-    fn faer_inv(self) -> Self {
-        self.to_num_complex().faer_inv().into()
-    }
-
-    #[inline(always)]
     fn faer_conj(self) -> Self {
         Self {
             re: self.re,
             im: -self.im,
         }
-    }
-
-    #[inline(always)]
-    fn faer_sqrt(self) -> Self {
-        self.to_num_complex().faer_sqrt().into()
     }
 
     #[inline(always)]
@@ -250,11 +538,6 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn faer_score(self) -> Self::Real {
         self.faer_abs2()
-    }
-
-    #[inline(always)]
-    fn faer_abs(self) -> Self::Real {
-        self.to_num_complex().faer_abs().into()
     }
 
     #[inline(always)]
@@ -293,6 +576,21 @@ impl ComplexField for c64 {
     #[inline(always)]
     fn faer_one() -> Self {
         Self { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn faer_inv(self) -> Self {
+        self.to_num_complex().faer_inv().into()
+    }
+
+    #[inline(always)]
+    fn faer_sqrt(self) -> Self {
+        self.to_num_complex().faer_sqrt().into()
+    }
+
+    #[inline(always)]
+    fn faer_abs(self) -> Self::Real {
+        self.to_num_complex().faer_abs()
     }
 
     #[inline(always)]
@@ -437,7 +735,7 @@ impl ComplexField for c64 {
         acc: SimdGroupFor<Self::Real, S>,
     ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values, acc);
-        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+        unimplemented!("c64/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
     fn faer_simd_abs2<S: Simd>(
@@ -445,7 +743,7 @@ impl ComplexField for c64 {
         values: SimdGroupFor<Self, S>,
     ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
-        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+        unimplemented!("c64/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
     #[inline(always)]
     fn faer_simd_score<S: Simd>(
@@ -453,7 +751,7 @@ impl ComplexField for c64 {
         values: SimdGroupFor<Self, S>,
     ) -> SimdGroupFor<Self::Real, S> {
         let _ = (simd, values);
-        unimplemented!("c32/c64 require special treatment when converted to their real counterparts in simd kernels");
+        unimplemented!("c64/c64 require special treatment when converted to their real counterparts in simd kernels");
     }
 
     #[inline(always)]
@@ -507,6 +805,7 @@ impl ComplexField for c64 {
     ) {
         simd.c64s_as_aligned_mut_simd(bytemuck::cast_slice_mut(slice), offset)
     }
+
     #[inline(always)]
     fn faer_simd_rotate_left<S: Simd>(
         simd: S,
@@ -593,6 +892,7 @@ unsafe impl Entity for c64 {
         iter.into_iter()
     }
 }
+
 unsafe impl Conjugate for c64 {
     type Conj = c64conj;
     type Canonical = c64;

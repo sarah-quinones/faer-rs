@@ -97,7 +97,7 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use group_helpers::SliceGroup;
 use inner::*;
 use num_complex::Complex;
-use pulp::{cast, Simd};
+use pulp::Simd;
 use reborrow::*;
 
 #[cfg(feature = "perf-warn")]
@@ -191,7 +191,7 @@ pub mod simd;
 #[doc(hidden)]
 pub use faer_entity::transmute_unchecked;
 
-mod complex_native;
+pub mod complex_native;
 pub use complex_native::*;
 
 /// Whether a matrix should be implicitly conjugated when read or not.

@@ -1,6 +1,21 @@
-use crate::complex::ComplexField;
-use num_traits::Zero;
-use num_traits::One;
+use crate::complex_native::c32conj_impl::c32conj;
+use faer_entity::*;
+use num_traits::{One, Zero};
+use pulp::{cast, Simd};
+
+#[cfg(feature = "std")]
+use num_complex::ComplexFloat;
+
+macro_rules! impl_from_num_complex {
+    ($( $method:ident ( self $( , $arg:ident : $ty:ty )* ) -> $ret:ty ; )*) => {
+        $(
+            #[inline(always)]
+            pub fn $method(self $( , $arg : $ty )* ) -> $ret {
+                self.to_num_complex().$method( $( $arg , )* ).into()
+            }
+        )*
+    };
+}
 
 // 32-bit complex floating point type. See the module-level documentation for more details.
 #[allow(non_camel_case_types)]
@@ -12,19 +27,140 @@ pub struct c32 {
 }
 
 impl c32 {
+    /// Create a new complex number.
     #[inline(always)]
     pub fn new(re: f32, im: f32) -> Self {
         Self { re, im }
     }
 
+    /// Construct the imaginary number.
     #[inline(always)]
-    pub fn to_num_complex(self) -> Complex<f32> {
+    pub fn i() -> Self {
+        Self::new(0.0, 1.0)
+    }
+
+    /// Create a complex number from a phase.
+    #[inline(always)]
+    pub fn cis(phase: f32) -> Self {
+        Self::new(phase.cos(), phase.sin())
+    }
+
+    /// Create a complex number from polar coordinates.
+    #[inline(always)]
+    pub fn from_polar(r: f32, theta: f32) -> Self {
+        Self::new(r * theta.cos(), r * theta.sin())
+    }
+
+    /// Convert the number to a num_complex::Complex32.
+    #[inline(always)]
+    pub fn to_num_complex(self) -> num_complex::Complex<f32> {
         self.into()
     }
 
+    /// Returns the real part of the complex number.
     #[inline(always)]
-    pub fn abs(self) -> f32 {
-        self.faer_abs()
+    pub fn re(self) -> f32 {
+        self.re
+    }
+
+    /// Returns the imaginary part of the complex number.
+    #[inline(always)]
+    pub fn im(self) -> f32 {
+        self.im
+    }
+
+    /// Calculate the complex conjugate of self.
+    #[inline(always)]
+    pub fn conj(self) -> Self {
+        self.faer_conj()
+    }
+
+    impl_from_num_complex!(
+        is_nan(self) -> bool;
+        is_infinite(self) -> bool;
+        is_finite(self) -> bool;
+        is_normal(self) -> bool;
+        recip(self) -> Self;
+        powi(self, exp: i32) -> Self;
+        powu(self, exp: u32) -> Self;
+        powf(self, exp: f32) -> Self;
+        powc(self, exp: num_complex::Complex<f32>) -> Self;
+        sqrt(self) -> Self;
+        exp(self) -> Self;
+        exp2(self) -> Self;
+        expf(self, base: f32) -> Self;
+        ln(self) -> Self;
+        log(self, base: f32) -> Self;
+        log2(self) -> Self;
+        log10(self) -> Self;
+        cbrt(self) -> Self;
+        sin(self) -> Self;
+        cos(self) -> Self;
+        tan(self) -> Self;
+        asin(self) -> Self;
+        acos(self) -> Self;
+        atan(self) -> Self;
+        sinh(self) -> Self;
+        cosh(self) -> Self;
+        tanh(self) -> Self;
+        asinh(self) -> Self;
+        acosh(self) -> Self;
+        atanh(self) -> Self;
+        abs(self) -> f32;
+        arg(self) -> f32;
+        norm(self) -> f32;
+    );
+
+    #[inline(always)]
+    pub fn l1_norm(&self) -> f32 {
+        self.re.abs() + self.im.abs()
+    }
+
+    #[inline(always)]
+    pub fn norm_sqr(&self) -> f32 {
+        self.re * self.re + self.im * self.im
+    }
+
+    #[inline(always)]
+    pub fn inv(&self) -> Self {
+        let norm_sqr = self.norm_sqr();
+        Self::new(self.re / norm_sqr, -self.im / norm_sqr)
+    }
+}
+
+impl Zero for c32 {
+    #[inline(always)]
+    fn zero() -> Self {
+        Self::new(0.0, 0.0)
+    }
+
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.re.is_zero() && self.im.is_zero()
+    }
+
+    #[inline(always)]
+    fn set_zero(&mut self) {
+        self.re.set_zero();
+        self.im.set_zero();
+    }
+}
+
+impl One for c32 {
+    #[inline(always)]
+    fn one() -> Self {
+        Self::new(1.0, 0.0)
+    }
+
+    #[inline(always)]
+    fn is_one(&self) -> bool {
+        self.re.is_one() && self.im.is_zero()
+    }
+
+    #[inline(always)]
+    fn set_one(&mut self) {
+        self.re.set_one();
+        self.im.set_zero();
     }
 }
 
@@ -45,6 +181,7 @@ impl core::ops::Add<f32> for c32 {
         Self::new(self.re + rhs, self.im)
     }
 }
+
 impl core::ops::Add<c32> for f32 {
     type Output = c32;
 
@@ -53,6 +190,7 @@ impl core::ops::Add<c32> for f32 {
         Self::Output::new(self + rhs.re, rhs.im)
     }
 }
+
 impl core::ops::Add for c32 {
     type Output = c32;
 
@@ -70,6 +208,7 @@ impl core::ops::Sub<f32> for c32 {
         Self::new(self.re - rhs, self.im)
     }
 }
+
 impl core::ops::Sub<c32> for f32 {
     type Output = c32;
 
@@ -78,6 +217,7 @@ impl core::ops::Sub<c32> for f32 {
         Self::Output::new(self - rhs.re, -rhs.im)
     }
 }
+
 impl core::ops::Sub for c32 {
     type Output = c32;
 
@@ -95,6 +235,7 @@ impl core::ops::Mul<f32> for c32 {
         Self::new(self.re * rhs, self.im * rhs)
     }
 }
+
 impl core::ops::Mul<c32> for f32 {
     type Output = c32;
 
@@ -103,6 +244,7 @@ impl core::ops::Mul<c32> for f32 {
         Self::Output::new(self * rhs.re, self * rhs.im)
     }
 }
+
 impl core::ops::Mul for c32 {
     type Output = c32;
 
@@ -123,22 +265,150 @@ impl core::ops::Div<f32> for c32 {
         Self::new(self.re / rhs, self.im / rhs)
     }
 }
+
 impl core::ops::Div<c32> for f32 {
     type Output = c32;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c32) -> Self::Output {
-        self * <c32 as ComplexField>::faer_inv(rhs)
+        self * rhs.faer_inv()
     }
 }
+
 impl core::ops::Div for c32 {
     type Output = c32;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
-        self * <Self as ComplexField>::faer_inv(rhs)
+        self * rhs.faer_inv()
+    }
+}
+
+impl core::ops::Rem<f32> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn rem(self, rhs: f32) -> Self::Output {
+        Self::new(self.re % rhs, self.im % rhs)
+    }
+}
+
+impl core::ops::Rem<c32> for f32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn rem(self, rhs: c32) -> Self::Output {
+        self.rem(rhs.to_num_complex()).into()
+    }
+}
+
+impl core::ops::Rem for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn rem(self, rhs: Self) -> Self::Output {
+        self.to_num_complex().rem(rhs.to_num_complex()).into()
+    }
+}
+
+impl core::ops::AddAssign<f32> for c32 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: f32) {
+        self.re += rhs;
+    }
+}
+
+impl core::ops::AddAssign for c32 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: c32) {
+        self.re += rhs.re;
+        self.im += rhs.im;
+    }
+}
+
+impl core::ops::SubAssign<f32> for c32 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: f32) {
+        self.re -= rhs;
+    }
+}
+
+impl core::ops::SubAssign for c32 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: c32) {
+        self.re -= rhs.re;
+        self.im -= rhs.im;
+    }
+}
+
+impl core::ops::MulAssign<f32> for c32 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: f32) {
+        self.re *= rhs;
+        self.im *= rhs;
+    }
+}
+
+impl core::ops::MulAssign for c32 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: c32) {
+        let tmp = self.re;
+        self.re *= rhs.re;
+        self.re -= rhs.im * self.im;
+        self.im *= rhs.re;
+        self.im += rhs.im * tmp;
+    }
+}
+
+impl core::ops::DivAssign<f32> for c32 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: f32) {
+        self.re /= rhs;
+        self.im /= rhs;
+    }
+}
+
+impl core::ops::DivAssign for c32 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: c32) {
+        *self *= rhs.faer_inv();
+    }
+}
+
+impl core::ops::RemAssign<f32> for c32 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: f32) {
+        self.re %= rhs;
+        self.im %= rhs;
+    }
+}
+
+impl core::ops::RemAssign for c32 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: c32) {
+        *self = *self % rhs;
+    }
+}
+
+impl num_traits::Inv for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn inv(self) -> Self::Output {
+        self.faer_inv()
+    }
+}
+
+impl num_traits::Num for c32 {
+    type FromStrRadixErr =
+        num_complex::ParseComplexError<<f32 as num_traits::Num>::FromStrRadixErr>;
+
+    #[inline(always)]
+    fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        let num_complex = num_complex::Complex32::from_str_radix(str, radix)?;
+        Ok(num_complex.into())
     }
 }
 
@@ -151,6 +421,7 @@ impl From<c32> for num_complex::Complex32 {
         }
     }
 }
+
 impl From<num_complex::Complex32> for c32 {
     #[inline(always)]
     fn from(value: num_complex::Complex32) -> Self {
@@ -161,14 +432,35 @@ impl From<num_complex::Complex32> for c32 {
     }
 }
 
+impl From<f32> for c32 {
+    #[inline(always)]
+    fn from(value: f32) -> Self {
+        Self::new(value, 0.0)
+    }
+}
+
+impl<'a> From<&'a f32> for c32 {
+    #[inline(always)]
+    fn from(value: &'a f32) -> Self {
+        Self::new(value.clone(), 0.0)
+    }
+}
+
 unsafe impl bytemuck::Zeroable for c32 {}
 unsafe impl bytemuck::Pod for c32 {}
 
-impl Debug for c32 {
+impl core::fmt::Debug for c32 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        f.write_str(" + ")?;
-        self.im.fmt(f)?;
+        if self.im < 0.0 {
+            f.write_str(" - ")?;
+            (-self.im).fmt(f)?;
+        } else if self.im.is_zero() {
+            f.write_str(" + 0.0")?;
+        } else {
+            f.write_str(" + ")?;
+            self.im.fmt(f)?;
+        }
         f.write_str(" * I")
     }
 }
@@ -220,21 +512,11 @@ impl ComplexField for c32 {
     }
 
     #[inline(always)]
-    fn faer_inv(self) -> Self {
-        self.to_num_complex().faer_inv().into()
-    }
-
-    #[inline(always)]
     fn faer_conj(self) -> Self {
         Self {
             re: self.re,
             im: -self.im,
         }
-    }
-
-    #[inline(always)]
-    fn faer_sqrt(self) -> Self {
-        self.to_num_complex().faer_sqrt().into()
     }
 
     #[inline(always)]
@@ -256,11 +538,6 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn faer_score(self) -> Self::Real {
         self.faer_abs2()
-    }
-
-    #[inline(always)]
-    fn faer_abs(self) -> Self::Real {
-        self.to_num_complex().faer_abs().into()
     }
 
     #[inline(always)]
@@ -299,6 +576,21 @@ impl ComplexField for c32 {
     #[inline(always)]
     fn faer_one() -> Self {
         Self { re: 1.0, im: 0.0 }
+    }
+
+    #[inline(always)]
+    fn faer_inv(self) -> Self {
+        self.to_num_complex().faer_inv().into()
+    }
+
+    #[inline(always)]
+    fn faer_sqrt(self) -> Self {
+        self.to_num_complex().faer_sqrt().into()
+    }
+
+    #[inline(always)]
+    fn faer_abs(self) -> Self::Real {
+        self.to_num_complex().faer_abs()
     }
 
     #[inline(always)]

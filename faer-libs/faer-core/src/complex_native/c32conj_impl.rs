@@ -1,41 +1,48 @@
+use crate::complex_native::c32_impl::c32;
+use faer_entity::*;
+use pulp::Simd;
 
-// 64-bit implicitly conjugated complex floating point type.
+// 32-bit implicitly conjugated complex floating point type.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
-pub struct c64conj {
-    pub re: f64,
-    pub neg_im: f64,
+pub struct c32conj {
+    pub re: f32,
+    pub neg_im: f32,
 }
 
-unsafe impl bytemuck::Pod for c64conj {}
-unsafe impl bytemuck::Zeroable for c64conj {}
+unsafe impl bytemuck::Zeroable for c32conj {}
+unsafe impl bytemuck::Pod for c32conj {}
 
-
-
-impl Debug for c64conj {
+impl core::fmt::Debug for c32conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        f.write_str(" - ")?;
-        self.neg_im.fmt(f)?;
-        f.write_str(" * I")
+        if self.neg_im > 0.0 {
+            write!(f, " - ")?;
+            (-self.neg_im).fmt(f)?;
+        } else if self.neg_im == 0.0 {
+            write!(f, " + 0.0")?;
+        } else {
+            write!(f, " + ")?;
+            self.neg_im.fmt(f)?;
+        }
+        write!(f, " * I")
     }
 }
 
-
-unsafe impl Entity for c64conj {
+unsafe impl Entity for c32conj {
     type Unit = Self;
-    type Index = u64;
-    type SimdUnit<S: Simd> = S::c64s;
-    type SimdMask<S: Simd> = S::m64s;
-    type SimdIndex<S: Simd> = S::u64s;
+    type Index = u32;
+    type SimdUnit<S: Simd> = S::c32s;
+    type SimdMask<S: Simd> = S::m32s;
+    type SimdIndex<S: Simd> = S::u32s;
     type Group = IdentityGroup;
     type Iter<I: Iterator> = I;
 
-    type PrefixUnit<'a, S: Simd> = pulp::Prefix<'a, num_complex::Complex64, S, S::m64s>;
-    type SuffixUnit<'a, S: Simd> = pulp::Suffix<'a, num_complex::Complex64, S, S::m64s>;
-    type PrefixMutUnit<'a, S: Simd> = pulp::PrefixMut<'a, num_complex::Complex64, S, S::m64s>;
-    type SuffixMutUnit<'a, S: Simd> = pulp::SuffixMut<'a, num_complex::Complex64, S, S::m64s>;
+    type PrefixUnit<'a, S: Simd> = pulp::Prefix<'a, num_complex::Complex32, S, S::m32s>;
+    type SuffixUnit<'a, S: Simd> = pulp::Suffix<'a, num_complex::Complex32, S, S::m32s>;
+    type PrefixMutUnit<'a, S: Simd> = pulp::PrefixMut<'a, num_complex::Complex32, S, S::m32s>;
+    type SuffixMutUnit<'a, S: Simd> = pulp::SuffixMut<'a, num_complex::Complex32, S, S::m32s>;
 
     const N_COMPONENTS: usize = 1;
     const UNIT: GroupCopyFor<Self, ()> = ();
@@ -99,16 +106,16 @@ unsafe impl Entity for c64conj {
         iter.into_iter()
     }
 }
-unsafe impl Conjugate for c64conj {
-    type Conj = c64;
-    type Canonical = c64;
+
+unsafe impl Conjugate for c32conj {
+    type Conj = c32;
+    type Canonical = c32;
 
     #[inline(always)]
     fn canonicalize(self) -> Self::Canonical {
-        c64 {
+        c32 {
             re: self.re,
             im: -self.neg_im,
         }
     }
 }
-

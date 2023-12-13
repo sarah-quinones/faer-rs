@@ -40,6 +40,8 @@ std = [
   "gemm/std",
   "pulp/std",
   "matrixcompare-core",
+  "num-traits/std",
+  "num-complex/std",
 ]
 rayon = [
   "std",

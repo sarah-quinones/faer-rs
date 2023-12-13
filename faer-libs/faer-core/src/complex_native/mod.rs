@@ -40,12 +40,12 @@
 //!                             └──────────┘   └──────────┘
 //! ```
 
-mod c32;
-mod c64;
-mod c32conj;
-mod c64conj;
+mod c32_impl;
+mod c32conj_impl;
+mod c64_impl;
+mod c64conj_impl;
 
-pub use c32::c32;
-pub use c64::c64;
-pub use c32conj::c32conj;
-pub use c64conj::c64conj;
+pub use c32_impl::c32;
+pub use c32conj_impl::c32conj;
+pub use c64_impl::c64;
+pub use c64conj_impl::c64conj;
