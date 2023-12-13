@@ -1,11 +1,12 @@
 use crate::complex_native::c64conj_impl::c64conj;
 use faer_entity::*;
-use num_traits::{One, Zero};
+use num_traits::{float::FloatCore, One, Zero};
 use pulp::{cast, Simd};
 
 #[cfg(feature = "std")]
 use num_complex::ComplexFloat;
 
+#[cfg(feature = "std")]
 macro_rules! impl_from_num_complex {
     ($( $method:ident ( self $( , $arg:ident : $ty:ty )* ) -> $ret:ty ; )*) => {
         $(
@@ -40,12 +41,14 @@ impl c64 {
     }
 
     /// Create a complex number from a phase.
+    #[cfg(feature = "std")]
     #[inline(always)]
     pub fn cis(phase: f64) -> Self {
         Self::new(phase.cos(), phase.sin())
     }
 
     /// Create a complex number from polar coordinates.
+    #[cfg(feature = "std")]
     #[inline(always)]
     pub fn from_polar(r: f64, theta: f64) -> Self {
         Self::new(r * theta.cos(), r * theta.sin())
@@ -75,6 +78,7 @@ impl c64 {
         self.faer_conj()
     }
 
+    #[cfg(feature = "std")]
     impl_from_num_complex!(
         is_nan(self) -> bool;
         is_infinite(self) -> bool;
