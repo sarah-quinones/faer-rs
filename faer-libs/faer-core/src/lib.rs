@@ -6326,6 +6326,15 @@ const __COL_IMPL: () = {
             norm_l2((*self).rb().as_2d())
         }
 
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb().as_2d())
+        }
+
         /// Returns a view over the matrix.
         #[inline]
         pub fn as_ref(&self) -> ColRef<'_, E> {
@@ -6758,6 +6767,15 @@ const __COL_IMPL: () = {
             norm_l2((*self).rb().as_2d())
         }
 
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb().as_2d())
+        }
+
         /// Returns a view over the matrix.
         #[inline]
         pub fn as_ref(&self) -> ColRef<'_, E> {
@@ -7118,6 +7136,15 @@ const __ROW_IMPL: () = {
             E: ComplexField,
         {
             norm_l2((*self).rb().as_2d())
+        }
+
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb().as_2d())
         }
 
         /// Returns a view over the matrix.
@@ -7526,6 +7553,15 @@ const __ROW_IMPL: () = {
             E: ComplexField,
         {
             norm_l2((*self).rb().as_2d())
+        }
+
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb().as_2d())
         }
 
         /// Returns a view over the matrix.
@@ -8424,6 +8460,15 @@ const __MAT_IMPL: () = {
             E: ComplexField,
         {
             norm_l2((*self).rb())
+        }
+
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb())
         }
 
         /// Returns a view over the matrix.
@@ -9593,6 +9638,15 @@ const __MAT_IMPL: () = {
             norm_l2((*self).rb())
         }
 
+        /// Returns the sum of `self`.
+        #[inline]
+        pub fn sum(&self) -> E
+        where
+            E: ComplexField,
+        {
+            sum((*self).rb())
+        }
+
         /// Returns a view over the matrix.
         #[inline]
         pub fn as_ref(&self) -> MatRef<'_, E> {
@@ -10626,6 +10680,15 @@ impl<E: Entity> Col<E> {
     {
         norm_l2((*self).as_ref().as_2d())
     }
+
+    /// Returns the sum of `self`.
+    #[inline]
+    pub fn sum(&self) -> E
+    where
+        E: ComplexField,
+    {
+        sum((*self).as_ref().as_2d())
+    }
 }
 
 impl<E: Entity> Row<E> {
@@ -11109,6 +11172,15 @@ impl<E: Entity> Row<E> {
         E: ComplexField,
     {
         norm_l2((*self).as_ref().as_2d())
+    }
+    
+    /// Returns the sum of `self`.
+    #[inline]
+    pub fn sum(&self) -> E
+    where
+        E: ComplexField,
+    {
+        sum((*self).as_ref().as_2d())
     }
 }
 
@@ -11744,6 +11816,15 @@ impl<E: Entity> Mat<E> {
         E: ComplexField,
     {
         norm_l2((*self).as_ref())
+    }
+
+    /// Returns the sum of `self`.
+    #[inline]
+    pub fn sum(&self) -> E
+    where
+        E: ComplexField,
+    {
+        sum((*self).as_ref())
     }
 
     /// Returns an iterator that provides successive chunks of the columns of a view over this
@@ -13787,6 +13868,36 @@ fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
     }
 }
 
+fn sum<E: ComplexField>(mut mat: MatRef<'_, E>) -> E {
+    if mat.ncols() > 1 && mat.col_stride().unsigned_abs() < mat.row_stride().unsigned_abs() {
+        mat = mat.transpose();
+    }
+    if mat.row_stride() < 0 {
+        mat = mat.reverse_rows();
+    }
+
+    if mat.nrows() == 0 || mat.ncols() == 0 {
+        E::faer_zero()
+    } else {
+        let m = mat.nrows();
+        let n = mat.ncols();
+
+        let mut acc = E::faer_zero();
+
+        // TODO: work in progress, need help understanding simd impl
+        // also how do you want to handle precision loss? Do you want
+        // to do a Kahan like algorithm by default, have it separate,
+        // or defer for now?
+
+        for j in 0..n {
+            for i in 0..m {
+                acc = acc.faer_add(mat.read(i, j));
+            }
+        }
+
+        acc
+    }
+}
 fn norm_max<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
     if mat.ncols() > 1 && mat.col_stride().unsigned_abs() < mat.row_stride().unsigned_abs() {
         mat = mat.transpose();
@@ -14859,6 +14970,31 @@ mod tests {
         let mat = Col::from_fn(10000000, |_| 0.3);
         let target = (0.3 * 0.3 * 10000000.0f64).sqrt();
         assert!(relative_err(mat.norm_l2(), target) < 1e-14);
+    }
+
+    #[test]
+    fn test_sum() {
+        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+
+        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
+            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
+                let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
+                let mut target = 0.0;
+                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
+                    target += *x;
+                });
+
+                if factor == 0.0 {
+                    assert!(mat.sum() == target);
+                } else {
+                    assert!(relative_err(mat.sum(), target) < 1e-14);
+                }
+            }
+        }
+
+        let mat = Col::from_fn(10000000, |_| 0.3);
+        let target = 0.3 * 10000000.0f64;
+        assert!(relative_err(mat.sum(), target) < 1e-14);
     }
 
     #[test]
