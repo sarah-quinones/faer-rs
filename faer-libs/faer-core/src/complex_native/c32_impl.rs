@@ -204,6 +204,24 @@ impl core::ops::Add for c32 {
     }
 }
 
+impl core::ops::Add<c32conj> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn add(self, rhs: c32conj) -> Self::Output {
+        Self::new(self.re + rhs.re, self.im - rhs.neg_im)
+    }
+}
+
+impl core::ops::Add<c32> for c32conj {
+    type Output = c32;
+
+    #[inline(always)]
+    fn add(self, rhs: c32) -> Self::Output {
+        Self::Output::new(self.re + rhs.re, rhs.im - self.neg_im)
+    }
+}
+
 impl core::ops::Sub<f32> for c32 {
     type Output = c32;
 
@@ -228,6 +246,24 @@ impl core::ops::Sub for c32 {
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
         Self::new(self.re - rhs.re, self.im - rhs.im)
+    }
+}
+
+impl core::ops::Sub<c32conj> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: c32conj) -> Self::Output {
+        Self::new(self.re - rhs.re, self.im + rhs.neg_im)
+    }
+}
+
+impl core::ops::Sub<c32> for c32conj {
+    type Output = c32;
+
+    #[inline(always)]
+    fn sub(self, rhs: c32) -> Self::Output {
+        Self::Output::new(self.re - rhs.re, -self.neg_im - rhs.im)
     }
 }
 
@@ -261,6 +297,30 @@ impl core::ops::Mul for c32 {
     }
 }
 
+impl core::ops::Mul<c32conj> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn mul(self, rhs: c32conj) -> Self::Output {
+        Self::new(
+            self.re * rhs.re + self.im * rhs.neg_im,
+            self.im * rhs.re - self.re * rhs.neg_im,
+        )
+    }
+}
+
+impl core::ops::Mul<c32> for c32conj {
+    type Output = c32;
+
+    #[inline(always)]
+    fn mul(self, rhs: c32) -> Self::Output {
+        Self::Output::new(
+            self.re * rhs.re + self.neg_im * rhs.im,
+            rhs.im * self.re - rhs.re * self.neg_im,
+        )
+    }
+}
+
 impl core::ops::Div<f32> for c32 {
     type Output = c32;
 
@@ -286,6 +346,27 @@ impl core::ops::Div for c32 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
+        self * rhs.faer_inv()
+    }
+}
+
+impl core::ops::Div<c32conj> for c32 {
+    type Output = c32;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    #[inline(always)]
+    fn div(self, rhs: c32conj) -> Self::Output {
+        // TODO: Can be done a bit better
+        self * rhs.canonicalize().faer_inv()
+    }
+}
+
+impl core::ops::Div<c32> for c32conj {
+    type Output = c32;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    #[inline(always)]
+    fn div(self, rhs: c32) -> Self::Output {
         self * rhs.faer_inv()
     }
 }
@@ -317,6 +398,24 @@ impl core::ops::Rem for c32 {
     }
 }
 
+impl core::ops::Rem<c32conj> for c32 {
+    type Output = c32;
+
+    #[inline(always)]
+    fn rem(self, rhs: c32conj) -> Self::Output {
+        self.rem(rhs.canonicalize())
+    }
+}
+
+impl core::ops::Rem<c32> for c32conj {
+    type Output = c32;
+
+    #[inline(always)]
+    fn rem(self, rhs: c32) -> Self::Output {
+        self.canonicalize().rem(rhs)
+    }
+}
+
 impl core::ops::AddAssign<f32> for c32 {
     #[inline(always)]
     fn add_assign(&mut self, rhs: f32) {
@@ -332,6 +431,14 @@ impl core::ops::AddAssign for c32 {
     }
 }
 
+impl core::ops::AddAssign<c32conj> for c32 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: c32conj) {
+        self.re += rhs.re;
+        self.im -= rhs.neg_im;
+    }
+}
+
 impl core::ops::SubAssign<f32> for c32 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: f32) {
@@ -344,6 +451,14 @@ impl core::ops::SubAssign for c32 {
     fn sub_assign(&mut self, rhs: c32) {
         self.re -= rhs.re;
         self.im -= rhs.im;
+    }
+}
+
+impl core::ops::SubAssign<c32conj> for c32 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: c32conj) {
+        self.re -= rhs.re;
+        self.im += rhs.neg_im;
     }
 }
 
@@ -366,6 +481,17 @@ impl core::ops::MulAssign for c32 {
     }
 }
 
+impl core::ops::MulAssign<c32conj> for c32 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: c32conj) {
+        let tmp = self.re;
+        self.re *= rhs.re;
+        self.re += rhs.neg_im * self.im;
+        self.im *= rhs.re;
+        self.im -= rhs.neg_im * tmp;
+    }
+}
+
 impl core::ops::DivAssign<f32> for c32 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: f32) {
@@ -381,6 +507,13 @@ impl core::ops::DivAssign for c32 {
     }
 }
 
+impl core::ops::DivAssign<c32conj> for c32 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: c32conj) {
+        *self *= rhs.canonicalize().faer_inv();
+    }
+}
+
 impl core::ops::RemAssign<f32> for c32 {
     #[inline(always)]
     fn rem_assign(&mut self, rhs: f32) {
@@ -392,6 +525,13 @@ impl core::ops::RemAssign<f32> for c32 {
 impl core::ops::RemAssign for c32 {
     #[inline(always)]
     fn rem_assign(&mut self, rhs: c32) {
+        *self = *self % rhs;
+    }
+}
+
+impl core::ops::RemAssign<c32conj> for c32 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: c32conj) {
         *self = *self % rhs;
     }
 }

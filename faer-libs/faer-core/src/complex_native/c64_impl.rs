@@ -204,6 +204,24 @@ impl core::ops::Add for c64 {
     }
 }
 
+impl core::ops::Add<c64conj> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn add(self, rhs: c64conj) -> Self::Output {
+        Self::Output::new(self.re + rhs.re, self.im - rhs.neg_im)
+    }
+}
+
+impl core::ops::Add<c64> for c64conj {
+    type Output = c64;
+
+    #[inline(always)]
+    fn add(self, rhs: c64) -> Self::Output {
+        Self::Output::new(self.re + rhs.re, rhs.im - self.neg_im)
+    }
+}
+
 impl core::ops::Sub<f64> for c64 {
     type Output = c64;
 
@@ -228,6 +246,24 @@ impl core::ops::Sub for c64 {
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
         Self::new(self.re - rhs.re, self.im - rhs.im)
+    }
+}
+
+impl core::ops::Sub<c64conj> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: c64conj) -> Self::Output {
+        Self::Output::new(self.re - rhs.re, self.im + rhs.neg_im)
+    }
+}
+
+impl core::ops::Sub<c64> for c64conj {
+    type Output = c64;
+
+    #[inline(always)]
+    fn sub(self, rhs: c64) -> Self::Output {
+        Self::Output::new(self.re - rhs.re, -self.neg_im - rhs.im)
     }
 }
 
@@ -261,6 +297,30 @@ impl core::ops::Mul for c64 {
     }
 }
 
+impl core::ops::Mul<c64conj> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn mul(self, rhs: c64conj) -> Self::Output {
+        Self::Output::new(
+            self.re * rhs.re + self.im * rhs.neg_im,
+            self.im * rhs.re - self.re * rhs.neg_im,
+        )
+    }
+}
+
+impl core::ops::Mul<c64> for c64conj {
+    type Output = c64;
+
+    #[inline(always)]
+    fn mul(self, rhs: c64) -> Self::Output {
+        Self::Output::new(
+            self.re * rhs.re + self.neg_im * rhs.im,
+            rhs.im * self.re - rhs.re * self.neg_im,
+        )
+    }
+}
+
 impl core::ops::Div<f64> for c64 {
     type Output = c64;
 
@@ -286,6 +346,27 @@ impl core::ops::Div for c64 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
+        self * rhs.faer_inv()
+    }
+}
+
+impl core::ops::Div<c64conj> for c64 {
+    type Output = c64;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    #[inline(always)]
+    fn div(self, rhs: c64conj) -> Self::Output {
+        // TODO: Can be done a bit better
+        self * rhs.canonicalize().faer_inv()
+    }
+}
+
+impl core::ops::Div<c64> for c64conj {
+    type Output = c64;
+
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    #[inline(always)]
+    fn div(self, rhs: c64) -> Self::Output {
         self * rhs.faer_inv()
     }
 }
@@ -317,6 +398,24 @@ impl core::ops::Rem for c64 {
     }
 }
 
+impl core::ops::Rem<c64conj> for c64 {
+    type Output = c64;
+
+    #[inline(always)]
+    fn rem(self, rhs: c64conj) -> Self::Output {
+        self.rem(rhs.canonicalize())
+    }
+}
+
+impl core::ops::Rem<c64> for c64conj {
+    type Output = c64;
+
+    #[inline(always)]
+    fn rem(self, rhs: c64) -> Self::Output {
+        self.canonicalize().rem(rhs)
+    }
+}
+
 impl core::ops::AddAssign<f64> for c64 {
     #[inline(always)]
     fn add_assign(&mut self, rhs: f64) {
@@ -332,6 +431,14 @@ impl core::ops::AddAssign for c64 {
     }
 }
 
+impl core::ops::AddAssign<c64conj> for c64 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: c64conj) {
+        self.re += rhs.re;
+        self.im -= rhs.neg_im;
+    }
+}
+
 impl core::ops::SubAssign<f64> for c64 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: f64) {
@@ -344,6 +451,14 @@ impl core::ops::SubAssign for c64 {
     fn sub_assign(&mut self, rhs: c64) {
         self.re -= rhs.re;
         self.im -= rhs.im;
+    }
+}
+
+impl core::ops::SubAssign<c64conj> for c64 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: c64conj) {
+        self.re -= rhs.re;
+        self.im += rhs.neg_im;
     }
 }
 
@@ -366,6 +481,17 @@ impl core::ops::MulAssign for c64 {
     }
 }
 
+impl core::ops::MulAssign<c64conj> for c64 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: c64conj) {
+        let tmp = self.re;
+        self.re *= rhs.re;
+        self.re += rhs.neg_im * self.im;
+        self.im *= rhs.re;
+        self.im -= rhs.neg_im * tmp;
+    }
+}
+
 impl core::ops::DivAssign<f64> for c64 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: f64) {
@@ -381,6 +507,13 @@ impl core::ops::DivAssign for c64 {
     }
 }
 
+impl core::ops::DivAssign<c64conj> for c64 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: c64conj) {
+        *self *= rhs.canonicalize().faer_inv();
+    }
+}
+
 impl core::ops::RemAssign<f64> for c64 {
     #[inline(always)]
     fn rem_assign(&mut self, rhs: f64) {
@@ -392,6 +525,13 @@ impl core::ops::RemAssign<f64> for c64 {
 impl core::ops::RemAssign for c64 {
     #[inline(always)]
     fn rem_assign(&mut self, rhs: c64) {
+        *self = *self % rhs;
+    }
+}
+
+impl core::ops::RemAssign<c64conj> for c64 {
+    #[inline(always)]
+    fn rem_assign(&mut self, rhs: c64conj) {
         *self = *self % rhs;
     }
 }
