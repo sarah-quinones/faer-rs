@@ -1,6 +1,9 @@
 use crate::complex_native::c32conj_impl::c32conj;
 use faer_entity::*;
-use num_traits::{float::FloatCore, One, Zero};
+#[cfg(not(feature = "std"))]
+use num_traits::float::FloatCore;
+
+use num_traits::{One, Zero};
 use pulp::{cast, Simd};
 
 #[cfg(feature = "std")]
