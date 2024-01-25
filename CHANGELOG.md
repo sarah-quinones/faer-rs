@@ -1,3 +1,9 @@
+# 0.16
+- Implemented the index operator for row and column structures. Thanks @DeliciousHair for the contribution.
+- Exposed a few sparse matrix operations in the high level API.
+- Implemented sparse LU and QR, and exposed sparse decompositions in the high level API.
+- Better assertion error messages in no_std mode.
+
 # 0.15
 - Implemented initial API of `Row`/`RowRef`/`RowMut` and `Col`/`ColRef`/`ColMut` structs for handling matrices with a single row or column.
 - Implemented `[Mat|Col|Row]::norm_l2` and `[Mat|Col|Row]::norm_max` for computing the L2 norm of a matrix or its maximum absolute value.

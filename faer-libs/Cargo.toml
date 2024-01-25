@@ -13,9 +13,9 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-faer-entity = { version = "0.15.0", default-features = false, path = "../faer-entity" }
+faer-entity = { version = "0.16.0", default-features = false, path = "../faer-entity" }
 
-gemm = { version = "0.16.15", default-features = false }
+gemm = { version = "0.17.0", default-features = false }
 
 coe-rs = "0.1"
 reborrow = "0.5"
