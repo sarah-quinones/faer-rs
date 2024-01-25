@@ -17,16 +17,21 @@ unsafe impl bytemuck::Pod for c32conj {}
 impl core::fmt::Debug for c32conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        if self.neg_im > 0.0 {
-            write!(f, " - ")?;
-            (-self.neg_im).fmt(f)?;
-        } else if self.neg_im == 0.0 {
-            write!(f, " + 0.0")?;
+        let im_abs = self.neg_im.abs();
+        if self.neg_im.is_sign_positive() {
+            f.write_str(" - ")?;
+            im_abs.fmt(f)?;
         } else {
-            write!(f, " + ")?;
-            self.neg_im.fmt(f)?;
+            f.write_str(" + ")?;
+            im_abs.fmt(f)?;
         }
-        write!(f, " * I")
+        f.write_str(" * I")
+    }
+}
+
+impl core::fmt::Display for c32conj {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
 

@@ -114,8 +114,12 @@ impl c64 {
         atanh(self) -> Self;
         abs(self) -> f64;
         arg(self) -> f64;
-        norm(self) -> f64;
     );
+
+    #[inline(always)]
+    pub fn norm(&self) -> f64 {
+        self.faer_abs()
+    }
 
     #[inline(always)]
     pub fn l1_norm(&self) -> f64 {
@@ -124,12 +128,12 @@ impl c64 {
 
     #[inline(always)]
     pub fn norm_sqr(&self) -> f64 {
-        self.re * self.re + self.im * self.im
+        self.faer_abs2()
     }
 
     #[inline(always)]
     pub fn inv(&self) -> Self {
-        let norm_sqr = self.norm_sqr();
+        let norm_sqr = self.faer_abs2();
         Self::new(self.re / norm_sqr, -self.im / norm_sqr)
     }
 }
@@ -358,7 +362,6 @@ impl core::ops::Div<c64conj> for c64 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c64conj) -> Self::Output {
-        // TODO: Can be done a bit better
         self * rhs.canonicalize().faer_inv()
     }
 }
@@ -475,22 +478,14 @@ impl core::ops::MulAssign<f64> for c64 {
 impl core::ops::MulAssign for c64 {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: c64) {
-        let tmp = self.re;
-        self.re *= rhs.re;
-        self.re -= rhs.im * self.im;
-        self.im *= rhs.re;
-        self.im += rhs.im * tmp;
+        *self = *self * rhs;
     }
 }
 
 impl core::ops::MulAssign<c64conj> for c64 {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: c64conj) {
-        let tmp = self.re;
-        self.re *= rhs.re;
-        self.re += rhs.neg_im * self.im;
-        self.im *= rhs.re;
-        self.im -= rhs.neg_im * tmp;
+        *self = *self * rhs;
     }
 }
 
@@ -588,7 +583,7 @@ impl From<f64> for c64 {
 impl<'a> From<&'a f64> for c64 {
     #[inline(always)]
     fn from(value: &'a f64) -> Self {
-        Self::new(value.clone(), 0.0)
+        Self::new(*value, 0.0)
     }
 }
 
@@ -598,16 +593,21 @@ unsafe impl bytemuck::Pod for c64 {}
 impl core::fmt::Debug for c64 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        if self.im < 0.0 {
-            f.write_str(" - ")?;
-            (-self.im).fmt(f)?;
-        } else if self.im == 0.0 {
-            f.write_str(" + 0.0")?;
-        } else {
+        let im_abs = self.im.abs();
+        if self.im.is_sign_positive() {
             f.write_str(" + ")?;
-            self.im.fmt(f)?;
+            im_abs.fmt(f)?;
+        } else {
+            f.write_str(" - ")?;
+            im_abs.fmt(f)?;
         }
         f.write_str(" * I")
+    }
+}
+
+impl core::fmt::Display for c64 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
 

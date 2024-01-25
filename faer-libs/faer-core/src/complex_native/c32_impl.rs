@@ -115,8 +115,12 @@ impl c32 {
         atanh(self) -> Self;
         abs(self) -> f32;
         arg(self) -> f32;
-        norm(self) -> f32;
     );
+
+    #[inline(always)]
+    pub fn norm(&self) -> f32 {
+        self.faer_abs()
+    }
 
     #[inline(always)]
     pub fn l1_norm(&self) -> f32 {
@@ -125,12 +129,12 @@ impl c32 {
 
     #[inline(always)]
     pub fn norm_sqr(&self) -> f32 {
-        self.re * self.re + self.im * self.im
+        self.faer_abs2()
     }
 
     #[inline(always)]
     pub fn inv(&self) -> Self {
-        let norm_sqr = self.norm_sqr();
+        let norm_sqr = self.faer_abs2();
         Self::new(self.re / norm_sqr, -self.im / norm_sqr)
     }
 }
@@ -359,7 +363,6 @@ impl core::ops::Div<c32conj> for c32 {
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[inline(always)]
     fn div(self, rhs: c32conj) -> Self::Output {
-        // TODO: Can be done a bit better
         self * rhs.canonicalize().faer_inv()
     }
 }
@@ -476,22 +479,14 @@ impl core::ops::MulAssign<f32> for c32 {
 impl core::ops::MulAssign for c32 {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: c32) {
-        let tmp = self.re;
-        self.re *= rhs.re;
-        self.re -= rhs.im * self.im;
-        self.im *= rhs.re;
-        self.im += rhs.im * tmp;
+        *self = *self * rhs;
     }
 }
 
 impl core::ops::MulAssign<c32conj> for c32 {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: c32conj) {
-        let tmp = self.re;
-        self.re *= rhs.re;
-        self.re += rhs.neg_im * self.im;
-        self.im *= rhs.re;
-        self.im -= rhs.neg_im * tmp;
+        *self = *self * rhs;
     }
 }
 
@@ -589,7 +584,7 @@ impl From<f32> for c32 {
 impl<'a> From<&'a f32> for c32 {
     #[inline(always)]
     fn from(value: &'a f32) -> Self {
-        Self::new(value.clone(), 0.0)
+        Self::new(*value, 0.0)
     }
 }
 
@@ -599,16 +594,21 @@ unsafe impl bytemuck::Pod for c32 {}
 impl core::fmt::Debug for c32 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        if self.im < 0.0 {
-            f.write_str(" - ")?;
-            (-self.im).fmt(f)?;
-        } else if self.im.is_zero() {
-            f.write_str(" + 0.0")?;
-        } else {
+        let im_abs = self.im.abs();
+        if self.im.is_sign_positive() {
             f.write_str(" + ")?;
-            self.im.fmt(f)?;
+            im_abs.fmt(f)?;
+        } else {
+            f.write_str(" - ")?;
+            im_abs.fmt(f)?;
         }
         f.write_str(" * I")
+    }
+}
+
+impl core::fmt::Display for c32 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
 

@@ -17,16 +17,21 @@ unsafe impl bytemuck::Zeroable for c64conj {}
 impl core::fmt::Debug for c64conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        if self.neg_im > 0.0 {
+        let im_abs = self.neg_im.abs();
+        if self.neg_im.is_sign_positive() {
             f.write_str(" - ")?;
-            (self.neg_im).fmt(f)?;
-        } else if self.neg_im == 0.0 {
-            f.write_str(" + 0.0")?;
+            im_abs.fmt(f)?;
         } else {
             f.write_str(" + ")?;
-            self.neg_im.fmt(f)?;
+            im_abs.fmt(f)?;
         }
         f.write_str(" * I")
+    }
+}
+
+impl core::fmt::Display for c64conj {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
 
