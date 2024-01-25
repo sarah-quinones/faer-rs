@@ -1,3 +1,7 @@
+//! Computes the QR decomposition of a given sparse matrix. See [`faer_qr`] for more info.
+//!
+//! The entry point in this module is [`SymbolicQr`] and [`factorize_symbolic_qr`].
+
 use crate::{
     cholesky::{
         ghost_postorder,
@@ -288,7 +292,9 @@ pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, sta
 
 pub mod supernodal {
     use super::*;
-    use faer_core::assert;
+    use faer_core::{
+        assert, householder::apply_block_householder_sequence_on_the_left_in_place_with_conj,
+    };
 
     #[derive(Debug)]
     pub struct SymbolicSupernodalHouseholder<I> {

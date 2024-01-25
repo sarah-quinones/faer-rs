@@ -1,3 +1,7 @@
+//! Computes the LU decomposition of a given sparse matrix. See [`faer_lu`] for more info.
+//!
+//! The entry point in this module is [`SymbolicLu`] and [`factorize_symbolic_lu`].
+
 use crate::{
     cholesky::simplicial::EliminationTreeRef,
     colamd::Control,
@@ -85,6 +89,7 @@ fn resize_index<I: Index>(
     Ok(())
 }
 
+/// Sparse LU error.
 #[derive(Copy, Clone, Debug)]
 pub enum LuError {
     Generic(FaerError),

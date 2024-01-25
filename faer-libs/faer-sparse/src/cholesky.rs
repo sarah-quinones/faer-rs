@@ -667,7 +667,7 @@ pub mod simplicial {
         }
 
         pub fn solve_in_place_with_conj(
-            self,
+            &self,
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
@@ -714,7 +714,7 @@ pub mod simplicial {
         }
 
         pub fn solve_in_place_with_conj(
-            self,
+            &self,
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
@@ -1224,7 +1224,7 @@ pub mod supernodal {
         }
 
         pub fn solve_in_place_with_conj(
-            self,
+            &self,
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
@@ -3683,7 +3683,7 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
     }
 
     pub fn solve_in_place_with_conj(
-        self,
+        &self,
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
@@ -3760,7 +3760,7 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
     }
 
     pub fn solve_in_place_with_conj(
-        self,
+        &self,
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
@@ -3815,7 +3815,7 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
     }
 
     pub fn solve_in_place_with_conj(
-        self,
+        &self,
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,

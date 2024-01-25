@@ -63,6 +63,9 @@
 //! $$A = LL^H,$$
 //! where $L$ is a lower triangular matrix. This decomposition is highly efficient and has good
 //! stability properties.
+//!
+//! [An implementation for sparse matrices is also available.](sparse::solvers::Cholesky)
+//!
 //! ## Bunch-Kaufman decomposition
 //! [`FaerMat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
 //! $$P A P^\top = LBL^H,$$
@@ -77,6 +80,8 @@
 //! for solving a square linear system or computing the inverse of a matrix (although we generally
 //! recommend using a [`Solver`] instead of computing the inverse explicitly).
 //!
+//! [An implementation for sparse matrices is also available.](sparse::solvers::Lu)
+//!
 //! ## LU decomposition with full pivoting
 //! [`FaerMat::full_piv_lu`] Decomposes a generic rectangular matrix $A$ into a lower triangular
 //! matrix $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
@@ -89,6 +94,8 @@
 //! $$A = QR,$$
 //! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. It is often used for
 //! solving least squares problems.
+//!
+//! [An implementation for sparse matrices is also available.](sparse::solvers::Qr)
 //!
 //! ## QR decomposition with column pivoting
 //! The QR decomposition with column pivoting ([`FaerMat::col_piv_qr`]) decomposes a matrix $A$ into
@@ -172,6 +179,7 @@ use faer_core::{AsMatMut, AsMatRef, ComplexField, Conj, Conjugate, Entity};
 use prelude::*;
 use solvers::*;
 
+/// Similar to the [`dbg`] macro, but takes a format spec as a first parameter.
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use dbgf::dbgf;
@@ -2084,6 +2092,7 @@ pub trait FaerMat<E: ComplexField> {
     fn complex_eigenvalues(&self) -> Vec<E::Canonical>;
 }
 
+/// Sparse solvers and traits.
 pub mod sparse {
     use super::*;
     use faer_core::group_helpers::VecGroup;
@@ -2096,6 +2105,7 @@ pub mod sparse {
     };
     pub use faer_sparse::{lu::LuError, FaerError};
 
+    /// Sparse Cholesky error.
     #[derive(Copy, Clone, Debug)]
     pub enum CholeskyError {
         Generic(FaerError),
@@ -2127,9 +2137,14 @@ pub mod sparse {
         }
     }
 
+    /// Sparse solvers.
+    ///
+    /// Each solver satisfies the [`SpSolver`] and/or [`SpSolverLstsq`] traits, which can be used
+    /// to solve linear systems.
     pub mod solvers {
         use super::*;
 
+        /// Object-safe base for [`SpSolver`]
         pub trait SpSolverCore<E: Entity> {
             /// Returns the number of rows of the matrix used to construct this decomposition.
             fn nrows(&self) -> usize;
@@ -2586,7 +2601,10 @@ pub mod sparse {
             #[track_caller]
             fn solve_transpose_in_place_with_conj_impl(&self, rhs: MatMut<'_, E>, conj: Conj) {
                 let _ = (&rhs, &conj);
-                todo!()
+                unimplemented!(
+                    "the sparse QR decomposition doesn't support solve_transpose.\n\
+                               consider using the sparse LU or Cholesky instead."
+                )
             }
         }
 
@@ -2678,19 +2696,34 @@ pub mod sparse {
     pub trait FaerSparseMat<I: Index, E: ComplexField> {
         /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
         /// stores the result in `rhs`.
+        ///
+        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// matrix is column-major, or the last stored element in each row, if it is row-major.
         fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
         /// stores the result in `rhs`.
+        ///
+        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// matrix is column-major, or the first stored element in each row, if it is row-major.
         fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
         /// and stores the result in `rhs`.
+        ///
+        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// matrix is column-major, or the last stored element in each row, if it is row-major.
         fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
         /// and stores the result in `rhs`.
+        ///
+        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// matrix is column-major, or the first stored element in each row, if it is row-major.
         fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
 
         /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
         /// returns the result.
+        ///
+        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_lower_triangular<ViewE: Conjugate<Canonical = E>>(
             &self,
@@ -2702,6 +2735,9 @@ pub mod sparse {
         }
         /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
         /// returns the result.
+        ///
+        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// matrix is column-major, or the first stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_upper_triangular<ViewE: Conjugate<Canonical = E>>(
             &self,
@@ -2713,6 +2749,9 @@ pub mod sparse {
         }
         /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
         /// and returns the result.
+        ///
+        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E>>(
             &self,
@@ -2724,6 +2763,9 @@ pub mod sparse {
         }
         /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
         /// and returns the result.
+        ///
+        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E>>(
             &self,
@@ -2735,7 +2777,8 @@ pub mod sparse {
         }
 
         /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
-        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError>;
+        fn sp_cholesky(&self, side: Side)
+            -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError>;
 
         /// Returns the LU decomposition of `self` with partial (row) pivoting.
         fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError>;
@@ -2784,7 +2827,10 @@ pub mod sparse {
 
         /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
         #[track_caller]
-        fn sp_cholesky(&self, side: Side) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
+        fn sp_cholesky(
+            &self,
+            side: Side,
+        ) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
             solvers::Cholesky::try_new_with_symbolic(
                 solvers::SymbolicCholesky::try_new(self.symbolic(), side)?,
                 *self,
