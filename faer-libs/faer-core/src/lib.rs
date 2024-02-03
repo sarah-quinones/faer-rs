@@ -95,7 +95,6 @@ use core::{
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use group_helpers::SliceGroup;
-use inner::*;
 use num_complex::Complex;
 use pulp::Simd;
 use reborrow::*;
@@ -709,27 +708,27 @@ pub mod inner {
 
     #[derive(Debug)]
     #[doc(hidden)]
-    pub struct SparseColMatRefInner<'a, I, E: Entity> {
+    pub struct SparseColMatRef<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
     #[derive(Debug)]
     #[doc(hidden)]
-    pub struct SparseRowMatRefInner<'a, I, E: Entity> {
+    pub struct SparseRowMatRef<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
-    impl<I, E: Entity> Copy for SparseRowMatRefInner<'_, I, E> {}
-    impl<I, E: Entity> Clone for SparseRowMatRefInner<'_, I, E> {
+    impl<I, E: Entity> Copy for SparseRowMatRef<'_, I, E> {}
+    impl<I, E: Entity> Clone for SparseRowMatRef<'_, I, E> {
         #[inline]
         fn clone(&self) -> Self {
             *self
         }
     }
-    impl<I, E: Entity> Copy for SparseColMatRefInner<'_, I, E> {}
-    impl<I, E: Entity> Clone for SparseColMatRefInner<'_, I, E> {
+    impl<I, E: Entity> Copy for SparseColMatRef<'_, I, E> {}
+    impl<I, E: Entity> Clone for SparseColMatRef<'_, I, E> {
         #[inline]
         fn clone(&self) -> Self {
             *self
@@ -2727,10 +2726,10 @@ pub mod sparse {
     }
 
     /// Sparse matrix in column format, either compressed or uncompressed.
-    pub type SparseRowMatRef<'a, I, E> = Matrix<inner::SparseRowMatRefInner<'a, I, E>>;
+    pub type SparseRowMatRef<'a, I, E> = Matrix<inner::SparseRowMatRef<'a, I, E>>;
 
     /// Sparse matrix in column format, either compressed or uncompressed.
-    pub type SparseColMatRef<'a, I, E> = Matrix<inner::SparseColMatRefInner<'a, I, E>>;
+    pub type SparseColMatRef<'a, I, E> = Matrix<inner::SparseColMatRef<'a, I, E>>;
 
     impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
         /// Creates a new sparse matrix view.
@@ -2748,7 +2747,7 @@ pub mod sparse {
             let values = SliceGroup::new(values);
             assert!(symbolic.col_indices().len() == values.len());
             Self {
-                inner: inner::SparseRowMatRefInner { symbolic, values },
+                inner: inner::SparseRowMatRef { symbolic, values },
             }
         }
 
@@ -2761,7 +2760,7 @@ pub mod sparse {
         #[inline]
         pub fn transpose(self) -> SparseColMatRef<'a, I, E> {
             SparseColMatRef {
-                inner: inner::SparseColMatRefInner {
+                inner: inner::SparseColMatRef {
                     symbolic: SymbolicSparseColMatRef {
                         nrows: self.inner.symbolic.ncols,
                         ncols: self.inner.symbolic.nrows,
@@ -2780,7 +2779,7 @@ pub mod sparse {
             E: Conjugate,
         {
             SparseRowMatRef {
-                inner: inner::SparseRowMatRefInner {
+                inner: inner::SparseRowMatRef {
                     symbolic: self.inner.symbolic,
                     values: unsafe {
                         SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
@@ -2843,14 +2842,14 @@ pub mod sparse {
             let values = SliceGroup::new(values);
             assert!(symbolic.row_indices().len() == values.len());
             Self {
-                inner: inner::SparseColMatRefInner { symbolic, values },
+                inner: inner::SparseColMatRef { symbolic, values },
             }
         }
 
         #[inline]
         pub fn transpose(self) -> SparseRowMatRef<'a, I, E> {
             SparseRowMatRef {
-                inner: inner::SparseRowMatRefInner {
+                inner: inner::SparseRowMatRef {
                     symbolic: SymbolicSparseRowMatRef {
                         nrows: self.inner.symbolic.ncols,
                         ncols: self.inner.symbolic.nrows,
@@ -2869,7 +2868,7 @@ pub mod sparse {
             E: Conjugate,
         {
             SparseColMatRef {
-                inner: inner::SparseColMatRefInner {
+                inner: inner::SparseColMatRef {
                     symbolic: self.inner.symbolic,
                     values: unsafe {
                         SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
@@ -3095,7 +3094,7 @@ pub mod sparse {
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`ColRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub type ColRef<'a, E> = Matrix<DenseColRef<'a, E>>;
+pub type ColRef<'a, E> = Matrix<inner::DenseColRef<'a, E>>;
 
 /// Immutable view over a row vector, similar to an immutable reference to a strided [prim@slice].
 ///
@@ -3106,7 +3105,7 @@ pub type ColRef<'a, E> = Matrix<DenseColRef<'a, E>>;
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`RowRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub type RowRef<'a, E> = Matrix<DenseRowRef<'a, E>>;
+pub type RowRef<'a, E> = Matrix<inner::DenseRowRef<'a, E>>;
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
 ///
@@ -3117,7 +3116,7 @@ pub type RowRef<'a, E> = Matrix<DenseRowRef<'a, E>>;
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`MatRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub type MatRef<'a, E> = Matrix<DenseRef<'a, E>>;
+pub type MatRef<'a, E> = Matrix<inner::DenseRef<'a, E>>;
 
 /// Mutable view over a column vector, similar to a mutable reference to a strided [prim@slice].
 ///
@@ -3128,7 +3127,7 @@ pub type MatRef<'a, E> = Matrix<DenseRef<'a, E>>;
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`ColMut::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub type ColMut<'a, E> = Matrix<DenseColMut<'a, E>>;
+pub type ColMut<'a, E> = Matrix<inner::DenseColMut<'a, E>>;
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].
 ///
@@ -3139,7 +3138,7 @@ pub type ColMut<'a, E> = Matrix<DenseColMut<'a, E>>;
 /// operations that read the uninitialized values, or form references to them, either directly
 /// through [`RowMut::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
-pub type RowMut<'a, E> = Matrix<DenseRowMut<'a, E>>;
+pub type RowMut<'a, E> = Matrix<inner::DenseRowMut<'a, E>>;
 
 /// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
 ///
@@ -3185,16 +3184,16 @@ pub type RowMut<'a, E> = Matrix<DenseRowMut<'a, E>>;
 /// takes_matref(view.rb());
 /// // view is still usable here
 /// ```
-pub type MatMut<'a, E> = Matrix<DenseMut<'a, E>>;
+pub type MatMut<'a, E> = Matrix<inner::DenseMut<'a, E>>;
 
 /// Wrapper around a scalar value that allows scalar multiplication by matrices.
-pub type MatScale<E> = Matrix<Scale<E>>;
+pub type MatScale<E> = Matrix<inner::Scale<E>>;
 
 impl<E: Entity> MatScale<E> {
     #[inline(always)]
     pub fn new(value: E) -> Self {
         Self {
-            inner: Scale(value),
+            inner: inner::Scale(value),
         }
     }
     #[inline(always)]
@@ -3209,7 +3208,7 @@ const __COL_REBORROW: () = {
         #[inline(always)]
         fn into_const(self) -> Self::Target {
             ColRef {
-                inner: DenseColRef {
+                inner: inner::DenseColRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3223,7 +3222,7 @@ const __COL_REBORROW: () = {
         #[inline(always)]
         fn rb(&'short self) -> Self::Target {
             ColRef {
-                inner: DenseColRef {
+                inner: inner::DenseColRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3237,7 +3236,7 @@ const __COL_REBORROW: () = {
         #[inline(always)]
         fn rb_mut(&'short mut self) -> Self::Target {
             ColMut {
-                inner: DenseColMut {
+                inner: inner::DenseColMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3280,7 +3279,7 @@ const __ROW_REBORROW: () = {
         #[inline(always)]
         fn into_const(self) -> Self::Target {
             RowRef {
-                inner: DenseRowRef {
+                inner: inner::DenseRowRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3294,7 +3293,7 @@ const __ROW_REBORROW: () = {
         #[inline(always)]
         fn rb(&'short self) -> Self::Target {
             RowRef {
-                inner: DenseRowRef {
+                inner: inner::DenseRowRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3308,7 +3307,7 @@ const __ROW_REBORROW: () = {
         #[inline(always)]
         fn rb_mut(&'short mut self) -> Self::Target {
             RowMut {
-                inner: DenseRowMut {
+                inner: inner::DenseRowMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3351,7 +3350,7 @@ const __MAT_REBORROW: () = {
         #[inline(always)]
         fn into_const(self) -> Self::Target {
             MatRef {
-                inner: DenseRef {
+                inner: inner::DenseRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3365,7 +3364,7 @@ const __MAT_REBORROW: () = {
         #[inline(always)]
         fn rb(&'short self) -> Self::Target {
             MatRef {
-                inner: DenseRef {
+                inner: inner::DenseRef {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3379,7 +3378,7 @@ const __MAT_REBORROW: () = {
         #[inline(always)]
         fn rb_mut(&'short mut self) -> Self::Target {
             MatMut {
-                inner: DenseMut {
+                inner: inner::DenseMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -3415,47 +3414,47 @@ const __MAT_REBORROW: () = {
     }
 };
 
-impl<'a, E: Entity> IntoConst for Matrix<DiagMut<'a, E>> {
-    type Target = Matrix<DiagRef<'a, E>>;
+impl<'a, E: Entity> IntoConst for Matrix<inner::DiagMut<'a, E>> {
+    type Target = Matrix<inner::DiagRef<'a, E>>;
 
     #[inline(always)]
     fn into_const(self) -> Self::Target {
         Matrix {
-            inner: DiagRef {
+            inner: inner::DiagRef {
                 inner: self.inner.inner.into_const(),
             },
         }
     }
 }
 
-impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<DiagMut<'a, E>> {
-    type Target = Matrix<DiagRef<'short, E>>;
+impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<inner::DiagMut<'a, E>> {
+    type Target = Matrix<inner::DiagRef<'short, E>>;
 
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
         Matrix {
-            inner: DiagRef {
+            inner: inner::DiagRef {
                 inner: self.inner.inner.rb(),
             },
         }
     }
 }
 
-impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<DiagMut<'a, E>> {
-    type Target = Matrix<DiagMut<'short, E>>;
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<inner::DiagMut<'a, E>> {
+    type Target = Matrix<inner::DiagMut<'short, E>>;
 
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
         Matrix {
-            inner: DiagMut {
+            inner: inner::DiagMut {
                 inner: self.inner.inner.rb_mut(),
             },
         }
     }
 }
 
-impl<'a, E: Entity> IntoConst for Matrix<DiagRef<'a, E>> {
-    type Target = Matrix<DiagRef<'a, E>>;
+impl<'a, E: Entity> IntoConst for Matrix<inner::DiagRef<'a, E>> {
+    type Target = Matrix<inner::DiagRef<'a, E>>;
 
     #[inline(always)]
     fn into_const(self) -> Self::Target {
@@ -3463,8 +3462,8 @@ impl<'a, E: Entity> IntoConst for Matrix<DiagRef<'a, E>> {
     }
 }
 
-impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<DiagRef<'a, E>> {
-    type Target = Matrix<DiagRef<'short, E>>;
+impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<inner::DiagRef<'a, E>> {
+    type Target = Matrix<inner::DiagRef<'short, E>>;
 
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
@@ -3472,8 +3471,8 @@ impl<'short, 'a, E: Entity> Reborrow<'short> for Matrix<DiagRef<'a, E>> {
     }
 }
 
-impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<DiagRef<'a, E>> {
-    type Target = Matrix<DiagRef<'short, E>>;
+impl<'short, 'a, E: Entity> ReborrowMut<'short> for Matrix<inner::DiagRef<'a, E>> {
+    type Target = Matrix<inner::DiagRef<'short, E>>;
 
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -4397,7 +4396,7 @@ const __ROW_INDEX: () = {
     }
 };
 
-impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
+impl<'a, E: Entity> Matrix<inner::DiagRef<'a, E>> {
     #[inline(always)]
     #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector`"]
     pub fn into_column_vector(self) -> ColRef<'a, E> {
@@ -4410,7 +4409,7 @@ impl<'a, E: Entity> Matrix<DiagRef<'a, E>> {
     }
 }
 
-impl<'a, E: Entity> Matrix<DiagMut<'a, E>> {
+impl<'a, E: Entity> Matrix<inner::DiagMut<'a, E>> {
     #[inline(always)]
     #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector_mut`"]
     pub fn into_column_vector(self) -> ColMut<'a, E> {
@@ -4423,25 +4422,25 @@ impl<'a, E: Entity> Matrix<DiagMut<'a, E>> {
     }
 }
 
-impl<E: Entity> Matrix<DiagOwn<E>> {
+impl<E: Entity> Matrix<inner::DiagOwn<E>> {
     #[inline(always)]
     pub fn into_column_vector(self) -> Col<E> {
         self.inner.inner
     }
 
     #[inline(always)]
-    pub fn as_ref(&self) -> Matrix<DiagRef<'_, E>> {
+    pub fn as_ref(&self) -> Matrix<inner::DiagRef<'_, E>> {
         Matrix {
-            inner: DiagRef {
+            inner: inner::DiagRef {
                 inner: self.inner.inner.as_ref(),
             },
         }
     }
 
     #[inline(always)]
-    pub fn as_mut(&mut self) -> Matrix<DiagMut<'_, E>> {
+    pub fn as_mut(&mut self) -> Matrix<inner::DiagMut<'_, E>> {
         Matrix {
-            inner: DiagMut {
+            inner: inner::DiagMut {
                 inner: self.inner.inner.as_mut(),
             },
         }
@@ -4835,9 +4834,9 @@ const __COL_IMPL: () = {
         /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
         #[track_caller]
         #[inline(always)]
-        pub fn column_vector_as_diagonal(self) -> Matrix<DiagRef<'a, E>> {
+        pub fn column_vector_as_diagonal(self) -> Matrix<inner::DiagRef<'a, E>> {
             Matrix {
-                inner: DiagRef { inner: self },
+                inner: inner::DiagRef { inner: self },
             }
         }
 
@@ -4910,7 +4909,7 @@ const __COL_IMPL: () = {
         #[inline(always)]
         pub unsafe fn const_cast(self) -> ColMut<'a, E> {
             ColMut {
-                inner: DenseColMut {
+                inner: inner::DenseColMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -5282,9 +5281,9 @@ const __COL_IMPL: () = {
         /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
         #[track_caller]
         #[inline(always)]
-        pub fn column_vector_as_diagonal(self) -> Matrix<DiagMut<'a, E>> {
+        pub fn column_vector_as_diagonal(self) -> Matrix<inner::DiagMut<'a, E>> {
             Matrix {
-                inner: DiagMut { inner: self },
+                inner: inner::DiagMut { inner: self },
             }
         }
 
@@ -5722,7 +5721,7 @@ const __ROW_IMPL: () = {
         #[inline(always)]
         pub unsafe fn const_cast(self) -> RowMut<'a, E> {
             RowMut {
-                inner: DenseRowMut {
+                inner: inner::DenseRowMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -6947,21 +6946,21 @@ const __MAT_IMPL: () = {
         /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
         #[track_caller]
         #[inline(always)]
-        pub fn column_vector_as_diagonal(self) -> Matrix<DiagRef<'a, E>> {
+        pub fn column_vector_as_diagonal(self) -> Matrix<inner::DiagRef<'a, E>> {
             assert!(self.ncols() == 1);
             Matrix {
-                inner: DiagRef { inner: self.col(0) },
+                inner: inner::DiagRef { inner: self.col(0) },
             }
         }
 
         #[inline(always)]
-        pub fn diagonal(self) -> Matrix<DiagRef<'a, E>> {
+        pub fn diagonal(self) -> Matrix<inner::DiagRef<'a, E>> {
             let size = self.nrows().min(self.ncols());
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
             unsafe {
                 Matrix {
-                    inner: DiagRef {
+                    inner: inner::DiagRef {
                         inner: col::from_raw_parts(self.as_ptr(), size, row_stride + col_stride),
                     },
                 }
@@ -7046,7 +7045,7 @@ const __MAT_IMPL: () = {
         #[inline(always)]
         pub unsafe fn const_cast(self) -> MatMut<'a, E> {
             MatMut {
-                inner: DenseMut {
+                inner: inner::DenseMut {
                     inner: self.inner.inner,
                     __marker: PhantomData,
                 },
@@ -8119,10 +8118,10 @@ const __MAT_IMPL: () = {
         /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
         #[track_caller]
         #[inline(always)]
-        pub fn column_vector_as_diagonal_mut(self) -> Matrix<DiagMut<'a, E>> {
+        pub fn column_vector_as_diagonal_mut(self) -> Matrix<inner::DiagMut<'a, E>> {
             assert!(self.ncols() == 1);
             Matrix {
-                inner: DiagMut {
+                inner: inner::DiagMut {
                     inner: self.col_mut(0),
                 },
             }
@@ -8131,18 +8130,18 @@ const __MAT_IMPL: () = {
         #[track_caller]
         #[inline(always)]
         #[deprecated = "replaced by `MatMut::column_vector_as_diagonal_mut`"]
-        pub fn column_vector_as_diagonal(self) -> Matrix<DiagMut<'a, E>> {
+        pub fn column_vector_as_diagonal(self) -> Matrix<inner::DiagMut<'a, E>> {
             self.column_vector_as_diagonal_mut()
         }
 
         #[inline(always)]
-        pub fn diagonal_mut(self) -> Matrix<DiagMut<'a, E>> {
+        pub fn diagonal_mut(self) -> Matrix<inner::DiagMut<'a, E>> {
             let size = self.nrows().min(self.ncols());
             let row_stride = self.row_stride();
             let col_stride = self.col_stride();
             unsafe {
                 Matrix {
-                    inner: DiagMut {
+                    inner: inner::DiagMut {
                         inner: col::from_raw_parts_mut(
                             self.as_ptr_mut(),
                             size,
@@ -8155,7 +8154,7 @@ const __MAT_IMPL: () = {
 
         #[inline(always)]
         #[deprecated = "replaced by `MatMut::diagonal_mut`"]
-        pub fn diagonal(self) -> Matrix<DiagMut<'a, E>> {
+        pub fn diagonal(self) -> Matrix<inner::DiagMut<'a, E>> {
             self.diagonal_mut()
         }
 
@@ -8583,7 +8582,7 @@ impl<E: Entity> Drop for RawMat<E> {
 /// ```
 ///
 /// where X represents padding elements.
-pub type Mat<E> = Matrix<DenseOwn<E>>;
+pub type Mat<E> = Matrix<inner::DenseOwn<E>>;
 
 /// Heap allocated resizable column vector.
 ///
@@ -8591,7 +8590,7 @@ pub type Mat<E> = Matrix<DenseOwn<E>>;
 ///
 /// The memory layout of `Col` is guaranteed to be column-major, meaning that it has a row stride
 /// of `1`.
-pub type Col<E> = Matrix<DenseColOwn<E>>;
+pub type Col<E> = Matrix<inner::DenseColOwn<E>>;
 
 /// Heap allocated resizable row vector.
 ///
@@ -8599,7 +8598,7 @@ pub type Col<E> = Matrix<DenseColOwn<E>>;
 ///
 /// The memory layout of `Col` is guaranteed to be row-major, meaning that it has a column stride
 /// of `1`.
-pub type Row<E> = Matrix<DenseRowOwn<E>>;
+pub type Row<E> = Matrix<inner::DenseRowOwn<E>>;
 
 #[repr(C)]
 struct MatUnit<T: 'static> {
@@ -8716,7 +8715,7 @@ impl<T> MatUnit<T> {
     }
 }
 
-impl<E: Entity> Drop for DenseOwn<E> {
+impl<E: Entity> Drop for inner::DenseOwn<E> {
     fn drop(&mut self) {
         drop(RawMat::<E> {
             ptr: self.inner.ptr,
@@ -8725,7 +8724,7 @@ impl<E: Entity> Drop for DenseOwn<E> {
         });
     }
 }
-impl<E: Entity> Drop for DenseColOwn<E> {
+impl<E: Entity> Drop for inner::DenseColOwn<E> {
     fn drop(&mut self) {
         drop(RawMat::<E> {
             ptr: self.inner.ptr,
@@ -8734,7 +8733,7 @@ impl<E: Entity> Drop for DenseColOwn<E> {
         });
     }
 }
-impl<E: Entity> Drop for DenseRowOwn<E> {
+impl<E: Entity> Drop for inner::DenseRowOwn<E> {
     fn drop(&mut self) {
         drop(RawMat::<E> {
             ptr: self.inner.ptr,
@@ -8767,7 +8766,7 @@ impl<E: Entity> Col<E> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            inner: DenseColOwn {
+            inner: inner::DenseColOwn {
                 inner: VecOwnImpl {
                     ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| {
                         NonNull::<E::Unit>::dangling()
@@ -8789,7 +8788,7 @@ impl<E: Entity> Col<E> {
     pub fn with_capacity(row_capacity: usize) -> Self {
         let raw = ManuallyDrop::new(RawMat::<E>::new(row_capacity, 1));
         Self {
-            inner: DenseColOwn {
+            inner: inner::DenseColOwn {
                 inner: VecOwnImpl {
                     ptr: raw.ptr,
                     len: 0,
@@ -9260,7 +9259,7 @@ impl<E: Entity> Row<E> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            inner: DenseRowOwn {
+            inner: inner::DenseRowOwn {
                 inner: VecOwnImpl {
                     ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| {
                         NonNull::<E::Unit>::dangling()
@@ -9282,7 +9281,7 @@ impl<E: Entity> Row<E> {
     pub fn with_capacity(col_capacity: usize) -> Self {
         let raw = ManuallyDrop::new(RawMat::<E>::new(col_capacity, 1));
         Self {
-            inner: DenseRowOwn {
+            inner: inner::DenseRowOwn {
                 inner: VecOwnImpl {
                     ptr: raw.ptr,
                     len: 0,
@@ -9753,7 +9752,7 @@ impl<E: Entity> Mat<E> {
     #[inline]
     pub fn new() -> Self {
         Self {
-            inner: DenseOwn {
+            inner: inner::DenseOwn {
                 inner: MatOwnImpl {
                     ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| {
                         NonNull::<E::Unit>::dangling()
@@ -9777,7 +9776,7 @@ impl<E: Entity> Mat<E> {
     pub fn with_capacity(row_capacity: usize, col_capacity: usize) -> Self {
         let raw = ManuallyDrop::new(RawMat::<E>::new(row_capacity, col_capacity));
         Self {
-            inner: DenseOwn {
+            inner: inner::DenseOwn {
                 inner: MatOwnImpl {
                     ptr: raw.ptr,
                     nrows: 0,
@@ -10335,7 +10334,7 @@ impl<E: Entity> Mat<E> {
     }
 
     #[inline]
-    pub fn diagonal(&self) -> Matrix<DiagRef<'_, E>> {
+    pub fn diagonal(&self) -> Matrix<inner::DiagRef<'_, E>> {
         self.as_ref().diagonal()
     }
 
@@ -12757,7 +12756,7 @@ pub mod mat {
         col_stride: isize,
     ) -> MatRef<'a, E> {
         MatRef {
-            inner: DenseRef {
+            inner: inner::DenseRef {
                 inner: MatImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)
@@ -12821,7 +12820,7 @@ pub mod mat {
         col_stride: isize,
     ) -> MatMut<'a, E> {
         MatMut {
-            inner: DenseMut {
+            inner: inner::DenseMut {
                 inner: MatImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)
@@ -13060,7 +13059,7 @@ pub mod col {
         row_stride: isize,
     ) -> ColRef<'a, E> {
         ColRef {
-            inner: DenseColRef {
+            inner: inner::DenseColRef {
                 inner: VecImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)
@@ -13085,7 +13084,7 @@ pub mod col {
         row_stride: isize,
     ) -> ColMut<'a, E> {
         ColMut {
-            inner: DenseColMut {
+            inner: inner::DenseColMut {
                 inner: VecImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)
@@ -13154,7 +13153,7 @@ pub mod row {
         col_stride: isize,
     ) -> RowRef<'a, E> {
         RowRef {
-            inner: DenseRowRef {
+            inner: inner::DenseRowRef {
                 inner: VecImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)
@@ -13180,7 +13179,7 @@ pub mod row {
         col_stride: isize,
     ) -> RowMut<'a, E> {
         RowMut {
-            inner: DenseRowMut {
+            inner: inner::DenseRowMut {
                 inner: VecImpl {
                     ptr: into_copy::<E, _>(E::faer_map(ptr, |ptr| {
                         NonNull::new_unchecked(ptr as *mut E::Unit)

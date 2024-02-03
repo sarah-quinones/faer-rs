@@ -80,14 +80,14 @@ impl MatrixKind for Scale {
     type Own<E: Entity> = MatScale<E>;
 }
 impl MatrixKind for Diag {
-    type Ref<'a, E: Entity> = Matrix<DiagRef<'a, E>>;
-    type Mut<'a, E: Entity> = Matrix<DiagMut<'a, E>>;
-    type Own<E: Entity> = Matrix<DiagOwn<E>>;
+    type Ref<'a, E: Entity> = Matrix<inner::DiagRef<'a, E>>;
+    type Mut<'a, E: Entity> = Matrix<inner::DiagMut<'a, E>>;
+    type Own<E: Entity> = Matrix<inner::DiagOwn<E>>;
 }
 impl<I: Index> MatrixKind for Perm<I> {
-    type Ref<'a, E: Entity> = Matrix<PermRef<'a, I, E>>;
-    type Mut<'a, E: Entity> = Matrix<PermMut<'a, I, E>>;
-    type Own<E: Entity> = Matrix<PermOwn<I, E>>;
+    type Ref<'a, E: Entity> = Matrix<inner::PermRef<'a, I, E>>;
+    type Mut<'a, E: Entity> = Matrix<inner::PermMut<'a, I, E>>;
+    type Own<E: Entity> = Matrix<inner::PermOwn<I, E>>;
 }
 
 pub trait GenericMatrix: Sized {
@@ -304,6 +304,26 @@ impl<E: Entity> GenericMatrixMut for inner::Scale<E> {
     }
 }
 
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseColMatRef<'_, I, E> {
+    type Kind = SparseColMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        *this
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMatRef<'_, I, E> {
+    type Kind = SparseRowMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        *this
+    }
+}
+
 mod __matmul_assign {
     use super::*;
 
@@ -392,7 +412,7 @@ mod __matmul {
             }
 
             Permutation {
-                inner: PermOwn {
+                inner: inner::PermOwn {
                     forward: fwd,
                     inverse: inv,
                     __marker: core::marker::PhantomData,
@@ -747,7 +767,7 @@ mod __matmul {
             assert!(lhs_dim == rhs_dim);
 
             Matrix {
-                inner: DiagOwn {
+                inner: inner::DiagOwn {
                     inner: Col::from_fn(lhs_dim, |i| unsafe {
                         E::faer_mul(
                             lhs.inner.inner.read_unchecked(i).canonicalize(),

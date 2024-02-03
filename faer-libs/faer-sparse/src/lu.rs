@@ -2601,7 +2601,6 @@ mod tests {
             &val,
         );
 
-        let a = sparse_to_dense(A);
         let rhs = Mat::<E>::from_fn(m, 2, |_, _| gen());
 
         for supernodal_flop_ratio_threshold in [
@@ -2644,7 +2643,7 @@ mod tests {
                     )),
                 );
 
-                let linsolve_diff = &a * &x - &rhs;
+                let linsolve_diff = A * &x - &rhs;
                 assert!(linsolve_diff.norm_max() <= 1e-10);
             }
             {
@@ -2660,8 +2659,7 @@ mod tests {
                     )),
                 );
 
-                let a = a.conjugate();
-                let linsolve_diff = a * &x - &rhs;
+                let linsolve_diff = A.conjugate() * &x - &rhs;
                 assert!(linsolve_diff.norm_max() <= 1e-10);
             }
 
@@ -2678,7 +2676,7 @@ mod tests {
                     )),
                 );
 
-                let linsolve_diff = a.transpose() * &x - &rhs;
+                let linsolve_diff = A.transpose() * &x - &rhs;
                 assert!(linsolve_diff.norm_max() <= 1e-10);
             }
             {
@@ -2694,8 +2692,7 @@ mod tests {
                     )),
                 );
 
-                let a = a.conjugate();
-                let linsolve_diff = a.transpose() * &x - &rhs;
+                let linsolve_diff = A.adjoint() * &x - &rhs;
                 assert!(linsolve_diff.norm_max() <= 1e-10);
             }
         }

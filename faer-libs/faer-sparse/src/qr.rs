@@ -292,9 +292,7 @@ pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, sta
 
 pub mod supernodal {
     use super::*;
-    use faer_core::{
-        assert, householder::apply_block_householder_sequence_on_the_left_in_place_with_conj,
-    };
+    use faer_core::assert;
 
     #[derive(Debug)]
     pub struct SymbolicSupernodalHouseholder<I> {
