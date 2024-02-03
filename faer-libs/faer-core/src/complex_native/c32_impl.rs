@@ -124,7 +124,7 @@ impl c32 {
 
     #[inline(always)]
     pub fn l1_norm(&self) -> f32 {
-        self.re.abs() + self.im.abs()
+        self.re.faer_abs() + self.im.faer_abs()
     }
 
     #[inline(always)]
@@ -594,7 +594,7 @@ unsafe impl bytemuck::Pod for c32 {}
 impl core::fmt::Debug for c32 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        let im_abs = self.im.abs();
+        let im_abs = self.im.faer_abs();
         if self.im.is_sign_positive() {
             f.write_str(" + ")?;
             im_abs.fmt(f)?;

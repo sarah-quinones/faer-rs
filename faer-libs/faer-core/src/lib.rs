@@ -9738,7 +9738,7 @@ impl<E: Entity> Row<E> {
     {
         norm_l2((*self).as_ref().as_2d())
     }
-    
+
     /// Returns the sum of `self`.
     #[inline]
     pub fn sum(&self) -> E
@@ -12115,7 +12115,7 @@ fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
     offset: pulp::Offset<SimdMaskFor<E, S>>,
 ) -> SimdGroupFor<E, S> {
     use group_helpers::*;
-    
+
     let simd = SimdFor::<E, S>::new(simd);
 
     let zero = simd.splat(E::faer_zero());
@@ -12147,7 +12147,7 @@ fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
 
     let tail = tail.read_or(zero);
     acc3 = simd.add(acc3, tail);
-    
+
     acc0 = simd.add(acc0, acc1);
     acc2 = simd.add(acc2, acc3);
     simd.add(acc0, acc2)
@@ -12528,7 +12528,7 @@ fn sum_contiguous<E: ComplexField>(data: MatRef<'_, E>) -> E {
             let acc = sum_with_simd_and_offset_pairwise_cols(simd, data, offset, last_offset);
 
             let simd = SimdFor::<E, S>::new(simd);
-            simd.reduce_add(acc)
+            simd.reduce_add(simd.rotate_left(acc, offset.rotate_left_amount()))
         }
     }
 

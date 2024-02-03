@@ -17,7 +17,7 @@ unsafe impl bytemuck::Zeroable for c64conj {}
 impl core::fmt::Debug for c64conj {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.re.fmt(f)?;
-        let im_abs = self.neg_im.abs();
+        let im_abs = self.neg_im.faer_abs();
         if self.neg_im.is_sign_positive() {
             f.write_str(" - ")?;
             im_abs.fmt(f)?;
