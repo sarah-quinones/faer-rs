@@ -238,7 +238,8 @@ pub trait AsMatMut<E: Entity> {
     fn as_mat_mut(&mut self) -> MatMut<'_, E>;
 }
 
-const __AS_COL: () = {
+// AS COL
+const _: () = {
     impl<E: Entity> AsColRef<E> for ColRef<'_, E> {
         #[inline]
         fn as_col_ref(&self) -> ColRef<'_, E> {
@@ -305,7 +306,8 @@ const __AS_COL: () = {
     }
 };
 
-const __AS_ROW: () = {
+// AS ROW
+const _: () = {
     impl<E: Entity> AsRowRef<E> for RowRef<'_, E> {
         #[inline]
         fn as_row_ref(&self) -> RowRef<'_, E> {
@@ -372,7 +374,8 @@ const __AS_ROW: () = {
     }
 };
 
-const __AS_MAT: () = {
+// AS MAT
+const _: () = {
     impl<E: Entity> AsMatRef<E> for MatRef<'_, E> {
         #[inline]
         fn as_mat_ref(&self) -> MatRef<'_, E> {
@@ -3201,7 +3204,9 @@ impl<E: Entity> MatScale<E> {
         self.inner.0
     }
 }
-const __COL_REBORROW: () = {
+
+// COL_REBORROW
+const _: () = {
     impl<'a, E: Entity> IntoConst for ColMut<'a, E> {
         type Target = ColRef<'a, E>;
 
@@ -3272,7 +3277,8 @@ const __COL_REBORROW: () = {
     }
 };
 
-const __ROW_REBORROW: () = {
+// ROW REBORROW
+const _: () = {
     impl<'a, E: Entity> IntoConst for RowMut<'a, E> {
         type Target = RowRef<'a, E>;
 
@@ -3343,7 +3349,8 @@ const __ROW_REBORROW: () = {
     }
 };
 
-const __MAT_REBORROW: () = {
+// MAT_REBORROW
+const _: () = {
     impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
         type Target = MatRef<'a, E>;
 
@@ -3549,7 +3556,8 @@ pub trait MatIndex<RowRange, ColRange>: seal::Seal + Sized {
     fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target;
 }
 
-const __MAT_INDEX: () = {
+// MAT INDEX
+const _: () = {
     // RangeFull
     // Range
     // RangeInclusive
@@ -4043,7 +4051,8 @@ const __MAT_INDEX: () = {
     }
 };
 
-const __COL_INDEX: () = {
+// COL INDEX
+const _: () = {
     // RangeFull
     // Range
     // RangeInclusive
@@ -4219,7 +4228,8 @@ const __COL_INDEX: () = {
     }
 };
 
-const __ROW_INDEX: () = {
+// ROW INDEX
+const _: () = {
     // RangeFull
     // Range
     // RangeInclusive
@@ -4509,7 +4519,8 @@ unsafe fn unchecked_add(a: isize, b: isize) -> isize {
     sum
 }
 
-const __COL_IMPL: () = {
+// COL IMPL
+const _: () = {
     impl<'a, E: Entity> ColRef<'a, E> {
         #[track_caller]
         #[inline(always)]
@@ -5348,7 +5359,8 @@ const __COL_IMPL: () = {
     }
 };
 
-const __ROW_IMPL: () = {
+// ROW IMPL
+const _: () = {
     impl<'a, E: Entity> RowRef<'a, E> {
         #[inline(always)]
         pub fn nrows(&self) -> usize {
@@ -6136,7 +6148,8 @@ const __ROW_IMPL: () = {
     }
 };
 
-const __MAT_IMPL: () = {
+// MAT IMPL
+const _: () = {
     impl<'a, E: Entity> MatRef<'a, E> {
         #[track_caller]
         #[inline(always)]
