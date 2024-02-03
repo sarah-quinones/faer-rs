@@ -185,6 +185,17 @@ use solvers::*;
 pub use dbgf::dbgf;
 pub use faer_cholesky::llt::CholeskyError;
 
+/// Re-exports.
+pub mod modules {
+    pub use faer_cholesky as cholesky;
+    pub use faer_core as core;
+    pub use faer_evd as evd;
+    pub use faer_lu as lu;
+    pub use faer_qr as qr;
+    pub use faer_sparse as sparse;
+    pub use faer_svd as svd;
+}
+
 /// Commonly used traits for a streamlined user experience.
 pub mod prelude {
     pub use crate::{
