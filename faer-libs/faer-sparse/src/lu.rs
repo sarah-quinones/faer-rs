@@ -2601,7 +2601,7 @@ mod tests {
             &val,
         );
 
-        let rhs = Mat::<E>::from_fn(m, 2, |_, _| gen());
+        let rhs = Mat::<E>::from_fn(m, 6, |_, _| gen());
 
         for supernodal_flop_ratio_threshold in [
             SupernodalThreshold::AUTO,
@@ -2638,7 +2638,7 @@ mod tests {
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .solve_in_place_req::<E>(2, Parallelism::None)
+                            .solve_in_place_req::<E>(rhs.ncols(), Parallelism::None)
                             .unwrap(),
                     )),
                 );
@@ -2654,7 +2654,7 @@ mod tests {
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .solve_in_place_req::<E>(2, Parallelism::None)
+                            .solve_in_place_req::<E>(rhs.ncols(), Parallelism::None)
                             .unwrap(),
                     )),
                 );
@@ -2671,7 +2671,7 @@ mod tests {
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .solve_transpose_in_place_req::<E>(2, Parallelism::None)
+                            .solve_transpose_in_place_req::<E>(rhs.ncols(), Parallelism::None)
                             .unwrap(),
                     )),
                 );
@@ -2687,7 +2687,7 @@ mod tests {
                     Parallelism::None,
                     PodStack::new(&mut GlobalPodBuffer::new(
                         symbolic
-                            .solve_transpose_in_place_req::<E>(2, Parallelism::None)
+                            .solve_transpose_in_place_req::<E>(rhs.ncols(), Parallelism::None)
                             .unwrap(),
                     )),
                 );
