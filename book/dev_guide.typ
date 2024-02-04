@@ -49,9 +49,10 @@
 #outline()
 
 == Introduction
-_`faer-rs`_ is a general-purpose linear algebra library for the Rust programming language.
-With a focus on correctness, portability, and performance. In this book, we'll
-be assuming version `0.15.0` of the library.
+_`faer-rs`_ is a general-purpose linear algebra library for the Rust
+programming language, with a focus on correctness, portability, and
+performance.
+In this book, we'll be assuming version `0.16.0` of the library.
 
 _`faer`_ is designed around a high level API that sacrifices some amount of
 performance and customizability in exchange for ease of use, as well as a low
@@ -59,12 +60,11 @@ level API that offers more control over memory allocations and multithreading
 capabilities. The two APIs share the same data structures and can be used
 together or separately, depending on the user's needs.
 
-
 This book assumes some level of familiarity with Rust, linear algebra and _`faer`_'s API.
 Users who are new to the library are encouraged to get started by taking a look
-at the library's examples directory #footnote[`faer-rs/faer-libs/faer/examples`] and
-browsing the `docs.rs` documentation #footnote[https://docs.rs/faer/0.15.0/faer/index.html].
-
+at the user guide, the library's examples directory
+#footnote[`faer-rs/faer-libs/faer/examples`] and browsing the `docs.rs`
+documentation #footnote[https://docs.rs/faer/0.16.0/faer/index.html].
 
 We will go into detail over the various operations and matrix decompositions
 that are provided by the library, as well as their implementation details. We
@@ -1006,3 +1006,29 @@ over shared resources by the different threads.
   done for the rectangular matrix multiply. For example a lower triangular
   matrix times a column vector.
 ]
+
+== Triangular matrix solve
+Solving systems of the form $A X = B$ (where $A$ is a triangular matrix) is
+another primitive that is implemented using a recursive implementation that
+relies on matrix multiplication. For simplicity, we assume $A$ is lower
+triangular. The cases where $A$ is unit lower triangular or [unit] upper
+triangular are handled similarly.
+
+If we decompose $A$, $B$ and $X$ as follows:
+$
+A = mat(A_(1 1), ; A_(2 1), A_(2 2)),
+B = mat(B_1; B_2),
+X = mat(X_1; X_2),
+$
+then the system can be reformulated as
+$
+A_(1 1) X_1 &= B_1,\
+A_(2 2) X_2 &= B_2 - A_(2 1) X_1.
+$
+This system can be solved sequentially by first solving the first equation,
+then substituting its solution in the second equation. Moreover, the system can
+be solved in place, by taking an inout parameter that contains $B$ on input,
+and $X$ on output.
+
+Once the recursion reaches a certain threshold, we fall back to a sequential
+implementation to avoid the recursion overhead.
