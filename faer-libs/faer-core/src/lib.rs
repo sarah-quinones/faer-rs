@@ -74,6 +74,7 @@
 //! After computing a [`dyn_stack::StackReq`], one can query its size and alignment to allocate the
 //! required memory. The simplest way to do so is through [`dyn_stack::GlobalMemBuffer::new`].
 
+#![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -94,7 +95,7 @@ use core::{
     fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::NonNull, sync::atomic::AtomicUsize,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
-use group_helpers::SliceGroup;
+use group_helpers::{SliceGroup, SliceGroupMut};
 use num_complex::Complex;
 use pulp::Simd;
 use reborrow::*;
@@ -168,6 +169,24 @@ pub enum Side {
     Upper,
 }
 
+/// Errors that can occur in sparse algorithms.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[non_exhaustive]
+pub enum FaerError {
+    IndexOverflow,
+    OutOfMemory,
+}
+
+impl core::fmt::Display for FaerError {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(self, f)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for FaerError {}
+
 extern crate alloc;
 
 pub mod householder;
@@ -180,6 +199,8 @@ pub mod permutation;
 pub mod solve;
 
 pub mod matrix_ops;
+
+pub mod sparse;
 
 /// Thin wrapper used for scalar multiplication of a matrix by a scalar value.
 pub use matrix_ops::scale;
@@ -572,6 +593,7 @@ pub struct Matrix<M> {
 /// Specialized containers that are used with [`Matrix`].
 pub mod inner {
     use super::*;
+    use crate::group_helpers::VecGroup;
 
     impl<E: Entity> Copy for DiagRef<'_, E> {}
     impl<E: Entity> Clone for DiagRef<'_, E> {
@@ -723,6 +745,34 @@ pub mod inner {
         pub(crate) values: SliceGroup<'a, E>,
     }
 
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct SparseColMatMut<'a, I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
+        pub(crate) values: SliceGroupMut<'a, E>,
+    }
+
+    #[derive(Debug)]
+    #[doc(hidden)]
+    pub struct SparseRowMatMut<'a, I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
+        pub(crate) values: SliceGroupMut<'a, E>,
+    }
+
+    #[derive(Debug, Clone)]
+    #[doc(hidden)]
+    pub struct SparseColMat<I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseColMat<I>,
+        pub(crate) values: VecGroup<E>,
+    }
+
+    #[derive(Debug, Clone)]
+    #[doc(hidden)]
+    pub struct SparseRowMat<I, E: Entity> {
+        pub(crate) symbolic: sparse::SymbolicSparseRowMat<I>,
+        pub(crate) values: VecGroup<E>,
+    }
+
     impl<I, E: Entity> Copy for SparseRowMatRef<'_, I, E> {}
     impl<I, E: Entity> Clone for SparseRowMatRef<'_, I, E> {
         #[inline]
@@ -769,6 +819,11 @@ pub mod group_helpers {
         #[inline]
         pub fn from_inner(inner: GroupFor<E, alloc::vec::Vec<T>>) -> Self {
             Self { inner }
+        }
+
+        #[inline]
+        pub fn into_inner(self) -> GroupFor<E, alloc::vec::Vec<T>> {
+            self.inner
         }
 
         #[inline]
@@ -2192,897 +2247,6 @@ pub mod group_helpers {
     impl<E: Entity, T: Debug> core::fmt::Debug for SliceGroupMut<'_, E, T> {
         fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             self.rb().fmt(f)
-        }
-    }
-}
-
-/// Sparse matrix data structures.
-///
-/// Most sparse matrix algorithms accept matrices in sparse column-oriented format.
-/// This format represents each column of the matrix by storing the row indices of its non-zero
-/// elements, as well as their values.
-///
-/// The indices and the values are each stored in a contiguous slice (or group of slices for
-/// arbitrary values). In order to specify where each column starts and ends, a slice of size
-/// `ncols + 1` stores the start of each column, with the last element being equal to the total
-/// number of non-zeros (or the capacity in uncompressed mode).
-///
-/// # Example
-///
-/// Consider the 4-by-5 matrix:
-/// ```notcode
-/// 10.0  0.0  12.0  -1.0  13.0
-///  0.0  0.0  25.0  -2.0   0.0
-///  1.0  0.0   0.0   0.0   0.0
-///  4.0  0.0   0.0   0.0   5.0
-/// ```
-///
-/// The matrix is stored as follows:
-/// ```notcode
-/// column pointers:  0 |  3 |  3 |  5 |  7 |  9
-///
-/// row indices:    0 |    2 |    3 |    0 |    1 |    0 |    1 |    0 |    3
-/// values     : 10.0 |  1.0 |  4.0 | 12.0 | 25.0 | -1.0 | -2.0 | 13.0 |  5.0
-/// ```
-pub mod sparse {
-    use super::*;
-    use crate::assert;
-    use core::{iter::zip, ops::Range, slice::SliceIndex};
-    use group_helpers::SliceGroup;
-    use permutation::{Index, SignedIndex};
-
-    #[inline(always)]
-    #[track_caller]
-    #[doc(hidden)]
-    pub unsafe fn __get_unchecked<I, R: Clone + SliceIndex<[I]>>(slice: &[I], i: R) -> &R::Output {
-        #[cfg(debug_assertions)]
-        {
-            let _ = &slice[i.clone()];
-        }
-        unsafe { slice.get_unchecked(i) }
-    }
-    #[inline(always)]
-    #[track_caller]
-    #[doc(hidden)]
-    pub unsafe fn __get_unchecked_mut<I, R: Clone + SliceIndex<[I]>>(
-        slice: &mut [I],
-        i: R,
-    ) -> &mut R::Output {
-        #[cfg(debug_assertions)]
-        {
-            let _ = &slice[i.clone()];
-        }
-        unsafe { slice.get_unchecked_mut(i) }
-    }
-
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn windows2<I>(slice: &[I]) -> impl DoubleEndedIterator<Item = &[I; 2]> {
-        slice
-            .windows(2)
-            .map(|window| unsafe { &*(window.as_ptr() as *const [I; 2]) })
-    }
-
-    #[inline]
-    #[doc(hidden)]
-    pub const fn repeat_byte(byte: u8) -> usize {
-        union Union {
-            bytes: [u8; 32],
-            value: usize,
-        }
-
-        let data = Union { bytes: [byte; 32] };
-        unsafe { data.value }
-    }
-
-    /// Symbolic structure of sparse matrix in column format, either compressed or uncompressed.
-    ///
-    /// Requires:
-    /// * `nrows <= I::Signed::MAX` (always checked)
-    /// * `ncols <= I::Signed::MAX` (always checked)
-    /// * `col_ptrs` has length `ncols + 1` (always checked)
-    /// * `col_ptrs` is non-decreasing
-    /// * `col_ptrs[0]..col_ptrs[ncols]` is a valid range in row_indices (always checked, assuming
-    ///   non-decreasing)
-    /// * if `nnz_per_col` is `None`, elements of `row_indices[col_ptrs[j]..col_ptrs[j + 1]]` are
-    ///   less than `nrows`
-    ///
-    /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
-    /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]`
-    ///   are less than `nrows`
-    #[derive(Debug)]
-    pub struct SymbolicSparseColMatRef<'a, I> {
-        nrows: usize,
-        ncols: usize,
-        col_ptr: &'a [I],
-        col_nnz: Option<&'a [I]>,
-        row_ind: &'a [I],
-    }
-
-    /// Symbolic structure of sparse matrix in row format, either compressed or uncompressed.
-    ///
-    /// Requires:
-    /// * `nrows <= I::Signed::MAX` (always checked)
-    /// * `ncols <= I::Signed::MAX` (always checked)
-    /// * `row_ptrs` has length `nrows + 1` (always checked)
-    /// * `row_ptrs` is non-decreasing
-    /// * `row_ptrs[0]..row_ptrs[nrows]` is a valid range in row_indices (always checked, assuming
-    ///   non-decreasing)
-    /// * if `nnz_per_row` is `None`, elements of `col_indices[row_ptrs[i]..row_ptrs[i + 1]]` are
-    ///   less than `ncols`
-    ///
-    /// * `nnz_per_row[i] <= row_ptrs[i+1] - row_ptrs[i]`
-    /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]`
-    ///   are less than `ncols`
-    #[derive(Debug)]
-    pub struct SymbolicSparseRowMatRef<'a, I> {
-        nrows: usize,
-        ncols: usize,
-        row_ptr: &'a [I],
-        row_nnz: Option<&'a [I]>,
-        col_ind: &'a [I],
-    }
-
-    impl<I> Copy for SymbolicSparseColMatRef<'_, I> {}
-    impl<I> Clone for SymbolicSparseColMatRef<'_, I> {
-        #[inline]
-        fn clone(&self) -> Self {
-            *self
-        }
-    }
-    impl<I> Copy for SymbolicSparseRowMatRef<'_, I> {}
-    impl<I> Clone for SymbolicSparseRowMatRef<'_, I> {
-        #[inline]
-        fn clone(&self) -> Self {
-            *self
-        }
-    }
-
-    impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
-        /// Creates a new symbolic matrix view after asserting its invariants.
-        ///
-        /// # Panics
-        ///
-        /// See type level documentation.
-        #[inline]
-        #[track_caller]
-        pub fn new_checked(
-            nrows: usize,
-            ncols: usize,
-            row_ptrs: &'a [I],
-            nnz_per_row: Option<&'a [I]>,
-            col_indices: &'a [I],
-        ) -> Self {
-            assert!(all(
-                ncols <= I::Signed::MAX.zx(),
-                nrows <= I::Signed::MAX.zx(),
-            ));
-            assert!(row_ptrs.len() == nrows + 1);
-            for &[c, c_next] in windows2(row_ptrs) {
-                assert!(c <= c_next);
-            }
-            assert!(row_ptrs[ncols].zx() <= col_indices.len());
-
-            if let Some(nnz_per_row) = nnz_per_row {
-                for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
-                    assert!(nnz_i <= c_next - c);
-                    for &j in &col_indices[c.zx()..c.zx() + nnz_i.zx()] {
-                        assert!(j < I::truncate(ncols));
-                    }
-                }
-            } else {
-                let c0 = row_ptrs[0].zx();
-                let cn = row_ptrs[ncols].zx();
-                for &j in &col_indices[c0..cn] {
-                    assert!(j < I::truncate(ncols));
-                }
-            }
-
-            Self {
-                nrows,
-                ncols,
-                row_ptr: row_ptrs,
-                row_nnz: nnz_per_row,
-                col_ind: col_indices,
-            }
-        }
-
-        /// Creates a new symbolic matrix view without asserting its invariants.
-        ///
-        /// # Safety
-        ///
-        /// See type level documentation.
-        #[inline(always)]
-        #[track_caller]
-        pub unsafe fn new_unchecked(
-            nrows: usize,
-            ncols: usize,
-            row_ptrs: &'a [I],
-            nnz_per_row: Option<&'a [I]>,
-            col_indices: &'a [I],
-        ) -> Self {
-            assert!(all(
-                ncols <= <I::Signed as SignedIndex>::MAX.zx(),
-                nrows <= <I::Signed as SignedIndex>::MAX.zx(),
-            ));
-            assert!(row_ptrs.len() == nrows + 1);
-            assert!(row_ptrs[nrows].zx() <= col_indices.len());
-
-            Self {
-                nrows,
-                ncols,
-                row_ptr: row_ptrs,
-                row_nnz: nnz_per_row,
-                col_ind: col_indices,
-            }
-        }
-
-        /// Returns the number of rows of the matrix.
-        #[inline]
-        pub fn nrows(&self) -> usize {
-            self.nrows
-        }
-        /// Returns the number of columns of the matrix.
-        #[inline]
-        pub fn ncols(&self) -> usize {
-            self.ncols
-        }
-
-        #[inline]
-        pub fn transpose(self) -> SymbolicSparseColMatRef<'a, I> {
-            SymbolicSparseColMatRef {
-                nrows: self.ncols,
-                ncols: self.nrows,
-                col_ptr: self.row_ptr,
-                col_nnz: self.row_nnz,
-                row_ind: self.col_ind,
-            }
-        }
-
-        /// Returns the number of symbolic non-zeros in the matrix.
-        ///
-        /// The value is guaranteed to be less than `I::Signed::MAX`.
-        #[inline]
-        pub fn compute_nnz(&self) -> usize {
-            self.transpose().compute_nnz()
-        }
-
-        /// Returns the column pointers.
-        #[inline]
-        pub fn row_ptrs(&self) -> &'a [I] {
-            self.row_ptr
-        }
-
-        /// Returns the count of non-zeros per column of the matrix.
-        #[inline]
-        pub fn nnz_per_row(&self) -> Option<&'a [I]> {
-            self.row_nnz
-        }
-
-        /// Returns the column indices.
-        #[inline]
-        pub fn col_indices(&self) -> &'a [I] {
-            self.col_ind
-        }
-
-        /// Returns the column indices of row i.
-        ///
-        /// # Panics
-        ///
-        /// Panics if `i >= self.nrows()`
-        #[inline]
-        #[track_caller]
-        pub fn col_indices_of_row_raw(&self, i: usize) -> &'a [I] {
-            &self.col_ind[self.row_range(i)]
-        }
-
-        /// Returns the column indices of row i.
-        ///
-        /// # Panics
-        ///
-        /// Panics if `i >= self.ncols()`
-        #[inline]
-        #[track_caller]
-        pub fn col_indices_of_row(
-            &self,
-            i: usize,
-        ) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = usize> {
-            self.col_indices_of_row_raw(i).iter().map(
-                #[inline(always)]
-                |&i| i.zx(),
-            )
-        }
-
-        /// Returns the range that the row `i` occupies in `self.col_indices().
-        ///
-        /// # Panics
-        ///
-        /// Panics if `i >= self.nrows()`
-        #[inline]
-        #[track_caller]
-        pub fn row_range(&self, i: usize) -> Range<usize> {
-            let start = self.row_ptr[i].zx();
-            let end = self
-                .row_nnz
-                .map(|row_nnz| row_nnz[i].zx() + start)
-                .unwrap_or(self.row_ptr[i + 1].zx());
-
-            start..end
-        }
-
-        /// Returns the range that the row `i` occupies in `self.col_indices().
-        ///
-        /// # Safety
-        ///
-        /// The behavior is undefined if `i >= self.nrows()`
-        #[inline]
-        #[track_caller]
-        pub unsafe fn row_range_unchecked(&self, i: usize) -> Range<usize> {
-            let start = __get_unchecked(self.row_ptr, i).zx();
-            let end = self
-                .row_nnz
-                .map(|row_nnz| (__get_unchecked(row_nnz, i).zx() + start))
-                .unwrap_or(__get_unchecked(self.row_ptr, i + 1).zx());
-
-            start..end
-        }
-    }
-
-    impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
-        /// Creates a new symbolic matrix view after asserting its invariants.
-        ///
-        /// # Panics
-        ///
-        /// See type level documentation.
-        #[inline]
-        #[track_caller]
-        pub fn new_checked(
-            nrows: usize,
-            ncols: usize,
-            col_ptrs: &'a [I],
-            nnz_per_col: Option<&'a [I]>,
-            row_indices: &'a [I],
-        ) -> Self {
-            assert!(all(
-                ncols <= I::Signed::MAX.zx(),
-                nrows <= I::Signed::MAX.zx(),
-            ));
-            assert!(col_ptrs.len() == ncols + 1);
-            for &[c, c_next] in windows2(col_ptrs) {
-                assert!(c <= c_next);
-            }
-            assert!(col_ptrs[ncols].zx() <= row_indices.len());
-
-            if let Some(nnz_per_col) = nnz_per_col {
-                for (&nnz_j, &[c, c_next]) in zip(nnz_per_col, windows2(col_ptrs)) {
-                    assert!(nnz_j <= c_next - c);
-                    for &i in &row_indices[c.zx()..c.zx() + nnz_j.zx()] {
-                        assert!(i < I::truncate(nrows));
-                    }
-                }
-            } else {
-                let c0 = col_ptrs[0].zx();
-                let cn = col_ptrs[ncols].zx();
-                for &i in &row_indices[c0..cn] {
-                    assert!(i < I::truncate(nrows));
-                }
-            }
-
-            Self {
-                nrows,
-                ncols,
-                col_ptr: col_ptrs,
-                col_nnz: nnz_per_col,
-                row_ind: row_indices,
-            }
-        }
-
-        /// Creates a new symbolic matrix view without asserting its invariants.
-        ///
-        /// # Safety
-        ///
-        /// See type level documentation.
-        #[inline(always)]
-        #[track_caller]
-        pub unsafe fn new_unchecked(
-            nrows: usize,
-            ncols: usize,
-            col_ptrs: &'a [I],
-            nnz_per_col: Option<&'a [I]>,
-            row_indices: &'a [I],
-        ) -> Self {
-            assert!(all(
-                ncols <= <I::Signed as SignedIndex>::MAX.zx(),
-                nrows <= <I::Signed as SignedIndex>::MAX.zx(),
-            ));
-            assert!(col_ptrs.len() == ncols + 1);
-            assert!(col_ptrs[ncols].zx() <= row_indices.len());
-
-            Self {
-                nrows,
-                ncols,
-                col_ptr: col_ptrs,
-                col_nnz: nnz_per_col,
-                row_ind: row_indices,
-            }
-        }
-
-        /// Returns the number of rows of the matrix.
-        #[inline]
-        pub fn nrows(&self) -> usize {
-            self.nrows
-        }
-        /// Returns the number of columns of the matrix.
-        #[inline]
-        pub fn ncols(&self) -> usize {
-            self.ncols
-        }
-
-        #[inline]
-        pub fn transpose(self) -> SymbolicSparseRowMatRef<'a, I> {
-            SymbolicSparseRowMatRef {
-                nrows: self.ncols,
-                ncols: self.nrows,
-                row_ptr: self.col_ptr,
-                row_nnz: self.col_nnz,
-                col_ind: self.row_ind,
-            }
-        }
-
-        /// Returns the number of symbolic non-zeros in the matrix.
-        ///
-        /// The value is guaranteed to be less than `I::Signed::MAX`.
-        #[inline]
-        pub fn compute_nnz(&self) -> usize {
-            match self.col_nnz {
-                Some(col_nnz) => {
-                    let mut nnz = 0usize;
-                    for &nnz_j in col_nnz {
-                        // can't overflow
-                        nnz += nnz_j.zx();
-                    }
-                    nnz
-                }
-                None => self.col_ptr[self.ncols].zx() - self.col_ptr[0].zx(),
-            }
-        }
-
-        /// Returns the column pointers.
-        #[inline]
-        pub fn col_ptrs(&self) -> &'a [I] {
-            self.col_ptr
-        }
-
-        /// Returns the count of non-zeros per column of the matrix.
-        #[inline]
-        pub fn nnz_per_col(&self) -> Option<&'a [I]> {
-            self.col_nnz
-        }
-
-        /// Returns the row indices.
-        #[inline]
-        pub fn row_indices(&self) -> &'a [I] {
-            self.row_ind
-        }
-
-        /// Returns the row indices of column j.
-        ///
-        /// # Panics
-        ///
-        /// Panics if `j >= self.ncols()`
-        #[inline]
-        #[track_caller]
-        pub fn row_indices_of_col_raw(&self, j: usize) -> &'a [I] {
-            &self.row_ind[self.col_range(j)]
-        }
-
-        /// Returns the row indices of column j.
-        ///
-        /// # Panics
-        ///
-        /// Panics if `j >= self.ncols()`
-        #[inline]
-        #[track_caller]
-        pub fn row_indices_of_col(
-            &self,
-            j: usize,
-        ) -> impl 'a + ExactSizeIterator + DoubleEndedIterator<Item = usize> {
-            self.row_indices_of_col_raw(j).iter().map(
-                #[inline(always)]
-                |&i| i.zx(),
-            )
-        }
-
-        /// Returns the range that the column `j` occupies in `self.row_indices().
-        ///
-        /// # Panics
-        ///
-        /// Panics if `j >= self.ncols()`
-        #[inline]
-        #[track_caller]
-        pub fn col_range(&self, j: usize) -> Range<usize> {
-            let start = self.col_ptr[j].zx();
-            let end = self
-                .col_nnz
-                .map(|col_nnz| col_nnz[j].zx() + start)
-                .unwrap_or(self.col_ptr[j + 1].zx());
-
-            start..end
-        }
-
-        /// Returns the range that the column `j` occupies in `self.row_indices().
-        ///
-        /// # Safety
-        ///
-        /// The behavior is undefined if `j >= self.ncols()`
-        #[inline]
-        #[track_caller]
-        pub unsafe fn col_range_unchecked(&self, j: usize) -> Range<usize> {
-            let start = __get_unchecked(self.col_ptr, j).zx();
-            let end = self
-                .col_nnz
-                .map(|col_nnz| (__get_unchecked(col_nnz, j).zx() + start))
-                .unwrap_or(__get_unchecked(self.col_ptr, j + 1).zx());
-
-            start..end
-        }
-    }
-
-    /// Sparse matrix in column format, either compressed or uncompressed.
-    pub type SparseRowMatRef<'a, I, E> = Matrix<inner::SparseRowMatRef<'a, I, E>>;
-
-    /// Sparse matrix in column format, either compressed or uncompressed.
-    pub type SparseColMatRef<'a, I, E> = Matrix<inner::SparseColMatRef<'a, I, E>>;
-
-    impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
-        /// Creates a new sparse matrix view.
-        ///
-        /// # Panics
-        ///
-        /// Panics if the length of `values` is not equal to the length of
-        /// `symbolic.col_indices()`.
-        #[inline]
-        #[track_caller]
-        pub fn new(
-            symbolic: SymbolicSparseRowMatRef<'a, I>,
-            values: GroupFor<E, &'a [E::Unit]>,
-        ) -> Self {
-            let values = SliceGroup::new(values);
-            assert!(symbolic.col_indices().len() == values.len());
-            Self {
-                inner: inner::SparseRowMatRef { symbolic, values },
-            }
-        }
-
-        /// Returns the numerical values of the matrix.
-        #[inline]
-        pub fn values(&self) -> GroupFor<E, &'a [E::Unit]> {
-            self.inner.values.into_inner()
-        }
-
-        #[inline]
-        pub fn transpose(self) -> SparseColMatRef<'a, I, E> {
-            SparseColMatRef {
-                inner: inner::SparseColMatRef {
-                    symbolic: SymbolicSparseColMatRef {
-                        nrows: self.inner.symbolic.ncols,
-                        ncols: self.inner.symbolic.nrows,
-                        col_ptr: self.inner.symbolic.row_ptr,
-                        col_nnz: self.inner.symbolic.row_nnz,
-                        row_ind: self.inner.symbolic.col_ind,
-                    },
-                    values: self.inner.values,
-                },
-            }
-        }
-
-        #[inline]
-        pub fn conjugate(self) -> SparseRowMatRef<'a, I, E::Conj>
-        where
-            E: Conjugate,
-        {
-            SparseRowMatRef {
-                inner: inner::SparseRowMatRef {
-                    symbolic: self.inner.symbolic,
-                    values: unsafe {
-                        SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
-                            GroupFor<E, &[UnitFor<E::Conj>]>,
-                            GroupFor<E::Conj, &[UnitFor<E::Conj>]>,
-                        >(E::faer_map(
-                            self.inner.values.into_inner(),
-                            |slice| {
-                                let len = slice.len();
-                                core::slice::from_raw_parts(
-                                    slice.as_ptr() as *const UnitFor<E> as *const UnitFor<E::Conj>,
-                                    len,
-                                )
-                            },
-                        )))
-                    },
-                },
-            }
-        }
-
-        #[inline]
-        pub fn adjoint(self) -> SparseColMatRef<'a, I, E::Conj>
-        where
-            E: Conjugate,
-        {
-            self.transpose().conjugate()
-        }
-
-        /// Returns the numerical values of row `i` of the matrix.
-        ///
-        /// # Panics:
-        ///
-        /// Panics if `i >= nrows`.
-        #[inline]
-        #[track_caller]
-        pub fn values_of_row(&self, i: usize) -> GroupFor<E, &'a [E::Unit]> {
-            self.inner.values.subslice(self.row_range(i)).into_inner()
-        }
-
-        /// Returns the symbolic structure of the matrix.
-        #[inline]
-        pub fn symbolic(&self) -> SymbolicSparseRowMatRef<'a, I> {
-            self.inner.symbolic
-        }
-    }
-
-    impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
-        /// Creates a new sparse matrix view.
-        ///
-        /// # Panics
-        ///
-        /// Panics if the length of `values` is not equal to the length of
-        /// `symbolic.row_indices()`.
-        #[inline]
-        #[track_caller]
-        pub fn new(
-            symbolic: SymbolicSparseColMatRef<'a, I>,
-            values: GroupFor<E, &'a [E::Unit]>,
-        ) -> Self {
-            let values = SliceGroup::new(values);
-            assert!(symbolic.row_indices().len() == values.len());
-            Self {
-                inner: inner::SparseColMatRef { symbolic, values },
-            }
-        }
-
-        #[inline]
-        pub fn transpose(self) -> SparseRowMatRef<'a, I, E> {
-            SparseRowMatRef {
-                inner: inner::SparseRowMatRef {
-                    symbolic: SymbolicSparseRowMatRef {
-                        nrows: self.inner.symbolic.ncols,
-                        ncols: self.inner.symbolic.nrows,
-                        row_ptr: self.inner.symbolic.col_ptr,
-                        row_nnz: self.inner.symbolic.col_nnz,
-                        col_ind: self.inner.symbolic.row_ind,
-                    },
-                    values: self.inner.values,
-                },
-            }
-        }
-
-        #[inline]
-        pub fn conjugate(self) -> SparseColMatRef<'a, I, E::Conj>
-        where
-            E: Conjugate,
-        {
-            SparseColMatRef {
-                inner: inner::SparseColMatRef {
-                    symbolic: self.inner.symbolic,
-                    values: unsafe {
-                        SliceGroup::<'a, E::Conj>::new(transmute_unchecked::<
-                            GroupFor<E, &[UnitFor<E::Conj>]>,
-                            GroupFor<E::Conj, &[UnitFor<E::Conj>]>,
-                        >(E::faer_map(
-                            self.inner.values.into_inner(),
-                            |slice| {
-                                let len = slice.len();
-                                core::slice::from_raw_parts(
-                                    slice.as_ptr() as *const UnitFor<E> as *const UnitFor<E::Conj>,
-                                    len,
-                                )
-                            },
-                        )))
-                    },
-                },
-            }
-        }
-
-        #[inline]
-        pub fn adjoint(self) -> SparseRowMatRef<'a, I, E::Conj>
-        where
-            E: Conjugate,
-        {
-            self.transpose().conjugate()
-        }
-
-        /// Returns the numerical values of the matrix.
-        #[inline]
-        pub fn values(&self) -> GroupFor<E, &'a [E::Unit]> {
-            self.inner.values.into_inner()
-        }
-
-        /// Returns the numerical values of column `j` of the matrix.
-        ///
-        /// # Panics:
-        ///
-        /// Panics if `j >= ncols`.
-        #[inline]
-        #[track_caller]
-        pub fn values_of_col(&self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
-            self.inner.values.subslice(self.col_range(j)).into_inner()
-        }
-
-        /// Returns the symbolic structure of the matrix.
-        #[inline]
-        pub fn symbolic(&self) -> SymbolicSparseColMatRef<'a, I> {
-            self.inner.symbolic
-        }
-    }
-
-    impl<'a, I, E: Entity> core::ops::Deref for SparseRowMatRef<'a, I, E> {
-        type Target = SymbolicSparseRowMatRef<'a, I>;
-        #[inline]
-        fn deref(&self) -> &Self::Target {
-            &self.inner.symbolic
-        }
-    }
-
-    impl<'a, I, E: Entity> core::ops::Deref for SparseColMatRef<'a, I, E> {
-        type Target = SymbolicSparseColMatRef<'a, I>;
-        #[inline]
-        fn deref(&self) -> &Self::Target {
-            &self.inner.symbolic
-        }
-    }
-
-    /// Sparse matrix multiplication.
-    pub mod mul {
-        // TODO: sparse_sparse_matmul
-        //
-        // PERF: optimize matmul
-        // - parallelization
-        // - simd(?)
-
-        use super::*;
-        use crate::{
-            assert,
-            constrained::{self, Size},
-        };
-
-        /// Multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores the result in
-        /// `acc`. See [`crate::mul::matmul`] for more details.
-        #[track_caller]
-        pub fn sparse_dense_matmul<
-            I: Index,
-            E: ComplexField,
-            LhsE: Conjugate<Canonical = E>,
-            RhsE: Conjugate<Canonical = E>,
-        >(
-            acc: MatMut<'_, E>,
-            lhs: SparseColMatRef<'_, I, LhsE>,
-            rhs: MatRef<'_, RhsE>,
-            alpha: Option<E>,
-            beta: E,
-            parallelism: Parallelism,
-        ) {
-            assert!(all(
-                acc.nrows() == lhs.nrows(),
-                acc.ncols() == rhs.ncols(),
-                lhs.ncols() == rhs.nrows(),
-            ));
-
-            let _ = parallelism;
-            let m = acc.nrows();
-            let n = acc.ncols();
-            let k = lhs.ncols();
-
-            let mut acc = acc;
-
-            match alpha {
-                Some(alpha) => {
-                    if alpha != E::faer_one() {
-                        zipped!(acc.rb_mut())
-                            .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
-                    }
-                }
-                None => acc.fill_zero(),
-            }
-
-            Size::with2(m, n, |m, n| {
-                Size::with(k, |k| {
-                    let mut acc = constrained::MatMut::new(acc, m, n);
-                    let lhs = constrained::sparse::SparseColMatRef::new(lhs, m, k);
-                    let rhs = constrained::MatRef::new(rhs, k, n);
-
-                    for j in n.indices() {
-                        for depth in k.indices() {
-                            let rhs_kj = rhs.read(depth, j).canonicalize().faer_mul(beta);
-                            for (i, lhs_ik) in zip(
-                                lhs.row_indices_of_col(depth),
-                                SliceGroup::<'_, LhsE>::new(lhs.values_of_col(depth))
-                                    .into_ref_iter(),
-                            ) {
-                                acc.write(
-                                    i,
-                                    j,
-                                    acc.read(i, j)
-                                        .faer_add(lhs_ik.read().canonicalize().faer_mul(rhs_kj)),
-                                );
-                            }
-                        }
-                    }
-                });
-            });
-        }
-
-        /// Multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores the result in
-        /// `acc`. See [`crate::mul::matmul`] for more details.
-        #[track_caller]
-        pub fn dense_sparse_matmul<
-            I: Index,
-            E: ComplexField,
-            LhsE: Conjugate<Canonical = E>,
-            RhsE: Conjugate<Canonical = E>,
-        >(
-            acc: MatMut<'_, E>,
-            lhs: MatRef<'_, LhsE>,
-            rhs: SparseColMatRef<'_, I, RhsE>,
-            alpha: Option<E>,
-            beta: E,
-            parallelism: Parallelism,
-        ) {
-            assert!(all(
-                acc.nrows() == lhs.nrows(),
-                acc.ncols() == rhs.ncols(),
-                lhs.ncols() == rhs.nrows(),
-            ));
-
-            let _ = parallelism;
-            let m = acc.nrows();
-            let n = acc.ncols();
-            let k = lhs.ncols();
-
-            let mut acc = acc;
-
-            match alpha {
-                Some(alpha) => {
-                    if alpha != E::faer_one() {
-                        zipped!(acc.rb_mut())
-                            .for_each(|unzipped!(mut dst)| dst.write(dst.read().faer_mul(alpha)))
-                    }
-                }
-                None => acc.fill_zero(),
-            }
-
-            Size::with2(m, n, |m, n| {
-                Size::with(k, |k| {
-                    let mut acc = constrained::MatMut::new(acc, m, n);
-                    let lhs = constrained::MatRef::new(lhs, m, k);
-                    let rhs = constrained::sparse::SparseColMatRef::new(rhs, k, n);
-
-                    for i in m.indices() {
-                        for j in n.indices() {
-                            let mut acc_ij = E::faer_zero();
-                            for (depth, rhs_kj) in zip(
-                                rhs.row_indices_of_col(j),
-                                SliceGroup::<'_, RhsE>::new(rhs.values_of_col(j)).into_ref_iter(),
-                            ) {
-                                let lhs_ik = lhs.read(i, depth);
-                                acc_ij = acc_ij.faer_add(
-                                    lhs_ik.canonicalize().faer_mul(rhs_kj.read().canonicalize()),
-                                );
-                            }
-
-                            acc.write(i, j, acc.read(i, j).faer_add(beta.faer_mul(acc_ij)));
-                        }
-                    }
-                });
-            });
         }
     }
 }
@@ -11153,6 +10317,10 @@ pub mod constrained {
             symbolic: SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>,
             values: SliceGroup<'a, E>,
         }
+        pub struct SparseColMatMut<'nrows, 'ncols, 'a, I, E: Entity> {
+            symbolic: SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>,
+            values: SliceGroupMut<'a, E>,
+        }
 
         impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I> {
             #[inline]
@@ -11260,6 +10428,42 @@ pub mod constrained {
             }
         }
 
+        impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatMut<'nrows, 'ncols, 'a, I, E> {
+            pub fn new(
+                inner: crate::sparse::SparseColMatMut<'a, I, E>,
+                nrows: Size<'nrows>,
+                ncols: Size<'ncols>,
+            ) -> Self {
+                assert!(all(
+                    inner.nrows() == nrows.into_inner(),
+                    inner.ncols() == ncols.into_inner(),
+                ));
+                Self {
+                    symbolic: SymbolicSparseColMatRef::new(inner.symbolic(), nrows, ncols),
+                    values: SliceGroupMut::new(inner.values_mut()),
+                }
+            }
+
+            #[inline]
+            pub fn into_inner(self) -> crate::sparse::SparseColMatMut<'a, I, E> {
+                crate::sparse::SparseColMatMut::new(
+                    self.symbolic.into_inner(),
+                    self.values.into_inner(),
+                )
+            }
+
+            #[inline]
+            pub fn values_of_col(
+                &mut self,
+                j: Idx<'ncols, usize>,
+            ) -> GroupFor<E, &'_ mut [E::Unit]> {
+                unsafe {
+                    let range = self.col_range(j);
+                    self.values.rb_mut().subslice_unchecked(range).into_inner()
+                }
+            }
+        }
+
         impl<I, E: Entity> Copy for SparseColMatRef<'_, '_, '_, I, E> {}
         impl<I, E: Entity> Clone for SparseColMatRef<'_, '_, '_, I, E> {
             #[inline]
@@ -11283,6 +10487,88 @@ pub mod constrained {
             #[inline]
             fn deref(&self) -> &Self::Target {
                 &self.symbolic
+            }
+        }
+
+        impl<'nrows, 'ncols, 'a, I, E: Entity> core::ops::Deref
+            for SparseColMatMut<'nrows, 'ncols, 'a, I, E>
+        {
+            type Target = SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>;
+
+            #[inline]
+            fn deref(&self) -> &Self::Target {
+                &self.symbolic
+            }
+        }
+
+        impl<'short, 'nrows, 'ncols, 'a, I, E: Entity> ReborrowMut<'short>
+            for SparseColMatRef<'nrows, 'ncols, 'a, I, E>
+        {
+            type Target = SparseColMatRef<'nrows, 'ncols, 'short, I, E>;
+
+            #[inline]
+            fn rb_mut(&'short mut self) -> Self::Target {
+                *self
+            }
+        }
+
+        impl<'short, 'nrows, 'ncols, 'a, I, E: Entity> Reborrow<'short>
+            for SparseColMatRef<'nrows, 'ncols, 'a, I, E>
+        {
+            type Target = SparseColMatRef<'nrows, 'ncols, 'short, I, E>;
+
+            #[inline]
+            fn rb(&'short self) -> Self::Target {
+                *self
+            }
+        }
+
+        impl<'nrows, 'ncols, 'a, I, E: Entity> IntoConst for SparseColMatRef<'nrows, 'ncols, 'a, I, E> {
+            type Target = SparseColMatRef<'nrows, 'ncols, 'a, I, E>;
+
+            #[inline]
+            fn into_const(self) -> Self::Target {
+                self
+            }
+        }
+
+        impl<'short, 'nrows, 'ncols, 'a, I, E: Entity> ReborrowMut<'short>
+            for SparseColMatMut<'nrows, 'ncols, 'a, I, E>
+        {
+            type Target = SparseColMatMut<'nrows, 'ncols, 'short, I, E>;
+
+            #[inline]
+            fn rb_mut(&'short mut self) -> Self::Target {
+                SparseColMatMut::<'nrows, 'ncols, 'short, I, E> {
+                    symbolic: self.symbolic,
+                    values: self.values.rb_mut(),
+                }
+            }
+        }
+
+        impl<'short, 'nrows, 'ncols, 'a, I, E: Entity> Reborrow<'short>
+            for SparseColMatMut<'nrows, 'ncols, 'a, I, E>
+        {
+            type Target = SparseColMatRef<'nrows, 'ncols, 'short, I, E>;
+
+            #[inline]
+            fn rb(&'short self) -> Self::Target {
+                SparseColMatRef::<'nrows, 'ncols, 'short, I, E> {
+                    symbolic: self.symbolic,
+                    values: self.values.rb(),
+                }
+            }
+        }
+
+        impl<'nrows, 'ncols, 'a, I, E: Entity> IntoConst for SparseColMatMut<'nrows, 'ncols, 'a, I, E> {
+            type Target = SparseColMatRef<'nrows, 'ncols, 'a, I, E>;
+
+            #[inline]
+            fn into_const(self) -> Self::Target {
+                SparseColMatRef::<'nrows, 'ncols, 'a, I, E> {
+                    symbolic: self.symbolic,
+                    values: self.values.into_const(),
+                }
             }
         }
     }

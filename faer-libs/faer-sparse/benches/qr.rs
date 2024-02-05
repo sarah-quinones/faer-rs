@@ -16,6 +16,7 @@ use faer_sparse::{
     Index,
 };
 use matrix_market_rs::MtxData;
+use reborrow::*;
 use regex::Regex;
 use std::{
     env::args,
@@ -140,7 +141,8 @@ fn main() {
             &mut new_values,
             A,
             PodStack::new(&mut mem),
-        );
+        )
+        .into_const();
 
         let mut p = vec![0usize; n].into_boxed_slice();
         let mut p_inv = vec![0usize; n].into_boxed_slice();

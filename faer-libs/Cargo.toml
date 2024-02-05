@@ -30,7 +30,7 @@ bytemuck = { version = "1", default-features = false }
 rand = { version = "0.8", default-features = false }
 rayon = "1"
 assert2 = "0.3"
-equator = "0.1.6"
+equator = "0.1.8"
 log = { version = "0.4", default-features = false }
 
 criterion = { git = "https://github.com/sarah-ek/criterion.rs" }

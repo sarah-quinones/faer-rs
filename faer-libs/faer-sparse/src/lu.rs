@@ -2048,7 +2048,8 @@ impl<I: Index> SymbolicLu<I> {
                     new_values.into_inner(),
                     A,
                     stack.rb_mut(),
-                );
+                )
+                .into_const();
 
                 supernodal::factorize_supernodal_numeric_lu(
                     &mut numeric.row_perm_fwd,
@@ -2247,6 +2248,7 @@ mod tests {
     use faer_entity::{ComplexField, Symbolic};
     use matrix_market_rs::MtxData;
     use rand::{rngs::StdRng, Rng, SeedableRng};
+    use reborrow::*;
 
     use super::factorize_symbolic_lu;
 
@@ -2365,7 +2367,8 @@ mod tests {
             &mut new_values,
             A,
             PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(m))),
-        );
+        )
+        .into_const();
 
         let etree = {
             let mut post = vec![0usize; n];

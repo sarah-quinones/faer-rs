@@ -2127,7 +2127,8 @@ impl<I: Index> SymbolicQr<I> {
                     new_values.into_inner(),
                     A,
                     stack.rb_mut(),
-                );
+                )
+                .into_const();
 
                 supernodal::factorize_supernodal_numeric_qr::<I, E>(
                     householder_row_indices,
@@ -2532,7 +2533,8 @@ mod tests {
                 SliceGroupMut::<'_, f64>::new(&mut new_values),
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * *N))),
-            );
+            )
+            .into_const();
 
             let mut etree = vec![zero.to_signed(); n];
             let mut post = vec![zero; n];
@@ -2650,7 +2652,8 @@ mod tests {
                 SliceGroupMut::<'_, E>::new(&mut new_values),
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
-            );
+            )
+            .into_const();
 
             let (A, AT) = (AT, A);
             let (M, N) = (N, M);
@@ -2795,7 +2798,8 @@ mod tests {
                 SliceGroupMut::<'_, E>::new(&mut new_values),
                 A,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(*M))),
-            );
+            )
+            .into_const();
 
             let (A, AT) = (AT, A);
             let (M, N) = (N, M);
@@ -2937,7 +2941,8 @@ mod tests {
             SliceGroupMut::<'_, E>::new(&mut new_values).into_inner(),
             A,
             PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(m))),
-        );
+        )
+        .into_const();
         let A = AT;
         let (m, n) = (n, m);
 

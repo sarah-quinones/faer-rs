@@ -3356,7 +3356,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Simplicial(this) => {
                     simplicial::factorize_simplicial_numeric_llt(
                         E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         stack,
@@ -3365,7 +3365,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(this) => {
                     supernodal::factorize_supernodal_numeric_llt(
                         E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         parallelism,
@@ -3448,7 +3448,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Simplicial(this) => {
                     simplicial::factorize_simplicial_numeric_ldlt(
                         E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         stack,
@@ -3457,7 +3457,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(this) => {
                     supernodal::factorize_supernodal_numeric_ldlt(
                         E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         parallelism,
@@ -3549,7 +3549,7 @@ impl<I: Index> SymbolicCholesky<I> {
                     }
                     simplicial::factorize_simplicial_numeric_ldlt(
                         E::faer_rb_mut(E::faer_as_mut(&mut L_values)),
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         stack,
@@ -3568,7 +3568,7 @@ impl<I: Index> SymbolicCholesky<I> {
                         E::faer_rb_mut(E::faer_as_mut(&mut subdiag)),
                         perm_forward,
                         perm_inverse,
-                        A.into_inner(),
+                        A.into_inner().into_const(),
                         regularization,
                         this,
                         parallelism,
@@ -4381,7 +4381,7 @@ pub(crate) mod tests {
 
             supernodal::factorize_supernodal_numeric_ldlt(
                 values.col_as_slice_mut(0),
-                A_lower.into_inner(),
+                A_lower.into_inner().into_const(),
                 Default::default(),
                 &symbolic,
                 Parallelism::None,
@@ -4488,7 +4488,7 @@ pub(crate) mod tests {
 
             supernodal::factorize_supernodal_numeric_ldlt(
                 values.col_as_slice_mut(0),
-                A_lower.into_inner(),
+                A_lower.into_inner().into_const(),
                 Default::default(),
                 &symbolic,
                 Parallelism::None,
@@ -4620,7 +4620,7 @@ pub(crate) mod tests {
                 subdiag.col_as_slice_mut(0),
                 &mut fwd,
                 &mut inv,
-                A_lower.into_inner(),
+                A_lower.into_inner().into_const(),
                 Default::default(),
                 &symbolic,
                 Parallelism::None,
@@ -4761,7 +4761,7 @@ pub(crate) mod tests {
                 subdiag.col_as_slice_mut(0),
                 &mut fwd,
                 &mut inv,
-                A_lower.into_inner(),
+                A_lower.into_inner().into_const(),
                 Default::default(),
                 &symbolic,
                 Parallelism::None,
@@ -4947,7 +4947,8 @@ pub(crate) mod tests {
                 A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
+            )
+            .into_const();
 
             let mut A_dense = sparse_to_dense(A_upper);
             for j in 0..n {
@@ -5110,7 +5111,8 @@ pub(crate) mod tests {
                 A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
+            )
+            .into_const();
 
             let mut A_dense = sparse_to_dense(A_upper);
             for j in 0..n {
@@ -5271,7 +5273,8 @@ pub(crate) mod tests {
                 A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
+            )
+            .into_const();
 
             let mut A_dense = sparse_to_dense(A_upper);
             for j in 0..n {
@@ -5407,7 +5410,8 @@ pub(crate) mod tests {
                 A_lower_values.col_as_slice_mut(0),
                 A_upper,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<I>(20 * n))),
-            );
+            )
+            .into_const();
 
             let mut A_dense = sparse_to_dense(A_upper);
             for (j, &sign) in signs.iter().enumerate() {
