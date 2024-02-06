@@ -311,6 +311,11 @@ pub fn solve_lower_triangular_in_place_with_conj<E: ComplexField>(
     }
 }
 
+/// Computes the solution of `triangular_lower×X = rhs`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_lower` is interpreted as a lower triangular matrix (diagonal included).
+/// Its strictly upper triangular part is not accessed.
 #[track_caller]
 #[inline]
 pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
@@ -391,6 +396,11 @@ pub fn solve_upper_triangular_in_place_with_conj<E: ComplexField>(
     }
 }
 
+/// Computes the solution of `triangular_upper×X = rhs`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_upper` is interpreted as a upper triangular matrix (diagonal included).
+/// Its strictly upper triangular part is not accessed.
 #[track_caller]
 #[inline]
 pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
@@ -476,6 +486,11 @@ pub fn solve_unit_lower_triangular_in_place_with_conj<E: ComplexField>(
     }
 }
 
+/// Computes the solution of `triangular_lower×X = rhs`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_lower` is interpreted as a lower triangular matrix with an implicit unit diagonal.
+/// Its lower triangular part is not accessed.
 #[track_caller]
 #[inline]
 pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(
@@ -559,6 +574,11 @@ pub fn solve_unit_upper_triangular_in_place_with_conj<E: ComplexField>(
     }
 }
 
+/// Computes the solution of `triangular_upper×X = rhs`, and stores the result in
+/// `rhs`.
+///
+/// `triangular_upper` is interpreted as a upper triangular matrix with an implicit unit diagonal.
+/// Its upper triangular part is not accessed.
 #[track_caller]
 #[inline]
 pub fn solve_unit_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonical = E>>(

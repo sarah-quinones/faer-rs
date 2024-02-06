@@ -38,42 +38,50 @@ pub trait Index:
     + Send
     + Sync
 {
+    /// Equally-sized index type with a fixed size (no `usize`).
     type FixedWidth: Index;
+    /// Equally-sized signed index type.
     type Signed: SignedIndex;
 
+    /// Truncate `value` to type [`Self`].
     #[must_use]
     #[inline(always)]
     fn truncate(value: usize) -> Self {
         Self::from_signed(<Self::Signed as SignedIndex>::truncate(value))
     }
 
-    /// zero extend
+    /// Zero extend `self`.
     #[must_use]
     #[inline(always)]
     fn zx(self) -> usize {
         self.to_signed().zx()
     }
 
+    /// Convert a reference to a slice of [`Self`] to fixed width types.
     #[inline(always)]
     fn canonicalize(slice: &[Self]) -> &[Self::FixedWidth] {
         bytemuck::cast_slice(slice)
     }
 
+    /// Convert a mutable reference to a slice of [`Self`] to fixed width types.
     #[inline(always)]
     fn canonicalize_mut(slice: &mut [Self]) -> &mut [Self::FixedWidth] {
         bytemuck::cast_slice_mut(slice)
     }
 
+    /// Convert a signed value to an unsigned one.
     #[inline(always)]
     fn from_signed(value: Self::Signed) -> Self {
         pulp::cast(value)
     }
 
+    /// Convert an unsigned value to a signed one.
     #[inline(always)]
     fn to_signed(self) -> Self::Signed {
         pulp::cast(self)
     }
 
+    /// Sum values while checking for overflow.
     #[inline]
     fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
         Self::Signed::sum_nonnegative(bytemuck::cast_slice(slice)).map(Self::from_signed)
@@ -97,18 +105,21 @@ pub trait SignedIndex:
     + Send
     + Sync
 {
+    /// Maximum representable value.
     const MAX: Self;
 
+    /// Truncate `value` to type [`Self`].
     #[must_use]
     fn truncate(value: usize) -> Self;
 
-    /// zero extend
+    /// Zero extend `self`.
     #[must_use]
     fn zx(self) -> usize;
-    /// sign extend
+    /// Sign extend `self`.
     #[must_use]
     fn sx(self) -> usize;
 
+    /// Sum nonnegative values while checking for overflow.
     fn sum_nonnegative(slice: &[Self]) -> Option<Self> {
         let mut acc = Self::zeroed();
         for &i in slice {
@@ -337,11 +348,15 @@ pub fn swap_rows<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     swap_cols(mat.transpose_mut(), a, b)
 }
 
+/// Immutable permutation view.
 pub type PermutationRef<'a, I, E> = Matrix<PermRef<'a, I, E>>;
+/// Mutable permutation view.
 pub type PermutationMut<'a, I, E> = Matrix<PermMut<'a, I, E>>;
+/// Owned permutation.
 pub type Permutation<I, E> = Matrix<PermOwn<I, E>>;
 
 impl<I, E: Entity> Permutation<I, E> {
+    /// Convert `self` to a permutation view.
     #[inline]
     pub fn as_ref(&self) -> PermutationRef<'_, I, E> {
         PermutationRef {
@@ -353,6 +368,7 @@ impl<I, E: Entity> Permutation<I, E> {
         }
     }
 
+    /// Convert `self` to a mutable permutation view.
     #[inline]
     pub fn as_mut(&mut self) -> PermutationMut<'_, I, E> {
         PermutationMut {
@@ -418,6 +434,7 @@ impl<I: Index, E: Entity> Permutation<I, E> {
         (self.inner.forward, self.inner.inverse)
     }
 
+    /// Returns the dimension of the permutation.
     #[inline]
     pub fn len(&self) -> usize {
         self.inner.forward.len()
@@ -435,6 +452,7 @@ impl<I: Index, E: Entity> Permutation<I, E> {
         }
     }
 
+    /// Cast the permutation to a different scalar type.
     #[inline]
     pub fn cast<T: Entity>(self) -> Permutation<I, T> {
         Permutation {
@@ -512,6 +530,7 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
         (self.inner.forward, self.inner.inverse)
     }
 
+    /// Returns the dimension of the permutation.
     #[inline]
     pub fn len(&self) -> usize {
         debug_assert!(self.inner.inverse.len() == self.inner.forward.len());
@@ -530,6 +549,7 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
         }
     }
 
+    /// Cast the permutation to a different scalar type.
     #[inline]
     pub fn cast<T: Entity>(self) -> PermutationRef<'a, I, T> {
         PermutationRef {
@@ -541,6 +561,7 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
         }
     }
 
+    /// Cast the permutation to the fixed width index type.
     #[inline(always)]
     pub fn canonicalize(self) -> PermutationRef<'a, I::FixedWidth, E> {
         PermutationRef {
@@ -552,6 +573,7 @@ impl<'a, I: Index, E: Entity> PermutationRef<'a, I, E> {
         }
     }
 
+    /// Cast the permutation from the fixed width index type.
     #[inline(always)]
     pub fn uncanonicalize<J: Index>(self) -> PermutationRef<'a, J, E> {
         assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
@@ -621,6 +643,7 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
         (self.inner.forward, self.inner.inverse)
     }
 
+    /// Returns the dimension of the permutation.
     #[inline]
     pub fn len(&self) -> usize {
         debug_assert!(self.inner.inverse.len() == self.inner.forward.len());
@@ -639,6 +662,7 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
         }
     }
 
+    /// Cast the permutation to a different scalar type.
     #[inline]
     pub fn cast<T: Entity>(self) -> PermutationMut<'a, I, T> {
         PermutationMut {
@@ -650,6 +674,7 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
         }
     }
 
+    /// Cast the permutation to the fixed width index type.
     #[inline(always)]
     pub fn canonicalize(self) -> PermutationMut<'a, I::FixedWidth, E> {
         PermutationMut {
@@ -661,6 +686,7 @@ impl<'a, I: Index, E: Entity> PermutationMut<'a, I, E> {
         }
     }
 
+    /// Cast the permutation from the fixed width index type.
     #[inline(always)]
     pub fn uncanonicalize<J: Index>(self) -> PermutationMut<'a, J, E> {
         assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());

@@ -30,6 +30,7 @@
 use super::*;
 use crate::{assert, debug_assert, group_helpers::VecGroup};
 use core::{cell::Cell, iter::zip, ops::Range, slice::SliceIndex};
+use dyn_stack::GlobalPodBuffer;
 use group_helpers::SliceGroup;
 use permutation::{Index, SignedIndex};
 
@@ -315,6 +316,18 @@ impl<I: Index> SymbolicSparseRowMat<I> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
+        self.as_ref().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    #[inline]
+    pub fn to_col_major(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
+        self.as_ref().to_col_major()
+    }
+
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
@@ -504,6 +517,18 @@ impl<I: Index> SymbolicSparseColMat<I> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
+        self.as_ref().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    #[inline]
+    pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
+        self.as_ref().to_row_major()
+    }
+
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
@@ -678,6 +703,20 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
             col_nnz: self.row_nnz,
             row_ind: self.col_ind,
         }
+    }
+
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
+        self.transpose()
+            .to_owned()
+            .map(SymbolicSparseColMat::into_transpose)
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    #[inline]
+    pub fn to_col_major(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
+        self.transpose().to_row_major().map(|m| m.into_transpose())
     }
 
     /// Returns the number of symbolic non-zeros in the matrix.
@@ -871,6 +910,39 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
+        Ok(SymbolicSparseColMat {
+            nrows: self.nrows,
+            ncols: self.ncols,
+            col_ptr: try_collect(self.col_ptr.iter().copied())?,
+            col_nnz: self
+                .col_nnz
+                .map(|nnz| try_collect(nnz.iter().copied()))
+                .transpose()?,
+            row_ind: try_collect(self.row_ind.iter().copied())?,
+        })
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    #[inline]
+    pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
+        let mut col_ptr = try_zeroed::<I>(self.nrows + 1)?;
+        let mut row_ind = try_zeroed::<I>(self.compute_nnz())?;
+
+        let mut mem = GlobalPodBuffer::try_new(StackReq::new::<I>(self.nrows))
+            .map_err(|_| FaerError::OutOfMemory)?;
+
+        adjoint_symbolic(&mut col_ptr, &mut row_ind, *self, PodStack::new(&mut mem));
+
+        let transpose = unsafe {
+            SymbolicSparseColMat::new_unchecked(self.ncols, self.nrows, col_ptr, None, row_ind)
+        };
+
+        Ok(transpose.into_transpose())
+    }
+
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
@@ -1014,6 +1086,26 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.rb().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    #[inline]
+    pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.rb().to_col_major()
+    }
+
     /// Returns a view over the transpose of `self` in column-major format.
     #[inline]
     pub fn transpose_mut(self) -> SparseColMatMut<'a, I, E> {
@@ -1029,6 +1121,41 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
                 values: self.inner.values,
             },
         }
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    pub fn canonicalize_mut(self) -> (SparseRowMatMut<'a, I, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            SparseRowMatMut {
+                inner: inner::SparseRowMatMut {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroupMut::<'a, E::Canonical>::new(transmute_unchecked::<
+                            GroupFor<E, &mut [UnitFor<E::Canonical>]>,
+                            GroupFor<E::Canonical, &mut [UnitFor<E::Canonical>]>,
+                        >(
+                            E::faer_map(self.inner.values.into_inner(), |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts_mut(
+                                    slice.as_mut_ptr() as *mut UnitFor<E>
+                                        as *mut UnitFor<E::Canonical>,
+                                    len,
+                                )
+                            }),
+                        ))
+                    },
+                },
+            },
+            if coe::is_same::<E, E::Canonical>() {
+                Conj::No
+            } else {
+                Conj::Yes
+            },
+        )
     }
 
     /// Returns a view over the conjugate of `self`.
@@ -1092,6 +1219,7 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
         self.inner.symbolic
     }
 
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts(
         self,
@@ -1121,6 +1249,26 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         Self {
             inner: inner::SparseColMatMut { symbolic, values },
         }
+    }
+
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.rb().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    #[inline]
+    pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.rb().to_row_major()
     }
 
     /// Returns a view over the transpose of `self` in row-major format.
@@ -1168,6 +1316,41 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         }
     }
 
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    pub fn canonicalize_mut(self) -> (SparseColMatMut<'a, I, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            SparseColMatMut {
+                inner: inner::SparseColMatMut {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroupMut::<'a, E::Canonical>::new(transmute_unchecked::<
+                            GroupFor<E, &mut [UnitFor<E::Canonical>]>,
+                            GroupFor<E::Canonical, &mut [UnitFor<E::Canonical>]>,
+                        >(
+                            E::faer_map(self.inner.values.into_inner(), |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts_mut(
+                                    slice.as_mut_ptr() as *mut UnitFor<E>
+                                        as *mut UnitFor<E::Canonical>,
+                                    len,
+                                )
+                            }),
+                        ))
+                    },
+                },
+            },
+            if coe::is_same::<E, E::Canonical>() {
+                Conj::No
+            } else {
+                Conj::Yes
+            },
+        )
+    }
+
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
     pub fn adjoint_mut(self) -> SparseRowMatMut<'a, I, E::Conj>
@@ -1201,6 +1384,7 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         self.inner.symbolic
     }
 
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts_mut(
         self,
@@ -1236,6 +1420,30 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
     #[inline]
     pub fn values(self) -> GroupFor<E, &'a [E::Unit]> {
         self.inner.values.into_inner()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.transpose()
+            .to_owned()
+            .map(SparseColMat::into_transpose)
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    #[inline]
+    pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.transpose()
+            .to_row_major()
+            .map(SparseRowMat::into_transpose)
     }
 
     /// Returns a view over the transpose of `self` in column-major format.
@@ -1283,6 +1491,42 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
         }
     }
 
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    pub fn canonicalize(self) -> (SparseRowMatRef<'a, I, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            SparseRowMatRef {
+                inner: inner::SparseRowMatRef {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroup::<'a, E::Canonical>::new(transmute_unchecked::<
+                            GroupFor<E, &[UnitFor<E::Canonical>]>,
+                            GroupFor<E::Canonical, &[UnitFor<E::Canonical>]>,
+                        >(E::faer_map(
+                            self.inner.values.into_inner(),
+                            |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts(
+                                    slice.as_ptr() as *const UnitFor<E>
+                                        as *const UnitFor<E::Canonical>,
+                                    len,
+                                )
+                            },
+                        )))
+                    },
+                },
+            },
+            if coe::is_same::<E, E::Canonical>() {
+                Conj::No
+            } else {
+                Conj::Yes
+            },
+        )
+    }
+
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
     pub fn adjoint(self) -> SparseColMatRef<'a, I, E::Conj>
@@ -1309,6 +1553,7 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
         self.inner.symbolic
     }
 
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts(self) -> (SymbolicSparseRowMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
         (self.inner.symbolic, self.inner.values.into_inner())
@@ -1333,6 +1578,85 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         Self {
             inner: inner::SparseColMatRef { symbolic, values },
         }
+    }
+
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        let symbolic = self.symbolic().to_owned()?;
+        let mut values = VecGroup::<E::Canonical>::new();
+
+        values
+            .try_reserve_exact(self.inner.values.len())
+            .map_err(|_| FaerError::OutOfMemory)?;
+
+        values.resize(
+            self.inner.values.len(),
+            E::Canonical::faer_zero().faer_into_units(),
+        );
+
+        let src = self.inner.values;
+        let dst = values.as_slice_mut();
+
+        for (mut dst, src) in core::iter::zip(dst.into_mut_iter(), src.into_ref_iter()) {
+            dst.write(src.read().canonicalize());
+        }
+
+        Ok(SparseColMat {
+            inner: inner::SparseColMat { symbolic, values },
+        })
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    #[inline]
+    pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        let mut col_ptr = try_zeroed::<I>(self.nrows + 1)?;
+        let nnz = self.compute_nnz();
+        let mut row_ind = try_zeroed::<I>(nnz)?;
+        let mut values = VecGroup::<E::Canonical>::new();
+        values
+            .try_reserve_exact(nnz)
+            .map_err(|_| FaerError::OutOfMemory)?;
+
+        let mut mem = GlobalPodBuffer::try_new(StackReq::new::<I>(self.nrows))
+            .map_err(|_| FaerError::OutOfMemory)?;
+
+        let (this, conj) = self.canonicalize();
+
+        if conj == Conj::No {
+            transpose::<I, E::Canonical>(
+                &mut col_ptr,
+                &mut row_ind,
+                values.as_slice_mut().into_inner(),
+                this,
+                PodStack::new(&mut mem),
+            );
+        } else {
+            adjoint::<I, E::Canonical>(
+                &mut col_ptr,
+                &mut row_ind,
+                values.as_slice_mut().into_inner(),
+                this,
+                PodStack::new(&mut mem),
+            );
+        }
+
+        let transpose = unsafe {
+            SparseColMat::new(
+                SymbolicSparseColMat::new_unchecked(self.ncols, self.nrows, col_ptr, None, row_ind),
+                values.into_inner(),
+            )
+        };
+
+        Ok(transpose.into_transpose())
     }
 
     /// Returns a view over the transpose of `self` in row-major format.
@@ -1380,6 +1704,42 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         }
     }
 
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    pub fn canonicalize(self) -> (SparseColMatRef<'a, I, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            SparseColMatRef {
+                inner: inner::SparseColMatRef {
+                    symbolic: self.inner.symbolic,
+                    values: unsafe {
+                        SliceGroup::<'a, E::Canonical>::new(transmute_unchecked::<
+                            GroupFor<E, &[UnitFor<E::Canonical>]>,
+                            GroupFor<E::Canonical, &[UnitFor<E::Canonical>]>,
+                        >(E::faer_map(
+                            self.inner.values.into_inner(),
+                            |slice| {
+                                let len = slice.len();
+                                core::slice::from_raw_parts(
+                                    slice.as_ptr() as *const UnitFor<E>
+                                        as *const UnitFor<E::Canonical>,
+                                    len,
+                                )
+                            },
+                        )))
+                    },
+                },
+            },
+            if coe::is_same::<E, E::Canonical>() {
+                Conj::No
+            } else {
+                Conj::Yes
+            },
+        )
+    }
+
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
     pub fn adjoint(self) -> SparseRowMatRef<'a, I, E::Conj>
@@ -1412,6 +1772,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         self.inner.symbolic
     }
 
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts(self) -> (SymbolicSparseColMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
         (self.inner.symbolic, self.inner.values.into_inner())
@@ -1435,6 +1796,27 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    #[inline]
+    pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_row_major()
+    }
+
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts(self) -> (SymbolicSparseColMat<I>, GroupFor<E, Vec<E::Unit>>) {
         (self.inner.symbolic, self.inner.values.into_inner())
@@ -1549,6 +1931,27 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
         }
     }
 
+    /// Copies the current matrix into a newly allocated matrix.
+    #[inline]
+    pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_owned()
+    }
+
+    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    #[inline]
+    pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_col_major()
+    }
+
+    /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
     pub fn into_parts(self) -> (SymbolicSparseRowMat<I>, GroupFor<E, Vec<E::Unit>>) {
         (self.inner.symbolic, self.inner.values.into_inner())
@@ -1839,8 +2242,15 @@ const _: () = {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum CreationError {
+    /// Generic error (allocation or index overflow).
     Generic(FaerError),
-    OutOfBounds { row: usize, col: usize },
+    /// Matrix index out-of-bounds error.
+    OutOfBounds {
+        /// Row of the out-of-bounds index.
+        row: usize,
+        /// Column of the out-of-bounds index.
+        col: usize,
+    },
 }
 
 impl From<FaerError> for CreationError {
@@ -1882,6 +2292,9 @@ fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, Fae
     Ok(v)
 }
 
+/// The order values should be read in, when constructing/filling from indices and values.
+///
+/// Allows separately creating the symbolic structure and filling the numerical values.
 #[derive(Debug, Clone)]
 pub struct ValuesOrder<I> {
     argsort: Vec<usize>,
@@ -1890,9 +2303,12 @@ pub struct ValuesOrder<I> {
     __marker: PhantomData<I>,
 }
 
+/// Whether the filled values should replace the current matrix values or be added to them.
 #[derive(Debug, Copy, Clone)]
 pub enum FillMode {
+    /// New filled values should replace the old values.
     Replace,
+    /// New filled values should be added to the old values.
     Add,
 }
 
@@ -2132,6 +2548,8 @@ const _: () = {
             ))
         }
 
+        /// Create a new symbolic structure, and the corresponding order for the numerical values
+        /// from pairs of indices `(row, col)`.
         #[inline]
         pub fn try_new_from_indices(
             nrows: usize,
@@ -2141,6 +2559,10 @@ const _: () = {
             Self::try_new_from_indices_impl(nrows, ncols, |i| indices[i], indices.len())
         }
 
+        /// Create a new symbolic structure, and the corresponding order for the numerical values
+        /// from pairs of indices `(row, col)`.
+        ///
+        /// Negative indices are ignored.
         #[inline]
         pub fn try_new_from_nonnegative_indices(
             nrows: usize,
@@ -2152,6 +2574,8 @@ const _: () = {
     }
 
     impl<I: Index> SymbolicSparseRowMat<I> {
+        /// Create a new symbolic structure, and the corresponding order for the numerical values
+        /// from pairs of indices `(row, col)`.
         #[inline]
         pub fn try_new_from_indices(
             nrows: usize,
@@ -2170,6 +2594,10 @@ const _: () = {
             .map(|(m, o)| (m.into_transpose(), o))
         }
 
+        /// Create a new symbolic structure, and the corresponding order for the numerical values
+        /// from pairs of indices `(row, col)`.
+        ///
+        /// Negative indices are ignored.
         #[inline]
         pub fn try_new_from_nonnegative_indices(
             nrows: usize,
@@ -2240,6 +2668,9 @@ const _: () = {
             })
         }
 
+        /// Create a new matrix from a previously created symbolic structure and value order.
+        /// The provided values must correspond to the same indices that were provided in the
+        /// function call from which the order was created.
         #[track_caller]
         pub fn new_from_order_and_values(
             symbolic: SymbolicSparseColMat<I>,
@@ -2250,6 +2681,7 @@ const _: () = {
             Self::new_from_order_and_values_impl(symbolic, order, |i| values.read(i), values.len())
         }
 
+        /// Create a new matrix from triplets `(row, col, value)`.
         #[track_caller]
         pub fn try_new_from_triplets(
             nrows: usize,
@@ -2273,6 +2705,7 @@ const _: () = {
             )?)
         }
 
+        /// Create a new matrix from triplets `(row, col, value)`. Negative indices are ignored.
         #[track_caller]
         pub fn try_new_from_nonnegative_triplets(
             nrows: usize,
@@ -2299,6 +2732,9 @@ const _: () = {
     }
 
     impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
+        /// Create a new matrix from a previously created symbolic structure and value order.
+        /// The provided values must correspond to the same indices that were provided in the
+        /// function call from which the order was created.
         #[track_caller]
         pub fn new_from_order_and_values(
             symbolic: SymbolicSparseRowMat<I>,
@@ -2309,6 +2745,7 @@ const _: () = {
                 .map(SparseColMat::into_transpose)
         }
 
+        /// Create a new matrix from triplets `(row, col, value)`.
         #[track_caller]
         pub fn try_new_from_triplets(
             nrows: usize,
@@ -2333,6 +2770,7 @@ const _: () = {
             .into_transpose())
         }
 
+        /// Create a new matrix from triplets `(row, col, value)`. Negative indices are ignored.
         #[track_caller]
         pub fn try_new_from_nonnegative_triplets(
             nrows: usize,
@@ -2360,6 +2798,12 @@ const _: () = {
     }
 
     impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
+        /// Fill the matrix from a previously created value order.
+        /// The provided values must correspond to the same indices that were provided in the
+        /// function call from which the order was created.
+        ///
+        /// # Note
+        /// The symbolic structure is not changed.
         pub fn fill_from_order_and_values(
             &mut self,
             order: &ValuesOrder<I>,
@@ -2425,6 +2869,12 @@ const _: () = {
     }
 
     impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
+        /// Fill the matrix from a previously created value order.
+        /// The provided values must correspond to the same indices that were provided in the
+        /// function call from which the order was created.
+        ///
+        /// # Note
+        /// The symbolic structure is not changed.
         pub fn fill_from_order_and_values(
             &mut self,
             order: &ValuesOrder<I>,

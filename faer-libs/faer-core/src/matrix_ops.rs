@@ -7,37 +7,50 @@ use crate::{
     sparse,
 };
 
+/// Scalar value tag.
 pub struct Scalar {
     __private: (),
 }
+/// Dense column vector tag.
 pub struct DenseCol {
     __private: (),
 }
+/// Dense row vector tag.
 pub struct DenseRow {
     __private: (),
 }
+/// Dense matrix tag.
 pub struct Dense {
     __private: (),
 }
+/// Sparse column-major matrix tag.
 pub struct SparseColMat<I: Index> {
     __private: PhantomData<I>,
 }
+/// Sparse row-major matrix tag.
 pub struct SparseRowMat<I: Index> {
     __private: PhantomData<I>,
 }
+/// Diagonal matrix tag.
 pub struct Diag {
     __private: (),
 }
+/// Scaling factor tag.
 pub struct Scale {
     __private: (),
 }
+/// Permutation matrix tag.
 pub struct Perm<I> {
     __private: PhantomData<I>,
 }
 
+/// Trait for describing the view and owning variants of a given matrix type tag.
 pub trait MatrixKind {
+    /// Immutable view type.
     type Ref<'a, E: Entity>: Copy;
+    /// Mutable view type.
     type Mut<'a, E: Entity>;
+    /// Owning type.
     type Own<E: Entity>;
 }
 type KindRef<'a, E, K> = <K as MatrixKind>::Ref<'a, E>;
@@ -90,13 +103,19 @@ impl<I: Index> MatrixKind for Perm<I> {
     type Own<E: Entity> = Matrix<inner::PermOwn<I, E>>;
 }
 
+/// Generic matrix trait.
 pub trait GenericMatrix: Sized {
+    /// Tag type.
     type Kind: MatrixKind;
+    /// Scalar element type.
     type Elem: Entity;
 
+    /// Returns a view over the matrix.
     fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem>;
 }
+/// Generic mutable matrix trait.
 pub trait GenericMatrixMut: GenericMatrix {
+    /// Returns a mutable over the matrix.
     fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem>;
 }
 
@@ -1102,111 +1121,82 @@ mod __matmul {
     }
 }
 
-pub trait MatSized: MatrixKind {
-    fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize;
-    fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize;
-}
-
-pub trait MatDenseStorage: MatSized {
-    fn row_stride<E: Entity>(this: KindRef<'_, E, Self>) -> isize;
-    fn col_stride<E: Entity>(this: KindRef<'_, E, Self>) -> isize;
-
-    fn as_ptr<E: Entity>(this: KindRef<'_, E, Self>) -> GroupFor<E, *const E::Unit>;
-    fn as_mut_ptr<E: Entity>(this: KindMut<'_, E, Self>) -> GroupFor<E, *mut E::Unit>;
-}
-
+/// Matrix multiplication.
 pub trait MatMulAssign<Rhs: MatrixKind>: MatrixKind {
+    /// Computes `lhs * rhs` and assigns it to `lhs`.
     fn mat_mul_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
         lhs: KindMut<'_, E, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     );
 }
+/// Matrix addition.
 pub trait MatAddAssign<Rhs: MatrixKind>: MatrixKind {
+    /// Computes `lhs + rhs` and assigns it to `lhs`.
     fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
         lhs: KindMut<'_, E, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     );
 }
+/// Matrix subtraction.
 pub trait MatSubAssign<Rhs: MatrixKind>: MatrixKind {
+    /// Computes `lhs - rhs` and assigns it to `lhs`.
     fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
         lhs: KindMut<'_, E, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     );
 }
 
+/// Matrix equality comparison.
 pub trait MatEq<Rhs: MatrixKind>: MatrixKind {
+    /// Computes `lhs == rhs`.
     fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     ) -> bool;
 }
 
+/// Matrix multiplication.
 pub trait MatMul<Rhs: MatrixKind>: MatrixKind {
+    /// Result matrix type.
     type Output: MatrixKind;
 
+    /// Returns `lhs * rhs`.
     fn mat_mul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     ) -> KindOwn<E, Self::Output>;
 }
+/// Matrix addition.
 pub trait MatAdd<Rhs: MatrixKind>: MatrixKind {
+    /// Result matrix type.
     type Output: MatrixKind;
 
+    /// Returns `lhs + rhs`.
     fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     ) -> KindOwn<E, Self::Output>;
 }
+/// Matrix subtraction.
 pub trait MatSub<Rhs: MatrixKind>: MatrixKind {
+    /// Result matrix type.
     type Output: MatrixKind;
 
+    /// Returns `lhs - rhs`.
     fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
         lhs: KindRef<'_, LhsE, Self>,
         rhs: KindRef<'_, RhsE, Rhs>,
     ) -> KindOwn<E, Self::Output>;
 }
+/// Matrix negation.
 pub trait MatNeg: MatrixKind {
+    /// Result matrix type.
     type Output: MatrixKind;
 
+    /// Returns `-mat`.
     fn mat_neg<E: Conjugate>(mat: KindRef<'_, E, Self>) -> KindOwn<E::Canonical, Self::Output>
     where
         E::Canonical: ComplexField;
-}
-
-impl MatSized for Dense {
-    #[inline(always)]
-    fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        this.inner.inner.nrows
-    }
-
-    #[inline(always)]
-    fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        this.inner.inner.ncols
-    }
-}
-
-impl<I: Index> MatSized for Perm<I> {
-    #[inline(always)]
-    fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        this.len()
-    }
-
-    #[inline(always)]
-    fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        this.len()
-    }
-}
-
-impl MatSized for Diag {
-    #[inline(always)]
-    fn nrows<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        this.inner.inner.nrows()
-    }
-
-    #[inline(always)]
-    fn ncols<E: Entity>(this: KindRef<'_, E, Self>) -> usize {
-        Diag::nrows(this)
-    }
 }
 
 impl<I: Index> MatEq<Perm<I>> for Perm<I> {
@@ -1494,6 +1484,7 @@ impl MatNeg for Dense {
     }
 }
 
+/// Returns a scaling factor with the given value.
 #[inline(always)]
 pub fn scale<E: Entity>(value: E) -> Matrix<inner::Scale<E>> {
     Matrix {

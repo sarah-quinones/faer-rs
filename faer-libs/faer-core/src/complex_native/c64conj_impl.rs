@@ -2,12 +2,14 @@ use crate::complex_native::c64_impl::c64;
 use faer_entity::*;
 use pulp::Simd;
 
-// 64-bit implicitly conjugated complex floating point type.
+/// 64-bit implicitly conjugated complex floating point type.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
 pub struct c64conj {
+    /// Real part.
     pub re: f64,
+    /// Imaginary part.
     pub neg_im: f64,
 }
 

@@ -2745,23 +2745,35 @@ pub mod triangular {
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
+    /// Describes the parts of the matrix that must be accessed.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BlockStructure {
+        /// The full matrix is accessed.
         Rectangular,
+        /// The lower triangular half (including the diagonal) is accessed.
         TriangularLower,
+        /// The lower triangular half (excluding the diagonal) is accessed.
         StrictTriangularLower,
+        /// The lower triangular half (excluding the diagonal, which is assumed to be equal to
+        /// `1.0`) is accessed.
         UnitTriangularLower,
+        /// The upper triangular half (including the diagonal) is accessed.
         TriangularUpper,
+        /// The upper triangular half (excluding the diagonal) is accessed.
         StrictTriangularUpper,
+        /// The upper triangular half (excluding the diagonal, which is assumed to be equal to
+        /// `1.0`) is accessed.
         UnitTriangularUpper,
     }
 
     impl BlockStructure {
+        /// Checks if `self` is full.
         #[inline]
         pub fn is_dense(self) -> bool {
             matches!(self, BlockStructure::Rectangular)
         }
 
+        /// Checks if `self` is triangular lower (either inclusive or exclusive).
         #[inline]
         pub fn is_lower(self) -> bool {
             use BlockStructure::*;
@@ -2771,6 +2783,7 @@ pub mod triangular {
             )
         }
 
+        /// Checks if `self` is triangular upper (either inclusive or exclusive).
         #[inline]
         pub fn is_upper(self) -> bool {
             use BlockStructure::*;
@@ -2780,6 +2793,7 @@ pub mod triangular {
             )
         }
 
+        /// Returns the block structure corresponding to the transposed matrix.
         #[inline]
         pub fn transpose(self) -> Self {
             use BlockStructure::*;

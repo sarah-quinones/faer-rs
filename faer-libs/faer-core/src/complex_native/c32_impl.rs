@@ -14,6 +14,7 @@ macro_rules! impl_from_num_complex {
     ($( $method:ident ( self $( , $arg:ident : $ty:ty )* ) -> $ret:ty ; )*) => {
         $(
             #[inline(always)]
+            #[allow(missing_docs)]
             pub fn $method(self $( , $arg : $ty )* ) -> $ret {
                 self.to_num_complex().$method( $( $arg , )* ).into()
             }
@@ -21,12 +22,14 @@ macro_rules! impl_from_num_complex {
     };
 }
 
-// 32-bit complex floating point type. See the module-level documentation for more details.
+/// 32-bit complex floating point type. See the module-level documentation for more details.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
 pub struct c32 {
+    /// Real part.
     pub re: f32,
+    /// Imaginary part.
     pub im: f32,
 }
 
@@ -117,21 +120,25 @@ impl c32 {
         arg(self) -> f32;
     );
 
+    /// Computes the `l2` norm of `self`.
     #[inline(always)]
     pub fn norm(&self) -> f32 {
         self.faer_abs()
     }
 
+    /// Computes the `l1` norm of `self`.
     #[inline(always)]
     pub fn l1_norm(&self) -> f32 {
         self.re.faer_abs() + self.im.faer_abs()
     }
 
+    /// Computes the squared `l2` norm of `self`.
     #[inline(always)]
     pub fn norm_sqr(&self) -> f32 {
         self.faer_abs2()
     }
 
+    /// Computes the inverse of `self`.
     #[inline(always)]
     pub fn inv(&self) -> Self {
         let norm_sqr = self.faer_abs2();

@@ -2,12 +2,14 @@ use crate::complex_native::c32_impl::c32;
 use faer_entity::*;
 use pulp::Simd;
 
-// 32-bit implicitly conjugated complex floating point type.
+/// 32-bit implicitly conjugated complex floating point type.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(C)]
 pub struct c32conj {
+    /// Real part.
     pub re: f32,
+    /// Imaginary part.
     pub neg_im: f32,
 }
 

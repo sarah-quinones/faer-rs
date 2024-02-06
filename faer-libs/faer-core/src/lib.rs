@@ -77,6 +77,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -165,7 +166,9 @@ impl DivCeil for usize {
 /// Specifies whether the triangular lower or upper part of a matrix should be accessed.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Side {
+    /// Lower half should be accessed.
     Lower,
+    /// Upper half should be accessed.
     Upper,
 }
 
@@ -173,7 +176,9 @@ pub enum Side {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[non_exhaustive]
 pub enum FaerError {
+    /// An index exceeding the maximum value (`I::Signed::MAX` for a given index type `I`).
     IndexOverflow,
+    /// Memory allocation failed.
     OutOfMemory,
 }
 
@@ -217,11 +222,14 @@ pub use complex_native::*;
 /// Whether a matrix should be implicitly conjugated when read or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
+    /// Do conjugate.
     Yes,
+    /// Do not conjugate.
     No,
 }
 
 impl Conj {
+    /// Combine `self` and `other` to create a new conjugation object.
     #[inline]
     pub fn compose(self, other: Conj) -> Conj {
         if self == other {
@@ -234,28 +242,34 @@ impl Conj {
 
 /// Trait for types that can be converted to a row view.
 pub trait AsRowRef<E: Entity> {
+    /// Convert to a row view.
     fn as_row_ref(&self) -> RowRef<'_, E>;
 }
 /// Trait for types that can be converted to a mutable row view.
 pub trait AsRowMut<E: Entity> {
+    /// Convert to a mutable row view.
     fn as_row_mut(&mut self) -> RowMut<'_, E>;
 }
 
 /// Trait for types that can be converted to a column view.
 pub trait AsColRef<E: Entity> {
+    /// Convert to a column view.
     fn as_col_ref(&self) -> ColRef<'_, E>;
 }
 /// Trait for types that can be converted to a mutable col view.
 pub trait AsColMut<E: Entity> {
+    /// Convert to a mutable column view.
     fn as_col_mut(&mut self) -> ColMut<'_, E>;
 }
 
 /// Trait for types that can be converted to a matrix view.
 pub trait AsMatRef<E: Entity> {
+    /// Convert to a matrix view.
     fn as_mat_ref(&self) -> MatRef<'_, E>;
 }
 /// Trait for types that can be converted to a mutable matrix view.
 pub trait AsMatMut<E: Entity> {
+    /// Convert to a mutable matrix view.
     fn as_mat_mut(&mut self) -> MatMut<'_, E>;
 }
 
@@ -635,6 +649,7 @@ pub mod inner {
         }
     }
 
+    /// Immutable permutation view.
     #[repr(C)]
     #[derive(Debug)]
     pub struct PermRef<'a, I, E: Entity> {
@@ -642,6 +657,7 @@ pub mod inner {
         pub(crate) inverse: &'a [I],
         pub(crate) __marker: PhantomData<E>,
     }
+    /// Mutable permutation view.
     #[repr(C)]
     #[derive(Debug)]
     pub struct PermMut<'a, I, E: Entity> {
@@ -649,6 +665,7 @@ pub mod inner {
         pub(crate) inverse: &'a mut [I],
         pub(crate) __marker: PhantomData<E>,
     }
+    /// Owned permutation.
     #[repr(C)]
     #[derive(Debug)]
     pub struct PermOwn<I, E: Entity> {
@@ -657,69 +674,81 @@ pub mod inner {
         pub(crate) __marker: PhantomData<E>,
     }
 
+    /// Immutable diagonal matrix view.
     #[repr(C)]
     pub struct DiagRef<'a, E: Entity> {
         pub(crate) inner: ColRef<'a, E>,
     }
 
+    /// Mutable diagonal matrix view.
     #[repr(C)]
     pub struct DiagMut<'a, E: Entity> {
         pub(crate) inner: ColMut<'a, E>,
     }
 
+    /// Owned diagonal matrix.
     #[repr(C)]
     pub struct DiagOwn<E: Entity> {
         pub(crate) inner: Col<E>,
     }
 
+    /// Immutable column vector view.
     #[repr(C)]
     pub struct DenseColRef<'a, E: Entity> {
         pub(crate) inner: VecImpl<E>,
         pub(crate) __marker: PhantomData<&'a E>,
     }
 
+    /// Mutable column vector view.
     #[repr(C)]
     pub struct DenseColMut<'a, E: Entity> {
         pub(crate) inner: VecImpl<E>,
         pub(crate) __marker: PhantomData<&'a mut E>,
     }
 
+    /// Owned column vector.
     #[repr(C)]
     pub struct DenseColOwn<E: Entity> {
         pub(crate) inner: VecOwnImpl<E>,
         pub(crate) row_capacity: usize,
     }
 
+    /// Immutable row vector view.
     #[repr(C)]
     pub struct DenseRowRef<'a, E: Entity> {
         pub(crate) inner: VecImpl<E>,
         pub(crate) __marker: PhantomData<&'a E>,
     }
 
+    /// Mutable row vector view.
     #[repr(C)]
     pub struct DenseRowMut<'a, E: Entity> {
         pub(crate) inner: VecImpl<E>,
         pub(crate) __marker: PhantomData<&'a mut E>,
     }
 
+    /// Owned row vector.
     #[repr(C)]
     pub struct DenseRowOwn<E: Entity> {
         pub(crate) inner: VecOwnImpl<E>,
         pub(crate) col_capacity: usize,
     }
 
+    /// Immutable dense matrix view.
     #[repr(C)]
     pub struct DenseRef<'a, E: Entity> {
         pub(crate) inner: MatImpl<E>,
         pub(crate) __marker: PhantomData<&'a E>,
     }
 
+    /// Mutable dense matrix view.
     #[repr(C)]
     pub struct DenseMut<'a, E: Entity> {
         pub(crate) inner: MatImpl<E>,
         pub(crate) __marker: PhantomData<&'a mut E>,
     }
 
+    /// Owned dense matrix.
     #[repr(C)]
     pub struct DenseOwn<E: Entity> {
         pub(crate) inner: MatOwnImpl<E>,
@@ -727,47 +756,48 @@ pub mod inner {
         pub(crate) col_capacity: usize,
     }
 
+    /// Scaling factor.
     #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct Scale<E: Entity>(pub E);
 
+    /// Immutable sparse matrix view, in column-major order.
     #[derive(Debug)]
-    #[doc(hidden)]
     pub struct SparseColMatRef<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
+    /// Immutable sparse matrix view, in row-major order.
     #[derive(Debug)]
-    #[doc(hidden)]
     pub struct SparseRowMatRef<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
+    /// Mutable sparse matrix view, in column-major order.
     #[derive(Debug)]
-    #[doc(hidden)]
     pub struct SparseColMatMut<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
         pub(crate) values: SliceGroupMut<'a, E>,
     }
 
+    /// Mutable sparse matrix view, in row-major order.
     #[derive(Debug)]
-    #[doc(hidden)]
     pub struct SparseRowMatMut<'a, I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
         pub(crate) values: SliceGroupMut<'a, E>,
     }
 
+    /// Owned sparse matrix, in column-major order.
     #[derive(Debug, Clone)]
-    #[doc(hidden)]
     pub struct SparseColMat<I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMat<I>,
         pub(crate) values: VecGroup<E>,
     }
 
+    /// Owned sparse matrix, in row-major order.
     #[derive(Debug, Clone)]
-    #[doc(hidden)]
     pub struct SparseRowMat<I, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMat<I>,
         pub(crate) values: VecGroup<E>,
@@ -793,6 +823,7 @@ pub mod inner {
 pub mod group_helpers {
     pub use pulp::{Read, Write};
 
+    /// Analogous to [`alloc::vec::Vec`] for groups.
     pub struct VecGroup<E: Entity, T = UnitFor<E>> {
         inner: GroupFor<E, alloc::vec::Vec<T>>,
     }
@@ -816,26 +847,31 @@ pub mod group_helpers {
     unsafe impl<E: Entity, T: Send> Send for VecGroup<E, T> {}
 
     impl<E: Entity, T> VecGroup<E, T> {
+        /// Create a new [`VecGroup`] from a group of [`alloc::vec::Vec`].
         #[inline]
         pub fn from_inner(inner: GroupFor<E, alloc::vec::Vec<T>>) -> Self {
             Self { inner }
         }
 
+        /// Consume `self` to return a group of [`alloc::vec::Vec`].
         #[inline]
         pub fn into_inner(self) -> GroupFor<E, alloc::vec::Vec<T>> {
             self.inner
         }
 
+        /// Return a reference to the inner group of [`alloc::vec::Vec`].
         #[inline]
         pub fn as_inner_ref(&self) -> GroupFor<E, &alloc::vec::Vec<T>> {
             E::faer_as_ref(&self.inner)
         }
 
+        /// Return a mutable reference to the inner group of [`alloc::vec::Vec`].
         #[inline]
         pub fn as_inner_mut(&mut self) -> GroupFor<E, &mut alloc::vec::Vec<T>> {
             E::faer_as_mut(&mut self.inner)
         }
 
+        /// Return a [`SliceGroup`] view over the elements of `self`.
         #[inline]
         pub fn as_slice(&self) -> SliceGroup<'_, E, T> {
             SliceGroup::new(E::faer_map(
@@ -845,6 +881,7 @@ pub mod group_helpers {
             ))
         }
 
+        /// Return a [`SliceGroupMut`] mutable view over the elements of `self`.
         #[inline]
         pub fn as_slice_mut(&mut self) -> SliceGroupMut<'_, E, T> {
             SliceGroupMut::new(E::faer_map(
@@ -854,6 +891,7 @@ pub mod group_helpers {
             ))
         }
 
+        /// Create an empty [`VecGroup`].
         #[inline]
         pub fn new() -> Self {
             Self {
@@ -861,6 +899,7 @@ pub mod group_helpers {
             }
         }
 
+        /// Returns the length of the vector group.
         #[inline]
         pub fn len(&self) -> usize {
             let mut len = usize::MAX;
@@ -872,6 +911,7 @@ pub mod group_helpers {
             len
         }
 
+        /// Returns the capacity of the vector group.
         #[inline]
         pub fn capacity(&self) -> usize {
             let mut cap = usize::MAX;
@@ -883,16 +923,19 @@ pub mod group_helpers {
             cap
         }
 
+        /// Reserve enough capacity for extra `additional` elements.
         pub fn reserve(&mut self, additional: usize) {
             E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.reserve(additional));
         }
 
+        /// Reserve exactly enough capacity for extra `additional` elements.
         pub fn reserve_exact(&mut self, additional: usize) {
             E::faer_map(E::faer_as_mut(&mut self.inner), |v| {
                 v.reserve_exact(additional)
             });
         }
 
+        /// Try to reserve enough capacity for extra `additional` elements.
         pub fn try_reserve(
             &mut self,
             additional: usize,
@@ -905,6 +948,7 @@ pub mod group_helpers {
             result
         }
 
+        /// Try to reserve exactly enough capacity for extra `additional` elements.
         pub fn try_reserve_exact(
             &mut self,
             additional: usize,
@@ -917,14 +961,18 @@ pub mod group_helpers {
             result
         }
 
+        /// Truncate the length of the vector to `len`.
         pub fn truncate(&mut self, len: usize) {
             E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.truncate(len));
         }
 
+        /// Clear the vector, making it empty.
         pub fn clear(&mut self) {
             E::faer_map(E::faer_as_mut(&mut self.inner), |v| v.clear());
         }
 
+        /// Resize the vector to `new_len`, filling the new elements with
+        /// `value`.
         pub fn resize(&mut self, new_len: usize, value: GroupFor<E, T>)
         where
             T: Clone,
@@ -935,6 +983,8 @@ pub mod group_helpers {
             );
         }
 
+        /// Resize the vector to `new_len`, filling the new elements with
+        /// the output of `f`.
         pub fn resize_with(&mut self, new_len: usize, f: impl FnMut() -> GroupFor<E, T>) {
             let len = self.len();
             let mut f = f;
@@ -948,6 +998,7 @@ pub mod group_helpers {
             }
         }
 
+        /// Push a new element to the end of `self`.
         #[inline]
         pub fn push(&mut self, value: GroupFor<E, T>) {
             E::faer_map(
@@ -957,6 +1008,7 @@ pub mod group_helpers {
             );
         }
 
+        /// Remove a new element from the end of `self`, and return it.
         #[inline]
         pub fn pop(&mut self) -> Option<GroupFor<E, T>> {
             if self.len() >= 1 {
@@ -970,6 +1022,7 @@ pub mod group_helpers {
             }
         }
 
+        /// Remove a new element from position `index`, and return it.
         #[inline]
         pub fn remove(&mut self, index: usize) -> GroupFor<E, T> {
             E::faer_map(
@@ -980,15 +1033,21 @@ pub mod group_helpers {
         }
     }
 
+    /// Do conjugate.
     #[derive(Copy, Clone, Debug)]
     pub struct YesConj;
+    /// Do not conjugate.
     #[derive(Copy, Clone, Debug)]
     pub struct NoConj;
 
+    /// Similar to [`Conj`], but determined at compile time instead of runtime.
     pub trait ConjTy: Copy + Debug {
+        /// The corresponding [`Conj`] value.
         const CONJ: Conj;
+        /// The opposing conjugation type.
         type Flip: ConjTy;
 
+        /// Returns an instance of the corresponding conjugation type.
         fn flip(self) -> Self::Flip;
     }
 
@@ -1013,7 +1072,9 @@ pub mod group_helpers {
     use crate::{assert, debug_assert};
     use core::ops::Range;
 
+    /// Wrapper for simd operations for type `E`.
     pub struct SimdFor<E: Entity, S: pulp::Simd> {
+        /// Simd token.
         pub simd: S,
         __marker: PhantomData<E>,
     }
@@ -1027,6 +1088,7 @@ pub mod group_helpers {
     }
 
     impl<E: ComplexField, S: pulp::Simd> SimdFor<E, S> {
+        /// Create a new wrapper from a simd token.
         #[inline(always)]
         pub fn new(simd: S) -> Self {
             Self {
@@ -1035,21 +1097,14 @@ pub mod group_helpers {
             }
         }
 
-        #[inline(always)]
-        pub fn as_simd(
-            self,
-            slice: SliceGroup<'_, E>,
-        ) -> (SliceGroup<'_, E, SimdUnitFor<E, S>>, SliceGroup<'_, E>) {
-            let (head, tail) = slice_as_simd::<E, S>(slice.into_inner());
-            (SliceGroup::new(head), SliceGroup::new(tail))
-        }
-
+        /// Computes the alignment offset for subsequent aligned loads.
         #[inline(always)]
         pub fn align_offset(self, slice: SliceGroup<'_, E>) -> pulp::Offset<E::SimdMask<S>> {
             let slice = E::faer_first(slice.into_inner());
             E::faer_align_offset(self.simd, slice.as_ptr(), slice.len())
         }
 
+        /// Computes the alignment offset for subsequent aligned loads from a pointer.
         #[inline(always)]
         pub fn align_offset_ptr(
             self,
@@ -1059,6 +1114,17 @@ pub mod group_helpers {
             E::faer_align_offset(self.simd, E::faer_first(ptr), len)
         }
 
+        /// Convert a slice to a slice over vector registers, and a scalar tail.
+        #[inline(always)]
+        pub fn as_simd(
+            self,
+            slice: SliceGroup<'_, E>,
+        ) -> (SliceGroup<'_, E, SimdUnitFor<E, S>>, SliceGroup<'_, E>) {
+            let (head, tail) = slice_as_simd::<E, S>(slice.into_inner());
+            (SliceGroup::new(head), SliceGroup::new(tail))
+        }
+
+        /// Convert a mutable slice to a slice over vector registers, and a scalar tail.
         #[inline(always)]
         pub fn as_simd_mut(
             self,
@@ -1071,6 +1137,8 @@ pub mod group_helpers {
             (SliceGroupMut::new(head), SliceGroupMut::new(tail))
         }
 
+        /// Convert a slice to a partial register prefix and suffix, and a vector register slice
+        /// (body).
         #[inline(always)]
         pub fn as_aligned_simd(
             self,
@@ -1109,6 +1177,8 @@ pub mod group_helpers {
             }
         }
 
+        /// Convert a mutable slice to a partial register prefix and suffix, and a vector register
+        /// slice (body).
         #[inline(always)]
         pub fn as_aligned_simd_mut(
             self,
@@ -1150,28 +1220,35 @@ pub mod group_helpers {
             )
         }
 
+        /// Fill all the register lanes with the same value.
         #[inline(always)]
         pub fn splat(self, value: E) -> SimdGroupFor<E, S> {
             E::faer_simd_splat(self.simd, value)
         }
 
+        /// Returns `lhs * rhs`.
         #[inline(always)]
         pub fn scalar_mul(self, lhs: E, rhs: E) -> E {
             E::faer_simd_scalar_mul(self.simd, lhs, rhs)
         }
+        /// Returns `conj(lhs) * rhs`.
         #[inline(always)]
         pub fn scalar_conj_mul(self, lhs: E, rhs: E) -> E {
             E::faer_simd_scalar_conj_mul(self.simd, lhs, rhs)
         }
+        /// Returns an estimate of `lhs * rhs + acc`.
         #[inline(always)]
         pub fn scalar_mul_add_e(self, lhs: E, rhs: E, acc: E) -> E {
             E::faer_simd_scalar_mul_adde(self.simd, lhs, rhs, acc)
         }
+        /// Returns an estimate of `conj(lhs) * rhs + acc`.
         #[inline(always)]
         pub fn scalar_conj_mul_add_e(self, lhs: E, rhs: E, acc: E) -> E {
             E::faer_simd_scalar_conj_mul_adde(self.simd, lhs, rhs, acc)
         }
 
+        /// Returns an estimate of `op(lhs) * rhs`, where `op` is either the conjugation
+        /// or the identity operation.
         #[inline(always)]
         pub fn scalar_conditional_conj_mul<C: ConjTy>(self, conj: C, lhs: E, rhs: E) -> E {
             let _ = conj;
@@ -1181,6 +1258,8 @@ pub mod group_helpers {
                 self.scalar_mul(lhs, rhs)
             }
         }
+        /// Returns an estimate of `op(lhs) * rhs + acc`, where `op` is either the conjugation or
+        /// the identity operation.
         #[inline(always)]
         pub fn scalar_conditional_conj_mul_add_e<C: ConjTy>(
             self,
@@ -1197,18 +1276,22 @@ pub mod group_helpers {
             }
         }
 
+        /// Returns `lhs + rhs`.
         #[inline(always)]
         pub fn add(self, lhs: SimdGroupFor<E, S>, rhs: SimdGroupFor<E, S>) -> SimdGroupFor<E, S> {
             E::faer_simd_add(self.simd, lhs, rhs)
         }
+        /// Returns `lhs - rhs`.
         #[inline(always)]
         pub fn sub(self, lhs: SimdGroupFor<E, S>, rhs: SimdGroupFor<E, S>) -> SimdGroupFor<E, S> {
             E::faer_simd_sub(self.simd, lhs, rhs)
         }
+        /// Returns `-a`.
         #[inline(always)]
         pub fn neg(self, a: SimdGroupFor<E, S>) -> SimdGroupFor<E, S> {
             E::faer_simd_neg(self.simd, a)
         }
+        /// Returns `lhs * rhs`.
         #[inline(always)]
         pub fn scale_real(
             self,
@@ -1217,10 +1300,12 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E, S> {
             E::faer_simd_scale_real(self.simd, lhs, rhs)
         }
+        /// Returns `lhs * rhs`.
         #[inline(always)]
         pub fn mul(self, lhs: SimdGroupFor<E, S>, rhs: SimdGroupFor<E, S>) -> SimdGroupFor<E, S> {
             E::faer_simd_mul(self.simd, lhs, rhs)
         }
+        /// Returns `conj(lhs) * rhs`.
         #[inline(always)]
         pub fn conj_mul(
             self,
@@ -1229,6 +1314,8 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E, S> {
             E::faer_simd_conj_mul(self.simd, lhs, rhs)
         }
+        /// Returns `op(lhs) * rhs`, where `op` is either the conjugation or the identity
+        /// operation.
         #[inline(always)]
         pub fn conditional_conj_mul<C: ConjTy>(
             self,
@@ -1244,6 +1331,7 @@ pub mod group_helpers {
             }
         }
 
+        /// Returns `lhs * rhs + acc`.
         #[inline(always)]
         pub fn mul_add_e(
             self,
@@ -1253,6 +1341,7 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E, S> {
             E::faer_simd_mul_adde(self.simd, lhs, rhs, acc)
         }
+        /// Returns `conj(lhs) * rhs + acc`.
         #[inline(always)]
         pub fn conj_mul_add_e(
             self,
@@ -1262,6 +1351,8 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E, S> {
             E::faer_simd_conj_mul_adde(self.simd, lhs, rhs, acc)
         }
+        /// Returns `op(lhs) * rhs + acc`, where `op` is either the conjugation or the identity
+        /// operation.
         #[inline(always)]
         pub fn conditional_conj_mul_add_e<C: ConjTy>(
             self,
@@ -1278,6 +1369,7 @@ pub mod group_helpers {
             }
         }
 
+        /// Returns `abs(values) * abs(values) + acc`.
         #[inline(always)]
         pub fn abs2_add_e(
             self,
@@ -1286,20 +1378,25 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E::Real, S> {
             E::faer_simd_abs2_adde(self.simd, values, acc)
         }
+        /// Returns `abs(values) * abs(values)`.
         #[inline(always)]
         pub fn abs2(self, values: SimdGroupFor<E, S>) -> SimdGroupFor<E::Real, S> {
             E::faer_simd_abs2(self.simd, values)
         }
+        /// Returns `abs(values)` or `abs(values) * abs(values)`, whichever is cheaper to compute.
         #[inline(always)]
         pub fn score(self, values: SimdGroupFor<E, S>) -> SimdGroupFor<E::Real, S> {
             E::faer_simd_score(self.simd, values)
         }
 
+        /// Sum the components of a vector register into a single accumulator.
         #[inline(always)]
         pub fn reduce_add(self, values: SimdGroupFor<E, S>) -> E {
             E::faer_simd_reduce_add(self.simd, values)
         }
 
+        /// Rotate `values` to the left, with overflowing entries wrapping around to the right side
+        /// of the register.
         #[inline(always)]
         pub fn rotate_left(self, values: SimdGroupFor<E, S>, amount: usize) -> SimdGroupFor<E, S> {
             E::faer_simd_rotate_left(self.simd, values, amount)
@@ -1307,14 +1404,17 @@ pub mod group_helpers {
     }
 
     impl<E: RealField, S: pulp::Simd> SimdFor<E, S> {
+        /// Returns `abs(values)`.
         #[inline(always)]
         pub fn abs(self, values: SimdGroupFor<E, S>) -> SimdGroupFor<E::Real, S> {
             E::faer_simd_abs(self.simd, values)
         }
+        /// Returns `a < b`.
         #[inline(always)]
         pub fn less_than(self, a: SimdGroupFor<E, S>, b: SimdGroupFor<E, S>) -> SimdMaskFor<E, S> {
             E::faer_simd_less_than(self.simd, a, b)
         }
+        /// Returns `a <= b`.
         #[inline(always)]
         pub fn less_than_or_equal(
             self,
@@ -1323,6 +1423,7 @@ pub mod group_helpers {
         ) -> SimdMaskFor<E, S> {
             E::faer_simd_less_than_or_equal(self.simd, a, b)
         }
+        /// Returns `a > b`.
         #[inline(always)]
         pub fn greater_than(
             self,
@@ -1331,6 +1432,7 @@ pub mod group_helpers {
         ) -> SimdMaskFor<E, S> {
             E::faer_simd_greater_than(self.simd, a, b)
         }
+        /// Returns `a >= b`.
         #[inline(always)]
         pub fn greater_than_or_equal(
             self,
@@ -1340,6 +1442,7 @@ pub mod group_helpers {
             E::faer_simd_greater_than_or_equal(self.simd, a, b)
         }
 
+        /// Returns `if mask { if_true } else { if_false }`
         #[inline(always)]
         pub fn select(
             self,
@@ -1349,6 +1452,7 @@ pub mod group_helpers {
         ) -> SimdGroupFor<E, S> {
             E::faer_simd_select(self.simd, mask, if_true, if_false)
         }
+        /// Returns `if mask { if_true } else { if_false }`
         #[inline(always)]
         pub fn index_select(
             self,
@@ -1358,41 +1462,50 @@ pub mod group_helpers {
         ) -> SimdIndexFor<E, S> {
             E::faer_simd_index_select(self.simd, mask, if_true, if_false)
         }
+        /// Returns `[0, 1, 2, 3, ..., REGISTER_SIZE - 1]`
         #[inline(always)]
         pub fn index_seq(self) -> SimdIndexFor<E, S> {
             E::faer_simd_index_seq(self.simd)
         }
+        /// Fill all the register lanes with the same value.
         #[inline(always)]
         pub fn index_splat(self, value: IndexFor<E>) -> SimdIndexFor<E, S> {
             E::faer_simd_index_splat(self.simd, value)
         }
+        /// Returns `a + b`.
         #[inline(always)]
         pub fn index_add(self, a: SimdIndexFor<E, S>, b: SimdIndexFor<E, S>) -> SimdIndexFor<E, S> {
             E::faer_simd_index_add(self.simd, a, b)
         }
     }
 
+    /// Analogous to an immutable reference to a [prim@slice] for groups.
     pub struct SliceGroup<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
         GroupCopyFor<E, *const [T]>,
         PhantomData<&'a ()>,
     );
+    /// Analogous to a mutable reference to a [prim@slice] for groups.
     pub struct SliceGroupMut<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
         GroupFor<E, *mut [T]>,
         PhantomData<&'a mut ()>,
     );
 
+    /// Simd prefix, contains the elements before the body.
     pub struct Prefix<'a, E: Entity, S: pulp::Simd>(
         GroupCopyFor<E, E::PrefixUnit<'static, S>>,
         PhantomData<&'a ()>,
     );
+    /// Simd suffix, contains the elements after the body.
     pub struct Suffix<'a, E: Entity, S: pulp::Simd>(
         GroupCopyFor<E, E::SuffixUnit<'static, S>>,
         PhantomData<&'a mut ()>,
     );
+    /// Simd prefix (mutable), contains the elements before the body.
     pub struct PrefixMut<'a, E: Entity, S: pulp::Simd>(
         GroupFor<E, E::PrefixMutUnit<'static, S>>,
         PhantomData<&'a ()>,
     );
+    /// Simd suffix (mutable), contains the elements after the body.
     pub struct SuffixMut<'a, E: Entity, S: pulp::Simd>(
         GroupFor<E, E::SuffixMutUnit<'static, S>>,
         PhantomData<&'a mut ()>,
@@ -1592,10 +1705,12 @@ pub mod group_helpers {
         }
     }
 
+    /// Wrapper around a group of references.
     pub struct RefGroup<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
         GroupCopyFor<E, *const T>,
         PhantomData<&'a ()>,
     );
+    /// Wrapper around a group of mutable references.
     pub struct RefGroupMut<'a, E: Entity, T: 'a = <E as Entity>::Unit>(
         GroupFor<E, *mut T>,
         PhantomData<&'a mut ()>,
@@ -1622,6 +1737,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T> RefGroup<'a, E, T> {
+        /// Create a new [`RefGroup`] from a group of references.
         #[inline(always)]
         pub fn new(reference: GroupFor<E, &'a T>) -> Self {
             Self(
@@ -1634,6 +1750,7 @@ pub mod group_helpers {
             )
         }
 
+        /// Consume `self` to return the internally stored group of references.
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a T> {
             E::faer_map(
@@ -1643,6 +1760,7 @@ pub mod group_helpers {
             )
         }
 
+        /// Copies and returns the value pointed to by the references.
         #[inline(always)]
         pub fn get(self) -> GroupCopyFor<E, T>
         where
@@ -1653,6 +1771,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T, const N: usize> RefGroup<'a, E, [T; N]> {
+        /// Convert a reference to an array to an array of references.
         #[inline(always)]
         pub fn unzip(self) -> [RefGroup<'a, E, T>; N] {
             unsafe {
@@ -1676,6 +1795,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T, const N: usize> RefGroupMut<'a, E, [T; N]> {
+        /// Convert a mutable reference to an array to an array of mutable references.
         #[inline(always)]
         pub fn unzip(self) -> [RefGroupMut<'a, E, T>; N] {
             unsafe {
@@ -1699,6 +1819,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
+        /// Create a new [`RefGroupMut`] from a group of mutable references.
         #[inline(always)]
         pub fn new(reference: GroupFor<E, &'a mut T>) -> Self {
             Self(
@@ -1711,6 +1832,7 @@ pub mod group_helpers {
             )
         }
 
+        /// Consume `self` to return the internally stored group of references.
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a mut T> {
             E::faer_map(
@@ -1720,6 +1842,7 @@ pub mod group_helpers {
             )
         }
 
+        /// Copies and returns the value pointed to by the references.
         #[inline(always)]
         pub fn get(&self) -> GroupCopyFor<E, T>
         where
@@ -1728,6 +1851,7 @@ pub mod group_helpers {
             self.rb().get()
         }
 
+        /// Writes `value` to the location pointed to by the references.
         #[inline(always)]
         pub fn set(&mut self, value: GroupCopyFor<E, T>)
         where
@@ -1828,6 +1952,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
+        /// Create a new [`SliceGroup`] from a group of slice references.
         #[inline(always)]
         pub fn new(slice: GroupFor<E, &'a [T]>) -> Self {
             Self(
@@ -1836,11 +1961,14 @@ pub mod group_helpers {
             )
         }
 
+        /// Consume `self` to return the internally stored group of slice references.
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a [T]> {
             unsafe { E::faer_map(from_copy::<E, _>(self.0), |ptr| &*ptr) }
         }
 
+        /// Decompose `self` into a slice of arrays of size `N`, and a remainder part with length
+        /// `< N`.
         #[inline(always)]
         pub fn as_arrays<const N: usize>(
             self,
@@ -1851,16 +1979,20 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
+        /// Create a new [`SliceGroup`] from a group of mutable slice references.
         #[inline(always)]
         pub fn new(slice: GroupFor<E, &'a mut [T]>) -> Self {
             Self(E::faer_map(slice, |slice| slice as *mut [T]), PhantomData)
         }
 
+        /// Consume `self` to return the internally stored group of mutable slice references.
         #[inline(always)]
         pub fn into_inner(self) -> GroupFor<E, &'a mut [T]> {
             unsafe { E::faer_map(self.0, |ptr| &mut *ptr) }
         }
 
+        /// Decompose `self` into a mutable slice of arrays of size `N`, and a remainder part with
+        /// length `< N`.
         #[inline(always)]
         pub fn as_arrays_mut<const N: usize>(
             self,
@@ -1915,6 +2047,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity> RefGroup<'a, E> {
+        /// Read the element pointed to by the references.
         #[inline(always)]
         pub fn read(&self) -> E {
             E::faer_from_units(E::faer_deref(self.into_inner()))
@@ -1922,11 +2055,13 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity> RefGroupMut<'a, E> {
+        /// Read the element pointed to by the references.
         #[inline(always)]
         pub fn read(&self) -> E {
             self.rb().read()
         }
 
+        /// Write `value` to the location pointed to by the references.
         #[inline(always)]
         pub fn write(&mut self, value: E) {
             E::faer_map(
@@ -1938,6 +2073,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity> SliceGroup<'a, E> {
+        /// Read the element at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn read(&self, idx: usize) -> E {
@@ -1945,6 +2081,10 @@ pub mod group_helpers {
             unsafe { self.read_unchecked(idx) }
         }
 
+        /// Read the element at position `idx`, without bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn read_unchecked(&self, idx: usize) -> E {
@@ -1957,6 +2097,7 @@ pub mod group_helpers {
         }
     }
     impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
+        /// Get a [`RefGroup`] pointing to the element at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn get(self, idx: usize) -> RefGroup<'a, E, T> {
@@ -1964,6 +2105,10 @@ pub mod group_helpers {
             unsafe { self.get_unchecked(idx) }
         }
 
+        /// Get a [`RefGroup`] pointing to the element at position `idx`, without bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn get_unchecked(self, idx: usize) -> RefGroup<'a, E, T> {
@@ -1975,11 +2120,13 @@ pub mod group_helpers {
             ))
         }
 
+        /// Checks whether the slice is empty.
         #[inline]
         pub fn is_empty(&self) -> bool {
             self.len() == 0
         }
 
+        /// Returns the length of the slice.
         #[inline]
         pub fn len(&self) -> usize {
             let mut len = usize::MAX;
@@ -1991,6 +2138,7 @@ pub mod group_helpers {
             len
         }
 
+        /// Returns the subslice of `self` from the start to the end of the provided range.
         #[inline(always)]
         #[track_caller]
         pub fn subslice(self, range: Range<usize>) -> Self {
@@ -1998,6 +2146,7 @@ pub mod group_helpers {
             unsafe { self.subslice_unchecked(range) }
         }
 
+        /// Split `self` at the midpoint `idx`, and return the two parts.
         #[inline(always)]
         #[track_caller]
         pub fn split_at(self, idx: usize) -> (Self, Self) {
@@ -2010,6 +2159,11 @@ pub mod group_helpers {
             (Self::new(head), Self::new(tail))
         }
 
+        /// Returns the subslice of `self` from the start to the end of the provided range, without
+        /// bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `range.start > range.end` or `range.end > self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
@@ -2021,11 +2175,14 @@ pub mod group_helpers {
             ))
         }
 
+        /// Returns an iterator of [`RefGroup`] over the elements of the slice.
         #[inline(always)]
         pub fn into_ref_iter(self) -> impl Iterator<Item = RefGroup<'a, E, T>> {
             E::faer_into_iter(self.into_inner()).map(RefGroup::new)
         }
 
+        /// Returns an iterator of slices over chunks of size `chunk_size`, and the remainder of
+        /// the slice.
         #[inline(always)]
         pub fn into_chunks_exact(
             self,
@@ -2051,18 +2208,24 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity> SliceGroupMut<'a, E> {
+        /// Read the element at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn read(&self, idx: usize) -> E {
             self.rb().read(idx)
         }
 
+        /// Read the element at position `idx`, without bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn read_unchecked(&self, idx: usize) -> E {
             self.rb().read_unchecked(idx)
         }
 
+        /// Write `value` to the location at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn write(&mut self, idx: usize, value: E) {
@@ -2070,6 +2233,10 @@ pub mod group_helpers {
             unsafe { self.write_unchecked(idx, value) }
         }
 
+        /// Write `value` to the location at position `idx`, without bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn write_unchecked(&mut self, idx: usize, value: E) {
@@ -2081,6 +2248,7 @@ pub mod group_helpers {
             );
         }
 
+        /// Fill the slice with zeros.
         #[inline]
         pub fn fill_zero(&mut self) {
             E::faer_map(self.rb_mut().into_inner(), |slice| unsafe {
@@ -2091,6 +2259,7 @@ pub mod group_helpers {
     }
 
     impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
+        /// Get a [`RefGroupMut`] pointing to the element at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn get_mut(self, idx: usize) -> RefGroupMut<'a, E, T> {
@@ -2098,6 +2267,10 @@ pub mod group_helpers {
             unsafe { self.get_unchecked_mut(idx) }
         }
 
+        /// Get a [`RefGroupMut`] pointing to the element at position `idx`.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn get_unchecked_mut(self, idx: usize) -> RefGroupMut<'a, E, T> {
@@ -2109,28 +2282,36 @@ pub mod group_helpers {
             ))
         }
 
+        /// Get a [`RefGroup`] pointing to the element at position `idx`.
         #[inline(always)]
         #[track_caller]
         pub fn get(self, idx: usize) -> RefGroup<'a, E, T> {
             self.into_const().get(idx)
         }
 
+        /// Get a [`RefGroup`] pointing to the element at position `idx`, without bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `idx >= self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn get_unchecked(self, idx: usize) -> RefGroup<'a, E, T> {
             self.into_const().get_unchecked(idx)
         }
 
+        /// Checks whether the slice is empty.
         #[inline]
         pub fn is_empty(&self) -> bool {
             self.rb().is_empty()
         }
 
+        /// Returns the length of the slice.
         #[inline]
         pub fn len(&self) -> usize {
             self.rb().len()
         }
 
+        /// Returns the subslice of `self` from the start to the end of the provided range.
         #[inline(always)]
         #[track_caller]
         pub fn subslice(self, range: Range<usize>) -> Self {
@@ -2138,6 +2319,11 @@ pub mod group_helpers {
             unsafe { self.subslice_unchecked(range) }
         }
 
+        /// Returns the subslice of `self` from the start to the end of the provided range, without
+        /// bound checks.
+        ///
+        /// # Safety
+        /// The behavior is undefined if `range.start > range.end` or `range.end > self.len()`.
         #[inline(always)]
         #[track_caller]
         pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
@@ -2149,11 +2335,13 @@ pub mod group_helpers {
             ))
         }
 
+        /// Returns an iterator of [`RefGroupMut`] over the elements of the slice.
         #[inline(always)]
         pub fn into_mut_iter(self) -> impl Iterator<Item = RefGroupMut<'a, E, T>> {
             E::faer_into_iter(self.into_inner()).map(RefGroupMut::new)
         }
 
+        /// Split `self` at the midpoint `idx`, and return the two parts.
         #[inline(always)]
         #[track_caller]
         pub fn split_at(self, idx: usize) -> (Self, Self) {
@@ -2166,6 +2354,8 @@ pub mod group_helpers {
             (Self::new(head), Self::new(tail))
         }
 
+        /// Returns an iterator of slices over chunks of size `chunk_size`, and the remainder of
+        /// the slice.
         #[inline(always)]
         pub fn into_chunks_exact(
             self,
@@ -2357,12 +2547,15 @@ pub type MatMut<'a, E> = Matrix<inner::DenseMut<'a, E>>;
 pub type MatScale<E> = Matrix<inner::Scale<E>>;
 
 impl<E: Entity> MatScale<E> {
+    /// Returns a new scaling factor with the given value.
     #[inline(always)]
     pub fn new(value: E) -> Self {
         Self {
             inner: inner::Scale(value),
         }
     }
+
+    /// Returns the value of the scaling factor.
     #[inline(always)]
     pub fn value(self) -> E {
         self.inner.0
@@ -2692,31 +2885,43 @@ impl<'a, E: Entity> seal::Seal for RowMut<'a, E> {}
 
 /// Represents a type that can be used to slice a row, such as an index or a range of indices.
 pub trait RowIndex<ColRange>: seal::Seal + Sized {
+    /// Resulting type of the indexing operation.
     type Target;
+
+    /// Index the row at `col`, without bound checks.
     #[allow(clippy::missing_safety_doc)]
-    unsafe fn get_unchecked(this: Self, row: ColRange) -> Self::Target {
-        <Self as RowIndex<ColRange>>::get(this, row)
+    unsafe fn get_unchecked(this: Self, col: ColRange) -> Self::Target {
+        <Self as RowIndex<ColRange>>::get(this, col)
     }
-    fn get(this: Self, row: ColRange) -> Self::Target;
+    /// Index the row at `col`.
+    fn get(this: Self, col: ColRange) -> Self::Target;
 }
 
 /// Represents a type that can be used to slice a column, such as an index or a range of indices.
 pub trait ColIndex<RowRange>: seal::Seal + Sized {
+    /// Resulting type of the indexing operation.
     type Target;
+
+    /// Index the column at `row`, without bound checks.
     #[allow(clippy::missing_safety_doc)]
     unsafe fn get_unchecked(this: Self, row: RowRange) -> Self::Target {
         <Self as ColIndex<RowRange>>::get(this, row)
     }
+    /// Index the column at `row`.
     fn get(this: Self, row: RowRange) -> Self::Target;
 }
 
 /// Represents a type that can be used to slice a matrix, such as an index or a range of indices.
 pub trait MatIndex<RowRange, ColRange>: seal::Seal + Sized {
+    /// Resulting type of the indexing operation.
     type Target;
+
+    /// Index the matrix at `(row, col)`, without bound checks.
     #[allow(clippy::missing_safety_doc)]
     unsafe fn get_unchecked(this: Self, row: RowRange, col: ColRange) -> Self::Target {
         <Self as MatIndex<RowRange, ColRange>>::get(this, row, col)
     }
+    /// Index the matrix at `(row, col)`.
     fn get(this: Self, row: RowRange, col: ColRange) -> Self::Target;
 }
 
@@ -3571,12 +3776,7 @@ const _: () = {
 };
 
 impl<'a, E: Entity> Matrix<inner::DiagRef<'a, E>> {
-    #[inline(always)]
-    #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector`"]
-    pub fn into_column_vector(self) -> ColRef<'a, E> {
-        self.inner.inner
-    }
-
+    /// Returns the diagonal as a column vector view.
     #[inline(always)]
     pub fn column_vector(self) -> ColRef<'a, E> {
         self.inner.inner
@@ -3584,12 +3784,7 @@ impl<'a, E: Entity> Matrix<inner::DiagRef<'a, E>> {
 }
 
 impl<'a, E: Entity> Matrix<inner::DiagMut<'a, E>> {
-    #[inline(always)]
-    #[deprecated = "replaced by `Matrix<DiagRef<'_, E>>::column_vector_mut`"]
-    pub fn into_column_vector(self) -> ColMut<'a, E> {
-        self.inner.inner
-    }
-
+    /// Returns the diagonal as a mutable column vector view.
     #[inline(always)]
     pub fn column_vector_mut(self) -> ColMut<'a, E> {
         self.inner.inner
@@ -3597,11 +3792,13 @@ impl<'a, E: Entity> Matrix<inner::DiagMut<'a, E>> {
 }
 
 impl<E: Entity> Matrix<inner::DiagOwn<E>> {
+    /// Returns the diagonal as a column vector.
     #[inline(always)]
     pub fn into_column_vector(self) -> Col<E> {
         self.inner.inner
     }
 
+    /// Returns a view over `self`.
     #[inline(always)]
     pub fn as_ref(&self) -> Matrix<inner::DiagRef<'_, E>> {
         Matrix {
@@ -3611,6 +3808,7 @@ impl<E: Entity> Matrix<inner::DiagOwn<E>> {
         }
     }
 
+    /// Returns a mutable view over `self`.
     #[inline(always)]
     pub fn as_mut(&mut self) -> Matrix<inner::DiagMut<'_, E>> {
         Matrix {
@@ -3699,10 +3897,12 @@ const _: () = {
             )
         }
 
+        /// Returns the number of rows of the column.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             self.inner.inner.len
         }
+        /// Returns the number of columns of the column. This is always equal to `1`.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             1
@@ -4152,10 +4352,12 @@ const _: () = {
             )
         }
 
+        /// Returns the number of rows of the column.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             self.inner.inner.len
         }
+        /// Returns the number of columns of the column. This is always equal to `1`.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             1
@@ -4526,10 +4728,12 @@ const _: () = {
 // ROW IMPL
 const _: () = {
     impl<'a, E: Entity> RowRef<'a, E> {
+        /// Returns the number of rows of the row. This is always equal to `1`.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             1
         }
+        /// Returns the number of columns of the row.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             self.inner.inner.len
@@ -4952,10 +5156,12 @@ const _: () = {
     }
 
     impl<'a, E: Entity> RowMut<'a, E> {
+        /// Returns the number of rows of the row. This is always equal to `1`.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             1
         }
+        /// Returns the number of columns of the row.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             self.inner.inner.len
@@ -5337,53 +5543,12 @@ const _: () = {
             }
         }
 
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `faer_core::mat::from_column_major_slice`"]
-        pub fn from_column_major_slice(
-            slice: GroupFor<E, &'a [E::Unit]>,
-            nrows: usize,
-            ncols: usize,
-        ) -> Self {
-            mat::from_column_major_slice(slice, nrows, ncols)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `faer_core::mat::from_row_major_slice`"]
-        pub fn from_row_major_slice(
-            slice: GroupFor<E, &'a [E::Unit]>,
-            nrows: usize,
-            ncols: usize,
-        ) -> Self {
-            mat::from_row_major_slice(slice, ncols, nrows)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `faer_core::mat::from_raw_parts`"]
-        pub unsafe fn from_raw_parts(
-            ptr: GroupFor<E, *const E::Unit>,
-            nrows: usize,
-            ncols: usize,
-            row_stride: isize,
-            col_stride: isize,
-        ) -> Self {
-            let mut ptr_is_null = false;
-            E::faer_map(
-                E::faer_as_ref(&ptr),
-                #[inline(always)]
-                |ptr| ptr_is_null |= ptr.is_null(),
-            );
-
-            assert!(!ptr_is_null);
-            mat::from_raw_parts(ptr, nrows, ncols, row_stride, col_stride)
-        }
-
+        /// Returns the number of rows of the matrix.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             self.inner.inner.nrows
         }
+        /// Returns the number of columns of the matrix.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             self.inner.inner.ncols
@@ -6130,6 +6295,7 @@ const _: () = {
             }
         }
 
+        /// Returns the diagonal of the matrix.
         #[inline(always)]
         pub fn diagonal(self) -> Matrix<inner::DiagRef<'a, E>> {
             let size = self.nrows().min(self.ncols());
@@ -6248,16 +6414,6 @@ const _: () = {
             })
         }
 
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatRef::col_chunks`"]
-        pub fn into_col_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
-            self.col_chunks(chunk_size)
-        }
-
         /// Returns an iterator that provides successive chunks of the rows of this matrix, with
         /// each having at most `chunk_size` rows.
         ///
@@ -6272,16 +6428,6 @@ const _: () = {
             self.transpose()
                 .col_chunks(chunk_size)
                 .map(|chunk| chunk.transpose())
-        }
-
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatRef::row_chunks`"]
-        pub fn into_row_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
-            self.row_chunks(chunk_size)
         }
 
         /// Returns a parallel iterator that provides successive chunks of the columns of this
@@ -6307,18 +6453,6 @@ const _: () = {
                 let pos = chunk_size * chunk_idx;
                 self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
             })
-        }
-
-        #[cfg(feature = "rayon")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatRef::par_col_chunks`"]
-        pub fn into_par_col_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
-            self.par_col_chunks(chunk_size)
         }
 
         /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
@@ -6432,48 +6566,12 @@ const _: () = {
             }
         }
 
-        #[track_caller]
-        #[deprecated = "replaced by `faer_core::mat::from_column_major_slice_mut`"]
-        pub fn from_column_major_slice(
-            slice: GroupFor<E, &'a mut [E::Unit]>,
-            nrows: usize,
-            ncols: usize,
-        ) -> Self {
-            mat::from_column_major_slice_mut(slice, nrows, ncols)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `faer_core::mat::from_row_major_slice_mut`"]
-        pub fn from_row_major_slice(
-            slice: GroupFor<E, &'a mut [E::Unit]>,
-            nrows: usize,
-            ncols: usize,
-        ) -> Self {
-            mat::from_row_major_slice_mut(slice, ncols, nrows).transpose_mut()
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `faer_core::mat::from_raw_parts_mut`"]
-        pub unsafe fn from_raw_parts(
-            ptr: GroupFor<E, *mut E::Unit>,
-            nrows: usize,
-            ncols: usize,
-            row_stride: isize,
-            col_stride: isize,
-        ) -> Self {
-            let mut ptr_is_null = false;
-            E::faer_map(E::faer_as_ref(&ptr), |ptr| ptr_is_null |= ptr.is_null());
-
-            assert!(!ptr_is_null);
-            mat::from_raw_parts_mut(ptr, nrows, ncols, row_stride, col_stride)
-        }
-
+        /// Returns the number of rows of the matrix.
         #[inline(always)]
         pub fn nrows(&self) -> usize {
             self.inner.inner.nrows
         }
+        /// Returns the number of columns of the matrix.
         #[inline(always)]
         pub fn ncols(&self) -> usize {
             self.inner.inner.ncols
@@ -6487,12 +6585,6 @@ const _: () = {
                 #[inline(always)]
                 |ptr| ptr.as_ptr(),
             )
-        }
-
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::as_ptr_mut`"]
-        pub fn as_ptr(self) -> GroupFor<E, *mut E::Unit> {
-            self.as_ptr_mut()
         }
 
         /// Returns the row stride of the matrix, specified in number of elements, not in bytes.
@@ -6517,12 +6609,6 @@ const _: () = {
                 #[inline(always)]
                 |ptr| ptr.wrapping_offset(offset),
             )
-        }
-
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::ptr_at_mut`"]
-        pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
-            self.ptr_at_mut(row, col)
         }
 
         #[inline(always)]
@@ -6554,13 +6640,6 @@ const _: () = {
         ) -> GroupFor<E, *mut E::Unit> {
             debug_assert!(all(row < self.nrows(), col < self.ncols()));
             self.ptr_at_mut_unchecked(row, col)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::ptr_inbounds_at_mut`"]
-        pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
-            self.ptr_inbounds_at_mut(row, col)
         }
 
         /// Splits the matrix horizontally and vertically at the given indices into four corners and
@@ -6676,29 +6755,6 @@ const _: () = {
             unsafe { (left.const_cast(), right.const_cast()) }
         }
 
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::split_at_mut`"]
-        pub fn split_at(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
-            self.split_at_mut(row, col)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::split_at_row_mut`"]
-        pub fn split_at_row(self, row: usize) -> (Self, Self) {
-            let (top, bot) = self.into_const().split_at_row(row);
-            unsafe { (top.const_cast(), bot.const_cast()) }
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::split_at_col_mut`"]
-        pub fn split_at_col(self, col: usize) -> (Self, Self) {
-            let (left, right) = self.into_const().split_at_col(col);
-            unsafe { (left.const_cast(), right.const_cast()) }
-        }
-
         /// Returns mutable references to the element at the given indices, or submatrices if either
         /// `row` or `col` is a range.
         ///
@@ -6723,20 +6779,6 @@ const _: () = {
             <Self as MatIndex<RowRange, ColRange>>::get_unchecked(self, row, col)
         }
 
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::get_mut_unchecked`"]
-        pub unsafe fn get_unchecked<RowRange, ColRange>(
-            self,
-            row: RowRange,
-            col: ColRange,
-        ) -> <Self as MatIndex<RowRange, ColRange>>::Target
-        where
-            Self: MatIndex<RowRange, ColRange>,
-        {
-            self.get_mut_unchecked(row, col)
-        }
-
         /// Returns mutable references to the element at the given indices, or submatrices if either
         /// `row` or `col` is a range, with bound checks.
         ///
@@ -6759,20 +6801,6 @@ const _: () = {
             Self: MatIndex<RowRange, ColRange>,
         {
             <Self as MatIndex<RowRange, ColRange>>::get(self, row, col)
-        }
-
-        #[inline(always)]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::get_mut`"]
-        pub fn get<RowRange, ColRange>(
-            self,
-            row: RowRange,
-            col: ColRange,
-        ) -> <Self as MatIndex<RowRange, ColRange>>::Target
-        where
-            Self: MatIndex<RowRange, ColRange>,
-        {
-            self.get_mut(row, col)
         }
 
         /// Reads the value of the element at the given indices.
@@ -6976,13 +7004,6 @@ const _: () = {
             }
         }
 
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::transpose_mut`"]
-        pub fn transpose(self) -> Self {
-            self.transpose_mut()
-        }
-
         /// Returns a view over the conjugate of `self`.
         #[inline(always)]
         #[must_use]
@@ -6991,16 +7012,6 @@ const _: () = {
             E: Conjugate,
         {
             unsafe { self.into_const().conjugate().const_cast() }
-        }
-
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::conjugate_mut`"]
-        pub fn conjugate(self) -> MatMut<'a, E::Conj>
-        where
-            E: Conjugate,
-        {
-            self.conjugate_mut()
         }
 
         /// Returns a view over the conjugate transpose of `self`.
@@ -7013,16 +7024,6 @@ const _: () = {
             self.transpose_mut().conjugate_mut()
         }
 
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::adjoint_mut`"]
-        pub fn adjoint(self) -> MatMut<'a, E::Conj>
-        where
-            E: Conjugate,
-        {
-            self.adjoint_mut()
-        }
-
         /// Returns a view over the canonical representation of `self`, as well as a flag declaring
         /// whether `self` is implicitly conjugated or not.
         #[inline(always)]
@@ -7033,16 +7034,6 @@ const _: () = {
         {
             let (canonical, conj) = self.into_const().canonicalize();
             unsafe { (canonical.const_cast(), conj) }
-        }
-
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::canonicalize_mut`"]
-        pub fn canonicalize(self) -> (MatMut<'a, E::Canonical>, Conj)
-        where
-            E: Conjugate,
-        {
-            self.canonicalize_mut()
         }
 
         /// Returns a view over the `self`, with the rows in reversed order.
@@ -7064,13 +7055,6 @@ const _: () = {
             unsafe { self.into_const().reverse_rows().const_cast() }
         }
 
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::reverse_rows_mut`"]
-        pub fn reverse_rows(self) -> Self {
-            self.reverse_rows_mut()
-        }
-
         /// Returns a view over the `self`, with the columns in reversed order.
         ///
         /// # Example
@@ -7090,13 +7074,6 @@ const _: () = {
             unsafe { self.into_const().reverse_cols().const_cast() }
         }
 
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::reverse_cols_mut`"]
-        pub fn reverse_cols(self) -> Self {
-            unsafe { self.into_const().reverse_cols().const_cast() }
-        }
-
         /// Returns a view over the `self`, with the rows and the columns in reversed order.
         ///
         /// # Example
@@ -7113,13 +7090,6 @@ const _: () = {
         #[inline(always)]
         #[must_use]
         pub fn reverse_rows_and_cols_mut(self) -> Self {
-            unsafe { self.into_const().reverse_rows_and_cols().const_cast() }
-        }
-
-        #[inline(always)]
-        #[must_use]
-        #[deprecated = "replaced by `MatMut::reverse_rows_and_cols_mut`"]
-        pub fn reverse_rows_and_cols(self) -> Self {
             unsafe { self.into_const().reverse_rows_and_cols().const_cast() }
         }
 
@@ -7166,19 +7136,6 @@ const _: () = {
             }
         }
 
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::submatrix_mut`"]
-        pub fn submatrix(
-            self,
-            row_start: usize,
-            col_start: usize,
-            nrows: usize,
-            ncols: usize,
-        ) -> Self {
-            self.submatrix_mut(row_start, col_start, nrows, ncols)
-        }
-
         /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
         /// `nrows`.
         ///
@@ -7208,13 +7165,6 @@ const _: () = {
         #[inline(always)]
         pub fn subrows_mut(self, row_start: usize, nrows: usize) -> Self {
             unsafe { self.into_const().subrows(row_start, nrows).const_cast() }
-        }
-
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::subrows_mut`"]
-        pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
-            self.subrows_mut(row_start, nrows)
         }
 
         /// Returns a view over the submatrix starting at column `col_start`, and with number of
@@ -7248,13 +7198,6 @@ const _: () = {
             unsafe { self.into_const().subcols(col_start, ncols).const_cast() }
         }
 
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::subcols_mut`"]
-        pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
-            self.subcols_mut(col_start, ncols)
-        }
-
         /// Returns a view over the row at the given index.
         ///
         /// # Panics
@@ -7266,13 +7209,6 @@ const _: () = {
             unsafe { self.into_const().row(row_idx).const_cast() }
         }
 
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::row_mut`"]
-        pub fn row(self, row_idx: usize) -> RowMut<'a, E> {
-            self.row_mut(row_idx)
-        }
-
         /// Returns a view over the column at the given index.
         ///
         /// # Panics
@@ -7282,13 +7218,6 @@ const _: () = {
         #[inline(always)]
         pub fn col_mut(self, col_idx: usize) -> ColMut<'a, E> {
             unsafe { self.into_const().col(col_idx).const_cast() }
-        }
-
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::col_mut`"]
-        pub fn col(self, col_idx: usize) -> ColMut<'a, E> {
-            self.col_mut(col_idx)
         }
 
         /// Given a matrix with a single column, returns an object that interprets
@@ -7304,13 +7233,7 @@ const _: () = {
             }
         }
 
-        #[track_caller]
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::column_vector_as_diagonal_mut`"]
-        pub fn column_vector_as_diagonal(self) -> Matrix<inner::DiagMut<'a, E>> {
-            self.column_vector_as_diagonal_mut()
-        }
-
+        /// Returns the diagonal of the matrix.
         #[inline(always)]
         pub fn diagonal_mut(self) -> Matrix<inner::DiagMut<'a, E>> {
             let size = self.nrows().min(self.ncols());
@@ -7327,12 +7250,6 @@ const _: () = {
                     },
                 }
             }
-        }
-
-        #[inline(always)]
-        #[deprecated = "replaced by `MatMut::diagonal_mut`"]
-        pub fn diagonal(self) -> Matrix<inner::DiagMut<'a, E>> {
-            self.diagonal_mut()
         }
 
         /// Returns an owning [`Mat`] of the data
@@ -7416,16 +7333,6 @@ const _: () = {
                 .map(|chunk| unsafe { chunk.const_cast() })
         }
 
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::col_chunks_mut`"]
-        pub fn into_col_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + DoubleEndedIterator<Item = MatMut<'a, E>> {
-            self.col_chunks_mut(chunk_size)
-        }
-
         /// Returns an iterator that provides successive chunks of the rows of this matrix,
         /// with each having at most `chunk_size` rows.
         ///
@@ -7440,16 +7347,6 @@ const _: () = {
             self.into_const()
                 .row_chunks(chunk_size)
                 .map(|chunk| unsafe { chunk.const_cast() })
-        }
-
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::row_chunks_mut`"]
-        pub fn into_row_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + DoubleEndedIterator<Item = MatMut<'a, E>> {
-            self.row_chunks_mut(chunk_size)
         }
 
         /// Returns a parallel iterator that provides successive chunks of the columns of this
@@ -7473,18 +7370,6 @@ const _: () = {
                 .map(|chunk| unsafe { chunk.const_cast() })
         }
 
-        #[cfg(feature = "rayon")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::par_col_chunks_mut`"]
-        pub fn into_par_col_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, E>> {
-            self.par_col_chunks_mut(chunk_size)
-        }
-
         /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
         /// with each having at most `chunk_size` rows.
         ///
@@ -7505,21 +7390,10 @@ const _: () = {
                 .par_row_chunks(chunk_size)
                 .map(|chunk| unsafe { chunk.const_cast() })
         }
-
-        #[cfg(feature = "rayon")]
-        #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-        #[inline]
-        #[track_caller]
-        #[deprecated = "replaced by `MatMut::par_row_chunks_mut`"]
-        pub fn into_par_row_chunks(
-            self,
-            chunk_size: usize,
-        ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatMut<'a, E>> {
-            self.par_row_chunks_mut(chunk_size)
-        }
     }
 
     impl<'a, E: RealField> MatRef<'a, Complex<E>> {
+        /// Returns the real and imaginary components of `self`.
         #[inline(always)]
         pub fn real_imag(self) -> Complex<MatRef<'a, E>> {
             let row_stride = self.row_stride();
@@ -7537,6 +7411,7 @@ const _: () = {
     }
 
     impl<'a, E: RealField> MatMut<'a, Complex<E>> {
+        /// Returns the real and imaginary components of `self`.
         #[inline(always)]
         pub fn real_imag_mut(self) -> Complex<MatMut<'a, E>> {
             let Complex { re, im } = self.into_const().real_imag();
@@ -7940,6 +7815,7 @@ impl<E: Entity> Default for Row<E> {
 }
 
 impl<E: Entity> Col<E> {
+    /// Returns an empty column of dimension `0`.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -7998,10 +7874,12 @@ impl<E: Entity> Col<E> {
         Self::from_fn(nrows, |_| E::faer_zero())
     }
 
+    /// Returns the number of rows of the column.
     #[inline(always)]
     pub fn nrows(&self) -> usize {
         self.inner.inner.len
     }
+    /// Returns the number of columns of the column. This is always equal to `1`.
     #[inline(always)]
     pub fn ncols(&self) -> usize {
         1
@@ -8433,6 +8311,7 @@ impl<E: Entity> Col<E> {
 }
 
 impl<E: Entity> Row<E> {
+    /// Returns an empty row of dimension `0`.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -8491,10 +8370,12 @@ impl<E: Entity> Row<E> {
         Self::from_fn(ncols, |_| E::faer_zero())
     }
 
+    /// Returns the number of rows of the row. This is always equal to `1`.
     #[inline(always)]
     pub fn nrows(&self) -> usize {
         1
     }
+    /// Returns the number of columns of the row.
     #[inline(always)]
     pub fn ncols(&self) -> usize {
         self.inner.inner.len
@@ -8926,6 +8807,7 @@ impl<E: Entity> Row<E> {
 }
 
 impl<E: Entity> Mat<E> {
+    /// Returns an empty matrix of dimension `0×0`.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -9007,10 +8889,12 @@ impl<E: Entity> Mat<E> {
         matrix
     }
 
+    /// Returns the number of rows of the matrix.
     #[inline(always)]
     pub fn nrows(&self) -> usize {
         self.inner.inner.nrows
     }
+    /// Returns the number of columns of the matrix.
     #[inline(always)]
     pub fn ncols(&self) -> usize {
         self.inner.inner.ncols
@@ -9510,6 +9394,7 @@ impl<E: Entity> Mat<E> {
         self.as_ref().adjoint()
     }
 
+    /// Returns a view over the diagonal of the matrix.
     #[inline]
     pub fn diagonal(&self) -> Matrix<inner::DiagRef<'_, E>> {
         self.as_ref().diagonal()
@@ -10076,6 +9961,7 @@ macro_rules! zipped {
     };
 }
 
+/// Used to undo the zipping by the [`zipped!`] macro.
 #[macro_export]
 macro_rules! unzipped {
     ($head: pat $(,)?) => {
@@ -10170,18 +10056,22 @@ pub mod constrained {
         inner: T,
     }
 
+    /// `usize` value tied to the lifetime `'n`.
     #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct Size<'n>(Branded<'n, usize>);
 
+    /// `I` value smaller than the size corresponding to the lifetime `'n`.
     #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct Idx<'n, I>(Branded<'n, I>);
 
+    /// `I` value smaller or equal to the size corresponding to the lifetime `'n`.
     #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct IdxInclusive<'n, I>(Branded<'n, I>);
 
+    /// `I` value smaller than the size corresponding to the lifetime `'n`, or `None`.
     #[derive(Copy, Clone, PartialEq, Eq)]
     #[repr(transparent)]
     pub struct MaybeIdx<'n, I: Index>(Branded<'n, I>);
@@ -10215,29 +10105,35 @@ pub mod constrained {
         }
     }
 
+    /// Array of length equal to the value tied to `'n`.
     #[derive(PartialEq, Eq, PartialOrd, Ord)]
     #[repr(transparent)]
     pub struct Array<'n, T>(Branded<'n, [T]>);
 
+    /// Immutable dense matrix view with dimensions equal to the values tied to `('nrows, 'ncols)`.
     #[repr(transparent)]
     pub struct MatRef<'nrows, 'ncols, 'a, E: Entity>(
         Branded<'ncols, Branded<'nrows, super::MatRef<'a, E>>>,
     );
+    /// Mutable dense matrix view with dimensions equal to the values tied to `('nrows, 'ncols)`.
     #[repr(transparent)]
     pub struct MatMut<'nrows, 'ncols, 'a, E: Entity>(
         Branded<'ncols, Branded<'nrows, super::MatMut<'a, E>>>,
     );
 
+    /// Permutations with compile-time checks.
     pub mod permutation {
         use super::*;
         use crate::assert;
 
+        /// Permutation of length equal to the value tied to `'n`.
         #[repr(transparent)]
         pub struct PermutationRef<'n, 'a, I, E: Entity>(
             Branded<'n, crate::permutation::PermutationRef<'a, I, E>>,
         );
 
         impl<'n, 'a, I: Index, E: Entity> PermutationRef<'n, 'a, I, E> {
+            /// Returns a new permutation after checking that it matches the size tied to `'n`.
             #[inline]
             #[track_caller]
             pub fn new(perm: crate::permutation::PermutationRef<'a, I, E>, size: Size<'n>) -> Self {
@@ -10252,6 +10148,7 @@ pub mod constrained {
                 })
             }
 
+            /// Returns the inverse permutation.
             #[inline]
             pub fn inverse(self) -> PermutationRef<'n, 'a, I, E> {
                 PermutationRef(Branded {
@@ -10260,6 +10157,7 @@ pub mod constrained {
                 })
             }
 
+            /// Returns the forward and inverse permutation indices.
             #[inline]
             pub fn into_arrays(self) -> (&'a Array<'n, Idx<'n, I>>, &'a Array<'n, Idx<'n, I>>) {
                 unsafe {
@@ -10270,16 +10168,19 @@ pub mod constrained {
                 }
             }
 
+            /// Returns the unconstrained permutation.
             #[inline]
             pub fn into_inner(self) -> crate::permutation::PermutationRef<'a, I, E> {
                 self.0.inner
             }
 
+            /// Returns the length of the permutation.
             #[inline]
             pub fn len(&self) -> Size<'n> {
                 unsafe { Size::new_raw_unchecked(self.into_inner().len()) }
             }
 
+            /// Casts the permutation to one with a different type.
             pub fn cast<T: Entity>(self) -> PermutationRef<'n, 'a, I, T> {
                 PermutationRef(Branded {
                     __marker: PhantomData,
@@ -10304,25 +10205,34 @@ pub mod constrained {
         }
     }
 
+    /// Sparse matrices with compile-time checks.
     pub mod sparse {
         use super::*;
         use crate::{assert, group_helpers::SliceGroup, sparse::__get_unchecked};
         use core::ops::Range;
 
+        /// Symbolic structure view with dimensions equal to the values tied to `('nrows, 'ncols)`,
+        /// in column-major order.
         #[repr(transparent)]
         pub struct SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>(
             Branded<'ncols, Branded<'nrows, crate::sparse::SymbolicSparseColMatRef<'a, I>>>,
         );
+        /// Immutable sparse matrix view with dimensions equal to the values tied to `('nrows,
+        /// 'ncols)`, in column-major order.
         pub struct SparseColMatRef<'nrows, 'ncols, 'a, I, E: Entity> {
             symbolic: SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>,
             values: SliceGroup<'a, E>,
         }
+        /// Mutable sparse matrix view with dimensions equal to the values tied to `('nrows,
+        /// 'ncols)`, in column-major order.
         pub struct SparseColMatMut<'nrows, 'ncols, 'a, I, E: Entity> {
             symbolic: SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I>,
             values: SliceGroupMut<'a, E>,
         }
 
         impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I> {
+            /// Returns a new symbolic structure after checking that its dimensions match the
+            /// dimensions tied to `('nrows, 'ncols)`.
             #[inline]
             pub fn new(
                 inner: crate::sparse::SymbolicSparseColMatRef<'a, I>,
@@ -10342,16 +10252,19 @@ pub mod constrained {
                 })
             }
 
+            /// Returns the unconstrained symbolic structure.
             #[inline]
             pub fn into_inner(self) -> crate::sparse::SymbolicSparseColMatRef<'a, I> {
                 self.0.inner.inner
             }
 
+            /// Returns the number of rows of the matrix.
             #[inline]
             pub fn nrows(&self) -> Size<'nrows> {
                 unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
             }
 
+            /// Returns the number of columns of the matrix.
             #[inline]
             pub fn ncols(&self) -> Size<'ncols> {
                 unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
@@ -10364,6 +10277,7 @@ pub mod constrained {
                 unsafe { self.into_inner().col_range_unchecked(j.into_inner()) }
             }
 
+            /// Returns the row indices in column `j`.
             #[inline]
             #[track_caller]
             pub fn row_indices_of_col_raw(&self, j: Idx<'ncols, usize>) -> &'a [Idx<'nrows, I>] {
@@ -10373,6 +10287,7 @@ pub mod constrained {
                 }
             }
 
+            /// Returns the row indices in column `j`.
             #[inline]
             #[track_caller]
             pub fn row_indices_of_col(
@@ -10395,6 +10310,8 @@ pub mod constrained {
         }
 
         impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a, I, E> {
+            /// Returns a new matrix view after checking that its dimensions match the
+            /// dimensions tied to `('nrows, 'ncols)`.
             pub fn new(
                 inner: crate::sparse::SparseColMatRef<'a, I, E>,
                 nrows: Size<'nrows>,
@@ -10410,6 +10327,7 @@ pub mod constrained {
                 }
             }
 
+            /// Returns the unconstrained matrix.
             #[inline]
             pub fn into_inner(self) -> crate::sparse::SparseColMatRef<'a, I, E> {
                 crate::sparse::SparseColMatRef::new(
@@ -10418,6 +10336,7 @@ pub mod constrained {
                 )
             }
 
+            /// Returns the values in column `j`.
             #[inline]
             pub fn values_of_col(&self, j: Idx<'ncols, usize>) -> GroupFor<E, &'a [E::Unit]> {
                 unsafe {
@@ -10429,6 +10348,8 @@ pub mod constrained {
         }
 
         impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatMut<'nrows, 'ncols, 'a, I, E> {
+            /// Returns a new matrix view after checking that its dimensions match the
+            /// dimensions tied to `('nrows, 'ncols)`.
             pub fn new(
                 inner: crate::sparse::SparseColMatMut<'a, I, E>,
                 nrows: Size<'nrows>,
@@ -10444,6 +10365,7 @@ pub mod constrained {
                 }
             }
 
+            /// Returns the unconstrained matrix.
             #[inline]
             pub fn into_inner(self) -> crate::sparse::SparseColMatMut<'a, I, E> {
                 crate::sparse::SparseColMatMut::new(
@@ -10452,8 +10374,9 @@ pub mod constrained {
                 )
             }
 
+            /// Returns the values in column `j`.
             #[inline]
-            pub fn values_of_col(
+            pub fn values_of_col_mut(
                 &mut self,
                 j: Idx<'ncols, usize>,
             ) -> GroupFor<E, &'_ mut [E::Unit]> {
@@ -10573,6 +10496,7 @@ pub mod constrained {
         }
     }
 
+    /// Group helpers with compile-time checks.
     pub mod group_helpers {
         use super::*;
         use crate::{
@@ -10581,7 +10505,9 @@ pub mod constrained {
         };
         use core::ops::Range;
 
+        /// Immutable array group of length equal to the value tied to `'n`.
         pub struct ArrayGroup<'n, 'a, E: Entity>(Branded<'n, SliceGroup<'a, E>>);
+        /// Mutable array group of length equal to the value tied to `'n`.
         pub struct ArrayGroupMut<'n, 'a, E: Entity>(Branded<'n, SliceGroupMut<'a, E>>);
 
         impl<E: Entity> Debug for ArrayGroup<'_, '_, E> {
@@ -10648,6 +10574,8 @@ pub mod constrained {
         }
 
         impl<'n, 'a, E: Entity> ArrayGroupMut<'n, 'a, E> {
+            /// Returns an array group with length after checking that its length matches
+            /// the value tied to `'n`.
             #[inline]
             pub fn new(slice: GroupFor<E, &'a mut [E::Unit]>, len: Size<'n>) -> Self {
                 let slice = SliceGroupMut::<'_, E>::new(slice);
@@ -10658,11 +10586,13 @@ pub mod constrained {
                 })
             }
 
+            /// Returns the unconstrained slice.
             #[inline]
             pub fn into_slice(self) -> GroupFor<E, &'a mut [E::Unit]> {
                 self.0.inner.into_inner()
             }
 
+            /// Returns a subslice at from the range start to its end.
             #[inline]
             pub fn subslice(
                 self,
@@ -10675,11 +10605,13 @@ pub mod constrained {
                 }
             }
 
+            /// Read the element at position `j`.
             #[inline]
             pub fn read(&self, j: Idx<'n, usize>) -> E {
                 self.rb().read(j)
             }
 
+            /// Write `value` to the location at position `j`.
             #[inline]
             pub fn write(&mut self, j: Idx<'n, usize>, value: E) {
                 unsafe {
@@ -10690,6 +10622,8 @@ pub mod constrained {
         }
 
         impl<'n, 'a, E: Entity> ArrayGroup<'n, 'a, E> {
+            /// Returns an array group with length after checking that its length matches
+            /// the value tied to `'n`.
             #[inline]
             pub fn new(slice: GroupFor<E, &'a [E::Unit]>, len: Size<'n>) -> Self {
                 let slice = SliceGroup::<'_, E>::new(slice);
@@ -10700,11 +10634,13 @@ pub mod constrained {
                 })
             }
 
+            /// Returns the unconstrained slice.
             #[inline]
             pub fn into_slice(self) -> GroupFor<E, &'a [E::Unit]> {
                 self.0.inner.into_inner()
             }
 
+            /// Returns a subslice at from the range start to its end.
             #[inline]
             pub fn subslice(
                 self,
@@ -10717,6 +10653,7 @@ pub mod constrained {
                 }
             }
 
+            /// Read the element at position `j`.
             #[inline]
             pub fn read(&self, j: Idx<'n, usize>) -> E {
                 unsafe { SliceGroup::new(self.into_slice()).read_unchecked(j.into_inner()) }
@@ -10725,6 +10662,7 @@ pub mod constrained {
     }
 
     impl<'size> Size<'size> {
+        /// Create a new [`Size`] with a lifetime tied to `n`.
         #[track_caller]
         #[inline]
         pub fn with<R>(n: usize, f: impl for<'n> FnOnce(Size<'n>) -> R) -> R {
@@ -10734,6 +10672,7 @@ pub mod constrained {
             }))
         }
 
+        /// Create two new [`Size`] with lifetimes tied to `m` and `n`.
         #[track_caller]
         #[inline]
         pub fn with2<R>(
@@ -10753,6 +10692,7 @@ pub mod constrained {
             )
         }
 
+        /// Create a new [`Size`] tied to the lifetime `'n`.
         #[inline]
         pub unsafe fn new_raw_unchecked(n: usize) -> Self {
             Size(Branded {
@@ -10761,21 +10701,25 @@ pub mod constrained {
             })
         }
 
+        /// Returns the unconstrained value.
         #[inline]
         pub fn into_inner(self) -> usize {
             self.0.inner
         }
 
+        /// Returns an iterator of the indices smaller than `self`.
         #[inline]
         pub fn indices(self) -> impl DoubleEndedIterator<Item = Idx<'size, usize>> {
             (0..self.0.inner).map(|i| unsafe { Idx::new_raw_unchecked(i) })
         }
 
+        /// Check that the index is bounded by `self`, or panic otherwise.
         #[inline]
         pub fn check<I: Index>(self, idx: I) -> Idx<'size, I> {
             Idx::new_checked(idx, self)
         }
 
+        /// Check that the index is bounded by `self`, or return `None` otherwise.
         #[inline]
         pub fn try_check<I: Index>(self, idx: I) -> Option<Idx<'size, I>> {
             if idx.zx() < self.into_inner() {
@@ -10790,12 +10734,14 @@ pub mod constrained {
     }
 
     impl<'n> Idx<'n, usize> {
+        /// Truncate `self` to a smaller type `I`.
         pub fn truncate<I: Index>(self) -> Idx<'n, I> {
             unsafe { Idx::new_raw_unchecked(I::truncate(self.into_inner())) }
         }
     }
 
     impl<'n, I: Index> Idx<'n, I> {
+        /// Returns a new index after asserting that it's bounded by `size`.
         #[inline]
         pub fn new_checked(idx: I, size: Size<'n>) -> Self {
             assert!(idx.zx() < size.into_inner());
@@ -10804,6 +10750,7 @@ pub mod constrained {
                 inner: idx,
             })
         }
+        /// Returns a new index without asserting that it's bounded by `size`.
         #[inline]
         pub unsafe fn new_unchecked(idx: I, size: Size<'n>) -> Self {
             debug_assert!(idx.zx() < size.into_inner());
@@ -10813,6 +10760,8 @@ pub mod constrained {
             })
         }
 
+        /// Returns a new index without asserting that it's bounded by the value tied to the
+        /// lifetime `'n`.
         #[inline]
         pub unsafe fn new_raw_unchecked(idx: I) -> Self {
             Self(Branded {
@@ -10821,30 +10770,36 @@ pub mod constrained {
             })
         }
 
+        /// Returns the unconstrained value.
         #[inline]
         pub fn into_inner(self) -> I {
             self.0.inner
         }
 
+        /// Zero extend the value.
         #[inline]
         pub fn zx(self) -> Idx<'n, usize> {
             unsafe { Idx::new_raw_unchecked(self.0.inner.zx()) }
         }
 
+        /// Unimplemented: Sign extend the value.
         #[inline]
         pub fn sx(self) -> ! {
             unimplemented!()
         }
 
+        /// Returns the index, bounded inclusively by the value tied to `'n`.
         #[inline]
         pub fn to_inclusive(self) -> IdxInclusive<'n, I> {
             unsafe { IdxInclusive::new_raw_unchecked(self.into_inner()) }
         }
+        /// Returns the next index, bounded inclusively by the value tied to `'n`.
         #[inline]
         pub fn next(self) -> IdxInclusive<'n, I> {
             unsafe { IdxInclusive::new_raw_unchecked(self.into_inner() + I::truncate(1)) }
         }
 
+        /// Assert that the values of `slice` are all bounded by `size`.
         #[track_caller]
         #[inline]
         pub fn from_slice_mut_checked<'a>(
@@ -10855,12 +10810,14 @@ pub mod constrained {
             unsafe { &mut *(slice as *mut _ as *mut _) }
         }
 
+        /// Assume that the values of `slice` are all bounded by the value tied to `'n`.
         #[track_caller]
         #[inline]
         pub unsafe fn from_slice_mut_unchecked<'a>(slice: &'a mut [I]) -> &'a mut [Idx<'n, I>] {
             unsafe { &mut *(slice as *mut _ as *mut _) }
         }
 
+        /// Assert that the values of `slice` are all bounded by `size`.
         #[track_caller]
         pub fn from_slice_ref_checked<'a>(slice: &'a [I], size: Size<'n>) -> &'a [Idx<'n, I>] {
             for &idx in slice {
@@ -10869,6 +10826,7 @@ pub mod constrained {
             unsafe { &*(slice as *const _ as *const _) }
         }
 
+        /// Assume that the values of `slice` are all bounded by the value tied to `'n`.
         #[track_caller]
         #[inline]
         pub unsafe fn from_slice_ref_unchecked<'a>(slice: &'a [I]) -> &'a [Idx<'n, I>] {
@@ -10877,15 +10835,18 @@ pub mod constrained {
     }
 
     impl<'n, I: Index> MaybeIdx<'n, I> {
+        /// Returns an index value.
         #[inline]
         pub fn from_index(idx: Idx<'n, I>) -> Self {
             unsafe { Self::new_raw_unchecked(idx.into_inner()) }
         }
+        /// Returns a `None` value.
         #[inline]
         pub fn none() -> Self {
             unsafe { Self::new_raw_unchecked(I::truncate(usize::MAX)) }
         }
 
+        /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
         #[inline]
         pub fn new_checked(idx: I::Signed, size: Size<'n>) -> Self {
             assert!((idx.sx() as isize) < size.into_inner() as isize);
@@ -10895,6 +10856,7 @@ pub mod constrained {
             })
         }
 
+        /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
         #[inline]
         pub unsafe fn new_unchecked(idx: I::Signed, size: Size<'n>) -> Self {
             debug_assert!((idx.sx() as isize) < size.into_inner() as isize);
@@ -10904,6 +10866,7 @@ pub mod constrained {
             })
         }
 
+        /// Returns a constrained index value if `idx` is nonnegative, `None` otherwise.
         #[inline]
         pub unsafe fn new_raw_unchecked(idx: I) -> Self {
             Self(Branded {
@@ -10912,11 +10875,13 @@ pub mod constrained {
             })
         }
 
+        /// Returns the inner value.
         #[inline]
         pub fn into_inner(self) -> I {
             self.0.inner
         }
 
+        /// Returns the index if available, or `None` otherwise.
         #[inline]
         pub fn idx(self) -> Option<Idx<'n, I>> {
             if self.0.inner.to_signed() >= I::Signed::truncate(0) {
@@ -10926,16 +10891,19 @@ pub mod constrained {
             }
         }
 
+        /// Unimplemented: Zero extend the value.
         #[inline]
         pub fn zx(self) -> ! {
             unimplemented!()
         }
 
+        /// Sign extend the value.
         #[inline]
         pub fn sx(self) -> MaybeIdx<'n, usize> {
             unsafe { MaybeIdx::new_raw_unchecked(self.0.inner.to_signed().sx()) }
         }
 
+        /// Assert that the values of `slice` are all bounded by `size`.
         #[track_caller]
         #[inline]
         pub fn from_slice_mut_checked<'a>(
@@ -10946,6 +10914,7 @@ pub mod constrained {
             unsafe { &mut *(slice as *mut _ as *mut _) }
         }
 
+        /// Assume that the values of `slice` are all bounded by the value tied to `'n`.
         #[track_caller]
         #[inline]
         pub unsafe fn from_slice_mut_unchecked<'a>(
@@ -10954,6 +10923,7 @@ pub mod constrained {
             unsafe { &mut *(slice as *mut _ as *mut _) }
         }
 
+        /// Assert that the values of `slice` are all bounded by `size`.
         #[track_caller]
         pub fn from_slice_ref_checked<'a>(
             slice: &'a [I::Signed],
@@ -10965,11 +10935,13 @@ pub mod constrained {
             unsafe { &*(slice as *const _ as *const _) }
         }
 
+        /// Convert a constrained slice to an unconstrained one.
         #[track_caller]
         pub fn as_slice_ref<'a>(slice: &'a [MaybeIdx<'n, I>]) -> &'a [I::Signed] {
             unsafe { &*(slice as *const _ as *const _) }
         }
 
+        /// Assume that the values of `slice` are all bounded by the value tied to `'n`.
         #[track_caller]
         #[inline]
         pub unsafe fn from_slice_ref_unchecked<'a>(
@@ -10980,6 +10952,7 @@ pub mod constrained {
     }
 
     impl<'n> IdxInclusive<'n, usize> {
+        /// Returns an iterator over constrained indices from `0` to `self` (exclusive).
         #[inline]
         pub fn range_to(self, last: Self) -> impl DoubleEndedIterator<Item = Idx<'n, usize>> {
             (*self..*last).map(
@@ -10990,6 +10963,8 @@ pub mod constrained {
     }
 
     impl<'n, I: Index> IdxInclusive<'n, I> {
+        /// Returns a constrained inclusive index after checking that it's bounded (inclusively) by
+        /// `size`.
         #[inline]
         pub fn new_checked(idx: I, size: Size<'n>) -> Self {
             assert!(idx.zx() <= size.into_inner());
@@ -10998,6 +10973,8 @@ pub mod constrained {
                 inner: idx,
             })
         }
+        /// Returns a constrained inclusive index, assuming that it's bounded (inclusively) by
+        /// `size`.
         #[inline]
         pub unsafe fn new_unchecked(idx: I, size: Size<'n>) -> Self {
             debug_assert!(idx.zx() <= size.into_inner());
@@ -11007,6 +10984,8 @@ pub mod constrained {
             })
         }
 
+        /// Returns a constrained inclusive index, assuming that it's bounded (inclusively) by
+        /// the size tied to `'n`.
         #[inline]
         pub unsafe fn new_raw_unchecked(idx: I) -> Self {
             Self(Branded {
@@ -11015,15 +10994,18 @@ pub mod constrained {
             })
         }
 
+        /// Returns the unconstrained value.
         #[inline]
         pub fn into_inner(self) -> I {
             self.0.inner
         }
 
+        /// Unimplemented: Sign extend the value.
         #[inline]
         pub fn sx(self) -> ! {
             unimplemented!()
         }
+        /// Unimplemented: Zero extend the value.
         #[inline]
         pub fn zx(self) -> ! {
             unimplemented!()
@@ -11031,6 +11013,7 @@ pub mod constrained {
     }
 
     impl<'n, T> Array<'n, T> {
+        /// Returns a constrained array after checking that its length matches `size`.
         #[inline]
         #[track_caller]
         pub fn from_ref<'a>(slice: &'a [T], size: Size<'n>) -> &'a Self {
@@ -11038,6 +11021,7 @@ pub mod constrained {
             unsafe { &*(slice as *const [T] as *const Self) }
         }
 
+        /// Returns a constrained array after checking that its length matches `size`.
         #[inline]
         #[track_caller]
         pub fn from_mut<'a>(slice: &'a mut [T], size: Size<'n>) -> &'a mut Self {
@@ -11045,18 +11029,21 @@ pub mod constrained {
             unsafe { &mut *(slice as *mut [T] as *mut Self) }
         }
 
+        /// Returns the unconstrained slice.
         #[inline]
         #[track_caller]
         pub fn as_ref(&self) -> &[T] {
             unsafe { &*(self as *const _ as *const _) }
         }
 
+        /// Returns the unconstrained slice.
         #[inline]
         #[track_caller]
         pub fn as_mut<'a>(&mut self) -> &'a mut [T] {
             unsafe { &mut *(self as *mut _ as *mut _) }
         }
 
+        /// Returns the length of `self`.
         #[inline]
         pub fn len(&self) -> Size<'n> {
             unsafe { Size::new_raw_unchecked(self.0.inner.len()) }
@@ -11064,6 +11051,8 @@ pub mod constrained {
     }
 
     impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
+        /// Returns a new matrix view after checking that its dimensions match the
+        /// dimensions tied to `('nrows, 'ncols)`.
         #[inline]
         #[track_caller]
         pub fn new(inner: super::MatRef<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
@@ -11080,21 +11069,25 @@ pub mod constrained {
             })
         }
 
+        /// Returns the number of rows of the matrix.
         #[inline]
         pub fn nrows(&self) -> Size<'nrows> {
             unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
         }
 
+        /// Returns the number of columns of the matrix.
         #[inline]
         pub fn ncols(&self) -> Size<'ncols> {
             unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
         }
 
+        /// Returns the unconstrained matrix.
         #[inline]
         pub fn into_inner(self) -> super::MatRef<'a, E> {
             self.0.inner.inner
         }
 
+        /// Returns the element at position `(i, j)`.
         #[inline]
         #[track_caller]
         pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
@@ -11108,6 +11101,8 @@ pub mod constrained {
     }
 
     impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
+        /// Returns a new matrix view after checking that its dimensions match the
+        /// dimensions tied to `('nrows, 'ncols)`.
         #[inline]
         #[track_caller]
         pub fn new(inner: super::MatMut<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
@@ -11124,21 +11119,25 @@ pub mod constrained {
             })
         }
 
+        /// Returns the number of rows of the matrix.
         #[inline]
         pub fn nrows(&self) -> Size<'nrows> {
             unsafe { Size::new_raw_unchecked(self.0.inner.inner.nrows()) }
         }
 
+        /// Returns the number of columns of the matrix.
         #[inline]
         pub fn ncols(&self) -> Size<'ncols> {
             unsafe { Size::new_raw_unchecked(self.0.inner.inner.ncols()) }
         }
 
+        /// Returns the unconstrained matrix.
         #[inline]
         pub fn into_inner(self) -> super::MatMut<'a, E> {
             self.0.inner.inner
         }
 
+        /// Returns the element at position `(i, j)`.
         #[inline]
         #[track_caller]
         pub fn read(&self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>) -> E {
@@ -11150,6 +11149,7 @@ pub mod constrained {
             }
         }
 
+        /// Writes `value` to the location at position `(i, j)`.
         #[inline]
         #[track_caller]
         pub fn write(&mut self, i: Idx<'nrows, usize>, j: Idx<'ncols, usize>, value: E) {
@@ -12210,6 +12210,9 @@ pub mod mat {
         from_column_major_slice(slice, ncols, nrows).transpose()
     }
 
+    /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+    /// The data is interpreted in a column-major format, where the beginnings of two consecutive
+    /// columns are separated by `col_stride` elements.
     #[track_caller]
     pub fn from_column_major_slice_with_stride<'a, E: Entity>(
         slice: GroupFor<E, &'a [E::Unit]>,
@@ -12313,6 +12316,9 @@ pub mod mat {
         from_column_major_slice_mut(slice, ncols, nrows).transpose_mut()
     }
 
+    /// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
+    /// The data is interpreted in a column-major format, where the beginnings of two consecutive
+    /// columns are separated by `col_stride` elements.
     #[track_caller]
     pub fn from_column_major_slice_with_stride_mut<'a, E: Entity>(
         slice: GroupFor<E, &'a mut [E::Unit]>,
@@ -13067,6 +13073,7 @@ mod tests {
     }
 }
 
+/// Implementation of [`zipped!`] structures.
 pub mod zip {
     use super::{assert, debug_assert, *};
     use core::mem::MaybeUninit;
@@ -13080,11 +13087,14 @@ pub mod zip {
         ptr: GroupFor<E, &'a mut MaybeUninit<E::Unit>>,
     }
 
+    /// Type that can be converted to a view.
     pub trait ViewMut {
+        /// View type.
         type Target<'a>
         where
             Self: 'a;
 
+        /// Returns the view over self.
         fn view_mut(&mut self) -> Self::Target<'_>;
     }
 
@@ -13386,6 +13396,7 @@ pub mod zip {
     }
 
     impl<E: Entity> Read<'_, E> {
+        /// Read the value of the element.
         #[inline(always)]
         pub fn read(&self) -> E {
             E::faer_from_units(E::faer_map(
@@ -13396,6 +13407,7 @@ pub mod zip {
         }
     }
     impl<E: Entity> ReadWrite<'_, E> {
+        /// Read the value of the element.
         #[inline(always)]
         pub fn read(&self) -> E {
             E::faer_from_units(E::faer_map(
@@ -13405,6 +13417,7 @@ pub mod zip {
             ))
         }
 
+        /// Write to the location of the element.
         #[inline(always)]
         pub fn write(&mut self, value: E) {
             let value = E::faer_into_units(value);
@@ -13426,53 +13439,82 @@ pub mod zip {
         Include,
     }
 
+    /// Matrix layout transformation. Used for zipping optimizations.
     #[derive(Copy, Clone)]
     pub enum MatLayoutTransform {
+        /// Matrix is used as-is.
         None,
+        /// Matrix rows are reversed.
         ReverseRows,
+        /// Matrix is transposed.
         Transpose,
+        /// Matrix is transposed, then rows are reversed.
         TransposeReverseRows,
     }
 
+    /// Vector layout transformation. Used for zipping optimizations.
     #[derive(Copy, Clone)]
     pub enum VecLayoutTransform {
+        /// Vector is used as-is.
         None,
+        /// Vector is reversed.
         Reverse,
     }
 
+    /// Type with a given matrix shape.
     pub trait MatShape {
+        /// Type of rows.
         type Rows: Copy + Eq;
+        /// Type of columns.
         type Cols: Copy + Eq;
+        /// Returns the number of rows.
         fn nrows(&self) -> Self::Rows;
+        /// Returns the number of columns.
         fn ncols(&self) -> Self::Cols;
     }
 
+    /// Zipped matrix views.
     pub unsafe trait MaybeContiguous: MatShape {
+        /// Indexing type.
         type Index: Copy;
+        /// Contiguous slice type.
         type Slice;
+        /// Layout transformation type.
         type LayoutTransform: Copy;
+        /// Returns slice at index of length `n_elems`.
         unsafe fn get_slice_unchecked(&mut self, idx: Self::Index, n_elems: usize) -> Self::Slice;
     }
 
+    /// Zipped matrix views.
     pub unsafe trait MatIndex<'a, _Outlives = &'a Self>: MaybeContiguous {
+        /// Item produced by the zipped views.
         type Item;
 
+        /// Get the item at the given index, skipping bound checks.
         unsafe fn get_unchecked(&'a mut self, index: Self::Index) -> Self::Item;
+        /// Get the item at the given slice position, skipping bound checks.
         unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item;
 
+        /// Checks if the zipped matrices are contiguous.
         fn is_contiguous(&self) -> bool;
+        /// Computes the preferred iteration layout of the matrices.
         fn preferred_layout(&self) -> Self::LayoutTransform;
+        /// Applies the layout transformation to the matrices.
         fn with_layout(self, layout: Self::LayoutTransform) -> Self;
     }
 
+    /// Single element.
     #[derive(Copy, Clone, Debug)]
     pub struct Last<Mat>(pub Mat);
 
+    /// Zipped elements.
     #[derive(Copy, Clone, Debug)]
     pub struct Zip<Head, Tail>(pub Head, pub Tail);
 
+    /// Single matrix view.
     #[derive(Copy, Clone, Debug)]
     pub struct LastEq<Rows, Cols, Mat: MatShape<Rows = Rows, Cols = Cols>>(pub Mat);
+    /// Zipped matrix views.
     #[derive(Copy, Clone, Debug)]
     pub struct ZipEq<
         Rows,
@@ -13488,12 +13530,14 @@ pub mod zip {
             Tail: MatShape<Rows = Rows, Cols = Cols>,
         > ZipEq<Rows, Cols, Head, Tail>
     {
+        /// Creates a zipped matrix, after asserting that the dimensions match.
         #[inline(always)]
         pub fn new(head: Head, tail: Tail) -> Self {
             assert!((head.nrows(), head.ncols()) == (tail.nrows(), tail.ncols()));
             Self(head, tail)
         }
 
+        /// Creates a zipped matrix, assuming that the dimensions match.
         #[inline(always)]
         pub fn new_unchecked(head: Head, tail: Tail) -> Self {
             debug_assert!((head.nrows(), head.ncols()) == (tail.nrows(), tail.ncols()));
@@ -14338,11 +14382,15 @@ pub mod zip {
             >,
         > LastEq<usize, usize, M>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_mat(self, f);
         }
 
+        /// Applies `f` to each element of the lower triangular half of `self`.
+        ///
+        /// `diag` specifies whether the diagonal should be included or excluded.
         #[inline(always)]
         pub fn for_each_triangular_lower(
             self,
@@ -14352,6 +14400,9 @@ pub mod zip {
             for_each_mat_triangular_lower(self, diag, false, f);
         }
 
+        /// Applies `f` to each element of the upper triangular half of `self`.
+        ///
+        /// `diag` specifies whether the diagonal should be included or excluded.
         #[inline(always)]
         pub fn for_each_triangular_upper(
             self,
@@ -14361,6 +14412,7 @@ pub mod zip {
             for_each_mat_triangular_lower(self, diag, true, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new matrix.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
@@ -14392,11 +14444,13 @@ pub mod zip {
             >,
         > LastEq<(), usize, M>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_row(self, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new row.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
@@ -14425,11 +14479,13 @@ pub mod zip {
             >,
         > LastEq<usize, (), M>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_col(self, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new column.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
@@ -14465,11 +14521,13 @@ pub mod zip {
             >,
         > ZipEq<(), usize, Head, Tail>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_row(self, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new row.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
@@ -14505,11 +14563,13 @@ pub mod zip {
             >,
         > ZipEq<usize, (), Head, Tail>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_col(self, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new column.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
@@ -14545,11 +14605,15 @@ pub mod zip {
             >,
         > ZipEq<usize, usize, Head, Tail>
     {
+        /// Applies `f` to each element of `self`.
         #[inline(always)]
         pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
             for_each_mat(self, f);
         }
 
+        /// Applies `f` to each element of the lower triangular half of `self`.
+        ///
+        /// `diag` specifies whether the diagonal should be included or excluded.
         #[inline(always)]
         pub fn for_each_triangular_lower(
             self,
@@ -14559,6 +14623,9 @@ pub mod zip {
             for_each_mat_triangular_lower(self, diag, false, f);
         }
 
+        /// Applies `f` to each element of the upper triangular half of `self`.
+        ///
+        /// `diag` specifies whether the diagonal should be included or excluded.
         #[inline(always)]
         pub fn for_each_triangular_upper(
             self,
@@ -14568,6 +14635,7 @@ pub mod zip {
             for_each_mat_triangular_lower(self, diag, true, f);
         }
 
+        /// Applies `f` to each element of `self` and collect its result into a new matrix.
         #[inline(always)]
         pub fn map<E: Entity>(
             self,
