@@ -1,3 +1,5 @@
+// code taken from the rust standard library
+
 use crate::debug_assert;
 use faer_entity::{from_copy, into_copy, Entity, GroupCopyFor, GroupFor};
 
