@@ -1,6 +1,10 @@
 //! Computes the LU decomposition of a given sparse matrix. See [`faer_lu`] for more info.
 //!
 //! The entry point in this module is [`SymbolicLu`] and [`factorize_symbolic_lu`].
+//!
+//! # Warning
+//! The functions in this module accept unsorted input, and always produce unsorted decomposition
+//! factors.
 
 use crate::{
     cholesky::simplicial::EliminationTreeRef,
@@ -114,6 +118,8 @@ impl From<FaerError> for LuError {
 }
 
 pub mod supernodal {
+    use crate::try_collect;
+
     use super::*;
     use faer_core::assert;
 
@@ -619,11 +625,18 @@ pub mod supernodal {
         nrows: usize,
     }
     impl MatU8 {
-        fn new(nrows: usize, ncols: usize) -> Self {
+        fn new() -> Self {
             Self {
-                data: alloc::vec![1u8; nrows * ncols],
-                nrows,
+                data: alloc::vec::Vec::new(),
+                nrows: 0,
             }
+        }
+
+        fn with_dims(nrows: usize, ncols: usize) -> Result<Self, FaerError> {
+            Ok(Self {
+                data: try_collect((0..(nrows * ncols)).into_iter().map(|_| 1u8))?,
+                nrows,
+            })
         }
     }
     impl core::ops::Index<(usize, usize)> for MatU8 {
@@ -750,16 +763,14 @@ pub mod supernodal {
 
         let (col_perm, col_perm_inv) = col_perm.into_arrays();
 
-        let mut contrib_work = (0..n_supernodes)
-            .map(|_| {
-                (
-                    E::faer_map(E::UNIT, |()| alloc::vec::Vec::<MaybeUninit<E::Unit>>::new()),
-                    alloc::vec::Vec::<I>::new(),
-                    0usize,
-                    MatU8::new(0, 0),
-                )
-            })
-            .collect::<alloc::vec::Vec<_>>();
+        let mut contrib_work = try_collect((0..n_supernodes).map(|_| {
+            (
+                E::faer_map(E::UNIT, |()| alloc::vec::Vec::<MaybeUninit<E::Unit>>::new()),
+                alloc::vec::Vec::<I>::new(),
+                0usize,
+                MatU8::new(),
+            )
+        }))?;
 
         let work_is_empty = |v: &GroupFor<E, alloc::vec::Vec<MaybeUninit<E::Unit>>>| {
             let mut is_empty = false;
@@ -969,7 +980,7 @@ pub mod supernodal {
                             work_make_empty(&mut left_contrib[d].0);
                             left_contrib[d].1 = alloc::vec::Vec::new();
                             left_contrib[d].2 = 0;
-                            left_contrib[d].3 = MatU8::new(0, 0);
+                            left_contrib[d].3 = MatU8::new();
                         }
                     }
                 }
@@ -1172,7 +1183,7 @@ pub mod supernodal {
                             work_make_empty(&mut left_contrib[d].0);
                             left_contrib[d].1 = alloc::vec::Vec::new();
                             left_contrib[d].2 = 0;
-                            left_contrib[d].3 = MatU8::new(0, 0);
+                            left_contrib[d].3 = MatU8::new();
                         }
                     }
                 }
@@ -1193,9 +1204,14 @@ pub mod supernodal {
                 )?;
                 right_contrib[0]
                     .1
+                    .try_reserve_exact(s_col_index_count)
+                    .map_err(nomem)?;
+                right_contrib[0]
+                    .1
                     .resize(s_col_index_count, I(s_row_index_count - s_size));
                 right_contrib[0].2 = s_col_index_count;
-                right_contrib[0].3 = MatU8::new(s_row_index_count - s_size, s_col_index_count);
+                right_contrib[0].3 =
+                    MatU8::with_dims(s_row_index_count - s_size, s_col_index_count)?;
 
                 let mut s_LU = work_to_mat_mut(
                     &mut right_contrib[0].0,
@@ -1306,7 +1322,7 @@ pub mod supernodal {
                                 work_make_empty(&mut left_contrib[d].0);
                                 left_contrib[d].1 = alloc::vec::Vec::new();
                                 left_contrib[d].2 = 0;
-                                left_contrib[d].3 = MatU8::new(0, 0);
+                                left_contrib[d].3 = MatU8::new();
                             }
                         }
                     }
@@ -1384,7 +1400,7 @@ pub mod simplicial {
         }
 
         #[inline]
-        pub fn l_factor(&self) -> SparseColMatRef<'_, I, E> {
+        pub fn l_factor_unsorted(&self) -> SparseColMatRef<'_, I, E> {
             SparseColMatRef::<'_, I, E>::new(
                 unsafe {
                     SymbolicSparseColMatRef::new_unchecked(
@@ -1400,7 +1416,7 @@ pub mod simplicial {
         }
 
         #[inline]
-        pub fn u_factor(&self) -> SparseColMatRef<'_, I, E> {
+        pub fn u_factor_unsorted(&self) -> SparseColMatRef<'_, I, E> {
             SparseColMatRef::<'_, I, E>::new(
                 unsafe {
                     SymbolicSparseColMatRef::new_unchecked(
@@ -1432,8 +1448,8 @@ pub mod simplicial {
             let mut X = rhs;
             let mut temp = work;
 
-            let l = self.l_factor();
-            let u = self.u_factor();
+            let l = self.l_factor_unsorted();
+            let u = self.u_factor_unsorted();
 
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), row_perm);
             triangular_solve::solve_unit_lower_triangular_in_place(
@@ -1470,8 +1486,8 @@ pub mod simplicial {
             let mut X = rhs;
             let mut temp = work;
 
-            let l = self.l_factor();
-            let u = self.u_factor();
+            let l = self.l_factor_unsorted();
+            let u = self.u_factor_unsorted();
 
             faer_core::permutation::permute_rows(temp.rb_mut(), X.rb(), col_perm);
             triangular_solve::solve_upper_triangular_transpose_in_place(
@@ -1764,17 +1780,6 @@ pub mod simplicial {
         for (idx, p) in row_perm_inv.iter().enumerate() {
             row_perm[p.zx()] = I(idx);
         }
-
-        faer_core::sparse::sort_indices::<I, E>(
-            &lu.l_col_ptr,
-            &mut lu.l_row_ind,
-            lu.l_val.as_slice_mut().into_inner(),
-        );
-        faer_core::sparse::sort_indices::<I, E>(
-            &lu.u_col_ptr,
-            &mut lu.u_row_ind,
-            lu.u_val.as_slice_mut().into_inner(),
-        );
 
         lu.nrows = m;
         lu.ncols = n;

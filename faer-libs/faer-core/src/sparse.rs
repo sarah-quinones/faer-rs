@@ -105,6 +105,15 @@ pub const fn repeat_byte(byte: u8) -> usize {
 /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
 /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]` are
 ///   less than `nrows`
+///
+/// * Within each column, row indices are unique and sorted in increasing order.
+///
+/// # Note
+/// Some algorithms allow working with matrices containing duplicate and/or unsorted row
+/// indicers per column.
+///
+/// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
+/// (though not undefined) behavior.
 #[derive(Debug)]
 pub struct SymbolicSparseColMatRef<'a, I> {
     nrows: usize,
@@ -129,6 +138,15 @@ pub struct SymbolicSparseColMatRef<'a, I> {
 /// * `nnz_per_row[i] <= row_ptrs[i+1] - row_ptrs[i]`
 /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]` are
 ///   less than `ncols`
+///
+/// * Within each row, column indices are unique and sorted in increasing order.
+///
+/// # Note
+/// Some algorithms allow working with matrices containing duplicate and/or unsorted column
+/// indicers per row.
+///
+/// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
+/// (though not undefined) behavior.
 #[derive(Debug)]
 pub struct SymbolicSparseRowMatRef<'a, I> {
     nrows: usize,
@@ -233,6 +251,38 @@ impl<I: Index> SymbolicSparseRowMat<I> {
         }
     }
 
+    /// Creates a new symbolic matrix view from data containing duplicate and/or unsorted column
+    /// indices per row, after asserting its other invariants.
+    ///
+    /// # Panics
+    ///
+    /// See type level documentation.
+    #[inline]
+    #[track_caller]
+    pub fn new_unsorted_checked(
+        nrows: usize,
+        ncols: usize,
+        row_ptrs: Vec<I>,
+        nnz_per_row: Option<Vec<I>>,
+        col_indices: Vec<I>,
+    ) -> Self {
+        SymbolicSparseRowMatRef::new_unsorted_checked(
+            nrows,
+            ncols,
+            &row_ptrs,
+            nnz_per_row.as_deref(),
+            &col_indices,
+        );
+
+        Self {
+            nrows,
+            ncols,
+            row_ptr: row_ptrs,
+            row_nnz: nnz_per_row,
+            col_ind: col_indices,
+        }
+    }
+
     /// Creates a new symbolic matrix view without asserting its invariants.
     ///
     /// # Safety
@@ -305,6 +355,9 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     }
 
     /// Consumes the matrix, and returns its transpose in column-major format without reallocating.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn into_transpose(self) -> SymbolicSparseColMat<I> {
         SymbolicSparseColMat {
@@ -317,12 +370,18 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
         self.as_ref().to_owned()
     }
 
     /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_col_major(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
         self.as_ref().to_col_major()
@@ -331,6 +390,10 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, but the output is a count of all the entries, including the
+    /// duplicate ones.
     #[inline]
     pub fn compute_nnz(&self) -> usize {
         self.as_ref().compute_nnz()
@@ -434,6 +497,38 @@ impl<I: Index> SymbolicSparseColMat<I> {
         }
     }
 
+    /// Creates a new symbolic matrix view from data containing duplicate and/or unsorted row
+    /// indices per column, after asserting its other invariants.
+    ///
+    /// # Panics
+    ///
+    /// See type level documentation.
+    #[inline]
+    #[track_caller]
+    pub fn new_unsorted_checked(
+        nrows: usize,
+        ncols: usize,
+        col_ptrs: Vec<I>,
+        nnz_per_col: Option<Vec<I>>,
+        row_indices: Vec<I>,
+    ) -> Self {
+        SymbolicSparseColMatRef::new_unsorted_checked(
+            nrows,
+            ncols,
+            &col_ptrs,
+            nnz_per_col.as_deref(),
+            &row_indices,
+        );
+
+        Self {
+            nrows,
+            ncols,
+            col_ptr: col_ptrs,
+            col_nnz: nnz_per_col,
+            row_ind: row_indices,
+        }
+    }
+
     /// Creates a new symbolic matrix view without asserting its invariants.
     ///
     /// # Safety
@@ -506,6 +601,9 @@ impl<I: Index> SymbolicSparseColMat<I> {
     }
 
     /// Consumes the matrix, and returns its transpose in row-major format without reallocating.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn into_transpose(self) -> SymbolicSparseRowMat<I> {
         SymbolicSparseRowMat {
@@ -518,12 +616,18 @@ impl<I: Index> SymbolicSparseColMat<I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
         self.as_ref().to_owned()
     }
 
     /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
         self.as_ref().to_row_major()
@@ -532,6 +636,10 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, but the output is a count of all the entries, including the
+    /// duplicate ones.
     #[inline]
     pub fn compute_nnz(&self) -> usize {
         self.as_ref().compute_nnz()
@@ -631,6 +739,69 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
         if let Some(nnz_per_row) = nnz_per_row {
             for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
                 assert!(nnz_i <= c_next - c);
+                let col_indices = &col_indices[c.zx()..c.zx() + nnz_i.zx()];
+                if !col_indices.is_empty() {
+                    let mut j_prev = col_indices[0];
+                    for &j in &col_indices[1..] {
+                        assert!(j_prev < j);
+                        j_prev = j;
+                    }
+                    let ncols = I::truncate(ncols);
+                    assert!(j_prev < ncols);
+                }
+            }
+        } else {
+            for &[c, c_next] in windows2(row_ptrs) {
+                let col_indices = &col_indices[c.zx()..c_next.zx()];
+                if !col_indices.is_empty() {
+                    let mut j_prev = col_indices[0];
+                    for &j in &col_indices[1..] {
+                        assert!(j_prev < j);
+                        j_prev = j;
+                    }
+                    let ncols = I::truncate(ncols);
+                    assert!(j_prev < ncols);
+                }
+            }
+        }
+
+        Self {
+            nrows,
+            ncols,
+            row_ptr: row_ptrs,
+            row_nnz: nnz_per_row,
+            col_ind: col_indices,
+        }
+    }
+
+    /// Creates a new symbolic matrix view from data containing duplicate and/or unsorted column
+    /// indices per row, after asserting its other invariants.
+    ///
+    /// # Panics
+    ///
+    /// See type level documentation.
+    #[inline]
+    #[track_caller]
+    pub fn new_unsorted_checked(
+        nrows: usize,
+        ncols: usize,
+        row_ptrs: &'a [I],
+        nnz_per_row: Option<&'a [I]>,
+        col_indices: &'a [I],
+    ) -> Self {
+        assert!(all(
+            ncols <= I::Signed::MAX.zx(),
+            nrows <= I::Signed::MAX.zx(),
+        ));
+        assert!(row_ptrs.len() == nrows + 1);
+        for &[c, c_next] in windows2(row_ptrs) {
+            assert!(c <= c_next);
+        }
+        assert!(row_ptrs[ncols].zx() <= col_indices.len());
+
+        if let Some(nnz_per_row) = nnz_per_row {
+            for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
+                assert!(nnz_i <= c_next - c);
                 for &j in &col_indices[c.zx()..c.zx() + nnz_i.zx()] {
                     assert!(j < I::truncate(ncols));
                 }
@@ -706,6 +877,9 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
         self.transpose()
@@ -714,6 +888,9 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_col_major(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
         self.transpose().to_row_major().map(|m| m.into_transpose())
@@ -722,6 +899,10 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, but the output is a count of all the entries, including the
+    /// duplicate ones.
     #[inline]
     pub fn compute_nnz(&self) -> usize {
         self.transpose().compute_nnz()
@@ -836,6 +1017,69 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
         if let Some(nnz_per_col) = nnz_per_col {
             for (&nnz_j, &[c, c_next]) in zip(nnz_per_col, windows2(col_ptrs)) {
                 assert!(nnz_j <= c_next - c);
+                let row_indices = &row_indices[c.zx()..c.zx() + nnz_j.zx()];
+                if !row_indices.is_empty() {
+                    let mut i_prev = row_indices[0];
+                    for &i in &row_indices[1..] {
+                        assert!(i_prev < i);
+                        i_prev = i;
+                    }
+                    let nrows = I::truncate(nrows);
+                    assert!(i_prev < nrows);
+                }
+            }
+        } else {
+            for &[c, c_next] in windows2(col_ptrs) {
+                let row_indices = &row_indices[c.zx()..c_next.zx()];
+                if !row_indices.is_empty() {
+                    let mut i_prev = row_indices[0];
+                    for &i in &row_indices[1..] {
+                        assert!(i_prev < i);
+                        i_prev = i;
+                    }
+                    let nrows = I::truncate(nrows);
+                    assert!(i_prev < nrows);
+                }
+            }
+        }
+
+        Self {
+            nrows,
+            ncols,
+            col_ptr: col_ptrs,
+            col_nnz: nnz_per_col,
+            row_ind: row_indices,
+        }
+    }
+
+    /// Creates a new symbolic matrix view from data containing duplicate and/or unsorted row
+    /// indices per column, after asserting its other invariants.
+    ///
+    /// # Panics
+    ///
+    /// See type level documentation.
+    #[inline]
+    #[track_caller]
+    pub fn new_unsorted_checked(
+        nrows: usize,
+        ncols: usize,
+        col_ptrs: &'a [I],
+        nnz_per_col: Option<&'a [I]>,
+        row_indices: &'a [I],
+    ) -> Self {
+        assert!(all(
+            ncols <= I::Signed::MAX.zx(),
+            nrows <= I::Signed::MAX.zx(),
+        ));
+        assert!(col_ptrs.len() == ncols + 1);
+        for &[c, c_next] in windows2(col_ptrs) {
+            assert!(c <= c_next);
+        }
+        assert!(col_ptrs[ncols].zx() <= row_indices.len());
+
+        if let Some(nnz_per_col) = nnz_per_col {
+            for (&nnz_j, &[c, c_next]) in zip(nnz_per_col, windows2(col_ptrs)) {
+                assert!(nnz_j <= c_next - c);
                 for &i in &row_indices[c.zx()..c.zx() + nnz_j.zx()] {
                     assert!(i < I::truncate(nrows));
                 }
@@ -911,6 +1155,9 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SymbolicSparseColMat<I>, FaerError> {
         Ok(SymbolicSparseColMat {
@@ -926,6 +1173,9 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_row_major(&self) -> Result<SymbolicSparseRowMat<I>, FaerError> {
         let mut col_ptr = try_zeroed::<I>(self.nrows + 1)?;
@@ -946,6 +1196,10 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
     /// Returns the number of symbolic non-zeros in the matrix.
     ///
     /// The value is guaranteed to be less than `I::Signed::MAX`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, but the output is a count of all the entries, including the
+    /// duplicate ones.
     #[inline]
     pub fn compute_nnz(&self) -> usize {
         match self.col_nnz {
@@ -1087,6 +1341,9 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1097,6 +1354,9 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1252,6 +1512,9 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1262,6 +1525,9 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1423,6 +1689,9 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1435,6 +1704,9 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1581,6 +1853,9 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1612,6 +1887,9 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1797,6 +2075,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1807,6 +2088,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1859,6 +2143,9 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
     }
 
     /// Returns a view over the transpose of `self` in row-major format.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn into_transpose(self) -> SparseRowMat<I, E> {
         SparseRowMat {
@@ -1932,6 +2219,9 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn to_owned(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -1942,6 +2232,9 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
     }
 
     /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
     #[inline]
     pub fn to_col_major(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
     where
@@ -1994,6 +2287,9 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
     }
 
     /// Returns a view over the transpose of `self` in column-major format.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing an unsorted output.
     #[inline]
     pub fn into_transpose(self) -> SparseColMat<I, E> {
         SparseColMat {
@@ -3230,6 +3526,9 @@ pub unsafe fn permute_hermitian_unsorted<'out, I: Index, E: ComplexField>(
 /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over it.
 ///
 /// The result is stored in `new_col_ptrs`, `new_row_indices`.
+///
+/// # Note
+/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
 pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
     new_values: GroupFor<E, &'out mut [E::Unit]>,
     new_col_ptrs: &'out mut [I],
@@ -3436,6 +3735,9 @@ pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
 /// Computes the transpose of the matrix `A` and returns a view over it.
 ///
 /// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+///
+/// # Note
+/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
 pub fn transpose<'a, I: Index, E: Entity>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
@@ -3458,6 +3760,9 @@ pub fn transpose<'a, I: Index, E: Entity>(
 /// Computes the adjoint of the matrix `A` and returns a view over it.
 ///
 /// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+///
+/// # Note
+/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
 pub fn adjoint<'a, I: Index, E: ComplexField>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
@@ -3480,6 +3785,9 @@ pub fn adjoint<'a, I: Index, E: ComplexField>(
 /// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
 ///
 /// The result is stored in `new_col_ptrs`, `new_row_indices`.
+///
+/// # Note
+/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
 pub fn adjoint_symbolic<'a, I: Index>(
     new_col_ptrs: &'a mut [I],
     new_row_indices: &'a mut [I],
@@ -3513,6 +3821,9 @@ pub mod mul {
 
     /// Multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores the result in
     /// `acc`. See [`crate::mul::matmul`] for more details.
+    ///
+    /// # Note
+    /// Allows unsorted matrices.
     #[track_caller]
     pub fn sparse_dense_matmul<
         I: Index,
@@ -3578,6 +3889,9 @@ pub mod mul {
 
     /// Multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores the result in
     /// `acc`. See [`crate::mul::matmul`] for more details.
+    ///
+    /// # Note
+    /// Allows unsorted matrices.
     #[track_caller]
     pub fn dense_sparse_matmul<
         I: Index,

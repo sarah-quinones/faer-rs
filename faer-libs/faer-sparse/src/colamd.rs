@@ -122,6 +122,8 @@ pub fn order_req<I: Index>(
     )
 }
 
+/// # Note
+/// Allows unsorted matrices.
 pub fn order<I: Index>(
     perm: &mut [I],
     perm_inv: &mut [I],

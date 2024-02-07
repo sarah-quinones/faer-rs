@@ -2,6 +2,10 @@
 //! matrix. See [`faer_cholesky`] for more info.
 //!
 //! The entry point in this module is [`SymbolicCholesky`] and [`factorize_symbolic_cholesky`].
+//!
+//! # Note
+//! The functions in this module accept unsorted input, producing a sorted decomposition factor
+//! (simplicial).
 
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
@@ -204,7 +208,7 @@ pub mod simplicial {
                         .copied(),
                 )?;
 
-                let _ = SymbolicSparseColMatRef::new_checked(n, n, &L_col_ptrs, None, &L_row_ind);
+                let _ = SymbolicSparseColMatRef::new_unsorted_checked(n, n, &L_col_ptrs, None, &L_row_ind);
 
                 Ok(SymbolicSimplicialCholesky {
                     dimension: n,
@@ -4092,7 +4096,7 @@ pub(crate) mod tests {
         ]
         .map(truncate);
 
-        let A = SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind);
+        let A = SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind);
         let zero = truncate(0);
         let mut etree = vec![zero.to_signed(); n];
         let mut col_count = vec![zero; n];
@@ -4137,7 +4141,7 @@ pub(crate) mod tests {
             let row_ind = &*row_ind.iter().copied().map(I).collect::<Vec<_>>();
             let amd_perm = &*amd_perm.iter().copied().map(I).collect::<Vec<_>>();
             let amd_perm_inv = &*amd_perm_inv.iter().copied().map(I).collect::<Vec<_>>();
-            let A = SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind);
+            let A = SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind);
 
             let perm = &mut vec![I(0); n];
             let perm_inv = &mut vec![I(0); n];
@@ -4260,7 +4264,7 @@ pub(crate) mod tests {
         let mut dense = Mat::<E>::zeros(n, n);
 
         let L = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(
+            SymbolicSparseColMatRef::new_unsorted_checked(
                 n,
                 n,
                 symbolic.col_ptrs(),
@@ -4292,7 +4296,7 @@ pub(crate) mod tests {
         let mut dense = Mat::<E>::zeros(n, n);
 
         let L = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(
+            SymbolicSparseColMatRef::new_unsorted_checked(
                 n,
                 n,
                 symbolic.col_ptrs(),
@@ -4350,7 +4354,7 @@ pub(crate) mod tests {
         let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
             values,
         );
         let zero = truncate(0);
@@ -4450,7 +4454,7 @@ pub(crate) mod tests {
         let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
             values,
         );
         let mut A_dense = sparse_to_dense(A);
@@ -4575,7 +4579,7 @@ pub(crate) mod tests {
         let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
             values,
         );
         let mut A_dense = sparse_to_dense(A);
@@ -4716,7 +4720,7 @@ pub(crate) mod tests {
         let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
             values,
         );
         let mut A_dense = sparse_to_dense(A);
@@ -4865,7 +4869,7 @@ pub(crate) mod tests {
         let values = values_mat.col_as_slice(0);
 
         let A = SparseColMatRef::<'_, I, E>::new(
-            SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+            SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
             values,
         );
         let zero = truncate(0);
@@ -4945,7 +4949,7 @@ pub(crate) mod tests {
             let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
-                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
                 values,
             );
 
@@ -5109,7 +5113,7 @@ pub(crate) mod tests {
             let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
-                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
                 values,
             );
 
@@ -5271,7 +5275,7 @@ pub(crate) mod tests {
             let values = values_mat.col_as_slice(0);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
-                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
                 values,
             );
 
@@ -5408,7 +5412,7 @@ pub(crate) mod tests {
             signs[..8].fill(1);
 
             let A_upper = SparseColMatRef::<'_, I, E>::new(
-                SymbolicSparseColMatRef::new_checked(n, n, col_ptr, None, row_ind),
+                SymbolicSparseColMatRef::new_unsorted_checked(n, n, col_ptr, None, row_ind),
                 values,
             );
 

@@ -1,6 +1,10 @@
 //! Computes the QR decomposition of a given sparse matrix. See [`faer_qr`] for more info.
 //!
 //! The entry point in this module is [`SymbolicQr`] and [`factorize_symbolic_qr`].
+//!
+//! # Warning
+//! The functions in this module accept unsorted input, and always produce unsorted decomposition
+//! factors.
 
 use crate::{
     cholesky::{
@@ -1633,7 +1637,7 @@ pub mod simplicial {
         ])
     }
 
-    pub fn factorize_simplicial_numeric_qr<'a, I: Index, E: ComplexField>(
+    pub fn factorize_simplicial_numeric_qr_unsorted<'a, I: Index, E: ComplexField>(
         r_col_ptrs: &'a mut [I],
         r_row_indices: &'a mut [I],
         r_values: GroupFor<E, &'a mut [E::Unit]>,
@@ -1784,6 +1788,7 @@ pub mod simplicial {
             r_pos += 1;
             r_col_ptrs[j + 1] = I(r_pos);
         }
+
         unsafe {
             SimplicialQrRef::new(
                 symbolic,
@@ -2090,7 +2095,7 @@ impl<I: Index> SymbolicQr<I> {
                 let (householder_values, values) = values.split_at(symbolic.len_householder());
                 let (tau_values, _) = values.split_at(n);
 
-                simplicial::factorize_simplicial_numeric_qr::<I, E>(
+                simplicial::factorize_simplicial_numeric_qr_unsorted::<I, E>(
                     r_col_ptrs,
                     r_row_indices,
                     r_values.into_inner(),
@@ -2321,7 +2326,7 @@ mod tests {
         ghost_adjoint, ghost_adjoint_symbolic, ghost_transpose,
         qr::{
             simplicial::{
-                factorize_simplicial_numeric_qr, factorize_simplicial_numeric_qr_req,
+                factorize_simplicial_numeric_qr_req, factorize_simplicial_numeric_qr_unsorted,
                 factorize_simplicial_symbolic_qr,
             },
             supernodal::{
@@ -2852,7 +2857,7 @@ mod tests {
             let mut householder_values = vec![E::faer_zero(); symbolic.len_householder()];
             let mut tau_values = vec![E::faer_zero(); n];
 
-            let qr = factorize_simplicial_numeric_qr::<I, E>(
+            let qr = factorize_simplicial_numeric_qr_unsorted::<I, E>(
                 &mut r_col_ptrs,
                 &mut r_row_indices,
                 &mut r_values,
@@ -2900,7 +2905,13 @@ mod tests {
             }
 
             let R = SparseColMatRef::<'_, usize, E>::new(
-                SymbolicSparseColMatRef::new_checked(n, n, &r_col_ptrs, None, &r_row_indices),
+                SymbolicSparseColMatRef::new_unsorted_checked(
+                    n,
+                    n,
+                    &r_col_ptrs,
+                    None,
+                    &r_row_indices,
+                ),
                 &r_values,
             );
             let r = sparse_to_dense(R);

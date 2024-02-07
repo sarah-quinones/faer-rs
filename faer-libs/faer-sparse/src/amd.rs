@@ -1084,6 +1084,8 @@ pub fn order_sorted<I: Index>(
     ))
 }
 
+/// # Note
+/// Allows unsorted matrices.
 pub fn order_maybe_unsorted<I: Index>(
     perm: &mut [I],
     perm_inv: &mut [I],
