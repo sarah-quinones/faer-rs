@@ -219,6 +219,8 @@ pub use faer_entity::transmute_unchecked;
 pub mod complex_native;
 pub use complex_native::*;
 
+mod sort;
+
 /// Whether a matrix should be implicitly conjugated when read or not.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Conj {
@@ -12579,6 +12581,11 @@ mod tests {
 
                 #[inline(always)]
                 fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
+                    group
+                }
+
+                #[inline(always)]
+                fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
                     group
                 }
 

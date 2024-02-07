@@ -1012,6 +1012,11 @@ unsafe impl Entity for c64 {
     }
 
     #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+        group
+    }
+
+    #[inline(always)]
     fn faer_map_impl<T, U>(
         group: GroupFor<Self, T>,
         f: &mut impl FnMut(T) -> U,

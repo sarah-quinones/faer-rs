@@ -2888,8 +2888,31 @@ const _: () = {
     }
 };
 
+/// Sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
+pub fn sort_indices<I: Index, E: Entity>(
+    col_ptrs: &[I],
+    row_indices: &mut [I],
+    values: GroupFor<E, &mut [E::Unit]>,
+) {
+    assert!(col_ptrs.len() >= 1);
+    let mut values = SliceGroupMut::<'_, E>::new(values);
+
+    let n = col_ptrs.len() - 1;
+    for j in 0..n {
+        let start = col_ptrs[j].zx();
+        let end = col_ptrs[j + 1].zx();
+
+        unsafe {
+            crate::sort::sort_indices(
+                &mut row_indices[start..end],
+                values.rb_mut().subslice(start..end),
+            );
+        }
+    }
+}
+
 #[doc(hidden)]
-pub fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
+pub unsafe fn ghost_permute_hermitian_unsorted<'n, 'out, I: Index, E: ComplexField>(
     new_values: SliceGroupMut<'out, E>,
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
@@ -2897,6 +2920,7 @@ pub fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
     perm: ghost::PermutationRef<'n, '_, I, E>,
     in_side: Side,
     out_side: Side,
+    sort: bool,
     stack: PodStack<'_>,
 ) -> ghost::SparseColMatMut<'n, 'n, 'out, I, E> {
     let N = A.ncols();
@@ -3117,8 +3141,17 @@ pub fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
             debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
         },
     );
+
+    if sort {
+        sort_indices::<I, E>(
+            new_col_ptrs,
+            new_row_indices,
+            new_values.rb_mut().into_inner(),
+        );
+    }
+
     // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 0. new_col_ptrs is non-decreasing
     // 1. new_values.len() == new_row_indices.len()
     // 2. all written row indices are less than n
     unsafe {
@@ -3134,7 +3167,7 @@ pub fn ghost_permute_hermitian<'n, 'out, I: Index, E: ComplexField>(
 }
 
 #[doc(hidden)]
-pub fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
+pub unsafe fn ghost_permute_hermitian_unsorted_symbolic<'n, 'out, I: Index>(
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
@@ -3145,7 +3178,7 @@ pub fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
 ) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
     let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
     let new_values = Symbolic::materialize(new_row_indices.len());
-    *ghost_permute_hermitian(
+    *ghost_permute_hermitian_unsorted(
         SliceGroupMut::<'_, Symbolic>::new(new_values),
         new_col_ptrs,
         new_row_indices,
@@ -3157,8 +3190,41 @@ pub fn ghost_permute_hermitian_symbolic<'n, 'out, I: Index>(
         perm,
         in_side,
         out_side,
+        false,
         stack,
     )
+}
+
+/// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` without sorting the row
+/// indices, and returns a view over it.
+///
+/// The result is stored in `new_col_ptrs`, `new_row_indices`.
+#[doc(hidden)]
+pub unsafe fn permute_hermitian_unsorted<'out, I: Index, E: ComplexField>(
+    new_values: GroupFor<E, &'out mut [E::Unit]>,
+    new_col_ptrs: &'out mut [I],
+    new_row_indices: &'out mut [I],
+    A: SparseColMatRef<'_, I, E>,
+    perm: crate::permutation::PermutationRef<'_, I, E>,
+    in_side: Side,
+    out_side: Side,
+    stack: PodStack<'_>,
+) -> SparseColMatMut<'out, I, E> {
+    ghost::Size::with(A.nrows(), |N| {
+        assert!(A.nrows() == A.ncols());
+        ghost_permute_hermitian_unsorted(
+            SliceGroupMut::new(new_values),
+            new_col_ptrs,
+            new_row_indices,
+            ghost::SparseColMatRef::new(A, N, N),
+            ghost::PermutationRef::new(perm, N),
+            in_side,
+            out_side,
+            false,
+            stack,
+        )
+        .into_inner()
+    })
 }
 
 /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over it.
@@ -3176,16 +3242,19 @@ pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
 ) -> SparseColMatMut<'out, I, E> {
     ghost::Size::with(A.nrows(), |N| {
         assert!(A.nrows() == A.ncols());
-        ghost_permute_hermitian(
-            SliceGroupMut::new(new_values),
-            new_col_ptrs,
-            new_row_indices,
-            ghost::SparseColMatRef::new(A, N, N),
-            ghost::PermutationRef::new(perm, N),
-            in_side,
-            out_side,
-            stack,
-        )
+        unsafe {
+            ghost_permute_hermitian_unsorted(
+                SliceGroupMut::new(new_values),
+                new_col_ptrs,
+                new_row_indices,
+                ghost::SparseColMatRef::new(A, N, N),
+                ghost::PermutationRef::new(perm, N),
+                in_side,
+                out_side,
+                true,
+                stack,
+            )
+        }
         .into_inner()
     })
 }
@@ -3274,7 +3343,7 @@ pub fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
     debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
 
     // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 0. new_col_ptrs is non-decreasing
     // 1. all written row indices are less than n
     ghost::SparseColMatMut::new(
         unsafe {
@@ -3350,7 +3419,7 @@ pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
     debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
 
     // SAFETY:
-    // 0. new_col_ptrs is non-decreasing (see ghost_permute_symmetric_common)
+    // 0. new_col_ptrs is non-decreasing
     // 1. all written row indices are less than n
     ghost::SparseColMatMut::new(
         unsafe {

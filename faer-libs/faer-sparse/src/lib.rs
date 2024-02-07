@@ -50,11 +50,11 @@ impl SupernodalThreshold {
 
 pub use faer_core::{
     permutation::{Index, SignedIndex},
-    sparse::{adjoint, adjoint_symbolic, permute_hermitian, transpose},
+    sparse::{adjoint, adjoint_symbolic, permute_hermitian_unsorted, transpose},
     FaerError,
 };
 
-use faer_core::sparse::{ghost_permute_hermitian, ghost_permute_hermitian_symbolic};
+use faer_core::sparse::{ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic};
 
 #[allow(unused_macros)]
 macro_rules! shadow {
@@ -608,6 +608,16 @@ pub(crate) mod qd {
             #[inline(always)]
             fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
                 Double(&mut group.0, &mut group.1)
+            }
+
+            #[inline(always)]
+            fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+                unsafe {
+                    Double(
+                        core::ptr::addr_of_mut!((*group).0),
+                        core::ptr::addr_of_mut!((*group).1),
+                    )
+                }
             }
 
             #[inline(always)]

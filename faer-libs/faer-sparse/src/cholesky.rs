@@ -8,7 +8,7 @@
 use crate::{
     amd::{self, Control},
     ghost::{self, Array, Idx, MaybeIdx},
-    ghost_permute_hermitian, ghost_permute_hermitian_symbolic, make_raw_req, mem,
+    ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic, make_raw_req, mem,
     mem::NONE,
     nomem, triangular_solve, try_collect, try_zeroed, windows2, FaerError, Index, PermutationRef,
     Side, SliceGroup, SliceGroupMut, SparseColMatRef, SupernodalThreshold, SymbolicSparseColMatRef,
@@ -3341,16 +3341,19 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = ghost_permute_hermitian(
-                new_values.rb_mut(),
-                new_col_ptr,
-                new_row_ind,
-                A,
-                perm.cast(),
-                side,
-                out_side,
-                stack.rb_mut(),
-            );
+            let A = unsafe {
+                ghost_permute_hermitian_unsorted(
+                    new_values.rb_mut(),
+                    new_col_ptr,
+                    new_row_ind,
+                    A,
+                    perm.cast(),
+                    side,
+                    out_side,
+                    false,
+                    stack.rb_mut(),
+                )
+            };
 
             match &self.raw {
                 SymbolicCholeskyRaw::Simplicial(this) => {
@@ -3433,16 +3436,19 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = ghost_permute_hermitian(
-                new_values.rb_mut(),
-                new_col_ptr,
-                new_row_ind,
-                A,
-                perm.cast(),
-                side,
-                out_side,
-                stack.rb_mut(),
-            );
+            let A = unsafe {
+                ghost_permute_hermitian_unsorted(
+                    new_values.rb_mut(),
+                    new_col_ptr,
+                    new_row_ind,
+                    A,
+                    perm.cast(),
+                    side,
+                    out_side,
+                    false,
+                    stack.rb_mut(),
+                )
+            };
 
             match &self.raw {
                 SymbolicCholeskyRaw::Simplicial(this) => {
@@ -3522,16 +3528,19 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = ghost_permute_hermitian(
-                new_values.rb_mut(),
-                new_col_ptr,
-                new_row_ind,
-                A,
-                static_perm.cast(),
-                side,
-                out_side,
-                stack.rb_mut(),
-            );
+            let A = unsafe {
+                ghost_permute_hermitian_unsorted(
+                    new_values.rb_mut(),
+                    new_col_ptr,
+                    new_row_ind,
+                    A,
+                    static_perm.cast(),
+                    side,
+                    out_side,
+                    false,
+                    stack.rb_mut(),
+                )
+            };
 
             match &self.raw {
                 SymbolicCholeskyRaw::Simplicial(this) => {
@@ -3998,15 +4007,17 @@ pub fn factorize_symbolic_cholesky<I: Index>(
 
         let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
         let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-        let A = ghost_permute_hermitian_symbolic(
-            new_col_ptr,
-            new_row_ind,
-            A,
-            perm_,
-            side,
-            Side::Upper,
-            stack.rb_mut(),
-        );
+        let A = unsafe {
+            ghost_permute_hermitian_unsorted_symbolic(
+                new_col_ptr,
+                new_row_ind,
+                A,
+                perm_,
+                side,
+                Side::Upper,
+                stack.rb_mut(),
+            )
+        };
 
         let (etree, stack) = stack.make_raw::<I::Signed>(n);
         let (col_counts, mut stack) = stack.make_raw::<I>(n);

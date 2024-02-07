@@ -1,10 +1,10 @@
 #![allow(clippy::type_complexity)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-pub use ::pulp;
+pub use pulp;
 
 use bytemuck::Pod;
-use core::{fmt::Debug, marker::PhantomData, mem::ManuallyDrop};
+use core::{fmt::Debug, marker::PhantomData, mem::ManuallyDrop, ptr::addr_of_mut};
 use num_complex::Complex;
 use pulp::Simd;
 use reborrow::*;
@@ -234,6 +234,7 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
 
     fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T>;
     fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T>;
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T>;
     fn faer_map_impl<T, U>(
         group: GroupFor<Self, T>,
         f: &mut impl FnMut(T) -> U,
@@ -1728,6 +1729,11 @@ unsafe impl Entity for f32 {
     }
 
     #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+        group
+    }
+
+    #[inline(always)]
     fn faer_map_impl<T, U>(
         group: GroupFor<Self, T>,
         f: &mut impl FnMut(T) -> U,
@@ -1800,6 +1806,11 @@ unsafe impl Entity for f64 {
 
     #[inline(always)]
     fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
         group
     }
 
@@ -1891,6 +1902,16 @@ unsafe impl<E: Entity> Entity for Complex<E> {
         Complex {
             re: E::faer_as_mut(&mut group.re),
             im: E::faer_as_mut(&mut group.im),
+        }
+    }
+
+    #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+        unsafe {
+            Complex {
+                re: E::faer_as_ptr(addr_of_mut!((*group).re)),
+                im: E::faer_as_ptr(addr_of_mut!((*group).im)),
+            }
         }
     }
 
@@ -1995,6 +2016,16 @@ unsafe impl<E: Entity> Entity for ComplexConj<E> {
         ComplexConj {
             re: E::faer_as_mut(&mut group.re),
             neg_im: E::faer_as_mut(&mut group.neg_im),
+        }
+    }
+
+    #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
+        unsafe {
+            ComplexConj {
+                re: E::faer_as_ptr(addr_of_mut!((*group).re)),
+                neg_im: E::faer_as_ptr(addr_of_mut!((*group).neg_im)),
+            }
         }
     }
 
@@ -2706,6 +2737,11 @@ unsafe impl Entity for Symbolic {
 
     #[inline(always)]
     fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
+        group
+    }
+
+    #[inline(always)]
+    fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
         group
     }
 

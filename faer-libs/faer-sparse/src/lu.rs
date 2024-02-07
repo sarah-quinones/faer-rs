@@ -1765,6 +1765,17 @@ pub mod simplicial {
             row_perm[p.zx()] = I(idx);
         }
 
+        faer_core::sparse::sort_indices::<I, E>(
+            &lu.l_col_ptr,
+            &mut lu.l_row_ind,
+            lu.l_val.as_slice_mut().into_inner(),
+        );
+        faer_core::sparse::sort_indices::<I, E>(
+            &lu.u_col_ptr,
+            &mut lu.u_row_ind,
+            lu.u_val.as_slice_mut().into_inner(),
+        );
+
         lu.nrows = m;
         lu.ncols = n;
 
