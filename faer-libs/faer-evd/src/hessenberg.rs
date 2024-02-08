@@ -7,12 +7,14 @@ use faer_core::{
         apply_block_householder_on_the_right_in_place_with_conj, make_householder_in_place_v2,
         upgrade_householder_factor,
     },
-    mul::{inner_prod::inner_prod_with_conj, matmul},
+    mul::{inner_prod::inner_prod_with_conj, matmul, triangular::BlockStructure},
     parallelism_degree, temp_mat_req, temp_mat_uninit, temp_mat_zeroed, unzipped, zipped,
     ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, SimdCtx,
 };
 use faer_entity::*;
 use reborrow::*;
+
+const BLOCKING_THRESHOLD: usize = 256;
 
 pub fn make_hessenberg_in_place_req<E: Entity>(
     n: usize,
@@ -20,16 +22,23 @@ pub fn make_hessenberg_in_place_req<E: Entity>(
     parallelism: Parallelism,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
-    StackReq::try_any_of([
+    if n > BLOCKING_THRESHOLD {
         StackReq::try_all_of([
-            temp_mat_req::<E>(n, 1)?,
-            temp_mat_req::<E>(n, 1)?,
-            temp_mat_req::<E>(n, 1)?,
-            temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
-            temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
-        ])?,
-        apply_block_householder_on_the_right_in_place_req::<E>(n, householder_blocksize, n)?,
-    ])
+            temp_mat_req::<E>(n, householder_blocksize)?,
+            temp_mat_req::<E>(n, householder_blocksize)?,
+        ])
+    } else {
+        StackReq::try_any_of([
+            StackReq::try_all_of([
+                temp_mat_req::<E>(n, 1)?,
+                temp_mat_req::<E>(n, 1)?,
+                temp_mat_req::<E>(n, 1)?,
+                temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
+                temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
+            ])?,
+            apply_block_householder_on_the_right_in_place_req::<E>(n, householder_blocksize, n)?,
+        ])
+    }
 }
 
 struct HessenbergFusedUpdate<'a, E: ComplexField> {
@@ -406,6 +415,27 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
     assert!(a.row_stride() == 1);
 
     let n = a.nrows();
+
+    if n > BLOCKING_THRESHOLD {
+        let bs = householder.ncols();
+        let (z, stack) = temp_mat_uninit::<E>(n, bs, stack);
+
+        make_hessenberg_in_place_qgvdg_blocked(a, z, householder, parallelism, stack);
+    } else {
+        make_hessenberg_in_place_basic(a, householder, parallelism, stack);
+    }
+}
+
+fn make_hessenberg_in_place_basic<E: ComplexField>(
+    a: MatMut<'_, E>,
+    householder: MatMut<'_, E>,
+    parallelism: Parallelism,
+    stack: PodStack<'_>,
+) {
+    assert!(a.nrows() == a.ncols());
+    assert!(a.row_stride() == 1);
+
+    let n = a.nrows();
     if n < 2 {
         return;
     }
@@ -623,6 +653,315 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
     }
 }
 
+fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
+    a: MatMut<'_, E>,
+    z: MatMut<'_, E>,
+    t: MatMut<'_, E>,
+    bs: usize,
+    parallelism: Parallelism,
+    stack: PodStack<'_>,
+) {
+    assert!(a.nrows() == a.ncols());
+    assert!(a.row_stride() == 1);
+
+    let par = parallelism;
+
+    let mut t = t.transpose_mut();
+    let mut z = z;
+
+    let n = a.nrows();
+    let (mut tmp, _) = faer_core::temp_mat_uninit::<E>(n, 1, stack);
+
+    let one = E::faer_one();
+
+    for k in 0..bs {
+        let mut tmp = tmp.rb_mut().get_mut(..k, 0);
+
+        let a = a.rb();
+        // u is eventually lower triangular with zero diagonal and unit subdiagonal
+        // a is eventually upper hessenberg
+        // so they can share the same storage
+        let u = a;
+        let mut a = unsafe { a.const_cast() };
+
+        let t00 = t.rb().get(..k, ..k);
+        let u_0 = u.rb().get(.., ..k);
+        let u10_adjoint = u_0.rb().get(k, ..);
+
+        zipped!(tmp.rb_mut(), u10_adjoint.transpose())
+            .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_conj()));
+        if k > 0 {
+            tmp.write(k - 1, 0, one);
+        }
+
+        faer_core::solve::solve_upper_triangular_in_place(t00, tmp.rb_mut(), par);
+
+        let z_0 = z.rb().get(.., ..k);
+        let mut a_1 = a.rb_mut().get_mut(.., k).as_2d_mut();
+
+        matmul(a_1.rb_mut(), z_0, tmp.rb(), Some(one), one.faer_neg(), par);
+        if k > 0 {
+            let u_0 = u_0.get(1.., ..);
+            let ut0 = u_0.get(..k, ..);
+            let ub0 = u_0.get(k.., ..);
+            matmul(
+                tmp.rb_mut(),
+                ub0.adjoint(),
+                a_1.rb().get(k + 1.., ..),
+                None,
+                one,
+                par,
+            );
+            faer_core::mul::triangular::matmul(
+                tmp.rb_mut(),
+                BlockStructure::Rectangular,
+                ut0.adjoint(),
+                BlockStructure::UnitTriangularUpper,
+                a_1.rb().get(1..k + 1, ..),
+                BlockStructure::Rectangular,
+                Some(one),
+                one,
+                par,
+            );
+        }
+        faer_core::solve::solve_lower_triangular_in_place(t00.adjoint(), tmp.rb_mut(), par);
+        {
+            let u_0 = u_0.get(1.., ..);
+            let ut0 = u_0.get(..k, ..);
+            let ub0 = u_0.get(k.., ..);
+            matmul(
+                a_1.rb_mut().get_mut(k + 1.., ..),
+                ub0,
+                tmp.rb(),
+                Some(one),
+                one.faer_neg(),
+                par,
+            );
+            faer_core::mul::triangular::matmul(
+                a_1.rb_mut().get_mut(1..k + 1, ..),
+                BlockStructure::Rectangular,
+                ut0,
+                BlockStructure::UnitTriangularLower,
+                tmp.rb(),
+                BlockStructure::Rectangular,
+                Some(one),
+                one.faer_neg(),
+                par,
+            );
+        }
+
+        let mut a21 = a_1.rb_mut().get_mut(k + 1.., 0);
+
+        if k + 1 < n {
+            let (tau, new_head) = {
+                let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+                let norm = tail.rb().norm_l2();
+                make_householder_in_place_v2(Some(tail), head.read(0, 0), norm)
+            };
+            t.rb_mut().write(k, k, tau);
+            a21.write(0, 0, one);
+
+            let u = a.rb();
+            let mut a = unsafe { a.rb().const_cast() };
+
+            let a_2 = a.rb().get(.., k + 1..);
+            let u21 = u.get(k + 1.., k);
+            let u20 = u.get(k + 1.., ..k);
+
+            let mut z_1 = z.rb_mut().get_mut(.., k).as_2d_mut();
+            matmul(z_1.rb_mut(), a_2, u21, None, one, par);
+
+            let mut t01 = t.rb_mut().get_mut(..k, k);
+            matmul(t01.rb_mut(), u20.adjoint(), u21, None, one, par);
+            a.write(k + 1, k, new_head);
+        }
+    }
+}
+
+fn make_hessenberg_in_place_qgvdg_blocked<E: ComplexField>(
+    a: MatMut<'_, E>,
+    z: MatMut<'_, E>,
+    t: MatMut<'_, E>,
+    parallelism: Parallelism,
+    stack: PodStack<'_>,
+) {
+    let mut z = z;
+    let mut a = a;
+    let mut t = t;
+
+    let mut stack = stack;
+
+    let bs = t.ncols();
+    let n = a.nrows();
+
+    let mut k = 0;
+    while k < n {
+        let bs = Ord::min(bs, n - k);
+
+        let mut t1 = t
+            .rb_mut()
+            .get_mut(k..Ord::min(k + bs, n - 1), ..Ord::min(k + bs, n - 1) - k);
+
+        let mut zb = z.rb_mut().get_mut(k.., ..);
+
+        make_hessenberg_in_place_qgvdg_unblocked(
+            a.rb_mut().get_mut(k.., k..),
+            zb.rb_mut(),
+            t1.rb_mut(),
+            bs,
+            parallelism,
+            stack.rb_mut(),
+        );
+        let t1 = t1.rb().transpose();
+
+        let u = a.rb().get(.., k..k + bs);
+        let mut a = unsafe { a.rb().const_cast() };
+
+        let ub = u.get(k + 1.., ..);
+
+        if k + 1 < n {
+            let bs_u = Ord::min(bs, n - k - 1);
+            if k > 0 {
+                let (mut tmp, _) = faer_core::temp_mat_uninit::<E>(k, bs_u, stack.rb_mut());
+                let mut atr = a.rb_mut().get_mut(..k, k..);
+                let ub0 = ub.get(..bs_u, ..bs_u);
+                let ub1 = ub.get(bs_u.., ..bs_u);
+
+                matmul(
+                    tmp.rb_mut(),
+                    atr.rb().get(.., bs_u + 1..),
+                    ub1,
+                    None,
+                    E::faer_one(),
+                    parallelism,
+                );
+                faer_core::mul::triangular::matmul(
+                    tmp.rb_mut(),
+                    BlockStructure::Rectangular,
+                    atr.rb().get(.., 1..bs_u + 1),
+                    BlockStructure::Rectangular,
+                    ub0,
+                    BlockStructure::UnitTriangularLower,
+                    Some(E::faer_one()),
+                    E::faer_one(),
+                    parallelism,
+                );
+
+                // TMP := TMP * T^-1
+                // TMP^T := T^-T * TMP^T
+                faer_core::solve::solve_lower_triangular_in_place(
+                    t1.transpose(),
+                    tmp.rb_mut().transpose_mut(),
+                    parallelism,
+                );
+
+                matmul(
+                    atr.rb_mut().get_mut(.., bs_u + 1..),
+                    tmp.rb(),
+                    ub1.adjoint(),
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    parallelism,
+                );
+                faer_core::mul::triangular::matmul(
+                    atr.rb_mut().get_mut(.., 1..bs_u + 1),
+                    BlockStructure::Rectangular,
+                    tmp.rb(),
+                    BlockStructure::Rectangular,
+                    ub0.adjoint(),
+                    BlockStructure::UnitTriangularUpper,
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    parallelism,
+                );
+            }
+
+            if k + bs < n {
+                let mut ab = a.rb_mut().get_mut(k.., k + bs..);
+
+                let u2 = u.get(k + bs.., ..);
+                let old_val = u2.read(0, bs - 1);
+                unsafe { u2.const_cast() }.write(0, bs - 1, E::faer_one());
+
+                {
+                    faer_core::solve::solve_lower_triangular_in_place(
+                        t1.transpose(),
+                        zb.rb_mut().transpose_mut(),
+                        parallelism,
+                    );
+
+                    matmul(
+                        ab.rb_mut(),
+                        zb.rb(),
+                        u2.adjoint(),
+                        Some(E::faer_one()),
+                        E::faer_one().faer_neg(),
+                        parallelism,
+                    );
+                }
+
+                {
+                    let (mut tmp, _) =
+                        faer_core::temp_mat_uninit::<E>(bs_u, n - k - bs, stack.rb_mut());
+                    let ub0 = ub.get(..bs_u, ..bs_u);
+                    let ub1 = ub.get(bs_u.., ..bs_u);
+
+                    matmul(
+                        tmp.rb_mut(),
+                        ub1.adjoint(),
+                        ab.rb().get(bs_u + 1.., ..),
+                        None,
+                        E::faer_one(),
+                        parallelism,
+                    );
+                    faer_core::mul::triangular::matmul(
+                        tmp.rb_mut(),
+                        BlockStructure::Rectangular,
+                        ub0.adjoint(),
+                        BlockStructure::UnitTriangularUpper,
+                        ab.rb().get(1..bs_u + 1, ..),
+                        BlockStructure::Rectangular,
+                        Some(E::faer_one()),
+                        E::faer_one(),
+                        parallelism,
+                    );
+
+                    // TMP := TMP * T^-1
+                    // TMP^T := T^-T * TMP^T
+                    faer_core::solve::solve_lower_triangular_in_place(
+                        t1.adjoint(),
+                        tmp.rb_mut(),
+                        parallelism,
+                    );
+
+                    matmul(
+                        ab.rb_mut().get_mut(bs_u + 1.., ..),
+                        ub1,
+                        tmp.rb(),
+                        Some(E::faer_one()),
+                        E::faer_one().faer_neg(),
+                        parallelism,
+                    );
+                    faer_core::mul::triangular::matmul(
+                        ab.rb_mut().get_mut(1..bs_u + 1, ..),
+                        BlockStructure::Rectangular,
+                        ub0,
+                        BlockStructure::UnitTriangularLower,
+                        tmp.rb(),
+                        BlockStructure::Rectangular,
+                        Some(E::faer_one()),
+                        E::faer_one().faer_neg(),
+                        parallelism,
+                    );
+                }
+                unsafe { u2.const_cast() }.write(0, bs - 1, old_val);
+            }
+        }
+
+        k += bs;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,5 +1046,147 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_qgvdg_real_unblk() {
+        let n = 10;
+        let a_old = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+        let mut a = a_old.clone();
+        let mut t = Mat::zeros(n - 1, n - 1);
+        let mut z = Mat::zeros(n, n - 1);
+
+        let mut mem =
+            dyn_stack::GlobalPodBuffer::new(faer_core::temp_mat_req::<f64>(n, 1).unwrap());
+        make_hessenberg_in_place_qgvdg_unblocked(
+            a.as_mut(),
+            z.as_mut(),
+            t.as_mut(),
+            n,
+            Parallelism::None,
+            PodStack::new(&mut mem),
+        );
+        dbgf::dbgf!("6.2?", &a, &t);
+
+        let mut h = a_old.clone();
+        let householder_blocksize = n - 1;
+        let mut householder = Mat::zeros(n - 1, householder_blocksize);
+        make_hessenberg_in_place_basic(
+            h.as_mut(),
+            householder.as_mut(),
+            Parallelism::None,
+            make_stack!(make_hessenberg_in_place_req::<c64>(
+                n,
+                householder_blocksize,
+                Parallelism::None,
+            )),
+        );
+        dbgf::dbgf!("6.2?", &h, &householder);
+    }
+
+    #[test]
+    fn test_qgvdg_real_blk() {
+        let n = 20;
+        let a_old = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+        let mut a = a_old.clone();
+        let mut t = Mat::zeros(n - 1, 8);
+        let mut z = Mat::zeros(n, 8);
+
+        let mut mem =
+            dyn_stack::GlobalPodBuffer::new(faer_core::temp_mat_req::<f64>(n, n).unwrap());
+        make_hessenberg_in_place_qgvdg_blocked(
+            a.as_mut(),
+            z.as_mut(),
+            t.as_mut(),
+            Parallelism::None,
+            PodStack::new(&mut mem),
+        );
+        dbgf::dbgf!("6.2?", &a, &t);
+
+        let mut h = a_old.clone();
+        let householder_blocksize = 4;
+        let mut householder = Mat::zeros(n - 1, householder_blocksize);
+        make_hessenberg_in_place_basic(
+            h.as_mut(),
+            householder.as_mut(),
+            Parallelism::None,
+            make_stack!(make_hessenberg_in_place_req::<c64>(
+                n,
+                householder_blocksize,
+                Parallelism::None,
+            )),
+        );
+        dbgf::dbgf!("6.2?", &h, &householder);
+    }
+
+    #[test]
+    fn test_qgvdg_cplx_unblk() {
+        let n = 10;
+        let a_old = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
+        let mut a = a_old.clone();
+        let mut t = Mat::zeros(n - 1, n - 1);
+        let mut z = Mat::zeros(n, n - 1);
+
+        let mut mem =
+            dyn_stack::GlobalPodBuffer::new(faer_core::temp_mat_req::<c64>(n, 1).unwrap());
+        make_hessenberg_in_place_qgvdg_unblocked(
+            a.as_mut(),
+            z.as_mut(),
+            t.as_mut(),
+            n,
+            Parallelism::None,
+            PodStack::new(&mut mem),
+        );
+        dbgf::dbgf!("6.2?", &a, &t);
+
+        let mut h = a_old.clone();
+        let householder_blocksize = n - 1;
+        let mut householder = Mat::zeros(n - 1, householder_blocksize);
+        make_hessenberg_in_place_basic(
+            h.as_mut(),
+            householder.as_mut(),
+            Parallelism::None,
+            make_stack!(make_hessenberg_in_place_req::<c64>(
+                n,
+                householder_blocksize,
+                Parallelism::None,
+            )),
+        );
+        dbgf::dbgf!("6.2?", &h, &householder);
+    }
+
+    #[test]
+    fn test_qgvdg_cplx_blk() {
+        let n = 10;
+        let a_old = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
+        let mut a = a_old.clone();
+        let mut t = Mat::zeros(n - 1, 4);
+        let mut z = Mat::zeros(n, 4);
+
+        let mut mem =
+            dyn_stack::GlobalPodBuffer::new(faer_core::temp_mat_req::<c64>(n, n).unwrap());
+        make_hessenberg_in_place_qgvdg_blocked(
+            a.as_mut(),
+            z.as_mut(),
+            t.as_mut(),
+            Parallelism::None,
+            PodStack::new(&mut mem),
+        );
+        dbgf::dbgf!("6.2?", &a, &t);
+
+        let mut h = a_old.clone();
+        let householder_blocksize = 4;
+        let mut householder = Mat::zeros(n - 1, householder_blocksize);
+        make_hessenberg_in_place_basic(
+            h.as_mut(),
+            householder.as_mut(),
+            Parallelism::None,
+            make_stack!(make_hessenberg_in_place_req::<c64>(
+                n,
+                householder_blocksize,
+                Parallelism::None,
+            )),
+        );
+        dbgf::dbgf!("6.2?", &h, &householder);
     }
 }

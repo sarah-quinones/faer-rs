@@ -26,13 +26,13 @@ bytemuck = { workspace = true }
 
 log = { workspace = true, optional = true, default-features = false }
 libm = { workspace = true }
+dbgf = "0.1.1"
 
 [dev-dependencies]
 criterion = "0.5"
 rand = "0.8.5"
 nalgebra = "0.32.3"
 assert_approx_eq = "1.1.0"
-dbgf = "0.1.1"
 
 [features]
 default = ["std", "rayon"]

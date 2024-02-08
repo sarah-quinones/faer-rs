@@ -457,7 +457,7 @@ fn hessenberg<E: ComplexField>(criterion: &mut Criterion) {
 }
 
 fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
-    for n in [32, 64, 128, 256, 512, 1024, 4096] {
+    for n in [32, 64, 128, 256, 512, 1024, 2048, 4096] {
         let mat = Mat::from_fn(n, n, |_, _| random::<E>());
         let mut z = mat.clone();
         let mut w_re = Mat::zeros(n, 1);
@@ -510,6 +510,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
                 &format!("unsym-evd-mt-{}-{}", type_name::<E>(), n),
                 |bencher| {
                     bencher.iter(|| {
+                        let t = std::time::Instant::now();
                         faer_evd::compute_evd_real(
                             mat.as_ref(),
                             w_re.as_mut(),
@@ -519,6 +520,7 @@ fn unsym_evd<E: RealField>(criterion: &mut Criterion) {
                             stack.rb_mut(),
                             Default::default(),
                         );
+                        dbg!(t.elapsed());
                     });
                 },
             );
