@@ -54,7 +54,9 @@ pub use faer_core::{
     FaerError,
 };
 
-use faer_core::sparse::{ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic};
+use faer_core::sparse::{
+    ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic,
+};
 
 #[allow(unused_macros)]
 macro_rules! shadow {

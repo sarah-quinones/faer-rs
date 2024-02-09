@@ -208,7 +208,13 @@ pub mod simplicial {
                         .copied(),
                 )?;
 
-                let _ = SymbolicSparseColMatRef::new_unsorted_checked(n, n, &L_col_ptrs, None, &L_row_ind);
+                let _ = SymbolicSparseColMatRef::new_unsorted_checked(
+                    n,
+                    n,
+                    &L_col_ptrs,
+                    None,
+                    &L_row_ind,
+                );
 
                 Ok(SymbolicSimplicialCholesky {
                     dimension: n,

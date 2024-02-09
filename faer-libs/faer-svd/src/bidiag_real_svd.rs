@@ -17,10 +17,25 @@ use coe::Coerce;
 use core::{iter::zip, mem::swap};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_core::{
-    assert, jacobi::JacobiRotation, join_raw, temp_mat_req, temp_mat_uninit, temp_mat_zeroed,
-    unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    assert, group_helpers::SimdFor, jacobi::JacobiRotation, join_raw, temp_mat_req,
+    temp_mat_uninit, temp_mat_zeroed, unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef,
+    Parallelism, RealField,
 };
 use reborrow::*;
+
+#[allow(dead_code)]
+fn bidiag_to_mat<E: RealField>(diag: &[E], subdiag: &[E]) -> faer_core::Mat<E> {
+    let mut mat = faer_core::Mat::<E>::zeros(diag.len() + 1, diag.len());
+
+    for (i, d) in diag.iter().enumerate() {
+        mat.write(i, i, *d);
+    }
+    for (i, d) in subdiag.iter().enumerate() {
+        mat.write(i + 1, i, *d);
+    }
+
+    mat
+}
 
 fn norm<E: RealField>(v: MatRef<'_, E>) -> E {
     faer_core::mul::inner_prod::inner_prod_with_conj(v, Conj::No, v, Conj::No).faer_sqrt()
@@ -1137,6 +1152,348 @@ fn deflation44<E: RealField>(
     Some(rot)
 }
 
+fn bidiag_svd_qr_algorithm_impl<E: RealField>(
+    diag: &mut [E],
+    subdiag: &mut [E],
+    mut u: Option<MatMut<'_, E>>,
+    mut v: Option<MatMut<'_, E>>,
+    epsilon: E,
+    consider_zero_threshold: E,
+) {
+    let n = diag.len();
+    let max_iter = 30usize.saturating_mul(n).saturating_mul(n);
+
+    let epsilon = epsilon.faer_scale_real(E::faer_from_f64(128.0));
+
+    if let Some(mut u) = u.rb_mut() {
+        u.fill_zero();
+        u.diagonal_mut().column_vector_mut().fill(E::faer_one());
+    }
+    if let Some(mut v) = v.rb_mut() {
+        v.fill_zero();
+        v.diagonal_mut().column_vector_mut().fill(E::faer_one());
+    }
+
+    u = u.map(|u| u.submatrix_mut(0, 0, n, n));
+    v = v.map(|v| v.submatrix_mut(0, 0, n, n));
+
+    let mut max_val = E::faer_zero();
+
+    for x in &*diag {
+        let val = x.faer_abs();
+        if val > max_val {
+            max_val = val;
+        }
+    }
+    for x in &*subdiag {
+        let val = x.faer_abs();
+        if val > max_val {
+            max_val = val;
+        }
+    }
+
+    let max_val = E::faer_one();
+
+    if max_val == E::faer_zero() {
+        return;
+    }
+
+    for x in &mut *diag {
+        *x = (*x).faer_div(max_val);
+    }
+    for x in &mut *subdiag {
+        *x = (*x).faer_div(max_val);
+    }
+
+    struct Impl<'a, E: Entity> {
+        epsilon: E,
+        consider_zero_threshold: E,
+        max_iter: usize,
+        diag: &'a mut [E],
+        subdiag: &'a mut [E],
+        u: Option<MatMut<'a, E>>,
+        v: Option<MatMut<'a, E>>,
+    }
+
+    impl<E: RealField> pulp::WithSimd for Impl<'_, E> {
+        type Output = ();
+
+        #[inline(always)]
+        fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+            let Self {
+                epsilon,
+                consider_zero_threshold,
+                max_iter,
+                diag,
+                subdiag,
+                mut u,
+                mut v,
+            } = self;
+            let n = diag.len();
+            let arch = E::Simd::default();
+
+            for iter in 0..max_iter {
+                let _ = iter;
+                for i in 0..n - 1 {
+                    if subdiag[i].faer_abs()
+                        <= epsilon.faer_mul(diag[i].faer_abs().faer_add(diag[i + 1].faer_abs()))
+                        || subdiag[i].faer_abs() <= epsilon
+                    {
+                        subdiag[i] = E::faer_zero();
+                    }
+                }
+                for i in 0..n {
+                    if diag[i].faer_abs() <= epsilon {
+                        diag[i] = E::faer_zero();
+                    }
+                }
+
+                let mut end = n;
+                while end > 1 && subdiag[end - 2].faer_abs() <= consider_zero_threshold.faer_sqrt()
+                {
+                    end -= 1;
+                }
+
+                if end == 1 {
+                    break;
+                }
+
+                let mut start = end - 1;
+                while start > 0 && subdiag[start - 1] != E::faer_zero() {
+                    start -= 1;
+                }
+
+                let mut found_zero_diag = false;
+                for i in start..end - 1 {
+                    if diag[i] == E::faer_zero() {
+                        found_zero_diag = true;
+                        let mut val = subdiag[i];
+                        subdiag[i] = E::faer_zero();
+                        for j in i + 1..end {
+                            let rot = JacobiRotation::make_givens(diag[j], val);
+                            diag[j] = rot
+                                .c
+                                .faer_mul(diag[j])
+                                .faer_sub(rot.s.faer_mul(val))
+                                .faer_abs();
+
+                            if j < end - 1 {
+                                (val, subdiag[j]) = (
+                                    rot.s.faer_mul(subdiag[j]).faer_neg(),
+                                    rot.c.faer_mul(subdiag[j]),
+                                );
+                            }
+
+                            if let Some(v) = v.rb_mut() {
+                                unsafe {
+                                    rot.apply_on_the_right_in_place_arch(
+                                        arch,
+                                        v.rb().col(i).as_2d().const_cast(),
+                                        v.rb().col(j).as_2d().const_cast(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if found_zero_diag {
+                    continue;
+                }
+
+                let t00 = if end - start == 2 {
+                    diag[end - 2].faer_abs2()
+                } else {
+                    diag[end - 2]
+                        .faer_abs2()
+                        .faer_add(subdiag[end - 3].faer_abs2())
+                };
+                let t11 = diag[end - 1]
+                    .faer_abs2()
+                    .faer_add(subdiag[end - 2].faer_abs2());
+                let t01 = diag[end - 2].faer_mul(subdiag[end - 2]);
+
+                let mu;
+                if false {
+                    let delta = E::faer_sub(
+                        t00.faer_add(t11).faer_abs2(),
+                        t00.faer_mul(t11)
+                            .faer_sub(t01.faer_abs2())
+                            .faer_scale_power_of_two(E::faer_from_f64(4.0)),
+                    );
+
+                    mu = if delta > E::faer_zero() {
+                        let lambda0 = t00
+                            .faer_add(t11)
+                            .faer_add(delta.faer_sqrt())
+                            .faer_scale_power_of_two(E::faer_from_f64(0.5));
+                        let lambda1 = t00
+                            .faer_add(t11)
+                            .faer_sub(delta.faer_sqrt())
+                            .faer_scale_power_of_two(E::faer_from_f64(0.5));
+
+                        if lambda0.faer_sub(t11).faer_abs() < lambda1.faer_sub(t11).faer_abs() {
+                            lambda0
+                        } else {
+                            lambda1
+                        }
+                    } else {
+                        t11
+                    };
+                } else {
+                    let t01_2 = t01.faer_abs2();
+                    if t01_2 > consider_zero_threshold {
+                        let d = (t00.faer_sub(t11)).faer_mul(E::faer_from_f64(0.5));
+                        let mut delta = d.faer_abs2().faer_add(t01_2).faer_sqrt();
+                        if d < E::faer_zero() {
+                            delta = delta.faer_neg();
+                        }
+
+                        mu = t11.faer_sub(t01_2.faer_div(d.faer_add(delta)));
+                    } else {
+                        mu = t11
+                    }
+                }
+
+                let mut y = diag[start].faer_abs2().faer_sub(mu);
+                let mut z = diag[start].faer_mul(subdiag[start]);
+
+                let simde = SimdFor::<E, S>::new(simd);
+                let u_offset = simde.align_offset_ptr(
+                    u.rb()
+                        .map(|mat| mat.as_ptr())
+                        .unwrap_or(E::faer_map(E::UNIT, |()| core::ptr::null())),
+                    diag.len(),
+                );
+                let v_offset = simde.align_offset_ptr(
+                    v.rb()
+                        .map(|mat| mat.as_ptr())
+                        .unwrap_or(E::faer_map(E::UNIT, |()| core::ptr::null())),
+                    diag.len(),
+                );
+
+                for k in start..end - 1 {
+                    let rot = JacobiRotation::make_givens(y, z);
+                    if k > start {
+                        subdiag[k - 1] = rot.c.faer_mul(y).faer_sub(rot.s.faer_mul(z)).faer_abs();
+                    }
+
+                    let mut diag_k = diag[k];
+
+                    (diag_k, subdiag[k]) = (
+                        simde.scalar_mul_add_e(
+                            rot.c,
+                            diag_k,
+                            simde.scalar_mul(rot.s.faer_neg(), subdiag[k]),
+                        ),
+                        simde.scalar_mul_add_e(rot.s, diag_k, simde.scalar_mul(rot.c, subdiag[k])),
+                    );
+
+                    y = diag_k;
+                    (z, diag[k + 1]) = (
+                        simde.scalar_mul(rot.s.faer_neg(), diag[k + 1]),
+                        simde.scalar_mul(rot.c, diag[k + 1]),
+                    );
+
+                    if let Some(u) = u.rb_mut() {
+                        unsafe {
+                            rot.apply_on_the_right_in_place_with_simd_and_offset(
+                                simd,
+                                u_offset,
+                                u.rb().col(k).as_2d().const_cast(),
+                                u.rb().col(k + 1).as_2d().const_cast(),
+                            );
+                        }
+                    }
+
+                    let rot = JacobiRotation::make_givens(y, z);
+
+                    diag_k = rot.c.faer_mul(y).faer_sub(rot.s.faer_mul(z)).faer_abs();
+                    diag[k] = diag_k;
+                    (subdiag[k], diag[k + 1]) = (
+                        simde.scalar_mul_add_e(
+                            rot.c,
+                            subdiag[k],
+                            simde.scalar_mul(rot.s.faer_neg(), diag[k + 1]),
+                        ),
+                        simde.scalar_mul_add_e(
+                            rot.s,
+                            subdiag[k],
+                            simde.scalar_mul(rot.c, diag[k + 1]),
+                        ),
+                    );
+
+                    if k < end - 2 {
+                        y = subdiag[k];
+                        (z, subdiag[k + 1]) = (
+                            simde.scalar_mul(rot.s.faer_neg(), subdiag[k + 1]),
+                            simde.scalar_mul(rot.c, subdiag[k + 1]),
+                        );
+                    }
+
+                    if let Some(v) = v.rb_mut() {
+                        unsafe {
+                            rot.apply_on_the_right_in_place_with_simd_and_offset(
+                                simd,
+                                v_offset,
+                                v.rb().col(k).as_2d().const_cast(),
+                                v.rb().col(k + 1).as_2d().const_cast(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    use faer_entity::SimdCtx;
+    E::Simd::default().dispatch(Impl {
+        epsilon,
+        consider_zero_threshold,
+        max_iter,
+        diag,
+        subdiag,
+        u: u.rb_mut(),
+        v: v.rb_mut(),
+    });
+
+    for (j, d) in diag.iter_mut().enumerate() {
+        if *d < E::faer_zero() {
+            *d = d.faer_neg();
+            if let Some(mut v) = v.rb_mut() {
+                for i in 0..n {
+                    v.write(i, j, v.read(i, j).faer_neg());
+                }
+            }
+        }
+    }
+
+    for k in 0..n {
+        let mut max = E::faer_zero();
+        let mut max_idx = k;
+        for kk in k..n {
+            if diag[kk] > max {
+                max = diag[kk];
+                max_idx = kk;
+            }
+        }
+
+        if k != max_idx {
+            diag.swap(k, max_idx);
+            if let Some(u) = u.rb_mut() {
+                faer_core::permutation::swap_cols(u, k, max_idx);
+            }
+            if let Some(v) = v.rb_mut() {
+                faer_core::permutation::swap_cols(v, k, max_idx);
+            }
+        }
+    }
+
+    for x in &mut *diag {
+        *x = (*x).faer_mul(max_val);
+    }
+}
+
 /// svd of bidiagonal lower matrix of shape (n + 1, n), with the last row being all zeros
 pub fn compute_bidiag_real_svd<E: RealField>(
     diag: &mut [E],
@@ -1144,6 +1501,7 @@ pub fn compute_bidiag_real_svd<E: RealField>(
     mut u: Option<MatMut<'_, E>>,
     v: Option<MatMut<'_, E>>,
     jacobi_fallback_threshold: usize,
+    bidiag_qr_fallback_threshold: usize,
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
@@ -1181,6 +1539,8 @@ pub fn compute_bidiag_real_svd<E: RealField>(
                 .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
             u.write(n, n, E::faer_one());
         }
+    } else if n <= bidiag_qr_fallback_threshold {
+        bidiag_svd_qr_algorithm_impl(diag, subdiag, u, v, epsilon, consider_zero_threshold);
     } else {
         match u {
             Some(u) => bidiag_svd_impl(
@@ -1248,7 +1608,7 @@ fn bidiag_svd_impl<E: RealField>(
     if max_val == E::faer_zero() {
         u.fill_zero();
         if u.nrows() == n + 1 {
-            u.diagonal_mut().column_vector_mut().fill_zero();
+            u.diagonal_mut().column_vector_mut().fill(E::faer_one());
         } else {
             u.write(0, 0, E::faer_one());
             u.write(1, n, E::faer_one());
@@ -1923,6 +2283,7 @@ mod tests {
                     Some(u.as_mut()),
                     Some(v.as_mut()),
                     5,
+                    0,
                     f64::EPSILON,
                     f64::MIN_POSITIVE,
                     Parallelism::None,
@@ -1950,6 +2311,44 @@ mod tests {
 
                     assert_approx_eq!(reconstructed.read(i, j), target, 1e-10);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn test_svd_4() {
+        let diag = vec_static![1.0, 2.0, 3.0, 4.0];
+        let subdiag = vec_static![1.0, 1.0, 1.0];
+
+        let n = diag.len();
+        let mut u = Mat::from_fn(n, n, |_, _| f64::NAN);
+        let mut v = Mat::from_fn(n, n, |_, _| f64::NAN);
+        let s = {
+            let mut diag = diag.clone();
+            let mut subdiag = subdiag.clone();
+            bidiag_svd_qr_algorithm_impl(
+                &mut diag,
+                &mut subdiag,
+                Some(u.as_mut()),
+                Some(v.as_mut()),
+                f64::EPSILON,
+                f64::MIN_POSITIVE,
+            );
+            Mat::from_fn(n, n, |i, j| if i == j { diag[i] } else { 0.0 })
+        };
+
+        let reconstructed = &u * &s * v.transpose();
+        for j in 0..n {
+            for i in 0..n {
+                let target = if i == j {
+                    diag[j]
+                } else if i == j + 1 {
+                    subdiag[j]
+                } else {
+                    0.0
+                };
+
+                assert_approx_eq!(reconstructed.read(i, j), target, 1e-10);
             }
         }
     }
@@ -2101,6 +2500,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 15,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -2406,6 +2806,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 40,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -4503,6 +4904,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 40,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -5576,6 +5978,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 40,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -7673,6 +8076,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 40,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,
@@ -9770,6 +10174,7 @@ mod tests {
                 Some(u.as_mut()),
                 Some(v.as_mut()),
                 40,
+                0,
                 f64::EPSILON,
                 f64::MIN_POSITIVE,
                 Parallelism::None,

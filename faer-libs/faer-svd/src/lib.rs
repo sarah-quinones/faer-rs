@@ -40,6 +40,7 @@ pub mod bidiag_real_svd;
 pub mod jacobi;
 
 const JACOBI_FALLBACK_THRESHOLD: usize = 4;
+const BIDIAG_QR_FALLBACK_THRESHOLD: usize = 128;
 
 /// Indicates whether the singular vectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -283,6 +284,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     mut u: Option<MatMut<'_, E>>,
     mut v: Option<MatMut<'_, E>>,
     jacobi_fallback_threshold: usize,
+    bidiag_qr_fallback_threshold: usize,
     epsilon: E::Real,
     consider_zero_threshold: E::Real,
     parallelism: Parallelism,
@@ -327,6 +329,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
         u.is_some().then_some(u_real.rb_mut()),
         v.is_some().then_some(v_real.rb_mut()),
         jacobi_fallback_threshold,
+        bidiag_qr_fallback_threshold,
         epsilon,
         consider_zero_threshold,
         parallelism,
@@ -409,6 +412,7 @@ fn compute_svd_big<E: ComplexField>(
         u: Option<MatMut<'_, E>>,
         v: Option<MatMut<'_, E>>,
         jacobi_fallback_threshold: usize,
+        bidiag_qr_fallback_threshold: usize,
         epsilon: E::Real,
         consider_zero_threshold: E::Real,
         parallelism: Parallelism,
@@ -499,6 +503,7 @@ fn compute_svd_big<E: ComplexField>(
         v.is_some().then_some(u_b.rb_mut()),
         u.is_some().then_some(v_b.rb_mut()),
         JACOBI_FALLBACK_THRESHOLD,
+        BIDIAG_QR_FALLBACK_THRESHOLD,
         epsilon,
         zero_threshold,
         parallelism,
@@ -1654,7 +1659,6 @@ mod tests {
                 );
 
                 let reconstructed = &u * &s * v.transpose();
-
                 for j in 0..n {
                     for i in 0..m {
                         assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
