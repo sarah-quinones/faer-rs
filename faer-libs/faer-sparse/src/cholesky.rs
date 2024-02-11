@@ -4391,7 +4391,7 @@ pub(crate) mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::ghost_adjoint(
+            let A_lower = faer_core::sparse::util::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
@@ -4498,7 +4498,7 @@ pub(crate) mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::ghost_adjoint(
+            let A_lower = faer_core::sparse::util::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
@@ -4623,7 +4623,7 @@ pub(crate) mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::ghost_adjoint(
+            let A_lower = faer_core::sparse::util::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
@@ -4764,7 +4764,7 @@ pub(crate) mod tests {
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
             let A_lower_values = SliceGroupMut::new(A_lower_values.col_as_slice_mut(0));
-            let A_lower = crate::ghost_adjoint(
+            let A_lower = faer_core::sparse::util::ghost_adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values,
@@ -4962,7 +4962,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower = crate::adjoint(
+            let A_lower = faer_core::sparse::util::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values.col_as_slice_mut(0),
@@ -5126,7 +5126,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower = crate::adjoint(
+            let A_lower = faer_core::sparse::util::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values.col_as_slice_mut(0),
@@ -5288,7 +5288,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower = crate::adjoint(
+            let A_lower = faer_core::sparse::util::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values.col_as_slice_mut(0),
@@ -5425,7 +5425,7 @@ pub(crate) mod tests {
             let mut A_lower_col_ptr = col_ptr.to_vec();
             let mut A_lower_values = values_mat.clone();
             let mut A_lower_row_ind = row_ind.to_vec();
-            let A_lower = crate::adjoint(
+            let A_lower = faer_core::sparse::util::adjoint(
                 &mut A_lower_col_ptr,
                 &mut A_lower_row_ind,
                 A_lower_values.col_as_slice_mut(0),

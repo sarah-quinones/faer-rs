@@ -2323,7 +2323,7 @@ mod tests {
             simplicial::EliminationTreeRef,
             supernodal::{SupernodalLdltRef, SymbolicSupernodalCholesky},
         },
-        ghost_adjoint, ghost_adjoint_symbolic, ghost_transpose,
+        ghost_adjoint_symbolic,
         qr::{
             simplicial::{
                 factorize_simplicial_numeric_qr_req, factorize_simplicial_numeric_qr_unsorted,
@@ -2532,7 +2532,7 @@ mod tests {
             let mut new_row_ind = vec![zero; nnz];
             let mut new_values = vec![0.0; nnz];
 
-            let AT = ghost_adjoint(
+            let AT = faer_core::sparse::util::ghost_adjoint(
                 &mut new_col_ptrs,
                 &mut new_row_ind,
                 SliceGroupMut::<'_, f64>::new(&mut new_values),
@@ -2651,7 +2651,7 @@ mod tests {
             let mut new_row_ind = vec![zero; nnz];
             let mut new_values = vec![E::faer_zero(); nnz];
 
-            let AT = ghost_transpose(
+            let AT = faer_core::sparse::util::ghost_transpose(
                 &mut new_col_ptrs,
                 &mut new_row_ind,
                 SliceGroupMut::<'_, E>::new(&mut new_values),
@@ -2797,7 +2797,7 @@ mod tests {
             let mut new_row_ind = vec![zero; nnz];
             let mut new_values = vec![E::faer_zero(); nnz];
 
-            let AT = ghost_transpose(
+            let AT = faer_core::sparse::util::ghost_transpose(
                 &mut new_col_ptrs,
                 &mut new_row_ind,
                 SliceGroupMut::<'_, E>::new(&mut new_values),
