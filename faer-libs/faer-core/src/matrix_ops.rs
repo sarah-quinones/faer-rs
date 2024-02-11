@@ -79,13 +79,13 @@ impl MatrixKind for Dense {
 }
 impl<I: Index> MatrixKind for SparseColMat<I> {
     type Ref<'a, E: Entity> = sparse::SparseColMatRef<'a, I, E>;
-    type Mut<'a, E: Entity> = ();
-    type Own<E: Entity> = ();
+    type Mut<'a, E: Entity> = sparse::SparseColMatMut<'a, I, E>;
+    type Own<E: Entity> = sparse::SparseColMat<I, E>;
 }
 impl<I: Index> MatrixKind for SparseRowMat<I> {
     type Ref<'a, E: Entity> = sparse::SparseRowMatRef<'a, I, E>;
-    type Mut<'a, E: Entity> = ();
-    type Own<E: Entity> = ();
+    type Mut<'a, E: Entity> = sparse::SparseRowMatMut<'a, I, E>;
+    type Own<E: Entity> = sparse::SparseRowMat<I, E>;
 }
 impl MatrixKind for Scale {
     type Ref<'a, E: Entity> = &'a MatScale<E>;
@@ -340,6 +340,46 @@ impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMatRef<'_, I, E> {
     #[inline(always)]
     fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
         *this
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseColMatMut<'_, I, E> {
+    type Kind = SparseColMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.rb()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMatMut<'_, I, E> {
+    type Kind = SparseRowMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.rb()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseColMat<I, E> {
+    type Kind = SparseColMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.as_ref()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMat<I, E> {
+    type Kind = SparseRowMat<I>;
+    type Elem = E;
+
+    #[inline(always)]
+    fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
+        this.as_ref()
     }
 }
 
@@ -1251,6 +1291,40 @@ impl MatEq<Dense> for Dense {
     }
 }
 
+impl<I: Index> MatEq<SparseColMat<I>> for SparseColMat<I> {
+    fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> bool {
+        if lhs.nrows() != rhs.nrows() || lhs.ncols() != rhs.ncols() {
+            return false;
+        }
+
+        let n = lhs.ncols();
+        let mut equal = true;
+        for j in 0..n {
+            equal &= lhs.row_indices_of_col_raw(j) == rhs.row_indices_of_col_raw(j);
+            let lhs_val = SliceGroup::<'_, LhsE>::new(lhs.values_of_col(j));
+            let rhs_val = SliceGroup::<'_, RhsE>::new(rhs.values_of_col(j));
+            equal &= lhs_val
+                .into_ref_iter()
+                .map(|r| r.read().canonicalize())
+                .eq(rhs_val.into_ref_iter().map(|r| r.read().canonicalize()))
+        }
+
+        equal
+    }
+}
+
+impl<I: Index> MatEq<SparseRowMat<I>> for SparseRowMat<I> {
+    fn mat_eq<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> bool {
+        lhs.transpose() == rhs.transpose()
+    }
+}
+
 impl MatAdd<DenseCol> for DenseCol {
     type Output = DenseCol;
 
@@ -1481,6 +1555,216 @@ impl MatNeg for Dense {
         zipped!(out.as_mut(), mat)
             .for_each(|unzipped!(mut out, src)| out.write(src.read().canonicalize().faer_neg()));
         out
+    }
+}
+
+impl<I: Index> MatAdd<SparseColMat<I>> for SparseColMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::add(lhs, rhs).unwrap()
+    }
+}
+impl<I: Index> MatAdd<SparseRowMat<I>> for SparseRowMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::add(lhs.transpose(), rhs.transpose())
+            .unwrap()
+            .into_transpose()
+            .to_col_major()
+            .unwrap()
+    }
+}
+impl<I: Index> MatAdd<SparseRowMat<I>> for SparseColMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::add(lhs, rhs.to_col_major().unwrap().as_ref()).unwrap()
+    }
+}
+impl<I: Index> MatAdd<SparseColMat<I>> for SparseRowMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_add<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::add(lhs.to_col_major().unwrap().as_ref(), rhs).unwrap()
+    }
+}
+
+impl<I: Index> MatSub<SparseColMat<I>> for SparseColMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::sub(lhs, rhs).unwrap()
+    }
+}
+impl<I: Index> MatSub<SparseRowMat<I>> for SparseRowMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, Self>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::sub(lhs.transpose(), rhs.transpose())
+            .unwrap()
+            .into_transpose()
+            .to_col_major()
+            .unwrap()
+    }
+}
+impl<I: Index> MatSub<SparseRowMat<I>> for SparseColMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::sub(lhs, rhs.to_col_major().unwrap().as_ref()).unwrap()
+    }
+}
+impl<I: Index> MatSub<SparseColMat<I>> for SparseRowMat<I> {
+    type Output = SparseColMat<I>;
+
+    #[track_caller]
+    fn mat_sub<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindRef<'_, LhsE, Self>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) -> KindOwn<E, Self::Output> {
+        crate::sparse::ops::sub(lhs.to_col_major().unwrap().as_ref(), rhs).unwrap()
+    }
+}
+
+impl<I: Index> MatNeg for SparseColMat<I> {
+    type Output = SparseColMat<I>;
+
+    fn mat_neg<E: Conjugate>(mat: KindRef<'_, E, Self>) -> KindOwn<E::Canonical, Self::Output>
+    where
+        E::Canonical: ComplexField,
+    {
+        let mut out = mat.to_owned().unwrap();
+        crate::group_helpers::SliceGroupMut::<E::Canonical>::new(out.as_mut().values_mut())
+            .into_mut_iter()
+            .for_each(|mut x| x.write(x.read().faer_neg()));
+        out
+    }
+}
+
+impl<I: Index> MatNeg for SparseRowMat<I> {
+    type Output = SparseColMat<I>;
+
+    fn mat_neg<E: Conjugate>(mat: KindRef<'_, E, Self>) -> KindOwn<E::Canonical, Self::Output>
+    where
+        E::Canonical: ComplexField,
+    {
+        let mut out = mat.to_col_major().unwrap();
+        crate::group_helpers::SliceGroupMut::<E::Canonical>::new(out.as_mut().values_mut())
+            .into_mut_iter()
+            .for_each(|mut x| x.write(x.read().faer_neg()));
+        out
+    }
+}
+
+impl<I: Index> MatAddAssign<SparseColMat<I>> for SparseColMat<I> {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseColMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) {
+        crate::sparse::ops::add_assign(lhs, rhs);
+    }
+}
+impl<I: Index> MatSubAssign<SparseColMat<I>> for SparseColMat<I> {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseColMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) {
+        crate::sparse::ops::sub_assign(lhs, rhs);
+    }
+}
+
+impl<I: Index> MatAddAssign<SparseRowMat<I>> for SparseRowMat<I> {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseRowMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) {
+        crate::sparse::ops::add_assign(lhs.transpose_mut(), rhs.transpose());
+    }
+}
+impl<I: Index> MatSubAssign<SparseRowMat<I>> for SparseRowMat<I> {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseRowMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) {
+        crate::sparse::ops::sub_assign(lhs.transpose_mut(), rhs.transpose());
+    }
+}
+
+impl<I: Index> MatAddAssign<SparseColMat<I>> for SparseRowMat<I> {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseRowMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) {
+        crate::sparse::ops::add_assign(
+            lhs.transpose_mut(),
+            rhs.transpose().to_col_major().unwrap().as_ref(),
+        );
+    }
+}
+impl<I: Index> MatSubAssign<SparseColMat<I>> for SparseRowMat<I> {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseRowMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseColMat<I>>,
+    ) {
+        crate::sparse::ops::sub_assign(
+            lhs.transpose_mut(),
+            rhs.transpose().to_col_major().unwrap().as_ref(),
+        );
+    }
+}
+
+impl<I: Index> MatAddAssign<SparseRowMat<I>> for SparseColMat<I> {
+    #[track_caller]
+    fn mat_add_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseColMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) {
+        crate::sparse::ops::add_assign(lhs, rhs.to_col_major().unwrap().as_ref());
+    }
+}
+impl<I: Index> MatSubAssign<SparseRowMat<I>> for SparseColMat<I> {
+    #[track_caller]
+    fn mat_sub_assign<E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        lhs: KindMut<'_, E, SparseColMat<I>>,
+        rhs: KindRef<'_, RhsE, SparseRowMat<I>>,
+    ) {
+        crate::sparse::ops::sub_assign(lhs, rhs.to_col_major().unwrap().as_ref());
     }
 }
 

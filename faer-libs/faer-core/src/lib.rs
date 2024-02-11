@@ -763,57 +763,59 @@ pub mod inner {
     #[repr(transparent)]
     pub struct Scale<E: Entity>(pub E);
 
+    use permutation::Index;
+
     /// Immutable sparse matrix view, in column-major order.
     #[derive(Debug)]
-    pub struct SparseColMatRef<'a, I, E: Entity> {
+    pub struct SparseColMatRef<'a, I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
     /// Immutable sparse matrix view, in row-major order.
     #[derive(Debug)]
-    pub struct SparseRowMatRef<'a, I, E: Entity> {
+    pub struct SparseRowMatRef<'a, I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
         pub(crate) values: SliceGroup<'a, E>,
     }
 
     /// Mutable sparse matrix view, in column-major order.
     #[derive(Debug)]
-    pub struct SparseColMatMut<'a, I, E: Entity> {
+    pub struct SparseColMatMut<'a, I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMatRef<'a, I>,
         pub(crate) values: SliceGroupMut<'a, E>,
     }
 
     /// Mutable sparse matrix view, in row-major order.
     #[derive(Debug)]
-    pub struct SparseRowMatMut<'a, I, E: Entity> {
+    pub struct SparseRowMatMut<'a, I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMatRef<'a, I>,
         pub(crate) values: SliceGroupMut<'a, E>,
     }
 
     /// Owned sparse matrix, in column-major order.
     #[derive(Debug, Clone)]
-    pub struct SparseColMat<I, E: Entity> {
+    pub struct SparseColMat<I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseColMat<I>,
         pub(crate) values: VecGroup<E>,
     }
 
     /// Owned sparse matrix, in row-major order.
     #[derive(Debug, Clone)]
-    pub struct SparseRowMat<I, E: Entity> {
+    pub struct SparseRowMat<I: Index, E: Entity> {
         pub(crate) symbolic: sparse::SymbolicSparseRowMat<I>,
         pub(crate) values: VecGroup<E>,
     }
 
-    impl<I, E: Entity> Copy for SparseRowMatRef<'_, I, E> {}
-    impl<I, E: Entity> Clone for SparseRowMatRef<'_, I, E> {
+    impl<I: Index, E: Entity> Copy for SparseRowMatRef<'_, I, E> {}
+    impl<I: Index, E: Entity> Clone for SparseRowMatRef<'_, I, E> {
         #[inline]
         fn clone(&self) -> Self {
             *self
         }
     }
-    impl<I, E: Entity> Copy for SparseColMatRef<'_, I, E> {}
-    impl<I, E: Entity> Clone for SparseColMatRef<'_, I, E> {
+    impl<I: Index, E: Entity> Copy for SparseColMatRef<'_, I, E> {}
+    impl<I: Index, E: Entity> Clone for SparseColMatRef<'_, I, E> {
         #[inline]
         fn clone(&self) -> Self {
             *self

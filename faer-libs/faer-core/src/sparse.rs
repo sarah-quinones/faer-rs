@@ -28,7 +28,7 @@
 //! ```
 
 use super::*;
-use crate::{assert, debug_assert, group_helpers::VecGroup};
+use crate::{assert, group_helpers::VecGroup};
 use core::{cell::Cell, iter::zip, ops::Range, slice::SliceIndex};
 use dyn_stack::GlobalPodBuffer;
 use group_helpers::SliceGroup;
@@ -114,7 +114,6 @@ pub const fn repeat_byte(byte: u8) -> usize {
 ///
 /// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior.
-#[derive(Debug)]
 pub struct SymbolicSparseColMatRef<'a, I> {
     nrows: usize,
     ncols: usize,
@@ -147,7 +146,6 @@ pub struct SymbolicSparseColMatRef<'a, I> {
 ///
 /// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior.
-#[derive(Debug)]
 pub struct SymbolicSparseRowMatRef<'a, I> {
     nrows: usize,
     ncols: usize,
@@ -171,7 +169,7 @@ pub struct SymbolicSparseRowMatRef<'a, I> {
 /// * `nnz_per_col[j] <= col_ptrs[j+1] - col_ptrs[j]`
 /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]` are
 ///   less than `nrows`
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SymbolicSparseColMat<I> {
     nrows: usize,
     ncols: usize,
@@ -195,7 +193,7 @@ pub struct SymbolicSparseColMat<I> {
 /// * `nnz_per_row[i] <= row_ptrs[i+1] - row_ptrs[i]`
 /// * if `nnz_per_row` is `Some(_)`, elements of `col_indices[row_ptrs[i]..][..nnz_per_row[i]]` are
 ///   less than `ncols`
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SymbolicSparseRowMat<I> {
     nrows: usize,
     ncols: usize,
@@ -1184,7 +1182,7 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
         let mut mem = GlobalPodBuffer::try_new(StackReq::new::<I>(self.nrows))
             .map_err(|_| FaerError::OutOfMemory)?;
 
-        adjoint_symbolic(&mut col_ptr, &mut row_ind, *self, PodStack::new(&mut mem));
+        util::adjoint_symbolic(&mut col_ptr, &mut row_ind, *self, PodStack::new(&mut mem));
 
         let transpose = unsafe {
             SymbolicSparseColMat::new_unchecked(self.ncols, self.nrows, col_ptr, None, row_ind)
@@ -1293,6 +1291,127 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
             .unwrap_or(__get_unchecked(self.col_ptr, j + 1).zx());
 
         start..end
+    }
+}
+
+impl<I: Index> core::fmt::Debug for SymbolicSparseColMatRef<'_, I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mat = *self;
+        let mut iter = (0..mat.ncols()).into_iter().flat_map(move |j| {
+            struct Wrapper(usize, usize);
+            impl core::fmt::Debug for Wrapper {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    let row = self.0;
+                    let col = self.1;
+                    write!(f, "({row}, {col}")
+                }
+            }
+
+            mat.row_indices_of_col(j).map(move |i| Wrapper(i, j))
+        });
+
+        f.debug_list().entries(&mut iter).finish()
+    }
+}
+
+impl<I: Index> core::fmt::Debug for SymbolicSparseRowMatRef<'_, I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mat = *self;
+        let mut iter = (0..mat.nrows()).into_iter().flat_map(move |i| {
+            struct Wrapper(usize, usize);
+            impl core::fmt::Debug for Wrapper {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    let row = self.0;
+                    let col = self.1;
+                    write!(f, "({row}, {col}")
+                }
+            }
+
+            mat.col_indices_of_row(i).map(move |j| Wrapper(i, j))
+        });
+
+        f.debug_list().entries(&mut iter).finish()
+    }
+}
+impl<I: Index, E: Entity> core::fmt::Debug for SparseColMatRef<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mat = *self;
+        let mut iter = (0..mat.ncols()).into_iter().flat_map(move |j| {
+            struct Wrapper<E>(usize, usize, E);
+            impl<E: core::fmt::Debug> core::fmt::Debug for Wrapper<E> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    let row = self.0;
+                    let col = self.1;
+                    let val = &self.2;
+                    write!(f, "({row}, {col}, {val:?})")
+                }
+            }
+
+            mat.row_indices_of_col(j)
+                .zip(SliceGroup::<E>::new(mat.values_of_col(j)).into_ref_iter())
+                .map(move |(i, val)| Wrapper(i, j, val.read()))
+        });
+
+        f.debug_list().entries(&mut iter).finish()
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMatRef<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mat = *self;
+        let mut iter = (0..mat.nrows()).into_iter().flat_map(move |i| {
+            struct Wrapper<E>(usize, usize, E);
+            impl<E: core::fmt::Debug> core::fmt::Debug for Wrapper<E> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    let row = self.0;
+                    let col = self.1;
+                    let val = &self.2;
+                    write!(f, "({row}, {col}, {val:?})")
+                }
+            }
+
+            mat.col_indices_of_row(i)
+                .zip(SliceGroup::<E>::new(mat.values_of_row(i)).into_ref_iter())
+                .map(move |(j, val)| Wrapper(i, j, val.read()))
+        });
+
+        f.debug_list().entries(&mut iter).finish()
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseColMatMut<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.rb().fmt(f)
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseColMat<I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<I: Index> core::fmt::Debug for SymbolicSparseColMat<I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMatMut<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.rb().fmt(f)
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMat<I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<I: Index> core::fmt::Debug for SymbolicSparseRowMat<I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
     }
 }
 
@@ -1910,7 +2029,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         let (this, conj) = self.canonicalize();
 
         if conj == Conj::No {
-            transpose::<I, E::Canonical>(
+            util::transpose::<I, E::Canonical>(
                 &mut col_ptr,
                 &mut row_ind,
                 values.as_slice_mut().into_inner(),
@@ -1918,7 +2037,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
                 PodStack::new(&mut mem),
             );
         } else {
-            adjoint::<I, E::Canonical>(
+            util::adjoint::<I, E::Canonical>(
                 &mut col_ptr,
                 &mut row_ind,
                 values.as_slice_mut().into_inner(),
@@ -2347,7 +2466,7 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
 
 // DEREF/REBORROW
 const _: () = {
-    impl<'a, I, E: Entity> core::ops::Deref for SparseRowMatMut<'a, I, E> {
+    impl<'a, I: Index, E: Entity> core::ops::Deref for SparseRowMatMut<'a, I, E> {
         type Target = SymbolicSparseRowMatRef<'a, I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2355,7 +2474,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> core::ops::Deref for SparseColMatMut<'a, I, E> {
+    impl<'a, I: Index, E: Entity> core::ops::Deref for SparseColMatMut<'a, I, E> {
         type Target = SymbolicSparseColMatRef<'a, I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2363,7 +2482,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> core::ops::Deref for SparseRowMatRef<'a, I, E> {
+    impl<'a, I: Index, E: Entity> core::ops::Deref for SparseRowMatRef<'a, I, E> {
         type Target = SymbolicSparseRowMatRef<'a, I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2371,7 +2490,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> core::ops::Deref for SparseColMatRef<'a, I, E> {
+    impl<'a, I: Index, E: Entity> core::ops::Deref for SparseColMatRef<'a, I, E> {
         type Target = SymbolicSparseColMatRef<'a, I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2379,7 +2498,7 @@ const _: () = {
         }
     }
 
-    impl<I, E: Entity> core::ops::Deref for SparseRowMat<I, E> {
+    impl<I: Index, E: Entity> core::ops::Deref for SparseRowMat<I, E> {
         type Target = SymbolicSparseRowMat<I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2387,7 +2506,7 @@ const _: () = {
         }
     }
 
-    impl<I, E: Entity> core::ops::Deref for SparseColMat<I, E> {
+    impl<I: Index, E: Entity> core::ops::Deref for SparseColMat<I, E> {
         type Target = SymbolicSparseColMat<I>;
         #[inline]
         fn deref(&self) -> &Self::Target {
@@ -2395,7 +2514,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> ReborrowMut<'short> for SparseRowMatRef<'_, I, E> {
+    impl<'short, I: Index, E: Entity> ReborrowMut<'short> for SparseRowMatRef<'_, I, E> {
         type Target = SparseRowMatRef<'short, I, E>;
 
         #[inline]
@@ -2404,7 +2523,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> Reborrow<'short> for SparseRowMatRef<'_, I, E> {
+    impl<'short, I: Index, E: Entity> Reborrow<'short> for SparseRowMatRef<'_, I, E> {
         type Target = SparseRowMatRef<'short, I, E>;
 
         #[inline]
@@ -2413,7 +2532,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> IntoConst for SparseRowMatRef<'a, I, E> {
+    impl<'a, I: Index, E: Entity> IntoConst for SparseRowMatRef<'a, I, E> {
         type Target = SparseRowMatRef<'a, I, E>;
 
         #[inline]
@@ -2422,7 +2541,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> ReborrowMut<'short> for SparseColMatRef<'_, I, E> {
+    impl<'short, I: Index, E: Entity> ReborrowMut<'short> for SparseColMatRef<'_, I, E> {
         type Target = SparseColMatRef<'short, I, E>;
 
         #[inline]
@@ -2431,7 +2550,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> Reborrow<'short> for SparseColMatRef<'_, I, E> {
+    impl<'short, I: Index, E: Entity> Reborrow<'short> for SparseColMatRef<'_, I, E> {
         type Target = SparseColMatRef<'short, I, E>;
 
         #[inline]
@@ -2440,7 +2559,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> IntoConst for SparseColMatRef<'a, I, E> {
+    impl<'a, I: Index, E: Entity> IntoConst for SparseColMatRef<'a, I, E> {
         type Target = SparseColMatRef<'a, I, E>;
 
         #[inline]
@@ -2449,7 +2568,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> ReborrowMut<'short> for SparseRowMatMut<'_, I, E> {
+    impl<'short, I: Index, E: Entity> ReborrowMut<'short> for SparseRowMatMut<'_, I, E> {
         type Target = SparseRowMatMut<'short, I, E>;
 
         #[inline]
@@ -2463,7 +2582,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> Reborrow<'short> for SparseRowMatMut<'_, I, E> {
+    impl<'short, I: Index, E: Entity> Reborrow<'short> for SparseRowMatMut<'_, I, E> {
         type Target = SparseRowMatRef<'short, I, E>;
 
         #[inline]
@@ -2477,7 +2596,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> IntoConst for SparseRowMatMut<'a, I, E> {
+    impl<'a, I: Index, E: Entity> IntoConst for SparseRowMatMut<'a, I, E> {
         type Target = SparseRowMatRef<'a, I, E>;
 
         #[inline]
@@ -2491,7 +2610,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> ReborrowMut<'short> for SparseColMatMut<'_, I, E> {
+    impl<'short, I: Index, E: Entity> ReborrowMut<'short> for SparseColMatMut<'_, I, E> {
         type Target = SparseColMatMut<'short, I, E>;
 
         #[inline]
@@ -2505,7 +2624,7 @@ const _: () = {
         }
     }
 
-    impl<'short, I, E: Entity> Reborrow<'short> for SparseColMatMut<'_, I, E> {
+    impl<'short, I: Index, E: Entity> Reborrow<'short> for SparseColMatMut<'_, I, E> {
         type Target = SparseColMatRef<'short, I, E>;
 
         #[inline]
@@ -2519,7 +2638,7 @@ const _: () = {
         }
     }
 
-    impl<'a, I, E: Entity> IntoConst for SparseColMatMut<'a, I, E> {
+    impl<'a, I: Index, E: Entity> IntoConst for SparseColMatMut<'a, I, E> {
         type Target = SparseColMatRef<'a, I, E>;
 
         #[inline]
@@ -3184,364 +3303,351 @@ const _: () = {
     }
 };
 
-/// Sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
-pub fn sort_indices<I: Index, E: Entity>(
-    col_ptrs: &[I],
-    row_indices: &mut [I],
-    values: GroupFor<E, &mut [E::Unit]>,
-) {
-    assert!(col_ptrs.len() >= 1);
-    let mut values = SliceGroupMut::<'_, E>::new(values);
+/// Useful sparse matrix primitives.
+pub mod util {
+    use super::*;
+    use crate::{assert, debug_assert};
 
-    let n = col_ptrs.len() - 1;
-    for j in 0..n {
-        let start = col_ptrs[j].zx();
-        let end = col_ptrs[j + 1].zx();
+    /// Sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
+    pub fn sort_indices<I: Index, E: Entity>(
+        col_ptrs: &[I],
+        row_indices: &mut [I],
+        values: GroupFor<E, &mut [E::Unit]>,
+    ) {
+        assert!(col_ptrs.len() >= 1);
+        let mut values = SliceGroupMut::<'_, E>::new(values);
 
-        unsafe {
-            crate::sort::sort_indices(
-                &mut row_indices[start..end],
-                values.rb_mut().subslice(start..end),
+        let n = col_ptrs.len() - 1;
+        for j in 0..n {
+            let start = col_ptrs[j].zx();
+            let end = col_ptrs[j + 1].zx();
+
+            unsafe {
+                crate::sort::sort_indices(
+                    &mut row_indices[start..end],
+                    values.rb_mut().subslice(start..end),
+                );
+            }
+        }
+    }
+
+    #[doc(hidden)]
+    pub unsafe fn ghost_permute_hermitian_unsorted<'n, 'out, I: Index, E: ComplexField>(
+        new_values: SliceGroupMut<'out, E>,
+        new_col_ptrs: &'out mut [I],
+        new_row_indices: &'out mut [I],
+        A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
+        perm: ghost::PermutationRef<'n, '_, I, E>,
+        in_side: Side,
+        out_side: Side,
+        sort: bool,
+        stack: PodStack<'_>,
+    ) -> ghost::SparseColMatMut<'n, 'n, 'out, I, E> {
+        let N = A.ncols();
+        let n = *A.ncols();
+
+        // (1)
+        assert!(new_col_ptrs.len() == n + 1);
+        let (_, perm_inv) = perm.into_arrays();
+
+        let (current_row_position, _) = stack.make_raw::<I>(n);
+        let current_row_position = ghost::Array::from_mut(current_row_position, N);
+
+        mem::fill_zero(current_row_position.as_mut());
+        let col_counts = &mut *current_row_position;
+        match (in_side, out_side) {
+            (Side::Lower, Side::Lower) => {
+                for old_j in N.indices() {
+                    let new_j = perm_inv[old_j].zx();
+                    for old_i in A.row_indices_of_col(old_j) {
+                        if old_i >= old_j {
+                            let new_i = perm_inv[old_i].zx();
+                            let new_min = Ord::min(new_i, new_j);
+                            // cannot overflow because A.compute_nnz() <= I::MAX
+                            // col_counts[new_max] always >= 0
+                            col_counts[new_min] += I::truncate(1);
+                        }
+                    }
+                }
+            }
+            (Side::Lower, Side::Upper) => {
+                for old_j in N.indices() {
+                    let new_j = perm_inv[old_j].zx();
+                    for old_i in A.row_indices_of_col(old_j) {
+                        if old_i >= old_j {
+                            let new_i = perm_inv[old_i].zx();
+                            let new_max = Ord::max(new_i, new_j);
+                            // cannot overflow because A.compute_nnz() <= I::MAX
+                            // col_counts[new_max] always >= 0
+                            col_counts[new_max] += I::truncate(1);
+                        }
+                    }
+                }
+            }
+            (Side::Upper, Side::Lower) => {
+                for old_j in N.indices() {
+                    let new_j = perm_inv[old_j].zx();
+                    for old_i in A.row_indices_of_col(old_j) {
+                        if old_i <= old_j {
+                            let new_i = perm_inv[old_i].zx();
+                            let new_min = Ord::min(new_i, new_j);
+                            // cannot overflow because A.compute_nnz() <= I::MAX
+                            // col_counts[new_max] always >= 0
+                            col_counts[new_min] += I::truncate(1);
+                        }
+                    }
+                }
+            }
+            (Side::Upper, Side::Upper) => {
+                for old_j in N.indices() {
+                    let new_j = perm_inv[old_j].zx();
+                    for old_i in A.row_indices_of_col(old_j) {
+                        if old_i <= old_j {
+                            let new_i = perm_inv[old_i].zx();
+                            let new_max = Ord::max(new_i, new_j);
+                            // cannot overflow because A.compute_nnz() <= I::MAX
+                            // col_counts[new_max] always >= 0
+                            col_counts[new_max] += I::truncate(1);
+                        }
+                    }
+                }
+            }
+        }
+
+        // col_counts[_] >= 0
+        // cumulative sum cannot overflow because it is <= A.compute_nnz()
+
+        // SAFETY: new_col_ptrs.len() == n + 1 > 0
+        new_col_ptrs[0] = I::truncate(0);
+        for (count, [ci0, ci1]) in zip(
+            col_counts.as_mut(),
+            windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptrs))),
+        ) {
+            let ci0 = ci0.get();
+            ci1.set(ci0 + *count);
+            *count = ci0;
+        }
+        // new_col_ptrs is non-decreasing
+
+        let nnz = new_col_ptrs[n].zx();
+        let new_row_indices = &mut new_row_indices[..nnz];
+        let mut new_values = new_values.subslice(0..nnz);
+
+        ghost::Size::with(
+            nnz,
+            #[inline(always)]
+            |NNZ| {
+                let mut new_values =
+                    ghost::ArrayGroupMut::new(new_values.rb_mut().into_inner(), NNZ);
+                let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
+
+                let conj_if = |cond: bool, x: E| {
+                    if !coe::is_same::<E, E::Real>() && cond {
+                        x.faer_conj()
+                    } else {
+                        x
+                    }
+                };
+
+                match (in_side, out_side) {
+                    (Side::Lower, Side::Lower) => {
+                        for old_j in N.indices() {
+                            let new_j_ = perm_inv[old_j];
+                            let new_j = new_j_.zx();
+
+                            for (old_i, val) in zip(
+                                A.row_indices_of_col(old_j),
+                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                            ) {
+                                if old_i >= old_j {
+                                    let new_i_ = perm_inv[old_i];
+                                    let new_i = new_i_.zx();
+
+                                    let new_max = Ord::max(new_i_, new_j_);
+                                    let new_min = Ord::min(new_i, new_j);
+                                    let current_row_pos: &mut I =
+                                        &mut current_row_position[new_min];
+                                    // SAFETY: current_row_pos < NNZ
+                                    let row_pos = unsafe {
+                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
+                                    };
+                                    *current_row_pos += I::truncate(1);
+                                    new_values
+                                        .write(row_pos, conj_if(new_min == new_i, val.read()));
+                                    // (2)
+                                    new_row_indices[row_pos] = *new_max;
+                                }
+                            }
+                        }
+                    }
+                    (Side::Lower, Side::Upper) => {
+                        for old_j in N.indices() {
+                            let new_j_ = perm_inv[old_j];
+                            let new_j = new_j_.zx();
+
+                            for (old_i, val) in zip(
+                                A.row_indices_of_col(old_j),
+                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                            ) {
+                                if old_i >= old_j {
+                                    let new_i_ = perm_inv[old_i];
+                                    let new_i = new_i_.zx();
+
+                                    let new_max = Ord::max(new_i, new_j);
+                                    let new_min = Ord::min(new_i_, new_j_);
+                                    let current_row_pos = &mut current_row_position[new_max];
+                                    // SAFETY: current_row_pos < NNZ
+                                    let row_pos = unsafe {
+                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
+                                    };
+                                    *current_row_pos += I::truncate(1);
+                                    new_values
+                                        .write(row_pos, conj_if(new_max == new_i, val.read()));
+                                    // (2)
+                                    new_row_indices[row_pos] = *new_min;
+                                }
+                            }
+                        }
+                    }
+                    (Side::Upper, Side::Lower) => {
+                        for old_j in N.indices() {
+                            let new_j_ = perm_inv[old_j];
+                            let new_j = new_j_.zx();
+
+                            for (old_i, val) in zip(
+                                A.row_indices_of_col(old_j),
+                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                            ) {
+                                if old_i <= old_j {
+                                    let new_i_ = perm_inv[old_i];
+                                    let new_i = new_i_.zx();
+
+                                    let new_max = Ord::max(new_i_, new_j_);
+                                    let new_min = Ord::min(new_i, new_j);
+                                    let current_row_pos = &mut current_row_position[new_min];
+                                    // SAFETY: current_row_pos < NNZ
+                                    let row_pos = unsafe {
+                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
+                                    };
+                                    *current_row_pos += I::truncate(1);
+                                    new_values
+                                        .write(row_pos, conj_if(new_min == new_i, val.read()));
+                                    // (2)
+                                    new_row_indices[row_pos] = *new_max;
+                                }
+                            }
+                        }
+                    }
+                    (Side::Upper, Side::Upper) => {
+                        for old_j in N.indices() {
+                            let new_j_ = perm_inv[old_j];
+                            let new_j = new_j_.zx();
+
+                            for (old_i, val) in zip(
+                                A.row_indices_of_col(old_j),
+                                SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
+                            ) {
+                                if old_i <= old_j {
+                                    let new_i_ = perm_inv[old_i];
+                                    let new_i = new_i_.zx();
+
+                                    let new_max = Ord::max(new_i, new_j);
+                                    let new_min = Ord::min(new_i_, new_j_);
+                                    let current_row_pos = &mut current_row_position[new_max];
+                                    // SAFETY: current_row_pos < NNZ
+                                    let row_pos = unsafe {
+                                        ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ)
+                                    };
+                                    *current_row_pos += I::truncate(1);
+                                    new_values
+                                        .write(row_pos, conj_if(new_max == new_i, val.read()));
+                                    // (2)
+                                    new_row_indices[row_pos] = *new_min;
+                                }
+                            }
+                        }
+                    }
+                }
+                debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
+            },
+        );
+
+        if sort {
+            sort_indices::<I, E>(
+                new_col_ptrs,
+                new_row_indices,
+                new_values.rb_mut().into_inner(),
             );
         }
-    }
-}
 
-#[doc(hidden)]
-pub unsafe fn ghost_permute_hermitian_unsorted<'n, 'out, I: Index, E: ComplexField>(
-    new_values: SliceGroupMut<'out, E>,
-    new_col_ptrs: &'out mut [I],
-    new_row_indices: &'out mut [I],
-    A: ghost::SparseColMatRef<'n, 'n, '_, I, E>,
-    perm: ghost::PermutationRef<'n, '_, I, E>,
-    in_side: Side,
-    out_side: Side,
-    sort: bool,
-    stack: PodStack<'_>,
-) -> ghost::SparseColMatMut<'n, 'n, 'out, I, E> {
-    let N = A.ncols();
-    let n = *A.ncols();
-
-    // (1)
-    assert!(new_col_ptrs.len() == n + 1);
-    let (_, perm_inv) = perm.into_arrays();
-
-    let (current_row_position, _) = stack.make_raw::<I>(n);
-    let current_row_position = ghost::Array::from_mut(current_row_position, N);
-
-    mem::fill_zero(current_row_position.as_mut());
-    let col_counts = &mut *current_row_position;
-    match (in_side, out_side) {
-        (Side::Lower, Side::Lower) => {
-            for old_j in N.indices() {
-                let new_j = perm_inv[old_j].zx();
-                for old_i in A.row_indices_of_col(old_j) {
-                    if old_i >= old_j {
-                        let new_i = perm_inv[old_i].zx();
-                        let new_min = Ord::min(new_i, new_j);
-                        // cannot overflow because A.compute_nnz() <= I::MAX
-                        // col_counts[new_max] always >= 0
-                        col_counts[new_min] += I::truncate(1);
-                    }
-                }
-            }
-        }
-        (Side::Lower, Side::Upper) => {
-            for old_j in N.indices() {
-                let new_j = perm_inv[old_j].zx();
-                for old_i in A.row_indices_of_col(old_j) {
-                    if old_i >= old_j {
-                        let new_i = perm_inv[old_i].zx();
-                        let new_max = Ord::max(new_i, new_j);
-                        // cannot overflow because A.compute_nnz() <= I::MAX
-                        // col_counts[new_max] always >= 0
-                        col_counts[new_max] += I::truncate(1);
-                    }
-                }
-            }
-        }
-        (Side::Upper, Side::Lower) => {
-            for old_j in N.indices() {
-                let new_j = perm_inv[old_j].zx();
-                for old_i in A.row_indices_of_col(old_j) {
-                    if old_i <= old_j {
-                        let new_i = perm_inv[old_i].zx();
-                        let new_min = Ord::min(new_i, new_j);
-                        // cannot overflow because A.compute_nnz() <= I::MAX
-                        // col_counts[new_max] always >= 0
-                        col_counts[new_min] += I::truncate(1);
-                    }
-                }
-            }
-        }
-        (Side::Upper, Side::Upper) => {
-            for old_j in N.indices() {
-                let new_j = perm_inv[old_j].zx();
-                for old_i in A.row_indices_of_col(old_j) {
-                    if old_i <= old_j {
-                        let new_i = perm_inv[old_i].zx();
-                        let new_max = Ord::max(new_i, new_j);
-                        // cannot overflow because A.compute_nnz() <= I::MAX
-                        // col_counts[new_max] always >= 0
-                        col_counts[new_max] += I::truncate(1);
-                    }
-                }
-            }
+        // SAFETY:
+        // 0. new_col_ptrs is non-decreasing
+        // 1. new_values.len() == new_row_indices.len()
+        // 2. all written row indices are less than n
+        unsafe {
+            ghost::SparseColMatMut::new(
+                SparseColMatMut::new(
+                    SymbolicSparseColMatRef::new_unchecked(
+                        n,
+                        n,
+                        new_col_ptrs,
+                        None,
+                        new_row_indices,
+                    ),
+                    new_values.into_inner(),
+                ),
+                N,
+                N,
+            )
         }
     }
 
-    // col_counts[_] >= 0
-    // cumulative sum cannot overflow because it is <= A.compute_nnz()
-
-    // SAFETY: new_col_ptrs.len() == n + 1 > 0
-    new_col_ptrs[0] = I::truncate(0);
-    for (count, [ci0, ci1]) in zip(
-        col_counts.as_mut(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(&mut *new_col_ptrs))),
-    ) {
-        let ci0 = ci0.get();
-        ci1.set(ci0 + *count);
-        *count = ci0;
-    }
-    // new_col_ptrs is non-decreasing
-
-    let nnz = new_col_ptrs[n].zx();
-    let new_row_indices = &mut new_row_indices[..nnz];
-    let mut new_values = new_values.subslice(0..nnz);
-
-    ghost::Size::with(
-        nnz,
-        #[inline(always)]
-        |NNZ| {
-            let mut new_values = ghost::ArrayGroupMut::new(new_values.rb_mut().into_inner(), NNZ);
-            let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
-
-            let conj_if = |cond: bool, x: E| {
-                if !coe::is_same::<E, E::Real>() && cond {
-                    x.faer_conj()
-                } else {
-                    x
-                }
-            };
-
-            match (in_side, out_side) {
-                (Side::Lower, Side::Lower) => {
-                    for old_j in N.indices() {
-                        let new_j_ = perm_inv[old_j];
-                        let new_j = new_j_.zx();
-
-                        for (old_i, val) in zip(
-                            A.row_indices_of_col(old_j),
-                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                        ) {
-                            if old_i >= old_j {
-                                let new_i_ = perm_inv[old_i];
-                                let new_i = new_i_.zx();
-
-                                let new_max = Ord::max(new_i_, new_j_);
-                                let new_min = Ord::min(new_i, new_j);
-                                let current_row_pos: &mut I = &mut current_row_position[new_min];
-                                // SAFETY: current_row_pos < NNZ
-                                let row_pos =
-                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                                *current_row_pos += I::truncate(1);
-                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
-                                // (2)
-                                new_row_indices[row_pos] = *new_max;
-                            }
-                        }
-                    }
-                }
-                (Side::Lower, Side::Upper) => {
-                    for old_j in N.indices() {
-                        let new_j_ = perm_inv[old_j];
-                        let new_j = new_j_.zx();
-
-                        for (old_i, val) in zip(
-                            A.row_indices_of_col(old_j),
-                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                        ) {
-                            if old_i >= old_j {
-                                let new_i_ = perm_inv[old_i];
-                                let new_i = new_i_.zx();
-
-                                let new_max = Ord::max(new_i, new_j);
-                                let new_min = Ord::min(new_i_, new_j_);
-                                let current_row_pos = &mut current_row_position[new_max];
-                                // SAFETY: current_row_pos < NNZ
-                                let row_pos =
-                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                                *current_row_pos += I::truncate(1);
-                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
-                                // (2)
-                                new_row_indices[row_pos] = *new_min;
-                            }
-                        }
-                    }
-                }
-                (Side::Upper, Side::Lower) => {
-                    for old_j in N.indices() {
-                        let new_j_ = perm_inv[old_j];
-                        let new_j = new_j_.zx();
-
-                        for (old_i, val) in zip(
-                            A.row_indices_of_col(old_j),
-                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                        ) {
-                            if old_i <= old_j {
-                                let new_i_ = perm_inv[old_i];
-                                let new_i = new_i_.zx();
-
-                                let new_max = Ord::max(new_i_, new_j_);
-                                let new_min = Ord::min(new_i, new_j);
-                                let current_row_pos = &mut current_row_position[new_min];
-                                // SAFETY: current_row_pos < NNZ
-                                let row_pos =
-                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                                *current_row_pos += I::truncate(1);
-                                new_values.write(row_pos, conj_if(new_min == new_i, val.read()));
-                                // (2)
-                                new_row_indices[row_pos] = *new_max;
-                            }
-                        }
-                    }
-                }
-                (Side::Upper, Side::Upper) => {
-                    for old_j in N.indices() {
-                        let new_j_ = perm_inv[old_j];
-                        let new_j = new_j_.zx();
-
-                        for (old_i, val) in zip(
-                            A.row_indices_of_col(old_j),
-                            SliceGroup::<'_, E>::new(A.values_of_col(old_j)).into_ref_iter(),
-                        ) {
-                            if old_i <= old_j {
-                                let new_i_ = perm_inv[old_i];
-                                let new_i = new_i_.zx();
-
-                                let new_max = Ord::max(new_i, new_j);
-                                let new_min = Ord::min(new_i_, new_j_);
-                                let current_row_pos = &mut current_row_position[new_max];
-                                // SAFETY: current_row_pos < NNZ
-                                let row_pos =
-                                    unsafe { ghost::Idx::new_unchecked(current_row_pos.zx(), NNZ) };
-                                *current_row_pos += I::truncate(1);
-                                new_values.write(row_pos, conj_if(new_max == new_i, val.read()));
-                                // (2)
-                                new_row_indices[row_pos] = *new_min;
-                            }
-                        }
-                    }
-                }
-            }
-            debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
-        },
-    );
-
-    if sort {
-        sort_indices::<I, E>(
+    #[doc(hidden)]
+    pub unsafe fn ghost_permute_hermitian_unsorted_symbolic<'n, 'out, I: Index>(
+        new_col_ptrs: &'out mut [I],
+        new_row_indices: &'out mut [I],
+        A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
+        perm: ghost::PermutationRef<'n, '_, I, Symbolic>,
+        in_side: Side,
+        out_side: Side,
+        stack: PodStack<'_>,
+    ) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
+        let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
+        let new_values = Symbolic::materialize(new_row_indices.len());
+        *ghost_permute_hermitian_unsorted(
+            SliceGroupMut::<'_, Symbolic>::new(new_values),
             new_col_ptrs,
             new_row_indices,
-            new_values.rb_mut().into_inner(),
-        );
-    }
-
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing
-    // 1. new_values.len() == new_row_indices.len()
-    // 2. all written row indices are less than n
-    unsafe {
-        ghost::SparseColMatMut::new(
-            SparseColMatMut::new(
-                SymbolicSparseColMatRef::new_unchecked(n, n, new_col_ptrs, None, new_row_indices),
-                new_values.into_inner(),
+            ghost::SparseColMatRef::new(
+                SparseColMatRef::new(A.into_inner(), old_values),
+                A.nrows(),
+                A.ncols(),
             ),
-            N,
-            N,
-        )
-    }
-}
-
-#[doc(hidden)]
-pub unsafe fn ghost_permute_hermitian_unsorted_symbolic<'n, 'out, I: Index>(
-    new_col_ptrs: &'out mut [I],
-    new_row_indices: &'out mut [I],
-    A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
-    perm: ghost::PermutationRef<'n, '_, I, Symbolic>,
-    in_side: Side,
-    out_side: Side,
-    stack: PodStack<'_>,
-) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
-    let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
-    let new_values = Symbolic::materialize(new_row_indices.len());
-    *ghost_permute_hermitian_unsorted(
-        SliceGroupMut::<'_, Symbolic>::new(new_values),
-        new_col_ptrs,
-        new_row_indices,
-        ghost::SparseColMatRef::new(
-            SparseColMatRef::new(A.into_inner(), old_values),
-            A.nrows(),
-            A.ncols(),
-        ),
-        perm,
-        in_side,
-        out_side,
-        false,
-        stack,
-    )
-}
-
-/// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` without sorting the row
-/// indices, and returns a view over it.
-///
-/// The result is stored in `new_col_ptrs`, `new_row_indices`.
-#[doc(hidden)]
-pub unsafe fn permute_hermitian_unsorted<'out, I: Index, E: ComplexField>(
-    new_values: GroupFor<E, &'out mut [E::Unit]>,
-    new_col_ptrs: &'out mut [I],
-    new_row_indices: &'out mut [I],
-    A: SparseColMatRef<'_, I, E>,
-    perm: crate::permutation::PermutationRef<'_, I, E>,
-    in_side: Side,
-    out_side: Side,
-    stack: PodStack<'_>,
-) -> SparseColMatMut<'out, I, E> {
-    ghost::Size::with(A.nrows(), |N| {
-        assert!(A.nrows() == A.ncols());
-        ghost_permute_hermitian_unsorted(
-            SliceGroupMut::new(new_values),
-            new_col_ptrs,
-            new_row_indices,
-            ghost::SparseColMatRef::new(A, N, N),
-            ghost::PermutationRef::new(perm, N),
+            perm,
             in_side,
             out_side,
             false,
             stack,
         )
-        .into_inner()
-    })
-}
+    }
 
-/// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over it.
-///
-/// The result is stored in `new_col_ptrs`, `new_row_indices`.
-///
-/// # Note
-/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
-    new_values: GroupFor<E, &'out mut [E::Unit]>,
-    new_col_ptrs: &'out mut [I],
-    new_row_indices: &'out mut [I],
-    A: SparseColMatRef<'_, I, E>,
-    perm: crate::permutation::PermutationRef<'_, I, E>,
-    in_side: Side,
-    out_side: Side,
-    stack: PodStack<'_>,
-) -> SparseColMatMut<'out, I, E> {
-    ghost::Size::with(A.nrows(), |N| {
-        assert!(A.nrows() == A.ncols());
-        unsafe {
+    /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` without sorting the row
+    /// indices, and returns a view over it.
+    ///
+    /// The result is stored in `new_col_ptrs`, `new_row_indices`.
+    #[doc(hidden)]
+    pub unsafe fn permute_hermitian_unsorted<'out, I: Index, E: ComplexField>(
+        new_values: GroupFor<E, &'out mut [E::Unit]>,
+        new_col_ptrs: &'out mut [I],
+        new_row_indices: &'out mut [I],
+        A: SparseColMatRef<'_, I, E>,
+        perm: crate::permutation::PermutationRef<'_, I, E>,
+        in_side: Side,
+        out_side: Side,
+        stack: PodStack<'_>,
+    ) -> SparseColMatMut<'out, I, E> {
+        ghost::Size::with(A.nrows(), |N| {
+            assert!(A.nrows() == A.ncols());
             ghost_permute_hermitian_unsorted(
                 SliceGroupMut::new(new_values),
                 new_col_ptrs,
@@ -3550,259 +3656,1033 @@ pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
                 ghost::PermutationRef::new(perm, N),
                 in_side,
                 out_side,
-                true,
+                false,
                 stack,
             )
-        }
-        .into_inner()
-    })
-}
-
-#[doc(hidden)]
-pub fn ghost_adjoint_symbolic<'m, 'n, 'a, I: Index>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
-    stack: PodStack<'_>,
-) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
-    let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
-    let new_values = Symbolic::materialize(new_row_indices.len());
-    *ghost_adjoint(
-        new_col_ptrs,
-        new_row_indices,
-        SliceGroupMut::<'_, Symbolic>::new(new_values),
-        ghost::SparseColMatRef::new(
-            SparseColMatRef::new(A.into_inner(), old_values),
-            A.nrows(),
-            A.ncols(),
-        ),
-        stack,
-    )
-}
-
-#[doc(hidden)]
-pub fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: SliceGroupMut<'a, E>,
-    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-    stack: PodStack<'_>,
-) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = ghost::Array::from_mut(col_count, M);
-    mem::fill_zero(col_count.as_mut());
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    for j in N.indices() {
-        for i in A.row_indices_of_col(j) {
-            col_count[i] += I::truncate(1);
-        }
+            .into_inner()
+        })
     }
 
-    new_col_ptrs[0] = I::truncate(0);
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(
-            A.row_indices_of_col(j),
-            SliceGroup::<'_, E>::new(A.values_of_col(j)).into_ref_iter(),
-        ) {
-            let ci = &mut current_row_position[i];
-
-            // SAFETY: see below
+    /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over
+    /// it.
+    ///
+    /// The result is stored in `new_col_ptrs`, `new_row_indices`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    pub fn permute_hermitian<'out, I: Index, E: ComplexField>(
+        new_values: GroupFor<E, &'out mut [E::Unit]>,
+        new_col_ptrs: &'out mut [I],
+        new_row_indices: &'out mut [I],
+        A: SparseColMatRef<'_, I, E>,
+        perm: crate::permutation::PermutationRef<'_, I, E>,
+        in_side: Side,
+        out_side: Side,
+        stack: PodStack<'_>,
+    ) -> SparseColMatMut<'out, I, E> {
+        ghost::Size::with(A.nrows(), |N| {
+            assert!(A.nrows() == A.ncols());
             unsafe {
-                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
-                new_values.write_unchecked(ci.zx(), val.read().faer_conj())
-            };
-            *ci += I::truncate(1);
+                ghost_permute_hermitian_unsorted(
+                    SliceGroupMut::new(new_values),
+                    new_col_ptrs,
+                    new_row_indices,
+                    ghost::SparseColMatRef::new(A, N, N),
+                    ghost::PermutationRef::new(perm, N),
+                    in_side,
+                    out_side,
+                    true,
+                    stack,
+                )
+            }
+            .into_inner()
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn ghost_adjoint_symbolic<'m, 'n, 'a, I: Index>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+        stack: PodStack<'_>,
+    ) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
+        let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
+        let new_values = Symbolic::materialize(new_row_indices.len());
+        *ghost_adjoint(
+            new_col_ptrs,
+            new_row_indices,
+            SliceGroupMut::<'_, Symbolic>::new(new_values),
+            ghost::SparseColMatRef::new(
+                SparseColMatRef::new(A.into_inner(), old_values),
+                A.nrows(),
+                A.ncols(),
+            ),
+            stack,
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn ghost_adjoint<'m, 'n, 'a, I: Index, E: ComplexField>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        new_values: SliceGroupMut<'a, E>,
+        A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+        stack: PodStack<'_>,
+    ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
+        let M = A.nrows();
+        let N = A.ncols();
+        assert!(new_col_ptrs.len() == *M + 1);
+
+        let (col_count, _) = stack.make_raw::<I>(*M);
+        let col_count = ghost::Array::from_mut(col_count, M);
+        mem::fill_zero(col_count.as_mut());
+
+        // can't overflow because the total count is A.compute_nnz() <= I::MAX
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i] += I::truncate(1);
+            }
         }
-    }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
 
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing
-    // 1. all written row indices are less than n
-    ghost::SparseColMatMut::new(
-        unsafe {
-            SparseColMatMut::new(
-                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
-                new_values.into_inner(),
-            )
-        },
-        N,
-        M,
-    )
-}
-
-#[doc(hidden)]
-pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: SliceGroupMut<'a, E>,
-    A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-    stack: PodStack<'_>,
-) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
-    let M = A.nrows();
-    let N = A.ncols();
-    assert!(new_col_ptrs.len() == *M + 1);
-
-    let (col_count, _) = stack.make_raw::<I>(*M);
-    let col_count = ghost::Array::from_mut(col_count, M);
-    mem::fill_zero(col_count.as_mut());
-
-    // can't overflow because the total count is A.compute_nnz() <= I::MAX
-    for j in N.indices() {
-        for i in A.row_indices_of_col(j) {
-            col_count[i] += I::truncate(1);
-        }
-    }
-
-    new_col_ptrs[0] = I::truncate(0);
-    // col_count elements are >= 0
-    for (j, [pj0, pj1]) in zip(
-        M.indices(),
-        windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
-    ) {
-        let cj = &mut col_count[j];
-        let pj = pj0.get();
-        // new_col_ptrs is non-decreasing
-        pj1.set(pj + *cj);
-        *cj = pj;
-    }
-
-    let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
-    let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
-    let current_row_position = &mut *col_count;
-    // current_row_position[i] == col_ptr[i]
-    for j in N.indices() {
-        let j_: ghost::Idx<'n, I> = j.truncate::<I>();
-        for (i, val) in zip(
-            A.row_indices_of_col(j),
-            SliceGroup::<'_, E>::new(A.values_of_col(j)).into_ref_iter(),
+        new_col_ptrs[0] = I::truncate(0);
+        // col_count elements are >= 0
+        for (j, [pj0, pj1]) in zip(
+            M.indices(),
+            windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
         ) {
-            let ci = &mut current_row_position[i];
+            let cj = &mut col_count[j];
+            let pj = pj0.get();
+            // new_col_ptrs is non-decreasing
+            pj1.set(pj + *cj);
+            *cj = pj;
+        }
 
-            // SAFETY: see below
+        let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+        let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
+        let current_row_position = &mut *col_count;
+        // current_row_position[i] == col_ptr[i]
+        for j in N.indices() {
+            let j_: ghost::Idx<'n, I> = j.truncate::<I>();
+            for (i, val) in zip(
+                A.row_indices_of_col(j),
+                SliceGroup::<'_, E>::new(A.values_of_col(j)).into_ref_iter(),
+            ) {
+                let ci = &mut current_row_position[i];
+
+                // SAFETY: see below
+                unsafe {
+                    *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
+                    new_values.write_unchecked(ci.zx(), val.read().faer_conj())
+                };
+                *ci += I::truncate(1);
+            }
+        }
+        // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+        // so all the unchecked accesses were valid and non-overlapping, which means the entire
+        // array is filled
+        debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
+
+        // SAFETY:
+        // 0. new_col_ptrs is non-decreasing
+        // 1. all written row indices are less than n
+        ghost::SparseColMatMut::new(
             unsafe {
-                *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
-                new_values.write_unchecked(ci.zx(), val.read())
-            };
-            *ci += I::truncate(1);
+                SparseColMatMut::new(
+                    SymbolicSparseColMatRef::new_unchecked(
+                        *N,
+                        *M,
+                        new_col_ptrs,
+                        None,
+                        new_row_indices,
+                    ),
+                    new_values.into_inner(),
+                )
+            },
+            N,
+            M,
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn ghost_transpose<'m, 'n, 'a, I: Index, E: Entity>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        new_values: SliceGroupMut<'a, E>,
+        A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
+        stack: PodStack<'_>,
+    ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
+        let M = A.nrows();
+        let N = A.ncols();
+        assert!(new_col_ptrs.len() == *M + 1);
+
+        let (col_count, _) = stack.make_raw::<I>(*M);
+        let col_count = ghost::Array::from_mut(col_count, M);
+        mem::fill_zero(col_count.as_mut());
+
+        // can't overflow because the total count is A.compute_nnz() <= I::MAX
+        for j in N.indices() {
+            for i in A.row_indices_of_col(j) {
+                col_count[i] += I::truncate(1);
+            }
+        }
+
+        new_col_ptrs[0] = I::truncate(0);
+        // col_count elements are >= 0
+        for (j, [pj0, pj1]) in zip(
+            M.indices(),
+            windows2(Cell::as_slice_of_cells(Cell::from_mut(new_col_ptrs))),
+        ) {
+            let cj = &mut col_count[j];
+            let pj = pj0.get();
+            // new_col_ptrs is non-decreasing
+            pj1.set(pj + *cj);
+            *cj = pj;
+        }
+
+        let new_row_indices = &mut new_row_indices[..new_col_ptrs[*M].zx()];
+        let mut new_values = new_values.subslice(0..new_col_ptrs[*M].zx());
+        let current_row_position = &mut *col_count;
+        // current_row_position[i] == col_ptr[i]
+        for j in N.indices() {
+            let j_: ghost::Idx<'n, I> = j.truncate::<I>();
+            for (i, val) in zip(
+                A.row_indices_of_col(j),
+                SliceGroup::<'_, E>::new(A.values_of_col(j)).into_ref_iter(),
+            ) {
+                let ci = &mut current_row_position[i];
+
+                // SAFETY: see below
+                unsafe {
+                    *new_row_indices.get_unchecked_mut(ci.zx()) = *j_;
+                    new_values.write_unchecked(ci.zx(), val.read())
+                };
+                *ci += I::truncate(1);
+            }
+        }
+        // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
+        // so all the unchecked accesses were valid and non-overlapping, which means the entire
+        // array is filled
+        debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
+
+        // SAFETY:
+        // 0. new_col_ptrs is non-decreasing
+        // 1. all written row indices are less than n
+        ghost::SparseColMatMut::new(
+            unsafe {
+                SparseColMatMut::new(
+                    SymbolicSparseColMatRef::new_unchecked(
+                        *N,
+                        *M,
+                        new_col_ptrs,
+                        None,
+                        new_row_indices,
+                    ),
+                    new_values.into_inner(),
+                )
+            },
+            N,
+            M,
+        )
+    }
+
+    /// Computes the transpose of the matrix `A` and returns a view over it.
+    ///
+    /// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    pub fn transpose<'a, I: Index, E: Entity>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        new_values: GroupFor<E, &'a mut [E::Unit]>,
+        A: SparseColMatRef<'_, I, E>,
+        stack: PodStack<'_>,
+    ) -> SparseColMatMut<'a, I, E> {
+        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+            ghost_transpose(
+                new_col_ptrs,
+                new_row_indices,
+                SliceGroupMut::new(new_values),
+                ghost::SparseColMatRef::new(A, M, N),
+                stack,
+            )
+            .into_inner()
+        })
+    }
+
+    /// Computes the adjoint of the matrix `A` and returns a view over it.
+    ///
+    /// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    pub fn adjoint<'a, I: Index, E: ComplexField>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        new_values: GroupFor<E, &'a mut [E::Unit]>,
+        A: SparseColMatRef<'_, I, E>,
+        stack: PodStack<'_>,
+    ) -> SparseColMatMut<'a, I, E> {
+        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+            ghost_adjoint(
+                new_col_ptrs,
+                new_row_indices,
+                SliceGroupMut::new(new_values),
+                ghost::SparseColMatRef::new(A, M, N),
+                stack,
+            )
+            .into_inner()
+        })
+    }
+
+    /// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
+    ///
+    /// The result is stored in `new_col_ptrs`, `new_row_indices`.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    pub fn adjoint_symbolic<'a, I: Index>(
+        new_col_ptrs: &'a mut [I],
+        new_row_indices: &'a mut [I],
+        A: SymbolicSparseColMatRef<'_, I>,
+        stack: PodStack<'_>,
+    ) -> SymbolicSparseColMatRef<'a, I> {
+        ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
+            ghost_adjoint_symbolic(
+                new_col_ptrs,
+                new_row_indices,
+                ghost::SymbolicSparseColMatRef::new(A, M, N),
+                stack,
+            )
+            .into_inner()
+        })
+    }
+}
+
+/// Arithmetic and generic binary/ternary operations.
+pub mod ops {
+    use super::*;
+    use crate::assert;
+
+    /// Returns the resulting matrix obtained by applying `f` to the elements from `lhs` and `rhs`,
+    /// skipping entries that are unavailable in both of `lhs` and `rhs`.
+    ///
+    /// # Panics
+    /// Panics if `lhs` and `rhs` don't have matching dimensions.  
+    #[track_caller]
+    pub fn binary_op<I: Index, E: Entity, LhsE: Entity, RhsE: Entity>(
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+        f: impl FnMut(LhsE, RhsE) -> E,
+    ) -> Result<SparseColMat<I, E>, FaerError> {
+        assert!(lhs.nrows() == rhs.nrows());
+        assert!(lhs.ncols() == rhs.ncols());
+        let mut f = f;
+        let m = lhs.nrows();
+        let n = lhs.ncols();
+
+        let mut col_ptrs = try_zeroed::<I>(n + 1)?;
+
+        let mut nnz = 0usize;
+        for j in 0..n {
+            let lhs = lhs.row_indices_of_col_raw(j);
+            let rhs = rhs.row_indices_of_col_raw(j);
+
+            let mut lhs_pos = 0usize;
+            let mut rhs_pos = 0usize;
+            while lhs_pos < lhs.len() && rhs_pos < rhs.len() {
+                let lhs = lhs[lhs_pos];
+                let rhs = rhs[rhs_pos];
+
+                lhs_pos += (lhs <= rhs) as usize;
+                rhs_pos += (rhs <= lhs) as usize;
+                nnz += 1;
+            }
+            nnz += lhs.len() - lhs_pos;
+            nnz += rhs.len() - rhs_pos;
+            col_ptrs[j + 1] = I::truncate(nnz);
+        }
+
+        if nnz > I::Signed::MAX.zx() {
+            return Err(FaerError::IndexOverflow);
+        }
+
+        let mut row_indices = try_zeroed(nnz)?;
+        let mut values = VecGroup::<E>::new();
+        values
+            .try_reserve_exact(nnz)
+            .map_err(|_| FaerError::OutOfMemory)?;
+        values.resize(nnz, unsafe { core::mem::zeroed() });
+
+        let mut nnz = 0usize;
+        for j in 0..n {
+            let mut values = values.as_slice_mut();
+            let lhs_values = SliceGroup::<LhsE>::new(lhs.values_of_col(j));
+            let rhs_values = SliceGroup::<RhsE>::new(rhs.values_of_col(j));
+            let lhs = lhs.row_indices_of_col_raw(j);
+            let rhs = rhs.row_indices_of_col_raw(j);
+
+            let mut lhs_pos = 0usize;
+            let mut rhs_pos = 0usize;
+            while lhs_pos < lhs.len() && rhs_pos < rhs.len() {
+                let lhs = lhs[lhs_pos];
+                let rhs = rhs[rhs_pos];
+
+                match lhs.cmp(&rhs) {
+                    core::cmp::Ordering::Less => {
+                        row_indices[nnz] = lhs;
+                        values.write(
+                            nnz,
+                            f(lhs_values.read(lhs_pos), unsafe { core::mem::zeroed() }),
+                        );
+                    }
+                    core::cmp::Ordering::Equal => {
+                        row_indices[nnz] = lhs;
+                        values.write(nnz, f(lhs_values.read(lhs_pos), rhs_values.read(rhs_pos)));
+                    }
+                    core::cmp::Ordering::Greater => {
+                        row_indices[nnz] = rhs;
+                        values.write(
+                            nnz,
+                            f(unsafe { core::mem::zeroed() }, rhs_values.read(rhs_pos)),
+                        );
+                    }
+                }
+
+                lhs_pos += (lhs <= rhs) as usize;
+                rhs_pos += (rhs <= lhs) as usize;
+                nnz += 1;
+            }
+            row_indices[nnz..nnz + lhs.len() - lhs_pos].copy_from_slice(&lhs[lhs_pos..]);
+            for (mut dst, src) in values
+                .rb_mut()
+                .subslice(nnz..nnz + lhs.len() - lhs_pos)
+                .into_mut_iter()
+                .zip(lhs_values.subslice(lhs_pos..lhs.len()).into_ref_iter())
+            {
+                dst.write(f(src.read(), unsafe { core::mem::zeroed() }));
+            }
+            nnz += lhs.len() - lhs_pos;
+
+            row_indices[nnz..nnz + rhs.len() - rhs_pos].copy_from_slice(&rhs[rhs_pos..]);
+            for (mut dst, src) in values
+                .rb_mut()
+                .subslice(nnz..nnz + rhs.len() - rhs_pos)
+                .into_mut_iter()
+                .zip(rhs_values.subslice(rhs_pos..rhs.len()).into_ref_iter())
+            {
+                dst.write(f(unsafe { core::mem::zeroed() }, src.read()));
+            }
+            nnz += rhs.len() - rhs_pos;
+        }
+
+        Ok(SparseColMat::<I, E>::new(
+            SymbolicSparseColMat::<I>::new_checked(m, n, col_ptrs, None, row_indices),
+            values.into_inner(),
+        ))
+    }
+
+    /// Returns the resulting matrix obtained by applying `f` to the elements from `dst` and `src`
+    /// skipping entries that are unavailable in both of them.  
+    /// The sparsity patter of `dst` is unchanged.
+    ///
+    /// # Panics
+    /// Panics if `src` and `dst` don't have matching dimensions.  
+    /// Panics if `src` contains an index that's unavailable in `dst`.  
+    #[track_caller]
+    pub fn binary_op_assign_into<I: Index, E: Entity, SrcE: Entity>(
+        dst: SparseColMatMut<'_, I, E>,
+        src: SparseColMatRef<'_, I, SrcE>,
+        f: impl FnMut(E, SrcE) -> E,
+    ) {
+        {
+            assert!(dst.nrows() == src.nrows());
+            assert!(dst.ncols() == src.ncols());
+
+            let n = dst.ncols();
+            let mut dst = dst;
+            let mut f = f;
+            unsafe {
+                assert!(f(core::mem::zeroed(), core::mem::zeroed()) == core::mem::zeroed());
+            }
+
+            for j in 0..n {
+                let (dst, dst_val) = dst.rb_mut().into_parts_mut();
+
+                let mut dst_val = SliceGroupMut::<E>::new(dst_val).subslice(dst.col_range(j));
+                let src_val = SliceGroup::<SrcE>::new(src.values_of_col(j));
+
+                let dst = dst.row_indices_of_col_raw(j);
+                let src = src.row_indices_of_col_raw(j);
+
+                let mut dst_pos = 0usize;
+                let mut src_pos = 0usize;
+
+                while src_pos < src.len() {
+                    let src = src[src_pos];
+
+                    if dst[dst_pos] < src {
+                        dst_val.write(
+                            dst_pos,
+                            f(dst_val.read(dst_pos), unsafe { core::mem::zeroed() }),
+                        );
+                        dst_pos += 1;
+                        continue;
+                    }
+
+                    assert!(dst[dst_pos] == src);
+
+                    dst_val.write(dst_pos, f(dst_val.read(dst_pos), src_val.read(src_pos)));
+
+                    src_pos += 1;
+                    dst_pos += 1;
+                }
+                while dst_pos < dst.len() {
+                    dst_val.write(
+                        dst_pos,
+                        f(dst_val.read(dst_pos), unsafe { core::mem::zeroed() }),
+                    );
+                    dst_pos += 1;
+                }
+            }
         }
     }
-    // current_row_position[i] == col_ptr[i] + col_count[i] == col_ptr[i + 1] <= col_ptr[m]
-    // so all the unchecked accesses were valid and non-overlapping, which means the entire
-    // array is filled
-    debug_assert!(current_row_position.as_ref() == &new_col_ptrs[1..]);
 
-    // SAFETY:
-    // 0. new_col_ptrs is non-decreasing
-    // 1. all written row indices are less than n
-    ghost::SparseColMatMut::new(
-        unsafe {
-            SparseColMatMut::new(
-                SymbolicSparseColMatRef::new_unchecked(*N, *M, new_col_ptrs, None, new_row_indices),
-                new_values.into_inner(),
-            )
-        },
-        N,
-        M,
-    )
+    /// Returns the resulting matrix obtained by applying `f` to the elements from `dst`, `lhs` and
+    /// `rhs`, skipping entries that are unavailable in all of `dst`, `lhs` and `rhs`.  
+    /// The sparsity patter of `dst` is unchanged.
+    ///
+    /// # Panics
+    /// Panics if `lhs`, `rhs` and `dst` don't have matching dimensions.  
+    /// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+    #[track_caller]
+    pub fn ternary_op_assign_into<I: Index, E: Entity, LhsE: Entity, RhsE: Entity>(
+        dst: SparseColMatMut<'_, I, E>,
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+        f: impl FnMut(E, LhsE, RhsE) -> E,
+    ) {
+        {
+            assert!(dst.nrows() == lhs.nrows());
+            assert!(dst.ncols() == lhs.ncols());
+            assert!(dst.nrows() == rhs.nrows());
+            assert!(dst.ncols() == rhs.ncols());
+
+            let n = dst.ncols();
+            let mut dst = dst;
+            let mut f = f;
+            unsafe {
+                assert!(
+                    f(
+                        core::mem::zeroed(),
+                        core::mem::zeroed(),
+                        core::mem::zeroed()
+                    ) == core::mem::zeroed()
+                );
+            }
+
+            for j in 0..n {
+                let (dst, dst_val) = dst.rb_mut().into_parts_mut();
+
+                let mut dst_val = SliceGroupMut::<E>::new(dst_val);
+                let lhs_val = SliceGroup::<LhsE>::new(lhs.values_of_col(j));
+                let rhs_val = SliceGroup::<RhsE>::new(rhs.values_of_col(j));
+
+                let dst = dst.row_indices_of_col_raw(j);
+                let rhs = rhs.row_indices_of_col_raw(j);
+                let lhs = lhs.row_indices_of_col_raw(j);
+
+                let mut dst_pos = 0usize;
+                let mut lhs_pos = 0usize;
+                let mut rhs_pos = 0usize;
+
+                while lhs_pos < lhs.len() && rhs_pos < rhs.len() {
+                    let lhs = lhs[lhs_pos];
+                    let rhs = rhs[rhs_pos];
+
+                    if dst[dst_pos] < Ord::min(lhs, rhs) {
+                        dst_val.write(
+                            dst_pos,
+                            f(
+                                dst_val.read(dst_pos),
+                                unsafe { core::mem::zeroed() },
+                                unsafe { core::mem::zeroed() },
+                            ),
+                        );
+                        dst_pos += 1;
+                        continue;
+                    }
+
+                    assert!(dst[dst_pos] == Ord::min(lhs, rhs));
+
+                    match lhs.cmp(&rhs) {
+                        core::cmp::Ordering::Less => {
+                            dst_val.write(
+                                dst_pos,
+                                f(dst_val.read(dst_pos), lhs_val.read(lhs_pos), unsafe {
+                                    core::mem::zeroed()
+                                }),
+                            );
+                        }
+                        core::cmp::Ordering::Equal => {
+                            dst_val.write(
+                                dst_pos,
+                                f(
+                                    dst_val.read(dst_pos),
+                                    lhs_val.read(lhs_pos),
+                                    rhs_val.read(rhs_pos),
+                                ),
+                            );
+                        }
+                        core::cmp::Ordering::Greater => {
+                            dst_val.write(
+                                dst_pos,
+                                f(
+                                    dst_val.read(dst_pos),
+                                    unsafe { core::mem::zeroed() },
+                                    rhs_val.read(rhs_pos),
+                                ),
+                            );
+                        }
+                    }
+
+                    lhs_pos += (lhs <= rhs) as usize;
+                    rhs_pos += (rhs <= lhs) as usize;
+                    dst_pos += 1;
+                }
+                while lhs_pos < lhs.len() {
+                    let lhs = lhs[lhs_pos];
+                    if dst[dst_pos] < lhs {
+                        dst_val.write(
+                            dst_pos,
+                            f(
+                                dst_val.read(dst_pos),
+                                unsafe { core::mem::zeroed() },
+                                unsafe { core::mem::zeroed() },
+                            ),
+                        );
+                        dst_pos += 1;
+                        continue;
+                    }
+                    dst_val.write(
+                        dst_pos,
+                        f(dst_val.read(dst_pos), lhs_val.read(lhs_pos), unsafe {
+                            core::mem::zeroed()
+                        }),
+                    );
+                    lhs_pos += 1;
+                    dst_pos += 1;
+                }
+                while rhs_pos < rhs.len() {
+                    let rhs = rhs[rhs_pos];
+                    if dst[dst_pos] < rhs {
+                        dst_val.write(
+                            dst_pos,
+                            f(
+                                dst_val.read(dst_pos),
+                                unsafe { core::mem::zeroed() },
+                                unsafe { core::mem::zeroed() },
+                            ),
+                        );
+                        dst_pos += 1;
+                        continue;
+                    }
+                    dst_val.write(
+                        dst_pos,
+                        f(
+                            dst_val.read(dst_pos),
+                            unsafe { core::mem::zeroed() },
+                            rhs_val.read(rhs_pos),
+                        ),
+                    );
+                    rhs_pos += 1;
+                    dst_pos += 1;
+                }
+                while rhs_pos < rhs.len() {
+                    let rhs = rhs[rhs_pos];
+                    dst_pos += dst[dst_pos..].binary_search(&rhs).unwrap();
+                    dst_val.write(
+                        dst_pos,
+                        f(
+                            dst_val.read(dst_pos),
+                            unsafe { core::mem::zeroed() },
+                            rhs_val.read(rhs_pos),
+                        ),
+                    );
+                    rhs_pos += 1;
+                }
+            }
+        }
+    }
+
+    /// Returns the sparsity pattern containing the union of those of `lhs` and `rhs`.
+    ///
+    /// # Panics
+    /// Panics if `lhs` and `rhs` don't have mathcing dimensions.  
+    #[track_caller]
+    #[inline]
+    pub fn union_symbolic<I: Index>(
+        lhs: SymbolicSparseColMatRef<'_, I>,
+        rhs: SymbolicSparseColMatRef<'_, I>,
+    ) -> Result<SymbolicSparseColMat<I>, FaerError> {
+        Ok(binary_op(
+            SparseColMatRef::<I, Symbolic>::new(lhs, Symbolic::materialize(lhs.compute_nnz())),
+            SparseColMatRef::<I, Symbolic>::new(rhs, Symbolic::materialize(rhs.compute_nnz())),
+            #[inline(always)]
+            |_, _| Symbolic,
+        )?
+        .into_parts()
+        .0)
+    }
+
+    /// Returns the sum of `lhs` and `rhs`.
+    ///
+    /// # Panics
+    /// Panics if `lhs` and `rhs` don't have mathcing dimensions.  
+    #[track_caller]
+    #[inline]
+    pub fn add<
+        I: Index,
+        E: ComplexField,
+        LhsE: Conjugate<Canonical = E>,
+        RhsE: Conjugate<Canonical = E>,
+    >(
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) -> Result<SparseColMat<I, E>, FaerError> {
+        binary_op(lhs, rhs, |lhs, rhs| {
+            lhs.canonicalize().faer_add(rhs.canonicalize())
+        })
+    }
+
+    /// Returns the difference of `lhs` and `rhs`.
+    ///
+    /// # Panics
+    /// Panics if `lhs` and `rhs` don't have matching dimensions.  
+    #[track_caller]
+    #[inline]
+    pub fn sub<
+        I: Index,
+        LhsE: Conjugate<Canonical = E>,
+        RhsE: Conjugate<Canonical = E>,
+        E: ComplexField,
+    >(
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) -> Result<SparseColMat<I, E>, FaerError> {
+        binary_op(lhs, rhs, |lhs, rhs| {
+            lhs.canonicalize().faer_sub(rhs.canonicalize())
+        })
+    }
+
+    /// Computes the sum of `dst` and `src` and stores the result in `dst` without changing its
+    /// symbolic structure.
+    ///
+    /// # Panics
+    /// Panics if `dst` and `rhs` don't have matching dimensions.  
+    /// Panics if `rhs` contains an index that's unavailable in `dst`.  
+    pub fn add_assign<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        dst: SparseColMatMut<'_, I, E>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) {
+        binary_op_assign_into(dst, rhs, |dst, rhs| dst.faer_add(rhs.canonicalize()))
+    }
+
+    /// Computes the difference of `dst` and `src` and stores the result in `dst` without changing
+    /// its symbolic structure.
+    ///
+    /// # Panics
+    /// Panics if `dst` and `rhs` don't have matching dimensions.  
+    /// Panics if `rhs` contains an index that's unavailable in `dst`.  
+    pub fn sub_assign<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>>(
+        dst: SparseColMatMut<'_, I, E>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) {
+        binary_op_assign_into(dst, rhs, |dst, rhs| dst.faer_sub(rhs.canonicalize()))
+    }
+
+    /// Computes the sum of `lhs` and `rhs`, storing the result in `dst` without changing its
+    /// symbolic structure.
+    ///
+    /// # Panics
+    /// Panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
+    /// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+    #[track_caller]
+    #[inline]
+    pub fn add_into<
+        I: Index,
+        E: ComplexField,
+        LhsE: Conjugate<Canonical = E>,
+        RhsE: Conjugate<Canonical = E>,
+    >(
+        dst: SparseColMatMut<'_, I, E>,
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) {
+        ternary_op_assign_into(dst, lhs, rhs, |_, lhs, rhs| {
+            lhs.canonicalize().faer_add(rhs.canonicalize())
+        })
+    }
+
+    /// Computes the difference of `lhs` and `rhs`, storing the result in `dst` without changing its
+    /// symbolic structure.
+    ///
+    /// # Panics
+    /// Panics if `dst`, `lhs` and `rhs` don't have matching dimensions.  
+    /// Panics if `lhs` or `rhs` contains an index that's unavailable in `dst`.  
+    #[track_caller]
+    #[inline]
+    pub fn sub_into<
+        I: Index,
+        E: ComplexField,
+        LhsE: Conjugate<Canonical = E>,
+        RhsE: Conjugate<Canonical = E>,
+    >(
+        dst: SparseColMatMut<'_, I, E>,
+        lhs: SparseColMatRef<'_, I, LhsE>,
+        rhs: SparseColMatRef<'_, I, RhsE>,
+    ) {
+        ternary_op_assign_into(dst, lhs, rhs, |_, lhs, rhs| {
+            lhs.canonicalize().faer_sub(rhs.canonicalize())
+        })
+    }
 }
 
-/// Computes the transpose of the matrix `A` and returns a view over it.
-///
-/// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
-///
-/// # Note
-/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-pub fn transpose<'a, I: Index, E: Entity>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: GroupFor<E, &'a mut [E::Unit]>,
-    A: SparseColMatRef<'_, I, E>,
-    stack: PodStack<'_>,
-) -> SparseColMatMut<'a, I, E> {
-    ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
-        ghost_transpose(
-            new_col_ptrs,
-            new_row_indices,
-            SliceGroupMut::new(new_values),
-            ghost::SparseColMatRef::new(A, M, N),
-            stack,
-        )
-        .into_inner()
-    })
+impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> Option<GroupFor<E, &'a E::Unit>> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+
+        let Ok(pos) = self
+            .row_indices_of_col_raw(col)
+            .binary_search(&I::truncate(row))
+        else {
+            return None;
+        };
+
+        Some(E::faer_map(self.values_of_col(col), |slice| &slice[pos]))
+    }
 }
 
-/// Computes the adjoint of the matrix `A` and returns a view over it.
-///
-/// The result is stored in `new_col_ptrs`, `new_row_indices` and `new_values`.
-///
-/// # Note
-/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-pub fn adjoint<'a, I: Index, E: ComplexField>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    new_values: GroupFor<E, &'a mut [E::Unit]>,
-    A: SparseColMatRef<'_, I, E>,
-    stack: PodStack<'_>,
-) -> SparseColMatMut<'a, I, E> {
-    ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
-        ghost_adjoint(
-            new_col_ptrs,
-            new_row_indices,
-            SliceGroupMut::new(new_values),
-            ghost::SparseColMatRef::new(A, M, N),
-            stack,
-        )
-        .into_inner()
-    })
+impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> Option<GroupFor<E, &'a E::Unit>> {
+        self.into_const().get(row, col)
+    }
+
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get_mut(self, row: usize, col: usize) -> Option<GroupFor<E, &'a mut E::Unit>> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+
+        let Ok(pos) = self
+            .row_indices_of_col_raw(col)
+            .binary_search(&I::truncate(row))
+        else {
+            return None;
+        };
+
+        Some(E::faer_map(self.values_of_col_mut(col), |slice| {
+            &mut slice[pos]
+        }))
+    }
 }
 
-/// Computes the adjoint of the symbolic matrix `A` and returns a view over it.
-///
-/// The result is stored in `new_col_ptrs`, `new_row_indices`.
-///
-/// # Note
-/// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
-pub fn adjoint_symbolic<'a, I: Index>(
-    new_col_ptrs: &'a mut [I],
-    new_row_indices: &'a mut [I],
-    A: SymbolicSparseColMatRef<'_, I>,
-    stack: PodStack<'_>,
-) -> SymbolicSparseColMatRef<'a, I> {
-    ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
-        ghost_adjoint_symbolic(
-            new_col_ptrs,
-            new_row_indices,
-            ghost::SymbolicSparseColMatRef::new(A, M, N),
-            stack,
-        )
-        .into_inner()
-    })
+impl<I: Index, E: Entity> SparseColMat<I, E> {
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get(&self, row: usize, col: usize) -> Option<GroupFor<E, &'_ E::Unit>> {
+        self.as_ref().get(row, col)
+    }
+
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get_mut(&mut self, row: usize, col: usize) -> Option<GroupFor<E, &'_ mut E::Unit>> {
+        self.as_mut().get_mut(row, col)
+    }
+}
+
+impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> Option<GroupFor<E, &'a E::Unit>> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+
+        let Ok(pos) = self
+            .col_indices_of_row_raw(row)
+            .binary_search(&I::truncate(col))
+        else {
+            return None;
+        };
+
+        Some(E::faer_map(self.values_of_row(row), |slice| &slice[pos]))
+    }
+}
+
+impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get_mut(self, row: usize, col: usize) -> Option<GroupFor<E, &'a mut E::Unit>> {
+        assert!(row < self.nrows());
+        assert!(col < self.ncols());
+
+        let Ok(pos) = self
+            .col_indices_of_row_raw(row)
+            .binary_search(&I::truncate(col))
+        else {
+            return None;
+        };
+
+        Some(E::faer_map(self.values_of_row_mut(row), |slice| {
+            &mut slice[pos]
+        }))
+    }
+}
+
+impl<I: Index, E: Entity> SparseRowMat<I, E> {
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get(&self, row: usize, col: usize) -> Option<GroupFor<E, &'_ E::Unit>> {
+        self.as_ref().get(row, col)
+    }
+
+    /// Returns a reference to the value at the given index using a binary search, or None if the
+    /// symbolic structure doesn't contain it
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`  
+    /// Panics if `col >= self.ncols()`  
+    #[track_caller]
+    pub fn get_mut(&mut self, row: usize, col: usize) -> Option<GroupFor<E, &'_ mut E::Unit>> {
+        self.as_mut().get_mut(row, col)
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseColMatRef<'_, I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseRowMatRef<'_, I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseColMatMut<'_, I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.rb().get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseRowMatMut<'_, I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.rb().get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for SparseColMatMut<'_, I, E> {
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+        self.rb_mut().get_mut(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for SparseRowMatMut<'_, I, E> {
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+        self.rb_mut().get_mut(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseColMat<I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.as_ref().get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::Index<(usize, usize)> for SparseRowMat<I, E> {
+    type Output = E;
+
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &Self::Output {
+        self.as_ref().get(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for SparseColMat<I, E> {
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+        self.as_mut().get_mut(row, col).unwrap()
+    }
+}
+
+impl<I: Index, E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for SparseRowMat<I, E> {
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut Self::Output {
+        self.as_mut().get_mut(row, col).unwrap()
+    }
 }
 
 /// Sparse matrix multiplication.
@@ -3953,6 +4833,210 @@ pub mod mul {
                 }
             });
         });
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseColMatRef<'_, I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMatRef<'_, I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        let mut triplets = Vec::new();
+        for j in 0..self.ncols() {
+            for (i, val) in self
+                .row_indices_of_col(j)
+                .zip(SliceGroup::<'_, E>::new(self.values_of_col(j)).into_ref_iter())
+            {
+                triplets.push((i, j, val.read()))
+            }
+        }
+        triplets
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseRowMatRef<'_, I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMatRef<'_, I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        let mut triplets = Vec::new();
+        for i in 0..self.nrows() {
+            for (j, val) in self
+                .col_indices_of_row(i)
+                .zip(SliceGroup::<'_, E>::new(self.values_of_row(i)).into_ref_iter())
+            {
+                triplets.push((i, j, val.read()))
+            }
+        }
+        triplets
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseColMatMut<'_, I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMatMut<'_, I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        self.rb().fetch_triplets()
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseColMat<I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMat<I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        self.as_ref().fetch_triplets()
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseRowMatMut<'_, I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMatMut<'_, I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        self.rb().fetch_triplets()
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::Matrix<E> for SparseRowMat<I, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Sparse(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMat<I, E> {
+    #[inline]
+    fn nnz(&self) -> usize {
+        self.compute_nnz()
+    }
+
+    #[inline]
+    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+        self.as_ref().fetch_triplets()
     }
 }
 
@@ -4206,5 +5290,120 @@ mod tests {
         assert!(err.is_err());
         let err = err.unwrap_err();
         assert!(err == CreationError::OutOfBounds { row: 2, col: 4 });
+    }
+
+    #[test]
+    fn test_add_intersecting() {
+        let lhs = SparseColMat::<usize, f64>::try_new_from_triplets(
+            5,
+            4,
+            &[
+                (1, 0, 1.0),
+                (2, 1, 2.0),
+                (3, 2, 3.0),
+                (0, 0, 4.0),
+                (1, 1, 5.0),
+                (2, 2, 6.0),
+                (3, 3, 7.0),
+                (2, 0, 8.0),
+                (3, 1, 9.0),
+                (4, 2, 10.0),
+                (0, 2, 11.0),
+                (1, 3, 12.0),
+                (4, 0, 13.0),
+            ],
+        )
+        .unwrap();
+
+        let rhs = SparseColMat::<usize, f64>::try_new_from_triplets(
+            5,
+            4,
+            &[
+                (1, 0, 10.0),
+                (2, 1, 14.0),
+                (3, 2, 15.0),
+                (4, 3, 16.0),
+                (0, 1, 17.0),
+                (1, 2, 18.0),
+                (2, 3, 19.0),
+                (3, 0, 20.0),
+                (4, 1, 21.0),
+                (0, 3, 22.0),
+            ],
+        )
+        .unwrap();
+
+        let sum = ops::add(lhs.as_ref(), rhs.as_ref()).unwrap();
+        assert!(sum.compute_nnz() == lhs.compute_nnz() + rhs.compute_nnz() - 3);
+
+        for j in 0..4 {
+            for i in 0..5 {
+                assert!(sum.row_indices_of_col_raw(j)[i] == i);
+            }
+        }
+
+        for j in 0..4 {
+            for i in 0..5 {
+                assert!(
+                    sum[(i, j)] == lhs.get(i, j).unwrap_or(&0.0) + rhs.get(i, j).unwrap_or(&0.0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_add_disjoint() {
+        let lhs = SparseColMat::<usize, f64>::try_new_from_triplets(
+            5,
+            4,
+            &[
+                (0, 0, 1.0),
+                (1, 1, 2.0),
+                (2, 2, 3.0),
+                (3, 3, 4.0),
+                (2, 0, 5.0),
+                (3, 1, 6.0),
+                (4, 2, 7.0),
+                (0, 2, 8.0),
+                (1, 3, 9.0),
+                (4, 0, 10.0),
+            ],
+        )
+        .unwrap();
+
+        let rhs = SparseColMat::<usize, f64>::try_new_from_triplets(
+            5,
+            4,
+            &[
+                (1, 0, 11.0),
+                (2, 1, 12.0),
+                (3, 2, 13.0),
+                (4, 3, 14.0),
+                (0, 1, 15.0),
+                (1, 2, 16.0),
+                (2, 3, 17.0),
+                (3, 0, 18.0),
+                (4, 1, 19.0),
+                (0, 3, 20.0),
+            ],
+        )
+        .unwrap();
+
+        let sum = ops::add(lhs.as_ref(), rhs.as_ref()).unwrap();
+        assert!(sum.compute_nnz() == lhs.compute_nnz() + rhs.compute_nnz());
+
+        for j in 0..4 {
+            for i in 0..5 {
+                assert!(sum.row_indices_of_col_raw(j)[i] == i);
+            }
+        }
+
+        for j in 0..4 {
+            for i in 0..5 {
+                assert!(
+                    sum[(i, j)] == lhs.get(i, j).unwrap_or(&0.0) + rhs.get(i, j).unwrap_or(&0.0)
+                );
+            }
+        }
     }
 }
