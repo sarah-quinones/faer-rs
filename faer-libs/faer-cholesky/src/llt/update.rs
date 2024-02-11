@@ -803,7 +803,11 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     let sqr_nljj = ljj.faer_mul(ljj).faer_add(alpha_conj_wj.faer_mul(wj));
                     match PartialOrd::partial_cmp(&sqr_nljj.faer_real(), &E::Real::faer_zero()) {
                         Some(core::cmp::Ordering::Greater) => (),
-                        _ => return Err(CholeskyError),
+                        _ => {
+                            return Err(CholeskyError {
+                                non_positive_definite_minor: j + 1,
+                            })
+                        }
                     }
                     let nljj = E::faer_from_real(sqr_nljj.faer_real().faer_sqrt());
                     let inv_ljj = ljj.faer_inv();

@@ -22,6 +22,7 @@ coe-rs = { workspace = true }
 reborrow = { workspace = true }
 pulp = { workspace = true, default-features = false }
 dyn-stack = { workspace = true, default-features = false }
+bytemuck = { workspace = true }
 
 dbgf = "0.1.1"
 
@@ -34,6 +35,8 @@ ndarray = { version = "0.15", optional = true, default-features = false }
 polars = { version = "0.34", optional = true, features = ["lazy"] }
 
 log = { workspace = true, optional = true, default-features = false }
+
+npyz = { version = "0.8", optional = true }
 
 [features]
 default = ["std", "rayon", "matrixcompare"]
@@ -77,6 +80,7 @@ matrixcompare = ["dep:matrixcompare"]
 nalgebra = ["dep:nalgebra"]
 ndarray = ["dep:ndarray"]
 polars = ["dep:polars"]
+npy = ["std", "dep:npyz"]
 
 [dev-dependencies]
 assert_approx_eq = "1.1.0"

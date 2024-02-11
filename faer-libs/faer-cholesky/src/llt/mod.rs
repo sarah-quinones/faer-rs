@@ -11,7 +11,11 @@ pub mod update;
 /// This error signifies that the LLT decomposition could not be computed due to the matrix not
 /// being numerically positive definite.
 #[derive(Debug, Clone, Copy)]
-pub struct CholeskyError;
+pub struct CholeskyError {
+    /// The dimension of the first square non positive-definite top-left corner of the input
+    /// matrix.
+    pub non_positive_definite_minor: usize,
+}
 
 #[cfg(test)]
 mod tests {

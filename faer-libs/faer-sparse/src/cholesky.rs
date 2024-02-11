@@ -381,7 +381,9 @@ pub mod simplicial {
                             match kind {
                                 FactorizationKind::Llt => {
                                     if d <= E::Real::faer_zero() {
-                                        return Err(CholeskyError);
+                                        return Err(CholeskyError {
+                                            non_positive_definite_minor: *k + 1,
+                                        });
                                     }
                                     L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
                                 }
@@ -549,7 +551,9 @@ pub mod simplicial {
                             match kind {
                                 FactorizationKind::Llt => {
                                     if d <= E::Real::faer_zero() {
-                                        return Err(CholeskyError);
+                                        return Err(CholeskyError {
+                                            non_positive_definite_minor: *k + 1,
+                                        });
                                     }
                                     L_values.write(k_start, E::faer_from_real(d.faer_sqrt()));
                                 }
@@ -2450,13 +2454,20 @@ pub mod supernodal {
             let (mut Ls_top, mut Ls_bot) = Ls.rb_mut().split_at_row_mut(s_ncols);
 
             let params = Default::default();
-            dynamic_regularization_count += faer_cholesky::llt::compute::cholesky_in_place(
+            dynamic_regularization_count += match faer_cholesky::llt::compute::cholesky_in_place(
                 Ls_top.rb_mut(),
                 regularization,
                 parallelism,
                 stack.rb_mut(),
                 params,
-            )?
+            ) {
+                Ok(count) => count,
+                Err(err) => {
+                    return Err(CholeskyError {
+                        non_positive_definite_minor: err.non_positive_definite_minor + s_start,
+                    })
+                }
+            }
             .dynamic_regularization_count;
             faer_core::solve::solve_lower_triangular_in_place(
                 Ls_top.rb().conjugate(),

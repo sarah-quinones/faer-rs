@@ -8,6 +8,7 @@ use faer_core::{
 use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
+    offset: usize,
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
     parallelism: Parallelism,
@@ -83,7 +84,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         if real > E::Real::faer_zero() {
             a11.write(0, 0, E::faer_from_real(real.faer_sqrt()));
         } else {
-            return Err(CholeskyError);
+            return Err(CholeskyError {
+                non_positive_definite_minor: offset + idx + 1,
+            });
         };
 
         if idx + block_size == n {
@@ -161,6 +164,7 @@ pub fn cholesky_in_place_req<E: Entity>(
 
 // uses an out parameter for tail recursion
 fn cholesky_in_place_impl<E: ComplexField>(
+    offset: usize,
     count: &mut usize,
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
@@ -176,13 +180,20 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
     let n = matrix.nrows();
     if n < 32 {
-        *count += cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)?;
+        *count += cholesky_in_place_left_looking_impl(
+            offset,
+            matrix,
+            regularization,
+            parallelism,
+            params,
+        )?;
         Ok(())
     } else {
         let block_size = Ord::min(n / 2, 128 * parallelism_degree(parallelism));
         let (mut l00, _, mut a10, mut a11) = matrix.rb_mut().split_at_mut(block_size, block_size);
 
         cholesky_in_place_impl(
+            offset,
             count,
             l00.rb_mut(),
             regularization,
@@ -211,7 +222,15 @@ fn cholesky_in_place_impl<E: ComplexField>(
             parallelism,
         );
 
-        cholesky_in_place_impl(count, a11, regularization, parallelism, stack, params)
+        cholesky_in_place_impl(
+            offset + block_size,
+            count,
+            a11,
+            regularization,
+            parallelism,
+            stack,
+            params,
+        )
     }
 }
 
@@ -260,6 +279,7 @@ pub fn cholesky_in_place<E: ComplexField>(
 
     let mut count = 0;
     cholesky_in_place_impl(
+        0,
         &mut count,
         matrix,
         regularization,

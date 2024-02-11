@@ -32,7 +32,8 @@ use crate::{assert, group_helpers::VecGroup};
 use core::{cell::Cell, iter::zip, ops::Range, slice::SliceIndex};
 use dyn_stack::GlobalPodBuffer;
 use group_helpers::SliceGroup;
-use permutation::{Index, SignedIndex};
+
+pub use permutation::{Index, SignedIndex};
 
 mod ghost {
     pub use crate::constrained::{group_helpers::*, permutation::*, sparse::*, *};
