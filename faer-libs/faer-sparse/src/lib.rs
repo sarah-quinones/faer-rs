@@ -48,12 +48,13 @@ impl SupernodalThreshold {
     pub const AUTO: Self = Self(1.0);
 }
 
-use faer_core::{
+use faer_core::sparse::util::{
+    ghost_adjoint_symbolic, ghost_permute_hermitian_unsorted,
+    ghost_permute_hermitian_unsorted_symbolic, transpose,
+};
+
+pub use faer_core::{
     permutation::{Index, SignedIndex},
-    sparse::util::{
-        ghost_adjoint_symbolic, ghost_permute_hermitian_unsorted,
-        ghost_permute_hermitian_unsorted_symbolic, transpose,
-    },
     FaerError,
 };
 
