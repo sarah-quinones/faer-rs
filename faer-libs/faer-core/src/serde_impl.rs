@@ -135,21 +135,28 @@ where
                     {
                         match (self.ncols, self.nrows) {
                             (Some(ncols), Some(nrows)) => {
-                                let ncols = ncols;
-                                let nrows = nrows;
                                 let mut data = Mat::<E>::with_capacity(nrows, ncols);
                                 unsafe {
                                     data.set_dims(nrows, ncols);
                                 }
-                                let mut i = 0;
-                                while let Some(el) = seq.next_element::<E>()? {
+                                let expected_length = nrows * ncols;
+                                for i in 0..expected_length {
+                                    let el = seq.next_element::<E>()?.ok_or_else(|| {
+                                        serde::de::Error::invalid_length(
+                                            i,
+                                            &format!("{} elements", expected_length).as_str(),
+                                        )
+                                    })?;
                                     data.write(i / ncols, i % ncols, el);
-                                    i += 1;
                                 }
-                                if i < nrows * ncols {
+                                let mut additional = 0usize;
+                                while let Some(_) = seq.next_element::<E>()? {
+                                    additional += 1;
+                                }
+                                if additional > 0 {
                                     return Err(serde::de::Error::invalid_length(
-                                        i,
-                                        &format!("{} elements", nrows * ncols).as_str(),
+                                        additional + expected_length,
+                                        &format!("{} elements", expected_length).as_str(),
                                     ));
                                 }
                                 Ok(MatrixOrVec::Matrix(data))
@@ -335,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn matrix_serialization_errors_with_too_smaller_size() {
+    fn matrix_serialization_errors_too_small() {
         assert_de_tokens_error::<Mat<f64>>(
             &[
                 Token::Struct {
@@ -360,6 +367,40 @@ mod tests {
                 Token::SeqEnd,
             ],
             "invalid length 9, expected 12 elements",
+        )
+    }
+
+    #[test]
+    fn matrix_serialization_errors_too_large() {
+        assert_de_tokens_error::<Mat<f64>>(
+            &[
+                Token::Struct {
+                    name: "Mat",
+                    len: 3,
+                },
+                Token::Str("nrows"),
+                Token::U64(3),
+                Token::Str("ncols"),
+                Token::U64(4),
+                Token::Str("data"),
+                Token::Seq { len: Some(12) },
+                Token::F64(0.0),
+                Token::F64(10.0),
+                Token::F64(20.0),
+                Token::F64(30.0),
+                Token::F64(1.0),
+                Token::F64(11.0),
+                Token::F64(21.0),
+                Token::F64(31.0),
+                Token::F64(2.0),
+                Token::F64(12.0),
+                Token::F64(22.0),
+                Token::F64(32.0),
+                Token::F64(32.0),
+                Token::F64(32.0),
+                Token::SeqEnd,
+            ],
+            "invalid length 14, expected 12 elements",
         )
     }
 }
