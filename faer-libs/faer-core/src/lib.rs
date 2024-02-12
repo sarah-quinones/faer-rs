@@ -205,6 +205,8 @@ pub mod solve;
 
 pub mod matrix_ops;
 
+#[cfg(feature = "serde")]
+pub mod serde_impl;
 pub mod sparse;
 
 /// Thin wrapper used for scalar multiplication of a matrix by a scalar value.
