@@ -9655,6 +9655,64 @@ macro_rules! mat {
     };
 }
 
+/// Creates a [`Col`] containing the arguments.
+///
+/// ```
+/// use faer_core::col;
+///
+/// let col_vec = col![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(col_vec.read(0), 3.0);
+/// assert_eq!(col_vec.read(1), 5.0);
+/// assert_eq!(col_vec.read(2), 7.0);
+/// assert_eq!(col_vec.read(3), 9.0);
+/// ```
+#[macro_export]
+macro_rules! col {
+    () => {
+        compile_error!("number of elements in the column is ambiguous");
+    };
+
+    ($($v:expr),+ $(,)?) => {{
+        let data = &[$($v),+];
+        let n = data.len();
+
+        #[allow(unused_unsafe)]
+        unsafe {
+            $crate::Col::<_>::from_fn(n, |i| $crate::ref_to_ptr(&data[i]).read())
+        }
+    }};
+}
+
+/// Creates a [`Row`] containing the arguments.
+///
+/// ```
+/// use faer_core::row;
+///
+/// let row_vec = row![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(row_vec.read(0), 3.0);
+/// assert_eq!(row_vec.read(1), 5.0);
+/// assert_eq!(row_vec.read(2), 7.0);
+/// assert_eq!(row_vec.read(3), 9.0);
+/// ```
+#[macro_export]
+macro_rules! row {
+    () => {
+        compile_error!("number of elements in the row is ambiguous");
+    };
+
+    ($($v:expr),+ $(,)?) => {{
+        let data = &[$($v),+];
+        let n = data.len();
+
+        #[allow(unused_unsafe)]
+        unsafe {
+            $crate::Row::<_>::from_fn(n, |i| $crate::ref_to_ptr(&data[i]).read())
+        }
+    }};
+}
+
 /// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Parallelism {
@@ -12840,6 +12898,92 @@ mod tests {
 
         x.write(1, 0, Complex::new(3.0, 2.0));
         assert!(x.read(1, 0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn col_macro() {
+        let mut x = col![3.0, 5.0, 7.0, 9.0];
+
+        assert!(x[0] == 3.0);
+        assert!(x[1] == 5.0);
+        assert!(x[2] == 7.0);
+        assert!(x[3] == 9.0);
+
+        x[0] = 13.0;
+        assert!(x[0] == 13.0);
+
+        // TODO:
+        // Col::get() seems to be missing
+        // assert!(x.get(...) == x);
+    }
+
+    #[test]
+    fn col_macro_cplx() {
+        let new = Complex::new;
+        let mut x = col![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn col_macro_native_cplx() {
+        let new = Complex::new;
+        let mut x = col![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn row_macro() {
+        let mut x = row![3.0, 5.0, 7.0, 9.0];
+
+        assert!(x[0] == 3.0);
+        assert!(x[1] == 5.0);
+        assert!(x[2] == 7.0);
+        assert!(x[3] == 9.0);
+
+        x[0] = 13.0;
+        assert!(x[0] == 13.0);
+
+        // TODO:
+        // Row::get() seems to be missing
+        // assert!(x.get(...) == x);
+    }
+
+    #[test]
+    fn row_macro_cplx() {
+        let new = Complex::new;
+        let mut x = row![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn row_macro_native_cplx() {
+        let new = Complex::new;
+        let mut x = row![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
     }
 
     #[test]
