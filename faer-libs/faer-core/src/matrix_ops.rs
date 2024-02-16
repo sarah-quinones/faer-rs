@@ -363,6 +363,20 @@ impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMatMut<'_, I, E> {
     }
 }
 
+impl<I: Index, E: Entity> GenericMatrixMut for inner::SparseColMatMut<'_, I, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.rb_mut()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrixMut for inner::SparseRowMatMut<'_, I, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.rb_mut()
+    }
+}
+
 impl<I: Index, E: Entity> GenericMatrix for inner::SparseColMat<I, E> {
     type Kind = SparseColMat<I>;
     type Elem = E;
@@ -380,6 +394,20 @@ impl<I: Index, E: Entity> GenericMatrix for inner::SparseRowMat<I, E> {
     #[inline(always)]
     fn as_ref(this: &Matrix<Self>) -> <Self::Kind as MatrixKind>::Ref<'_, Self::Elem> {
         this.as_ref()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrixMut for inner::SparseColMat<I, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.as_mut()
+    }
+}
+
+impl<I: Index, E: Entity> GenericMatrixMut for inner::SparseRowMat<I, E> {
+    #[inline(always)]
+    fn as_mut(this: &mut Matrix<Self>) -> <Self::Kind as MatrixKind>::Mut<'_, Self::Elem> {
+        this.as_mut()
     }
 }
 

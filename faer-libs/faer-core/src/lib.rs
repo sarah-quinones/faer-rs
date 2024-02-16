@@ -10720,6 +10720,7 @@ pub mod constrained {
         }
 
         /// Check that the index is bounded by `self`, or panic otherwise.
+        #[track_caller]
         #[inline]
         pub fn check<I: Index>(self, idx: I) -> Idx<'size, I> {
             Idx::new_checked(idx, self)
@@ -10748,6 +10749,7 @@ pub mod constrained {
 
     impl<'n, I: Index> Idx<'n, I> {
         /// Returns a new index after asserting that it's bounded by `size`.
+        #[track_caller]
         #[inline]
         pub fn new_checked(idx: I, size: Size<'n>) -> Self {
             assert!(idx.zx() < size.into_inner());
@@ -10757,6 +10759,7 @@ pub mod constrained {
             })
         }
         /// Returns a new index without asserting that it's bounded by `size`.
+        #[track_caller]
         #[inline]
         pub unsafe fn new_unchecked(idx: I, size: Size<'n>) -> Self {
             debug_assert!(idx.zx() < size.into_inner());

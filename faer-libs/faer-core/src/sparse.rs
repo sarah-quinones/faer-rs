@@ -2023,6 +2023,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         values
             .try_reserve_exact(nnz)
             .map_err(|_| FaerError::OutOfMemory)?;
+        values.resize(nnz, E::Canonical::faer_zero().faer_into_units());
 
         let mut mem = GlobalPodBuffer::try_new(StackReq::new::<I>(self.nrows))
             .map_err(|_| FaerError::OutOfMemory)?;
@@ -2749,7 +2750,7 @@ const _: () = {
                     Self {
                         nrows,
                         ncols,
-                        col_ptr: try_zeroed(1)?,
+                        col_ptr: try_zeroed(ncols + 1)?,
                         col_nnz: None,
                         row_ind: Vec::new(),
                     },
@@ -2873,7 +2874,7 @@ const _: () = {
                     Self {
                         nrows,
                         ncols,
-                        col_ptr: try_zeroed(1)?,
+                        col_ptr: try_zeroed(ncols + 1)?,
                         col_nnz: None,
                         row_ind: Vec::new(),
                     },
