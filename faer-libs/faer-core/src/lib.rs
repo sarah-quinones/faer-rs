@@ -290,7 +290,7 @@ pub trait AsMatMut<E: Entity> {
 /// This trait is implemented for any type that can be represented as a
 /// 2D matrix view, like [`Mat`], [`Row`], [`Col`], and their respective
 /// references and mutable references. For a trait specific to the matrix
-/// family, see [`AsMatRef`] and [`AsMatMut`].
+/// family, see [`AsMatRef`] or [`AsMatMut`].
 pub trait As2D<E: Entity> {
     /// Convert to a 2D matrix view.
     fn as_2d_ref(&self) -> MatRef<'_, E>;
@@ -300,7 +300,7 @@ pub trait As2D<E: Entity> {
 /// This trait is implemented for any type that can be represented as a
 /// 2D matrix view, like [`Mat`], [`Row`], [`Col`], and their respective
 /// references and mutable references. For a trait specific to the matrix
-/// family, see [`AsMatRef`] and [`AsMatMut`].
+/// family, see [`AsMatRef`] or [`AsMatMut`].
 pub trait As2DMut<E: Entity> {
     /// Convert to a mutable 2D matrix view.
     fn as_2d_mut(&mut self) -> MatMut<'_, E>;
