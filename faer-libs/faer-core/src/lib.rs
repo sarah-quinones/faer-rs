@@ -267,14 +267,43 @@ pub trait AsColMut<E: Entity> {
 }
 
 /// Trait for types that can be converted to a matrix view.
+///
+/// This trait is implemented for types of the matrix family, like [`Mat`],
+/// [`MatRef`], and [`MatMut`], but not for types like [`Col`], [`Row`], or
+/// their families. For a more general trait, see [`As2D`].
 pub trait AsMatRef<E: Entity> {
     /// Convert to a matrix view.
     fn as_mat_ref(&self) -> MatRef<'_, E>;
 }
 /// Trait for types that can be converted to a mutable matrix view.
+///
+/// This trait is implemented for types of the matrix family, like [`Mat`],
+/// [`MatRef`], and [`MatMut`], but not for types like [`Col`], [`Row`], or
+/// their families. For a more general trait, see [`As2D`].
 pub trait AsMatMut<E: Entity> {
     /// Convert to a mutable matrix view.
     fn as_mat_mut(&mut self) -> MatMut<'_, E>;
+}
+
+/// Trait for types that can be converted to a 2D matrix view.
+///
+/// This trait is implemented for any type that can be represented as a
+/// 2D matrix view, like [`Mat`], [`Row`], [`Col`], and their respective
+/// references and mutable references. For a trait specific to the matrix
+/// family, see [`AsMatRef`] and [`AsMatMut`].
+pub trait As2D<E: Entity> {
+    /// Convert to a 2D matrix view.
+    fn as_2d_ref(&self) -> MatRef<'_, E>;
+}
+/// Trait for types that can be converted to a mutable 2D matrix view.
+///
+/// This trait is implemented for any type that can be represented as a
+/// 2D matrix view, like [`Mat`], [`Row`], [`Col`], and their respective
+/// references and mutable references. For a trait specific to the matrix
+/// family, see [`AsMatRef`] and [`AsMatMut`].
+pub trait As2DMut<E: Entity> {
+    /// Convert to a mutable 2D matrix view.
+    fn as_2d_mut(&mut self) -> MatMut<'_, E>;
 }
 
 // AS COL
@@ -477,6 +506,228 @@ const _: () = {
         #[inline]
         fn as_mat_mut(&mut self) -> MatMut<'_, E> {
             (**self).as_mut()
+        }
+    }
+};
+
+// AS 2D
+const _: () = {
+    // Matrix family
+    impl<E: Entity> As2D<E> for &'_ MatRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            **self
+        }
+    }
+
+    impl<E: Entity> As2D<E> for MatRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            *self
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ MatMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).rb()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for MatMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (*self).rb()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ Mat<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).as_ref()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for Mat<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (*self).as_ref()
+        }
+    }
+
+    // Row Family
+    impl<E: Entity> As2D<E> for &'_ RowRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for RowRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ RowMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).rb().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for RowMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.rb().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ Row<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).as_ref().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for Row<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_ref().as_2d()
+        }
+    }
+
+    // Col Family
+    impl<E: Entity> As2D<E> for &'_ ColRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for ColRef<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ ColMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).rb().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for ColMut<'_, E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.rb().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for &'_ Col<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            (**self).as_ref().as_2d()
+        }
+    }
+
+    impl<E: Entity> As2D<E> for Col<E> {
+        #[inline]
+        fn as_2d_ref(&self) -> MatRef<'_, E> {
+            self.as_ref().as_2d()
+        }
+    }
+};
+
+// AS 2D MUT
+const _: () = {
+    // Matrix family
+    impl<E: Entity> As2DMut<E> for &'_ mut MatMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).rb_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for MatMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (*self).rb_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for &'_ mut Mat<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).as_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for Mat<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (*self).as_mut()
+        }
+    }
+
+    // Row Family
+    impl<E: Entity> As2DMut<E> for &'_ mut RowMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).rb_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for RowMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            self.rb_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for &'_ mut Row<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).as_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for Row<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            self.as_mut().as_2d_mut()
+        }
+    }
+
+    // Col Family
+    impl<E: Entity> As2DMut<E> for &'_ mut ColMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).rb_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for ColMut<'_, E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            self.rb_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for &'_ mut Col<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            (**self).as_mut().as_2d_mut()
+        }
+    }
+
+    impl<E: Entity> As2DMut<E> for Col<E> {
+        #[inline]
+        fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+            self.as_mut().as_2d_mut()
         }
     }
 };
