@@ -4536,6 +4536,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -4991,6 +4992,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -5377,6 +5379,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -5808,6 +5811,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -6688,6 +6692,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -7636,6 +7641,7 @@ const _: () = {
         /// This is an allocating operation; see [`kron`] for the
         /// allocation-free version or more info in general.
         #[inline]
+        #[track_caller]
         pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
         where
             E: ComplexField,
@@ -8652,6 +8658,7 @@ impl<E: Entity> Col<E> {
     /// This is an allocating operation; see [`kron`] for the
     /// allocation-free version or more info in general.
     #[inline]
+    #[track_caller]
     pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
     where
         E: ComplexField,
@@ -9160,6 +9167,7 @@ impl<E: Entity> Row<E> {
     /// This is an allocating operation; see [`kron`] for the
     /// allocation-free version or more info in general.
     #[inline]
+    #[track_caller]
     pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
     where
         E: ComplexField,
@@ -9820,6 +9828,7 @@ impl<E: Entity> Mat<E> {
     /// This is an allocating operation; see [`kron`] for the
     /// allocation-free version or more info in general.
     #[inline]
+    #[track_caller]
     pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
     where
         E: ComplexField,
@@ -10023,6 +10032,28 @@ macro_rules! mat {
     };
 }
 
+/// Concatenates the matrices in each row horizontally,
+/// then concatenates the results vertically.
+/// `concat![[a0, a1, a2], [b1, b2]]` results in the matrix
+///
+/// ```
+/// [a0 | a1 | a2][b0 | b1]
+/// ```
+#[macro_export]
+macro_rules! concat {
+    () => {
+        {
+            compile_error!("number of columns in the matrix is ambiguous");
+        }
+    };
+
+    ($([$($v:expr),* $(,)?] ),* $(,)?) => {
+        {
+            $crate::__concat_impl(&[$(&[$(($v).as_ref(),)*],)*])
+        }
+    };
+}
+
 /// Creates a [`Col`] containing the arguments.
 ///
 /// ```
@@ -10038,9 +10069,7 @@ macro_rules! mat {
 #[macro_export]
 macro_rules! col {
     () => {
-        // TODO:
-        // is f64 the appropriate type for this situation?
-        $crate::Col::<f64>::new();
+        $crate::Col::<_>::new()
     };
 
     ($($v:expr),+ $(,)?) => {{
@@ -10069,9 +10098,7 @@ macro_rules! col {
 #[macro_export]
 macro_rules! row {
     () => {
-        // TODO:
-        // is f64 the appropriate type for this situation?
-        $crate::Row::<f64>::new();
+        $crate::Row::<_>::new()
     };
 
     ($($v:expr),+ $(,)?) => {{
@@ -11789,13 +11816,11 @@ pub mod constrained {
 /// `C` with the following structure:
 ///
 /// ```text
-/// C = [ a00 * B, a01 * B, ..., a0n * B ]
-///     [ a10 * B, a11 * B, ..., a1n * B ]
-///     [ ...    , ...    , ..., ...     ]
-///     [ am0 * B, am1 * B, ..., amn * B ]
+/// C = [ a[(0, 0)] * B    , a[(0, 1)] * B    , ... , a[(0, n-1)] * B    ]
+///     [ a[(1, 0)] * B    , a[(1, 1)] * B    , ... , a[(1, n-1)] * B    ]
+///     [ ...              , ...              , ... , ...              ]
+///     [ a[(m-1, 0)] * B  , a[(m-1, 1)] * B  , ... , a[(m-1, n-1)] * B  ]
 /// ```
-///
-/// where `a_ij` is the element at position `(i, j)` of `A`.
 ///
 /// # Panics
 ///
@@ -11805,22 +11830,14 @@ pub mod constrained {
 /// # Example
 ///
 /// ```
-/// use faer_core::mat;
-/// use faer_core::Mat;
-/// use faer_core::kron;
+/// use faer_core::{kron, mat, Mat};
 ///
-/// let a = mat![
-///     [1.0, 2.0],
-///     [3.0, 4.0],
-/// ];
-/// let b = mat![
-///     [0.0, 5.0],
-///     [6.0, 7.0],
-/// ];
+/// let a = mat![[1.0, 2.0], [3.0, 4.0]];
+/// let b = mat![[0.0, 5.0], [6.0, 7.0]];
 /// let c = mat![
-///     [0.0 , 5.0 , 0.0 , 10.0],
-///     [6.0 , 7.0 , 12.0, 14.0],
-///     [0.0 , 15.0, 0.0 , 20.0],
+///     [0.0, 5.0, 0.0, 10.0],
+///     [6.0, 7.0, 12.0, 14.0],
+///     [0.0, 15.0, 0.0, 20.0],
 ///     [18.0, 21.0, 24.0, 28.0],
 /// ];
 /// let mut dst = Mat::new();
@@ -11828,28 +11845,36 @@ pub mod constrained {
 /// kron(dst.as_mut(), a.as_ref(), b.as_ref());
 /// assert_eq!(dst, c);
 /// ```
-pub fn kron<E: ComplexField>(mut dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
-    assert!(dst.nrows() == lhs.nrows() * rhs.nrows());
-    assert!(dst.ncols() == lhs.ncols() * rhs.ncols());
+#[track_caller]
+pub fn kron<E: ComplexField>(dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
+    assert!(Some(dst.nrows()) == lhs.nrows().checked_mul(rhs.nrows()));
+    assert!(Some(dst.ncols()) == lhs.ncols().checked_mul(rhs.ncols()));
 
+    let mut dst = dst;
+    let mut lhs = lhs;
+    let mut rhs = rhs;
     if dst.col_stride().unsigned_abs() < dst.row_stride().unsigned_abs() {
-        return kron(dst.transpose_mut(), lhs.transpose(), rhs.transpose());
+        dst = dst.transpose_mut();
+        lhs = lhs.transpose();
+        rhs = rhs.transpose();
     }
 
     for lhs_j in 0..lhs.ncols() {
         for lhs_i in 0..lhs.nrows() {
             let lhs_val = lhs.read(lhs_i, lhs_j);
+            let mut dst = dst.rb_mut().submatrix_mut(
+                lhs_i * rhs.nrows(),
+                lhs_j * rhs.ncols(),
+                rhs.nrows(),
+                rhs.ncols(),
+            );
 
             for rhs_i in 0..rhs.nrows() {
                 for rhs_j in 0..rhs.ncols() {
                     // SAFETY: Bounds have been checked.
                     unsafe {
                         let rhs_val = rhs.read_unchecked(rhs_i, rhs_j);
-                        dst.write_unchecked(
-                            lhs_i * rhs.nrows() + rhs_i,
-                            lhs_j * rhs.ncols() + rhs_j,
-                            lhs_val.faer_mul(rhs_val),
-                        );
+                        dst.write_unchecked(rhs_i, rhs_j, lhs_val.faer_mul(rhs_val));
                     }
                 }
             }
@@ -13059,10 +13084,9 @@ pub mod row {
 ///   cDDDD
 /// ```
 /// is perfectly acceptable.
-///
-/// TODO:
-/// function should be wrapped in a (public) macro and tests added.
-fn concat<E: ComplexField>(blocks: &[&[MatRef<'_, E>]]) -> Mat<E> {
+#[doc(hidden)]
+#[track_caller]
+pub fn __concat_impl<E: ComplexField>(blocks: &[&[MatRef<'_, E>]]) -> Mat<E> {
     #[inline(always)]
     fn count_total_columns<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
         let mut out: usize = 0;
@@ -13073,6 +13097,7 @@ fn concat<E: ComplexField>(blocks: &[&[MatRef<'_, E>]]) -> Mat<E> {
     }
 
     #[inline(always)]
+    #[track_caller]
     fn count_rows<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
         let mut out: usize = 0;
         for (i, e) in block_row.iter().enumerate() {
@@ -13470,12 +13495,8 @@ mod tests {
         assert!(x[2] == 7.0);
         assert!(x[3] == 9.0);
 
-        x[0] = 13.0;
-        assert!(x[0] == 13.0);
-
-        // TODO:
-        // Row::get() seems to be missing
-        // assert!(x.get(...) == x);
+        x.write(0, 13.0);
+        assert!(x.read(0) == 13.0);
     }
 
     #[test]
@@ -13496,20 +13517,20 @@ mod tests {
         let new = Complex::new;
         let mut x = row![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
 
-        assert!(x.read(0) == Complex::new(1.0, 2.0));
-        assert!(x.read(1) == Complex::new(3.0, 4.0));
-        assert!(x.read(2) == Complex::new(5.0, 6.0));
+        assert!(x.read(0) == new(1.0, 2.0));
+        assert!(x.read(1) == new(3.0, 4.0));
+        assert!(x.read(2) == new(5.0, 6.0));
 
-        x.write(0, Complex::new(3.0, 2.0));
-        assert!(x.read(0) == Complex::new(3.0, 2.0));
+        x.write(0, new(3.0, 2.0));
+        assert!(x.read(0) == new(3.0, 2.0));
     }
 
     #[test]
     fn null_col_and_row() {
-        let null_col = col![];
+        let null_col: Col<f64> = col![];
         assert!(null_col == Col::<f64>::new());
 
-        let null_row = row![];
+        let null_row: Row<f64> = row![];
         assert!(null_row == Row::<f64>::new());
     }
 
@@ -13527,11 +13548,13 @@ mod tests {
         let c2: Mat<f64> = Mat::from_fn(6, 2, |_, _| 8f64);
         let c3: Mat<f64> = Mat::from_fn(6, 3, |_, _| 9f64);
 
-        let x = concat(&[
+        let x = __concat_impl(&[
             &[a0.as_ref(), a1.as_ref(), a2.as_ref()],
             &[b0.as_ref(), b1.as_ref()],
             &[c0.as_ref(), c1.as_ref(), c2.as_ref(), c3.as_ref()],
         ]);
+
+        assert!(x == concat![[a0, a1, a2], [b0, b1], [c0, c1, c2, &c3]]);
 
         assert!(x[(0, 0)] == 1f64);
         assert!(x[(1, 1)] == 1f64);
