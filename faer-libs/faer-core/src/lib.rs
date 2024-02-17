@@ -12607,7 +12607,7 @@ pub mod row {
 /// ```
 ///   AAAbb
 ///   AAAbb
-///   cccDD
+///   cDDDD
 /// ```
 /// is perfectly acceptable.
 ///
