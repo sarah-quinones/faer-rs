@@ -9670,7 +9670,9 @@ macro_rules! mat {
 #[macro_export]
 macro_rules! col {
     () => {
-        Col::new();
+        // TODO:
+        // is f64 the appropriate type for this situation?
+        $crate::Col::<f64>::new();
     };
 
     ($($v:expr),+ $(,)?) => {{
@@ -9699,7 +9701,9 @@ macro_rules! col {
 #[macro_export]
 macro_rules! row {
     () => {
-        Row::<_>::new();
+        // TODO:
+        // is f64 the appropriate type for this situation?
+        $crate::Row::<f64>::new();
     };
 
     ($($v:expr),+ $(,)?) => {{
@@ -13053,6 +13057,15 @@ mod tests {
 
         x.write(0, Complex::new(3.0, 2.0));
         assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn null_col_and_row() {
+        let null_col = col![];
+        assert!(null_col == Col::<f64>::new());
+
+        let null_row = row![];
+        assert!(null_row == Row::<f64>::new());
     }
 
     #[test]
