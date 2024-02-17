@@ -4531,6 +4531,18 @@ const _: () = {
             sum((*self).rb().as_2d())
         }
 
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            self.as_2d_ref().kron(rhs)
+        }
+
         /// Returns a view over the matrix.
         #[inline]
         pub fn as_ref(&self) -> ColRef<'_, E> {
@@ -4974,6 +4986,18 @@ const _: () = {
             sum((*self).rb().as_2d())
         }
 
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            self.as_2d_ref().kron(rhs)
+        }
+
         /// Returns a view over the matrix.
         #[inline]
         pub fn as_ref(&self) -> ColRef<'_, E> {
@@ -5346,6 +5370,18 @@ const _: () = {
             E: ComplexField,
         {
             sum((*self).rb().as_2d())
+        }
+
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            self.as_2d_ref().kron(rhs)
         }
 
         /// Returns a view over the matrix.
@@ -5765,6 +5801,18 @@ const _: () = {
             E: ComplexField,
         {
             sum((*self).rb().as_2d())
+        }
+
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            self.as_2d_ref().kron(rhs)
         }
 
         /// Returns a view over the matrix.
@@ -6633,6 +6681,27 @@ const _: () = {
             E: ComplexField,
         {
             sum((*self).rb())
+        }
+
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            let lhs = (*self).rb();
+            let rhs = rhs.as_2d_ref();
+            let mut dst = Mat::new();
+            dst.resize_with(
+                lhs.nrows() * rhs.nrows(),
+                lhs.ncols() * rhs.ncols(),
+                |_, _| E::zeroed(),
+            );
+            kron(dst.as_mut(), lhs, rhs);
+            dst
         }
 
         /// Returns a view over the matrix.
@@ -7560,6 +7629,18 @@ const _: () = {
             E: ComplexField,
         {
             sum((*self).rb())
+        }
+
+        /// Kroneckor product of `self` and `rhs`.
+        ///
+        /// This is an allocating operation; see [`kron`] for the
+        /// allocation-free version or more info in general.
+        #[inline]
+        pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+        where
+            E: ComplexField,
+        {
+            self.as_2d_ref().kron(rhs)
         }
 
         /// Returns a view over the matrix.
@@ -8565,6 +8646,18 @@ impl<E: Entity> Col<E> {
     {
         sum((*self).as_ref().as_2d())
     }
+
+    /// Kroneckor product of `self` and `rhs`.
+    ///
+    /// This is an allocating operation; see [`kron`] for the
+    /// allocation-free version or more info in general.
+    #[inline]
+    pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+    where
+        E: ComplexField,
+    {
+        self.as_2d_ref().kron(rhs)
+    }
 }
 
 impl<E: Entity> Row<E> {
@@ -9060,6 +9153,18 @@ impl<E: Entity> Row<E> {
         E: ComplexField,
     {
         sum((*self).as_ref().as_2d())
+    }
+
+    /// Kroneckor product of `self` and `rhs`.
+    ///
+    /// This is an allocating operation; see [`kron`] for the
+    /// allocation-free version or more info in general.
+    #[inline]
+    pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+    where
+        E: ComplexField,
+    {
+        self.as_2d_ref().kron(rhs)
     }
 }
 
@@ -9708,6 +9813,18 @@ impl<E: Entity> Mat<E> {
         E: ComplexField,
     {
         sum((*self).as_ref())
+    }
+
+    /// Kroneckor product of `self` and `rhs`.
+    ///
+    /// This is an allocating operation; see [`kron`] for the
+    /// allocation-free version or more info in general.
+    #[inline]
+    pub fn kron(&self, rhs: impl As2D<E>) -> Mat<E>
+    where
+        E: ComplexField,
+    {
+        self.as_2d_ref().kron(rhs)
     }
 
     /// Returns an iterator that provides successive chunks of the columns of a view over this
@@ -11666,6 +11783,80 @@ pub mod constrained {
     }
 }
 
+/// Kronecker product of two matrices.
+///
+/// The Kronecker product of two matrices `A` and `B` is a block matrix
+/// `C` with the following structure:
+///
+/// ```text
+/// C = [ a00 * B, a01 * B, ..., a0n * B ]
+///     [ a10 * B, a11 * B, ..., a1n * B ]
+///     [ ...    , ...    , ..., ...     ]
+///     [ am0 * B, am1 * B, ..., amn * B ]
+/// ```
+///
+/// where `a_ij` is the element at position `(i, j)` of `A`.
+///
+/// # Panics
+///
+/// Panics if `dst` does not have the correct dimensions. The dimensions
+/// of `dst` must be `nrows(A) * nrows(B)` by `ncols(A) * ncols(B)`.
+///
+/// # Example
+///
+/// ```
+/// use faer_core::mat;
+/// use faer_core::Mat;
+/// use faer_core::kron;
+///
+/// let a = mat![
+///     [1.0, 2.0],
+///     [3.0, 4.0],
+/// ];
+/// let b = mat![
+///     [0.0, 5.0],
+///     [6.0, 7.0],
+/// ];
+/// let c = mat![
+///     [0.0 , 5.0 , 0.0 , 10.0],
+///     [6.0 , 7.0 , 12.0, 14.0],
+///     [0.0 , 15.0, 0.0 , 20.0],
+///     [18.0, 21.0, 24.0, 28.0],
+/// ];
+/// let mut dst = Mat::new();
+/// dst.resize_with(4, 4, |_, _| 0f64);
+/// kron(dst.as_mut(), a.as_ref(), b.as_ref());
+/// assert_eq!(dst, c);
+/// ```
+pub fn kron<E: ComplexField>(mut dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
+    assert!(dst.nrows() == lhs.nrows() * rhs.nrows());
+    assert!(dst.ncols() == lhs.ncols() * rhs.ncols());
+
+    if dst.col_stride().unsigned_abs() < dst.row_stride().unsigned_abs() {
+        return kron(dst.transpose_mut(), lhs.transpose(), rhs.transpose());
+    }
+
+    for lhs_j in 0..lhs.ncols() {
+        for lhs_i in 0..lhs.nrows() {
+            let lhs_val = lhs.read(lhs_i, lhs_j);
+
+            for rhs_i in 0..rhs.nrows() {
+                for rhs_j in 0..rhs.ncols() {
+                    // SAFETY: Bounds have been checked.
+                    unsafe {
+                        let rhs_val = rhs.read_unchecked(rhs_i, rhs_j);
+                        dst.write_unchecked(
+                            lhs_i * rhs.nrows() + rhs_i,
+                            lhs_j * rhs.ncols() + rhs_j,
+                            lhs_val.faer_mul(rhs_val),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[inline(always)]
 fn norm_l2_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
     simd: S,
@@ -13566,6 +13757,46 @@ mod tests {
         let mat = Col::from_fn(10000000, |_| 0.3);
         let target = 0.3 * 10000000.0f64;
         assert!(relative_err(mat.sum(), target) < 1e-14);
+    }
+
+    #[test]
+    fn test_kron_ones() {
+        for (m, n, p, q) in [(2, 3, 4, 5), (3, 2, 5, 4), (1, 1, 1, 1)] {
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Mat::from_fn(p, q, |_, _| 1 as f64);
+            let expected = Mat::from_fn(m * p, n * q, |_, _| 1 as f64);
+            assert!(a.kron(&b) == expected);
+        }
+
+        for (m, n, p) in [(2, 3, 4), (3, 2, 5), (1, 1, 1)] {
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Col::from_fn(p, |_| 1 as f64);
+            let expected = Mat::from_fn(m * p, n, |_, _| 1 as f64);
+            assert!(a.kron(&b) == expected);
+            assert!(b.kron(&a) == expected);
+
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Row::from_fn(p, |_| 1 as f64);
+            let expected = Mat::from_fn(m, n * p, |_, _| 1 as f64);
+            assert!(a.kron(&b) == expected);
+            assert!(b.kron(&a) == expected);
+        }
+
+        for (m, n) in [(2, 3), (3, 2), (1, 1)] {
+            let a = Row::from_fn(m, |_| 1 as f64);
+            let b = Col::from_fn(n, |_| 1 as f64);
+            let expected = Mat::from_fn(n, m, |_, _| 1 as f64);
+            assert!(a.kron(&b) == expected);
+            assert!(b.kron(&a) == expected);
+
+            let c = Row::from_fn(n, |_| 1 as f64);
+            let expected = Mat::from_fn(1, m * n, |_, _| 1 as f64);
+            assert!(a.kron(&c) == expected);
+
+            let d = Col::from_fn(m, |_| 1 as f64);
+            let expected = Mat::from_fn(m * n, 1, |_, _| 1 as f64);
+            assert!(d.kron(&b) == expected);
+        }
     }
 
     #[test]
