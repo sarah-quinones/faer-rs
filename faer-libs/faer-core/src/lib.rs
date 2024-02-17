@@ -12600,6 +12600,75 @@ pub mod row {
     }
 }
 
+/// Convenience function to concatonate a nested list of matrices into a single
+/// big ['Mat']. Concatonation pattern the numpy.block convention that each sub-list
+/// must have an equal number of columns (net) but the boundaries do not need to
+/// align. In other words, this sort of thing:
+/// ```
+///   AAAbb
+///   AAAbb
+///   cccDD
+/// ```
+/// is perfectly acceptable.
+///
+/// TODO:
+/// function should be wrapped in a (public) macro and tests added.
+fn concat<E: ComplexField>(blocks: &[&[MatRef<'_, E>]]) -> Mat<E> {
+    #[inline(always)]
+    fn count_total_columns<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
+        let mut out: usize = 0;
+        for elem in block_row.iter() {
+            out += elem.ncols();
+        }
+        out
+    }
+
+    #[inline(always)]
+    fn count_rows<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
+        let mut out: usize = 0;
+        for (i, e) in block_row.iter().enumerate() {
+            if i.eq(&0) {
+                out = e.nrows();
+            } else {
+                assert!(e.nrows().eq(&out));
+            }
+        }
+        out
+    }
+
+    // get size of result while doing checks
+    let mut n: usize = 0;
+    let mut m: usize = 0;
+    for row in blocks.iter() {
+        n += count_rows(row);
+    }
+    for (i, row) in blocks.iter().enumerate() {
+        let cols = count_total_columns(row);
+        if i.eq(&0) {
+            m = cols;
+        } else {
+            assert!(cols.eq(&m));
+        }
+    }
+
+    let mut mat = Mat::<E>::zeros(n, m);
+    let mut ni: usize = 0;
+    let mut mj: usize;
+    for row in blocks.iter() {
+        mj = 0;
+
+        for elem in row.iter() {
+            mat.as_mut()
+                .submatrix_mut(ni, mj, elem.nrows(), elem.ncols())
+                .copy_from(elem);
+            mj += elem.ncols();
+        }
+        ni += row[0].nrows();
+    }
+
+    mat
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! impl_unit_entity {
