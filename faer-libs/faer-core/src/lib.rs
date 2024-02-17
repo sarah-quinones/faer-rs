@@ -12601,9 +12601,9 @@ pub mod row {
 }
 
 /// Convenience function to concatonate a nested list of matrices into a single
-/// big ['Mat']. Concatonation pattern the numpy.block convention that each sub-list
-/// must have an equal number of columns (net) but the boundaries do not need to
-/// align. In other words, this sort of thing:
+/// big ['Mat']. Concatonation pattern follows the numpy.block convention that
+/// each sub-list must have an equal number of columns (net) but the boundaries
+/// do not need to align. In other words, this sort of thing:
 /// ```
 ///   AAAbb
 ///   AAAbb
