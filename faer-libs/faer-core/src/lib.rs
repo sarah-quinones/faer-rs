@@ -9655,6 +9655,68 @@ macro_rules! mat {
     };
 }
 
+/// Creates a [`Col`] containing the arguments.
+///
+/// ```
+/// use faer_core::col;
+///
+/// let col_vec = col![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(col_vec.read(0), 3.0);
+/// assert_eq!(col_vec.read(1), 5.0);
+/// assert_eq!(col_vec.read(2), 7.0);
+/// assert_eq!(col_vec.read(3), 9.0);
+/// ```
+#[macro_export]
+macro_rules! col {
+    () => {
+        // TODO:
+        // is f64 the appropriate type for this situation?
+        $crate::Col::<f64>::new();
+    };
+
+    ($($v:expr),+ $(,)?) => {{
+        let data = &[$($v),+];
+        let n = data.len();
+
+        #[allow(unused_unsafe)]
+        unsafe {
+            $crate::Col::<_>::from_fn(n, |i| $crate::ref_to_ptr(&data[i]).read())
+        }
+    }};
+}
+
+/// Creates a [`Row`] containing the arguments.
+///
+/// ```
+/// use faer_core::row;
+///
+/// let row_vec = row![3.0, 5.0, 7.0, 9.0];
+///
+/// assert_eq!(row_vec.read(0), 3.0);
+/// assert_eq!(row_vec.read(1), 5.0);
+/// assert_eq!(row_vec.read(2), 7.0);
+/// assert_eq!(row_vec.read(3), 9.0);
+/// ```
+#[macro_export]
+macro_rules! row {
+    () => {
+        // TODO:
+        // is f64 the appropriate type for this situation?
+        $crate::Row::<f64>::new();
+    };
+
+    ($($v:expr),+ $(,)?) => {{
+        let data = &[$($v),+];
+        let n = data.len();
+
+        #[allow(unused_unsafe)]
+        unsafe {
+            $crate::Row::<_>::from_fn(n, |i| $crate::ref_to_ptr(&data[i]).read())
+        }
+    }};
+}
+
 /// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Parallelism {
@@ -12545,6 +12607,75 @@ pub mod row {
     }
 }
 
+/// Convenience function to concatonate a nested list of matrices into a single
+/// big ['Mat']. Concatonation pattern follows the numpy.block convention that
+/// each sub-list must have an equal number of columns (net) but the boundaries
+/// do not need to align. In other words, this sort of thing:
+/// ```notcode
+///   AAAbb
+///   AAAbb
+///   cDDDD
+/// ```
+/// is perfectly acceptable.
+///
+/// TODO:
+/// function should be wrapped in a (public) macro and tests added.
+fn concat<E: ComplexField>(blocks: &[&[MatRef<'_, E>]]) -> Mat<E> {
+    #[inline(always)]
+    fn count_total_columns<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
+        let mut out: usize = 0;
+        for elem in block_row.iter() {
+            out += elem.ncols();
+        }
+        out
+    }
+
+    #[inline(always)]
+    fn count_rows<E: ComplexField>(block_row: &[MatRef<'_, E>]) -> usize {
+        let mut out: usize = 0;
+        for (i, e) in block_row.iter().enumerate() {
+            if i.eq(&0) {
+                out = e.nrows();
+            } else {
+                assert!(e.nrows().eq(&out));
+            }
+        }
+        out
+    }
+
+    // get size of result while doing checks
+    let mut n: usize = 0;
+    let mut m: usize = 0;
+    for row in blocks.iter() {
+        n += count_rows(row);
+    }
+    for (i, row) in blocks.iter().enumerate() {
+        let cols = count_total_columns(row);
+        if i.eq(&0) {
+            m = cols;
+        } else {
+            assert!(cols.eq(&m));
+        }
+    }
+
+    let mut mat = Mat::<E>::zeros(n, m);
+    let mut ni: usize = 0;
+    let mut mj: usize;
+    for row in blocks.iter() {
+        mj = 0;
+
+        for elem in row.iter() {
+            mat.as_mut()
+                .submatrix_mut(ni, mj, elem.nrows(), elem.ncols())
+                .copy_from(elem);
+            mj += elem.ncols();
+        }
+        ni += row[0].nrows();
+    }
+
+    mat
+}
+
 #[cfg(test)]
 mod tests {
     macro_rules! impl_unit_entity {
@@ -12843,6 +12974,132 @@ mod tests {
 
         x.write(1, 0, Complex::new(3.0, 2.0));
         assert!(x.read(1, 0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn col_macro() {
+        let mut x = col![3.0, 5.0, 7.0, 9.0];
+
+        assert!(x[0] == 3.0);
+        assert!(x[1] == 5.0);
+        assert!(x[2] == 7.0);
+        assert!(x[3] == 9.0);
+
+        x[0] = 13.0;
+        assert!(x[0] == 13.0);
+
+        // TODO:
+        // Col::get() seems to be missing
+        // assert!(x.get(...) == x);
+    }
+
+    #[test]
+    fn col_macro_cplx() {
+        let new = Complex::new;
+        let mut x = col![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn col_macro_native_cplx() {
+        let new = Complex::new;
+        let mut x = col![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn row_macro() {
+        let mut x = row![3.0, 5.0, 7.0, 9.0];
+
+        assert!(x[0] == 3.0);
+        assert!(x[1] == 5.0);
+        assert!(x[2] == 7.0);
+        assert!(x[3] == 9.0);
+
+        x[0] = 13.0;
+        assert!(x[0] == 13.0);
+
+        // TODO:
+        // Row::get() seems to be missing
+        // assert!(x.get(...) == x);
+    }
+
+    #[test]
+    fn row_macro_cplx() {
+        let new = Complex::new;
+        let mut x = row![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn row_macro_native_cplx() {
+        let new = Complex::new;
+        let mut x = row![new(1.0, 2.0), new(3.0, 4.0), new(5.0, 6.0),];
+
+        assert!(x.read(0) == Complex::new(1.0, 2.0));
+        assert!(x.read(1) == Complex::new(3.0, 4.0));
+        assert!(x.read(2) == Complex::new(5.0, 6.0));
+
+        x.write(0, Complex::new(3.0, 2.0));
+        assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn null_col_and_row() {
+        let null_col = col![];
+        assert!(null_col == Col::<f64>::new());
+
+        let null_row = row![];
+        assert!(null_row == Row::<f64>::new());
+    }
+
+    #[test]
+    fn positive_concat_f64() {
+        let a0: Mat<f64> = Mat::from_fn(2, 2, |_, _| 1f64);
+        let a1: Mat<f64> = Mat::from_fn(2, 3, |_, _| 2f64);
+        let a2: Mat<f64> = Mat::from_fn(2, 4, |_, _| 3f64);
+
+        let b0: Mat<f64> = Mat::from_fn(1, 6, |_, _| 4f64);
+        let b1: Mat<f64> = Mat::from_fn(1, 3, |_, _| 5f64);
+
+        let c0: Mat<f64> = Mat::from_fn(6, 1, |_, _| 6f64);
+        let c1: Mat<f64> = Mat::from_fn(6, 3, |_, _| 7f64);
+        let c2: Mat<f64> = Mat::from_fn(6, 2, |_, _| 8f64);
+        let c3: Mat<f64> = Mat::from_fn(6, 3, |_, _| 9f64);
+
+        let x = concat(&[
+            &[a0.as_ref(), a1.as_ref(), a2.as_ref()],
+            &[b0.as_ref(), b1.as_ref()],
+            &[c0.as_ref(), c1.as_ref(), c2.as_ref(), c3.as_ref()],
+        ]);
+
+        assert!(x[(0, 0)] == 1f64);
+        assert!(x[(1, 1)] == 1f64);
+        assert!(x[(2, 2)] == 4f64);
+        assert!(x[(3, 3)] == 7f64);
+        assert!(x[(4, 4)] == 8f64);
+        assert!(x[(5, 5)] == 8f64);
+        assert!(x[(6, 6)] == 9f64);
+        assert!(x[(7, 7)] == 9f64);
+        assert!(x[(8, 8)] == 9f64);
     }
 
     #[test]
