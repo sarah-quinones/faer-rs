@@ -12604,7 +12604,7 @@ pub mod row {
 /// big ['Mat']. Concatonation pattern follows the numpy.block convention that
 /// each sub-list must have an equal number of columns (net) but the boundaries
 /// do not need to align. In other words, this sort of thing:
-/// ```
+/// ```notcode
 ///   AAAbb
 ///   AAAbb
 ///   cDDDD
@@ -13053,6 +13053,37 @@ mod tests {
 
         x.write(0, Complex::new(3.0, 2.0));
         assert!(x.read(0) == Complex::new(3.0, 2.0));
+    }
+
+    #[test]
+    fn positive_concat_f64() {
+        let a0: Mat<f64> = Mat::from_fn(2, 2, |_, _| 1f64);
+        let a1: Mat<f64> = Mat::from_fn(2, 3, |_, _| 2f64);
+        let a2: Mat<f64> = Mat::from_fn(2, 4, |_, _| 3f64);
+
+        let b0: Mat<f64> = Mat::from_fn(1, 6, |_, _| 4f64);
+        let b1: Mat<f64> = Mat::from_fn(1, 3, |_, _| 5f64);
+
+        let c0: Mat<f64> = Mat::from_fn(6, 1, |_, _| 6f64);
+        let c1: Mat<f64> = Mat::from_fn(6, 3, |_, _| 7f64);
+        let c2: Mat<f64> = Mat::from_fn(6, 2, |_, _| 8f64);
+        let c3: Mat<f64> = Mat::from_fn(6, 3, |_, _| 9f64);
+
+        let x = concat(&[
+            &[a0.as_ref(), a1.as_ref(), a2.as_ref()],
+            &[b0.as_ref(), b1.as_ref()],
+            &[c0.as_ref(), c1.as_ref(), c2.as_ref(), c3.as_ref()],
+        ]);
+
+        assert!(x[(0, 0)] == 1f64);
+        assert!(x[(1, 1)] == 1f64);
+        assert!(x[(2, 2)] == 4f64);
+        assert!(x[(3, 3)] == 7f64);
+        assert!(x[(4, 4)] == 8f64);
+        assert!(x[(5, 5)] == 8f64);
+        assert!(x[(6, 6)] == 9f64);
+        assert!(x[(7, 7)] == 9f64);
+        assert!(x[(8, 8)] == 9f64);
     }
 
     #[test]
