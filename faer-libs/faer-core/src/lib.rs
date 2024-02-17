@@ -9670,7 +9670,7 @@ macro_rules! mat {
 #[macro_export]
 macro_rules! col {
     () => {
-        compile_error!("number of elements in the column is ambiguous");
+        Col::new();
     };
 
     ($($v:expr),+ $(,)?) => {{
@@ -9699,7 +9699,7 @@ macro_rules! col {
 #[macro_export]
 macro_rules! row {
     () => {
-        compile_error!("number of elements in the row is ambiguous");
+        Row::<_>::new();
     };
 
     ($($v:expr),+ $(,)?) => {{
