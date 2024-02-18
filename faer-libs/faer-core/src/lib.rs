@@ -90,6 +90,7 @@ pub use faer_entity::{
 pub use equator::{assert, debug_assert};
 
 pub use dyn_stack;
+pub use reborrow;
 pub use faer_entity::pulp;
 
 use coe::Coerce;
