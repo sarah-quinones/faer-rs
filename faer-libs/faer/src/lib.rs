@@ -164,6 +164,8 @@
 //!   parallelism by default.
 //! - `matrixcompare`: enabled by default. Enables macros for approximate equality checks on
 //!   matrices.
+//! - `serde`: Enables serialization and deserialization of [`Mat`].
+//! - `npy`: Enables conversions to/from numpy's matrix file format.
 //! - `perf-warn`: Produces performance warnings when matrix operations are called with suboptimal
 //! data layout.
 //! - `polars`: Enables basic interoperability with the `polars` crate.
@@ -207,8 +209,8 @@ pub mod prelude {
 }
 
 pub use faer_core::{
-    complex_native, get_global_parallelism, mat, scale, set_global_parallelism, unzipped, zipped,
-    Col, ColMut, ColRef, Mat, MatMut, MatRef, Parallelism, Row, RowMut, RowRef, Side,
+    col, complex_native, get_global_parallelism, mat, row, scale, set_global_parallelism, unzipped,
+    zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Parallelism, Row, RowMut, RowRef, Side,
 };
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
@@ -2111,7 +2113,9 @@ pub mod sparse {
     pub use faer_core::{
         permutation::Index,
         sparse::{
-            SparseColMatRef, SparseRowMatRef, SymbolicSparseColMatRef, SymbolicSparseRowMatRef,
+            SparseColMat, SparseColMatMut, SparseColMatRef, SparseRowMat, SparseRowMatMut,
+            SparseRowMatRef, SymbolicSparseColMat, SymbolicSparseColMatRef, SymbolicSparseRowMat,
+            SymbolicSparseRowMatRef,
         },
     };
     pub use faer_sparse::{lu::LuError, FaerError};
@@ -2708,32 +2712,42 @@ pub mod sparse {
         /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
         /// stores the result in `rhs`.
         ///
-        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the first stored element in each column, if the
         /// matrix is column-major, or the last stored element in each row, if it is row-major.
         fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
         /// stores the result in `rhs`.
         ///
-        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the last stored element in each column, if the
         /// matrix is column-major, or the first stored element in each row, if it is row-major.
         fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
         /// and stores the result in `rhs`.
         ///
-        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the first stored element in each column, if the
         /// matrix is column-major, or the last stored element in each row, if it is row-major.
         fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>);
         /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
         /// and stores the result in `rhs`.
         ///
-        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the last stored element in each column, if the
         /// matrix is column-major, or the first stored element in each row, if it is row-major.
         fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>);
 
         /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
         /// returns the result.
         ///
-        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the first stored element in each column, if the
         /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_lower_triangular<ViewE: Conjugate<Canonical = E>>(
@@ -2747,7 +2761,9 @@ pub mod sparse {
         /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
         /// returns the result.
         ///
-        /// The diagonal element is assumed to be the last stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the last stored element in each column, if the
         /// matrix is column-major, or the first stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_upper_triangular<ViewE: Conjugate<Canonical = E>>(
@@ -2761,7 +2777,9 @@ pub mod sparse {
         /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
         /// and returns the result.
         ///
-        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the first stored element in each column, if the
         /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E>>(
@@ -2775,7 +2793,9 @@ pub mod sparse {
         /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
         /// and returns the result.
         ///
-        /// The diagonal element is assumed to be the first stored element in each column, if the
+        /// # Note
+        /// The matrix indices need not be sorted, but
+        /// the diagonal element is assumed to be the first stored element in each column, if the
         /// matrix is column-major, or the last stored element in each row, if it is row-major.
         #[track_caller]
         fn sp_solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E>>(
@@ -2865,6 +2885,159 @@ pub mod sparse {
                 solvers::SymbolicQr::try_new(self.symbolic())?,
                 *self,
             )
+        }
+    }
+
+    impl<I: Index, E: ComplexField> FaerSparseMat<I, E> for SparseRowMatRef<'_, I, E> {
+        #[track_caller]
+        fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_upper_triangular_in_place(
+                self.transpose(),
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_lower_triangular_in_place(
+                self.transpose(),
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_unit_upper_triangular_in_place(
+                self.transpose(),
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+        #[track_caller]
+        fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+            faer_sparse::triangular_solve::solve_unit_lower_triangular_in_place(
+                self.transpose(),
+                Conj::No,
+                rhs.as_mat_mut(),
+                get_global_parallelism(),
+            );
+        }
+
+        /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
+        #[track_caller]
+        fn sp_cholesky(
+            &self,
+            side: Side,
+        ) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
+            let this = self.transpose();
+            let side = match side {
+                Side::Lower => Side::Upper,
+                Side::Upper => Side::Lower,
+            };
+            solvers::Cholesky::try_new_with_symbolic(
+                solvers::SymbolicCholesky::try_new(this.symbolic(), side)?,
+                this,
+                side,
+            )
+        }
+
+        /// Returns the LU decomposition of `self` with partial (row) pivoting.
+        #[track_caller]
+        fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError> {
+            let this = self.to_col_major()?;
+            let this = this.as_ref();
+            solvers::Lu::try_new_with_symbolic(solvers::SymbolicLu::try_new(this.symbolic())?, this)
+        }
+
+        /// Returns the QR decomposition of `self`.
+        #[track_caller]
+        fn sp_qr(&self) -> Result<solvers::Qr<I, E>, FaerError> {
+            let this = self.to_col_major()?;
+            let this = this.as_ref();
+            solvers::Qr::try_new_with_symbolic(solvers::SymbolicQr::try_new(this.symbolic())?, this)
+        }
+    }
+
+    impl<I: Index, E: ComplexField> FaerSparseMat<I, E> for SparseColMat<I, E> {
+        #[track_caller]
+        fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_lower_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_upper_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
+        }
+
+        /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
+        #[track_caller]
+        fn sp_cholesky(
+            &self,
+            side: Side,
+        ) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
+            self.as_ref().sp_cholesky(side)
+        }
+
+        /// Returns the LU decomposition of `self` with partial (row) pivoting.
+        #[track_caller]
+        fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError> {
+            self.as_ref().sp_lu()
+        }
+
+        /// Returns the QR decomposition of `self`.
+        #[track_caller]
+        fn sp_qr(&self) -> Result<solvers::Qr<I, E>, FaerError> {
+            self.as_ref().sp_qr()
+        }
+    }
+
+    impl<I: Index, E: ComplexField> FaerSparseMat<I, E> for SparseRowMat<I, E> {
+        #[track_caller]
+        fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_lower_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_upper_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
+        }
+        #[track_caller]
+        fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+            self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
+        }
+
+        /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
+        #[track_caller]
+        fn sp_cholesky(
+            &self,
+            side: Side,
+        ) -> Result<solvers::Cholesky<I, E>, sparse::CholeskyError> {
+            self.as_ref().sp_cholesky(side)
+        }
+
+        /// Returns the LU decomposition of `self` with partial (row) pivoting.
+        #[track_caller]
+        fn sp_lu(&self) -> Result<solvers::Lu<I, E>, LuError> {
+            self.as_ref().sp_lu()
+        }
+
+        /// Returns the QR decomposition of `self`.
+        #[track_caller]
+        fn sp_qr(&self) -> Result<solvers::Qr<I, E>, FaerError> {
+            self.as_ref().sp_qr()
         }
     }
 }
@@ -4301,6 +4474,7 @@ pub mod polars {
 
 /// De-serialization from common matrix file formats.
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub mod io {
     #[allow(unused_imports)]
     use super::*;

@@ -32,7 +32,7 @@ matrixcompare = { version = "0.3", optional = true }
 
 nalgebra = { version = "0.32", optional = true, default-features = false }
 ndarray = { version = "0.15", optional = true, default-features = false }
-polars = { version = "0.34", optional = true, features = ["lazy"] }
+polars = { version = "0.37", optional = true, features = ["lazy"] }
 
 log = { workspace = true, optional = true, default-features = false }
 
@@ -40,6 +40,7 @@ npyz = { version = "0.8", optional = true }
 
 [features]
 default = ["std", "rayon", "matrixcompare"]
+serde = ["faer-core/serde"]
 std = [
   "faer-core/std",
   "faer-cholesky/std",
@@ -47,16 +48,18 @@ std = [
   "faer-qr/std",
   "faer-svd/std",
   "faer-evd/std",
+  "faer-sparse/std",
   "matrixcompare",
 ]
 perf-warn = [
   "log",
-  "faer-core/log",
-  "faer-cholesky/log",
-  "faer-lu/log",
-  "faer-qr/log",
-  "faer-svd/log",
-  "faer-evd/log",
+  "faer-core/perf-warn",
+  "faer-cholesky/perf-warn",
+  "faer-lu/perf-warn",
+  "faer-qr/perf-warn",
+  "faer-svd/perf-warn",
+  "faer-evd/perf-warn",
+  "faer-sparse/perf-warn",
 ]
 rayon = [
   "std",
@@ -66,6 +69,7 @@ rayon = [
   "faer-qr/rayon",
   "faer-svd/rayon",
   "faer-evd/rayon",
+  "faer-sparse/rayon",
 ]
 nightly = [
   "faer-core/nightly",
@@ -74,6 +78,7 @@ nightly = [
   "faer-qr/nightly",
   "faer-svd/nightly",
   "faer-evd/nightly",
+  "faer-sparse/nightly",
   "pulp/nightly",
 ]
 matrixcompare = ["dep:matrixcompare"]
@@ -87,7 +92,7 @@ assert_approx_eq = "1.1.0"
 rand = "0.8.5"
 nalgebra = "0.32"
 ndarray = "0.15"
-polars = { version = "0.34", features = ["lazy", "parquet"] }
+polars = { version = "0.37", features = ["lazy", "parquet"] }
 
 [[example]]
 name = "conversions"

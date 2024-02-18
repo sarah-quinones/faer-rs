@@ -13,7 +13,7 @@ fn main() -> PolarsResult<()> {
                 cache: true,
                 parallel: ParallelStrategy::Auto,
                 rechunk: true,
-                row_count: None,
+                row_index: None,
                 low_memory: false,
                 cloud_options: None,
                 use_statistics: true,

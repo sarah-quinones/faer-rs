@@ -61,7 +61,7 @@ matrix-market-rs = "0.1.3"
 amd = "0.2.2"
 colamd = { version = "0.1", features = ["i64"] }
 num-complex.workspace = true
-regex = "1.10.1"
+regex = "1.10.3"
 
 [[bench]]
 name = "cholesky"

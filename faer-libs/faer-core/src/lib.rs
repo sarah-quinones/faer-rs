@@ -10036,7 +10036,7 @@ macro_rules! mat {
 /// then concatenates the results vertically.
 /// `concat![[a0, a1, a2], [b1, b2]]` results in the matrix
 ///
-/// ```
+/// ```notcode
 /// [a0 | a1 | a2][b0 | b1]
 /// ```
 #[macro_export]
