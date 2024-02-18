@@ -1,3 +1,13 @@
+# 0.17
+- Implemented sparse matrix arithmetic operators (other than sparse-sparse matrix multiplication), and added mutable sparse views as well as owning sparse matrix containers.
+- Implemented `try_from_triplets` for sparse matrices.
+- Re-exported subcrates in `faer::modules`.
+- Improved performance of the SVD decomposition for small matrices.
+- Implemented `col!`, `row!` and `concat!` macros. Thanks @DeliciousHair for the contribution.
+- Implemented more `c32/c64` operations. Thanks @edyounis for the contribution.
+- Implemented the Kronecker product in `faer_core`. Thanks @edyounis for the contribution.
+- Implemented (de)serialization of `Mat`. Thanks @cramt for the contribution.
+
 # 0.16
 - Implemented the index operator for row and column structures. Thanks @DeliciousHair for the contribution.
 - Exposed a few sparse matrix operations in the high level API.
@@ -7,7 +17,7 @@
 # 0.15
 - Implemented initial API of `Row`/`RowRef`/`RowMut` and `Col`/`ColRef`/`ColMut` structs for handling matrices with a single row or column.
 - Implemented `[Mat|Col|Row]::norm_l2` and `[Mat|Col|Row]::norm_max` for computing the L2 norm of a matrix or its maximum absolute value.
-- Fixed several bugs in the eigenvalue decompositions. Special thanks to `@AlexMath` for tracking down the errors.
+- Fixed several bugs in the eigenvalue decompositions. Special thanks to @AlexMath for tracking down the errors.
 - Updated `zipped!` macro API, which now requires a matching `unzipped!` for matching the closure arguments.
 - Removed the limitation on the number of matrices that can be passed to `zipped!`.
 - Added a `zipped!(...).map(|unzipped!(...)| { ... })` API to allow mapping a zipped pack of matrices and returns the result as a matrix.
