@@ -1032,3 +1032,22 @@ and $X$ on output.
 
 Once the recursion reaches a certain threshold, we fall back to a sequential
 implementation to avoid the recursion overhead.
+
+= How To...
+
+This chapter aims at providing helpful guides for new contributors and seasond ones who may have forgotten a thing or two. 
+
+== Setup a New Faer Library
+
+Fear implements feature groups as new sub-crates in `fare-libs`. Assuming the new feature group is called `foo`, each subdirectory should
+ - contain a copy `katex-header.html`.
+ - a `cargo.toml` file, matching the one of the base crate `faer-libs`. 
+ - should contain a `faer-libs/faer-foo/benches/bench.rs`.
+ - contain a copy of the project license. 
+
+Additionally
+ - the new crate needs to be added to the `workspace/members` array in `faer-libs/cargo.toml`. 
+ - tests are implemented in `faer-libs/faer-foo/src/lib.rs` and can be run via `cargo test --package faer-linop --lib -- tests`. 
+ - benchmarks are implemented in `faer-libs/faer-foo/benches/` and can be run via `cd faer-libs/faer-foo && cargo bench --bench bench -- bar`.
+
+Examples can be found in the `foo`s sibling crates.
