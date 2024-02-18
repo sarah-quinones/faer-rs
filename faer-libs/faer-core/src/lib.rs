@@ -11849,9 +11849,6 @@ pub mod constrained {
 /// ```
 #[track_caller]
 pub fn kron<E: ComplexField>(dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
-    assert!(Some(dst.nrows()) == lhs.nrows().checked_mul(rhs.nrows()));
-    assert!(Some(dst.ncols()) == lhs.ncols().checked_mul(rhs.ncols()));
-
     let mut dst = dst;
     let mut lhs = lhs;
     let mut rhs = rhs;
@@ -11860,6 +11857,9 @@ pub fn kron<E: ComplexField>(dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
         lhs = lhs.transpose();
         rhs = rhs.transpose();
     }
+
+    assert!(Some(dst.nrows()) == lhs.nrows().checked_mul(rhs.nrows()));
+    assert!(Some(dst.ncols()) == lhs.ncols().checked_mul(rhs.ncols()));
 
     for lhs_j in 0..lhs.ncols() {
         for lhs_i in 0..lhs.nrows() {
@@ -11871,8 +11871,8 @@ pub fn kron<E: ComplexField>(dst: MatMut<E>, lhs: MatRef<E>, rhs: MatRef<E>) {
                 rhs.ncols(),
             );
 
-            for rhs_i in 0..rhs.nrows() {
-                for rhs_j in 0..rhs.ncols() {
+            for rhs_j in 0..rhs.ncols() {
+                for rhs_i in 0..rhs.nrows() {
                     // SAFETY: Bounds have been checked.
                     unsafe {
                         let rhs_val = rhs.read_unchecked(rhs_i, rhs_j);
