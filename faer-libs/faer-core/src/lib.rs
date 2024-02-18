@@ -89,6 +89,7 @@ pub use faer_entity::{
 #[doc(hidden)]
 pub use equator::{assert, debug_assert};
 
+pub use dyn_stack;
 pub use faer_entity::pulp;
 
 use coe::Coerce;
