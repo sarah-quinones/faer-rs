@@ -1473,7 +1473,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 
     #[cfg(feature = "perf-warn")]
     if (matrix.col_stride().unsigned_abs() == 1 || matrix.row_stride().unsigned_abs() != 1)
-        && faer_core::__perf_warn!(LU_WARN)
+        && crate::__perf_warn!(LU_WARN)
     {
         log::warn!(target: "faer_perf", "LU with full pivoting prefers column-major or row-major matrix. Found matrix with generic strides.");
     }

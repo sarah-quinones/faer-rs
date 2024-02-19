@@ -795,7 +795,7 @@ pub mod compute {
         ));
 
         #[cfg(feature = "perf-warn")]
-        if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(CHOLESKY_WARN) {
+        if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(CHOLESKY_WARN) {
             if matrix.col_stride().unsigned_abs() == 1 {
                 log::warn!(target: "faer_perf", "Bunch-Kaufman decomposition prefers column-major matrix. Found row-major matrix.");
             } else {

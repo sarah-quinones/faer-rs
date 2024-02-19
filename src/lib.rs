@@ -180,6 +180,30 @@ macro_rules! mat {
     };
 }
 
+#[cfg(feature = "perf-warn")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __perf_warn {
+    ($name: ident) => {{
+        #[inline(always)]
+        #[allow(non_snake_case)]
+        fn $name() -> &'static ::core::sync::atomic::AtomicBool {
+            static $name: ::core::sync::atomic::AtomicBool =
+                ::core::sync::atomic::AtomicBool::new(false);
+            &$name
+        }
+        ::core::matches!(
+            $name().compare_exchange(
+                false,
+                true,
+                ::core::sync::atomic::Ordering::Relaxed,
+                ::core::sync::atomic::Ordering::Relaxed,
+            ),
+            Ok(_)
+        )
+    }};
+}
+
 /// Convenience function to concatonate a nested list of matrices into a single
 /// big ['Mat']. Concatonation pattern follows the numpy.block convention that
 /// each sub-list must have an equal number of columns (net) but the boundaries
@@ -650,6 +674,11 @@ pub fn get_global_parallelism() -> Parallelism {
         _ => unreachable!(),
     }
 }
+
+/// De-serialization from common matrix file formats.
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub mod io;
 
 #[cfg(test)]
 mod tests {

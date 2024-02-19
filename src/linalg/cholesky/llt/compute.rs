@@ -274,7 +274,7 @@ pub fn cholesky_in_place<E: ComplexField>(
     let _ = params;
     assert!(matrix.ncols() == matrix.nrows());
     #[cfg(feature = "perf-warn")]
-    if matrix.row_stride().unsigned_abs() != 1 && faer_core::__perf_warn!(CHOLESKY_WARN) {
+    if matrix.row_stride().unsigned_abs() != 1 && crate::__perf_warn!(CHOLESKY_WARN) {
         if matrix.col_stride().unsigned_abs() == 1 {
             log::warn!(target: "faer_perf", "LLT prefers column-major matrix. Found row-major matrix.");
         } else {
