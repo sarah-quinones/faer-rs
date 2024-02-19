@@ -51,7 +51,7 @@
 //! compatible with the classic contiguous layout that's commonly used by other libraries.
 
 use crate::{
-    mat::{self, *},
+    mat::{self, matalloc::align_for, *},
     utils::DivCeil,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
