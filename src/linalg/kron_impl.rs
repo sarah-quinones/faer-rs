@@ -1,6 +1,4 @@
-use crate::assert;
-use crate::mat::*;
-use crate::*;
+use crate::{assert, mat::*, *};
 use reborrow::*;
 
 /// Kronecker product of two matrices.

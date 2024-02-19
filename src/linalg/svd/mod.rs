@@ -8,16 +8,17 @@
 //!
 //! $$M = U S V^H.$$
 
-use crate::linalg::qr as faer_qr;
 use crate::{
     assert,
-    linalg::householder::{
-        apply_block_householder_sequence_on_the_left_in_place_req,
-        apply_block_householder_sequence_on_the_left_in_place_with_conj,
-        upgrade_householder_factor,
+    linalg::{
+        householder::{
+            apply_block_householder_sequence_on_the_left_in_place_req,
+            apply_block_householder_sequence_on_the_left_in_place_with_conj,
+            upgrade_householder_factor,
+        },
+        qr as faer_qr, temp_mat_req, temp_mat_uninit,
+        zip::Diag,
     },
-    linalg::zip::Diag,
-    linalg::{temp_mat_req, temp_mat_uninit},
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use coe::Coerce;
@@ -26,8 +27,7 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use num_complex::Complex;
 use reborrow::*;
 
-use bidiag_real_svd::bidiag_real_svd_req;
-use bidiag_real_svd::compute_bidiag_real_svd;
+use bidiag_real_svd::{bidiag_real_svd_req, compute_bidiag_real_svd};
 
 #[doc(hidden)]
 pub mod bidiag;

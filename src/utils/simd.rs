@@ -1,7 +1,6 @@
 use super::slice::*;
 use crate::Conj;
-use core::fmt::Debug;
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 use faer_entity::*;
 use reborrow::*;
 

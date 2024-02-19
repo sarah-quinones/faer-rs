@@ -2,8 +2,10 @@
 
 use crate::{
     assert,
-    linalg::matmul::triangular::{self, BlockStructure},
-    linalg::triangular_solve as solve,
+    linalg::{
+        matmul::triangular::{self, BlockStructure},
+        triangular_solve as solve,
+    },
     utils::thread::join_raw,
     ComplexField, MatMut, MatRef, Parallelism,
 };

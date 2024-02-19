@@ -1,6 +1,6 @@
-use core::mem::ManuallyDrop;
 use super::*;
 use crate::complex_native::*;
+use core::mem::ManuallyDrop;
 
 #[repr(C)]
 pub struct RawMatUnit<T: 'static> {

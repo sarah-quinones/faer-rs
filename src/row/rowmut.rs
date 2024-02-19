@@ -1,7 +1,11 @@
 use super::*;
-use crate::col::ColMut;
-use crate::mat::{self, As2D, Mat, MatMut};
-use crate::{assert, debug_assert, unzipped, zipped};
+use crate::{
+    assert,
+    col::ColMut,
+    debug_assert,
+    mat::{self, As2D, Mat, MatMut},
+    unzipped, zipped,
+};
 
 #[repr(C)]
 pub struct RowMut<'a, E: Entity> {

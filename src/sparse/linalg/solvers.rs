@@ -1,6 +1,5 @@
 use super::*;
-use crate::mat::AsMatMut;
-use crate::mat::AsMatRef;
+use crate::mat::{AsMatMut, AsMatRef};
 
 /// Object-safe base for [`SpSolver`]
 pub trait SpSolverCore<E: Entity> {

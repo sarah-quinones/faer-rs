@@ -1,6 +1,5 @@
 use crate::{
-    linalg::triangular_solve::*,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{temp_mat_req, temp_mat_uninit, triangular_solve::*},
     perm::{permute_rows, PermRef},
     ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism,
 };
@@ -303,11 +302,13 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::lu::full_pivoting::compute::{lu_in_place, lu_in_place_req};
     use crate::{
         assert,
         complex_native::{c32, c64},
-        linalg::matmul::matmul_with_conj,
+        linalg::{
+            lu::full_pivoting::compute::{lu_in_place, lu_in_place_req},
+            matmul::matmul_with_conj,
+        },
         Mat,
     };
     use std::cell::RefCell;

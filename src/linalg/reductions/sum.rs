@@ -1,10 +1,10 @@
 use super::LINEAR_IMPL_THRESHOLD;
-use crate::mat::MatRef;
-use crate::utils::simd::*;
-use crate::utils::slice::*;
+use crate::{
+    mat::MatRef,
+    utils::{simd::*, slice::*},
+};
 use faer_entity::*;
-use pulp::Read;
-use pulp::Simd;
+use pulp::{Read, Simd};
 
 #[inline(always)]
 fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(

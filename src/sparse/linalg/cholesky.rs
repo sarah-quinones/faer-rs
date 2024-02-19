@@ -4079,11 +4079,14 @@ pub fn factorize_symbolic_cholesky<I: Index>(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::{supernodal::SupernodalLdltRef, *};
-    use crate::sparse::linalg::{
-        cholesky::supernodal::{CholeskyInput, SupernodalIntranodeBunchKaufmanRef},
-        qd::Double,
+    use crate::{
+        assert,
+        sparse::linalg::{
+            cholesky::supernodal::{CholeskyInput, SupernodalIntranodeBunchKaufmanRef},
+            qd::Double,
+        },
+        Mat,
     };
-    use crate::{assert, Mat};
     use dyn_stack::GlobalPodBuffer;
     use num_complex::Complex;
     use rand::{Rng, SeedableRng};

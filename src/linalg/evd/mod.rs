@@ -13,19 +13,21 @@
 #![allow(clippy::too_many_arguments)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use crate::linalg::qr::no_pivoting::compute::recommended_blocksize;
 use crate::{
     assert,
-    linalg::householder::{
-        apply_block_householder_sequence_on_the_right_in_place_req,
-        apply_block_householder_sequence_on_the_right_in_place_with_conj,
-        upgrade_householder_factor,
+    linalg::{
+        householder::{
+            apply_block_householder_sequence_on_the_right_in_place_req,
+            apply_block_householder_sequence_on_the_right_in_place_with_conj,
+            upgrade_householder_factor,
+        },
+        matmul::{
+            inner_prod::inner_prod_with_conj,
+            triangular::{self, BlockStructure},
+        },
+        qr::no_pivoting::compute::recommended_blocksize,
+        temp_mat_req, temp_mat_uninit, temp_mat_zeroed,
     },
-    linalg::matmul::{
-        inner_prod::inner_prod_with_conj,
-        triangular::{self, BlockStructure},
-    },
-    linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped, zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use coe::Coerce;

@@ -1,8 +1,6 @@
 use super::*;
 use crate::{assert, debug_assert, Index, SignedIndex};
-use core::fmt::Debug;
-use core::marker::PhantomData;
-use core::ops::Range;
+use core::{fmt::Debug, marker::PhantomData, ops::Range};
 use faer_entity::*;
 use reborrow::*;
 

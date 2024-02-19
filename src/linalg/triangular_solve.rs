@@ -260,10 +260,11 @@ fn recursion_threshold() -> usize {
 ///
 /// ```
 /// use faer::{
-///     mat,
-///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     linalg::triangular_solve::solve_lower_triangular_in_place_with_conj,
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     linalg::{
+///         matmul::triangular::{matmul, BlockStructure},
+///         triangular_solve::solve_lower_triangular_in_place_with_conj,
+///     },
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 0.0], [2.0, 3.0]];
@@ -345,10 +346,11 @@ pub fn solve_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///
 /// ```
 /// use faer::{
-///     mat,
-///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     linalg::triangular_solve::solve_upper_triangular_in_place_with_conj,
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     linalg::{
+///         matmul::triangular::{matmul, BlockStructure},
+///         triangular_solve::solve_upper_triangular_in_place_with_conj,
+///     },
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[1.0, 2.0], [0.0, 3.0]];
@@ -430,10 +432,11 @@ pub fn solve_upper_triangular_in_place<E: ComplexField, TriE: Conjugate<Canonica
 ///
 /// ```
 /// use faer::{
-///     mat,
-///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     linalg::triangular_solve::solve_unit_lower_triangular_in_place_with_conj,
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     linalg::{
+///         matmul::triangular::{matmul, BlockStructure},
+///         triangular_solve::solve_unit_lower_triangular_in_place_with_conj,
+///     },
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 0.0], [2.0, 0.0]];
@@ -518,10 +521,11 @@ pub fn solve_unit_lower_triangular_in_place<E: ComplexField, TriE: Conjugate<Can
 ///
 /// ```
 /// use faer::{
-///     mat,
-///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     linalg::triangular_solve::solve_unit_upper_triangular_in_place_with_conj,
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     linalg::{
+///         matmul::triangular::{matmul, BlockStructure},
+///         triangular_solve::solve_unit_upper_triangular_in_place_with_conj,
+///     },
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let m = mat![[0.0, 2.0], [0.0, 0.0]];

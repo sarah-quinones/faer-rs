@@ -1,8 +1,10 @@
 use super::*;
-use crate::diag::DiagRef;
-use crate::mat::{As2D, Mat, MatRef};
-use crate::row::RowRef;
-use crate::{assert, debug_assert};
+use crate::{
+    assert, debug_assert,
+    diag::DiagRef,
+    mat::{As2D, Mat, MatRef},
+    row::RowRef,
+};
 
 /// Immutable column vector view.
 #[repr(C)]

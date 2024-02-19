@@ -1,6 +1,5 @@
 use super::*;
-use crate::assert;
-use crate::sparse::csc::*;
+use crate::{assert, sparse::csc::*};
 
 /// Symbolic view structure of sparse matrix in row format, either compressed or uncompressed.
 ///

@@ -19,14 +19,10 @@ use super::{
 };
 use crate::{
     assert,
-    linalg::matmul,
-    linalg::triangular_solve as solve,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{matmul, temp_mat_req, temp_mat_uninit, triangular_solve as solve},
     perm::PermRef,
     sparse::SparseColMatRef,
-    utils::constrained::Size,
-    utils::slice::*,
-    utils::vec::*,
+    utils::{constrained::Size, slice::*, vec::*},
     Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::{iter::zip, mem::MaybeUninit};
@@ -97,8 +93,7 @@ fn resize_index<I: Index>(
 
 pub mod supernodal {
     use super::*;
-    use crate::assert;
-    use crate::sparse::linalg::try_collect;
+    use crate::{assert, sparse::linalg::try_collect};
 
     #[derive(Debug, Clone)]
     pub struct SymbolicSupernodalLu<I> {
@@ -1333,8 +1328,7 @@ pub mod supernodal {
 
 pub mod simplicial {
     use super::*;
-    use crate::assert;
-    use crate::sparse::linalg::triangular_solve;
+    use crate::{assert, sparse::linalg::triangular_solve};
 
     #[derive(Debug, Clone)]
     pub struct SimplicialLu<I, E: Entity> {
@@ -2228,22 +2222,29 @@ pub fn factorize_symbolic_lu<I: Index>(
 
 #[cfg(test)]
 mod tests {
-    use crate::sparse::linalg::{
-        lu::{
-            simplicial::{
-                factorize_simplicial_numeric_lu, factorize_simplicial_numeric_lu_req, SimplicialLu,
-            },
-            supernodal::{
-                factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req, SupernodalLu,
-            },
-            LuSymbolicParams, NumericLu,
-        },
-        qr::col_etree,
-        SupernodalThreshold, SymbolicSparseColMatRef,
-    };
     use crate::{
-        assert, perm::PermRef, sparse::SparseColMatRef, utils::slice::*, Conj, Index, Mat,
-        Parallelism,
+        assert,
+        perm::PermRef,
+        sparse::{
+            linalg::{
+                lu::{
+                    simplicial::{
+                        factorize_simplicial_numeric_lu, factorize_simplicial_numeric_lu_req,
+                        SimplicialLu,
+                    },
+                    supernodal::{
+                        factorize_supernodal_numeric_lu, factorize_supernodal_numeric_lu_req,
+                        SupernodalLu,
+                    },
+                    LuSymbolicParams, NumericLu,
+                },
+                qr::col_etree,
+                SupernodalThreshold, SymbolicSparseColMatRef,
+            },
+            SparseColMatRef,
+        },
+        utils::slice::*,
+        Conj, Index, Mat, Parallelism,
     };
     use core::iter::zip;
     use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};

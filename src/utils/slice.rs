@@ -1,6 +1,5 @@
 use crate::{assert, debug_assert};
-use core::marker::PhantomData;
-use core::ops::Range;
+use core::{marker::PhantomData, ops::Range};
 use faer_entity::*;
 use reborrow::*;
 

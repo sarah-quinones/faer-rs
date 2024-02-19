@@ -1,6 +1,5 @@
 use super::*;
-use crate::assert;
-use crate::perm;
+use crate::{assert, perm};
 
 /// Permutation of length equal to the value tied to `'n`.
 #[repr(transparent)]

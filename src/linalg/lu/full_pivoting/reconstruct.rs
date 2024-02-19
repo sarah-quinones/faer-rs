@@ -1,7 +1,6 @@
 use crate::{
     assert,
-    linalg::matmul::triangular,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{matmul::triangular, temp_mat_req, temp_mat_uninit},
     perm::PermRef,
     ComplexField, Entity, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };

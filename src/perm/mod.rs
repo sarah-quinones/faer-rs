@@ -1,13 +1,5 @@
-use crate::assert;
-use crate::col::*;
-use crate::linalg::temp_mat_uninit;
-use crate::mat::*;
-use crate::row::*;
-use crate::utils::constrained;
-use crate::*;
-use dyn_stack::PodStack;
-use dyn_stack::SizeOverflow;
-use dyn_stack::StackReq;
+use crate::{assert, col::*, linalg::temp_mat_uninit, mat::*, row::*, utils::constrained, *};
+use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
 
 /// Swaps the values in the columns `a` and `b`.

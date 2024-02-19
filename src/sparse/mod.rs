@@ -28,8 +28,7 @@
 //! ```
 
 use super::*;
-use crate::utils::slice::*;
-use crate::utils::vec::VecGroup;
+use crate::utils::{slice::*, vec::VecGroup};
 use core::{cell::Cell, iter::zip, ops::Range, slice::SliceIndex};
 use dyn_stack::*;
 use faer_entity::*;

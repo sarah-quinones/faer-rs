@@ -1,8 +1,6 @@
 use crate::{
     assert, debug_assert,
-    linalg::matmul::triangular,
-    linalg::triangular_inverse as inverse,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{matmul::triangular, temp_mat_req, temp_mat_uninit, triangular_inverse as inverse},
     perm::{permute_cols, PermRef},
     utils::thread::join_raw,
     ComplexField, Entity, Index, MatMut, MatRef, Parallelism,
@@ -139,8 +137,14 @@ pub fn invert_in_place<I: Index, E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::lu::partial_pivoting::compute::{lu_in_place, lu_in_place_req};
-    use crate::{assert, linalg::matmul::matmul, Mat, Parallelism};
+    use crate::{
+        assert,
+        linalg::{
+            lu::partial_pivoting::compute::{lu_in_place, lu_in_place_req},
+            matmul::matmul,
+        },
+        Mat, Parallelism,
+    };
     use assert_approx_eq::assert_approx_eq;
     use rand::random;
 

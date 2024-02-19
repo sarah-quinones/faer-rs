@@ -1,7 +1,9 @@
 use crate::{
     debug_assert,
-    linalg::matmul::{inner_prod::inner_prod_with_conj, matmul},
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        matmul::{inner_prod::inner_prod_with_conj, matmul},
+        temp_mat_req, temp_mat_uninit,
+    },
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

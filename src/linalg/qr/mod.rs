@@ -18,10 +18,12 @@
 //! To translate this to code, we can proceed as follows:
 //!
 //! ```
-//! use faer::linalg::qr::no_pivoting::compute;
-//! use faer::{linalg::householder, linalg::triangular_solve, mat, Conj, Mat, Parallelism};
 //! use assert_approx_eq::assert_approx_eq;
 //! use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
+//! use faer::{
+//!     linalg::{householder, qr::no_pivoting::compute, triangular_solve},
+//!     mat, Conj, Mat, Parallelism,
+//! };
 //! use reborrow::*;
 //!
 //! // we start by defining matrices A and B that define our least-squares problem.
@@ -64,20 +66,22 @@
 //!
 //! // we allocate the memory for the operations that we perform
 //! let mut mem =
-//!     GlobalPodBuffer::new(StackReq::any_of([
-//!         compute::qr_in_place_req::<f64>(
-//!             a.nrows(),
-//!             a.ncols(),
-//!             blocksize,
-//!             Parallelism::None,
-//!             Default::default(),
-//!         )
-//!         .unwrap(),
-//!         householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
-//!             f64,
-//!         >(a.nrows(), blocksize, b.ncols())
-//!         .unwrap(),
-//!     ]));
+//!     GlobalPodBuffer::new(StackReq::any_of(
+//!         [
+//!             compute::qr_in_place_req::<f64>(
+//!                 a.nrows(),
+//!                 a.ncols(),
+//!                 blocksize,
+//!                 Parallelism::None,
+//!                 Default::default(),
+//!             )
+//!             .unwrap(),
+//!             householder::apply_block_householder_sequence_transpose_on_the_left_in_place_req::<
+//!                 f64,
+//!             >(a.nrows(), blocksize, b.ncols())
+//!             .unwrap(),
+//!         ],
+//!     ));
 //! let mut stack = PodStack::new(&mut mem);
 //!
 //! let mut qr = a;
@@ -133,8 +137,10 @@ mod tests {
 
     #[test]
     fn test_example() {
-        use crate::linalg::qr::no_pivoting::compute;
-        use crate::{linalg::householder, linalg::triangular_solve, mat, Conj, Mat, Parallelism};
+        use crate::{
+            linalg::{householder, qr::no_pivoting::compute, triangular_solve},
+            mat, Conj, Mat, Parallelism,
+        };
         use assert_approx_eq::assert_approx_eq;
         use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
         use reborrow::*;

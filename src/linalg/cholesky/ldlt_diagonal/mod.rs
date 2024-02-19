@@ -19,8 +19,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        linalg::matmul as mul, linalg::matmul::triangular::BlockStructure, ComplexField, Mat,
-        MatRef, Parallelism,
+        linalg::{matmul as mul, matmul::triangular::BlockStructure},
+        ComplexField, Mat, MatRef, Parallelism,
     };
     use compute::*;
     use solve::*;

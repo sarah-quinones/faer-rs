@@ -1,11 +1,4 @@
-use crate::assert;
-use crate::col::*;
-use crate::diag::*;
-use crate::mat::*;
-use crate::perm::*;
-use crate::row::*;
-use crate::sparse::*;
-use crate::*;
+use crate::{assert, col::*, diag::*, mat::*, perm::*, row::*, sparse::*, *};
 use faer_entity::*;
 
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -2352,8 +2345,7 @@ impl_sparse_mul!(&Row<LhsE>, &SparseRowMat<I, RhsE>, Row<E>);
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod test {
-    use crate::mat;
-    use crate::{assert, col::*, mat::*, perm::*, row::*};
+    use crate::{assert, col::*, mat, mat::*, perm::*, row::*};
     use assert_approx_eq::assert_approx_eq;
 
     fn matrices() -> (Mat<f64>, Mat<f64>) {

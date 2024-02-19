@@ -1,8 +1,12 @@
 use crate::{
-    assert, debug_assert, linalg::entity::SimdCtx, linalg::matmul::matmul,
-    linalg::triangular_solve::solve_unit_lower_triangular_in_place, perm::PermRef, unzipped,
-    utils::simd::*, utils::slice::*, zipped, ComplexField, Entity, Index, MatMut, Parallelism,
-    SignedIndex,
+    assert, debug_assert,
+    linalg::{
+        entity::SimdCtx, matmul::matmul, triangular_solve::solve_unit_lower_triangular_in_place,
+    },
+    perm::PermRef,
+    unzipped,
+    utils::{simd::*, slice::*},
+    zipped, ComplexField, Entity, Index, MatMut, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -439,8 +443,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::lu::partial_pivoting::reconstruct;
-    use crate::{assert, Mat, MatRef};
+    use crate::{assert, linalg::lu::partial_pivoting::reconstruct, Mat, MatRef};
     use assert_approx_eq::assert_approx_eq;
     use dyn_stack::GlobalPodBuffer;
     use rand::random;

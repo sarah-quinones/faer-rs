@@ -1,8 +1,10 @@
 use crate::{
     assert,
-    linalg::matmul::triangular::{self, BlockStructure},
-    linalg::zip::Diag,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        matmul::triangular::{self, BlockStructure},
+        temp_mat_req, temp_mat_uninit,
+        zip::Diag,
+    },
     unzipped, zipped, ComplexField, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

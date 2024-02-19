@@ -9,8 +9,11 @@
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    assert, perm::swap_cols_idx as swap_cols, unzipped, utils::simd::*, utils::slice::*, zipped,
-    MatMut, RealField,
+    assert,
+    perm::swap_cols_idx as swap_cols,
+    unzipped,
+    utils::{simd::*, slice::*},
+    zipped, MatMut, RealField,
 };
 use faer_entity::{pulp, SimdCtx, SimdGroupFor};
 use reborrow::*;

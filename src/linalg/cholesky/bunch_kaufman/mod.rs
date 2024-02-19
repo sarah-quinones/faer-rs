@@ -4,12 +4,14 @@
 //! $L$ is a unit lower triangular matrix.
 
 use crate::{
-    linalg::matmul::triangular::{self, BlockStructure},
-    linalg::triangular_solve::{
-        solve_unit_lower_triangular_in_place_with_conj,
-        solve_unit_upper_triangular_in_place_with_conj,
+    linalg::{
+        matmul::triangular::{self, BlockStructure},
+        temp_mat_req, temp_mat_uninit,
+        triangular_solve::{
+            solve_unit_lower_triangular_in_place_with_conj,
+            solve_unit_upper_triangular_in_place_with_conj,
+        },
     },
-    linalg::{temp_mat_req, temp_mat_uninit},
     perm::{permute_rows, swap_cols_idx as swap_cols, swap_rows_idx as swap_rows, PermRef},
     unzipped, zipped, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };

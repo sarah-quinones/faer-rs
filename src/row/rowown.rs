@@ -1,11 +1,13 @@
 use super::*;
-use crate::debug_assert;
-use crate::mat::{As2D, Mat};
-use crate::utils::DivCeil;
 use crate::{
     col::ColRef,
-    mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
+    debug_assert,
+    mat::{
+        matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
+        As2D, Mat,
+    },
     row::RowRef,
+    utils::DivCeil,
 };
 use core::mem::ManuallyDrop;
 

@@ -1,15 +1,16 @@
 use crate::{
     assert,
-    linalg::entity::SimdCtx,
-    linalg::householder::{
-        self, apply_block_householder_transpose_on_the_left_in_place_with_conj,
-        upgrade_householder_factor,
+    linalg::{
+        entity::SimdCtx,
+        householder::{
+            self, apply_block_householder_transpose_on_the_left_in_place_with_conj,
+            upgrade_householder_factor,
+        },
+        matmul::inner_prod::{self, inner_prod_with_conj_arch},
+        temp_mat_req,
     },
-    linalg::matmul::inner_prod::{self, inner_prod_with_conj_arch},
-    linalg::temp_mat_req,
     unzipped,
-    utils::simd::*,
-    utils::slice::*,
+    utils::{simd::*, slice::*},
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -371,12 +372,14 @@ mod tests {
     use crate::{
         assert,
         complex_native::c64,
-        linalg::householder::{
-            apply_block_householder_sequence_on_the_left_in_place_req,
-            apply_block_householder_sequence_on_the_left_in_place_with_conj,
+        linalg::{
+            householder::{
+                apply_block_householder_sequence_on_the_left_in_place_req,
+                apply_block_householder_sequence_on_the_left_in_place_with_conj,
+            },
+            matmul::matmul,
+            zip::Diag,
         },
-        linalg::matmul::matmul,
-        linalg::zip::Diag,
         Conj, Mat, MatRef, Parallelism,
     };
     use assert_approx_eq::assert_approx_eq;

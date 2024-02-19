@@ -19,13 +19,14 @@ use super::{
 };
 use crate::{
     assert,
-    linalg::householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        householder::apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
+        temp_mat_req, temp_mat_uninit,
+    },
     perm::PermRef,
     sparse::{SparseColMatRef, SymbolicSparseColMatRef},
     unzipped,
-    utils::constrained::Size,
-    utils::slice::*,
+    utils::{constrained::Size, slice::*},
     zipped, Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::iter::zip;
@@ -1340,8 +1341,7 @@ pub mod supernodal {
 
 pub mod simplicial {
     use super::*;
-    use crate::assert;
-    use crate::sparse::linalg::triangular_solve;
+    use crate::{assert, sparse::linalg::triangular_solve};
 
     #[derive(Debug)]
     pub struct SymbolicSimplicialQr<I> {
@@ -2315,29 +2315,31 @@ pub fn factorize_symbolic_qr<I: Index>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sparse::linalg::{
-        cholesky::{
-            ghost_postorder,
-            simplicial::EliminationTreeRef,
-            supernodal::{SupernodalLdltRef, SymbolicSupernodalCholesky},
-        },
-        qr::{
-            simplicial::{
-                factorize_simplicial_numeric_qr_req, factorize_simplicial_numeric_qr_unsorted,
-                factorize_simplicial_symbolic_qr,
-            },
-            supernodal::{
-                factorize_supernodal_numeric_qr, factorize_supernodal_numeric_qr_req,
-                factorize_supernodal_symbolic_qr,
-            },
-        },
-        SymbolicSparseColMatRef,
-    };
-    use crate::sparse::utils::ghost_adjoint_symbolic;
     use crate::{
         assert,
         complex_native::c64,
-        sparse::SparseColMatRef,
+        sparse::{
+            linalg::{
+                cholesky::{
+                    ghost_postorder,
+                    simplicial::EliminationTreeRef,
+                    supernodal::{SupernodalLdltRef, SymbolicSupernodalCholesky},
+                },
+                qr::{
+                    simplicial::{
+                        factorize_simplicial_numeric_qr_req,
+                        factorize_simplicial_numeric_qr_unsorted, factorize_simplicial_symbolic_qr,
+                    },
+                    supernodal::{
+                        factorize_supernodal_numeric_qr, factorize_supernodal_numeric_qr_req,
+                        factorize_supernodal_symbolic_qr,
+                    },
+                },
+                SymbolicSparseColMatRef,
+            },
+            utils::ghost_adjoint_symbolic,
+            SparseColMatRef,
+        },
         utils::slice::{SliceGroup, SliceGroupMut},
         Mat,
     };

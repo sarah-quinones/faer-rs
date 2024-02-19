@@ -1,12 +1,14 @@
 use crate::{
     assert,
-    linalg::householder::{
-        apply_block_householder_on_the_right_in_place_req,
-        apply_block_householder_on_the_right_in_place_with_conj, make_householder_in_place,
-        upgrade_householder_factor,
+    linalg::{
+        householder::{
+            apply_block_householder_on_the_right_in_place_req,
+            apply_block_householder_on_the_right_in_place_with_conj, make_householder_in_place,
+            upgrade_householder_factor,
+        },
+        matmul::{inner_prod::inner_prod_with_conj, matmul, triangular::BlockStructure},
+        temp_mat_req, temp_mat_uninit, temp_mat_zeroed,
     },
-    linalg::matmul::{inner_prod::inner_prod_with_conj, matmul, triangular::BlockStructure},
-    linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::thread::parallelism_degree,
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,

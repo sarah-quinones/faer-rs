@@ -1,5 +1,5 @@
-use crate::linalg::qr::no_pivoting;
 use crate::{
+    linalg::qr::no_pivoting,
     perm::{permute_rows, permute_rows_in_place, permute_rows_in_place_req, PermRef},
     ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism,
 };
@@ -232,13 +232,13 @@ pub fn solve_transpose<I: Index, E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::qr::col_pivoting::compute::{
-        qr_in_place, qr_in_place_req, recommended_blocksize,
-    };
     use crate::{
         assert,
         complex_native::{c32, c64},
-        linalg::matmul::matmul_with_conj,
+        linalg::{
+            matmul::matmul_with_conj,
+            qr::col_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize},
+        },
         Mat,
     };
     use rand::random;

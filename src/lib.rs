@@ -1,6 +1,8 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![allow(non_snake_case)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
@@ -1087,8 +1089,7 @@ mod tests {
 
     #[test]
     fn to_owned_equality() {
-        use num_complex::Complex;
-        use num_complex::Complex as C;
+        use num_complex::{Complex, Complex as C};
         let mut mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
         let mut mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
         let mut mf32c: Mat<Complex<f32>> = mat![
@@ -1115,8 +1116,7 @@ mod tests {
 
     #[test]
     fn conj_to_owned_equality() {
-        use num_complex::Complex;
-        use num_complex::Complex as C;
+        use num_complex::{Complex, Complex as C};
         let mut mf32: Mat<f32> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
         let mut mf64: Mat<f64> = mat![[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]];
         let mut mf32c: Mat<Complex<f32>> = mat![

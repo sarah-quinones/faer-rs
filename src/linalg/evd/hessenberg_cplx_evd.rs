@@ -3,18 +3,20 @@
 // https://github.com/tlapack/tlapack
 // https://github.com/tlapack/tlapack/blob/master/include/tlapack/lapack/lahqr.hpp
 
-use crate::linalg::evd::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req};
 use crate::{
-    linalg::householder::{
-        apply_block_householder_sequence_on_the_right_in_place_req,
-        apply_block_householder_sequence_on_the_right_in_place_with_conj,
-        apply_block_householder_sequence_transpose_on_the_left_in_place_req,
-        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
-        make_householder_in_place,
+    linalg::{
+        evd::hessenberg::{make_hessenberg_in_place, make_hessenberg_in_place_req},
+        householder::{
+            apply_block_householder_sequence_on_the_right_in_place_req,
+            apply_block_householder_sequence_on_the_right_in_place_with_conj,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_req,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
+            make_householder_in_place,
+        },
+        matmul::matmul,
+        temp_mat_req,
+        zip::Diag,
     },
-    linalg::matmul::matmul,
-    linalg::temp_mat_req,
-    linalg::zip::Diag,
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use core::slice;

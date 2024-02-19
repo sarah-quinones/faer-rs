@@ -1,8 +1,10 @@
 use super::*;
-use crate::diag::DiagRef;
-use crate::mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit};
-use crate::utils::DivCeil;
-use crate::{assert, debug_assert};
+use crate::{
+    assert, debug_assert,
+    diag::DiagRef,
+    mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
+    utils::DivCeil,
+};
 use core::mem::ManuallyDrop;
 
 #[repr(C)]

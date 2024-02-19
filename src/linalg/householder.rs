@@ -30,18 +30,15 @@
 
 use crate::{
     assert,
-    linalg::matmul::{
-        inner_prod, matmul, matmul_with_conj,
-        triangular::{self, BlockStructure},
+    linalg::{
+        matmul::{
+            inner_prod, matmul, matmul_with_conj,
+            triangular::{self, BlockStructure},
+        },
+        temp_mat_req, temp_mat_uninit, triangular_solve as solve,
     },
-    linalg::temp_mat_req,
-    linalg::temp_mat_uninit,
-    linalg::triangular_solve as solve,
     unzipped,
-    utils::simd::*,
-    utils::slice::*,
-    utils::thread::join_raw,
-    utils::DivCeil,
+    utils::{simd::*, slice::*, thread::join_raw, DivCeil},
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

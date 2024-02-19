@@ -1,5 +1,4 @@
-use super::c32;
-use super::c32conj;
+use super::{c32, c32conj};
 
 use faer_entity::*;
 #[cfg(not(feature = "std"))]

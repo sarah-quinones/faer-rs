@@ -1,7 +1,10 @@
 use super::*;
-use crate::col::ColRef;
-use crate::mat::{As2D, Mat, MatRef};
-use crate::{assert, debug_assert};
+use crate::{
+    assert,
+    col::ColRef,
+    debug_assert,
+    mat::{As2D, Mat, MatRef},
+};
 
 #[repr(C)]
 pub struct RowRef<'a, E: Entity> {

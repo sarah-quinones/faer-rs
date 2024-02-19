@@ -5,20 +5,23 @@
 
 use crate::{
     assert, debug_assert,
-    linalg::householder::{
-        apply_block_householder_sequence_on_the_right_in_place_with_conj,
-        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
-        make_householder_in_place,
+    linalg::{
+        evd::{
+            hessenberg::make_hessenberg_in_place,
+            hessenberg_cplx_evd::{
+                default_blocking_threshold, default_nibble_threshold,
+                default_recommended_deflation_window,
+            },
+        },
+        householder::{
+            apply_block_householder_sequence_on_the_right_in_place_with_conj,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
+            make_householder_in_place,
+        },
+        matmul::matmul,
+        zip::Diag,
     },
-    linalg::matmul::matmul,
-    linalg::zip::Diag,
     unzipped, zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
-};
-use crate::{
-    linalg::evd::hessenberg::make_hessenberg_in_place,
-    linalg::evd::hessenberg_cplx_evd::{
-        default_blocking_threshold, default_nibble_threshold, default_recommended_deflation_window,
-    },
 };
 use dyn_stack::PodStack;
 use reborrow::*;

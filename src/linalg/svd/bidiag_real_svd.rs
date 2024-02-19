@@ -17,8 +17,7 @@ use crate::{
     assert,
     linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
-    utils::simd::SimdFor,
-    utils::thread::join_raw,
+    utils::{simd::SimdFor, thread::join_raw},
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
 };
 use coe::Coerce;

@@ -10,6 +10,6 @@ mod matref;
 pub use symbolic_own::SymbolicSparseRowMat;
 pub use symbolic_ref::SymbolicSparseRowMatRef;
 
-pub use matref::SparseRowMatRef;
 pub use matmut::SparseRowMatMut;
 pub use matown::SparseRowMat;
+pub use matref::SparseRowMatRef;

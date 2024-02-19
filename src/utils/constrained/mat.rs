@@ -1,6 +1,5 @@
 use super::*;
-use crate::assert;
-use crate::mat;
+use crate::{assert, mat};
 
 /// Immutable dense matrix view with dimensions equal to the values tied to `('nrows, 'ncols)`.
 #[repr(transparent)]

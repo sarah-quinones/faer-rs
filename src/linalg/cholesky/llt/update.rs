@@ -1,18 +1,18 @@
 use super::CholeskyError;
-use crate::linalg::cholesky::{
-    ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
-    llt::compute::{cholesky_in_place, cholesky_in_place_req},
-};
 use crate::{
     assert, debug_assert,
-    linalg::entity::SimdCtx,
-    linalg::matmul as mul,
-    linalg::matmul::triangular::BlockStructure,
-    linalg::triangular_solve as solve,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        cholesky::{
+            ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
+            llt::compute::{cholesky_in_place, cholesky_in_place_req},
+        },
+        entity::SimdCtx,
+        matmul as mul,
+        matmul::triangular::BlockStructure,
+        temp_mat_req, temp_mat_uninit, triangular_solve as solve,
+    },
     unzipped,
-    utils::simd::*,
-    utils::slice::*,
+    utils::{simd::*, slice::*},
     zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use core::iter::zip;

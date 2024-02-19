@@ -1,7 +1,6 @@
 use crate::{
     assert, debug_assert,
-    linalg::matmul::inner_prod::inner_prod_with_conj,
-    linalg::{temp_mat_req, temp_mat_zeroed},
+    linalg::{matmul::inner_prod::inner_prod_with_conj, temp_mat_req, temp_mat_zeroed},
     unzipped,
     utils::thread::parallelism_degree,
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,

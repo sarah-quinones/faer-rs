@@ -1,0 +1,5 @@
+unstable_features = true
+imports_granularity="crate"
+format_code_in_doc_comments = true
+wrap_comments = true
+comment_width = 100

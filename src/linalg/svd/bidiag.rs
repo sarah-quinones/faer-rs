@@ -1,11 +1,8 @@
 use crate::{
     assert,
-    linalg::matmul::matmul,
-    linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
+    linalg::{matmul::matmul, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
-    utils::thread::for_each_raw,
-    utils::thread::par_split_indices,
-    utils::thread::parallelism_degree,
+    utils::thread::{for_each_raw, par_split_indices, parallelism_degree},
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use core::slice;

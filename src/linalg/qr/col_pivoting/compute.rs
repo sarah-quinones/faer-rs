@@ -3,13 +3,13 @@ use crate::{
     assert,
     complex_native::{c32, c64},
     debug_assert,
-    linalg::householder::upgrade_householder_factor,
-    linalg::matmul::inner_prod::{self, inner_prod_with_conj_arch},
+    linalg::{
+        householder::upgrade_householder_factor,
+        matmul::inner_prod::{self, inner_prod_with_conj_arch},
+    },
     perm::{swap_cols_idx as swap_cols, PermRef},
     unzipped,
-    utils::simd::*,
-    utils::slice::*,
-    utils::DivCeil,
+    utils::{simd::*, slice::*, DivCeil},
     zipped, ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -836,12 +836,14 @@ mod tests {
     use crate::{
         assert,
         complex_native::c64,
-        linalg::householder::{
-            apply_block_householder_sequence_on_the_left_in_place_req,
-            apply_block_householder_sequence_on_the_left_in_place_with_conj,
+        linalg::{
+            householder::{
+                apply_block_householder_sequence_on_the_left_in_place_req,
+                apply_block_householder_sequence_on_the_left_in_place_with_conj,
+            },
+            matmul::matmul,
+            zip::Diag,
         },
-        linalg::matmul::matmul,
-        linalg::zip::Diag,
         Conj, Mat, MatRef,
     };
     use assert_approx_eq::assert_approx_eq;

@@ -849,9 +849,9 @@ impl BlockStructure {
 /// either or both of the input matrices) and stores the result in `acc`.
 ///
 /// Performs the operation:
-/// - `acc = beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `None` (in this case, the
-///   preexisting values in `acc` are not read, so it is allowed to be a view over uninitialized
-///   values if `E: Copy`),
+/// - `acc = beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `None` (in this case, the preexisting
+///   values in `acc` are not read, so it is allowed to be a view over uninitialized values if `E:
+///   Copy`),
 /// - `acc = alpha * acc + beta * Op_lhs(lhs) * Op_rhs(rhs)` if `alpha` is `Some(_)`,
 ///
 /// The left hand side and right hand side may be interpreted as triangular depending on the
@@ -884,9 +884,8 @@ impl BlockStructure {
 ///
 /// ```
 /// use faer::{
-///     mat,
 ///     linalg::matmul::triangular::{matmul_with_conj, BlockStructure},
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
@@ -973,8 +972,8 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// `acc`.
 ///
 /// Performs the operation:
-/// - `acc = beta * lhs * rhs` if `alpha` is `None` (in this case, the preexisting values in
-///   `acc` are not read, so it is allowed to be a view over uninitialized values if `E: Copy`),
+/// - `acc = beta * lhs * rhs` if `alpha` is `None` (in this case, the preexisting values in `acc`
+///   are not read, so it is allowed to be a view over uninitialized values if `E: Copy`),
 /// - `acc = alpha * acc + beta * lhs * rhs` if `alpha` is `Some(_)`,
 ///
 /// The left hand side and right hand side may be interpreted as triangular depending on the
@@ -1002,9 +1001,8 @@ pub fn matmul_with_conj<E: ComplexField>(
 ///
 /// ```
 /// use faer::{
-///     mat,
 ///     linalg::matmul::triangular::{matmul, BlockStructure},
-///     unzipped, zipped, Conj, Mat, Parallelism,
+///     mat, unzipped, zipped, Conj, Mat, Parallelism,
 /// };
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];

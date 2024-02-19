@@ -1,7 +1,9 @@
 use crate::{
     assert,
-    linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        householder::apply_block_householder_sequence_on_the_left_in_place_with_conj, temp_mat_req,
+        temp_mat_uninit,
+    },
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -113,10 +115,12 @@ pub fn reconstruct_in_place_req<E: Entity>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::qr::no_pivoting::compute::{
-        qr_in_place, qr_in_place_req, recommended_blocksize,
+    use crate::{
+        assert,
+        complex_native::c64,
+        linalg::qr::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize},
+        Mat,
     };
-    use crate::{assert, complex_native::c64, Mat};
     use assert_approx_eq::assert_approx_eq;
     use rand::prelude::*;
     use std::cell::RefCell;

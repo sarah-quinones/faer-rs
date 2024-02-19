@@ -1,11 +1,12 @@
-use crate::assert;
-use crate::col::{Col, ColMut, ColRef};
-use crate::row::{Row, RowMut, RowRef};
-use crate::utils::slice::*;
-use crate::Conj;
+use crate::{
+    assert,
+    col::{Col, ColMut, ColRef},
+    row::{Row, RowMut, RowRef},
+    utils::slice::*,
+    Conj,
+};
 use coe::Coerce;
-use core::marker::PhantomData;
-use core::ptr::NonNull;
+use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
 
@@ -963,8 +964,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity>(
 /// `ptr`.
 /// * For each matrix unit, the corresponding pointer must be non null and properly aligned,
 /// even for a zero-sized matrix.
-/// * The values accessible by the matrix must be initialized at some point before they are
-///   read, or
+/// * The values accessible by the matrix must be initialized at some point before they are read, or
 /// references to them are formed.
 /// * No aliasing (including self aliasing) is allowed. In other words, none of the elements
 /// accessible by any matrix unit may be accessed for reads or writes by any other means for

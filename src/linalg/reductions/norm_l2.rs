@@ -1,11 +1,11 @@
 use super::LINEAR_IMPL_THRESHOLD;
-use crate::complex_native::*;
-use crate::mat::MatRef;
-use crate::utils::simd::*;
-use crate::utils::slice::*;
+use crate::{
+    complex_native::*,
+    mat::MatRef,
+    utils::{simd::*, slice::*},
+};
 use faer_entity::*;
-use pulp::Read;
-use pulp::Simd;
+use pulp::{Read, Simd};
 
 #[inline(always)]
 fn norm_l2_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
@@ -264,7 +264,7 @@ pub fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
                         2 * mat.nrows(),
                         mat.ncols(),
                         1,
-                         mat.col_stride().wrapping_mul(2),
+                        mat.col_stride().wrapping_mul(2),
                     )
                 };
                 let (acc_small_, acc_, acc_big_) = norm_l2_contiguous::<f32>(mat);
@@ -279,7 +279,7 @@ pub fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
                         2 * mat.nrows(),
                         mat.ncols(),
                         1,
-                         mat.col_stride().wrapping_mul(2),
+                        mat.col_stride().wrapping_mul(2),
                     )
                 };
                 let (acc_small_, acc_, acc_big_) = norm_l2_contiguous::<f64>(mat);

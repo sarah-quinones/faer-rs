@@ -1,8 +1,10 @@
 //! Implementation of [`zipped!`] structures.
 
-use self::col::{Col, ColMut, ColRef};
-use self::mat::{Mat, MatMut, MatRef};
-use self::row::{Row, RowMut, RowRef};
+use self::{
+    col::{Col, ColMut, ColRef},
+    mat::{Mat, MatMut, MatRef},
+    row::{Row, RowMut, RowRef},
+};
 use crate::{assert, debug_assert, *};
 use core::mem::MaybeUninit;
 use faer_entity::*;

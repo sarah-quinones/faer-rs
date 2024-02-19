@@ -1,7 +1,5 @@
-use crate::utils::slice::*;
-use crate::Conj;
-use core::marker::PhantomData;
-use core::ptr::NonNull;
+use crate::{utils::slice::*, Conj};
+use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
 

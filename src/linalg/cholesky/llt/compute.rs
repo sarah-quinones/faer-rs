@@ -1,9 +1,13 @@
 use super::CholeskyError;
-use crate::linalg::cholesky::ldlt_diagonal::compute::RankUpdate;
 use crate::{
-    assert, debug_assert, linalg::entity::SimdCtx, linalg::matmul::triangular::BlockStructure,
-    linalg::triangular_solve, unzipped, utils::thread::parallelism_degree, zipped, ComplexField,
-    Entity, MatMut, Parallelism,
+    assert, debug_assert,
+    linalg::{
+        cholesky::ldlt_diagonal::compute::RankUpdate, entity::SimdCtx,
+        matmul::triangular::BlockStructure, triangular_solve,
+    },
+    unzipped,
+    utils::thread::parallelism_degree,
+    zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;

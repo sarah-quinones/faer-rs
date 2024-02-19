@@ -1,8 +1,9 @@
 use crate::{
     assert,
-    linalg::householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,
-    linalg::triangular_inverse::invert_upper_triangular,
-    linalg::{temp_mat_req, temp_mat_uninit},
+    linalg::{
+        householder::apply_block_householder_sequence_transpose_on_the_right_in_place_with_conj,
+        temp_mat_req, temp_mat_uninit, triangular_inverse::invert_upper_triangular,
+    },
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -117,10 +118,15 @@ pub fn invert_in_place_req<E: Entity>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::qr::no_pivoting::compute::{
-        qr_in_place, qr_in_place_req, recommended_blocksize,
+    use crate::{
+        assert,
+        complex_native::c64,
+        linalg::{
+            matmul::matmul,
+            qr::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize},
+        },
+        Mat,
     };
-    use crate::{assert, complex_native::c64, linalg::matmul::matmul, Mat};
     use assert_approx_eq::assert_approx_eq;
     use rand::prelude::*;
     use std::cell::RefCell;

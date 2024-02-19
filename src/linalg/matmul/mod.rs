@@ -1,14 +1,17 @@
 //! Matrix multiplication.
 
 use crate::{
-    assert, complex_native::*, linalg::entity::transmute_unchecked, linalg::entity::SimdGroupFor,
-    mat::MatMut, mat::MatRef, unzipped, utils::simd::*, utils::slice::*, utils::DivCeil, zipped,
-    ComplexField, Conj, Conjugate, Parallelism,
+    assert,
+    complex_native::*,
+    linalg::entity::{transmute_unchecked, SimdGroupFor},
+    mat::{MatMut, MatRef},
+    unzipped,
+    utils::{simd::*, slice::*, DivCeil},
+    zipped, ComplexField, Conj, Conjugate, Parallelism,
 };
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use faer_entity::{SimdCtx, *};
-use pulp::Simd;
-use pulp::{Read, Write};
+use pulp::{Read, Simd, Write};
 use reborrow::*;
 
 #[doc(hidden)]
@@ -1793,7 +1796,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer::{mat, linalg::matmul::matmul_with_conj, unzipped, zipped, Conj, Mat, Parallelism};
+/// use faer::{linalg::matmul::matmul_with_conj, mat, unzipped, zipped, Conj, Mat, Parallelism};
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];
@@ -1873,7 +1876,7 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// # Example
 ///
 /// ```
-/// use faer::{mat, linalg::matmul::matmul, unzipped, zipped, Mat, Parallelism};
+/// use faer::{linalg::matmul::matmul, mat, unzipped, zipped, Mat, Parallelism};
 ///
 /// let lhs = mat![[0.0, 2.0], [1.0, 3.0]];
 /// let rhs = mat![[4.0, 6.0], [5.0, 7.0]];

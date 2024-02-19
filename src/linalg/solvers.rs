@@ -1,14 +1,13 @@
-use crate::col::*;
-use crate::linalg::matmul::triangular::BlockStructure;
-use crate::mat::*;
-use crate::*;
-use crate::{assert, perm::PermRef, unzipped, zipped, Side};
+use crate::{
+    assert, col::*, linalg::matmul::triangular::BlockStructure, mat::*, perm::PermRef, unzipped,
+    zipped, Side, *,
+};
 use dyn_stack::*;
 use reborrow::*;
 
-pub use crate::linalg::cholesky::llt::CholeskyError;
-pub use crate::sparse::linalg::solvers::{
-    SpSolver, SpSolverCore, SpSolverLstsq, SpSolverLstsqCore,
+pub use crate::{
+    linalg::cholesky::llt::CholeskyError,
+    sparse::linalg::solvers::{SpSolver, SpSolverCore, SpSolverLstsq, SpSolverLstsqCore},
 };
 
 pub trait SolverCore<E: Entity>: SpSolverCore<E> {

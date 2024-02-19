@@ -1,11 +1,12 @@
 use crate::{
     assert,
-    linalg::householder::{
-        apply_block_householder_sequence_on_the_left_in_place_with_conj,
-        apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
+    linalg::{
+        householder::{
+            apply_block_householder_sequence_on_the_left_in_place_with_conj,
+            apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj,
+        },
+        temp_mat_req, triangular_solve as solve,
     },
-    linalg::temp_mat_req,
-    linalg::triangular_solve as solve,
     unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -255,13 +256,13 @@ pub fn solve_transpose<E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linalg::qr::no_pivoting::compute::{
-        qr_in_place, qr_in_place_req, recommended_blocksize,
-    };
     use crate::{
         assert,
         complex_native::{c32, c64},
-        linalg::matmul::matmul_with_conj,
+        linalg::{
+            matmul::matmul_with_conj,
+            qr::no_pivoting::compute::{qr_in_place, qr_in_place_req, recommended_blocksize},
+        },
         Mat,
     };
     use rand::random;

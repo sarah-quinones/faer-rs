@@ -1,7 +1,8 @@
-use crate::complex_native::*;
-use crate::mat::MatRef;
-use crate::utils::simd::*;
-use crate::utils::slice::*;
+use crate::{
+    complex_native::*,
+    mat::MatRef,
+    utils::{simd::*, slice::*},
+};
 use faer_entity::*;
 use pulp::Read;
 
