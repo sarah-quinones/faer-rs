@@ -1353,6 +1353,18 @@ impl<E: ComplexField> Svd<E> {
         self.v.as_ref()
     }
 }
+
+impl<E: ComplexField + RealField> Svd<E> {
+    /// Computes the pseudo inverse
+    pub fn pseudo_inverse(&self) -> Mat<E> {
+        crate::linalg::svd::pseudo_inverse::compute_pseudo_inverse(
+            self.s_diagonal(),
+            self.u(),
+            self.v(),
+        )
+    }
+}
+
 fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: MatRef<'_, E>) {
     let mut rhs = rhs;
     for j in 0..rhs.ncols() {
@@ -2813,6 +2825,46 @@ mod tests {
 
         test_solver(&H, &H.thin_svd());
         test_solver(H.adjoint().to_owned(), &H.adjoint().thin_svd());
+    }
+
+    #[test]
+    fn pseudo_inverse_square() {
+        #[rustfmt::skip]
+        let a = mat![
+            [0.7071067811865476, 0.7071067811865476, 0.7071067811865475, 0.0],
+            [0.7071067811865476, 0.7071067811865474, -0.7071067811865477, 0.0],
+            [0.7071067811865476, -0.7071067811865475, 0.7071067811865476, 0.0],
+            [0.7071067811865476, -0.7071067811865477, -0.7071067811865474, 0.0],
+        ];
+        let svd = a.svd();
+        let ai = svd.pseudo_inverse();
+        #[rustfmt::skip]
+        let ai_expected = mat![
+            [0.35355339059327384, 0.35355339059327384, 0.35355339059327373, 0.3535533905932737],
+            [0.35355339059327384, 0.35355339059327373, -0.3535533905932738, -0.3535533905932737],
+            [0.35355339059327373, -0.3535533905932738, 0.3535533905932738, -0.3535533905932737],
+            [0.0, 0.0, 0.0, 0.0],
+        ];
+        assert_matrix_eq!(ai, ai_expected, comp = float);
+    }
+
+    #[test]
+    fn pseudo_inverse_stereo() {
+        #[rustfmt::skip]
+        let a: Mat<f64> = mat![
+          [0.7071067811865476, 6.123233995736766e-17, 1.0, 0.0],
+          [0.7071067811865476, -1.8369701987210297e-16, -1.0, 0.0],
+        ];
+        let svd = a.svd();
+        let ai = svd.pseudo_inverse();
+        #[rustfmt::skip]
+        let ai_expected = mat![
+            [0.7071067811865477, 0.7071067811865477],
+            [-5.320567067968742e-17, -1.9010780514207385e-16],
+            [0.5000000000000001, -0.4999999999999999],
+            [0.0, 0.0],
+        ];
+        assert_matrix_eq!(ai, ai_expected, comp = float);
     }
 
     #[test]
