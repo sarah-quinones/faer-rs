@@ -519,9 +519,7 @@ impl<E: Entity> MatShape for ColRef<'_, E> {
         (*self).nrows()
     }
     #[inline(always)]
-    fn ncols(&self) -> Self::Cols {
-        ()
-    }
+    fn ncols(&self) -> Self::Cols {}
 }
 
 impl<E: Entity> MatShape for ColMut<'_, E> {
@@ -532,18 +530,14 @@ impl<E: Entity> MatShape for ColMut<'_, E> {
         (*self).nrows()
     }
     #[inline(always)]
-    fn ncols(&self) -> Self::Cols {
-        ()
-    }
+    fn ncols(&self) -> Self::Cols {}
 }
 
 impl<E: Entity> MatShape for RowRef<'_, E> {
     type Rows = ();
     type Cols = usize;
     #[inline(always)]
-    fn nrows(&self) -> Self::Rows {
-        ()
-    }
+    fn nrows(&self) -> Self::Rows {}
     #[inline(always)]
     fn ncols(&self) -> Self::Cols {
         (*self).ncols()
@@ -553,9 +547,7 @@ impl<E: Entity> MatShape for RowMut<'_, E> {
     type Rows = ();
     type Cols = usize;
     #[inline(always)]
-    fn nrows(&self) -> Self::Rows {
-        ()
-    }
+    fn nrows(&self) -> Self::Rows {}
     #[inline(always)]
     fn ncols(&self) -> Self::Cols {
         (*self).ncols()
