@@ -125,6 +125,12 @@ pub mod supernodal {
         ut_val: VecGroup<E>,
     }
 
+    impl<I: Index, E: Entity> Default for SupernodalLu<I, E> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<I: Index, E: Entity> SupernodalLu<I, E> {
         #[inline]
         pub fn new() -> Self {
@@ -233,7 +239,7 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            let lu = &*self;
+            let lu = self;
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
@@ -301,7 +307,7 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            let lu = &*self;
+            let lu = self;
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
@@ -371,7 +377,7 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            let lu = &*self;
+            let lu = self;
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
@@ -451,7 +457,7 @@ pub mod supernodal {
         ) where
             E: ComplexField,
         {
-            let lu = &*self;
+            let lu = self;
 
             assert!(lu.nrows() == lu.ncols());
             assert!(lu.nrows() == rhs.nrows());
@@ -548,7 +554,7 @@ pub mod supernodal {
             let I = I::truncate;
             let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
             let min_col = Array::from_ref(
-                MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice(&min_col), N),
+                MaybeIdx::from_slice_ref_checked(bytemuck::cast_slice(min_col), N),
                 M,
             );
             let etree = etree.ghost_inner(N);
@@ -561,7 +567,7 @@ pub mod supernodal {
                     Some(min_col),
                     crate::sparse::linalg::cholesky::supernodal::CholeskyInput::ATA,
                     etree,
-                    Array::from_ref(&col_counts, N),
+                    Array::from_ref(col_counts, N),
                     stack.rb_mut(),
                     params,
                 )?;
@@ -571,8 +577,7 @@ pub mod supernodal {
             let (index_to_super, _) = stack.make_raw::<I>(*N);
 
             for s in 0..n_supernodes {
-                index_to_super.as_mut()[L.supernode_begin[s].zx()..L.supernode_begin[s + 1].zx()]
-                    .fill(I(s));
+                index_to_super[L.supernode_begin[s].zx()..L.supernode_begin[s + 1].zx()].fill(I(s));
             }
             for s in 0..n_supernodes {
                 let last = L.supernode_begin[s + 1].zx() - 1;
@@ -609,7 +614,7 @@ pub mod supernodal {
 
         fn with_dims(nrows: usize, ncols: usize) -> Result<Self, FaerError> {
             Ok(Self {
-                data: try_collect((0..(nrows * ncols)).into_iter().map(|_| 1u8))?,
+                data: try_collect((0..(nrows * ncols)).map(|_| 1u8))?,
                 nrows,
             })
         }
@@ -1344,6 +1349,12 @@ pub mod simplicial {
         u_val: VecGroup<E>,
     }
 
+    impl<I: Index, E: Entity> Default for SimplicialLu<I, E> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<I: Index, E: Entity> SimplicialLu<I, E> {
         #[inline]
         pub fn new() -> Self {
@@ -1798,6 +1809,12 @@ pub struct NumericLu<I, E: Entity> {
     row_perm_inv: alloc::vec::Vec<I>,
 }
 
+impl<I: Index, E: Entity> Default for NumericLu<I, E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<I: Index, E: Entity> NumericLu<I, E> {
     #[inline]
     pub fn new() -> Self {
@@ -2139,7 +2156,7 @@ pub fn factorize_symbolic_lu<I: Index>(
             Array::from_mut(etree, N),
             stack.rb_mut(),
         );
-        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(&etree, N), N);
+        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(etree, N), N);
         crate::sparse::linalg::cholesky::ghost_postorder(
             Array::from_mut(post, N),
             etree_,
@@ -2152,7 +2169,7 @@ pub fn factorize_symbolic_lu<I: Index>(
             AT,
             Some(col_perm),
             etree_,
-            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            Array::from_ref(Idx::from_slice_ref_checked(post, N), N),
             stack.rb_mut(),
         );
         let min_col = min_row;
@@ -2197,9 +2214,9 @@ pub fn factorize_symbolic_lu<I: Index>(
             let symbolic = supernodal::factorize_supernodal_symbolic_lu::<I>(
                 A.into_inner(),
                 Some(col_perm.into_inner()),
-                &*min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
+                &min_col,
+                EliminationTreeRef::<'_, I> { inner: etree },
+                col_counts,
                 stack.rb_mut(),
                 params.supernodal_params,
             )?;

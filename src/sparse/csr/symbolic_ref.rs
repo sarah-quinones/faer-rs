@@ -349,7 +349,7 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
 impl<I: Index> core::fmt::Debug for SymbolicSparseRowMatRef<'_, I> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mat = *self;
-        let mut iter = (0..mat.nrows()).into_iter().flat_map(move |i| {
+        let mut iter = (0..mat.nrows()).flat_map(move |i| {
             struct Wrapper(usize, usize);
             impl core::fmt::Debug for Wrapper {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

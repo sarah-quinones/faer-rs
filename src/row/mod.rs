@@ -340,7 +340,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
 /// Creates a `RowRef` from slice views over the row vector data, The result has the same
 /// number of columns as the length of the input slice.
 #[inline(always)]
-pub fn from_slice<'a, E: Entity>(slice: GroupFor<E, &'a [E::Unit]>) -> RowRef<'a, E> {
+pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> RowRef<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len();
 
     unsafe {
@@ -359,7 +359,7 @@ pub fn from_slice<'a, E: Entity>(slice: GroupFor<E, &'a [E::Unit]>) -> RowRef<'a
 /// Creates a `RowMut` from slice views over the row vector data, The result has the same
 /// number of columns as the length of the input slice.
 #[inline(always)]
-pub fn from_slice_mut<'a, E: Entity>(slice: GroupFor<E, &'a mut [E::Unit]>) -> RowMut<'a, E> {
+pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> RowMut<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len();
 
     unsafe {

@@ -45,8 +45,8 @@ impl<'a, I: Index> PermRef<'a, I> {
     #[inline]
     pub fn as_ref(&self) -> PermRef<'_, I> {
         PermRef {
-            forward: &self.forward,
-            inverse: &self.inverse,
+            forward: self.forward,
+            inverse: self.inverse,
         }
     }
 

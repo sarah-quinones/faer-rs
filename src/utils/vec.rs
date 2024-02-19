@@ -25,6 +25,12 @@ impl<E: Entity, T: Debug> Debug for VecGroup<E, T> {
 unsafe impl<E: Entity, T: Sync> Sync for VecGroup<E, T> {}
 unsafe impl<E: Entity, T: Send> Send for VecGroup<E, T> {}
 
+impl<E: Entity, T> Default for VecGroup<E, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<E: Entity, T> VecGroup<E, T> {
     /// Create a new [`VecGroup`] from a group of [`alloc::vec::Vec`].
     #[inline]

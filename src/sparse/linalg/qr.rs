@@ -35,8 +35,8 @@ use faer_entity::*;
 use reborrow::*;
 
 #[inline]
-pub(crate) fn ghost_col_etree<'m, 'n, I: Index>(
-    A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
+pub(crate) fn ghost_col_etree<'n, I: Index>(
+    A: ghost::SymbolicSparseColMatRef<'_, 'n, '_, I>,
     col_perm: Option<ghost::PermRef<'n, '_, I>>,
     etree: &mut Array<'n, I::Signed>,
     stack: PodStack<'_>,
@@ -428,7 +428,7 @@ pub mod supernodal {
                     Some(min_col),
                     crate::sparse::linalg::cholesky::supernodal::CholeskyInput::ATA,
                     etree,
-                    Array::from_ref(&col_counts, N),
+                    Array::from_ref(col_counts, N),
                     stack.rb_mut(),
                     params,
                 )?;
@@ -509,7 +509,7 @@ pub mod supernodal {
             let (index_to_super, _) = stack.make_raw::<I>(*N);
 
             for s in N_SUPERNODES.indices() {
-                index_to_super.as_mut()[supernode_begin[s].zx()..supernode_end[s].zx()]
+                index_to_super[supernode_begin[s].zx()..supernode_end[s].zx()]
                     .fill(*s.truncate::<I>());
             }
             let index_to_super =
@@ -825,8 +825,8 @@ pub mod supernodal {
     }
 
     #[track_caller]
-    pub fn factorize_supernodal_numeric_qr_req<'a, I: Index, E: Entity>(
-        symbolic: &'a SymbolicSupernodalQr<I>,
+    pub fn factorize_supernodal_numeric_qr_req<I: Index, E: Entity>(
+        symbolic: &SymbolicSupernodalQr<I>,
         parallelism: Parallelism,
     ) -> Result<StackReq, SizeOverflow> {
         let n_supernodes = symbolic.L.n_supernodes();
@@ -1510,7 +1510,7 @@ pub mod simplicial {
                     let hx = SliceGroup::<'_, E>::new(h.values_of_col(j));
                     let tau_inv = tau.read(j).faer_real().faer_inv();
 
-                    if hi.len() == 0 {
+                    if hi.is_empty() {
                         tmp.rb_mut().row_mut(j).fill_zero();
                         continue;
                     }
@@ -1593,10 +1593,10 @@ pub mod simplicial {
             h_non_zero_count[parent.zx()] += h_non_zero_count[j] - I::truncate(1);
         }
 
-        let h_nnz = I::sum_nonnegative(&h_non_zero_count)
+        let h_nnz = I::sum_nonnegative(h_non_zero_count)
             .ok_or(FaerError::IndexOverflow)?
             .zx();
-        let l_nnz = I::sum_nonnegative(&col_counts)
+        let l_nnz = I::sum_nonnegative(col_counts)
             .ok_or(FaerError::IndexOverflow)?
             .zx();
 
@@ -1622,8 +1622,8 @@ pub mod simplicial {
         })
     }
 
-    pub fn factorize_simplicial_numeric_qr_req<'a, I: Index, E: Entity>(
-        symbolic: &'a SymbolicSimplicialQr<I>,
+    pub fn factorize_simplicial_numeric_qr_req<I: Index, E: Entity>(
+        symbolic: &SymbolicSimplicialQr<I>,
     ) -> Result<StackReq, SizeOverflow> {
         let m = symbolic.nrows;
         StackReq::try_all_of([
@@ -2229,7 +2229,7 @@ pub fn factorize_symbolic_qr<I: Index>(
         let (h_col_counts, mut stack) = stack.make_raw::<I>(n);
 
         ghost_col_etree(A, Some(col_perm), Array::from_mut(etree, N), stack.rb_mut());
-        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(&etree, N), N);
+        let etree_ = Array::from_ref(MaybeIdx::<'_, I>::from_slice_ref_checked(etree, N), N);
         ghost_postorder(Array::from_mut(post, N), etree_, stack.rb_mut());
 
         ghost_column_counts_aat(
@@ -2238,7 +2238,7 @@ pub fn factorize_symbolic_qr<I: Index>(
             AT,
             Some(col_perm),
             etree_,
-            Array::from_ref(Idx::from_slice_ref_checked(&post, N), N),
+            Array::from_ref(Idx::from_slice_ref_checked(post, N), N),
             stack.rb_mut(),
         );
         let min_col = min_row;
@@ -2284,8 +2284,8 @@ pub fn factorize_symbolic_qr<I: Index>(
                 A.into_inner(),
                 Some(col_perm.into_inner()),
                 min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
+                EliminationTreeRef::<'_, I> { inner: etree },
+                col_counts,
                 stack.rb_mut(),
                 params.supernodal_params,
             )?;
@@ -2298,8 +2298,8 @@ pub fn factorize_symbolic_qr<I: Index>(
         } else {
             let symbolic = simplicial::factorize_simplicial_symbolic_qr::<I>(
                 &min_col,
-                EliminationTreeRef::<'_, I> { inner: &etree },
-                &col_counts,
+                EliminationTreeRef::<'_, I> { inner: etree },
+                col_counts,
                 stack.rb_mut(),
             )?;
             Ok(SymbolicQr {

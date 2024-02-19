@@ -873,7 +873,7 @@ where
     let len = v_len;
 
     // Three indices near which we are going to choose a pivot.
-    let mut a = len / 4 * 1;
+    let mut a = len / 4;
     let mut b = len / 4 * 2;
     let mut c = len / 4 * 3;
 
@@ -1007,7 +1007,7 @@ unsafe fn recurse<P: Ptr, F: FnMut(P, P) -> bool>(
 
                 // Continue sorting elements greater than the pivot.
                 v = v.add(mid);
-                v_len = v_len - mid;
+                v_len -= mid;
                 continue;
             }
         }
@@ -1173,7 +1173,7 @@ pub unsafe fn sort_indices<I: crate::Index, E: Entity>(
             ))),
         ),
         len,
-        |(i, _), (j, _)| (&*i).cmp(&*j),
+        |(i, _), (j, _)| (*i).cmp(&*j),
     );
 }
 
@@ -1200,19 +1200,13 @@ mod tests {
     fn test_quicksort_big() {
         let mut rng = StdRng::seed_from_u64(0);
 
-        let mut a = (0..1000)
-            .into_iter()
-            .map(|_| rng.gen::<u32>())
-            .collect::<Vec<_>>();
-        let mut b = (0..1000)
-            .into_iter()
-            .map(|_| rng.gen::<f64>())
-            .collect::<Vec<_>>();
+        let mut a = (0..1000).map(|_| rng.gen::<u32>()).collect::<Vec<_>>();
+        let mut b = (0..1000).map(|_| rng.gen::<f64>()).collect::<Vec<_>>();
 
         let a_old = a.clone();
         let b_old = b.clone();
 
-        let mut perm = (0..1000).into_iter().collect::<Vec<_>>();
+        let mut perm = (0..1000).collect::<Vec<_>>();
         perm.sort_unstable_by_key(|&i| a[i]);
 
         let len = a.len();

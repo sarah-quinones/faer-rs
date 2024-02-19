@@ -1110,11 +1110,11 @@ impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for Mat<E> {
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_column_major_slice<'a, E: Entity>(
-    slice: GroupFor<E, &'a [E::Unit]>,
+pub fn from_column_major_slice<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
-) -> MatRef<'a, E> {
+) -> MatRef<'_, E> {
     from_slice_assert(
         nrows,
         ncols,
@@ -1157,11 +1157,11 @@ pub fn from_column_major_slice<'a, E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_row_major_slice<'a, E: Entity>(
-    slice: GroupFor<E, &'a [E::Unit]>,
+pub fn from_row_major_slice<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
-) -> MatRef<'a, E> {
+) -> MatRef<'_, E> {
     from_column_major_slice(slice, ncols, nrows).transpose()
 }
 
@@ -1169,12 +1169,12 @@ pub fn from_row_major_slice<'a, E: Entity>(
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride<'a, E: Entity>(
-    slice: GroupFor<E, &'a [E::Unit]>,
+pub fn from_column_major_slice_with_stride<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
     col_stride: usize,
-) -> MatRef<'a, E> {
+) -> MatRef<'_, E> {
     from_strided_column_major_slice_assert(
         nrows,
         ncols,
@@ -1217,11 +1217,11 @@ pub fn from_column_major_slice_with_stride<'a, E: Entity>(
 /// assert_eq!(expected, view);
 /// ```
 #[track_caller]
-pub fn from_column_major_slice_mut<'a, E: Entity>(
-    slice: GroupFor<E, &'a mut [E::Unit]>,
+pub fn from_column_major_slice_mut<E: Entity>(
+    slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
-) -> MatMut<'a, E> {
+) -> MatMut<'_, E> {
     from_slice_assert(
         nrows,
         ncols,
@@ -1263,11 +1263,11 @@ pub fn from_column_major_slice_mut<'a, E: Entity>(
 /// ```
 #[inline(always)]
 #[track_caller]
-pub fn from_row_major_slice_mut<'a, E: Entity>(
-    slice: GroupFor<E, &'a mut [E::Unit]>,
+pub fn from_row_major_slice_mut<E: Entity>(
+    slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
-) -> MatMut<'a, E> {
+) -> MatMut<'_, E> {
     from_column_major_slice_mut(slice, ncols, nrows).transpose_mut()
 }
 
@@ -1275,12 +1275,12 @@ pub fn from_row_major_slice_mut<'a, E: Entity>(
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride_mut<'a, E: Entity>(
-    slice: GroupFor<E, &'a mut [E::Unit]>,
+pub fn from_column_major_slice_with_stride_mut<E: Entity>(
+    slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
     col_stride: usize,
-) -> MatMut<'a, E> {
+) -> MatMut<'_, E> {
     from_strided_column_major_slice_mut_assert(
         nrows,
         ncols,

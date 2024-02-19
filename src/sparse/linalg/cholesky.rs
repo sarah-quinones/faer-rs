@@ -2314,7 +2314,7 @@ pub mod supernodal {
 
         // mapping from global indices to local
         let (global_to_local, mut stack) = stack.make_raw::<I::Signed>(n);
-        mem::fill_none(global_to_local.as_mut());
+        mem::fill_none(global_to_local);
 
         for s in 0..n_supernodes {
             let s_start = symbolic.supernode_begin[s].zx();
@@ -2513,7 +2513,7 @@ pub mod supernodal {
 
         // mapping from global indices to local
         let (global_to_local, mut stack) = stack.make_raw::<I::Signed>(n);
-        mem::fill_none(global_to_local.as_mut());
+        mem::fill_none(global_to_local);
 
         for s in 0..n_supernodes {
             let s_start = symbolic.supernode_begin[s].zx();
@@ -2744,7 +2744,7 @@ pub mod supernodal {
 
         // mapping from global indices to local
         let (global_to_local, mut stack) = stack.make_raw::<I::Signed>(n);
-        mem::fill_none(global_to_local.as_mut());
+        mem::fill_none(global_to_local);
 
         for s in 0..n_supernodes {
             let s_start = symbolic.supernode_begin[s].zx();
@@ -3651,21 +3651,21 @@ impl<'a, I: Index, E: Entity> core::ops::Deref for LltRef<'a, I, E> {
     type Target = SymbolicCholesky<I>;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.symbolic
+        self.symbolic
     }
 }
 impl<'a, I: Index, E: Entity> core::ops::Deref for LdltRef<'a, I, E> {
     type Target = SymbolicCholesky<I>;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.symbolic
+        self.symbolic
     }
 }
 impl<'a, I: Index, E: Entity> core::ops::Deref for IntranodeBunchKaufmanRef<'a, I, E> {
     type Target = SymbolicCholesky<I>;
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.symbolic
+        self.symbolic
     }
 }
 

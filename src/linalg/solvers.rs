@@ -2445,7 +2445,7 @@ mod tests {
         let H = Mat::from_fn(n, n, random);
 
         test_solver(&H, &H.svd());
-        test_solver(&H.adjoint().to_owned(), &H.adjoint().svd());
+        test_solver(H.adjoint().to_owned(), &H.adjoint().svd());
 
         let svd = H.svd();
         for i in 0..n - 1 {
@@ -2465,7 +2465,7 @@ mod tests {
         let H = Mat::from_fn(n, n, random);
 
         test_solver(&H, &H.thin_svd());
-        test_solver(&H.adjoint().to_owned(), &H.adjoint().thin_svd());
+        test_solver(H.adjoint().to_owned(), &H.adjoint().thin_svd());
     }
 
     #[test]
@@ -2479,11 +2479,11 @@ mod tests {
         test_solver(&H, &H.selfadjoint_eigendecomposition(Side::Lower));
         test_solver(&H, &H.selfadjoint_eigendecomposition(Side::Upper));
         test_solver(
-            &H.adjoint().to_owned(),
+            H.adjoint().to_owned(),
             &H.adjoint().selfadjoint_eigendecomposition(Side::Lower),
         );
         test_solver(
-            &H.adjoint().to_owned(),
+            H.adjoint().to_owned(),
             &H.adjoint().selfadjoint_eigendecomposition(Side::Upper),
         );
 
@@ -2587,7 +2587,7 @@ mod tests {
         println!("{eigs_real:?}");
         let lambda_1 = *eigs_real
             .iter()
-            .max_by(|a, b| a.partial_cmp(&b).unwrap())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let correct_lamba_1 = 2.6148611139728866;
         assert!(
@@ -2608,7 +2608,7 @@ mod tests {
         let eigs_real = eigs_complex.iter().map(|e| e.re).collect::<Vec<_>>();
         let lambda_1 = *eigs_real
             .iter()
-            .max_by(|a, b| a.partial_cmp(&b).unwrap())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let correct_lamba_1 = 1.414213562373095;
         assert!(

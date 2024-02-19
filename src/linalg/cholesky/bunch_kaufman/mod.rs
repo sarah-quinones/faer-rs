@@ -314,15 +314,13 @@ pub mod compute {
                                 d11 = delta.faer_neg();
                                 dynamic_regularization_count += 1;
                             }
-                        } else {
-                            if d11.faer_abs() <= eps {
-                                if d11 < E::Real::faer_zero() {
-                                    d11 = delta.faer_neg();
-                                } else {
-                                    d11 = delta;
-                                }
-                                dynamic_regularization_count += 1;
+                        } else if d11.faer_abs() <= eps {
+                            if d11 < E::Real::faer_zero() {
+                                d11 = delta.faer_neg();
+                            } else {
+                                d11 = delta;
                             }
+                            dynamic_regularization_count += 1;
                         }
                     }
                     let d11 = d11.faer_inv();
@@ -578,15 +576,13 @@ pub mod compute {
                                 d11 = delta.faer_neg();
                                 dynamic_regularization_count += 1;
                             }
-                        } else {
-                            if d11.faer_abs() <= eps {
-                                if d11 < E::Real::faer_zero() {
-                                    d11 = delta.faer_neg();
-                                } else {
-                                    d11 = delta;
-                                }
-                                dynamic_regularization_count += 1;
+                        } else if d11.faer_abs() <= eps {
+                            if d11 < E::Real::faer_zero() {
+                                d11 = delta.faer_neg();
+                            } else {
+                                d11 = delta;
                             }
+                            dynamic_regularization_count += 1;
                         }
                     }
                     let d11 = d11.faer_inv();
