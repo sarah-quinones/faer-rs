@@ -3,6 +3,15 @@ use crate::{
     assert, col::ColRef, debug_assert, diag::DiagRef, row::RowRef, unzipped, utils::DivCeil, zipped,
 };
 
+/// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
+///
+/// # Note
+///
+/// Unlike a slice, the data pointed to by `MatRef<'_, E>` is allowed to be partially or fully
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`MatRef::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
 #[repr(C)]
 pub struct MatRef<'a, E: Entity> {
     pub(super) inner: MatImpl<E>,
@@ -918,7 +927,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

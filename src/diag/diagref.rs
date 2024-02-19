@@ -1,6 +1,7 @@
 use super::*;
 use crate::col::ColRef;
 
+/// Diagonal matrix view.
 pub struct DiagRef<'a, E: Entity> {
     pub(crate) inner: ColRef<'a, E>,
 }

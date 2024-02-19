@@ -652,6 +652,7 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
     prod < 192 * 256
 }
 
+/// QR factorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct ColPivQrComputeParams {
@@ -684,8 +685,11 @@ pub fn qr_in_place_req<I: Index, E: Entity>(
     Ok(StackReq::default())
 }
 
+/// Information about the resulting QR factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct ColPivQrInfo {
+    /// Number of transpositions that were performed, can be used to compute the determinant of
+    /// $P$.
     pub transposition_count: usize,
 }
 

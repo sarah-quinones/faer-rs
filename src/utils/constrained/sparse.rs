@@ -133,6 +133,7 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a
         }
     }
 
+    /// Returns the symbolic structure of the matrix.
     #[inline]
     pub fn symbolic(&self) -> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I> {
         self.symbolic
@@ -172,6 +173,7 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatMut<'nrows, 'ncols, 'a
         }
     }
 
+    /// Returns the symbolic structure of the matrix.
     #[inline]
     pub fn symbolic(&self) -> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I> {
         self.symbolic

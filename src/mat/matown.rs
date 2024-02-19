@@ -7,6 +7,33 @@ use crate::{
 };
 use core::mem::ManuallyDrop;
 
+/// Heap allocated resizable matrix, similar to a 2D [`Vec`].
+///
+/// # Note
+///
+/// The memory layout of `Mat` is guaranteed to be column-major, meaning that it has a row stride
+/// of `1`, and an unspecified column stride that can be queried with [`Mat::col_stride`].
+///
+/// This implies that while each individual column is stored contiguously in memory, the matrix as
+/// a whole may not necessarily be contiguous. The implementation may add padding at the end of
+/// each column when overaligning each column can provide a performance gain.
+///
+/// Let us consider a 3×4 matrix
+///
+/// ```notcode
+///  0 │ 3 │ 6 │  9
+/// ───┼───┼───┼───
+///  1 │ 4 │ 7 │ 10
+/// ───┼───┼───┼───
+///  2 │ 5 │ 8 │ 11
+/// ```
+/// The memory representation of the data held by such a matrix could look like the following:
+///
+/// ```notcode
+/// 0 1 2 X 3 4 5 X 6 7 8 X 9 10 11 X
+/// ```
+///
+/// where X represents padding elements.
 #[repr(C)]
 pub struct Mat<E: Entity> {
     inner: MatOwnImpl<E>,
@@ -659,7 +686,7 @@ impl<E: Entity> Mat<E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

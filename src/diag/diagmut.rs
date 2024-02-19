@@ -1,6 +1,7 @@
 use super::*;
 use crate::col::ColMut;
 
+/// Diagonal mutable matrix view.
 pub struct DiagMut<'a, E: Entity> {
     pub(crate) inner: ColMut<'a, E>,
 }

@@ -187,6 +187,7 @@ fn default_disable_blocking(m: usize, n: usize) -> bool {
     prod < 48 * 48
 }
 
+/// QR factorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct QrComputeParams {

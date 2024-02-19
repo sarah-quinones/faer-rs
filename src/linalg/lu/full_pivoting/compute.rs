@@ -1382,9 +1382,12 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
     n_transpositions
 }
 
+/// LU factorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct FullPivLuComputeParams {
+    /// At which size the parallelism should be disabled. `None` to automatically determine this
+    /// threshold.
     pub disable_parallelism: Option<fn(nrows: usize, ncols: usize) -> bool>,
 }
 
@@ -1406,8 +1409,11 @@ fn default_disable_parallelism(m: usize, n: usize) -> bool {
     prod < 512 * 256
 }
 
+/// Information about the resulting LU factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct FullPivLuInfo {
+    /// Number of transpositions that were performed, can be used to compute the determinant of
+    /// $PQ$.
     pub transposition_count: usize,
 }
 

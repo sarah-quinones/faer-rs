@@ -1,5 +1,7 @@
 use crate::*;
 
+/// Executes the two operations, possibly in parallel, while splitting the amount of parallelism
+/// between the two.
 #[inline]
 pub fn join_raw(
     op_a: impl Send + FnOnce(Parallelism),
@@ -38,6 +40,8 @@ pub fn join_raw(
     )
 }
 
+/// Executes the tasks by passing the values in `0..n_tasks` to `op`, possibly in parallel, while
+/// splitting the amount of parallelism between the tasks.
 #[inline]
 pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelism: Parallelism) {
     fn implementation(
@@ -72,6 +76,7 @@ pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelis
     implementation(n_tasks, &op, parallelism);
 }
 
+/// Unsafe [`Send`] and [`Sync`] pointer type.
 pub struct Ptr<T>(pub *mut T);
 unsafe impl<T> Send for Ptr<T> {}
 unsafe impl<T> Sync for Ptr<T> {}
@@ -83,6 +88,7 @@ impl<T> Clone for Ptr<T> {
     }
 }
 
+/// The amount of threads that should ideally execute an operation with the given parallelism.
 #[inline]
 pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     match parallelism {
@@ -94,6 +100,11 @@ pub fn parallelism_degree(parallelism: Parallelism) -> usize {
     }
 }
 
+/// Returns the start and length of a subsegment of `0..n`, split between `chunk_count` consumers,
+/// for the consumer at index `idx`.
+///
+/// For the same `n` and `chunk_count`, different values of `idx` between in `0..chunk_count` will
+/// represent distinct subsegments.
 #[inline]
 pub fn par_split_indices(n: usize, idx: usize, chunk_count: usize) -> (usize, usize) {
     let chunk_size = n / chunk_count;

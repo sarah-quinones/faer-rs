@@ -2,10 +2,15 @@
 //! $$A = LL^H,$$
 //! where $L$ is a lower triangular matrix.
 
+/// Computing the decomposition.
 pub mod compute;
+/// Reconstructing the inverse of the original matrix from the decomposition.
 pub mod inverse;
+/// Reconstructing the original matrix from the decomposition.
 pub mod reconstruct;
+/// Solving a linear system usin the decomposition.
 pub mod solve;
+/// Updating the decomposition.
 pub mod update;
 
 /// This error signifies that the LLT decomposition could not be computed due to the matrix not

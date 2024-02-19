@@ -332,12 +332,16 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
     n_transpositions
 }
 
+/// LUfactorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct PartialPivLuComputeParams {}
 
+/// Information about the resulting LU factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct PartialPivLuInfo {
+    /// Number of transpositions that were performed, can be used to compute the determinant of
+    /// $P$.
     pub transposition_count: usize,
 }
 

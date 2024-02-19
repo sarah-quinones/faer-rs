@@ -2,6 +2,13 @@ use crate::{assert, sparse::SparseColMatRef, utils::slice::*, Conj, Index, MatMu
 use core::iter::zip;
 use faer_entity::ComplexField;
 
+/// Assuming `self` is a lower triangular matrix, solves the equation `Op(self) * X = rhs`, and
+/// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
+/// value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the first stored element in each column.
 pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
     l: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -159,6 +166,13 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is a lower triangular matrix, solves the equation `Op(self).transpose() * X =
+/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the first stored element in each column.
 pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
     l: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -400,6 +414,13 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is a unit lower triangular matrix, solves the equation `Op(self) * X = rhs`, and
+/// stores the result in `rhs`, where `Op` is either the conjugate or the identity depending on the
+/// value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the first stored element in each column.
 pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
     l: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -536,6 +557,13 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is a unit lower triangular matrix, solves the equation `Op(self).transpose() * X
+/// = rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the first stored element in each column.
 pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
     l: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -761,6 +789,13 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
     );
 }
 
+/// Assuming `self` is an upper triangular matrix, solves the equation `Op(self) * X = rhs`, and
+/// stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the last stored element in each column.
 pub fn solve_upper_triangular_in_place<I: Index, E: ComplexField>(
     u: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -939,6 +974,13 @@ pub fn solve_upper_triangular_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is an upper triangular matrix, solves the equation `Op(self).transpose() * X =
+/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the last stored element in each column.
 pub fn solve_upper_triangular_transpose_in_place<I: Index, E: ComplexField>(
     u: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -1205,6 +1247,13 @@ pub fn solve_upper_triangular_transpose_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is a unit upper triangular matrix, solves the equation `Op(self) * X =
+/// rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the last stored element in each column.
 pub fn solve_unit_upper_triangular_in_place<I: Index, E: ComplexField>(
     u: SparseColMatRef<'_, I, E>,
     conj: Conj,
@@ -1349,6 +1398,13 @@ pub fn solve_unit_upper_triangular_in_place<I: Index, E: ComplexField>(
     );
 }
 
+/// Assuming `self` is a unit upper triangular matrix, solves the equation `Op(self).transpose() * X
+/// = rhs`, and stores the result in `rhs`, where `Op` is either the conjugate or the identity
+/// depending on the value of `conj`.
+///
+/// # Note
+/// The matrix indices need not be sorted, but
+/// the diagonal element is assumed to be the last stored element in each column.
 pub fn solve_unit_upper_triangular_transpose_in_place<I: Index, E: ComplexField>(
     u: SparseColMatRef<'_, I, E>,
     conj: Conj,

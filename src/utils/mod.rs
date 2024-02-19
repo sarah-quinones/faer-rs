@@ -45,9 +45,13 @@ impl DivCeil for usize {
     }
 }
 
+/// Index and matrix types with compile time checks, whichh can replace bound checks at runtime.
 pub mod constrained;
+/// Simd operations for a specific type satisfying [`ComplexField`](crate::ComplexField).
 pub mod simd;
+/// Slice types for [entities](crate::Entity).
 pub mod slice;
-pub mod vec;
-
+/// Utilities relating to threading and parallelism.
 pub mod thread;
+/// Vector type for [entities](crate::Entity).
+pub mod vec;

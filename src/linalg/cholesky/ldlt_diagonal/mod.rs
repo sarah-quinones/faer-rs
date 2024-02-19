@@ -5,10 +5,13 @@
 //! The Cholesky decomposition with diagonal may have poor numerical stability properties when used
 //! with non positive definite matrices. In the general case, it is recommended to first permute
 //! (and conjugate when necessary) the rows and columns of the matrix using the permutation obtained
-//! from [`crate::compute_cholesky_permutation`].
+//! from [`faer::linalg::cholesky::compute_cholesky_permutation`](crate::linalg::cholesky::compute_cholesky_permutation).
 
+/// Computing the decomposition.
 pub mod compute;
+/// Solving a linear system usin the decomposition.
 pub mod solve;
+/// Updating the decomposition.
 pub mod update;
 
 #[cfg(test)]

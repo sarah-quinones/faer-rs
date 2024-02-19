@@ -7,6 +7,18 @@ use crate::{
 
 use super::*;
 
+/// Mutable view over a column vector, similar to a mutable reference to a strided [prim@slice].
+///
+/// # Note
+///
+/// Unlike a slice, the data pointed to by `ColMut<'_, E>` is allowed to be partially or fully
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`ColMut::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
+///
+/// # Move semantics
+/// See [`faer::Mat`](crate::Mat) for information about reborrowing when using this type.
 #[repr(C)]
 pub struct ColMut<'a, E: Entity> {
     pub(super) inner: VecImpl<E>,
@@ -448,7 +460,7 @@ impl<'a, E: Entity> ColMut<'a, E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

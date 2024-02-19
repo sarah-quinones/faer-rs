@@ -19,28 +19,39 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::{ComplexField, Entity, RealField};
 use reborrow::*;
 
+/// Computing the decomposition.
 pub mod compute {
     use super::*;
     use crate::assert;
 
+    /// Pivoting strategy for choosing the pivots.
     #[derive(Copy, Clone)]
     #[non_exhaustive]
     pub enum PivotingStrategy {
+        /// Diagonal pivoting.
         Diagonal,
     }
 
+    /// Tuning parameters for the decomposition.
     #[derive(Copy, Clone)]
     #[non_exhaustive]
     pub struct BunchKaufmanParams {
+        /// Pivoting strategy.
         pub pivoting: PivotingStrategy,
+        /// Block size of the algorithm.
         pub blocksize: usize,
     }
 
     /// Dynamic Bunch-Kaufman regularization.
+    /// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+    /// their corrected sign.
     #[derive(Debug)]
     pub struct BunchKaufmanRegularization<'a, E: ComplexField> {
+        /// Expected signs for the diagonal at each step of the decomposition.
         pub dynamic_regularization_signs: Option<&'a mut [i8]>,
+        /// Regularized value.
         pub dynamic_regularization_delta: E::Real,
+        /// Regularization threshold.
         pub dynamic_regularization_epsilon: E::Real,
     }
 
@@ -749,9 +760,12 @@ pub mod compute {
         StackReq::try_new::<I>(dim)?.try_and(temp_mat_req::<E>(dim, bs)?)
     }
 
+    /// Info about the result of the Bunch-Kaufman factorization.
     #[derive(Copy, Clone, Debug)]
     pub struct BunchKaufmanInfo {
+        /// Number of pivots whose value or sign had to be corrected.
         pub dynamic_regularization_count: usize,
+        /// Number of pivoting transpositions.
         pub transposition_count: usize,
     }
 
@@ -894,10 +908,13 @@ pub mod compute {
     }
 }
 
+/// Solving a linear system using the decomposition.
 pub mod solve {
     use super::*;
     use crate::assert;
 
+    /// Computes the size and alignment of required workspace for solving a linear system defined by
+    /// a matrix in place, given its Bunch-Kaufman decomposition.
     #[track_caller]
     pub fn solve_in_place_req<I: Index, E: Entity>(
         dim: usize,
@@ -908,6 +925,22 @@ pub mod solve {
         temp_mat_req::<E>(dim, rhs_ncols)
     }
 
+    /// Given the Bunch-Kaufman factors of a matrix $A$ and a matrix $B$ stored in `rhs`, this
+    /// function computes the solution of the linear system:
+    /// $$\text{Op}_A(A)X = B.$$
+    ///
+    /// $\text{Op}_A$ is either the identity or the conjugation depending on the value of
+    /// `conj`.
+    ///
+    /// The solution of the linear system is stored in `rhs`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `lb_factors` is not a square matrix.
+    /// - Panics if `subdiag` is not a column vector with the same number of rows as the dimension
+    ///   of `lb_factors`.
+    /// - Panics if `rhs` doesn't have the same number of rows as the dimension of `lb_factors`.
+    /// - Panics if the provided memory in `stack` is insufficient (see [`solve_in_place_req`]).
     #[track_caller]
     pub fn solve_in_place_with_conj<I: Index, E: ComplexField>(
         lb_factors: MatRef<'_, E>,

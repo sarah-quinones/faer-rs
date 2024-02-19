@@ -42,16 +42,16 @@ pub fn swap_cols<E: ComplexField>(a: ColMut<'_, E>, b: ColMut<'_, E>) {
     });
 }
 
-/// Swaps the two rows at indices `a` and `b` in the given matrix.
+/// Swaps the values in the rows `a` and `b`.
 ///
 /// # Panics
 ///
-/// Panics if either `a` or `b` is out of bounds.
+/// Panics if `a` and `b` don't have the same number of columns.
 ///
 /// # Example
 ///
 /// ```
-/// use faer::{mat, perm::swap_rows};
+/// use faer::{mat, perm::swap_rows_idx};
 ///
 /// let mut m = mat![
 ///     [1.0, 2.0, 3.0],
@@ -78,6 +78,35 @@ pub fn swap_rows<E: ComplexField>(a: RowMut<'_, E>, b: RowMut<'_, E>) {
     swap_cols(a.transpose_mut(), b.transpose_mut())
 }
 
+/// Swaps the two rows at indices `a` and `b` in the given matrix.
+///
+/// # Panics
+///
+/// Panics if either `a` or `b` is out of bounds.
+///
+/// # Example
+///
+/// ```
+/// use faer::{mat, perm::swap_rows};
+///
+/// let mut m = mat![
+///     [1.0, 2.0, 3.0],
+///     [4.0, 5.0, 6.0],
+///     [7.0, 8.0, 9.0],
+///     [10.0, 14.0, 12.0],
+/// ];
+///
+/// swap_rows_idx(m.as_mut(), 0, 2);
+///
+/// let swapped = mat![
+///     [7.0, 8.0, 9.0],
+///     [4.0, 5.0, 6.0],
+///     [1.0, 2.0, 3.0],
+///     [10.0, 14.0, 12.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_rows_idx<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
@@ -87,6 +116,35 @@ pub fn swap_rows_idx<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {
     }
 }
 
+/// Swaps the two columns at indices `a` and `b` in the given matrix.
+///
+/// # Panics
+///
+/// Panics if either `a` or `b` is out of bounds.
+///
+/// # Example
+///
+/// ```
+/// use faer::{mat, perm::swap_cols_idx};
+///
+/// let mut m = mat![
+///     [1.0, 2.0, 3.0],
+///     [4.0, 5.0, 6.0],
+///     [7.0, 8.0, 9.0],
+///     [10.0, 14.0, 12.0],
+/// ];
+///
+/// swap_cols_idx(m.as_mut(), 0, 2);
+///
+/// let swapped = mat![
+///     [3.0, 2.0, 1.0],
+///     [6.0, 5.0, 4.0],
+///     [9.0, 8.0, 7.0],
+///     [12.0, 14.0, 10.0],
+/// ];
+///
+/// assert_eq!(m, swapped);
+/// ```
 #[track_caller]
 #[inline]
 pub fn swap_cols_idx<E: ComplexField>(mat: MatMut<'_, E>, a: usize, b: usize) {

@@ -10,8 +10,17 @@ const CHOLESKY_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const QR_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const LU_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 
+/// Tuning parameters for the supernodal factorizations.
 #[derive(Copy, Clone, Debug)]
 pub struct SymbolicSupernodalParams<'a> {
+    /// Supernode relaxation thresholds.
+    ///
+    /// Let `n` be the total number of columns in two adjacent supernodes.
+    /// Let `z` be the fraction of zero entries in the two supernodes if they
+    /// are merged (z includes zero entries from prior amalgamations). The
+    /// two supernodes are merged if:
+    ///
+    /// `(n <= relax[0].0 && z < relax[0].1) || (n <= relax[1].0 && z < relax[1].1) || ...`
     pub relax: Option<&'a [(usize, f64)]>,
 }
 
@@ -24,6 +33,12 @@ impl Default for SymbolicSupernodalParams<'_> {
     }
 }
 
+/// Nonnegative threshold controlling when the supernodal factorization is used.
+///
+/// Increasing it makes it more likely for the simplicial factorization to be used,
+/// while decreasing it makes it more likely for the supernodal factorization to be used.
+///
+/// A value of `1.0` is the default.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SupernodalThreshold(pub f64);
 
@@ -35,8 +50,11 @@ impl Default for SupernodalThreshold {
 }
 
 impl SupernodalThreshold {
+    /// Simplicial factorization is always selected.
     pub const FORCE_SIMPLICIAL: Self = Self(f64::INFINITY);
+    /// Supernodal factorization is always selected.
     pub const FORCE_SUPERNODAL: Self = Self(0.0);
+    /// Determine automatically which variant to select.
     pub const AUTO: Self = Self(1.0);
 }
 
@@ -141,6 +159,7 @@ macro_rules! monomorphize_test {
     };
 }
 
+/// Solving sparse triangular linear systems with a dense right-hand-side.
 pub mod triangular_solve;
 
 pub mod amd;
@@ -153,7 +172,11 @@ pub mod qr;
 /// Sparse LU error.
 #[derive(Copy, Clone, Debug)]
 pub enum LuError {
+    /// Generic sparse error.
     Generic(FaerError),
+    /// Rank deficient symbolic structure.
+    ///
+    /// Contains the iteration at which a pivot could not be found.
     SymbolicSingular(usize),
 }
 
@@ -177,8 +200,11 @@ impl From<FaerError> for LuError {
 /// Sparse Cholesky error.
 #[derive(Copy, Clone, Debug)]
 pub enum CholeskyError {
+    /// Generic sparse error.
     Generic(FaerError),
+    /// Rank deficient symbolic structure.
     SymbolicSingular,
+    /// Matrix is not positive definite.
     NotPositiveDefinite,
 }
 
@@ -206,6 +232,7 @@ impl From<crate::linalg::solvers::CholeskyError> for CholeskyError {
     }
 }
 
+/// High level sparse solvers.
 pub mod solvers;
 
 mod ghost {
@@ -286,7 +313,7 @@ pub mod matmul {
     };
 
     /// Multiplies a sparse matrix `lhs` by a dense matrix `rhs`, and stores the result in
-    /// `acc`. See [`crate::mul::matmul`] for more details.
+    /// `acc`. See [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
     ///
     /// # Note
     /// Allows unsorted matrices.
@@ -354,7 +381,7 @@ pub mod matmul {
     }
 
     /// Multiplies a dense matrix `lhs` by a sparse matrix `rhs`, and stores the result in
-    /// `acc`. See [`crate::mul::matmul`] for more details.
+    /// `acc`. See [`faer::linalg::matmul::matmul`](crate::linalg::matmul::matmul) for more details.
     ///
     /// # Note
     /// Allows unsorted matrices.

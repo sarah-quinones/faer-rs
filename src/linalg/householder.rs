@@ -46,6 +46,12 @@ use faer_entity::*;
 use num_complex::Complex;
 use reborrow::*;
 
+/// Computes the Householder reflection $I - \frac{v v^H}{\tau}$ such that when multiplied by $x$
+/// from the left, The result is $\beta e_0$. $\tau$ and $\beta$ are returned and $\tau$ is
+/// real-valued.
+///
+/// $x$ is determined by $x_0$, contained in `head`, and $|x_{1\dots}|$, contained in `tail_norm`.
+/// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
 #[inline]
 pub fn make_householder_in_place<E: ComplexField>(
     essential: Option<MatMut<'_, E>>,

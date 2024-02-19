@@ -6,6 +6,7 @@
 //! # Note
 //! The functions in this module accept unsorted input, producing a sorted decomposition factor
 //! (simplicial).
+#![allow(missing_docs)]
 
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 

@@ -6,7 +6,16 @@ use crate::{
     row::RowRef,
 };
 
-/// Immutable column vector view.
+/// Immutable view over a column vector, similar to an immutable reference to a strided
+/// [prim@slice].
+///
+/// # Note
+///
+/// Unlike a slice, the data pointed to by `ColRef<'_, E>` is allowed to be partially or fully
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`ColRef::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
 #[repr(C)]
 pub struct ColRef<'a, E: Entity> {
     pub(super) inner: VecImpl<E>,
@@ -460,7 +469,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

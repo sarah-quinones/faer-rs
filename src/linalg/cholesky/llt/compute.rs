@@ -134,14 +134,19 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     Ok(dynamic_regularization_count)
 }
 
+/// LLT factorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct LltParams {}
 
 /// Dynamic LLT regularization.
+/// Values below `epsilon` in absolute value, or with a negative sign are set to `delta` with
+/// a positive sign.
 #[derive(Copy, Clone, Debug)]
 pub struct LltRegularization<E: ComplexField> {
+    /// Regularized value.
     pub dynamic_regularization_delta: E::Real,
+    /// Regularization threshold.
     pub dynamic_regularization_epsilon: E::Real,
 }
 
@@ -239,8 +244,10 @@ fn cholesky_in_place_impl<E: ComplexField>(
     }
 }
 
+/// Info about the result of the LLT factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct LltInfo {
+    /// Number of pivots whose value or sign had to be corrected.
     pub dynamic_regularization_count: usize,
 }
 

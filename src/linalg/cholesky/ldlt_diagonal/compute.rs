@@ -213,6 +213,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     dynamic_regularization_count
 }
 
+/// LDLT factorization tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct LdltDiagParams {}
@@ -319,15 +320,22 @@ fn cholesky_in_place_impl<E: ComplexField>(
 }
 
 /// Dynamic LDLT regularization.
+/// Values below `epsilon` in absolute value, or with the wrong sign are set to `delta` with
+/// their corrected sign.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltRegularization<'a, E: ComplexField> {
+    /// Expected signs for the diagonal at each step of the decomposition.
     pub dynamic_regularization_signs: Option<&'a [i8]>,
+    /// Regularized value.
     pub dynamic_regularization_delta: E::Real,
+    /// Regularization threshold.
     pub dynamic_regularization_epsilon: E::Real,
 }
 
+/// Info about the result of the LDLT factorization.
 #[derive(Copy, Clone, Debug)]
 pub struct LdltInfo {
+    /// Number of pivots whose value or sign had to be corrected.
     pub dynamic_regularization_count: usize,
 }
 
@@ -360,7 +368,7 @@ impl<E: ComplexField> Default for LdltRegularization<'_, E> {
 /// The Cholesky decomposition with diagonal may have poor numerical stability properties when used
 /// with non positive definite matrices. In the general case, it is recommended to first permute
 /// (and conjugate when necessary) the rows and columns of the matrix using the permutation obtained
-/// from [`crate::compute_cholesky_permutation`].
+/// from [`faer::linalg::cholesky::compute_cholesky_permutation`](crate::linalg::cholesky::compute_cholesky_permutation).
 ///
 /// # Panics
 ///

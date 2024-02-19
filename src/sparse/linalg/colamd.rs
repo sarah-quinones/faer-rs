@@ -86,6 +86,8 @@ fn clear_mark<I: Index>(tag_mark: I, max_mark: I, row: &mut [ColamdRow<I>]) -> I
     }
 }
 
+/// Computes the size and alignment of required workspace for computing the COLAMD ordering of a
+/// matrix.
 pub fn order_req<I: Index>(
     nrows: usize,
     ncols: usize,
@@ -122,6 +124,9 @@ pub fn order_req<I: Index>(
     )
 }
 
+/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// QR factorization of a matrix with the sparsity pattern of `A`.
+///
 /// # Note
 /// Allows unsorted matrices.
 pub fn order<I: Index>(
@@ -841,6 +846,7 @@ unsafe impl<I: Index> bytemuck::Pod for ColamdCol<I> {}
 unsafe impl<I: Index> bytemuck::Zeroable for ColamdRow<I> {}
 unsafe impl<I: Index> bytemuck::Pod for ColamdRow<I> {}
 
+/// Tuning parameters for the AMD implementation.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Control {
     /// "dense" if degree > dense_row * sqrt(ncols)

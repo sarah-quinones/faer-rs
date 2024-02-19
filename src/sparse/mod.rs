@@ -190,7 +190,11 @@ pub enum FillMode {
 mod csc;
 mod csr;
 
+/// Sparse linear algebra module.  
+/// Contains low level routines and the implementation of their corresponding high level wrappers.
 pub mod linalg;
+
+/// Sparse matrix binary and ternary operation implementations.
 pub mod ops;
 
 pub use csc::*;

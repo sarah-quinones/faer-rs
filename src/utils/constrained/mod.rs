@@ -65,10 +65,11 @@ impl<I> core::ops::Deref for IdxInclusive<'_, I> {
 #[repr(transparent)]
 pub struct Array<'n, T>(Branded<'n, [T]>);
 
+/// Dense matrices with compile-time access checks.
 pub mod mat;
 /// Permutations with compile-time checks.
 pub mod perm;
-
+/// Sparse matrices with compile-time access checks.
 pub mod sparse;
 
 /// Immutable array group of length equal to the value tied to `'n`.

@@ -1,7 +1,176 @@
+//! `faer` is a general-purpose linear algebra library for Rust, with a focus on high performance
+//! for algebraic operations on medium/large matrices, as well as matrix decompositions.
+//!
+//! Most of the high-level functionality in this library is provided through associated functions in
+//! its vocabulary types: [`Mat`]/[`MatRef`]/[`MatMut`].
+//!
+//! `faer` is recommended for applications that handle medium to large dense matrices, and its
+//! design is not well suited for applications that operate mostly on low dimensional vectors and
+//! matrices such as computer graphics or game development. For those purposes, `nalgebra` and
+//! `cgmath` may provide better tools.
+//!
+//! # Basic usage
+//!
+//! [`Mat`] is a resizable matrix type with dynamic capacity, which can be created using
+//! [`Mat::new`] to produce an empty $0\times 0$ matrix, [`Mat::zeros`] to create a rectangular
+//! matrix filled with zeros, [`Mat::identity`] to create an identity matrix, or [`Mat::from_fn`]
+//! for the most generic case.
+//!
+//! Given a `&Mat<E>` (resp. `&mut Mat<E>`), a [`MatRef<'_, E>`](MatRef) (resp. [`MatMut<'_,
+//! E>`](MatMut)) can be created by calling [`Mat::as_ref`] (resp. [`Mat::as_mut`]), which allow
+//! for more flexibility than `Mat` in that they allow slicing ([`MatRef::get`]) and splitting
+//! ([`MatRef::split_at`]).
+//!
+//! `MatRef` and `MatMut` are lightweight view objects. The former can be copied freely while the
+//! latter has move and reborrow semantics, as described in its documentation.
+//!
+//! More details about the vocabulary types can be found in each one's module's
+//! documentation. See also: [`faer_entity::Entity`] and [`complex_native`].
+//!
+//! Most of the matrix operations can be used through the corresponding math operators: `+` for
+//! matrix addition, `-` for subtraction, `*` for either scalar or matrix multiplication depending
+//! on the types of the operands.
+//!
+//! ## Example
+//! ```
+//! use faer::{mat, prelude::*, scale, Mat};
+//!
+//! let a = mat![
+//!     [1.0, 5.0, 9.0],
+//!     [2.0, 6.0, 10.0],
+//!     [3.0, 7.0, 11.0],
+//!     [4.0, 8.0, 12.0f64],
+//! ];
+//!
+//! let b = Mat::<f64>::from_fn(4, 3, |i, j| (i + j) as f64);
+//!
+//! let add = &a + &b;
+//! let sub = &a - &b;
+//! let scale = scale(3.0) * &a;
+//! let mul = &a * b.transpose();
+//!
+//! let a00 = a[(0, 0)];
+//! ```
+//!
+//! # Matrix decompositions
+//! `faer` provides a variety of matrix factorizations, each with its own advantages and drawbacks:
+//!
+//! ## Cholesky decomposition
+//! [`Mat::cholesky`] decomposes a self-adjoint positive definite matrix $A$ such that
+//! $$A = LL^H,$$
+//! where $L$ is a lower triangular matrix. This decomposition is highly efficient and has good
+//! stability properties.
+//!
+//! [An implementation for sparse matrices is also available.](sparse::linalg::solvers::Cholesky)
+//!
+//! ## Bunch-Kaufman decomposition
+//! [`Mat::lblt`] decomposes a self-adjoint (possibly indefinite) matrix $A$ such that
+//! $$P A P^\top = LBL^H,$$
+//! where $P$ is a permutation matrix, $L$ is a lower triangular matrix, and $B$ is a block
+//! diagonal matrix, with $1 \times 1$ or $2 \times 2$ diagonal blocks.
+//! This decomposition is efficient and has good stability properties.
+//! ## LU decomposition with partial pivoting
+//! [`Mat::partial_piv_lu`] decomposes a square invertible matrix $A$ into a lower triangular
+//! matrix $L$, a unit upper triangular matrix $U$, and a permutation matrix $P$, such that
+//! $$PA = LU.$$
+//! It is used by default for computing the determinant, and is generally the recommended method
+//! for solving a square linear system or computing the inverse of a matrix (although we generally
+//! recommend using a [`faer::linalg::solvers::Solver`](crate::linalg::solvers::Solver) instead of
+//! computing the inverse explicitly).
+//!
+//! [An implementation for sparse matrices is also available.](sparse::linalg::solvers::Lu)
+//!
+//! ## LU decomposition with full pivoting
+//! [`Mat::full_piv_lu`] Decomposes a generic rectangular matrix $A$ into a lower triangular
+//! matrix $L$, a unit upper triangular matrix $U$, and permutation matrices $P$ and $Q$, such that
+//! $$PAQ^\top = LU.$$
+//! It can be more stable than the LU decomposition with partial pivoting, in exchange for being
+//! more computationally expensive.
+//!
+//! ## QR decomposition
+//! The QR decomposition ([`Mat::qr`]) decomposes a matrix $A$ into the product
+//! $$A = QR,$$
+//! where $Q$ is a unitary matrix, and $R$ is an upper trapezoidal matrix. It is often used for
+//! solving least squares problems.
+//!
+//! [An implementation for sparse matrices is also available.](sparse::linalg::solvers::Qr)
+//!
+//! ## QR decomposition with column pivoting
+//! The QR decomposition with column pivoting ([`Mat::col_piv_qr`]) decomposes a matrix $A$ into
+//! the product
+//! $$AP^\top = QR,$$
+//! where $P$ is a permutation matrix, $Q$ is a unitary matrix, and $R$ is an upper trapezoidal
+//! matrix.
+//!
+//! It is slower than the version with no pivoting, in exchange for being more numerically stable
+//! for rank-deficient matrices.
+//!
+//! ## Singular value decomposition
+//! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
+//! and $V$, such that:
+//!
+//! - $U$ has shape $(m, m)$ and is a unitary matrix,
+//! - $V$ has shape $(n, n)$ and is a unitary matrix,
+//! - $S$ has shape $(m, n)$ and is zero everywhere except the main diagonal, with nonnegative
+//! diagonal values in nonincreasing order,
+//! - and finally:
+//!
+//! $$M = U S V^H.$$
+//!
+//! The SVD is provided in two forms: either the full matrices $U$ and $V$ are computed, using
+//! [`Mat::svd`], or only their first $\min(m, n)$ columns are computed, using
+//! [`Mat::thin_svd`].
+//!
+//! If only the singular values (elements of $S$) are desired, they can be obtained in
+//! nonincreasing order using [`Mat::singular_values`].
+//!
+//! ## Eigendecomposition
+//! **Note**: The order of the eigenvalues is currently unspecified and may be changed in a future
+//! release.
+//!
+//! The eigendecomposition of a square matrix $M$ of shape $(n, n)$ is a decomposition into
+//! two components $U$, $S$:
+//!
+//! - $U$ has shape $(n, n)$ and is invertible,
+//! - $S$ has shape $(n, n)$ and is a diagonal matrix,
+//! - and finally:
+//!
+//! $$M = U S U^{-1}.$$
+//!
+//! If $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
+//!
+//! Depending on the domain of the input matrix and whether it is self-adjoint, multiple methods
+//! are provided to compute the eigendecomposition:
+//! * [`Mat::selfadjoint_eigendecomposition`] can be used with either real or complex matrices,
+//! producing an eigendecomposition of the same type.
+//! * [`Mat::eigendecomposition`] can be used with either real or complex matrices, but the output
+//! complex type has to be specified.
+//! * [`Mat::complex_eigendecomposition`] can only be used with complex matrices, with the output
+//! having the same type.
+//!
+//! If only the eigenvalues (elements of $S$) are desired, they can be obtained in
+//! nonincreasing order using [`Mat::selfadjoint_eigenvalues`], [`Mat::eigenvalues`], or
+//! [`Mat::complex_eigenvalues`], with the same conditions described above.
+//!
+//! # Crate features
+//!
+//! - `std`: enabled by default. Links with the standard library to enable additional features such
+//!   as cpu feature detection at runtime.
+//! - `rayon`: enabled by default. Enables the `rayon` parallel backend and enables global
+//!   parallelism by default.
+//! - `matrixcompare`: enabled by default. Enables macros for approximate equality checks on
+//!   matrices.
+//! - `serde`: Enables serialization and deserialization of [`Mat`].
+//! - `npy`: Enables conversions to/from numpy's matrix file format.
+//! - `perf-warn`: Produces performance warnings when matrix operations are called with suboptimal
+//! data layout.
+//! - `nightly`: Requires the nightly compiler. Enables experimental SIMD features such as AVX512.
+
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![allow(non_snake_case)]
 #![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -15,14 +184,22 @@ pub mod linalg;
 pub mod complex_native;
 
 pub use dyn_stack;
+
+/// Various utilities for low level implementations in generic code.
 pub mod utils;
 pub use reborrow;
 
+/// Contiguous resizable column vector type.
 pub mod col;
+/// Contiguous resizable diagonal matrix type.
 pub mod diag;
+/// Contiguous resizable matrix type.
 pub mod mat;
+/// Permutation matrices.
 pub mod perm;
+/// Contiguous resizable row vector type.
 pub mod row;
+/// Sparse data structures and algorithms.
 pub mod sparse;
 
 pub use mat::{Mat, MatMut, MatRef};
@@ -296,7 +473,7 @@ macro_rules! concat {
     };
 }
 
-/// Creates a [`Col`] containing the arguments.
+/// Creates a [`col::Col`] containing the arguments.
 ///
 /// ```
 /// use faer::col;
@@ -325,7 +502,7 @@ macro_rules! col {
     }};
 }
 
-/// Creates a [`Row`] containing the arguments.
+/// Creates a [`row::Row`] containing the arguments.
 ///
 /// ```
 /// use faer::row;
@@ -591,16 +768,19 @@ impl SignedIndex for isize {
     }
 }
 
+/// Factor for matrix-scalar multiplication.
 #[derive(Copy, Clone, Debug)]
 pub struct Scale<E>(pub E);
 
 impl<E> Scale<E> {
+    /// Returns the inner value.
     #[inline]
     pub fn value(self) -> E {
         self.0
     }
 }
 
+/// Returns a factor for matrix-scalar multiplication.
 #[inline]
 pub fn scale<E>(val: E) -> Scale<E> {
     Scale(val)

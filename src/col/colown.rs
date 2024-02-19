@@ -11,6 +11,12 @@ use crate::{
 };
 use core::mem::ManuallyDrop;
 
+/// Heap allocated resizable column vector.
+///
+/// # Note
+///
+/// The memory layout of `Col` is guaranteed to be column-major, meaning that it has a row stride
+/// of `1`.
 #[repr(C)]
 pub struct Col<E: Entity> {
     inner: VecOwnImpl<E>,
@@ -518,7 +524,7 @@ impl<E: Entity> Col<E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

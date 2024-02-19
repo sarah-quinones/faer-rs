@@ -1,6 +1,7 @@
 use super::*;
 use crate::assert;
 
+/// Immutable permutation matrix view.
 #[derive(Debug)]
 pub struct PermRef<'a, I: Index> {
     pub(super) forward: &'a [I],

@@ -1,10 +1,12 @@
-//! Computes the LU decomposition of a given sparse matrix. See [`faer_lu`] for more info.
+//! Computes the LU decomposition of a given sparse matrix. See
+//! [`faer::linalg::lu`](crate::linalg::lu) for more info.
 //!
 //! The entry point in this module is [`SymbolicLu`] and [`factorize_symbolic_lu`].
 //!
 //! # Warning
 //! The functions in this module accept unsorted input, and always produce unsorted decomposition
 //! factors.
+#![allow(missing_docs)]
 
 use super::{
     cholesky::simplicial::EliminationTreeRef,

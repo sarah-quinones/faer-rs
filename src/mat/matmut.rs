@@ -1,6 +1,50 @@
 use super::*;
 use crate::{assert, debug_assert, diag::DiagMut, linalg::zip, unzipped, zipped};
 
+/// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
+///
+/// # Note
+///
+/// Unlike a slice, the data pointed to by `MatMut<'_, E>` is allowed to be partially or fully
+/// uninitialized under certain conditions. In this case, care must be taken to not perform any
+/// operations that read the uninitialized values, or form references to them, either directly
+/// through [`MatMut::read`], or indirectly through any of the numerical library routines, unless
+/// it is explicitly permitted.
+///
+/// # Move semantics
+/// Since `MatMut` mutably borrows data, it cannot be [`Copy`]. This means that if we pass a
+/// `MatMut` to a function that takes it by value, or use a method that consumes `self` like
+/// [`MatMut::transpose_mut`], this renders the original variable unusable.
+/// ```compile_fail
+/// use faer::{Mat, MatMut};
+///
+/// fn takes_matmut(view: MatMut<'_, f64>) {}
+///
+/// let mut matrix = Mat::new();
+/// let view = matrix.as_mut();
+///
+/// takes_matmut(view); // `view` is moved (passed by value)
+/// takes_matmut(view); // this fails to compile since `view` was moved
+/// ```
+/// The way to get around it is to use the [`reborrow::ReborrowMut`] trait, which allows us to
+/// mutably borrow a `MatMut` to obtain another `MatMut` for the lifetime of the borrow.
+/// It's also similarly possible to immutably borrow a `MatMut` to obtain a `MatRef` for the
+/// lifetime of the borrow, using [`reborrow::Reborrow`].
+/// ```
+/// use faer::{Mat, MatMut, MatRef};
+/// use reborrow::*;
+///
+/// fn takes_matmut(view: MatMut<'_, f64>) {}
+/// fn takes_matref(view: MatRef<'_, f64>) {}
+///
+/// let mut matrix = Mat::new();
+/// let mut view = matrix.as_mut();
+///
+/// takes_matmut(view.rb_mut());
+/// takes_matmut(view.rb_mut());
+/// takes_matref(view.rb());
+/// // view is still usable here
+/// ```
 #[repr(C)]
 pub struct MatMut<'a, E: Entity> {
     pub(super) inner: MatImpl<E>,
@@ -859,7 +903,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
 
     /// Kroneckor product of `self` and `rhs`.
     ///
-    /// This is an allocating operation; see [`kron`] for the
+    /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
     #[inline]
     #[track_caller]

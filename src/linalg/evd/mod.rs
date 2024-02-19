@@ -55,13 +55,16 @@ pub mod hessenberg_real_evd;
 /// Indicates whether the eigenvectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeVectors {
+    /// Do not compute the eigenvectors.
     No,
+    /// Do compute the eigenvectors.
     Yes,
 }
 
+/// Hermitian eigendecomposition tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
-pub struct SymmetricEvdParams {}
+pub struct HermitianEvdParams {}
 
 /// Computes the size and alignment of required workspace for performing a hermitian eigenvalue
 /// decomposition. The eigenvectors may be optionally computed.
@@ -69,7 +72,7 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
     n: usize,
     compute_eigenvectors: ComputeVectors,
     parallelism: Parallelism,
-    params: SymmetricEvdParams,
+    params: HermitianEvdParams,
 ) -> Result<StackReq, SizeOverflow> {
     let _ = params;
     let _ = compute_eigenvectors;
@@ -124,7 +127,7 @@ pub fn compute_hermitian_evd<E: ComplexField>(
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: SymmetricEvdParams,
+    params: HermitianEvdParams,
 ) {
     compute_hermitian_evd_custom_epsilon(
         matrix,
@@ -154,7 +157,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     zero_threshold: E::Real,
     parallelism: Parallelism,
     stack: PodStack<'_>,
-    params: SymmetricEvdParams,
+    params: HermitianEvdParams,
 ) {
     let _ = params;
     let n = matrix.nrows();

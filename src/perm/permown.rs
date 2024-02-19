@@ -1,6 +1,7 @@
 use super::*;
 use crate::assert;
 
+/// Permutation matrix.
 #[derive(Debug, Clone)]
 pub struct Perm<I: Index> {
     pub(super) forward: alloc::boxed::Box<[I]>,

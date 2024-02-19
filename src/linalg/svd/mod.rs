@@ -42,8 +42,11 @@ const BIDIAG_QR_FALLBACK_THRESHOLD: usize = 128;
 /// Indicates whether the singular vectors are fully computed, partially computed, or skipped.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ComputeVectors {
+    /// Do not compute the singular vectors.
     No,
+    /// Only compute the first $\min(\text{nrows}(A), \text{ncols}(A))$ singular vectors.
     Thin,
+    /// Compute all the singular vectors.
     Full,
 }
 
@@ -569,6 +572,7 @@ fn compute_svd_big<E: ComplexField>(
     }
 }
 
+/// SVD tuning parameters.
 #[derive(Default, Copy, Clone)]
 #[non_exhaustive]
 pub struct SvdParams {}

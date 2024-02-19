@@ -1,3 +1,5 @@
+//! Low level implementation of the various Cholesky-like decompositions.
+
 use crate::{assert, perm::PermRef, ComplexField, Index, MatRef, SignedIndex};
 use core::cmp::Ordering;
 

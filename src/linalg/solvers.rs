@@ -1,6 +1,6 @@
 use crate::{
-    assert, col::*, linalg::matmul::triangular::BlockStructure, mat::*, perm::PermRef, unzipped,
-    zipped, Side, *,
+    assert, col::*, diag::DiagRef, linalg::matmul::triangular::BlockStructure, mat::*,
+    perm::PermRef, unzipped, zipped, Side, *,
 };
 use dyn_stack::*;
 use reborrow::*;
@@ -10,6 +10,7 @@ pub use crate::{
     sparse::linalg::solvers::{SpSolver, SpSolverCore, SpSolverLstsq, SpSolverLstsqCore},
 };
 
+/// Object-safe base for [`Solver`]
 pub trait SolverCore<E: Entity>: SpSolverCore<E> {
     /// Reconstructs the original matrix using the decomposition.
     fn reconstruct(&self) -> Mat<E>;
@@ -19,9 +20,12 @@ pub trait SolverCore<E: Entity>: SpSolverCore<E> {
     /// Panics if the matrix is not square.
     fn inverse(&self) -> Mat<E>;
 }
+/// Object-safe base for [`SolverLstsq`]
 pub trait SolverLstsqCore<E: Entity>: SolverCore<E> + SpSolverLstsqCore<E> {}
 
+/// Solver that can compute solution of a linear system.
 pub trait Solver<E: ComplexField>: SolverCore<E> + SpSolver<E> {}
+/// Dense solver that can compute the least squares solution of an overdetermined linear system.
 pub trait SolverLstsq<E: Entity>: SolverLstsqCore<E> + SpSolverLstsq<E> {}
 
 const _: () = {
@@ -102,6 +106,12 @@ pub struct Eigendecomposition<E: Entity> {
 }
 
 impl<E: ComplexField> Cholesky<E> {
+    /// Returns the Cholesky factorization of the input
+    /// matrix, or an error if the matrix is not positive definite.
+    ///
+    /// The factorization is such that $A = LL^H$, where $L$ is lower triangular.
+    ///
+    /// The matrix is interpreted as Hermitian, but only the provided side is accessed.
     #[track_caller]
     pub fn try_new<ViewE: Conjugate<Canonical = E>>(
         matrix: MatRef<'_, ViewE>,
@@ -151,6 +161,7 @@ impl<E: ComplexField> Cholesky<E> {
         self.factors.nrows()
     }
 
+    /// Returns the factor $L$ of the Cholesky decomposition.
     pub fn compute_l(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
         zipped!(factor.as_mut())
@@ -247,6 +258,9 @@ impl<E: ComplexField> SolverCore<E> for Cholesky<E> {
 }
 
 impl<E: ComplexField> Lblt<E> {
+    /// Returns the Bunch-Kaufman factorization of the input matrix.
+    ///
+    /// The matrix is interpreted as Hermitian, but only the provided side is accessed.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>, side: Side) -> Self {
         assert!(matrix.nrows() == matrix.ncols());
@@ -442,6 +456,10 @@ impl<E: ComplexField> SolverCore<E> for Lblt<E> {
 }
 
 impl<E: ComplexField> PartialPivLu<E> {
+    /// Returns the LU decomposition of the input matrix with partial (row) pivoting.
+    ///
+    /// The factorization is such that $PA = LU$, where $L$ is lower triangular, $U$ is unit
+    /// upper triangular, and $P$ is the permutation arising from the pivoting.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         assert!(matrix.nrows() == matrix.ncols());
@@ -485,14 +503,17 @@ impl<E: ComplexField> PartialPivLu<E> {
         self.factors.nrows()
     }
 
+    /// Returns the row permutation due to pivoting.
     pub fn row_permutation(&self) -> PermRef<'_, usize> {
         unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
     }
 
+    /// Returns the number of transpositions that consitute the permutation.
     pub fn transposition_count(&self) -> usize {
         self.n_transpositions
     }
 
+    /// Returns the factor $L$ of the LU decomposition.
     pub fn compute_l(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
         zipped!(factor.as_mut())
@@ -501,6 +522,7 @@ impl<E: ComplexField> PartialPivLu<E> {
             });
         factor
     }
+    /// Returns the factor $U$ of the LU decomposition.
     pub fn compute_u(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
         zipped!(factor.as_mut())
@@ -617,6 +639,11 @@ impl<E: ComplexField> SolverCore<E> for PartialPivLu<E> {
 }
 
 impl<E: ComplexField> FullPivLu<E> {
+    /// Returns the LU decomposition of the input matrix with row and column pivoting.
+    ///
+    /// The factorization is such that $PAQ^\top = LU$, where $L$ is lower triangular, $U$ is unit
+    /// upper triangular, and $P$ is the permutation arising from row pivoting and $Q$ is the
+    /// permutation due to column pivoting.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         let m = matrix.nrows();
@@ -661,17 +688,21 @@ impl<E: ComplexField> FullPivLu<E> {
         }
     }
 
+    /// Returns the row permutation due to pivoting.
     pub fn row_permutation(&self) -> PermRef<'_, usize> {
         unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
     }
+    /// Returns the column permutation due to pivoting.
     pub fn col_permutation(&self) -> PermRef<'_, usize> {
         unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
     }
 
+    /// Returns the number of transpositions that consitute the two permutations.
     pub fn transposition_count(&self) -> usize {
         self.n_transpositions
     }
 
+    /// Returns the factor $L$ of the LU decomposition.
     pub fn compute_l(&self) -> Mat<E> {
         let size = Ord::min(self.nrows(), self.ncols());
         let mut factor = self
@@ -685,6 +716,7 @@ impl<E: ComplexField> FullPivLu<E> {
             });
         factor
     }
+    /// Returns the factor $U$ of the LU decomposition.
     pub fn compute_u(&self) -> Mat<E> {
         let size = Ord::min(self.nrows(), self.ncols());
         let mut factor = self
@@ -819,6 +851,9 @@ impl<E: ComplexField> SolverCore<E> for FullPivLu<E> {
 }
 
 impl<E: ComplexField> Qr<E> {
+    /// Returns the QR decomposition of the input matrix without pivoting.
+    ///
+    /// The factorization is such that $A = QR$, where $R$ is upper trapezoidal and $Q$ is unitary.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         let parallelism = get_global_parallelism();
@@ -860,6 +895,7 @@ impl<E: ComplexField> Qr<E> {
         self.householder.nrows()
     }
 
+    /// Returns the factor $R$ of the QR decomposition.
     pub fn compute_r(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
         zipped!(factor.as_mut())
@@ -869,10 +905,13 @@ impl<E: ComplexField> Qr<E> {
         factor
     }
 
+    /// Returns the factor $R$ of the QR decomposition.
     pub fn compute_q(&self) -> Mat<E> {
         Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), false)
     }
 
+    /// Returns the top $r$ rows of the factor $R$ of the QR decomposition, where $r =
+    /// \min(\text{nrows}(A), \text{ncols}(A))$.
     pub fn compute_thin_r(&self) -> Mat<E> {
         let m = self.nrows();
         let n = self.ncols();
@@ -884,6 +923,8 @@ impl<E: ComplexField> Qr<E> {
         factor
     }
 
+    /// Returns the leftmost $r$ columns of the factor $R$ of the QR decomposition, where $r =
+    /// \min(\text{nrows}(A), \text{ncols}(A))$.
     pub fn compute_thin_q(&self) -> Mat<E> {
         Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
     }
@@ -1033,6 +1074,10 @@ impl<E: ComplexField> SpSolverLstsqCore<E> for Qr<E> {
 impl<E: ComplexField> SolverLstsqCore<E> for Qr<E> {}
 
 impl<E: ComplexField> ColPivQr<E> {
+    /// Returns the QR decomposition of the input matrix with column pivoting.
+    ///
+    /// The factorization is such that $AP^\top = QR$, where $R$ is upper trapezoidal, $Q$ is
+    /// unitary, and $P$ is a permutation matrix.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         let parallelism = get_global_parallelism();
@@ -1077,6 +1122,7 @@ impl<E: ComplexField> ColPivQr<E> {
         }
     }
 
+    /// Returns the column permutation matrix $P$ of the QR decomposition.
     pub fn col_permutation(&self) -> PermRef<'_, usize> {
         unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
     }
@@ -1085,6 +1131,7 @@ impl<E: ComplexField> ColPivQr<E> {
         self.householder.nrows()
     }
 
+    /// Returns the factor $R$ of the QR decomposition.
     pub fn compute_r(&self) -> Mat<E> {
         let mut factor = self.factors.to_owned();
         zipped!(factor.as_mut())
@@ -1094,10 +1141,13 @@ impl<E: ComplexField> ColPivQr<E> {
         factor
     }
 
+    /// Returns the factor $Q$ of the QR decomposition.
     pub fn compute_q(&self) -> Mat<E> {
         Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), false)
     }
 
+    /// Returns the top $r$ rows of the factor $R$ of the QR decomposition, where $r =
+    /// \min(\text{nrows}(A), \text{ncols}(A))$.
     pub fn compute_thin_r(&self) -> Mat<E> {
         let m = self.nrows();
         let n = self.ncols();
@@ -1109,6 +1159,8 @@ impl<E: ComplexField> ColPivQr<E> {
         factor
     }
 
+    /// Returns the leftmost $r$ columns of the factor $R$ of the QR decomposition, where $r =
+    /// \min(\text{nrows}(A), \text{ncols}(A))$.
     pub fn compute_thin_q(&self) -> Mat<E> {
         Qr::<E>::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)
     }
@@ -1279,17 +1331,24 @@ impl<E: ComplexField> Svd<E> {
         Self { s, u, v }
     }
 
+    /// Returns the SVD of the input matrix.
+    ///
+    /// The factorization is such that $A = U S V^H$, where $U$ and $V$ are unitary and $S$ is a
+    /// rectangular diagonal matrix.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         Self::__new_impl(matrix.canonicalize(), false)
     }
 
+    /// Returns the factor $U$ of the SVD.
     pub fn u(&self) -> MatRef<'_, E> {
         self.u.as_ref()
     }
-    pub fn s_diagonal(&self) -> MatRef<'_, E> {
-        self.s.as_ref()
+    /// Returns the diagonal of the factor $S$ of the SVD as a column vector.
+    pub fn s_diagonal(&self) -> ColRef<'_, E> {
+        self.s.as_ref().col(0)
     }
+    /// Returns the factor $V$ of the SVD.
     pub fn v(&self) -> MatRef<'_, E> {
         self.v.as_ref()
     }
@@ -1387,6 +1446,10 @@ impl<E: ComplexField> SolverCore<E> for Svd<E> {
 }
 
 impl<E: ComplexField> ThinSvd<E> {
+    /// Returns the thin SVD of the input matrix.
+    ///
+    /// This is the same as the SVD except that only the leftmost $r$ columns of $U$ and $V$ are
+    /// computed, where $r = \min(\text{nrows}(A), \text{ncols}(A))$.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         Self {
@@ -1394,12 +1457,15 @@ impl<E: ComplexField> ThinSvd<E> {
         }
     }
 
+    /// Returns the factor $U$ of the SVD.
     pub fn u(&self) -> MatRef<'_, E> {
         self.inner.u.as_ref()
     }
-    pub fn s_diagonal(&self) -> MatRef<'_, E> {
-        self.inner.s.as_ref()
+    /// Returns the diagonal of the factor $S$ of the SVD as a column vector.
+    pub fn s_diagonal(&self) -> ColRef<'_, E> {
+        self.inner.s.as_ref().col(0)
     }
+    /// Returns the factor $V$ of the SVD.
     pub fn v(&self) -> MatRef<'_, E> {
         self.inner.v.as_ref()
     }
@@ -1479,16 +1545,24 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
         Self { s, u }
     }
 
+    /// Returns the eigenvalue decomposition of the Hermitian input matrix.
+    ///
+    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// unitary.
+    ///
+    /// Only the provided side is accessed.
     #[track_caller]
     pub fn new<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>, side: Side) -> Self {
         Self::__new_impl(matrix.canonicalize(), side)
     }
 
+    /// Returns the factor $U$ of the eigenvalue decomposition.
     pub fn u(&self) -> MatRef<'_, E> {
         self.u.as_ref()
     }
-    pub fn s_diagonal(&self) -> MatRef<'_, E> {
-        self.s.as_ref()
+    /// Returns the factor $S$ of the eigenvalue decomposition.
+    pub fn s(&self) -> DiagRef<'_, E> {
+        self.s.as_ref().col(0).column_vector_as_diagonal()
     }
 }
 impl<E: ComplexField> SpSolverCore<E> for SelfAdjointEigendecomposition<E> {
@@ -1657,6 +1731,10 @@ impl<E: ComplexField> Eigendecomposition<E> {
         (0..dim).map(|i| s.read(i, 0)).collect()
     }
 
+    /// Returns the eigendecomposition of the real-valued input matrix.
+    ///
+    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// unitary.
     #[track_caller]
     pub fn new_from_real(matrix: MatRef<'_, E::Real>) -> Self {
         assert!(matrix.nrows() == matrix.ncols());
@@ -1776,16 +1854,22 @@ impl<E: ComplexField> Eigendecomposition<E> {
         Self { s, u }
     }
 
+    /// Returns the eigendecomposition of the complex-valued input matrix.
+    ///
+    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// unitary.
     #[track_caller]
     pub fn new_from_complex<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
         Self::__new_from_complex_impl(matrix.canonicalize())
     }
 
+    /// Returns the factor $U$ of the eigenvalue decomposition.
     pub fn u(&self) -> MatRef<'_, E> {
         self.u.as_ref()
     }
-    pub fn s_diagonal(&self) -> ColRef<'_, E> {
-        self.s.as_ref()
+    /// Returns the factor $S$ of the eigenvalue decomposition.
+    pub fn s(&self) -> DiagRef<'_, E> {
+        self.s.as_ref().column_vector_as_diagonal()
     }
 }
 
@@ -1793,6 +1877,8 @@ impl<E: Conjugate> MatRef<'_, E>
 where
     E::Canonical: ComplexField,
 {
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
@@ -1803,6 +1889,8 @@ where
             parallelism,
         );
     }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
@@ -1813,6 +1901,10 @@ where
             parallelism,
         );
     }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`.
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
@@ -1823,6 +1915,10 @@ where
             parallelism,
         );
     }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
@@ -1834,38 +1930,97 @@ where
         );
     }
 
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        let mut rhs = rhs.as_mat_ref().to_owned();
+        self.solve_lower_triangular_in_place(rhs.as_mut());
+        rhs
+    }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        let mut rhs = rhs.as_mat_ref().to_owned();
+        self.solve_upper_triangular_in_place(rhs.as_mut());
+        rhs
+    }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        let mut rhs = rhs.as_mat_ref().to_owned();
+        self.solve_unit_lower_triangular_in_place(rhs.as_mut());
+        rhs
+    }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        let mut rhs = rhs.as_mat_ref().to_owned();
+        self.solve_unit_upper_triangular_in_place(rhs.as_mut());
+        rhs
+    }
+
+    /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         Cholesky::try_new(self.as_ref(), side)
     }
+    /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         Lblt::new(self.as_ref(), side)
     }
+    /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         PartialPivLu::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         FullPivLu::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the QR decomposition of `self`.
     #[track_caller]
     pub fn qr(&self) -> Qr<E::Canonical> {
         Qr::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         ColPivQr::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the SVD of `self`.
     #[track_caller]
     pub fn svd(&self) -> Svd<E::Canonical> {
         Svd::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the thin SVD of `self`.
     #[track_caller]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         ThinSvd::<E::Canonical>::new(self.as_ref())
     }
+    /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed.
     #[track_caller]
     pub fn selfadjoint_eigendecomposition(
         &self,
@@ -1874,6 +2029,7 @@ where
         SelfAdjointEigendecomposition::<E::Canonical>::new(self.as_ref(), side)
     }
 
+    /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
@@ -1896,11 +2052,13 @@ where
         }
     }
 
+    /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         Eigendecomposition::<E::Canonical>::new_from_complex(self.as_ref())
     }
 
+    /// Returns the determinant of `self`.
     #[track_caller]
     pub fn determinant(&self) -> E::Canonical {
         assert!(self.nrows() == self.ncols());
@@ -1916,6 +2074,8 @@ where
         }
     }
 
+    /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
         let matrix = match side {
@@ -1949,6 +2109,7 @@ where
         (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
     }
 
+    /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
     pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
         let dim = Ord::min(self.nrows(), self.ncols());
@@ -1979,6 +2140,8 @@ where
         (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
     }
 
+    /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
+    /// currently unspecified.
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
@@ -1999,6 +2162,8 @@ where
         }
     }
 
+    /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
+    /// eigenvalues is currently unspecified.
     #[track_caller]
     pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
         Eigendecomposition::<E::Canonical>::__values_from_complex_impl(self.canonicalize())
@@ -2009,55 +2174,118 @@ impl<E: Conjugate> MatMut<'_, E>
 where
     E::Canonical: ComplexField,
 {
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_lower_triangular_in_place(rhs)
     }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_upper_triangular_in_place(rhs)
     }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`.
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_unit_lower_triangular_in_place(rhs)
     }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_unit_upper_triangular_in_place(rhs)
     }
 
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_lower_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_upper_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_unit_lower_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_unit_upper_triangular(rhs.as_mat_ref())
+    }
+
+    /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
+    /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
+    /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
+    /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         self.as_ref().full_piv_lu()
     }
+    /// Returns the QR decomposition of `self`.
     #[track_caller]
     pub fn qr(&self) -> Qr<E::Canonical> {
         self.as_ref().qr()
     }
+    /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         self.as_ref().col_piv_qr()
     }
+    /// Returns the SVD of `self`.
     #[track_caller]
     pub fn svd(&self) -> Svd<E::Canonical> {
         self.as_ref().svd()
     }
+    /// Returns the thin SVD of `self`.
     #[track_caller]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         self.as_ref().thin_svd()
     }
+    /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed.
     #[track_caller]
     pub fn selfadjoint_eigendecomposition(
         &self,
@@ -2066,6 +2294,7 @@ where
         self.as_ref().selfadjoint_eigendecomposition(side)
     }
 
+    /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
@@ -2075,26 +2304,33 @@ where
         self.as_ref().eigendecomposition::<ComplexE>()
     }
 
+    /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         self.as_ref().complex_eigendecomposition()
     }
 
+    /// Returns the determinant of `self`.
     #[track_caller]
     pub fn determinant(&self) -> E::Canonical {
         self.as_ref().determinant()
     }
 
+    /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().selfadjoint_eigenvalues(side)
     }
 
+    /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
     pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
 
+    /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
+    /// currently unspecified.
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
@@ -2102,6 +2338,8 @@ where
         self.as_ref().eigenvalues()
     }
 
+    /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
+    /// eigenvalues is currently unspecified.
     #[track_caller]
     pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
@@ -2112,55 +2350,118 @@ impl<E: Conjugate> Mat<E>
 where
     E::Canonical: ComplexField,
 {
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_lower_triangular_in_place(rhs)
     }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// stores the result in `rhs`.
     #[track_caller]
     pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_upper_triangular_in_place(rhs)
     }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`.
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_unit_lower_triangular_in_place(rhs)
     }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
+    /// and stores the result in `rhs`
+    ///
+    /// The diagonal of the matrix is not accessed.
     #[track_caller]
     pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
         self.as_ref().solve_unit_upper_triangular_in_place(rhs)
     }
 
+    /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_lower_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    #[track_caller]
+    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_upper_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_unit_lower_triangular(rhs.as_mat_ref())
+    }
+    /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
+    /// returns the result.
+    ///
+    /// The diagonal of the matrix is not accessed.
+    #[track_caller]
+    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+        &self,
+        rhs: impl AsMatRef<ViewE>,
+    ) -> Mat<E::Canonical> {
+        self.as_ref().solve_unit_upper_triangular(rhs.as_mat_ref())
+    }
+
+    /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
+    /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
+    /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
+    /// Returns the LU decomposition of `self` with full pivoting.
     #[track_caller]
     pub fn full_piv_lu(&self) -> FullPivLu<E::Canonical> {
         self.as_ref().full_piv_lu()
     }
+    /// Returns the QR decomposition of `self`.
     #[track_caller]
     pub fn qr(&self) -> Qr<E::Canonical> {
         self.as_ref().qr()
     }
+    /// Returns the QR decomposition of `self` with column pivoting.
     #[track_caller]
     pub fn col_piv_qr(&self) -> ColPivQr<E::Canonical> {
         self.as_ref().col_piv_qr()
     }
+    /// Returns the SVD of `self`.
     #[track_caller]
     pub fn svd(&self) -> Svd<E::Canonical> {
         self.as_ref().svd()
     }
+    /// Returns the thin SVD of `self`.
     #[track_caller]
     pub fn thin_svd(&self) -> ThinSvd<E::Canonical> {
         self.as_ref().thin_svd()
     }
+    /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed.
     #[track_caller]
     pub fn selfadjoint_eigendecomposition(
         &self,
@@ -2169,6 +2470,7 @@ where
         self.as_ref().selfadjoint_eigendecomposition(side)
     }
 
+    /// Returns the eigendecomposition of `self`, as a complex matrix.
     #[track_caller]
     pub fn eigendecomposition<
         ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>,
@@ -2178,26 +2480,33 @@ where
         self.as_ref().eigendecomposition::<ComplexE>()
     }
 
+    /// Returns the eigendecomposition of `self`, when `E` is in the complex domain.
     #[track_caller]
     pub fn complex_eigendecomposition(&self) -> Eigendecomposition<E::Canonical> {
         self.as_ref().complex_eigendecomposition()
     }
 
+    /// Returns the determinant of `self`.
     #[track_caller]
     pub fn determinant(&self) -> E::Canonical {
         self.as_ref().determinant()
     }
 
+    /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
+    /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
     pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().selfadjoint_eigenvalues(side)
     }
 
+    /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
     pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
 
+    /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is
+    /// currently unspecified.
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
@@ -2205,6 +2514,8 @@ where
         self.as_ref().eigenvalues()
     }
 
+    /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
+    /// eigenvalues is currently unspecified.
     #[track_caller]
     pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
@@ -2449,7 +2760,7 @@ mod tests {
 
         let svd = H.svd();
         for i in 0..n - 1 {
-            assert!(svd.s_diagonal()[(i, 0)].re >= svd.s_diagonal()[(i + 1, 0)].re);
+            assert!(svd.s_diagonal()[i].re >= svd.s_diagonal()[i + 1].re);
         }
         let svd = H.singular_values();
         for i in 0..n - 1 {
@@ -2489,7 +2800,7 @@ mod tests {
 
         let evd = H.selfadjoint_eigendecomposition(Side::Lower);
         for i in 0..n - 1 {
-            assert!(evd.s_diagonal()[(i, 0)].re <= evd.s_diagonal()[(i + 1, 0)].re);
+            assert!(evd.s().column_vector()[i].re <= evd.s().column_vector()[i + 1].re);
         }
         let evd = H.selfadjoint_eigenvalues(Side::Lower);
         for i in 0..n - 1 {
@@ -2506,22 +2817,14 @@ mod tests {
 
         {
             let eigen = H.eigendecomposition::<c64>();
-            let mut s = Mat::zeros(n, n);
-            s.as_mut()
-                .diagonal_mut()
-                .column_vector_mut()
-                .copy_from(eigen.s_diagonal());
+            let s = eigen.s();
             let u = eigen.u();
-            assert_approx_eq(u * &s, &H * u);
+            assert_approx_eq(u * s, &H * u);
         }
 
         {
             let eigen = H.complex_eigendecomposition();
-            let mut s = Mat::zeros(n, n);
-            s.as_mut()
-                .diagonal_mut()
-                .column_vector_mut()
-                .copy_from(eigen.s_diagonal());
+            let s = eigen.s();
             let u = eigen.u();
             assert_approx_eq(u * &s, &H * u);
         }
@@ -2544,11 +2847,7 @@ mod tests {
         let H = Mat::from_fn(n, n, |i, j| c64::new(H_real.read(i, j), 0.0));
 
         let eigen = H_real.eigendecomposition::<c64>();
-        let mut s = Mat::zeros(n, n);
-        s.as_mut()
-            .diagonal_mut()
-            .column_vector_mut()
-            .copy_from(eigen.s_diagonal());
+        let s = eigen.s();
         let u = eigen.u();
         assert_approx_eq(u * &s, &H * u);
     }

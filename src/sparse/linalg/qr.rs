@@ -5,6 +5,7 @@
 //! # Warning
 //! The functions in this module accept unsorted input, and always produce unsorted decomposition
 //! factors.
+#![allow(missing_docs)]
 
 use super::{
     cholesky::{

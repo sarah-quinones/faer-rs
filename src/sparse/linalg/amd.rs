@@ -1003,6 +1003,8 @@ fn aat<I: Index>(
     nzaat.ok_or(FaerError::IndexOverflow).map(I::zx)
 }
 
+/// Computes the size and alignment of required workspace for computing the AMD ordering of a sorted
+/// matrix.
 pub fn order_sorted_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
     let n_req = StackReq::try_new::<I>(n)?;
     let nzaat = nnz_upper.checked_mul(2).ok_or(SizeOverflow)?;
@@ -1033,6 +1035,8 @@ pub fn order_sorted_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq
     ])
 }
 
+/// Computes the size and alignment of required workspace for computing the AMD ordering of an
+/// unsorted matrix.
 pub fn order_maybe_unsorted_req<I: Index>(
     n: usize,
     nnz_upper: usize,
@@ -1044,7 +1048,9 @@ pub fn order_maybe_unsorted_req<I: Index>(
     ])
 }
 
-pub fn order_sorted<I: Index>(
+/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// Cholesky factorization of a matrix with the sparsity pattern of `A + A.T`.
+pub fn order<I: Index>(
     perm: &mut [I],
     perm_inv: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
@@ -1078,6 +1084,9 @@ pub fn order_sorted<I: Index>(
     ))
 }
 
+/// Computes the approximate minimum degree ordering for reducing the fill-in during the sparse
+/// Cholesky factorization of a matrix with the sparsity pattern of `A + A.T`.
+///
 /// # Note
 /// Allows unsorted matrices.
 pub fn order_maybe_unsorted<I: Index>(
@@ -1100,9 +1109,10 @@ pub fn order_maybe_unsorted<I: Index>(
     let (new_col_ptrs, stack) = stack.make_raw::<I>(n + 1);
     let (new_row_indices, mut stack) = stack.make_raw::<I>(nnz);
     let A = preprocess(new_col_ptrs, new_row_indices, A, stack.rb_mut());
-    order_sorted(perm, perm_inv, A, control, stack)
+    order(perm, perm_inv, A, control, stack)
 }
 
+/// Tuning parameters for the AMD implementation.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Control {
     /// "dense" if degree > dense * sqrt(n)
@@ -1121,9 +1131,13 @@ impl Default for Control {
     }
 }
 
+/// Flop count of the LDLT and LU factorizations if the provided ordering is used.
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct FlopCount {
+    /// Number of division.
     pub n_div: f64,
+    /// Number of multiplications and subtractions for the LDLT factorization.
     pub n_mult_subs_ldl: f64,
+    /// Number of multiplications and subtractions for the LU factorization.
     pub n_mult_subs_lu: f64,
 }
