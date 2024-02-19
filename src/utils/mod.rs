@@ -19,7 +19,6 @@ pub(crate) unsafe fn unchecked_add(a: isize, b: isize) -> isize {
 #[doc(hidden)]
 pub(crate) trait DivCeil: Sized {
     fn msrv_div_ceil(self, rhs: Self) -> Self;
-    fn msrv_next_multiple_of(self, rhs: Self) -> Self;
     fn msrv_checked_next_multiple_of(self, rhs: Self) -> Option<Self>;
 }
 
@@ -32,14 +31,6 @@ impl DivCeil for usize {
             d + 1
         } else {
             d
-        }
-    }
-
-    #[inline]
-    fn msrv_next_multiple_of(self, rhs: Self) -> Self {
-        match self % rhs {
-            0 => self,
-            r => self + (rhs - r),
         }
     }
 
