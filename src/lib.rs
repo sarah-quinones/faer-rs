@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![allow(non_snake_case)]
+#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -1336,39 +1337,39 @@ mod tests {
     #[test]
     fn test_kron_ones() {
         for (m, n, p, q) in [(2, 3, 4, 5), (3, 2, 5, 4), (1, 1, 1, 1)] {
-            let a = Mat::from_fn(m, n, |_, _| 1_f64);
-            let b = Mat::from_fn(p, q, |_, _| 1_f64);
-            let expected = Mat::from_fn(m * p, n * q, |_, _| 1_f64);
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Mat::from_fn(p, q, |_, _| 1 as f64);
+            let expected = Mat::from_fn(m * p, n * q, |_, _| 1 as f64);
             assert!(a.kron(&b) == expected);
         }
 
         for (m, n, p) in [(2, 3, 4), (3, 2, 5), (1, 1, 1)] {
-            let a = Mat::from_fn(m, n, |_, _| 1_f64);
-            let b = Col::from_fn(p, |_| 1_f64);
-            let expected = Mat::from_fn(m * p, n, |_, _| 1_f64);
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Col::from_fn(p, |_| 1 as f64);
+            let expected = Mat::from_fn(m * p, n, |_, _| 1 as f64);
             assert!(a.kron(&b) == expected);
             assert!(b.kron(&a) == expected);
 
-            let a = Mat::from_fn(m, n, |_, _| 1_f64);
-            let b = Row::from_fn(p, |_| 1_f64);
-            let expected = Mat::from_fn(m, n * p, |_, _| 1_f64);
+            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
+            let b = Row::from_fn(p, |_| 1 as f64);
+            let expected = Mat::from_fn(m, n * p, |_, _| 1 as f64);
             assert!(a.kron(&b) == expected);
             assert!(b.kron(&a) == expected);
         }
 
         for (m, n) in [(2, 3), (3, 2), (1, 1)] {
-            let a = Row::from_fn(m, |_| 1_f64);
-            let b = Col::from_fn(n, |_| 1_f64);
-            let expected = Mat::from_fn(n, m, |_, _| 1_f64);
+            let a = Row::from_fn(m, |_| 1 as f64);
+            let b = Col::from_fn(n, |_| 1 as f64);
+            let expected = Mat::from_fn(n, m, |_, _| 1 as f64);
             assert!(a.kron(&b) == expected);
             assert!(b.kron(&a) == expected);
 
-            let c = Row::from_fn(n, |_| 1_f64);
-            let expected = Mat::from_fn(1, m * n, |_, _| 1_f64);
+            let c = Row::from_fn(n, |_| 1 as f64);
+            let expected = Mat::from_fn(1, m * n, |_, _| 1 as f64);
             assert!(a.kron(&c) == expected);
 
-            let d = Col::from_fn(m, |_| 1_f64);
-            let expected = Mat::from_fn(m * n, 1, |_, _| 1_f64);
+            let d = Col::from_fn(m, |_| 1 as f64);
+            let expected = Mat::from_fn(m * n, 1, |_, _| 1 as f64);
             assert!(d.kron(&b) == expected);
         }
     }
