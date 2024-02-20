@@ -158,8 +158,6 @@
 //!   as cpu feature detection at runtime.
 //! - `rayon`: enabled by default. Enables the `rayon` parallel backend and enables global
 //!   parallelism by default.
-//! - `matrixcompare`: enabled by default. Enables macros for approximate equality checks on
-//!   matrices.
 //! - `serde`: Enables serialization and deserialization of [`Mat`].
 //! - `npy`: Enables conversions to/from numpy's matrix file format.
 //! - `perf-warn`: Produces performance warnings when matrix operations are called with suboptimal
@@ -183,11 +181,15 @@ pub mod linalg;
 
 pub mod complex_native;
 
+pub use dbgf::dbgf;
 pub use dyn_stack;
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use matrixcompare::assert_matrix_eq;
+pub use reborrow;
 
 /// Various utilities for low level implementations in generic code.
 pub mod utils;
-pub use reborrow;
 
 /// Contiguous resizable column vector type.
 pub mod col;
@@ -865,6 +867,11 @@ pub mod io;
 
 #[cfg(feature = "serde")]
 mod serde;
+
+/// faer prelude. Includes useful traits for solving linear systems.
+pub mod prelude {
+    pub use crate::linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq};
+}
 
 #[cfg(test)]
 mod tests {

@@ -32,6 +32,7 @@ std = [
   "faer-entity/std",
   "gemm/std",
   "matrixcompare-core",
+  "matrixcompare",
   "num-traits/std",
   "num-complex/std",
 ]
@@ -39,7 +40,6 @@ rayon = ["std", "gemm/rayon", "dep:rayon"]
 nightly = ["faer-entity/nightly", "gemm/nightly"]
 perf-warn = ["log"]
 serde = ["dep:serde"]
-matrixcompare = ["dep:matrixcompare"]
 npy = ["std", "dep:npyz"]
 
 [dev-dependencies]
