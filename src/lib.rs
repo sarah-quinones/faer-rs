@@ -33,7 +33,7 @@
 //!
 //! ## Example
 //! ```
-//! use faer::{mat, prelude::*, scale, Mat};
+//! use faer::{mat, scale, Mat};
 //!
 //! let a = mat![
 //!     [1.0, 5.0, 9.0],
@@ -202,7 +202,9 @@ pub mod row;
 /// Sparse data structures and algorithms.
 pub mod sparse;
 
+pub use col::{Col, ColMut, ColRef};
 pub use mat::{Mat, MatMut, MatRef};
+pub use row::{Row, RowMut, RowRef};
 
 mod seal;
 mod sort;
@@ -860,6 +862,9 @@ pub fn get_global_parallelism() -> Parallelism {
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub mod io;
+
+#[cfg(feature = "serde")]
+mod serde;
 
 #[cfg(test)]
 mod tests {

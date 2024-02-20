@@ -51,7 +51,7 @@ pub fn swap_cols<E: ComplexField>(a: ColMut<'_, E>, b: ColMut<'_, E>) {
 /// # Example
 ///
 /// ```
-/// use faer::{mat, perm::swap_rows_idx};
+/// use faer::{mat, perm::swap_rows};
 ///
 /// let mut m = mat![
 ///     [1.0, 2.0, 3.0],
@@ -87,7 +87,7 @@ pub fn swap_rows<E: ComplexField>(a: RowMut<'_, E>, b: RowMut<'_, E>) {
 /// # Example
 ///
 /// ```
-/// use faer::{mat, perm::swap_rows};
+/// use faer::{mat, perm::swap_rows_idx};
 ///
 /// let mut m = mat![
 ///     [1.0, 2.0, 3.0],
