@@ -695,21 +695,32 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
         zipped!(tmp.rb_mut(), u10_adjoint.transpose())
             .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_conj()));
         if k > 0 {
-            tmp.write(k - 1, 0, one);
+            tmp.write(k - 1, one);
         }
 
-        crate::linalg::triangular_solve::solve_upper_triangular_in_place(t00, tmp.rb_mut(), par);
+        crate::linalg::triangular_solve::solve_upper_triangular_in_place(
+            t00,
+            tmp.rb_mut().as_2d_mut(),
+            par,
+        );
 
         let z_0 = z.rb().get(.., ..k);
         let mut a_1 = a.rb_mut().get_mut(.., k).as_2d_mut();
 
-        matmul(a_1.rb_mut(), z_0, tmp.rb(), Some(one), one.faer_neg(), par);
+        matmul(
+            a_1.rb_mut(),
+            z_0,
+            tmp.rb().as_2d(),
+            Some(one),
+            one.faer_neg(),
+            par,
+        );
         if k > 0 {
             let u_0 = u_0.get(1.., ..);
             let ut0 = u_0.get(..k, ..);
             let ub0 = u_0.get(k.., ..);
             matmul(
-                tmp.rb_mut(),
+                tmp.rb_mut().as_2d_mut(),
                 ub0.adjoint(),
                 a_1.rb().get(k + 1.., ..),
                 None,
@@ -717,7 +728,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
                 par,
             );
             crate::linalg::matmul::triangular::matmul(
-                tmp.rb_mut(),
+                tmp.rb_mut().as_2d_mut(),
                 BlockStructure::Rectangular,
                 ut0.adjoint(),
                 BlockStructure::UnitTriangularUpper,
@@ -730,7 +741,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
         }
         crate::linalg::triangular_solve::solve_lower_triangular_in_place(
             t00.adjoint(),
-            tmp.rb_mut(),
+            tmp.rb_mut().as_2d_mut(),
             par,
         );
         {
@@ -740,7 +751,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
             matmul(
                 a_1.rb_mut().get_mut(k + 1.., ..),
                 ub0,
-                tmp.rb(),
+                tmp.rb().as_2d(),
                 Some(one),
                 one.faer_neg(),
                 par,
@@ -750,7 +761,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
                 BlockStructure::Rectangular,
                 ut0,
                 BlockStructure::UnitTriangularLower,
-                tmp.rb(),
+                tmp.rb().as_2d(),
                 BlockStructure::Rectangular,
                 Some(one),
                 one.faer_neg(),
@@ -762,12 +773,12 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
 
         if k + 1 < n {
             let (tau, new_head) = {
-                let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+                let (head, tail) = a21.rb_mut().split_at_mut(1);
                 let norm = tail.rb().norm_l2();
-                make_householder_in_place(Some(tail), head.read(0, 0), norm)
+                make_householder_in_place(Some(tail.as_2d_mut()), head.read(0), norm)
             };
             t.rb_mut().write(k, k, tau);
-            a21.write(0, 0, one);
+            a21.write(0, one);
 
             let u = a.rb();
             let mut a = unsafe { a.rb().const_cast() };
@@ -777,10 +788,17 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
             let u20 = u.get(k + 1.., ..k);
 
             let mut z_1 = z.rb_mut().get_mut(.., k).as_2d_mut();
-            matmul(z_1.rb_mut(), a_2, u21, None, one, par);
+            matmul(z_1.rb_mut(), a_2, u21.as_2d(), None, one, par);
 
             let mut t01 = t.rb_mut().get_mut(..k, k);
-            matmul(t01.rb_mut(), u20.adjoint(), u21, None, one, par);
+            matmul(
+                t01.rb_mut().as_2d_mut(),
+                u20.adjoint(),
+                u21.as_2d(),
+                None,
+                one,
+                par,
+            );
             a.write(k + 1, k, new_head);
         }
     }

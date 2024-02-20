@@ -312,3 +312,33 @@ pub fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{assert, prelude::*, unzipped, zipped};
+
+    #[test]
+    fn test_norm_l2() {
+        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+
+        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
+            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
+                let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
+                let mut target = 0.0;
+                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
+                    target = f64::hypot(*x, target);
+                });
+
+                if factor == 0.0 {
+                    assert!(mat.norm_l2() == target);
+                } else {
+                    assert!(relative_err(mat.norm_l2(), target) < 1e-14);
+                }
+            }
+        }
+
+        let mat = Col::from_fn(10000000, |_| 0.3);
+        let target = (0.3 * 0.3 * 10000000.0f64).sqrt();
+        assert!(relative_err(mat.norm_l2(), target) < 1e-14);
+    }
+}

@@ -210,3 +210,33 @@ pub fn sum<E: ComplexField>(mut mat: MatRef<'_, E>) -> E {
         acc
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{assert, prelude::*, unzipped, zipped};
+
+    #[test]
+    fn test_sum() {
+        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
+
+        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
+            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
+                let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
+                let mut target = 0.0;
+                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
+                    target += *x;
+                });
+
+                if factor == 0.0 {
+                    assert!(mat.sum() == target);
+                } else {
+                    assert!(relative_err(mat.sum(), target) < 1e-14);
+                }
+            }
+        }
+
+        let mat = Col::from_fn(10000000, |_| 0.3);
+        let target = 0.3 * 10000000.0f64;
+        assert!(relative_err(mat.sum(), target) < 1e-14);
+    }
+}

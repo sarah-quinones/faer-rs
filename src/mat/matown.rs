@@ -843,3 +843,108 @@ impl<E: Entity> Clone for Mat<E> {
         }
     }
 }
+
+impl<E: Entity> AsMatRef<E> for Mat<E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (*self).as_ref()
+    }
+}
+impl<E: Entity> AsMatRef<E> for &'_ Mat<E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (**self).as_ref()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for Mat<E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (*self).as_mut()
+    }
+}
+
+impl<E: Entity> AsMatMut<E> for &'_ mut Mat<E> {
+    #[inline]
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_mut()
+    }
+}
+
+impl<E: Entity> As2D<E> for &'_ Mat<E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).as_ref()
+    }
+}
+
+impl<E: Entity> As2D<E> for Mat<E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (*self).as_ref()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for &'_ mut Mat<E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_mut()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for Mat<E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (*self).as_mut()
+    }
+}
+
+impl<E: Entity> core::fmt::Debug for Mat<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for Mat<E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &E {
+        self.as_ref().get(row, col)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::IndexMut<(usize, usize)> for Mat<E> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, (row, col): (usize, usize)) -> &mut E {
+        self.as_mut().get_mut(row, col)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<E: Entity> matrixcompare_core::Matrix<E> for Mat<E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Dense(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
+    #[inline]
+    fn fetch_single(&self, row: usize, col: usize) -> E {
+        self.read(row, col)
+    }
+}

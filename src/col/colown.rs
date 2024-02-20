@@ -4,7 +4,7 @@ use crate::{
     diag::Diag,
     mat::{
         matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
-        As2D, Mat,
+        As2D, As2DMut, Mat, MatMut, MatRef,
     },
     row::RowRef,
     utils::DivCeil,
@@ -551,5 +551,84 @@ impl<E: Entity> Clone for Col<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(i)))
             })
         }
+    }
+}
+
+impl<E: Entity> As2D<E> for &'_ Col<E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).as_ref().as_2d()
+    }
+}
+
+impl<E: Entity> As2D<E> for Col<E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (*self).as_ref().as_2d()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for &'_ mut Col<E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_mut().as_2d_mut()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for Col<E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (*self).as_mut().as_2d_mut()
+    }
+}
+
+impl<E: Entity> AsColRef<E> for Col<E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (*self).as_ref()
+    }
+}
+impl<E: Entity> AsColRef<E> for &'_ Col<E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (**self).as_ref()
+    }
+}
+
+impl<E: Entity> AsColMut<E> for Col<E> {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+        (*self).as_mut()
+    }
+}
+
+impl<E: Entity> AsColMut<E> for &'_ mut Col<E> {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+        (**self).as_mut()
+    }
+}
+
+impl<E: Entity> core::fmt::Debug for Col<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<usize> for Col<E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, row: usize) -> &E {
+        self.as_ref().get(row)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::IndexMut<usize> for Col<E> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, row: usize) -> &mut E {
+        self.as_mut().get_mut(row)
     }
 }

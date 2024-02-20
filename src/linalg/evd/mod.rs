@@ -1,3 +1,5 @@
+//! Low level implementation of the eigenvalue decomposition of a square diagonalizable matrix.
+//!
 //! The eigenvalue decomposition of a square matrix $M$ of shape $(n, n)$ is a decomposition into
 //! two components $U$, $S$:
 //!

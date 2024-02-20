@@ -1,6 +1,6 @@
 use crate::{
     diag::DiagMut,
-    mat::{self, As2D, Mat, MatMut},
+    mat::{self, As2D, As2DMut, Mat, MatMut, MatRef},
     row::RowMut,
     unzipped, zipped,
 };
@@ -481,5 +481,117 @@ impl<'a, E: Entity> ColMut<'a, E> {
     #[inline]
     pub fn as_mut(&mut self) -> ColMut<'_, E> {
         (*self).rb_mut()
+    }
+}
+
+/// Creates a `ColMut` from pointers to the column vector data, number of rows, and row stride.
+///
+/// # Safety:
+/// This function has the same safety requirements as
+/// [`mat::from_raw_parts_mut(ptr, nrows, 1, row_stride, 0)`]
+#[inline(always)]
+pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
+    ptr: GroupFor<E, *mut E::Unit>,
+    nrows: usize,
+    row_stride: isize,
+) -> ColMut<'a, E> {
+    ColMut::__from_raw_parts(ptr, nrows, row_stride)
+}
+
+/// Creates a `ColMut` from slice views over the column vector data, The result has the same
+/// number of rows as the length of the input slice.
+#[inline(always)]
+pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> ColMut<'_, E> {
+    let nrows = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len();
+
+    unsafe {
+        from_raw_parts_mut(
+            E::faer_map(
+                slice,
+                #[inline(always)]
+                |slice| slice.as_mut_ptr(),
+            ),
+            nrows,
+            1,
+        )
+    }
+}
+
+impl<E: Entity> As2D<E> for &'_ ColMut<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).rb().as_2d()
+    }
+}
+
+impl<E: Entity> As2D<E> for ColMut<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (*self).rb().as_2d()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for &'_ mut ColMut<'_, E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (**self).rb_mut().as_2d_mut()
+    }
+}
+
+impl<E: Entity> As2DMut<E> for ColMut<'_, E> {
+    #[inline]
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (*self).rb_mut().as_2d_mut()
+    }
+}
+
+impl<E: Entity> AsColRef<E> for ColMut<'_, E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (*self).rb()
+    }
+}
+impl<E: Entity> AsColRef<E> for &'_ ColMut<'_, E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (**self).rb()
+    }
+}
+
+impl<E: Entity> AsColMut<E> for ColMut<'_, E> {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+        (*self).rb_mut()
+    }
+}
+
+impl<E: Entity> AsColMut<E> for &'_ mut ColMut<'_, E> {
+    #[inline]
+    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+        (**self).rb_mut()
+    }
+}
+
+impl<'a, E: Entity> core::fmt::Debug for ColMut<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.rb().fmt(f)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<usize> for ColMut<'_, E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, row: usize) -> &E {
+        (*self).rb().get(row)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::IndexMut<usize> for ColMut<'_, E> {
+    #[inline]
+    #[track_caller]
+    fn index_mut(&mut self, row: usize) -> &mut E {
+        (*self).rb_mut().get_mut(row)
     }
 }

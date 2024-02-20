@@ -284,6 +284,30 @@ macro_rules! zipped {
 }
 
 /// Used to undo the zipping by the [`zipped!`] macro.
+///
+/// # Example
+/// ```
+/// use faer::{mat, unzipped, zipped, Mat};
+///
+/// let nrows = 2;
+/// let ncols = 3;
+///
+/// let a = mat![[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]];
+/// let b = mat![[7.0, 9.0, 11.0], [8.0, 10.0, 12.0]];
+/// let mut sum = Mat::<f64>::zeros(nrows, ncols);
+///
+/// zipped!(sum.as_mut(), a.as_ref(), b.as_ref()).for_each(|unzipped!(mut sum, a, b)| {
+///     let a = a.read();
+///     let b = b.read();
+///     sum.write(a + b);
+/// });
+///
+/// for i in 0..nrows {
+///     for j in 0..ncols {
+///         assert_eq!(sum.read(i, j), a.read(i, j) + b.read(i, j));
+///     }
+/// }
+/// ```
 #[macro_export]
 macro_rules! unzipped {
     ($head: pat $(,)?) => {
@@ -868,9 +892,12 @@ pub mod io;
 #[cfg(feature = "serde")]
 mod serde;
 
-/// faer prelude. Includes useful traits for solving linear systems.
+/// faer prelude. Includes useful types and traits for solving linear systems.
 pub mod prelude {
-    pub use crate::linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq};
+    pub use crate::{
+        linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq},
+        Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
+    };
 }
 
 #[cfg(test)]
@@ -878,96 +905,6 @@ mod tests {
     use col::Col;
     use faer_entity::*;
     use row::Row;
-
-    macro_rules! impl_unit_entity {
-        ($ty: ty) => {
-            unsafe impl Entity for $ty {
-                type Unit = Self;
-                type Index = ();
-                type SimdUnit<S: pulp::Simd> = ();
-                type SimdMask<S: pulp::Simd> = ();
-                type SimdIndex<S: pulp::Simd> = ();
-                type Group = IdentityGroup;
-                type Iter<I: Iterator> = I;
-
-                type PrefixUnit<'a, S: pulp::Simd> = &'a [()];
-                type SuffixUnit<'a, S: pulp::Simd> = &'a [()];
-                type PrefixMutUnit<'a, S: pulp::Simd> = &'a mut [()];
-                type SuffixMutUnit<'a, S: pulp::Simd> = &'a mut [()];
-
-                const N_COMPONENTS: usize = 1;
-                const UNIT: GroupCopyFor<Self, ()> = ();
-
-                #[inline(always)]
-                fn faer_first<T>(group: GroupFor<Self, T>) -> T {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_from_units(group: GroupFor<Self, Self::Unit>) -> Self {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_into_units(self) -> GroupFor<Self, Self::Unit> {
-                    self
-                }
-
-                #[inline(always)]
-                fn faer_as_ref<T>(group: &GroupFor<Self, T>) -> GroupFor<Self, &T> {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_as_mut<T>(group: &mut GroupFor<Self, T>) -> GroupFor<Self, &mut T> {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_as_ptr<T>(group: *mut GroupFor<Self, T>) -> GroupFor<Self, *mut T> {
-                    group
-                }
-
-                #[inline(always)]
-                fn faer_map_impl<T, U>(
-                    group: GroupFor<Self, T>,
-                    f: &mut impl FnMut(T) -> U,
-                ) -> GroupFor<Self, U> {
-                    (*f)(group)
-                }
-
-                #[inline(always)]
-                fn faer_map_with_context<Ctx, T, U>(
-                    ctx: Ctx,
-                    group: GroupFor<Self, T>,
-                    f: &mut impl FnMut(Ctx, T) -> (Ctx, U),
-                ) -> (Ctx, GroupFor<Self, U>) {
-                    (*f)(ctx, group)
-                }
-
-                #[inline(always)]
-                fn faer_zip<T, U>(
-                    first: GroupFor<Self, T>,
-                    second: GroupFor<Self, U>,
-                ) -> GroupFor<Self, (T, U)> {
-                    (first, second)
-                }
-                #[inline(always)]
-                fn faer_unzip<T, U>(
-                    zipped: GroupFor<Self, (T, U)>,
-                ) -> (GroupFor<Self, T>, GroupFor<Self, U>) {
-                    zipped
-                }
-
-                #[inline(always)]
-                fn faer_into_iter<I: IntoIterator>(
-                    iter: GroupFor<Self, I>,
-                ) -> Self::Iter<I::IntoIter> {
-                    iter.into_iter()
-                }
-            }
-        };
-    }
 
     use super::*;
     use crate::assert;
@@ -1026,16 +963,9 @@ mod tests {
         assert!(m.col_capacity() == 3);
     }
 
-    #[derive(Debug, PartialEq, Clone, Copy)]
-    struct Zst;
-    unsafe impl bytemuck::Zeroable for Zst {}
-    unsafe impl bytemuck::Pod for Zst {}
-
     #[test]
     fn reserve_zst() {
-        impl_unit_entity!(Zst);
-
-        let mut m = Mat::<Zst>::new();
+        let mut m = Mat::<faer_entity::Symbolic>::new();
 
         m.reserve_exact(0, 0);
         assert!(m.row_capacity() == 0);
@@ -1085,7 +1015,7 @@ mod tests {
     fn resize_zst() {
         // miri test
         let mut m = Mat::new();
-        let f = |_i, _j| Zst;
+        let f = |_i, _j| faer_entity::Symbolic;
         m.resize_with(2, 3, f);
         m.resize_with(1, 2, f);
         m.resize_with(2, 1, f);
@@ -1474,96 +1404,6 @@ mod tests {
         assert!(second == Some(Mat::from_fn(4, 10, |i, j| (i + j + 4) as f64).as_mut()));
         assert!(last == Some(Mat::from_fn(1, 10, |i, j| (i + j + 8) as f64).as_mut()));
         assert!(none == None);
-    }
-
-    #[test]
-    fn test_norm_l2() {
-        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
-
-        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
-            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
-                let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
-                let mut target = 0.0;
-                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
-                    target = f64::hypot(*x, target);
-                });
-
-                if factor == 0.0 {
-                    assert!(mat.norm_l2() == target);
-                } else {
-                    assert!(relative_err(mat.norm_l2(), target) < 1e-14);
-                }
-            }
-        }
-
-        let mat = Col::from_fn(10000000, |_| 0.3);
-        let target = (0.3 * 0.3 * 10000000.0f64).sqrt();
-        assert!(relative_err(mat.norm_l2(), target) < 1e-14);
-    }
-
-    #[test]
-    fn test_sum() {
-        let relative_err = |a: f64, b: f64| (a - b).abs() / f64::max(a.abs(), b.abs());
-
-        for (m, n) in [(9, 10), (1023, 5), (42, 1)] {
-            for factor in [0.0, 1.0, 1e30, 1e250, 1e-30, 1e-250] {
-                let mat = Mat::from_fn(m, n, |i, j| factor * ((i + j) as f64));
-                let mut target = 0.0;
-                zipped!(mat.as_ref()).for_each(|unzipped!(x)| {
-                    target += *x;
-                });
-
-                if factor == 0.0 {
-                    assert!(mat.sum() == target);
-                } else {
-                    assert!(relative_err(mat.sum(), target) < 1e-14);
-                }
-            }
-        }
-
-        let mat = Col::from_fn(10000000, |_| 0.3);
-        let target = 0.3 * 10000000.0f64;
-        assert!(relative_err(mat.sum(), target) < 1e-14);
-    }
-
-    #[test]
-    fn test_kron_ones() {
-        for (m, n, p, q) in [(2, 3, 4, 5), (3, 2, 5, 4), (1, 1, 1, 1)] {
-            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
-            let b = Mat::from_fn(p, q, |_, _| 1 as f64);
-            let expected = Mat::from_fn(m * p, n * q, |_, _| 1 as f64);
-            assert!(a.kron(&b) == expected);
-        }
-
-        for (m, n, p) in [(2, 3, 4), (3, 2, 5), (1, 1, 1)] {
-            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
-            let b = Col::from_fn(p, |_| 1 as f64);
-            let expected = Mat::from_fn(m * p, n, |_, _| 1 as f64);
-            assert!(a.kron(&b) == expected);
-            assert!(b.kron(&a) == expected);
-
-            let a = Mat::from_fn(m, n, |_, _| 1 as f64);
-            let b = Row::from_fn(p, |_| 1 as f64);
-            let expected = Mat::from_fn(m, n * p, |_, _| 1 as f64);
-            assert!(a.kron(&b) == expected);
-            assert!(b.kron(&a) == expected);
-        }
-
-        for (m, n) in [(2, 3), (3, 2), (1, 1)] {
-            let a = Row::from_fn(m, |_| 1 as f64);
-            let b = Col::from_fn(n, |_| 1 as f64);
-            let expected = Mat::from_fn(n, m, |_, _| 1 as f64);
-            assert!(a.kron(&b) == expected);
-            assert!(b.kron(&a) == expected);
-
-            let c = Row::from_fn(n, |_| 1 as f64);
-            let expected = Mat::from_fn(1, m * n, |_, _| 1 as f64);
-            assert!(a.kron(&c) == expected);
-
-            let d = Col::from_fn(m, |_| 1 as f64);
-            let expected = Mat::from_fn(m * n, 1, |_, _| 1 as f64);
-            assert!(d.kron(&b) == expected);
-        }
     }
 
     #[test]

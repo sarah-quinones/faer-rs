@@ -1,3 +1,5 @@
+//! Low level implementation of the SVD of a matrix.
+//!
 //! The SVD of a matrix $M$ of shape $(m, n)$ is a decomposition into three components $U$, $S$,
 //! and $V$, such that:
 //!

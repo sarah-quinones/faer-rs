@@ -1081,3 +1081,265 @@ impl<'a, E: RealField> MatRef<'a, num_complex::Complex<E>> {
         }
     }
 }
+
+impl<E: Entity> AsMatRef<E> for MatRef<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        *self
+    }
+}
+impl<E: Entity> AsMatRef<E> for &'_ MatRef<'_, E> {
+    #[inline]
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        **self
+    }
+}
+
+impl<E: Entity> As2D<E> for &'_ MatRef<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        **self
+    }
+}
+
+impl<E: Entity> As2D<E> for MatRef<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        *self
+    }
+}
+
+/// Creates a `MatRef` from pointers to the matrix data, dimensions, and strides.
+///
+/// The row (resp. column) stride is the offset from the memory address of a given matrix
+/// element at indices `(row: i, col: j)`, to the memory address of the matrix element at
+/// indices `(row: i + 1, col: 0)` (resp. `(row: 0, col: i + 1)`). This offset is specified in
+/// number of elements, not in bytes.
+///
+/// # Safety
+/// The behavior is undefined if any of the following conditions are violated:
+/// * For each matrix unit, the entire memory region addressed by the matrix must be contained
+/// within a single allocation, accessible in its entirety by the corresponding pointer in
+/// `ptr`.
+/// * For each matrix unit, the corresponding pointer must be properly aligned,
+/// even for a zero-sized matrix.
+/// * The values accessible by the matrix must be initialized at some point before they are
+/// read, or references to them are formed.
+/// * No mutable aliasing is allowed. In other words, none of the elements accessible by any
+/// matrix unit may be accessed for writes by any other means for the duration of the lifetime
+/// `'a`.
+///
+/// # Example
+///
+/// ```
+/// use faer::mat;
+///
+/// // row major matrix with 2 rows, 3 columns, with a column at the end that we want to skip.
+/// // the row stride is the pointer offset from the address of 1.0 to the address of 4.0,
+/// // which is 4.
+/// // the column stride is the pointer offset from the address of 1.0 to the address of 2.0,
+/// // which is 1.
+/// let data = [[1.0, 2.0, 3.0, f64::NAN], [4.0, 5.0, 6.0, f64::NAN]];
+/// let matrix = unsafe { mat::from_raw_parts::<f64>(data.as_ptr() as *const f64, 2, 3, 4, 1) };
+///
+/// let expected = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+/// assert_eq!(expected.as_ref(), matrix);
+/// ```
+#[inline(always)]
+pub unsafe fn from_raw_parts<'a, E: Entity>(
+    ptr: GroupFor<E, *const E::Unit>,
+    nrows: usize,
+    ncols: usize,
+    row_stride: isize,
+    col_stride: isize,
+) -> MatRef<'a, E> {
+    MatRef::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride)
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, so that the first chunk of `nrows`
+/// values from the slices goes in the first column of the matrix, the second chunk of `nrows`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_column_major_slice::<f64>(&slice, 3, 2);
+///
+/// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[track_caller]
+#[inline(always)]
+pub fn from_column_major_slice<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
+    nrows: usize,
+    ncols: usize,
+) -> MatRef<'_, E> {
+    from_slice_assert(
+        nrows,
+        ncols,
+        SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len(),
+    );
+
+    unsafe {
+        from_raw_parts(
+            E::faer_map(
+                slice,
+                #[inline(always)]
+                |slice| slice.as_ptr(),
+            ),
+            nrows,
+            ncols,
+            1,
+            nrows as isize,
+        )
+    }
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, so that the first chunk of `ncols`
+/// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_row_major_slice::<f64>(&slice, 3, 2);
+///
+/// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[track_caller]
+#[inline(always)]
+pub fn from_row_major_slice<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
+    nrows: usize,
+    ncols: usize,
+) -> MatRef<'_, E> {
+    from_column_major_slice(slice, ncols, nrows).transpose()
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, where the beginnings of two consecutive
+/// columns are separated by `col_stride` elements.
+#[track_caller]
+pub fn from_column_major_slice_with_stride<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
+    nrows: usize,
+    ncols: usize,
+    col_stride: usize,
+) -> MatRef<'_, E> {
+    from_strided_column_major_slice_assert(
+        nrows,
+        ncols,
+        col_stride,
+        SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len(),
+    );
+
+    unsafe {
+        from_raw_parts(
+            E::faer_map(
+                slice,
+                #[inline(always)]
+                |slice| slice.as_ptr(),
+            ),
+            nrows,
+            ncols,
+            1,
+            col_stride as isize,
+        )
+    }
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, where the beginnings of two consecutive
+/// rows are separated by `row_stride` elements.
+#[track_caller]
+pub fn from_row_major_slice_with_stride<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
+    nrows: usize,
+    ncols: usize,
+    row_stride: usize,
+) -> MatRef<'_, E> {
+    from_column_major_slice_with_stride::<E>(slice, ncols, nrows, row_stride).transpose()
+}
+
+impl<'a, E: Entity> core::fmt::Debug for MatRef<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        struct DebugRow<'a, T: Entity>(MatRef<'a, T>);
+
+        impl<'a, T: Entity> core::fmt::Debug for DebugRow<'a, T> {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let mut j = 0;
+                f.debug_list()
+                    .entries(core::iter::from_fn(|| {
+                        let ret = if j < self.0.ncols() {
+                            Some(T::faer_from_units(T::faer_deref(self.0.get(0, j))))
+                        } else {
+                            None
+                        };
+                        j += 1;
+                        ret
+                    }))
+                    .finish()
+            }
+        }
+
+        writeln!(f, "[")?;
+        for i in 0..self.nrows() {
+            let row = self.subrows(i, 1);
+            DebugRow(row).fmt(f)?;
+            f.write_str(",\n")?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<(usize, usize)> for MatRef<'_, E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, (row, col): (usize, usize)) -> &E {
+        self.get(row, col)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<E: Entity> matrixcompare_core::Matrix<E> for MatRef<'_, E> {
+    #[inline]
+    fn rows(&self) -> usize {
+        self.nrows()
+    }
+    #[inline]
+    fn cols(&self) -> usize {
+        self.ncols()
+    }
+    #[inline]
+    fn access(&self) -> matrixcompare_core::Access<'_, E> {
+        matrixcompare_core::Access::Dense(self)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatRef<'_, E> {
+    #[inline]
+    fn fetch_single(&self, row: usize, col: usize) -> E {
+        self.read(row, col)
+    }
+}

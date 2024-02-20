@@ -495,3 +495,78 @@ impl<'a, E: Entity> ColRef<'a, E> {
         }
     }
 }
+
+/// Creates a `ColRef` from pointers to the column vector data, number of rows, and row stride.
+///
+/// # Safety:
+/// This function has the same safety requirements as
+/// [`mat::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
+#[inline(always)]
+pub unsafe fn from_raw_parts<'a, E: Entity>(
+    ptr: GroupFor<E, *const E::Unit>,
+    nrows: usize,
+    row_stride: isize,
+) -> ColRef<'a, E> {
+    ColRef::__from_raw_parts(ptr, nrows, row_stride)
+}
+
+/// Creates a `ColRef` from slice views over the column vector data, The result has the same
+/// number of rows as the length of the input slice.
+#[inline(always)]
+pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
+    let nrows = SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len();
+
+    unsafe {
+        from_raw_parts(
+            E::faer_map(
+                slice,
+                #[inline(always)]
+                |slice| slice.as_ptr(),
+            ),
+            nrows,
+            1,
+        )
+    }
+}
+impl<E: Entity> As2D<E> for &'_ ColRef<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).as_2d()
+    }
+}
+
+impl<E: Entity> As2D<E> for ColRef<'_, E> {
+    #[inline]
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (*self).as_2d()
+    }
+}
+
+impl<E: Entity> AsColRef<E> for ColRef<'_, E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        *self
+    }
+}
+impl<E: Entity> AsColRef<E> for &'_ ColRef<'_, E> {
+    #[inline]
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        **self
+    }
+}
+
+impl<'a, E: Entity> core::fmt::Debug for ColRef<'a, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_2d().fmt(f)
+    }
+}
+
+impl<E: SimpleEntity> core::ops::Index<usize> for ColRef<'_, E> {
+    type Output = E;
+
+    #[inline]
+    #[track_caller]
+    fn index(&self, row: usize) -> &E {
+        self.get(row)
+    }
+}
