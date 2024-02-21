@@ -1,5 +1,5 @@
 use super::timeit;
-use faer_core::{Mat, Parallelism};
+use faer::{prelude::*, Parallelism};
 use num_traits::Zero;
 use std::time::Duration;
 
@@ -45,10 +45,7 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(
-    sizes: &[usize],
-    parallelism: Parallelism,
-) -> Vec<Duration> {
+pub fn faer<T: faer::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
@@ -58,7 +55,7 @@ pub fn faer<T: faer_core::ComplexField>(
             let b = Mat::<T>::zeros(n, n);
 
             let time = timeit(|| {
-                faer_core::mul::matmul(
+                faer::linalg::matmul::matmul(
                     c.as_mut(),
                     a.as_ref(),
                     b.as_ref(),

@@ -34,9 +34,8 @@ jobs:
 
       - name: Verify 1.67.0
         run:
-          cd faer-libs &&
           cargo check &&
-          cd ../faer-entity &&
+          cd ./faer-entity &&
           cargo check
 
   testing:
@@ -70,7 +69,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Collect coverage data
-        run: cd faer-libs && cargo llvm-cov nextest --lcov --output-path lcov.info --workspace
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info --workspace
 
       - name: Upload coverage data to codecov
         uses: codecov/codecov-action@v3

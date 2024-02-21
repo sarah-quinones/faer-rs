@@ -24,17 +24,15 @@ jobs:
 
       - name: Formatting check
         run:
-          cd faer-libs &&
           cargo fmt --all -- --check &&
-          cd ../faer-entity &&
+          cd ./faer-entity &&
           cargo fmt --all -- --check
         # want to get all quality issues
         continue-on-error: true
 
       - name: Linting check
         run:
-          cd faer-libs &&
           cargo clippy --all-targets &&
-          cd ../faer-entity &&
+          cd ./faer-entity &&
           cargo clippy --all-targets
         continue-on-error: true

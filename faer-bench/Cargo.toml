@@ -11,13 +11,7 @@ nalgebra = "0.32.1"
 ndarray = { version = "0.15.6", features = ["blas"] }
 blas-src = { version = "0.8", features = ["openblas"] }
 faer-entity = { path = "../faer-entity", features = ["nightly"] }
-
-faer-core     = { path = "../faer-libs/faer-core", features = ["nightly"] }
-faer-lu       = { path = "../faer-libs/faer-lu", features = ["nightly"] }
-faer-qr       = { path = "../faer-libs/faer-qr", features = ["nightly"] }
-faer-svd      = { path = "../faer-libs/faer-svd", features = ["nightly"] }
-faer-evd      = { path = "../faer-libs/faer-evd", features = ["nightly"] }
-faer-cholesky = { path = "../faer-libs/faer-cholesky", features = ["nightly"] }
+faer     = { path = "..", features = ["nightly"] }
 
 human-repr = "1.0.1"
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"], git = "https://github.com/mike-kfed/ndarray-linalg.git", branch="arm-cross-compile"}
@@ -28,7 +22,6 @@ openmp-sys = "1.2.3"
 num-traits = "0.2.15"
 coe-rs = "0.1.2"
 num-complex = "0.4.3"
-pulp = "0.16"
 bytemuck = "1"
 rayon = "1.8"
 core_affinity = "0.8"
