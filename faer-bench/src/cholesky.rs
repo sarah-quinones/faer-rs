@@ -1,6 +1,6 @@
 use super::timeit;
 use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
-use faer_core::{unzipped, zipped, Mat, Parallelism};
+use faer::{linalg::cholesky as faer_cholesky, unzipped, zipped, Mat, Parallelism};
 use ndarray_linalg::Cholesky;
 use std::time::Duration;
 
@@ -44,10 +44,7 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(
-    sizes: &[usize],
-    parallelism: Parallelism,
-) -> Vec<Duration> {
+pub fn faer<T: faer::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
     sizes
         .iter()
         .copied()

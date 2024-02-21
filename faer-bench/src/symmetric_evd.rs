@@ -1,7 +1,7 @@
 use super::timeit;
 use crate::random;
 use dyn_stack::{GlobalPodBuffer, PodStack, ReborrowMut};
-use faer_core::{Mat, Parallelism};
+use faer::{linalg::evd as faer_evd, Mat, Parallelism};
 use ndarray_linalg::Eigh;
 use std::time::Duration;
 
@@ -52,10 +52,7 @@ pub fn nalgebra<T: nalgebra::ComplexField>(sizes: &[usize]) -> Vec<Duration> {
         .collect()
 }
 
-pub fn faer<T: faer_core::ComplexField>(
-    sizes: &[usize],
-    parallelism: Parallelism,
-) -> Vec<Duration> {
+pub fn faer<T: faer::ComplexField>(sizes: &[usize], parallelism: Parallelism) -> Vec<Duration> {
     sizes
         .iter()
         .copied()
