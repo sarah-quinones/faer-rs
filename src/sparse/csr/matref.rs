@@ -317,24 +317,62 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
         self.symbolic.row_range_unchecked(i)
     }
 
-    /// Returns a reference to the value at the given index using a binary search, or None if the
-    /// symbolic structure doesn't contain it
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it, or contains multiple values with the given index.
     ///
     /// # Panics
     /// Panics if `row >= self.nrows()`  
     /// Panics if `col >= self.ncols()`  
     #[track_caller]
     pub fn get(self, row: usize, col: usize) -> Option<GroupFor<E, &'a E::Unit>> {
+        let values = self.get_all(row, col);
+        if E::faer_first(E::faer_as_ref(&values)).len() == 1 {
+            Some(E::faer_map(values, |slice| &slice[0]))
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to a slice containing the values at the given index using a binary
+    /// search.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get_all(self, row: usize, col: usize) -> GroupFor<E, &'a [E::Unit]> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
 
-        let Ok(pos) = self
+        let col = I::truncate(col);
+        let start = self
             .col_indices_of_row_raw(row)
-            .binary_search(&I::truncate(col))
-        else {
-            return None;
-        };
+            .partition_point(|&p| p < col);
+        let end = start + self.col_indices_of_row_raw(row)[start..].partition_point(|&p| p <= col);
 
-        Some(E::faer_map(self.values_of_row(row), |slice| &slice[pos]))
+        E::faer_map(self.values_of_row(row), |slice| &slice[start..end])
+    }
+}
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMatRef<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mat = *self;
+        let mut iter = (0..mat.nrows()).flat_map(move |i| {
+            struct Wrapper<E>(usize, usize, E);
+            impl<E: Entity> core::fmt::Debug for Wrapper<E> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    let row = self.0;
+                    let col = self.1;
+                    let val = self.2;
+                    write!(f, "({row}, {col}, {val:?})")
+                }
+            }
+
+            mat.col_indices_of_row(i)
+                .zip(SliceGroup::<'_, E>::new(mat.values_of_row(i)).into_ref_iter())
+                .map(move |(j, val)| Wrapper(i, j, val.read()))
+        });
+
+        f.debug_list().entries(&mut iter).finish()
     }
 }

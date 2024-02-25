@@ -317,27 +317,62 @@ impl<'a, I: Index, E: Entity> SparseRowMatMut<'a, I, E> {
         self.symbolic.row_range_unchecked(i)
     }
 
-    /// Returns a reference to the value at the given index using a binary search, or None if the
-    /// symbolic structure doesn't contain it
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it, or contains multiple values with the given index.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get(self, row: usize, col: usize) -> Option<GroupFor<E, &'a E::Unit>> {
+        self.into_const().get(row, col)
+    }
+
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it, or contains multiple values with the given index.
     ///
     /// # Panics
     /// Panics if `row >= self.nrows()`  
     /// Panics if `col >= self.ncols()`  
     #[track_caller]
     pub fn get_mut(self, row: usize, col: usize) -> Option<GroupFor<E, &'a mut E::Unit>> {
+        let values = self.get_all_mut(row, col);
+        if E::faer_first(E::faer_as_ref(&values)).len() == 1 {
+            Some(E::faer_map(values, |slice| &mut slice[0]))
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to a slice containing the values at the given index using a binary
+    /// search.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get_all(self, row: usize, col: usize) -> GroupFor<E, &'a [E::Unit]> {
+        self.into_const().get_all(row, col)
+    }
+
+    /// Returns a reference to a slice containing the values at the given index using a binary
+    /// search.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get_all_mut(self, row: usize, col: usize) -> GroupFor<E, &'a mut [E::Unit]> {
         assert!(row < self.nrows());
         assert!(col < self.ncols());
 
-        let Ok(pos) = self
+        let col = I::truncate(col);
+        let start = self
             .col_indices_of_row_raw(row)
-            .binary_search(&I::truncate(col))
-        else {
-            return None;
-        };
+            .partition_point(|&p| p < col);
+        let end = start + self.col_indices_of_row_raw(row)[start..].partition_point(|&p| p <= col);
 
-        Some(E::faer_map(self.values_of_row_mut(row), |slice| {
-            &mut slice[pos]
-        }))
+        E::faer_map(self.values_of_row_mut(row), |slice| &mut slice[start..end])
     }
 }
 

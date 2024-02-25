@@ -17,11 +17,10 @@ use crate::assert;
 /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]` are
 ///   less than `nrows`
 ///
-/// * Within each column, row indices are unique and sorted in increasing order.
+/// * Within each column, row indices are sorted in non-decreasing order.
 ///
 /// # Note
-/// Some algorithms allow working with matrices containing duplicate and/or unsorted row
-/// indicers per column.
+/// Some algorithms allow working with matrices containing unsorted row indices per column.
 ///
 /// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior.
@@ -100,7 +99,7 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
                 if !row_indices.is_empty() {
                     let mut i_prev = row_indices[0];
                     for &i in &row_indices[1..] {
-                        assert!(i_prev < i);
+                        assert!(i_prev <= i);
                         i_prev = i;
                     }
                     let nrows = I::truncate(nrows);
@@ -113,7 +112,7 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
                 if !row_indices.is_empty() {
                     let mut i_prev = row_indices[0];
                     for &i in &row_indices[1..] {
-                        assert!(i_prev < i);
+                        assert!(i_prev <= i);
                         i_prev = i;
                     }
                     let nrows = I::truncate(nrows);
@@ -389,7 +388,7 @@ impl<I: Index> core::fmt::Debug for SymbolicSparseColMatRef<'_, I> {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     let row = self.0;
                     let col = self.1;
-                    write!(f, "({row}, {col}")
+                    write!(f, "({row}, {col})")
                 }
             }
 

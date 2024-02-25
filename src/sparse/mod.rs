@@ -268,9 +268,7 @@ pub mod utils {
                 reader += 1;
             }
 
-            nnz_per_col[j] = writer - start;
-
-            nnz_per_col
+            nnz_per_col[j] = I::truncate(writer - start);
         }
     }
 
@@ -1494,6 +1492,47 @@ mod tests {
             for i in 0..5 {
                 assert!(
                     sum[(i, j)] == lhs.get(i, j).unwrap_or(&0.0) + rhs.get(i, j).unwrap_or(&0.0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_add_duplicates() {
+        let lhs = SparseColMat::<usize, f64>::new(
+            SymbolicSparseColMat::<usize>::new_checked(
+                5,
+                4,
+                vec![0, 4, 6, 9, 12],
+                None,
+                vec![0, 0, 2, 4, 1, 3, 0, 2, 4, 1, 3, 3],
+            ),
+            vec![1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 10.5],
+        );
+
+        let rhs = SparseColMat::<usize, f64>::new(
+            SymbolicSparseColMat::<usize>::new_checked(
+                5,
+                4,
+                vec![0, 2, 6, 8, 12],
+                None,
+                vec![1, 3, 0, 2, 2, 4, 1, 3, 0, 2, 4, 4],
+            ),
+            vec![
+                11.0, 12.0, 13.0, 14.0, 14.5, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0,
+            ],
+        );
+
+        let sum = ops::add(lhs.as_ref(), rhs.as_ref()).unwrap();
+
+        assert!(sum.compute_nnz() == lhs.compute_nnz() + rhs.compute_nnz());
+
+        for j in 0..4 {
+            for i in 0..5 {
+                assert!(
+                    sum.get_all(i, j).iter().sum::<f64>()
+                        == lhs.get_all(i, j).iter().sum::<f64>()
+                            + rhs.get_all(i, j).iter().sum::<f64>()
                 );
             }
         }

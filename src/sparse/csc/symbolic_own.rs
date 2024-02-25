@@ -18,11 +18,10 @@ use core::marker::PhantomData;
 /// * if `nnz_per_col` is `Some(_)`, elements of `row_indices[col_ptrs[j]..][..nnz_per_col[j]]` are
 ///   less than `nrows`
 ///
-/// * Within each column, row indices are unique and sorted in increasing order.
+/// * Within each column, row indices are sorted in non-decreasing order.
 ///
 /// # Note
-/// Some algorithms allow working with matrices containing duplicate and/or unsorted row
-/// indicers per column.
+/// Some algorithms allow working with matrices containing unsorted row indices per column.
 ///
 /// Passing such a matrix to an algorithm that does not explicitly permit this is unspecified
 /// (though not undefined) behavior.

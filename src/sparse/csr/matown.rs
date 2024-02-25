@@ -237,26 +237,48 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
         self.symbolic.row_range_unchecked(i)
     }
 
-    /// Returns a reference to the value at the given index using a binary search, or None if the
-    /// symbolic structure doesn't contain it
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it, or contains multiple values with the given index.
     ///
     /// # Panics
-    /// Panics if `row >= self.nrows()`  
-    /// Panics if `col >= self.ncols()`  
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
     #[track_caller]
     pub fn get(&self, row: usize, col: usize) -> Option<GroupFor<E, &'_ E::Unit>> {
         self.as_ref().get(row, col)
     }
 
-    /// Returns a reference to the value at the given index using a binary search, or None if the
-    /// symbolic structure doesn't contain it
+    /// Returns a reference to the value at the given index, or None if the symbolic structure
+    /// doesn't contain it, or contains multiple values with the given index.
     ///
     /// # Panics
-    /// Panics if `row >= self.nrows()`  
-    /// Panics if `col >= self.ncols()`  
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
     #[track_caller]
     pub fn get_mut(&mut self, row: usize, col: usize) -> Option<GroupFor<E, &'_ mut E::Unit>> {
         self.as_mut().get_mut(row, col)
+    }
+
+    /// Returns a reference to a slice containing the values at the given index using a binary
+    /// search.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get_all(&self, row: usize, col: usize) -> GroupFor<E, &'_ [E::Unit]> {
+        self.as_ref().get_all(row, col)
+    }
+
+    /// Returns a mutable reference to a slice containing the values at the given index using a
+    /// binary search.
+    ///
+    /// # Panics
+    /// Panics if `row >= self.nrows()`.  
+    /// Panics if `col >= self.ncols()`.  
+    #[track_caller]
+    pub fn get_all_mut(&mut self, row: usize, col: usize) -> GroupFor<E, &'_ mut [E::Unit]> {
+        self.as_mut().get_all_mut(row, col)
     }
 }
 
