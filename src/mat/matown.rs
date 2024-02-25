@@ -936,7 +936,6 @@ impl<E: Conjugate> ColBatch<E> for Mat<E> {
     #[inline]
     #[track_caller]
     fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
-        assert!(ncols == 1);
         owned.resize_with(nrows, ncols, |_, _| unreachable!());
     }
 }

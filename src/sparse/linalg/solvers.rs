@@ -110,7 +110,7 @@ fn solve_lstsq_with_conj_impl<
     conj: Conj,
 ) -> B::Owned {
     let mut rhs = B::new_owned_copied(&rhs);
-    d.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
+    d.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
     let ncols = rhs.as_2d_ref().ncols();
     B::resize_owned(&mut rhs, d.ncols(), ncols);
     rhs
