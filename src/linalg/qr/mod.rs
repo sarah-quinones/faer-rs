@@ -109,7 +109,7 @@
 //!     stack.rb_mut(),
 //! );
 //!
-//! solution.resize_with(rank, b.ncols(), |_, _| unreachable!());
+//! solution.truncate(rank, b.ncols());
 //!
 //! // compute R_rect^{-1} Q_thin^H×B
 //! triangular_solve::solve_upper_triangular_in_place(
@@ -226,7 +226,7 @@ mod tests {
             stack.rb_mut(),
         );
 
-        solution.resize_with(rank, b.ncols(), |_, _| unreachable!());
+        solution.truncate(rank, b.ncols());
 
         // compute R_rect^{-1} Q_thin^H×B
         triangular_solve::solve_upper_triangular_in_place(

@@ -237,6 +237,17 @@ impl<E: Entity> Row<E> {
         }
     }
 
+    /// Truncates the matrix so that its new number of columns is `new_ncols`.  
+    /// The new dimension must be smaller than the current dimension of the vector.
+    ///
+    /// # Panics
+    /// - Panics if `new_ncols > self.ncols()`.
+    #[inline]
+    pub fn truncate(&mut self, new_ncols: usize) {
+        assert!(new_ncols <= self.ncols());
+        self.resize_with(new_ncols, |_| unreachable!());
+    }
+
     /// Returns a reference to a slice over the row.
     #[inline]
     #[track_caller]
@@ -621,6 +632,18 @@ impl<E: Conjugate> RowBatch<E> for Row<E> {
     fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
         assert!(nrows == 1);
         Row::zeros(ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        assert!(ncols == 1);
+        owned.resize_with(nrows, |_| unsafe { core::mem::zeroed() });
     }
 }
 

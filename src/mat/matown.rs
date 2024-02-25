@@ -350,6 +350,18 @@ impl<E: Entity> Mat<E> {
         }
     }
 
+    /// Truncates the matrix so that its new dimensions are `new_nrows` and `new_ncols`.  
+    /// Both of the new dimensions must be smaller than or equal to the current dimensions.
+    ///
+    /// # Panics
+    /// - Panics if `new_nrows > self.nrows()`.
+    /// - Panics if `new_ncols > self.ncols()`.
+    #[inline]
+    pub fn truncate(&mut self, new_nrows: usize, new_ncols: usize) {
+        assert!(all(new_nrows <= self.nrows(), new_ncols <= self.ncols()));
+        self.resize_with(new_nrows, new_ncols, |_, _| unreachable!());
+    }
+
     /// Returns a reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
@@ -955,8 +967,30 @@ impl<E: Conjugate> ColBatch<E> for Mat<E> {
     #[inline]
     #[track_caller]
     fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
-        owned.resize_with(nrows, ncols, |_, _| unreachable!());
+        owned.resize_with(nrows, ncols, |_, _| unsafe { core::mem::zeroed() });
+    }
+}
+
+impl<E: Conjugate> RowBatch<E> for Mat<E> {
+    type Owned = Mat<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        Mat::zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        owned.resize_with(nrows, ncols, |_, _| unsafe { core::mem::zeroed() });
     }
 }
 
 impl<E: Conjugate> ColBatchMut<E> for Mat<E> {}
+impl<E: Conjugate> RowBatchMut<E> for Mat<E> {}

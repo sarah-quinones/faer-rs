@@ -574,6 +574,17 @@ impl<E: Conjugate> RowBatch<E> for RowMut<'_, E> {
         assert!(nrows == 1);
         Row::zeros(ncols)
     }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        Self::Owned::resize_owned(owned, nrows, ncols)
+    }
 }
 
 impl<E: Conjugate> RowBatchMut<E> for RowMut<'_, E> {}

@@ -68,6 +68,12 @@ pub trait RowBatch<E: Conjugate>: As2D<E> {
 
     /// Constructor of the owned type that initializes the values to zero.
     fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned;
+
+    /// Constructor of the owned type that copies the values.
+    fn new_owned_copied(src: &Self) -> Self::Owned;
+
+    /// Resize an owned column or matrix.
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize);
 }
 
 /// Type that can be interpreted as a mutable batch of row vectors. Can be a single row or a
@@ -82,6 +88,16 @@ impl<E: Conjugate, T: RowBatch<E>> RowBatch<E> for &T {
     fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
         T::new_owned_zeros(nrows, ncols)
     }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        T::new_owned_copied(src)
+    }
+
+    #[inline]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        T::resize_owned(owned, nrows, ncols)
+    }
 }
 
 impl<E: Conjugate, T: RowBatch<E>> RowBatch<E> for &mut T {
@@ -91,6 +107,16 @@ impl<E: Conjugate, T: RowBatch<E>> RowBatch<E> for &mut T {
     #[track_caller]
     fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
         T::new_owned_zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        T::new_owned_copied(src)
+    }
+
+    #[inline]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        T::resize_owned(owned, nrows, ncols)
     }
 }
 

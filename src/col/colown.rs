@@ -237,6 +237,17 @@ impl<E: Entity> Col<E> {
         }
     }
 
+    /// Truncates the matrix so that its new number of rows is `new_nrows`.  
+    /// The new dimension must be smaller than the current dimension of the vector.
+    ///
+    /// # Panics
+    /// - Panics if `new_nrows > self.nrows()`.
+    #[inline]
+    pub fn truncate(&mut self, new_nrows: usize) {
+        assert!(new_nrows <= self.nrows());
+        self.resize_with(new_nrows, |_| unreachable!());
+    }
+
     /// Returns a reference to a slice over the column.
     #[inline]
     #[track_caller]
@@ -639,7 +650,7 @@ impl<E: Conjugate> ColBatch<E> for Col<E> {
     #[track_caller]
     fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
         assert!(ncols == 1);
-        owned.resize_with(nrows, |_| unreachable!());
+        owned.resize_with(nrows, |_| unsafe { core::mem::zeroed() });
     }
 }
 

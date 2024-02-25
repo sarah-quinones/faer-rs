@@ -560,4 +560,14 @@ impl<E: Conjugate> RowBatch<E> for RowRef<'_, E> {
         assert!(nrows == 1);
         Row::zeros(ncols)
     }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        <Self::Owned as RowBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
+    }
 }

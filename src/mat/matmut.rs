@@ -1302,3 +1302,26 @@ impl<E: Conjugate> ColBatch<E> for MatMut<'_, E> {
 }
 
 impl<E: Conjugate> ColBatchMut<E> for MatMut<'_, E> {}
+
+impl<E: Conjugate> RowBatch<E> for MatMut<'_, E> {
+    type Owned = Mat<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        Mat::zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        <Self::Owned as RowBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
+    }
+}
+
+impl<E: Conjugate> RowBatchMut<E> for MatMut<'_, E> {}
