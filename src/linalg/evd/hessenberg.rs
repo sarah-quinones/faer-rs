@@ -10,7 +10,7 @@ use crate::{
         temp_mat_req, temp_mat_uninit, temp_mat_zeroed,
     },
     unzipped,
-    utils::thread::parallelism_degree,
+    utils::{thread::parallelism_degree, DivCeil},
     zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
 };
 use core::slice;
@@ -27,9 +27,12 @@ pub fn make_hessenberg_in_place_req<E: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     if n > BLOCKING_THRESHOLD {
-        StackReq::try_all_of([
-            temp_mat_req::<E>(n, householder_blocksize)?,
-            temp_mat_req::<E>(n, householder_blocksize)?,
+        StackReq::try_any_of([
+            temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
+            StackReq::try_all_of([
+                temp_mat_req::<E>(n, householder_blocksize)?,
+                temp_mat_req::<E>(n, householder_blocksize)?,
+            ])?,
         ])
     } else {
         StackReq::try_any_of([
@@ -674,7 +677,9 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
     let mut z = z;
 
     let n = a.nrows();
-    let (mut tmp, _) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut tmp, stack) = temp_mat_uninit::<E>(n, 1, stack);
+    let (mut z_tmp, stack) = temp_mat_uninit::<E>(n, parallelism_degree(parallelism), stack);
+    _ = stack;
 
     let one = E::faer_one();
 
@@ -788,7 +793,38 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
             let u20 = u.get(k + 1.., ..k);
 
             let mut z_1 = z.rb_mut().get_mut(.., k).as_2d_mut();
-            matmul(z_1.rb_mut(), a_2, u21.as_2d(), None, one, par);
+
+            if parallelism_degree(parallelism) == 1 || a_2.nrows() * a_2.ncols() < 512 * 512 {
+                matmul(z_1.rb_mut(), a_2, u21.as_2d(), None, one, par);
+            } else {
+                #[cfg(not(feature = "rayon"))]
+                {
+                    unreachable!();
+                }
+                #[cfg(feature = "rayon")]
+                {
+                    use rayon::prelude::*;
+
+                    let n = a_2.ncols();
+                    let par = parallelism_degree(parallelism);
+                    let chunk_size = n.msrv_div_ceil(par);
+
+                    a_2.par_col_chunks(chunk_size)
+                        .zip_eq(u21.as_2d().par_row_chunks(chunk_size))
+                        .zip_eq(z_tmp.rb_mut().par_col_chunks_mut(1))
+                        .for_each(|((a_2, u21), z_tmp)| {
+                            matmul(z_tmp, a_2, u21, None, one, Parallelism::None);
+                        });
+
+                    for j in 0..par {
+                        if j == 0 {
+                            z_1.rb_mut().col_mut(0).copy_from(&z_tmp.rb().col(j));
+                        } else {
+                            *&mut (z_1.rb_mut().col_mut(0)) += &z_tmp.rb().col(j);
+                        }
+                    }
+                }
+            }
 
             let mut t01 = t.rb_mut().get_mut(..k, k);
             matmul(
@@ -1082,7 +1118,7 @@ mod tests {
         let mut t = Mat::zeros(n - 1, n - 1);
         let mut z = Mat::zeros(n, n - 1);
 
-        let mut mem = dyn_stack::GlobalPodBuffer::new(temp_mat_req::<f64>(n, 1).unwrap());
+        let mut mem = dyn_stack::GlobalPodBuffer::new(temp_mat_req::<f64>(n, 4).unwrap());
         make_hessenberg_in_place_qgvdg_unblocked(
             a.as_mut(),
             z.as_mut(),
@@ -1153,7 +1189,7 @@ mod tests {
         let mut z = Mat::zeros(n, n - 1);
 
         let mut mem =
-            dyn_stack::GlobalPodBuffer::new(crate::linalg::temp_mat_req::<c64>(n, 1).unwrap());
+            dyn_stack::GlobalPodBuffer::new(crate::linalg::temp_mat_req::<c64>(n, 4).unwrap());
         make_hessenberg_in_place_qgvdg_unblocked(
             a.as_mut(),
             z.as_mut(),

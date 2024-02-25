@@ -5,6 +5,7 @@ use crate::assert;
 #[allow(unused_imports)]
 use complex_native::{c32, c64};
 
+/// Memory view over a buffer in `npy` format.
 #[cfg(feature = "npy")]
 #[cfg_attr(docsrs, doc(cfg(feature = "npy")))]
 pub struct Npy<'a> {
@@ -16,20 +17,28 @@ pub struct Npy<'a> {
     fortran_order: bool,
 }
 
+/// Data type of an `npy` buffer.
 #[cfg(feature = "npy")]
 #[cfg_attr(docsrs, doc(cfg(feature = "npy")))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum NpyDType {
+    /// 32-bit floating point.
     F32,
+    /// 64-bit floating point.
     F64,
+    /// 32-bit complex floating point.
     C32,
+    /// 64-bit complex floating point.
     C64,
+    /// Unknown type.
     Other,
 }
 
+/// Trait implemented for native types that can be read from a `npy` buffer.
 #[cfg(feature = "npy")]
 #[cfg_attr(docsrs, doc(cfg(feature = "npy")))]
 pub trait FromNpy: faer_entity::SimpleEntity {
+    /// Data type of the buffer data.
     const DTYPE: NpyDType;
 }
 
@@ -113,6 +122,7 @@ impl<'a> Npy<'a> {
         Ok((dtype, nrows, ncols, prefix_len, fortran_order))
     }
 
+    /// Parse a npy file from a memory buffer.
     #[inline]
     pub fn new(data: &'a [u8]) -> Result<Self, std::io::Error> {
         let npyz = npyz::NpyFile::new(data)?;
@@ -129,16 +139,20 @@ impl<'a> Npy<'a> {
         })
     }
 
+    /// Returns the data type of the memory buffer.
     #[inline]
     pub fn dtype(&self) -> NpyDType {
         self.dtype
     }
 
+    /// Checks if the memory buffer is aligned, in which case the data can be referenced in-place.
     #[inline]
     pub fn is_aligned(&self) -> bool {
         self.aligned_bytes.as_ptr().align_offset(64) == 0
     }
 
+    /// If the memory buffer is aligned, and the provided type matches the one stored in the buffer,
+    /// returns a matrix view over the data.
     #[inline]
     pub fn as_aligned_ref<E: FromNpy>(&self) -> MatRef<'_, E> {
         assert!(self.is_aligned());
@@ -159,6 +173,8 @@ impl<'a> Npy<'a> {
         }
     }
 
+    /// If the provided type matches the one stored in the buffer, returns a matrix containing the
+    /// data.
     #[inline]
     pub fn to_mat<E: FromNpy>(&self) -> Mat<E> {
         assert!(self.dtype == E::DTYPE);

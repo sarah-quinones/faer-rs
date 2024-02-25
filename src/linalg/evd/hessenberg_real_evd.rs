@@ -3108,11 +3108,15 @@ pub fn multishift_qr<E: RealField>(
     let nsr = (params
         .recommended_shift_count
         .unwrap_or(default_recommended_shift_count))(n, nh);
+    let nsr = Ord::min(Ord::min(nsr, (n.saturating_sub(3)) / 6), ihi - ilo - 1);
+    let nsr = Ord::max(nsr / 2 * 2, 2);
 
     // Recommended deflation window size
     let nwr = (params
         .recommended_deflation_window
         .unwrap_or(default_recommended_deflation_window))(n, nh);
+    let nwr = Ord::max(nwr, 2);
+    let nwr = Ord::min(Ord::min(nwr, (n.saturating_sub(1)) / 3), ihi - ilo);
 
     // Tiny matrices must use lahqr
     if n < nmin {
@@ -3234,32 +3238,37 @@ pub fn multishift_qr<E: RealField>(
         }
 
         k_defl += 1;
-        let mut ns = Ord::min(nh - 1, Ord::min(ls, nsr));
+        let mut ns = Ord::min(nh - 1, Ord::min(Ord::max(2, ls), nsr));
+        ns = ns / 2 * 2;
         let mut i_shifts = istop - ls;
 
         if k_defl % non_convergence_limit_shift == 0 {
-            ns = nsr;
-            // TODO: compare with original fortran impl
-            // unsure about this part
-            for i in (i_shifts + 1..istop - 1).step_by(2) {
-                let ss = abs1(a.read(i, i - 1)).faer_add(abs1(a.read(i - 1, i - 2)));
-                let aa = E::faer_from_real(dat1.faer_mul(ss)).faer_add(a.read(i, i));
-                let bb = E::faer_from_real(ss);
-                let cc = E::faer_from_real(dat2.faer_mul(ss));
-                let dd = aa;
-                let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
-                w_re.write(i, 0, s1.0);
-                w_im.write(i, 0, s1.1);
-                w_re.write(i + 1, 0, s2.0);
-                w_im.write(i + 1, 0, s2.1);
+            for i in (i_shifts + 1..istop).rev().step_by(2) {
+                if i >= ilo + 2 {
+                    let ss = abs1(a.read(i, i - 1)).faer_add(abs1(a.read(i - 1, i - 2)));
+                    let aa = E::faer_from_real(dat1.faer_mul(ss)).faer_add(a.read(i, i));
+                    let bb = E::faer_from_real(ss);
+                    let cc = E::faer_from_real(dat2.faer_mul(ss));
+                    let dd = aa;
+                    let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
+                    w_re.write(i - 1, 0, s1.0);
+                    w_im.write(i - 1, 0, s1.1);
+                    w_re.write(i, 0, s2.0);
+                    w_im.write(i, 0, s2.1);
+                } else {
+                    w_re.write(i, 0, a.read(i, i));
+                    w_re.write(i - 1, 0, a.read(i, i));
+                    w_im.write(i, 0, E::faer_zero());
+                    w_im.write(i - 1, 0, E::faer_zero());
+                }
             }
         } else {
-            if ls <= nsr / 2 {
-                // Got nsr/2 or fewer shifts? Then use multi/double shift qr to
+            if ls <= ns / 2 {
+                // Got ns/2 or fewer shifts? Then use multi/double shift qr to
                 // get more
-                let mut temp = a.rb_mut().submatrix_mut(n - nsr, 0, nsr, nsr);
-                let mut shifts_re = w_re.rb_mut().subrows_mut(istop - nsr, nsr);
-                let mut shifts_im = w_im.rb_mut().subrows_mut(istop - nsr, nsr);
+                let mut temp = a.rb_mut().submatrix_mut(n - ns, 0, ns, ns);
+                let mut shifts_re = w_re.rb_mut().subrows_mut(istop - ns, ns);
+                let mut shifts_im = w_im.rb_mut().subrows_mut(istop - ns, ns);
                 let ierr = lahqr(
                     false,
                     temp.rb_mut(),
@@ -3267,12 +3276,12 @@ pub fn multishift_qr<E: RealField>(
                     shifts_re.rb_mut(),
                     shifts_im.rb_mut(),
                     0,
-                    nsr,
+                    ns,
                     epsilon,
                     zero_threshold,
                 ) as usize;
 
-                ns = nsr - ierr;
+                ns = ns - ierr;
 
                 if ns < 2 {
                     // In case of a rare QR failure, use eigenvalues

@@ -1,4 +1,4 @@
-use crate::{assert, col::ColMut, row::RowMut, utils::slice::*, Conj};
+use crate::{assert, col::*, row::*, utils::slice::*, Conj};
 use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;

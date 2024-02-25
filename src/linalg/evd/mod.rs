@@ -30,7 +30,9 @@ use crate::{
         qr::no_pivoting::compute::recommended_blocksize,
         temp_mat_req, temp_mat_uninit, temp_mat_zeroed,
     },
-    unzipped, zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    unzipped,
+    utils::thread::parallelism_degree,
+    zipped, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use coe::Coerce;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -555,6 +557,370 @@ fn dot4<E: RealField>(
     )
 }
 
+fn solve_shifted_upper_quasi_triangular_system<E: RealField>(
+    h: MatRef<'_, E>,
+    shift: E,
+    x: ColMut<'_, E>,
+    epsilon: E,
+    norm: E,
+    parallelism: Parallelism,
+) {
+    let mut x = x;
+    let k = h.nrows();
+    let p = shift;
+
+    if parallelism_degree(parallelism) == 1 || k < 512 {
+        let mut i = k;
+        loop {
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+
+            if i == 0 || h.read(i, i - 1) == E::faer_zero() {
+                // 1x1 block
+                let dot = inner_prod_with_conj(
+                    h.row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    Conj::No,
+                );
+
+                x.write(i, x.read(i).faer_sub(dot));
+                let mut z = h.read(i, i).faer_sub(p);
+                if z == E::faer_zero() {
+                    z = epsilon.faer_mul(norm);
+                }
+                let z_inv = z.faer_inv();
+                let x_ = x.read(i);
+                if x_ != E::faer_zero() {
+                    x.write(i, x.read(i).faer_mul(z_inv));
+                }
+            } else {
+                // 2x2 block
+                let dot0 = inner_prod_with_conj(
+                    h.row(i - 1).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    Conj::No,
+                );
+                let dot1 = inner_prod_with_conj(
+                    h.row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    Conj::No,
+                );
+
+                x.write(i - 1, x.read(i - 1).faer_sub(dot0));
+                x.write(i, x.read(i).faer_sub(dot1));
+
+                // solve
+                // [a b  [x0    [r0
+                //  c a]× x1] =  r1]
+                //
+                //  [x0    [a  -b  [r0
+                //   x1] =  -c  a]× r1] / det
+                let a = h.read(i, i).faer_sub(p);
+                let b = h.read(i - 1, i);
+                let c = h.read(i, i - 1);
+
+                let r0 = x.read(i - 1);
+                let r1 = x.read(i);
+
+                let inv_det = (a.faer_mul(a).faer_sub(b.faer_mul(c))).faer_inv();
+
+                let x0 = a.faer_mul(r0).faer_sub(b.faer_mul(r1)).faer_mul(inv_det);
+                let x1 = a.faer_mul(r1).faer_sub(c.faer_mul(r0)).faer_mul(inv_det);
+
+                x.write(i - 1, x0);
+                x.write(i, x1);
+
+                i -= 1;
+            }
+        }
+    } else {
+        let mut mid = k / 2;
+        if h.read(mid, mid - 1) != E::faer_zero() {
+            mid -= 1;
+        }
+
+        solve_shifted_upper_quasi_triangular_system(
+            h.get(mid.., mid..),
+            shift,
+            x.rb_mut().get_mut(mid..),
+            epsilon,
+            norm,
+            parallelism,
+        );
+
+        // h is row major
+        crate::utils::thread::for_each_raw(
+            mid,
+            |i| {
+                let mut x = unsafe { x.rb().const_cast() };
+                let dot = inner_prod_with_conj(
+                    h.get(i, mid..).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().get(mid..).as_2d(),
+                    Conj::No,
+                );
+                x.write(i, x.read(i).faer_sub(dot));
+            },
+            parallelism,
+        );
+
+        solve_shifted_upper_quasi_triangular_system(
+            h.get(..mid, ..mid),
+            shift,
+            x.rb_mut().get_mut(..mid),
+            epsilon,
+            norm,
+            parallelism,
+        );
+    }
+}
+
+fn solve_shifted_upper_triangular_system<E: ComplexField>(
+    h: MatRef<'_, E>,
+    shift: E,
+    x: ColMut<'_, E>,
+    epsilon: E::Real,
+    norm: E::Real,
+    parallelism: Parallelism,
+) {
+    let mut x = x;
+    let k = h.nrows();
+    let p = shift;
+
+    if parallelism_degree(parallelism) == 1 || k < 512 {
+        for i in (0..k).rev() {
+            if k > i + 1 {
+                let dot = inner_prod_with_conj(
+                    h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    Conj::No,
+                );
+                x.write(i, x.read(i).faer_sub(dot));
+            }
+
+            let mut z = h.read(i, i).faer_sub(p);
+            if z == E::faer_zero() {
+                z = E::faer_from_real(epsilon.faer_mul(norm));
+            }
+            let z_inv = z.faer_inv();
+            let x_ = x.read(i);
+            if x_ != E::faer_zero() {
+                x.write(i, x.read(i).faer_mul(z_inv));
+            }
+        }
+    } else {
+        let mid = k / 2;
+        solve_shifted_upper_triangular_system(
+            h.get(mid.., mid..),
+            shift,
+            x.rb_mut().get_mut(mid..),
+            epsilon,
+            norm,
+            parallelism,
+        );
+
+        // h is row major
+        crate::utils::thread::for_each_raw(
+            mid,
+            |i| {
+                let mut x = unsafe { x.rb().const_cast() };
+                let dot = inner_prod_with_conj(
+                    h.get(i, mid..).transpose().as_2d(),
+                    Conj::No,
+                    x.rb().get(mid..).as_2d(),
+                    Conj::No,
+                );
+                x.write(i, x.read(i).faer_sub(dot));
+            },
+            parallelism,
+        );
+
+        solve_shifted_upper_triangular_system(
+            h.get(..mid, ..mid),
+            shift,
+            x.rb_mut().get_mut(..mid),
+            epsilon,
+            norm,
+            parallelism,
+        );
+    }
+}
+fn solve_complex_shifted_upper_quasi_triangular_system<E: RealField>(
+    h: MatRef<'_, E>,
+    shift_re: E,
+    shift_im: E,
+    x: MatMut<'_, E>,
+    epsilon: E,
+    norm: E,
+    parallelism: Parallelism,
+) {
+    // solve in place
+    let k = h.nrows();
+    let p = shift_re;
+    let q = shift_im;
+    let mut x = x;
+    _ = epsilon;
+    _ = norm;
+
+    if parallelism_degree(parallelism) == 1 || k < 512 {
+        let mut i = k;
+        loop {
+            use num_complex::Complex;
+
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+
+            if i == 0 || h.read(i, i - 1) == E::faer_zero() {
+                // 1x1 block
+                let start = i + 1;
+                let len = k - (i + 1);
+                let (dot_re, dot_im) = dot2(
+                    x.rb().col(0).subrows(start, len).as_2d(),
+                    x.rb().col(1).subrows(start, len).as_2d(),
+                    h.transpose().col(i).subrows(start, len).as_2d(),
+                );
+
+                x.write(i, 0, x.read(i, 0).faer_sub(dot_re));
+                x.write(i, 1, x.read(i, 1).faer_sub(dot_im));
+
+                let z = Complex {
+                    re: h.read(i, i).faer_sub(p),
+                    im: q.faer_neg(),
+                };
+                let z_inv = z.faer_inv();
+                let x_ = Complex {
+                    re: x.read(i, 0),
+                    im: x.read(i, 1),
+                };
+                if x_ != Complex::<E>::faer_zero() {
+                    let x_ = z_inv.faer_mul(x_);
+                    x.write(i, 0, x_.re);
+                    x.write(i, 1, x_.im);
+                }
+            } else {
+                // 2x2 block
+                let start = i + 1;
+                let len = k - (i + 1);
+                let (dot0_re, dot0_im, dot1_re, dot1_im) = dot4(
+                    x.rb().col(0).subrows(start, len).as_2d(),
+                    x.rb().col(1).subrows(start, len).as_2d(),
+                    h.transpose().col(i - 1).subrows(start, len).as_2d(),
+                    h.transpose().col(i).subrows(start, len).as_2d(),
+                );
+                let mut dot0 = Complex::<E>::faer_zero();
+                let mut dot1 = Complex::<E>::faer_zero();
+                for j in i + 1..k {
+                    dot0 = dot0.faer_add(
+                        Complex {
+                            re: x.read(j, 0),
+                            im: x.read(j, 1),
+                        }
+                        .faer_scale_real(h.read(i - 1, j)),
+                    );
+                    dot1 = dot1.faer_add(
+                        Complex {
+                            re: x.read(j, 0),
+                            im: x.read(j, 1),
+                        }
+                        .faer_scale_real(h.read(i, j)),
+                    );
+                }
+
+                x.write(i - 1, 0, x.read(i - 1, 0).faer_sub(dot0_re));
+                x.write(i - 1, 1, x.read(i - 1, 1).faer_sub(dot0_im));
+                x.write(i, 0, x.read(i, 0).faer_sub(dot1_re));
+                x.write(i, 1, x.read(i, 1).faer_sub(dot1_im));
+
+                let a = Complex {
+                    re: h.read(i, i).faer_sub(p),
+                    im: q.faer_neg(),
+                };
+                let b = h.read(i - 1, i);
+                let c = h.read(i, i - 1);
+
+                let r0 = Complex {
+                    re: x.read(i - 1, 0),
+                    im: x.read(i - 1, 1),
+                };
+                let r1 = Complex {
+                    re: x.read(i, 0),
+                    im: x.read(i, 1),
+                };
+
+                let inv_det = (a
+                    .faer_mul(a)
+                    .faer_sub(Complex::<E>::faer_from_real(b.faer_mul(c))))
+                .faer_inv();
+
+                let x0 = a
+                    .faer_mul(r0)
+                    .faer_sub(r1.faer_scale_real(b))
+                    .faer_mul(inv_det);
+                let x1 = a
+                    .faer_mul(r1)
+                    .faer_sub(r0.faer_scale_real(c))
+                    .faer_mul(inv_det);
+
+                x.write(i - 1, 0, x0.re);
+                x.write(i - 1, 1, x0.im);
+                x.write(i, 0, x1.re);
+                x.write(i, 1, x1.im);
+
+                i -= 1;
+            }
+        }
+    } else {
+        let mut mid = k / 2;
+        if h.read(mid, mid - 1) != E::faer_zero() {
+            mid -= 1;
+        }
+
+        solve_complex_shifted_upper_quasi_triangular_system(
+            h.get(mid.., mid..),
+            shift_re,
+            shift_im,
+            x.rb_mut().get_mut(mid.., ..),
+            epsilon,
+            norm,
+            parallelism,
+        );
+
+        // h is row major
+        crate::utils::thread::for_each_raw(
+            mid,
+            |i| {
+                let mut x = unsafe { x.rb().const_cast() };
+                let (dot0, dot1) = dot2(
+                    x.rb().get(mid.., 0).as_2d(),
+                    x.rb().get(mid.., 1).as_2d(),
+                    h.get(i, mid..).transpose().as_2d(),
+                );
+                x.write(i, 0, x.read(i, 0).faer_sub(dot0));
+                x.write(i, 1, x.read(i, 1).faer_sub(dot1));
+            },
+            parallelism,
+        );
+
+        solve_complex_shifted_upper_quasi_triangular_system(
+            h.get(..mid, ..mid),
+            shift_re,
+            shift_im,
+            x.rb_mut().get_mut(..mid, ..),
+            epsilon,
+            norm,
+            parallelism,
+        );
+    }
+}
+
 /// See [`compute_evd_real`].
 ///
 /// This function takes an additional `epsilon` and `zero_threshold` parameters. `epsilon`
@@ -709,6 +1075,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                 h.write(i, j, h.read(j, i));
             }
         }
+        let h = h.rb();
 
         {
             let mut k = n;
@@ -724,87 +1091,23 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
 
                     x.write(k, k, E::faer_one());
 
-                    // solve (h[:k, :k] - p I) X = -h[:i, i]
+                    // solve (h[:k, :k] - p I) X = -h[:k, k]
                     // form RHS
                     for i in 0..k {
                         x.write(i, k, h.read(i, k).faer_neg());
                     }
 
-                    // solve in place
-                    let mut i = k;
-                    loop {
-                        if i == 0 {
-                            break;
-                        }
-                        i -= 1;
-
-                        if i == 0 || h.read(i, i - 1) == E::faer_zero() {
-                            // 1x1 block
-                            let dot = inner_prod_with_conj(
-                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
-                                Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
-                                Conj::No,
-                            );
-
-                            x.write(i, k, x.read(i, k).faer_sub(dot));
-                            let mut z = h.read(i, i).faer_sub(p);
-                            if z == E::faer_zero() {
-                                z = epsilon.faer_mul(norm);
-                            }
-                            let z_inv = z.faer_inv();
-                            let x_ = x.read(i, k);
-                            if x_ != E::faer_zero() {
-                                x.write(i, k, x.read(i, k).faer_mul(z_inv));
-                            }
-                        } else {
-                            // 2x2 block
-                            let dot0 = inner_prod_with_conj(
-                                h.rb()
-                                    .row(i - 1)
-                                    .subcols(i + 1, k - i - 1)
-                                    .transpose()
-                                    .as_2d(),
-                                Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
-                                Conj::No,
-                            );
-                            let dot1 = inner_prod_with_conj(
-                                h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
-                                Conj::No,
-                                x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
-                                Conj::No,
-                            );
-
-                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0));
-                            x.write(i, k, x.read(i, k).faer_sub(dot1));
-
-                            // solve
-                            // [a b  [x0    [r0
-                            //  c a]× x1] =  r1]
-                            //
-                            //  [x0    [a  -b  [r0
-                            //   x1] =  -c  a]× r1] / det
-                            let a = h.read(i, i).faer_sub(p);
-                            let b = h.read(i - 1, i);
-                            let c = h.read(i, i - 1);
-
-                            let r0 = x.read(i - 1, k);
-                            let r1 = x.read(i, k);
-
-                            let inv_det = (a.faer_mul(a).faer_sub(b.faer_mul(c))).faer_inv();
-
-                            let x0 = a.faer_mul(r0).faer_sub(b.faer_mul(r1)).faer_mul(inv_det);
-                            let x1 = a.faer_mul(r1).faer_sub(c.faer_mul(r0)).faer_mul(inv_det);
-
-                            x.write(i - 1, k, x0);
-                            x.write(i, k, x1);
-
-                            i -= 1;
-                        }
-                    }
+                    solve_shifted_upper_quasi_triangular_system(
+                        h.get(..k, ..k),
+                        p,
+                        x.rb_mut().get_mut(..k, k),
+                        epsilon,
+                        norm,
+                        parallelism,
+                    );
                 } else {
                     // complex eigenvalue pair
+
                     let p = h.read(k, k);
                     let q = h
                         .read(k, k - 1)
@@ -833,115 +1136,15 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
                         x.write(i, k, x.read(k, k).faer_neg().faer_mul(h.read(i, k)));
                     }
 
-                    // solve in place
-                    let mut i = k - 1;
-                    loop {
-                        use num_complex::Complex;
-
-                        if i == 0 {
-                            break;
-                        }
-                        i -= 1;
-
-                        if i == 0 || h.read(i, i - 1) == E::faer_zero() {
-                            // 1x1 block
-                            let start = i + 1;
-                            let len = k - 1 - (i + 1);
-                            let (dot_re, dot_im) = dot2(
-                                x.rb().col(k - 1).subrows(start, len).as_2d(),
-                                x.rb().col(k).subrows(start, len).as_2d(),
-                                h.rb().transpose().col(i).subrows(start, len).as_2d(),
-                            );
-
-                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot_re));
-                            x.write(i, k, x.read(i, k).faer_sub(dot_im));
-
-                            let z = Complex {
-                                re: h.read(i, i).faer_sub(p),
-                                im: q.faer_neg(),
-                            };
-                            let z_inv = z.faer_inv();
-                            let x_ = Complex {
-                                re: x.read(i, k - 1),
-                                im: x.read(i, k),
-                            };
-                            if x_ != Complex::<E>::faer_zero() {
-                                let x_ = z_inv.faer_mul(x_);
-                                x.write(i, k - 1, x_.re);
-                                x.write(i, k, x_.im);
-                            }
-                        } else {
-                            // 2x2 block
-                            let start = i + 1;
-                            let len = k - 1 - (i + 1);
-                            let (dot0_re, dot0_im, dot1_re, dot1_im) = dot4(
-                                x.rb().col(k - 1).subrows(start, len).as_2d(),
-                                x.rb().col(k).subrows(start, len).as_2d(),
-                                h.rb().transpose().col(i - 1).subrows(start, len).as_2d(),
-                                h.rb().transpose().col(i).subrows(start, len).as_2d(),
-                            );
-                            let mut dot0 = Complex::<E>::faer_zero();
-                            let mut dot1 = Complex::<E>::faer_zero();
-                            for j in i + 1..k - 1 {
-                                dot0 = dot0.faer_add(
-                                    Complex {
-                                        re: x.read(j, k - 1),
-                                        im: x.read(j, k),
-                                    }
-                                    .faer_scale_real(h.read(i - 1, j)),
-                                );
-                                dot1 = dot1.faer_add(
-                                    Complex {
-                                        re: x.read(j, k - 1),
-                                        im: x.read(j, k),
-                                    }
-                                    .faer_scale_real(h.read(i, j)),
-                                );
-                            }
-
-                            x.write(i - 1, k - 1, x.read(i - 1, k - 1).faer_sub(dot0_re));
-                            x.write(i - 1, k, x.read(i - 1, k).faer_sub(dot0_im));
-                            x.write(i, k - 1, x.read(i, k - 1).faer_sub(dot1_re));
-                            x.write(i, k, x.read(i, k).faer_sub(dot1_im));
-
-                            let a = Complex {
-                                re: h.read(i, i).faer_sub(p),
-                                im: q.faer_neg(),
-                            };
-                            let b = h.read(i - 1, i);
-                            let c = h.read(i, i - 1);
-
-                            let r0 = Complex {
-                                re: x.read(i - 1, k - 1),
-                                im: x.read(i - 1, k),
-                            };
-                            let r1 = Complex {
-                                re: x.read(i, k - 1),
-                                im: x.read(i, k),
-                            };
-
-                            let inv_det = (a
-                                .faer_mul(a)
-                                .faer_sub(Complex::<E>::faer_from_real(b.faer_mul(c))))
-                            .faer_inv();
-
-                            let x0 = a
-                                .faer_mul(r0)
-                                .faer_sub(r1.faer_scale_real(b))
-                                .faer_mul(inv_det);
-                            let x1 = a
-                                .faer_mul(r1)
-                                .faer_sub(r0.faer_scale_real(c))
-                                .faer_mul(inv_det);
-
-                            x.write(i - 1, k - 1, x0.re);
-                            x.write(i - 1, k, x0.im);
-                            x.write(i, k - 1, x1.re);
-                            x.write(i, k, x1.im);
-
-                            i -= 1;
-                        }
-                    }
+                    solve_complex_shifted_upper_quasi_triangular_system(
+                        h.get(..k - 1, ..k - 1),
+                        p,
+                        q,
+                        x.rb_mut().get_mut(..k - 1, k - 1..k + 1),
+                        epsilon,
+                        norm,
+                        parallelism,
+                    );
 
                     k -= 1;
                 }
@@ -1195,28 +1398,18 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
 
         for k in (0..n).rev() {
             x.write(k, k, E::faer_zero());
-            for i in (0..k).rev() {
+            for i in 0..k {
                 x.write(i, k, h.read(i, k).faer_neg());
-                if k > i + 1 {
-                    let dot = inner_prod_with_conj(
-                        h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
-                        Conj::No,
-                        x.rb().col(k).subrows(i + 1, k - i - 1).as_2d(),
-                        Conj::No,
-                    );
-                    x.write(i, k, x.read(i, k).faer_sub(dot));
-                }
-
-                let mut z = h.read(i, i).faer_sub(h.read(k, k));
-                if z == E::faer_zero() {
-                    z = E::faer_from_real(epsilon.faer_mul(norm));
-                }
-                let z_inv = z.faer_inv();
-                let x_ = x.read(i, k);
-                if x_ != E::faer_zero() {
-                    x.write(i, k, x.read(i, k).faer_mul(z_inv));
-                }
             }
+
+            solve_shifted_upper_triangular_system(
+                h.rb().get(..k, ..k),
+                h.read(k, k),
+                x.rb_mut().get_mut(..k, k),
+                epsilon,
+                norm,
+                parallelism,
+            );
         }
 
         triangular::matmul(
@@ -1506,11 +1699,11 @@ mod tests {
             s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
             s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
             Some(u_re.as_mut()),
-            Parallelism::None,
+            Parallelism::Rayon(0),
             make_stack!(compute_evd_req::<c64>(
                 n,
                 ComputeVectors::Yes,
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 Default::default(),
             )),
             Default::default(),
@@ -1552,7 +1745,7 @@ mod tests {
 
     #[test]
     fn test_real() {
-        for n in [3, 2, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [3, 2, 4, 5, 6, 7, 10, 15, 25, 600] {
             for _ in 0..10 {
                 let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
                 dbg!(&mat);
@@ -1569,11 +1762,11 @@ mod tests {
                     s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                     s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                     Some(u_re.as_mut()),
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     make_stack!(compute_evd_req::<c64>(
                         n,
                         ComputeVectors::Yes,
-                        Parallelism::None,
+                        Parallelism::Rayon(0),
                         Default::default(),
                     )),
                     Default::default(),
@@ -1617,7 +1810,7 @@ mod tests {
 
     #[test]
     fn test_real_identity() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25, 600] {
             let mat = Mat::from_fn(n, n, |i, j| {
                 if i == j {
                     f64::faer_one()
@@ -1638,11 +1831,11 @@ mod tests {
                 s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u_re.as_mut()),
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     Default::default(),
                 )),
                 Default::default(),
@@ -1685,7 +1878,7 @@ mod tests {
 
     #[test]
     fn test_real_zero() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25, 600] {
             let mat = Mat::<f64>::zeros(n, n);
 
             let n = mat.nrows();
@@ -1700,11 +1893,11 @@ mod tests {
                 s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u_re.as_mut()),
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     Default::default(),
                 )),
                 Default::default(),
@@ -1747,7 +1940,7 @@ mod tests {
 
     #[test]
     fn test_cplx() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25, 600] {
             let mat = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
 
             let mut s = Mat::zeros(n, n);
@@ -1757,11 +1950,11 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     Default::default(),
                 )),
                 Default::default(),
@@ -1782,7 +1975,7 @@ mod tests {
 
     #[test]
     fn test_cplx_identity() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25, 600] {
             let mat = Mat::from_fn(n, n, |i, j| {
                 if i == j {
                     c64::faer_one()
@@ -1798,11 +1991,11 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     Default::default(),
                 )),
                 Default::default(),
@@ -1821,7 +2014,7 @@ mod tests {
 
     #[test]
     fn test_cplx_zero() {
-        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25, 600] {
             let mat = Mat::from_fn(n, n, |_, _| c64::faer_zero());
 
             let mut s = Mat::zeros(n, n);
@@ -1831,11 +2024,11 @@ mod tests {
                 mat.as_ref(),
                 s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
                 Some(u.as_mut()),
-                Parallelism::None,
+                Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
                     n,
                     ComputeVectors::Yes,
-                    Parallelism::None,
+                    Parallelism::Rayon(0),
                     Default::default(),
                 )),
                 Default::default(),

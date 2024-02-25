@@ -895,6 +895,7 @@ mod serde;
 /// faer prelude. Includes useful types and traits for solving linear systems.
 pub mod prelude {
     pub use crate::{
+        complex_native::{c32, c64},
         linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq},
         Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
     };
