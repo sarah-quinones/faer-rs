@@ -228,6 +228,52 @@ pub mod utils {
         }
     }
 
+    /// Sorts and deduplicates `row_indices` and `values` simultaneously so that `row_indices` is
+    /// nonincreasing and contains no duplicate indices.
+    pub fn sort_dedup_indices<I: Index, E: ComplexField>(
+        col_ptrs: &[I],
+        nnz_per_col: &mut [I],
+        row_indices: &mut [I],
+        values: GroupFor<E, &mut [E::Unit]>,
+    ) {
+        assert!(col_ptrs.len() >= 1);
+        let mut values = SliceGroupMut::<'_, E>::new(values);
+
+        let n = col_ptrs.len() - 1;
+        for j in 0..n {
+            let start = col_ptrs[j].zx();
+            let end = start + nnz_per_col[j].zx();
+
+            unsafe {
+                crate::sort::sort_indices(
+                    &mut row_indices[start..end],
+                    values.rb_mut().subslice(start..end),
+                );
+            }
+
+            let mut prev = I::truncate(usize::MAX);
+
+            let mut writer = start;
+            let mut reader = start;
+            while reader < end {
+                if row_indices[reader] == prev {
+                    let writer = writer - 1;
+                    values.write(writer, values.read(writer).faer_add(values.read(reader)));
+                } else {
+                    values.write(writer, values.read(reader));
+                    writer += 1;
+                }
+
+                prev = row_indices[reader];
+                reader += 1;
+            }
+
+            nnz_per_col[j] = writer - start;
+
+            nnz_per_col
+        }
+    }
+
     #[doc(hidden)]
     pub unsafe fn ghost_permute_hermitian_unsorted<'n, 'out, I: Index, E: ComplexField>(
         new_values: SliceGroupMut<'out, E>,
