@@ -33,7 +33,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         self.symbolic.ncols
     }
 
-    /// Copies the current matrix into a newly allocated matrix.
+    /// Copies `self` into a newly allocated matrix.
     ///
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
@@ -46,7 +46,7 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         self.as_ref().to_owned()
     }
 
-    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    /// Copies `self` into a newly allocated matrix, with row-major order.
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.

@@ -33,7 +33,7 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
         self.symbolic.ncols
     }
 
-    /// Copies the current matrix into a newly allocated matrix.
+    /// Copies `self` into a newly allocated matrix.
     ///
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
@@ -46,7 +46,17 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
         self.as_ref().to_owned()
     }
 
-    /// Copies the current matrix into a newly allocated matrix, with column-major order.
+    /// Copies `self` into a newly allocated dense matrix
+    #[inline]
+    pub fn to_dense(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_dense()
+    }
+
+    /// Copies `self` into a newly allocated matrix, with column-major order.
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.

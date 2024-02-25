@@ -77,7 +77,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         *self
     }
 
-    /// Copies the current matrix into a newly allocated matrix.
+    /// Copies `self` into a newly allocated matrix.
     ///
     /// # Note
     /// Allows unsorted matrices, producing an unsorted output.
@@ -109,7 +109,28 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         Ok(SparseColMat { symbolic, values })
     }
 
-    /// Copies the current matrix into a newly allocated matrix, with row-major order.
+    /// Copies `self` into a newly allocated dense matrix
+    #[inline]
+    pub fn to_dense(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        let mut mat = Mat::<E::Canonical>::zeros(self.nrows(), self.ncols());
+
+        for j in 0..self.ncols() {
+            for (i, val) in self.row_indices_of_col(j).zip(
+                crate::utils::slice::SliceGroup::<'_, E>::new(self.values_of_col(j))
+                    .into_ref_iter(),
+            ) {
+                mat.write(i, j, mat.read(i, j).faer_add(val.read().canonicalize()));
+            }
+        }
+
+        mat
+    }
+
+    /// Copies `self` into a newly allocated matrix, with row-major order.
     ///
     /// # Note
     /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
