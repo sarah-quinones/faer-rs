@@ -60,7 +60,7 @@ pub trait AsMatRef<E: Entity> {
 /// This trait is implemented for types of the matrix family, like [`Mat`],
 /// [`MatRef`], and [`MatMut`], but not for types like [`Col`], [`Row`], or
 /// their families. For a more general trait, see [`As2D`].
-pub trait AsMatMut<E: Entity> {
+pub trait AsMatMut<E: Entity>: AsMatRef<E> {
     /// Convert to a mutable matrix view.
     fn as_mat_mut(&mut self) -> MatMut<'_, E>;
 }
@@ -75,15 +75,50 @@ pub trait As2D<E: Entity> {
     /// Convert to a 2D matrix view.
     fn as_2d_ref(&self) -> MatRef<'_, E>;
 }
+
+impl<E: Entity, T: As2D<E>> As2D<E> for &T {
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).as_2d_ref()
+    }
+}
+impl<E: Entity, T: As2D<E>> As2D<E> for &mut T {
+    fn as_2d_ref(&self) -> MatRef<'_, E> {
+        (**self).as_2d_ref()
+    }
+}
+
 /// Trait for types that can be converted to a mutable 2D matrix view.
 ///
 /// This trait is implemented for any type that can be represented as a
 /// 2D matrix view, like [`Mat`], [`Row`], [`Col`], and their respective
 /// references and mutable references. For a trait specific to the matrix
 /// family, see [`AsMatRef`] or [`AsMatMut`].
-pub trait As2DMut<E: Entity> {
+pub trait As2DMut<E: Entity>: As2D<E> {
     /// Convert to a mutable 2D matrix view.
     fn as_2d_mut(&mut self) -> MatMut<'_, E>;
+}
+
+impl<E: Entity, T: As2DMut<E>> As2DMut<E> for &mut T {
+    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_2d_mut()
+    }
+}
+
+impl<E: Entity, T: AsMatRef<E>> AsMatRef<E> for &T {
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (**self).as_mat_ref()
+    }
+}
+impl<E: Entity, T: AsMatRef<E>> AsMatRef<E> for &mut T {
+    fn as_mat_ref(&self) -> MatRef<'_, E> {
+        (**self).as_mat_ref()
+    }
+}
+
+impl<E: Entity, T: AsMatMut<E>> AsMatMut<E> for &mut T {
+    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+        (**self).as_mat_mut()
+    }
 }
 
 impl<'a, FromE: Entity, ToE: Entity> Coerce<MatRef<'a, ToE>> for MatRef<'a, FromE> {

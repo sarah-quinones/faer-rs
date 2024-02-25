@@ -528,13 +528,6 @@ pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
         )
     }
 }
-impl<E: Entity> As2D<E> for &'_ ColRef<'_, E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).as_2d()
-    }
-}
-
 impl<E: Entity> As2D<E> for ColRef<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
@@ -546,12 +539,6 @@ impl<E: Entity> AsColRef<E> for ColRef<'_, E> {
     #[inline]
     fn as_col_ref(&self) -> ColRef<'_, E> {
         *self
-    }
-}
-impl<E: Entity> AsColRef<E> for &'_ ColRef<'_, E> {
-    #[inline]
-    fn as_col_ref(&self) -> ColRef<'_, E> {
-        **self
     }
 }
 
@@ -568,5 +555,27 @@ impl<E: SimpleEntity> core::ops::Index<usize> for ColRef<'_, E> {
     #[track_caller]
     fn index(&self, row: usize) -> &E {
         self.get(row)
+    }
+}
+
+impl<E: Conjugate> ColBatch<E> for ColRef<'_, E> {
+    type Owned = Col<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(ncols == 1);
+        Col::zeros(nrows)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        <Self::Owned as ColBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
     }
 }

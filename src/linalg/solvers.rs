@@ -26,7 +26,7 @@ pub trait SolverLstsqCore<E: Entity>: SolverCore<E> + SpSolverLstsqCore<E> {}
 /// Solver that can compute solution of a linear system.
 pub trait Solver<E: ComplexField>: SolverCore<E> + SpSolver<E> {}
 /// Dense solver that can compute the least squares solution of an overdetermined linear system.
-pub trait SolverLstsq<E: Entity>: SolverLstsqCore<E> + SpSolverLstsq<E> {}
+pub trait SolverLstsq<E: ComplexField>: SolverLstsqCore<E> + SpSolverLstsq<E> {}
 
 const _: () = {
     fn __assert_object_safe<E: ComplexField>() {
@@ -1880,24 +1880,24 @@ where
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
         let mut rhs = rhs;
         crate::linalg::triangular_solve::solve_lower_triangular_in_place(
             *self,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             parallelism,
         );
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
         let mut rhs = rhs;
         crate::linalg::triangular_solve::solve_upper_triangular_in_place(
             *self,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             parallelism,
         );
     }
@@ -1906,12 +1906,12 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
         let mut rhs = rhs;
         crate::linalg::triangular_solve::solve_unit_lower_triangular_in_place(
             *self,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             parallelism,
         );
     }
@@ -1920,12 +1920,12 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         let parallelism = get_global_parallelism();
         let mut rhs = rhs;
         crate::linalg::triangular_solve::solve_unit_upper_triangular_in_place(
             *self,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             parallelism,
         );
     }
@@ -1933,23 +1933,29 @@ where
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        let mut rhs = rhs.as_mat_ref().to_owned();
-        self.solve_lower_triangular_in_place(rhs.as_mut());
+        rhs: B,
+    ) -> B::Owned {
+        let mut rhs = B::new_owned_copied(&rhs);
+        self.solve_lower_triangular_in_place(rhs.as_2d_mut());
         rhs
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        let mut rhs = rhs.as_mat_ref().to_owned();
-        self.solve_upper_triangular_in_place(rhs.as_mut());
+        rhs: B,
+    ) -> B::Owned {
+        let mut rhs = B::new_owned_copied(&rhs);
+        self.solve_upper_triangular_in_place(rhs.as_2d_mut());
         rhs
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
@@ -1957,12 +1963,15 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        let mut rhs = rhs.as_mat_ref().to_owned();
-        self.solve_unit_lower_triangular_in_place(rhs.as_mut());
+        rhs: B,
+    ) -> B::Owned {
+        let mut rhs = B::new_owned_copied(&rhs);
+        self.solve_unit_lower_triangular_in_place(rhs.as_2d_mut());
         rhs
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
@@ -1970,12 +1979,15 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        let mut rhs = rhs.as_mat_ref().to_owned();
-        self.solve_unit_upper_triangular_in_place(rhs.as_mut());
+        rhs: B,
+    ) -> B::Owned {
+        let mut rhs = B::new_owned_copied(&rhs);
+        self.solve_unit_upper_triangular_in_place(rhs.as_2d_mut());
         rhs
     }
 
@@ -2177,13 +2189,13 @@ where
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_lower_triangular_in_place(rhs)
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_upper_triangular_in_place(rhs)
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -2191,7 +2203,7 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_unit_lower_triangular_in_place(rhs)
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -2199,49 +2211,61 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_unit_upper_triangular_in_place(rhs)
     }
 
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_lower_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_lower_triangular(rhs)
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_upper_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_upper_triangular(rhs)
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_unit_lower_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_unit_lower_triangular(rhs)
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_unit_upper_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_unit_upper_triangular(rhs)
     }
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
@@ -2353,13 +2377,13 @@ where
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_lower_triangular_in_place(rhs)
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// stores the result in `rhs`.
     #[track_caller]
-    pub fn solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_upper_triangular_in_place(rhs)
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -2367,7 +2391,7 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_unit_lower_triangular_in_place(rhs)
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -2375,49 +2399,61 @@ where
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E::Canonical>) {
+    pub fn solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E::Canonical>) {
         self.as_ref().solve_unit_upper_triangular_in_place(rhs)
     }
 
     /// Assuming `self` is a lower triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_lower_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_lower_triangular(rhs)
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     #[track_caller]
-    pub fn solve_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_upper_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_upper_triangular(rhs)
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_lower_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_lower_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_unit_lower_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_unit_lower_triangular(rhs)
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`, and
     /// returns the result.
     ///
     /// The diagonal of the matrix is not accessed.
     #[track_caller]
-    pub fn solve_unit_upper_triangular<ViewE: Conjugate<Canonical = E::Canonical>>(
+    pub fn solve_unit_upper_triangular<
+        ViewE: Conjugate<Canonical = E::Canonical>,
+        B: ColBatch<ViewE>,
+    >(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E::Canonical> {
-        self.as_ref().solve_unit_upper_triangular(rhs.as_mat_ref())
+        rhs: B,
+    ) -> B::Owned {
+        self.as_ref().solve_unit_upper_triangular(rhs)
     }
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.

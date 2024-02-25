@@ -1,5 +1,8 @@
 use super::*;
-use crate::mat::{AsMatMut, AsMatRef};
+use crate::{
+    col::{ColBatch, ColBatchMut},
+    mat::{As2D, As2DMut},
+};
 
 /// Object-safe base for [`SpSolver`]
 pub trait SpSolverCore<E: Entity> {
@@ -23,42 +26,44 @@ pub trait SpSolverLstsqCore<E: Entity>: SpSolverCore<E> {
 /// Solver that can compute solution of a linear system.
 pub trait SpSolver<E: ComplexField>: SpSolverCore<E> {
     /// Solves the equation `self * X = rhs`, and stores the result in `rhs`.
-    fn solve_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `conjugate(self) * X = rhs`, and stores the result in `rhs`.
-    fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_conj_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `transpose(self) * X = rhs`, and stores the result in `rhs`.
-    fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `adjoint(self) * X = rhs`, and stores the result in `rhs`.
-    fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_conj_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `self * X = rhs`, and returns the result.
-    fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
+    fn solve<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
     /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
-    fn solve_conj<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
+    fn solve_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
     /// Solves the equation `transpose(self) * X = rhs`, and returns the result.
-    fn solve_transpose<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>)
-        -> Mat<E>;
-    /// Solves the equation `adjoint(self) * X = rhs`, and returns the result.
-    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
+    fn solve_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E>;
+        rhs: B,
+    ) -> B::Owned;
+    /// Solves the equation `adjoint(self) * X = rhs`, and returns the result.
+    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
+        &self,
+        rhs: B,
+    ) -> B::Owned;
 }
 
 /// Solver that can compute the least squares solution of an overdetermined linear system.
-pub trait SpSolverLstsq<E: Entity>: SpSolverLstsqCore<E> {
+pub trait SpSolverLstsq<E: ComplexField>: SpSolverLstsqCore<E> {
     /// Solves the equation `self * X = rhs`, in the sense of least squares, and stores the
     /// result in the top rows of `rhs`.
-    fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_lstsq_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `conjugate(self) * X = rhs`, in the sense of least squares, and
     /// stores the result in the top rows of `rhs`.
-    fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>);
+    fn solve_lstsq_conj_in_place(&self, rhs: impl ColBatchMut<E>);
     /// Solves the equation `self * X = rhs`, and returns the result.
-    fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E>;
+    fn solve_lstsq<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
     /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
-    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E>;
+        rhs: B,
+    ) -> B::Owned;
 }
 
 #[track_caller]
@@ -66,13 +71,14 @@ fn solve_with_conj_impl<
     E: ComplexField,
     D: ?Sized + SpSolverCore<E>,
     ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
 >(
     d: &D,
-    rhs: MatRef<'_, ViewE>,
+    rhs: B,
     conj: Conj,
-) -> Mat<E> {
-    let mut rhs = rhs.to_owned();
-    d.solve_in_place_with_conj_impl(rhs.as_mut(), conj);
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
     rhs
 }
 
@@ -81,13 +87,14 @@ fn solve_transpose_with_conj_impl<
     E: ComplexField,
     D: ?Sized + SpSolverCore<E>,
     ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
 >(
     d: &D,
-    rhs: MatRef<'_, ViewE>,
+    rhs: B,
     conj: Conj,
-) -> Mat<E> {
-    let mut rhs = rhs.to_owned();
-    d.solve_transpose_in_place_with_conj_impl(rhs.as_mut(), conj);
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
     rhs
 }
 
@@ -96,94 +103,95 @@ fn solve_lstsq_with_conj_impl<
     E: ComplexField,
     D: ?Sized + SpSolverLstsqCore<E>,
     ViewE: Conjugate<Canonical = E>,
+    B: ColBatch<ViewE>,
 >(
     d: &D,
-    rhs: MatRef<'_, ViewE>,
+    rhs: B,
     conj: Conj,
-) -> Mat<E> {
-    let mut rhs = rhs.to_owned();
-    let k = rhs.ncols();
-    d.solve_lstsq_in_place_with_conj_impl(rhs.as_mut(), conj);
-    rhs.resize_with(d.ncols(), k, |_, _| unreachable!());
+) -> B::Owned {
+    let mut rhs = B::new_owned_copied(&rhs);
+    d.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), conj);
+    let ncols = rhs.as_2d_ref().ncols();
+    B::resize_owned(&mut rhs, d.ncols(), ncols);
     rhs
 }
 
 impl<E: ComplexField, Dec: ?Sized + SpSolverCore<E>> SpSolver<E> for Dec {
     #[track_caller]
-    fn solve_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+        self.solve_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
     }
 
     #[track_caller]
-    fn solve_conj_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_conj_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+        self.solve_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
     }
 
     #[track_caller]
-    fn solve_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_transpose_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+        self.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
     }
 
     #[track_caller]
-    fn solve_conj_transpose_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_conj_transpose_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_transpose_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+        self.solve_transpose_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
     }
 
     #[track_caller]
-    fn solve<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
-        solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+    fn solve<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
     }
 
     #[track_caller]
-    fn solve_conj<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
-        solve_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+    fn solve_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
     }
 
     #[track_caller]
-    fn solve_transpose<ViewE: Conjugate<Canonical = E>>(
+    fn solve_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E> {
-        solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+        rhs: B,
+    ) -> B::Owned {
+        solve_transpose_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
     }
 
     #[track_caller]
-    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>>(
+    fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E> {
-        solve_transpose_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+        rhs: B,
+    ) -> B::Owned {
+        solve_transpose_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
     }
 }
 
 impl<E: ComplexField, Dec: ?Sized + SpSolverLstsqCore<E>> SpSolverLstsq<E> for Dec {
     #[track_caller]
-    fn solve_lstsq_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_lstsq_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::No)
+        self.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::No)
     }
 
     #[track_caller]
-    fn solve_lstsq_conj_in_place(&self, rhs: impl AsMatMut<E>) {
+    fn solve_lstsq_conj_in_place(&self, rhs: impl ColBatchMut<E>) {
         let mut rhs = rhs;
-        self.solve_lstsq_in_place_with_conj_impl(rhs.as_mat_mut(), Conj::Yes)
+        self.solve_lstsq_in_place_with_conj_impl(rhs.as_2d_mut(), Conj::Yes)
     }
 
     #[track_caller]
-    fn solve_lstsq<ViewE: Conjugate<Canonical = E>>(&self, rhs: impl AsMatRef<ViewE>) -> Mat<E> {
-        solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::No)
+    fn solve_lstsq<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned {
+        solve_lstsq_with_conj_impl::<E, _, _, _>(self, rhs, Conj::No)
     }
 
     #[track_caller]
-    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>>(
+    fn solve_lstsq_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
-        rhs: impl AsMatRef<ViewE>,
-    ) -> Mat<E> {
-        solve_lstsq_with_conj_impl::<E, _, _>(self, rhs.as_mat_ref(), Conj::Yes)
+        rhs: B,
+    ) -> B::Owned {
+        solve_lstsq_with_conj_impl::<E, _, _, _>(self, rhs, Conj::Yes)
     }
 }
 
@@ -549,11 +557,11 @@ impl<I: Index, E: ComplexField> SparseColMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_lower_triangular_in_place(
             *self,
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -564,11 +572,11 @@ impl<I: Index, E: ComplexField> SparseColMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_upper_triangular_in_place(
             *self,
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -579,11 +587,11 @@ impl<I: Index, E: ComplexField> SparseColMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_unit_lower_triangular_in_place(
             *self,
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -594,11 +602,11 @@ impl<I: Index, E: ComplexField> SparseColMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_unit_upper_triangular_in_place(
             *self,
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -634,11 +642,11 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_upper_triangular_in_place(
             self.transpose(),
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -649,11 +657,11 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_lower_triangular_in_place(
             self.transpose(),
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -664,11 +672,11 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_unit_upper_triangular_in_place(
             self.transpose(),
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -679,11 +687,11 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
         crate::sparse::linalg::triangular_solve::solve_unit_lower_triangular_in_place(
             self.transpose(),
             Conj::No,
-            rhs.as_mat_mut(),
+            rhs.as_2d_mut(),
             get_global_parallelism(),
         );
     }
@@ -725,7 +733,7 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
@@ -735,7 +743,7 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_upper_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -745,7 +753,7 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -755,7 +763,7 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
     }
 
@@ -786,7 +794,7 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
@@ -796,7 +804,7 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_upper_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -806,7 +814,7 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -816,7 +824,7 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
     }
 
@@ -846,7 +854,7 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
@@ -856,7 +864,7 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_upper_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -866,7 +874,7 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -876,7 +884,7 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each column.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
     }
 
@@ -907,7 +915,7 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is an upper triangular matrix, solves the equation `self * X = rhs`, and
@@ -917,7 +925,7 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_upper_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit lower triangular matrix, solves the equation `self * X = rhs`,
@@ -927,7 +935,7 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_lower_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_lower_triangular_in_place(rhs);
     }
     /// Assuming `self` is a unit upper triangular matrix, solves the equation `self * X = rhs`,
@@ -937,7 +945,7 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
     /// The matrix indices need not be sorted, but
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
-    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl AsMatMut<E>) {
+    pub fn sp_solve_unit_upper_triangular_in_place(&self, rhs: impl ColBatchMut<E>) {
         self.as_ref().sp_solve_unit_upper_triangular_in_place(rhs);
     }
 

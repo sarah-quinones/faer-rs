@@ -1,4 +1,4 @@
-use crate::{utils::slice::*, Conj};
+use crate::{mat::*, utils::slice::*, Conj};
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
@@ -48,9 +48,26 @@ pub trait AsColRef<E: Entity> {
     fn as_col_ref(&self) -> ColRef<'_, E>;
 }
 /// Trait for types that can be converted to a mutable column view.
-pub trait AsColMut<E: Entity> {
+pub trait AsColMut<E: Entity>: AsColRef<E> {
     /// Convert to a mutable column view.
     fn as_col_mut(&mut self) -> ColMut<'_, E>;
+}
+
+impl<E: Entity, T: AsColRef<E>> AsColRef<E> for &T {
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (**self).as_col_ref()
+    }
+}
+impl<E: Entity, T: AsColRef<E>> AsColRef<E> for &mut T {
+    fn as_col_ref(&self) -> ColRef<'_, E> {
+        (**self).as_col_ref()
+    }
+}
+
+impl<E: Entity, T: AsColMut<E>> AsColMut<E> for &mut T {
+    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+        (**self).as_col_mut()
+    }
 }
 
 mod col_index;
@@ -63,3 +80,64 @@ pub use colmut::{from_raw_parts_mut, from_slice_mut, ColMut};
 
 mod colown;
 pub use colown::Col;
+
+/// Type that can be interpreted as a batch of column vectors. Can be a single column or a matrix.
+pub trait ColBatch<E: Conjugate>: As2D<E> {
+    /// Corresponding owning type.
+    type Owned: ColBatchMut<E::Canonical>;
+
+    /// Constructor of the owned type that initializes the values to zero.
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned;
+
+    /// Constructor of the owned type that copies the values.
+    fn new_owned_copied(src: &Self) -> Self::Owned;
+
+    /// Resize an owned column or matrix.
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize);
+}
+
+/// Type that can be interpreted as a mutable batch of column vectors. Can be a single column or a
+/// matrix.
+pub trait ColBatchMut<E: Conjugate>: As2DMut<E> + ColBatch<E> {}
+
+impl<E: Conjugate, T: ColBatch<E>> ColBatch<E> for &T {
+    type Owned = T::Owned;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        T::new_owned_zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        T::new_owned_copied(src)
+    }
+
+    #[inline]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        T::resize_owned(owned, nrows, ncols)
+    }
+}
+
+impl<E: Conjugate, T: ColBatch<E>> ColBatch<E> for &mut T {
+    type Owned = T::Owned;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        T::new_owned_zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        T::new_owned_copied(src)
+    }
+
+    #[inline]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        T::resize_owned(owned, nrows, ncols)
+    }
+}
+
+impl<E: Conjugate, T: ColBatchMut<E>> ColBatchMut<E> for &mut T {}

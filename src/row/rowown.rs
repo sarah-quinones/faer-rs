@@ -73,11 +73,8 @@ impl<E: Entity> Row<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn zeros(ncols: usize) -> Self
-    where
-        E: ComplexField,
-    {
-        Self::from_fn(ncols, |_| E::faer_zero())
+    pub fn zeros(ncols: usize) -> Self {
+        Self::from_fn(ncols, |_| unsafe { core::mem::zeroed() })
     }
 
     /// Returns the number of rows of the row. This is always equal to `1`.
@@ -546,24 +543,10 @@ impl<E: Entity> Clone for Row<E> {
     }
 }
 
-impl<E: Entity> As2D<E> for &'_ Row<E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).as_ref().as_2d()
-    }
-}
-
 impl<E: Entity> As2D<E> for Row<E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).as_ref().as_2d()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut Row<E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).as_mut().as_2d_mut()
     }
 }
 
@@ -580,24 +563,11 @@ impl<E: Entity> AsRowRef<E> for Row<E> {
         (*self).as_ref()
     }
 }
-impl<E: Entity> AsRowRef<E> for &'_ Row<E> {
-    #[inline]
-    fn as_row_ref(&self) -> RowRef<'_, E> {
-        (**self).as_ref()
-    }
-}
 
 impl<E: Entity> AsRowMut<E> for Row<E> {
     #[inline]
     fn as_row_mut(&mut self) -> RowMut<'_, E> {
         (*self).as_mut()
-    }
-}
-
-impl<E: Entity> AsRowMut<E> for &'_ mut Row<E> {
-    #[inline]
-    fn as_row_mut(&mut self) -> RowMut<'_, E> {
-        (**self).as_mut()
     }
 }
 
@@ -624,3 +594,16 @@ impl<E: SimpleEntity> core::ops::IndexMut<usize> for Row<E> {
         self.as_mut().get_mut(col)
     }
 }
+
+impl<E: Conjugate> RowBatch<E> for Row<E> {
+    type Owned = Row<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(nrows == 1);
+        Row::zeros(ncols)
+    }
+}
+
+impl<E: Conjugate> RowBatchMut<E> for Row<E> {}

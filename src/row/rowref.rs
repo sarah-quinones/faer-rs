@@ -503,13 +503,6 @@ pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> RowRef<'_, E> {
     }
 }
 
-impl<E: Entity> As2D<E> for &'_ RowRef<'_, E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).as_2d()
-    }
-}
-
 impl<E: Entity> As2D<E> for RowRef<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
@@ -521,12 +514,6 @@ impl<E: Entity> AsRowRef<E> for RowRef<'_, E> {
     #[inline]
     fn as_row_ref(&self) -> RowRef<'_, E> {
         *self
-    }
-}
-impl<E: Entity> AsRowRef<E> for &'_ RowRef<'_, E> {
-    #[inline]
-    fn as_row_ref(&self) -> RowRef<'_, E> {
-        **self
     }
 }
 
@@ -543,5 +530,16 @@ impl<E: SimpleEntity> core::ops::Index<usize> for RowRef<'_, E> {
     #[track_caller]
     fn index(&self, col: usize) -> &E {
         self.get(col)
+    }
+}
+
+impl<E: Conjugate> RowBatch<E> for RowRef<'_, E> {
+    type Owned = Row<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(nrows == 1);
+        Row::zeros(ncols)
     }
 }

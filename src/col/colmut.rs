@@ -517,24 +517,10 @@ pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> ColMut<'
     }
 }
 
-impl<E: Entity> As2D<E> for &'_ ColMut<'_, E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).rb().as_2d()
-    }
-}
-
 impl<E: Entity> As2D<E> for ColMut<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).rb().as_2d()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut ColMut<'_, E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).rb_mut().as_2d_mut()
     }
 }
 
@@ -551,24 +537,10 @@ impl<E: Entity> AsColRef<E> for ColMut<'_, E> {
         (*self).rb()
     }
 }
-impl<E: Entity> AsColRef<E> for &'_ ColMut<'_, E> {
-    #[inline]
-    fn as_col_ref(&self) -> ColRef<'_, E> {
-        (**self).rb()
-    }
-}
-
 impl<E: Entity> AsColMut<E> for ColMut<'_, E> {
     #[inline]
     fn as_col_mut(&mut self) -> ColMut<'_, E> {
         (*self).rb_mut()
-    }
-}
-
-impl<E: Entity> AsColMut<E> for &'_ mut ColMut<'_, E> {
-    #[inline]
-    fn as_col_mut(&mut self) -> ColMut<'_, E> {
-        (**self).rb_mut()
     }
 }
 
@@ -595,3 +567,26 @@ impl<E: SimpleEntity> core::ops::IndexMut<usize> for ColMut<'_, E> {
         (*self).rb_mut().get_mut(row)
     }
 }
+
+impl<E: Conjugate> ColBatch<E> for ColMut<'_, E> {
+    type Owned = Col<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(ncols == 1);
+        Col::zeros(nrows)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        Self::Owned::resize_owned(owned, nrows, ncols)
+    }
+}
+impl<E: Conjugate> ColBatchMut<E> for ColMut<'_, E> {}

@@ -73,11 +73,8 @@ impl<E: Entity> Col<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn zeros(nrows: usize) -> Self
-    where
-        E: ComplexField,
-    {
-        Self::from_fn(nrows, |_| E::faer_zero())
+    pub fn zeros(nrows: usize) -> Self {
+        Self::from_fn(nrows, |_| unsafe { core::mem::zeroed() })
     }
 
     /// Returns the number of rows of the column.
@@ -554,24 +551,10 @@ impl<E: Entity> Clone for Col<E> {
     }
 }
 
-impl<E: Entity> As2D<E> for &'_ Col<E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).as_ref().as_2d()
-    }
-}
-
 impl<E: Entity> As2D<E> for Col<E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).as_ref().as_2d()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut Col<E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).as_mut().as_2d_mut()
     }
 }
 
@@ -588,24 +571,10 @@ impl<E: Entity> AsColRef<E> for Col<E> {
         (*self).as_ref()
     }
 }
-impl<E: Entity> AsColRef<E> for &'_ Col<E> {
-    #[inline]
-    fn as_col_ref(&self) -> ColRef<'_, E> {
-        (**self).as_ref()
-    }
-}
-
 impl<E: Entity> AsColMut<E> for Col<E> {
     #[inline]
     fn as_col_mut(&mut self) -> ColMut<'_, E> {
         (*self).as_mut()
-    }
-}
-
-impl<E: Entity> AsColMut<E> for &'_ mut Col<E> {
-    #[inline]
-    fn as_col_mut(&mut self) -> ColMut<'_, E> {
-        (**self).as_mut()
     }
 }
 
@@ -632,3 +601,28 @@ impl<E: SimpleEntity> core::ops::IndexMut<usize> for Col<E> {
         self.as_mut().get_mut(row)
     }
 }
+
+impl<E: Conjugate> ColBatch<E> for Col<E> {
+    type Owned = Col<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(ncols == 1);
+        Col::zeros(nrows)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        assert!(ncols == 1);
+        owned.resize_with(nrows, |_| unreachable!());
+    }
+}
+
+impl<E: Conjugate> ColBatchMut<E> for Col<E> {}

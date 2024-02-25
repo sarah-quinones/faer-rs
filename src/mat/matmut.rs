@@ -1021,12 +1021,6 @@ impl<E: Entity> AsMatRef<E> for MatMut<'_, E> {
         (*self).rb()
     }
 }
-impl<E: Entity> AsMatRef<E> for &'_ MatMut<'_, E> {
-    #[inline]
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
-        (**self).rb()
-    }
-}
 
 impl<E: Entity> AsMatMut<E> for MatMut<'_, E> {
     #[inline]
@@ -1035,31 +1029,10 @@ impl<E: Entity> AsMatMut<E> for MatMut<'_, E> {
     }
 }
 
-impl<E: Entity> AsMatMut<E> for &'_ mut MatMut<'_, E> {
-    #[inline]
-    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
-        (**self).rb_mut()
-    }
-}
-
-impl<E: Entity> As2D<E> for &'_ MatMut<'_, E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).rb()
-    }
-}
-
 impl<E: Entity> As2D<E> for MatMut<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).rb()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut MatMut<'_, E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).rb_mut()
     }
 }
 
@@ -1287,3 +1260,26 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for MatMut<'_, E> {
         self.read(row, col)
     }
 }
+
+impl<E: Conjugate> ColBatch<E> for MatMut<'_, E> {
+    type Owned = Mat<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        Mat::zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        <Self::Owned as ColBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
+    }
+}
+
+impl<E: Conjugate> ColBatchMut<E> for MatMut<'_, E> {}

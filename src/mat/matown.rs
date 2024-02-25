@@ -95,11 +95,8 @@ impl<E: Entity> Mat<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
-    pub fn zeros(nrows: usize, ncols: usize) -> Self
-    where
-        E: ComplexField,
-    {
-        Self::from_fn(nrows, ncols, |_, _| E::faer_zero())
+    pub fn zeros(nrows: usize, ncols: usize) -> Self {
+        Self::from_fn(nrows, ncols, |_, _| unsafe { core::mem::zeroed() })
     }
 
     /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with zeros, except the main
@@ -850,12 +847,6 @@ impl<E: Entity> AsMatRef<E> for Mat<E> {
         (*self).as_ref()
     }
 }
-impl<E: Entity> AsMatRef<E> for &'_ Mat<E> {
-    #[inline]
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
-        (**self).as_ref()
-    }
-}
 
 impl<E: Entity> AsMatMut<E> for Mat<E> {
     #[inline]
@@ -864,31 +855,10 @@ impl<E: Entity> AsMatMut<E> for Mat<E> {
     }
 }
 
-impl<E: Entity> AsMatMut<E> for &'_ mut Mat<E> {
-    #[inline]
-    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
-        (**self).as_mut()
-    }
-}
-
-impl<E: Entity> As2D<E> for &'_ Mat<E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).as_ref()
-    }
-}
-
 impl<E: Entity> As2D<E> for Mat<E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).as_ref()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut Mat<E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).as_mut()
     }
 }
 
@@ -948,3 +918,27 @@ impl<E: Entity> matrixcompare_core::DenseAccess<E> for Mat<E> {
         self.read(row, col)
     }
 }
+
+impl<E: Conjugate> ColBatch<E> for Mat<E> {
+    type Owned = Mat<E::Canonical>;
+
+    #[inline]
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        Mat::zeros(nrows, ncols)
+    }
+
+    #[inline]
+    fn new_owned_copied(src: &Self) -> Self::Owned {
+        src.to_owned()
+    }
+
+    #[inline]
+    #[track_caller]
+    fn resize_owned(owned: &mut Self::Owned, nrows: usize, ncols: usize) {
+        assert!(ncols == 1);
+        owned.resize_with(nrows, ncols, |_, _| unreachable!());
+    }
+}
+
+impl<E: Conjugate> ColBatchMut<E> for Mat<E> {}

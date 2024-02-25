@@ -368,7 +368,7 @@ pub unsafe trait Conjugate: Entity {
     type Conj: Entity + Conjugate<Conj = Self, Canonical = Self::Canonical>;
     /// Must have the same layout as `Self`, and `Canonical::Unit` must have the same layout as
     /// `Unit`.
-    type Canonical: Entity + Conjugate;
+    type Canonical: Entity + Conjugate<Canonical = Self::Canonical>;
 
     /// Performs the implicit conjugation operation on the given value, returning the canonical
     /// form.

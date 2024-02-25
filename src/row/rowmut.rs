@@ -494,24 +494,11 @@ pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> RowMut<'
         )
     }
 }
-impl<E: Entity> As2D<E> for &'_ RowMut<'_, E> {
-    #[inline]
-    fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (**self).rb().as_2d()
-    }
-}
 
 impl<E: Entity> As2D<E> for RowMut<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
         (*self).rb().as_2d()
-    }
-}
-
-impl<E: Entity> As2DMut<E> for &'_ mut RowMut<'_, E> {
-    #[inline]
-    fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (**self).rb_mut().as_2d_mut()
     }
 }
 
@@ -552,12 +539,6 @@ impl<E: Entity> AsRowRef<E> for RowMut<'_, E> {
         (*self).rb()
     }
 }
-impl<E: Entity> AsRowRef<E> for &'_ RowMut<'_, E> {
-    #[inline]
-    fn as_row_ref(&self) -> RowRef<'_, E> {
-        (**self).rb()
-    }
-}
 
 impl<E: Entity> AsRowMut<E> for RowMut<'_, E> {
     #[inline]
@@ -566,9 +547,15 @@ impl<E: Entity> AsRowMut<E> for RowMut<'_, E> {
     }
 }
 
-impl<E: Entity> AsRowMut<E> for &'_ mut RowMut<'_, E> {
+impl<E: Conjugate> RowBatch<E> for RowMut<'_, E> {
+    type Owned = Row<E::Canonical>;
+
     #[inline]
-    fn as_row_mut(&mut self) -> RowMut<'_, E> {
-        (**self).rb_mut()
+    #[track_caller]
+    fn new_owned_zeros(nrows: usize, ncols: usize) -> Self::Owned {
+        assert!(nrows == 1);
+        Row::zeros(ncols)
     }
 }
+
+impl<E: Conjugate> RowBatchMut<E> for RowMut<'_, E> {}
