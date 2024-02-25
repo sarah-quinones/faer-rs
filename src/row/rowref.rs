@@ -422,13 +422,31 @@ impl<'a, E: Entity> RowRef<'a, E> {
     {
         self.as_2d().norm_max()
     }
+    /// Returns the L1 norm of `self`.
+    #[inline]
+    pub fn norm_l1(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        self.as_ref().as_2d().norm_l1()
+    }
+
     /// Returns the L2 norm of `self`.
     #[inline]
     pub fn norm_l2(&self) -> E::Real
     where
         E: ComplexField,
     {
-        self.as_2d().norm_l2()
+        self.as_ref().as_2d().norm_l2()
+    }
+
+    /// Returns the squared L2 norm of `self`.
+    #[inline]
+    pub fn squared_norm_l2(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        self.as_ref().as_2d().squared_norm_l2()
     }
 
     /// Returns the sum of `self`.

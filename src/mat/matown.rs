@@ -663,13 +663,32 @@ impl<E: Entity> Mat<E> {
     {
         crate::linalg::reductions::norm_max::norm_max((*self).as_ref())
     }
+
+    /// Returns the L1 norm of `self`.
+    #[inline]
+    pub fn norm_l1(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        self.as_ref().norm_l1()
+    }
+
     /// Returns the L2 norm of `self`.
     #[inline]
     pub fn norm_l2(&self) -> E::Real
     where
         E: ComplexField,
     {
-        crate::linalg::reductions::norm_l2::norm_l2((*self).as_ref())
+        self.as_ref().norm_l2()
+    }
+
+    /// Returns the squared L2 norm of `self`.
+    #[inline]
+    pub fn squared_norm_l2(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        self.as_ref().squared_norm_l2()
     }
 
     /// Returns the sum of `self`.

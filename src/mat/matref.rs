@@ -907,6 +907,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
     {
         crate::linalg::reductions::norm_max::norm_max((*self).rb())
     }
+
+    /// Returns the L1 norm of `self`.
+    #[inline]
+    pub fn norm_l1(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        crate::linalg::reductions::norm_l1::norm_l1((*self).rb())
+    }
+
     /// Returns the L2 norm of `self`.
     #[inline]
     pub fn norm_l2(&self) -> E::Real
@@ -914,6 +924,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
         E: ComplexField,
     {
         crate::linalg::reductions::norm_l2::norm_l2((*self).rb())
+    }
+
+    /// Returns the squared L2 norm of `self`.
+    #[inline]
+    pub fn squared_norm_l2(&self) -> E::Real
+    where
+        E: ComplexField,
+    {
+        let norm = crate::linalg::reductions::norm_l2::norm_l2((*self).rb());
+        norm.faer_mul(norm)
     }
 
     /// Returns the sum of `self`.
