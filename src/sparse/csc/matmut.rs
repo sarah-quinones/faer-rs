@@ -99,6 +99,19 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         self.rb().to_owned()
     }
 
+    /// Copies `self` into a newly allocated matrix with sorted indices.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output.
+    #[inline]
+    pub fn to_sorted(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_sorted()
+    }
+
     /// Copies `self` into a newly allocated dense matrix
     #[inline]
     pub fn to_dense(&self) -> Mat<E::Canonical>
@@ -112,7 +125,7 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
     /// Copies `self` into a newly allocated matrix, with row-major order.
     ///
     /// # Note
-    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    /// Allows unsorted matrices, producing a sorted output.
     #[inline]
     pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where

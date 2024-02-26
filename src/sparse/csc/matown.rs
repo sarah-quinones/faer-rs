@@ -46,10 +46,23 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         self.as_ref().to_owned()
     }
 
+    /// Copies `self` into a newly allocated matrix with sorted indices.
+    ///
+    /// # Note
+    /// Allows unsorted matrices, producing a sorted output.
+    #[inline]
+    pub fn to_sorted(&self) -> Result<SparseColMat<I, E::Canonical>, FaerError>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_sorted()
+    }
+
     /// Copies `self` into a newly allocated matrix, with row-major order.
     ///
     /// # Note
-    /// Allows unsorted matrices, producing a sorted output. Duplicate entries are kept, however.
+    /// Allows unsorted matrices, producing a sorted output.
     #[inline]
     pub fn to_row_major(&self) -> Result<SparseRowMat<I, E::Canonical>, FaerError>
     where
@@ -57,6 +70,19 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         E::Canonical: ComplexField,
     {
         self.as_ref().to_row_major()
+    }
+
+    /// Sorts the row indices in each column of the matrix in-place.
+    ///
+    /// # Note
+    /// Allows unsorted matrices.
+    pub fn sort_indices(&mut self) {
+        utils::sort_indices::<I, E>(
+            &self.symbolic.col_ptr,
+            self.symbolic.col_nnz.as_deref(),
+            &mut self.symbolic.row_ind,
+            self.values.as_slice_mut().into_inner(),
+        );
     }
 
     /// Decomposes the matrix into the symbolic part and the numerical values.

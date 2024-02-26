@@ -208,6 +208,7 @@ pub mod utils {
     /// Sorts `row_indices` and `values` simultaneously so that `row_indices` is nonincreasing.
     pub fn sort_indices<I: Index, E: Entity>(
         col_ptrs: &[I],
+        nnz_per_col: Option<&[I]>,
         row_indices: &mut [I],
         values: GroupFor<E, &mut [E::Unit]>,
     ) {
@@ -217,7 +218,9 @@ pub mod utils {
         let n = col_ptrs.len() - 1;
         for j in 0..n {
             let start = col_ptrs[j].zx();
-            let end = col_ptrs[j + 1].zx();
+            let end = nnz_per_col
+                .map(|nnz| start + nnz[j].zx())
+                .unwrap_or(col_ptrs[j + 1].zx());
 
             unsafe {
                 crate::sort::sort_indices(
@@ -516,6 +519,7 @@ pub mod utils {
         if sort {
             sort_indices::<I, E>(
                 new_col_ptrs,
+                None,
                 new_row_indices,
                 new_values.rb_mut().into_inner(),
             );

@@ -1228,7 +1228,7 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
     let (mut max_row, mut max_col, mut biggest) = best_in_matrix(matrix.rb());
 
     for k in 0..size {
-        if biggest < E::Real::faer_zero_threshold().unwrap() {
+        if biggest < E::Real::faer_zero_threshold() {
             for idx in k..size {
                 row_transpositions[idx] = I::from_signed(truncate(idx));
                 col_transpositions[idx] = I::from_signed(truncate(idx));

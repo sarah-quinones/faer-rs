@@ -668,8 +668,8 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 
 /// Unstable trait containing the operations that a real number type needs to implement.
 pub trait RealField: ComplexField<Real = Self> + PartialOrd {
-    fn faer_epsilon() -> Option<Self>;
-    fn faer_zero_threshold() -> Option<Self>;
+    fn faer_epsilon() -> Self;
+    fn faer_zero_threshold() -> Self;
 
     fn faer_min_positive() -> Self;
     fn faer_min_positive_inv() -> Self;
@@ -1391,12 +1391,12 @@ impl ComplexField for f64 {
 }
 impl RealField for f32 {
     #[inline(always)]
-    fn faer_epsilon() -> Option<Self> {
-        Some(Self::EPSILON)
+    fn faer_epsilon() -> Self {
+        Self::EPSILON
     }
     #[inline(always)]
-    fn faer_zero_threshold() -> Option<Self> {
-        Some(Self::MIN_POSITIVE)
+    fn faer_zero_threshold() -> Self {
+        Self::MIN_POSITIVE
     }
 
     #[inline(always)]
@@ -1526,12 +1526,12 @@ impl RealField for f32 {
 }
 impl RealField for f64 {
     #[inline(always)]
-    fn faer_epsilon() -> Option<Self> {
-        Some(Self::EPSILON)
+    fn faer_epsilon() -> Self {
+        Self::EPSILON
     }
     #[inline(always)]
-    fn faer_zero_threshold() -> Option<Self> {
-        Some(Self::MIN_POSITIVE)
+    fn faer_zero_threshold() -> Self {
+        Self::MIN_POSITIVE
     }
     #[inline(always)]
     fn faer_div(self, rhs: Self) -> Self {
@@ -2792,13 +2792,13 @@ unsafe impl Conjugate for Symbolic {
 
 impl RealField for Symbolic {
     #[inline(always)]
-    fn faer_epsilon() -> Option<Self> {
-        Some(Self)
+    fn faer_epsilon() -> Self {
+        Self
     }
 
     #[inline(always)]
-    fn faer_zero_threshold() -> Option<Self> {
-        Some(Self)
+    fn faer_zero_threshold() -> Self {
+        Self
     }
 
     #[inline(always)]
