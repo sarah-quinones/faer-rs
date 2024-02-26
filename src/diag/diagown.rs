@@ -1,6 +1,5 @@
 use super::*;
 use crate::col::Col;
-use faer_entity::Entity;
 
 /// Diagonal matrix.
 pub struct Diag<E: Entity> {

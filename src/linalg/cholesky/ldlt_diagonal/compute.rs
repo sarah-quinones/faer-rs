@@ -1,12 +1,12 @@
 use crate::{
     assert, debug_assert,
     linalg::{
-        entity::SimdCtx, matmul::triangular::BlockStructure, temp_mat_req, temp_mat_uninit,
+        matmul::triangular::BlockStructure, temp_mat_req, temp_mat_uninit,
         triangular_solve as solve,
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;

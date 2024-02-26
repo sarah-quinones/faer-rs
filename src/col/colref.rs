@@ -1,10 +1,5 @@
 use super::*;
-use crate::{
-    assert, debug_assert,
-    diag::DiagRef,
-    mat::{As2D, Mat, MatRef},
-    row::RowRef,
-};
+use crate::{assert, debug_assert, diag::DiagRef, row::RowRef};
 
 /// Immutable view over a column vector, similar to an immutable reference to a strided
 /// [prim@slice].

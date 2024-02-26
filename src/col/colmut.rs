@@ -1,10 +1,5 @@
 use super::*;
-use crate::{
-    diag::DiagMut,
-    mat::{self, As2D, As2DMut, Mat, MatMut, MatRef},
-    row::RowMut,
-    unzipped, zipped,
-};
+use crate::{diag::DiagMut, mat, row::RowMut, unzipped, zipped};
 use core::mem::MaybeUninit;
 
 /// Mutable view over a column vector, similar to a mutable reference to a strided [prim@slice].

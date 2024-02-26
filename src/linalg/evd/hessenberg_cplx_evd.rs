@@ -17,7 +17,7 @@ use crate::{
         temp_mat_req,
         zip::Diag,
     },
-    unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    unzipped, zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

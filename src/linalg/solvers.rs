@@ -1,6 +1,6 @@
 use crate::{
     assert, col::*, diag::DiagRef, linalg::matmul::triangular::BlockStructure, mat::*,
-    perm::PermRef, unzipped, zipped, Side, *,
+    perm::PermRef, *,
 };
 use dyn_stack::*;
 use reborrow::*;
@@ -2561,7 +2561,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, RealField};
+    use crate::assert;
     use complex_native::*;
 
     #[track_caller]

@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::inner_prod::inner_prod_with_conj, temp_mat_req, temp_mat_zeroed},
     unzipped,
     utils::thread::parallelism_degree,
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

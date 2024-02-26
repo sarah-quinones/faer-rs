@@ -2,10 +2,7 @@ use super::*;
 use crate::{
     debug_assert,
     diag::Diag,
-    mat::{
-        matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
-        As2D, As2DMut, Mat, MatMut, MatRef,
-    },
+    mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     row::RowRef,
     utils::DivCeil,
 };

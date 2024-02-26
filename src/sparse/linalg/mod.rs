@@ -4,7 +4,7 @@ use crate::{
     Entity, Side,
 };
 use bytemuck::Pod;
-use dyn_stack::{PodStack, SizeOverflow, StackReq};
+use dyn_stack::PodStack;
 
 const CHOLESKY_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
 const QR_SUPERNODAL_RATIO_FACTOR: f64 = 40.0;
@@ -839,7 +839,6 @@ pub(crate) mod qd {
 
     mod faer_impl {
         use super::*;
-        use crate::{ComplexField, Conjugate, Entity, RealField};
 
         unsafe impl Entity for Double<f64> {
             type Unit = f64;

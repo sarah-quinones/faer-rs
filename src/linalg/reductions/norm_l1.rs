@@ -6,7 +6,7 @@ use crate::{
 };
 use coe::Coerce;
 use faer_entity::*;
-use pulp::{Read, Simd};
+use pulp::Simd;
 
 #[inline(always)]
 fn norm_l1_with_simd_and_offset_prologue<E: RealField, S: pulp::Simd>(

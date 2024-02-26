@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::matmul, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::thread::{for_each_raw, par_split_indices, parallelism_degree},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

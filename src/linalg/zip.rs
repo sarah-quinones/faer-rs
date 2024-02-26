@@ -1,10 +1,5 @@
 //! Implementation of [`zipped!`] structures.
 
-use self::{
-    col::{Col, ColMut, ColRef},
-    mat::{Mat, MatMut, MatRef},
-    row::{Row, RowMut, RowRef},
-};
 use crate::{assert, debug_assert, *};
 use core::mem::MaybeUninit;
 use faer_entity::*;
@@ -2272,7 +2267,7 @@ impl<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, mat::Mat, unzipped, zipped, ComplexField};
+    use crate::{assert, unzipped, zipped};
 
     #[test]
     fn test_zip() {

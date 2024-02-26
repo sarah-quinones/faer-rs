@@ -903,10 +903,6 @@ pub mod prelude {
 
 #[cfg(test)]
 mod tests {
-    use col::Col;
-    use faer_entity::*;
-    use row::Row;
-
     use super::*;
     use crate::assert;
 

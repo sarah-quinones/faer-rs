@@ -5,7 +5,7 @@ use crate::{
     linalg::matmul::matmul,
     perm::{swap_cols_idx as swap_cols, swap_rows_idx as swap_rows, PermRef},
     utils::{simd::*, slice::*},
-    ComplexField, Entity, Index, MatMut, MatRef, Parallelism, RealField, SignedIndex,
+    Index, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use bytemuck::cast;
 use coe::Coerce;
@@ -1544,13 +1544,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        assert,
-        complex_native::{c32, c64},
-        linalg::lu::full_pivoting::reconstruct,
-        perm::PermRef,
-        Mat,
-    };
+    use crate::{assert, linalg::lu::full_pivoting::reconstruct, Mat};
     use rand::random;
 
     macro_rules! make_stack {

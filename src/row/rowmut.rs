@@ -1,11 +1,5 @@
 use super::*;
-use crate::{
-    assert,
-    col::ColMut,
-    debug_assert,
-    mat::{self, As2D, As2DMut, Mat, MatMut, MatRef},
-    unzipped, zipped,
-};
+use crate::{assert, col::ColMut, debug_assert, mat, unzipped, zipped};
 use core::mem::MaybeUninit;
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].

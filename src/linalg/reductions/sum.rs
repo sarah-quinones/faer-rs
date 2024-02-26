@@ -4,7 +4,7 @@ use crate::{
     utils::{simd::*, slice::*},
 };
 use faer_entity::*;
-use pulp::{Read, Simd};
+use pulp::Simd;
 
 #[inline(always)]
 fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(

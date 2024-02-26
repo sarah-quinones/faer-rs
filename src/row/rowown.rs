@@ -2,11 +2,7 @@ use super::*;
 use crate::{
     col::ColRef,
     debug_assert,
-    mat::{
-        matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
-        As2D, As2DMut, Mat, MatMut, MatRef,
-    },
-    row::RowRef,
+    mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     utils::DivCeil,
 };
 use core::mem::{ManuallyDrop, MaybeUninit};

@@ -3821,7 +3821,7 @@ pub fn lahqr<E: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, mat, ComplexField, Mat};
+    use crate::{assert, mat, Mat};
     use assert_approx_eq::assert_approx_eq;
 
     macro_rules! make_stack {

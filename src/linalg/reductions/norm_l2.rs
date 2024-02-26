@@ -5,7 +5,7 @@ use crate::{
     utils::{simd::*, slice::*},
 };
 use faer_entity::*;
-use pulp::{Read, Simd};
+use pulp::Simd;
 
 #[inline(always)]
 fn norm_l2_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(

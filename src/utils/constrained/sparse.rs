@@ -1,6 +1,5 @@
 use super::*;
 use crate::{assert, sparse::__get_unchecked, utils::slice::*};
-use core::ops::Range;
 
 /// Symbolic structure view with dimensions equal to the values tied to `('nrows, 'ncols)`,
 /// in column-major order.

@@ -4,7 +4,6 @@ use crate::{
     utils::{simd::*, slice::*},
 };
 use faer_entity::*;
-use pulp::Read;
 
 #[inline(always)]
 fn norm_max_contiguous<E: RealField>(data: MatRef<'_, E>) -> E {

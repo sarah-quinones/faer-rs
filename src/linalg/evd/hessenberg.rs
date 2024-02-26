@@ -11,7 +11,7 @@ use crate::{
     },
     unzipped,
     utils::{thread::parallelism_degree, DivCeil},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -820,7 +820,8 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
                         if j == 0 {
                             z_1.rb_mut().col_mut(0).copy_from(&z_tmp.rb().col(j));
                         } else {
-                            *&mut (z_1.rb_mut().col_mut(0)) += &z_tmp.rb().col(j);
+                            let mut col = z_1.rb_mut().col_mut(0);
+                            col += &z_tmp.rb().col(j);
                         }
                     }
                 }

@@ -10,7 +10,7 @@ use crate::{
     perm::{swap_cols_idx as swap_cols, PermRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, ComplexField, Conj, Entity, Index, MatMut, MatRef, Parallelism, SignedIndex,
+    zipped, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -839,7 +839,6 @@ mod tests {
     use super::*;
     use crate::{
         assert,
-        complex_native::c64,
         linalg::{
             householder::{
                 apply_block_householder_sequence_on_the_left_in_place_req,
@@ -848,7 +847,7 @@ mod tests {
             matmul::matmul,
             zip::Diag,
         },
-        Conj, Mat, MatRef,
+        Mat,
     };
     use assert_approx_eq::assert_approx_eq;
     use matrixcompare::assert_matrix_eq;

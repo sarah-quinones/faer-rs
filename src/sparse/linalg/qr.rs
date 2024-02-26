@@ -2321,11 +2321,7 @@ mod tests {
         complex_native::c64,
         sparse::{
             linalg::{
-                cholesky::{
-                    ghost_postorder,
-                    simplicial::EliminationTreeRef,
-                    supernodal::{SupernodalLdltRef, SymbolicSupernodalCholesky},
-                },
+                cholesky::supernodal::SupernodalLdltRef,
                 qr::{
                     simplicial::{
                         factorize_simplicial_numeric_qr_req,
@@ -2336,16 +2332,12 @@ mod tests {
                         factorize_supernodal_symbolic_qr,
                     },
                 },
-                SymbolicSparseColMatRef,
             },
             utils::ghost_adjoint_symbolic,
-            SparseColMatRef,
         },
-        utils::slice::{SliceGroup, SliceGroupMut},
         Mat,
     };
-    use core::iter::zip;
-    use dyn_stack::{GlobalPodBuffer, StackReq};
+    use dyn_stack::GlobalPodBuffer;
     use matrix_market_rs::MtxData;
     use rand::{Rng, SeedableRng};
 

@@ -1,7 +1,5 @@
 use super::*;
-use crate::{
-    assert, col::ColRef, debug_assert, diag::DiagRef, row::RowRef, unzipped, utils::DivCeil, zipped,
-};
+use crate::{assert, debug_assert, diag::DiagRef, unzipped, utils::DivCeil, zipped};
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
 ///

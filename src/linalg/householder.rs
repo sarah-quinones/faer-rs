@@ -39,7 +39,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*, thread::join_raw, DivCeil},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;

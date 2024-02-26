@@ -2,12 +2,12 @@ use super::compute::{raw_cholesky_in_place, raw_cholesky_in_place_req};
 use crate::{
     assert, debug_assert,
     linalg::{
-        entity::SimdCtx, matmul as mul, matmul::triangular::BlockStructure, temp_mat_req,
-        temp_mat_uninit, triangular_solve as solve,
+        matmul as mul, matmul::triangular::BlockStructure, temp_mat_req, temp_mat_uninit,
+        triangular_solve as solve,
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ComplexField, Entity, MatMut, Parallelism,
+    zipped, MatMut, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};

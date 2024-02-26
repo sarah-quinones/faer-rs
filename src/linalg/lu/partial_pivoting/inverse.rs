@@ -143,7 +143,7 @@ mod tests {
             lu::partial_pivoting::compute::{lu_in_place, lu_in_place_req},
             matmul::matmul,
         },
-        Mat, Parallelism,
+        Mat,
     };
     use assert_approx_eq::assert_approx_eq;
     use rand::random;

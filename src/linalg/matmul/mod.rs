@@ -3,14 +3,13 @@
 use crate::{
     assert,
     complex_native::*,
-    linalg::entity::{transmute_unchecked, SimdGroupFor},
     mat::{MatMut, MatRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
     zipped, ComplexField, Conj, Conjugate, Parallelism,
 };
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
-use faer_entity::{SimdCtx, *};
+use faer_entity::*;
 use pulp::{Read, Simd, Write};
 use reborrow::*;
 

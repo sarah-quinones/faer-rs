@@ -18,7 +18,7 @@ use crate::{
     linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::{simd::SimdFor, thread::join_raw},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use coe::Coerce;
 use core::{iter::zip, mem::swap};

@@ -1,7 +1,6 @@
 use crate::{
     assert,
     linalg::{
-        entity::SimdCtx,
         householder::{
             self, apply_block_householder_transpose_on_the_left_in_place_with_conj,
             upgrade_householder_factor,
@@ -11,7 +10,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism,
+    zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -381,7 +380,7 @@ mod tests {
             matmul::matmul,
             zip::Diag,
         },
-        Conj, Mat, MatRef, Parallelism,
+        Mat,
     };
     use assert_approx_eq::assert_approx_eq;
     use std::cell::RefCell;

@@ -6,14 +6,13 @@ use crate::{
             ldlt_diagonal::update::{delete_rows_and_cols_triangular, rank_update_indices},
             llt::compute::{cholesky_in_place, cholesky_in_place_req},
         },
-        entity::SimdCtx,
         matmul as mul,
         matmul::triangular::BlockStructure,
         temp_mat_req, temp_mat_uninit, triangular_solve as solve,
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ComplexField, Entity, MatMut, Parallelism,
+    zipped, MatMut, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
