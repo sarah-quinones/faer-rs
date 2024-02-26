@@ -2568,7 +2568,7 @@ mod tests {
     fn assert_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
         let a = a.as_mat_ref();
         let b = b.as_mat_ref();
-        let eps = E::Real::faer_epsilon().unwrap().faer_sqrt();
+        let eps = E::Real::faer_epsilon().faer_sqrt();
 
         assert!(a.nrows() == b.nrows());
         assert!(a.ncols() == b.ncols());
