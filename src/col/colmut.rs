@@ -1,11 +1,11 @@
+use super::*;
 use crate::{
     diag::DiagMut,
     mat::{self, As2D, As2DMut, Mat, MatMut, MatRef},
     row::RowMut,
     unzipped, zipped,
 };
-
-use super::*;
+use core::mem::MaybeUninit;
 
 /// Mutable view over a column vector, similar to a mutable reference to a strided [prim@slice].
 ///
@@ -487,6 +487,48 @@ impl<'a, E: Entity> ColMut<'a, E> {
         E: ComplexField,
     {
         self.as_ref().kron(rhs)
+    }
+
+    /// Returns the column as a contiguous slice if its row stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
+        self.into_const().try_as_slice()
+    }
+
+    /// Returns the column as a contiguous slice if its row stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    pub fn try_as_slice_mut(self) -> Option<GroupFor<E, &'a mut [E::Unit]>> {
+        if self.row_stride() == 1 {
+            let len = self.nrows();
+            Some(E::faer_map(
+                self.as_ptr_mut(),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, len) },
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the column as a contiguous potentially uninitialized slice if its row stride is
+    /// equal to `1`.
+    pub fn try_as_uninit_slice_mut(self) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
+        if self.row_stride() == 1 {
+            let len = self.nrows();
+            Some(E::faer_map(
+                self.as_ptr_mut(),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr as _, len) },
+            ))
+        } else {
+            None
+        }
     }
 
     /// Returns a view over the matrix.

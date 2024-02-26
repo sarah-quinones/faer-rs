@@ -6,6 +6,7 @@ use crate::{
     mat::{self, As2D, As2DMut, Mat, MatMut, MatRef},
     unzipped, zipped,
 };
+use core::mem::MaybeUninit;
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].
 ///
@@ -464,6 +465,48 @@ impl<'a, E: Entity> RowMut<'a, E> {
         E: ComplexField,
     {
         self.rb().as_2d().kron(rhs)
+    }
+
+    /// Returns the row as a contiguous slice if its column stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
+        self.into_const().try_as_slice()
+    }
+
+    /// Returns the row as a contiguous slice if its column stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    pub fn try_as_slice_mut(self) -> Option<GroupFor<E, &'a mut [E::Unit]>> {
+        if self.col_stride() == 1 {
+            let len = self.ncols();
+            Some(E::faer_map(
+                self.as_ptr_mut(),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, len) },
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the row as a contiguous potentially uninitialized slice if its column stride is
+    /// equal to `1`.
+    pub fn try_as_uninit_slice_mut(self) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
+        if self.col_stride() == 1 {
+            let len = self.ncols();
+            Some(E::faer_map(
+                self.as_ptr_mut(),
+                #[inline(always)]
+                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr as _, len) },
+            ))
+        } else {
+            None
+        }
     }
 
     /// Returns a view over the matrix.
