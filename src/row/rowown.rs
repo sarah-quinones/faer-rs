@@ -552,6 +552,26 @@ impl<E: Entity> Row<E> {
     {
         self.as_2d_ref().kron(rhs)
     }
+
+    /// Returns the row as a contiguous slice if its column stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    #[inline]
+    pub fn try_as_slice(&self) -> Option<GroupFor<E, &'_ [E::Unit]>> {
+        self.as_ref().try_as_slice()
+    }
+
+    /// Returns the row as a contiguous slice if its column stride is equal to `1`.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    #[inline]
+    pub fn try_as_slice_mut(&mut self) -> Option<GroupFor<E, &'_ mut [E::Unit]>> {
+        self.as_mut().try_as_slice_mut()
+    }
 }
 
 impl<E: Entity> Default for Row<E> {

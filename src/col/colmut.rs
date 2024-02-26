@@ -494,6 +494,7 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
+    #[inline]
     pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
         self.into_const().try_as_slice()
     }
@@ -503,6 +504,7 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// # Note
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
+    #[inline]
     pub fn try_as_slice_mut(self) -> Option<GroupFor<E, &'a mut [E::Unit]>> {
         if self.row_stride() == 1 {
             let len = self.nrows();

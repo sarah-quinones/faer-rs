@@ -949,12 +949,12 @@ pub(crate) mod qd {
 
         impl RealField for Double<f64> {
             #[inline(always)]
-            fn faer_epsilon() -> Option<Self> {
-                Some(Self::EPSILON)
+            fn faer_epsilon() -> Self {
+                Self::EPSILON
             }
             #[inline(always)]
-            fn faer_zero_threshold() -> Option<Self> {
-                Some(Self::MIN_POSITIVE)
+            fn faer_zero_threshold() -> Self {
+                Self::MIN_POSITIVE
             }
 
             #[inline(always)]
