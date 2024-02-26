@@ -1107,6 +1107,51 @@ fn annotate_noalias_mat<Z: for<'a> MatIndex<'a>>(
 }
 
 #[inline(always)]
+fn annotate_noalias_mat_with_index<Z: for<'a> MatIndex<'a>>(
+    f: &mut impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+    mut slice: Z::Slice,
+    i_begin: usize,
+    i_end: usize,
+    j: usize,
+    transpose: bool,
+    reverse_rows: bool,
+) {
+    if !transpose {
+        if !reverse_rows {
+            for i in i_begin..i_end {
+                unsafe { f(i, j, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+            }
+        } else {
+            for i in i_begin..i_end {
+                unsafe {
+                    f(
+                        i_begin + (i_end - i - 1),
+                        j,
+                        Z::get_from_slice_unchecked(&mut slice, i - i_begin),
+                    )
+                };
+            }
+        }
+    } else {
+        if !reverse_rows {
+            for i in i_begin..i_end {
+                unsafe { f(j, i, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+            }
+        } else {
+            for i in i_begin..i_end {
+                unsafe {
+                    f(
+                        j,
+                        i_begin + (i_end - i - 1),
+                        Z::get_from_slice_unchecked(&mut slice, i - i_begin),
+                    )
+                };
+            }
+        }
+    }
+}
+
+#[inline(always)]
 fn annotate_noalias_col<Z: for<'a> MatIndex<'a>>(
     f: &mut impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
     mut slice: Z::Slice,
@@ -1115,6 +1160,30 @@ fn annotate_noalias_col<Z: for<'a> MatIndex<'a>>(
 ) {
     for i in i_begin..i_end {
         unsafe { f(Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+    }
+}
+
+#[inline(always)]
+fn annotate_noalias_col_with_index<Z: for<'a> MatIndex<'a>>(
+    f: &mut impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+    mut slice: Z::Slice,
+    i_begin: usize,
+    i_end: usize,
+    reverse: bool,
+) {
+    if !reverse {
+        for i in i_begin..i_end {
+            unsafe { f(i, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+        }
+    } else {
+        for i in i_begin..i_end {
+            unsafe {
+                f(
+                    i_begin + (i_end - i - 1),
+                    Z::get_from_slice_unchecked(&mut slice, i - i_begin),
+                )
+            };
+        }
     }
 }
 
@@ -1144,6 +1213,386 @@ fn for_each_mat<Z: for<'a> MatIndex<'a, Rows = usize, Cols = usize, Index = (usi
                 }
             }
         }
+    }
+}
+
+// TODO:
+// - for_each_vec_with_index
+
+#[inline(always)]
+fn for_each_mat_with_index<
+    Z: for<'a> MatIndex<
+        'a,
+        Rows = usize,
+        Cols = usize,
+        Index = (usize, usize),
+        LayoutTransform = MatLayoutTransform,
+    >,
+>(
+    z: Z,
+    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+) {
+    let layout = z.preferred_layout();
+    let mut z = z.with_layout(layout);
+
+    let m = z.nrows();
+    let n = z.ncols();
+    if m == 0 || n == 0 {
+        return;
+    }
+
+    match layout {
+        MatLayoutTransform::None => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, j), m),
+                        0,
+                        m,
+                        j,
+                        false,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    for i in 0..m {
+                        f(i, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::ReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, j), m),
+                        0,
+                        m,
+                        j,
+                        false,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    for i in 0..m {
+                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::Transpose => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, j), m),
+                        0,
+                        m,
+                        j,
+                        true,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    for i in 0..m {
+                        f(j, i, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::TransposeReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, j), m),
+                        0,
+                        m,
+                        j,
+                        true,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    for i in 0..m {
+                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+    }
+}
+
+#[inline(always)]
+fn for_each_mat_triangular_lower_with_index<
+    Z: for<'a> MatIndex<
+        'a,
+        Rows = usize,
+        Cols = usize,
+        Index = (usize, usize),
+        LayoutTransform = MatLayoutTransform,
+    >,
+>(
+    z: Z,
+    diag: Diag,
+    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+) {
+    let layout = z.preferred_layout();
+    let mut z = z.with_layout(layout);
+
+    let m = z.nrows();
+    let n = z.ncols();
+    let strict = match diag {
+        Diag::Skip => true,
+        Diag::Include => false,
+    };
+    let strict = strict as usize;
+
+    if m == 0 || n == 0 {
+        return;
+    }
+
+    match layout {
+        MatLayoutTransform::None => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = j + strict;
+                    let end = m;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        start,
+                        end,
+                        j,
+                        false,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = j + strict;
+                    let end = m;
+                    for i in start..end {
+                        f(i, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::ReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..Ord::min(m, n) {
+                    let start = 0;
+                    let end = m - j - strict;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        j + strict + start,
+                        j + strict + end,
+                        j,
+                        false,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..Ord::min(m, n) {
+                    let start = 0;
+                    let end = m - j - strict;
+                    for i in start..end {
+                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::Transpose => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = 0;
+                    let end = Ord::min(m, j + (1 - strict));
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, j), end - start),
+                        start,
+                        end,
+                        j,
+                        true,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = 0;
+                    let end = Ord::min(m, j + (1 - strict));
+                    for i in start..end {
+                        f(j, i, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::TransposeReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = m - Ord::min(j + (1 - strict) as usize, m);
+                    let end = m;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        0,
+                        end - start,
+                        j,
+                        true,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = m - Ord::min(j + (1 - strict) as usize, m);
+                    let end = m;
+                    for i in start..end {
+                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+    }
+}
+
+#[inline(always)]
+fn for_each_mat_triangular_upper_with_index<
+    Z: for<'a> MatIndex<
+        'a,
+        Rows = usize,
+        Cols = usize,
+        Index = (usize, usize),
+        LayoutTransform = MatLayoutTransform,
+    >,
+>(
+    z: Z,
+    diag: Diag,
+    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+) {
+    let layout = z.preferred_layout();
+    let mut z = z.with_layout(layout);
+
+    let m = z.nrows();
+    let n = z.ncols();
+    let strict = match diag {
+        Diag::Skip => true,
+        Diag::Include => false,
+    };
+    let strict = strict as usize;
+
+    if m == 0 || n == 0 {
+        return;
+    }
+
+    match layout {
+        MatLayoutTransform::None => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = 0;
+                    let end = Ord::min(m, j + (1 - strict));
+
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        start,
+                        end,
+                        j,
+                        false,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = 0;
+                    let end = Ord::min(m, j + (1 - strict));
+                    for i in start..end {
+                        f(i, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::ReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..Ord::min(m, n) {
+                    let start = m - Ord::min(j + (1 - strict) as usize, m);
+                    let end = m;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        0,
+                        end - start,
+                        j,
+                        false,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..Ord::min(m, n) {
+                    let start = m - Ord::min(j + (1 - strict) as usize, m);
+                    let end = m;
+                    for i in start..end {
+                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::Transpose => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = j + strict;
+                    let end = m;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        start,
+                        end,
+                        j,
+                        true,
+                        false,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = j + strict;
+                    let end = m;
+                    for i in start..end {
+                        f(j, i, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
+        MatLayoutTransform::TransposeReverseRows => unsafe {
+            if z.is_contiguous() {
+                for j in 0..n {
+                    let start = 0;
+                    let end = m - j - strict;
+                    annotate_noalias_mat_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((start, j), end - start),
+                        j + strict,
+                        j + strict + end - start,
+                        j,
+                        true,
+                        true,
+                    );
+                }
+            } else {
+                for j in 0..n {
+                    let start = 0;
+                    let end = m - j - strict;
+                    for i in start..end {
+                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                    }
+                }
+            }
+        },
     }
 }
 
@@ -1249,6 +1698,119 @@ fn for_each_col<Z: for<'a> MatIndex<'a, Rows = usize, Cols = (), Index = (usize,
 }
 
 #[inline(always)]
+fn for_each_col_with_index<
+    Z: for<'a> MatIndex<
+        'a,
+        Rows = usize,
+        Cols = (),
+        Index = (usize, ()),
+        LayoutTransform = VecLayoutTransform,
+    >,
+>(
+    z: Z,
+    mut f: impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+) {
+    let layout = z.preferred_layout();
+    let mut z = z.with_layout(layout);
+
+    let m = z.nrows();
+    if m == 0 {
+        return;
+    }
+
+    unsafe {
+        match layout {
+            VecLayoutTransform::None => {
+                if z.is_contiguous() {
+                    annotate_noalias_col_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, ()), m),
+                        0,
+                        m,
+                        false,
+                    );
+                } else {
+                    for i in 0..m {
+                        f(i, z.get_unchecked((i, ())))
+                    }
+                }
+            }
+            VecLayoutTransform::Reverse => {
+                if z.is_contiguous() {
+                    annotate_noalias_col_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked((0, ()), m),
+                        0,
+                        m,
+                        true,
+                    );
+                } else {
+                    for i in 0..m {
+                        f(m - i - 1, z.get_unchecked((i, ())))
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[inline(always)]
+fn for_each_row_with_index<
+    Z: for<'a> MatIndex<
+        'a,
+        Rows = (),
+        Cols = usize,
+        Index = ((), usize),
+        LayoutTransform = VecLayoutTransform,
+    >,
+>(
+    z: Z,
+    mut f: impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+) {
+    let layout = z.preferred_layout();
+    let mut z = z.with_layout(layout);
+
+    let n = z.ncols();
+    if n == 0 {
+        return;
+    }
+
+    unsafe {
+        match layout {
+            VecLayoutTransform::None => {
+                if z.is_contiguous() {
+                    annotate_noalias_col_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked(((), 0), n),
+                        0,
+                        n,
+                        false,
+                    );
+                } else {
+                    for i in 0..n {
+                        f(i, z.get_unchecked(((), i)))
+                    }
+                }
+            }
+            VecLayoutTransform::Reverse => {
+                if z.is_contiguous() {
+                    annotate_noalias_col_with_index::<Z>(
+                        &mut f,
+                        z.get_slice_unchecked(((), 0), n),
+                        0,
+                        n,
+                        true,
+                    );
+                } else {
+                    for i in 0..n {
+                        f(n - i - 1, z.get_unchecked(((), i)))
+                    }
+                }
+            }
+        }
+    }
+}
+#[inline(always)]
 fn for_each_row<Z: for<'a> MatIndex<'a, Rows = (), Cols = usize, Index = ((), usize)>>(
     z: Z,
     mut f: impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
@@ -1286,6 +1848,42 @@ impl<
     #[inline(always)]
     pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
         for_each_mat(self, f);
+    }
+
+    /// Applies `f` to each element of `self`, while passing the indices of the position of the
+    /// current element.
+    #[inline(always)]
+    pub fn for_each_with_index(
+        self,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_with_index(self, f);
+    }
+
+    /// Applies `f` to each element of the lower triangular half of `self`, while passing the
+    /// indices of the position of the current element.
+    ///
+    /// `diag` specifies whether the diagonal should be included or excluded.
+    #[inline(always)]
+    pub fn for_each_triangular_lower_with_index(
+        self,
+        diag: Diag,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_triangular_lower_with_index(self, diag, f);
+    }
+
+    /// Applies `f` to each element of the upper triangular half of `self`, while passing the
+    /// indices of the position of the current element.
+    ///
+    /// `diag` specifies whether the diagonal should be included or excluded.
+    #[inline(always)]
+    pub fn for_each_triangular_upper_with_index(
+        self,
+        diag: Diag,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_triangular_upper_with_index(self, diag, f);
     }
 
     /// Applies `f` to each element of the lower triangular half of `self`.
@@ -1331,6 +1929,26 @@ impl<
         unsafe { out.set_dims(m, n) };
         out
     }
+
+    /// Applies `f` to each element of `self` and collect its result into a new matrix.
+    #[inline(always)]
+    pub fn map_with_index<E: Entity>(
+        self,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item) -> E,
+    ) -> Mat<E> {
+        let (m, n) = (self.nrows(), self.ncols());
+        let mut out = Mat::<E>::with_capacity(m, n);
+        let rs = 1;
+        let cs = out.col_stride();
+        let out_view = unsafe { mat::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, n, rs, cs) };
+        let mut f = f;
+        ZipEq::new(out_view, self).for_each_with_index(
+            #[inline(always)]
+            |i, j, Zip(mut out, item)| out.write(f(i, j, item)),
+        );
+        unsafe { out.set_dims(m, n) };
+        out
+    }
 }
 
 impl<
@@ -1349,6 +1967,12 @@ impl<
         for_each_row(self, f);
     }
 
+    /// Applies `f` to each element of `self`, while passing in the index of the current element.
+    #[inline(always)]
+    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+        for_each_row_with_index(self, f);
+    }
+
     /// Applies `f` to each element of `self` and collect its result into a new row.
     #[inline(always)]
     pub fn map<E: Entity>(
@@ -1362,6 +1986,24 @@ impl<
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
+        );
+        unsafe { out.set_ncols(n) };
+        out
+    }
+
+    /// Applies `f` to each element of `self` and collect its result into a new row.
+    #[inline(always)]
+    pub fn map_with_index<E: Entity>(
+        self,
+        f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item) -> E,
+    ) -> Row<E> {
+        let (_, n) = (self.nrows(), self.ncols());
+        let mut out = Row::<E>::with_capacity(n);
+        let out_view = unsafe { row::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), n, 1) };
+        let mut f = f;
+        ZipEq::new(out_view, self).for_each_with_index(
+            #[inline(always)]
+            |j, Zip(mut out, item)| out.write(f(j, item)),
         );
         unsafe { out.set_ncols(n) };
         out
@@ -1384,6 +2026,12 @@ impl<
         for_each_col(self, f);
     }
 
+    /// Applies `f` to each element of `self`, while passing in the index of the current element.
+    #[inline(always)]
+    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+        for_each_col_with_index(self, f);
+    }
+
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
     pub fn map<E: Entity>(
@@ -1397,6 +2045,24 @@ impl<
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
+        );
+        unsafe { out.set_nrows(m) };
+        out
+    }
+
+    /// Applies `f` to each element of `self` and collect its result into a new column.
+    #[inline(always)]
+    pub fn map_with_index<E: Entity>(
+        self,
+        f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item) -> E,
+    ) -> Col<E> {
+        let (m, _) = (self.nrows(), self.ncols());
+        let mut out = Col::<E>::with_capacity(m);
+        let out_view = unsafe { col::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, 1) };
+        let mut f = f;
+        ZipEq::new(out_view, self).for_each_with_index(
+            #[inline(always)]
+            |i, Zip(mut out, item)| out.write(f(i, item)),
         );
         unsafe { out.set_nrows(m) };
         out
@@ -1424,6 +2090,12 @@ impl<
     #[inline(always)]
     pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
         for_each_row(self, f);
+    }
+
+    /// Applies `f` to each element of `self`, while passing in the index of the current element.
+    #[inline(always)]
+    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+        for_each_row_with_index(self, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
@@ -1468,6 +2140,12 @@ impl<
         for_each_col(self, f);
     }
 
+    /// Applies `f` to each element of `self`, while passing in the index of the current element.
+    #[inline(always)]
+    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+        for_each_col_with_index(self, f);
+    }
+
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
     pub fn map<E: Entity>(
@@ -1508,6 +2186,42 @@ impl<
     #[inline(always)]
     pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
         for_each_mat(self, f);
+    }
+
+    /// Applies `f` to each element of `self`, while passing the indices of the position of the
+    /// current element.
+    #[inline(always)]
+    pub fn for_each_with_index(
+        self,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_with_index(self, f);
+    }
+
+    /// Applies `f` to each element of the lower triangular half of `self`, while passing the
+    /// indices of the position of the current element.
+    ///
+    /// `diag` specifies whether the diagonal should be included or excluded.
+    #[inline(always)]
+    pub fn for_each_triangular_lower_with_index(
+        self,
+        diag: Diag,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_triangular_lower_with_index(self, diag, f);
+    }
+
+    /// Applies `f` to each element of the upper triangular half of `self`, while passing the
+    /// indices of the position of the current element.
+    ///
+    /// `diag` specifies whether the diagonal should be included or excluded.
+    #[inline(always)]
+    pub fn for_each_triangular_upper_with_index(
+        self,
+        diag: Diag,
+        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+    ) {
+        for_each_mat_triangular_upper_with_index(self, diag, f);
     }
 
     /// Applies `f` to each element of the lower triangular half of `self`.
@@ -1678,6 +2392,200 @@ mod tests {
 
                     assert!(dst.rb() == target.as_ref());
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn test_zip_with_index() {
+        let m = mat![
+            [0.0, 1.0, 2.0],
+            [3.0, 4.0, 5.0],
+            [6.0, 7.0, 8.0],
+            [9.0, 10.0, 11.0f64]
+        ];
+        let nan = f64::NAN;
+        let m_non_contiguous = mat![
+            [0.0, 1.0, 2.0],
+            [nan, nan, nan],
+            [3.0, 4.0, 5.0],
+            [nan, nan, nan],
+            [6.0, 7.0, 8.0],
+            [nan, nan, nan],
+            [9.0, 10.0, 11.0],
+            [nan, nan, nan],
+        ];
+
+        let m_non_contiguous = unsafe {
+            crate::mat::from_raw_parts(
+                m_non_contiguous.as_ptr(),
+                4,
+                3,
+                2,
+                m_non_contiguous.col_stride(),
+            )
+        };
+
+        for m in [m.as_ref(), m_non_contiguous] {
+            {
+                let m = m.as_ref();
+                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                    assert!(*val == (j + i * 3) as f64);
+                });
+
+                for diag in [Diag::Include, Diag::Skip] {
+                    zipped!(m).for_each_triangular_lower_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i >= j);
+                            } else {
+                                assert!(i > j);
+                            }
+                            assert!(*val == (j + i * 3) as f64);
+                        },
+                    );
+                    zipped!(m).for_each_triangular_upper_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i <= j);
+                            } else {
+                                assert!(i < j);
+                            }
+                            assert!(*val == (j + i * 3) as f64);
+                        },
+                    );
+                }
+            }
+            {
+                let m = m.as_ref().reverse_rows();
+                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                    assert!(*val == (j + (3 - i) * 3) as f64);
+                });
+
+                for diag in [Diag::Include, Diag::Skip] {
+                    zipped!(m).for_each_triangular_lower_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i >= j);
+                            } else {
+                                assert!(i > j);
+                            }
+
+                            assert!(*val == (j + (3 - i) * 3) as f64);
+                        },
+                    );
+                    zipped!(m).for_each_triangular_upper_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i <= j);
+                            } else {
+                                assert!(i < j);
+                            }
+
+                            assert!(*val == (j + (3 - i) * 3) as f64);
+                        },
+                    );
+                }
+            }
+            {
+                let m = m.as_ref().transpose();
+                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                    assert!(*val == (i + j * 3) as f64);
+                });
+
+                for diag in [Diag::Include, Diag::Skip] {
+                    zipped!(m).for_each_triangular_lower_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i >= j);
+                            } else {
+                                assert!(i > j);
+                            }
+
+                            assert!(*val == (i + j * 3) as f64);
+                        },
+                    );
+                    zipped!(m).for_each_triangular_upper_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i <= j);
+                            } else {
+                                assert!(i < j);
+                            }
+
+                            assert!(*val == (i + j * 3) as f64);
+                        },
+                    );
+                }
+            }
+            {
+                let m = m.as_ref().reverse_rows().transpose();
+                zipped!(m).for_each_with_index(|i, j, unzipped!(val)| {
+                    assert!(*val == (i + (3 - j) * 3) as f64);
+                });
+
+                for diag in [Diag::Include, Diag::Skip] {
+                    zipped!(m).for_each_triangular_lower_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i >= j);
+                            } else {
+                                assert!(i > j);
+                            }
+
+                            assert!(*val == (i + (3 - j) * 3) as f64);
+                        },
+                    );
+                    zipped!(m).for_each_triangular_upper_with_index(
+                        diag,
+                        |i, j, unzipped!(val)| {
+                            if diag == Diag::Include {
+                                assert!(i <= j);
+                            } else {
+                                assert!(i < j);
+                            }
+
+                            assert!(*val == (i + (3 - j) * 3) as f64);
+                        },
+                    );
+                }
+            }
+        }
+
+        for m in [m.as_ref().col(0), m_non_contiguous.col(0)] {
+            {
+                zipped!(m).for_each_with_index(|i, unzipped!(val)| {
+                    assert!(*val == (i * 3) as f64);
+                });
+            }
+
+            {
+                let m = m.reverse_rows();
+                zipped!(m).for_each_with_index(|i, unzipped!(val)| {
+                    assert!(*val == ((3 - i) * 3) as f64);
+                });
+            }
+        }
+
+        for m in [m.as_ref().row(0), m_non_contiguous.row(0)] {
+            {
+                zipped!(m).for_each_with_index(|j, unzipped!(val)| {
+                    assert!(*val == j as f64);
+                });
+            }
+
+            {
+                let m = m.reverse_cols();
+                zipped!(m).for_each_with_index(|j, unzipped!(val)| {
+                    assert!(*val == (2 - j) as f64);
+                });
             }
         }
     }
