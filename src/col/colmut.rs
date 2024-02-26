@@ -520,7 +520,12 @@ impl<'a, E: Entity> ColMut<'a, E> {
 
     /// Returns the column as a contiguous potentially uninitialized slice if its row stride is
     /// equal to `1`.
-    pub fn try_as_uninit_slice_mut(self) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
+    ///
+    /// # Safety
+    /// If uninit data is written to the slice, it must not be later read.
+    pub unsafe fn try_as_uninit_slice_mut(
+        self,
+    ) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
         if self.row_stride() == 1 {
             let len = self.nrows();
             Some(E::faer_map(

@@ -9,7 +9,7 @@ use crate::{
     row::RowRef,
     utils::DivCeil,
 };
-use core::mem::ManuallyDrop;
+use core::mem::{ManuallyDrop, MaybeUninit};
 
 /// Heap allocated resizable column vector.
 ///
@@ -271,6 +271,22 @@ impl<E: Entity> Col<E> {
             ptr,
             #[inline(always)]
             |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, nrows) },
+        )
+    }
+
+    /// Returns a mutable reference to a potentially uninitialized slice over the column.
+    ///
+    /// # Safety
+    /// If uninit data is written to the slice, it must not be later read.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn as_uninit_slice_mut(&mut self) -> GroupFor<E, &mut [MaybeUninit<E::Unit>]> {
+        let nrows = self.nrows();
+        let ptr = self.as_ptr_mut();
+        E::faer_map(
+            ptr,
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr as _, nrows) },
         )
     }
 
@@ -559,26 +575,6 @@ impl<E: Entity> Col<E> {
         E: ComplexField,
     {
         self.as_2d_ref().kron(rhs)
-    }
-
-    /// Returns the column as a contiguous slice if its row stride is equal to `1`.
-    ///
-    /// # Note
-    /// The values pointed to by the references are expected to be initialized, even if the
-    /// pointed-to value is not read, otherwise the behavior is undefined.
-    #[inline]
-    pub fn try_as_slice(&self) -> Option<GroupFor<E, &'_ [E::Unit]>> {
-        self.as_ref().try_as_slice()
-    }
-
-    /// Returns the column as a contiguous slice if its row stride is equal to `1`.
-    ///
-    /// # Note
-    /// The values pointed to by the references are expected to be initialized, even if the
-    /// pointed-to value is not read, otherwise the behavior is undefined.
-    #[inline]
-    pub fn try_as_slice_mut(&mut self) -> Option<GroupFor<E, &'_ mut [E::Unit]>> {
-        self.as_mut().try_as_slice_mut()
     }
 }
 
