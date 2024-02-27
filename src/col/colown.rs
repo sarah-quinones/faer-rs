@@ -21,6 +21,17 @@ pub struct Col<E: Entity> {
     __marker: PhantomData<E>,
 }
 
+impl<E: Entity> Drop for Col<E> {
+    #[inline]
+    fn drop(&mut self) {
+        drop(RawMat::<E> {
+            ptr: self.inner.ptr,
+            row_capacity: self.row_capacity,
+            col_capacity: 1,
+        });
+    }
+}
+
 impl<E: Entity> Col<E> {
     /// Returns an empty column of dimension `0`.
     #[inline]

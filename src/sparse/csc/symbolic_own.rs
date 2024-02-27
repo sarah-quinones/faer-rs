@@ -112,7 +112,7 @@ impl<I: Index> SymbolicSparseColMat<I> {
         nnz_per_col: Option<Vec<I>>,
         row_indices: Vec<I>,
     ) -> Self {
-        SymbolicSparseRowMatRef::new_unchecked(
+        SymbolicSparseColMatRef::new_unchecked(
             nrows,
             ncols,
             &col_ptrs,

@@ -42,6 +42,17 @@ pub struct Mat<E: Entity> {
     __marker: PhantomData<E>,
 }
 
+impl<E: Entity> Drop for Mat<E> {
+    #[inline]
+    fn drop(&mut self) {
+        drop(RawMat::<E> {
+            ptr: self.inner.ptr,
+            row_capacity: self.row_capacity,
+            col_capacity: self.col_capacity,
+        });
+    }
+}
+
 impl<E: Entity> Mat<E> {
     /// Returns an empty matrix of dimension `0×0`.
     #[inline]

@@ -59,6 +59,16 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         self.as_ref().to_sorted()
     }
 
+    /// Copies `self` into a newly allocated dense matrix
+    #[inline]
+    pub fn to_dense(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+        E::Canonical: ComplexField,
+    {
+        self.as_ref().to_dense()
+    }
+
     /// Copies `self` into a newly allocated matrix, with row-major order.
     ///
     /// # Note
