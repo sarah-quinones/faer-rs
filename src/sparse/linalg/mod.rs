@@ -60,7 +60,12 @@ impl SupernodalThreshold {
 
 use super::utils::{ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic};
 
-pub use crate::{sparse::FaerError, Index, SignedIndex};
+#[deprecated = "moved to faer::sparse::FaerError"]
+pub use crate::sparse::FaerError;
+#[deprecated = "moved to faer::Index"]
+pub use crate::Index;
+#[deprecated = "moved to faer::SignedIndex"]
+pub use crate::SignedIndex;
 
 #[allow(unused_macros)]
 macro_rules! shadow {

@@ -1190,6 +1190,26 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMat<I
     }
 }
 
+#[deprecated = "moved to faer::Index"]
+pub use crate::Index;
+
+#[deprecated = "moved to faer::sparse::linalg::LuError"]
+pub use crate::sparse::linalg::LuError;
+
+#[deprecated = "moved to faer::sparse::linalg::CholeskyError"]
+pub use crate::sparse::linalg::CholeskyError;
+
+/// Sparse solvers.
+///
+/// Each solver satisfies the [`SpSolver`](crate::sparse::linalg::solvers::SpSolver) and/or
+/// [`SpSolverLstsq`](crate::sparse::linalg::solvers::SpSolverLstsq) traits, which can be used to
+/// solve linear systems.
+
+#[deprecated = "moved to faer::linalg::solvers"]
+pub mod solvers {
+    pub use crate::linalg::solvers::*;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
