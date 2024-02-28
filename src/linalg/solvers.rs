@@ -905,7 +905,7 @@ impl<E: ComplexField> Qr<E> {
         factor
     }
 
-    /// Returns the factor $R$ of the QR decomposition.
+    /// Returns the factor $Q$ of the QR decomposition.
     pub fn compute_q(&self) -> Mat<E> {
         Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), false)
     }
@@ -923,7 +923,7 @@ impl<E: ComplexField> Qr<E> {
         factor
     }
 
-    /// Returns the leftmost $r$ columns of the factor $R$ of the QR decomposition, where $r =
+    /// Returns the leftmost $r$ columns of the factor $Q$ of the QR decomposition, where $r =
     /// \min(\text{nrows}(A), \text{ncols}(A))$.
     pub fn compute_thin_q(&self) -> Mat<E> {
         Self::__compute_q_impl(self.factors.as_ref(), self.householder.as_ref(), true)

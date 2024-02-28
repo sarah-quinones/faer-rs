@@ -4,6 +4,10 @@ use faer_entity::*;
 use num_traits::float::FloatCore;
 use num_traits::{One, Zero};
 use pulp::{cast, Simd};
+#[cfg(feature = "rand")]
+use rand::distributions::{Distribution, Standard};
+#[cfg(feature = "rand")]
+use rand_distr::StandardNormal;
 
 #[cfg(feature = "std")]
 use num_complex::ComplexFloat;
@@ -1047,5 +1051,29 @@ unsafe impl Conjugate for c64 {
     #[inline(always)]
     fn canonicalize(self) -> Self::Canonical {
         self
+    }
+}
+
+#[cfg(feature = "rand")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
+impl Distribution<c64> for Standard {
+    #[inline]
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> c64 {
+        c64 {
+            re: self.sample(rng),
+            im: self.sample(rng),
+        }
+    }
+}
+
+#[cfg(feature = "rand")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
+impl Distribution<c64> for StandardNormal {
+    #[inline]
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> c64 {
+        c64 {
+            re: self.sample(rng),
+            im: self.sample(rng),
+        }
     }
 }

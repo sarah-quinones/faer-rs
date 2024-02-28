@@ -1,14 +1,15 @@
 use super::{c32, c32conj};
-
 use faer_entity::*;
-#[cfg(not(feature = "std"))]
-use num_traits::float::FloatCore;
-
-use num_traits::{One, Zero};
-use pulp::{cast, Simd};
-
 #[cfg(feature = "std")]
 use num_complex::ComplexFloat;
+#[cfg(not(feature = "std"))]
+use num_traits::float::FloatCore;
+use num_traits::{One, Zero};
+use pulp::{cast, Simd};
+#[cfg(feature = "rand")]
+use rand::distributions::{Distribution, Standard};
+#[cfg(feature = "rand")]
+use rand_distr::StandardNormal;
 
 #[cfg(feature = "std")]
 macro_rules! impl_from_num_complex {
@@ -1049,5 +1050,29 @@ unsafe impl Conjugate for c32 {
     #[inline(always)]
     fn canonicalize(self) -> Self::Canonical {
         self
+    }
+}
+
+#[cfg(feature = "rand")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
+impl Distribution<c32> for Standard {
+    #[inline]
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> c32 {
+        c32 {
+            re: self.sample(rng),
+            im: self.sample(rng),
+        }
+    }
+}
+
+#[cfg(feature = "rand")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
+impl Distribution<c32> for StandardNormal {
+    #[inline]
+    fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> c32 {
+        c32 {
+            re: self.sample(rng),
+            im: self.sample(rng),
+        }
     }
 }

@@ -908,6 +908,11 @@ pub mod solvers {
     pub use crate::linalg::solvers::*;
 }
 
+/// Statistics-related utilities.
+#[cfg(feature = "rand")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rand")))]
+pub mod stats;
+
 /// Re-exports.
 #[deprecated]
 pub mod modules {
