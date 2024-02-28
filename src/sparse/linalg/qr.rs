@@ -75,7 +75,20 @@ pub(crate) fn ghost_col_etree<'n, I: Index>(
     }
 }
 
-/// workspace: I×(A.nrows() + A.ncols())
+/// Computes the size and alignment of the workspace required to compute the column elimination tree
+/// of a matrix $A$ with dimensions `(nrows, ncols)`.
+#[inline]
+pub fn col_etree_req<I: Index>(nrows: usize, ncols: usize) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_all_of([
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(ncols)?,
+    ])
+}
+
+/// Computes the column elimination tree of $A$, which is the same as the elimination tree of $A^H
+/// A$.
+///
+/// `etree` has length `A.ncols()`
 #[inline]
 pub fn col_etree<'out, I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
@@ -263,7 +276,30 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
     }
 }
 
-/// workspace: I×(5×A.nrows() + A.ncols())
+/// Computes the size and alignment of the workspace required to compute the column counts
+/// of the Cholesky factor of the matrix $A A^H$, where $A$ has dimensions `(nrows, ncols)`.
+#[inline]
+pub fn column_counts_aat_req<I: Index>(
+    nrows: usize,
+    ncols: usize,
+) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_all_of([
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(nrows)?,
+        StackReq::try_new::<I>(ncols)?,
+    ])
+}
+
+/// Computes the column counts of the Cholesky factor of $A A^H$.
+///
+/// - `col_counts` has length `A.nrows()`.
+/// - `min_row` has length `A.ncols()`.
+/// - `row_perm` has length `A.nrows()`: fill reducing permutation.
+/// - `etree` has length `A.nrows()`: column elimination tree of $A A^H$.
+/// - `post` has length `A.nrows()`: postordering of `etree`.
 pub fn column_counts_aat<'m, 'n, I: Index>(
     col_counts: &mut [I],
     min_row: &mut [I],
@@ -287,17 +323,35 @@ pub fn column_counts_aat<'m, 'n, I: Index>(
     })
 }
 
-/// workspace: I×(3×n)
+/// Computes the size and alignment of the workspace required to compute the postordering of an
+/// elimination tree of size `n`.
+#[inline]
+pub fn postorder_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
+    StackReq::try_all_of([StackReq::try_new::<I>(n)?; 3])
+}
+
+/// Computes a postordering of the elimination tree of size `n`.
+#[inline]
 pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, stack: PodStack<'_>) {
     Size::with(etree.inner.len(), |N| {
         ghost_postorder(Array::from_mut(post, N), etree.ghost_inner(N), stack)
     })
 }
 
+/// Supernodal factorization module.
+///
+/// A supernodal factorization is one that processes the elements of the QR factors of the
+/// input matrix by blocks, rather than one by one. This is more efficient if the QR factors are
+/// somewhat dense.
 pub mod supernodal {
     use super::*;
     use crate::assert;
 
+    /// Symbolic structure of the Householder reflections that compose $Q$,
+    ///
+    /// such that:
+    /// $$ Q = (I - H_1 T_1^{-1} H_1^H) \cdot (I - H_2 T_2^{-1} H_2^H) \dots (I - H_k T_k^{-1}
+    /// H_k^H)$$
     #[derive(Debug)]
     pub struct SymbolicSupernodalHouseholder<I> {
         col_ptrs_for_row_indices: alloc::vec::Vec<I>,
@@ -309,45 +363,57 @@ pub mod supernodal {
     }
 
     impl<I: Index> SymbolicSupernodalHouseholder<I> {
+        /// Returns the number of rows of the Householder factors.
         #[inline]
         pub fn nrows(&self) -> usize {
             self.nrows
         }
 
+        /// Returns the number of supernodes in the symbolic QR.
         #[inline]
         pub fn n_supernodes(&self) -> usize {
             self.super_etree.len()
         }
 
+        /// Returns the column pointers for the numerical values of the Householder factors.
         #[inline]
         pub fn col_ptrs_for_householder_values(&self) -> &[I] {
             self.col_ptrs_for_values.as_ref()
         }
 
+        /// Returns the column pointers for the numerical values of the $T$ factors.
         #[inline]
         pub fn col_ptrs_for_tau_values(&self) -> &[I] {
             self.col_ptrs_for_tau_values.as_ref()
         }
 
+        /// Returns the column pointers for the row indices of the Householder factors.
         #[inline]
         pub fn col_ptrs_for_householder_row_indices(&self) -> &[I] {
             self.col_ptrs_for_row_indices.as_ref()
         }
 
+        /// Returns the length of the slice that can be used to contain the numerical values of the
+        /// Householder factors.
         #[inline]
         pub fn len_householder_values(&self) -> usize {
             self.col_ptrs_for_householder_values()[self.n_supernodes()].zx()
         }
+        /// Returns the length of the slice that can be used to contain the row indices of the
+        /// Householder factors.
         #[inline]
         pub fn len_householder_row_indices(&self) -> usize {
             self.col_ptrs_for_householder_row_indices()[self.n_supernodes()].zx()
         }
+        /// Returns the length of the slice that can be used to contain the numerical values of the
+        /// $T$ factors.
         #[inline]
         pub fn len_tau_values(&self) -> usize {
             self.col_ptrs_for_tau_values()[self.n_supernodes()].zx()
         }
     }
 
+    /// Symbolic structure of the QR decomposition,
     #[derive(Debug)]
     pub struct SymbolicSupernodalQr<I: Index> {
         L: SymbolicSupernodalCholesky<I>,
@@ -360,16 +426,20 @@ pub mod supernodal {
     }
 
     impl<I: Index> SymbolicSupernodalQr<I> {
+        /// Returns the symbolic structure of $R^H$.
         #[inline]
         pub fn r_adjoint(&self) -> &SymbolicSupernodalCholesky<I> {
             &self.L
         }
 
+        /// Returns the symbolic structure of the Householder and $T$ factors.
         #[inline]
         pub fn householder(&self) -> &SymbolicSupernodalHouseholder<I> {
             &self.H
         }
 
+        /// Computes the size and alignment of the workspace required to solve the linear system $A
+        /// x = \text{rhs}$ in the sense of least squares.
         pub fn solve_in_place_req<E: Entity>(
             &self,
             rhs_ncols: usize,
@@ -393,6 +463,8 @@ pub mod supernodal {
         }
     }
 
+    /// Computes the size and alignment of the workspace required to compute the symbolic QR
+    /// factorization of a matrix with dimensions `(nrows, ncols)`.
     pub fn factorize_supernodal_symbolic_qr_req<I: Index>(
         nrows: usize,
         ncols: usize,
@@ -403,6 +475,8 @@ pub mod supernodal {
         )
     }
 
+    /// Computes the symbolic QR factorization of a matrix $A$, given a fill-reducing column
+    /// permutation, and the outputs of the pre-factorization steps.
     pub fn factorize_supernodal_symbolic_qr<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
         col_perm: Option<PermRef<'_, I>>,
@@ -593,6 +667,7 @@ pub mod supernodal {
         })
     }
 
+    /// QR factors containing both the symbolic and numeric representations.
     #[derive(Debug)]
     pub struct SupernodalQrRef<'a, I: Index, E: Entity> {
         symbolic: &'a SymbolicSupernodalQr<I>,
@@ -614,6 +689,10 @@ pub mod supernodal {
     }
 
     impl<'a, I: Index, E: Entity> SupernodalQrRef<'a, I, E> {
+        /// Creates QR factors from their components.
+        ///
+        /// # Safety
+        /// The inputs must be the outputs of `factorize_numeric_qr`.
         #[inline]
         pub unsafe fn new_unchecked(
             symbolic: &'a SymbolicSupernodalQr<I>,
@@ -644,31 +723,35 @@ pub mod supernodal {
             }
         }
 
+        /// Returns the symbolic of the QR factorization.
         #[inline]
         pub fn symbolic(self) -> &'a SymbolicSupernodalQr<I> {
             self.symbolic
         }
 
+        /// Returns the numerical values of the factor $R$ of the QR factorization.
         #[inline]
-        pub fn block_count(&self) -> usize {
-            self.tau_blocksize.len()
+        pub fn r_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.rt_values.into_inner()
         }
 
+        /// Returns the numerical values of the Householder factors of the QR factorization.
         #[inline]
-        pub fn r_values(self) -> SliceGroup<'a, E> {
-            self.rt_values
+        pub fn householder_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.householder_values.into_inner()
         }
 
+        /// Returns the numerical values of the $T$ factors of the QR factorization.
         #[inline]
-        pub fn householder_values(self) -> SliceGroup<'a, E> {
-            self.householder_values
+        pub fn tau_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.tau_values.into_inner()
         }
 
-        #[inline]
-        pub fn tau_values(self) -> SliceGroup<'a, E> {
-            self.tau_values
-        }
-
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ in the sense of least squares, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`,
+        /// and stores the result in the upper part of `rhs`.
+        ///
+        /// `work` is a temporary workspace with the same dimensions as `rhs`.
         #[track_caller]
         pub fn solve_in_place_with_conj(
             &self,
@@ -696,7 +779,7 @@ pub mod supernodal {
             // x <- Q^T x
             {
                 let H = self.householder_values;
-                let tau = self.tau_values();
+                let tau = self.tau_values;
 
                 let mut block_count = 0usize;
                 for s in 0..n_supernodes {
@@ -825,6 +908,8 @@ pub mod supernodal {
         }
     }
 
+    /// Computes the size and alignment of the workspace required to compute the numerical QR
+    /// factorization of the matrix whose structure was used to produce the symbolic structure.
     #[track_caller]
     pub fn factorize_supernodal_numeric_qr_req<I: Index, E: Entity>(
         symbolic: &SymbolicSupernodalQr<I>,
@@ -869,11 +954,23 @@ pub mod supernodal {
         init_req.try_and(loop_req)
     }
 
+    /// Computes the numerical QR factorization of $A$.
+    ///
+    /// - `householder_row_indices` must have length
+    /// `symbolic.householder().len_householder_row_indices()`
+    /// - `tau_blocksize` must have length `A.ncols()`.
+    /// - `householder_nrows` must have length `A.ncols()`.
+    /// - `householder_ncols` must have length `A.ncols()`.
+    /// - `r_values` must have length `symbolic.r_adjoint().len_values`.
+    /// - `householder_values` must have length
+    ///   `symbolic.householder().length_householder_values()`.
+    /// - `tau_values` must have length `symbolic.householder().len_tau_values()`.
+    ///
+    /// # Warning
+    /// - Note that the matrix takes as input `A.transpose()`, not `A`.
     #[track_caller]
     pub fn factorize_supernodal_numeric_qr<'a, I: Index, E: ComplexField>(
-        // len: symbolic.householder().len_householder_row_indices()
         householder_row_indices: &'a mut [I],
-        // len: ncols
         tau_blocksize: &'a mut [I],
         householder_nrows: &'a mut [I],
         householder_ncols: &'a mut [I],
@@ -905,7 +1002,7 @@ pub mod supernodal {
         let mut tau_values = tau_values;
         let mut householder_values = householder_values;
 
-        let block_count = factorize_supernodal_numeric_qr_impl(
+        factorize_supernodal_numeric_qr_impl(
             householder_row_indices,
             tau_blocksize,
             householder_nrows,
@@ -930,9 +1027,9 @@ pub mod supernodal {
             SupernodalQrRef::<'_, I, E>::new_unchecked(
                 symbolic,
                 householder_row_indices,
-                &tau_blocksize[..block_count],
-                &householder_nrows[..block_count],
-                &householder_ncols[..block_count],
+                tau_blocksize,
+                householder_nrows,
+                householder_ncols,
                 E::faer_into_const(r_values),
                 E::faer_into_const(householder_values),
                 E::faer_into_const(tau_values),
@@ -1340,10 +1437,16 @@ pub mod supernodal {
     }
 }
 
+/// Simplicial factorization module.
+///
+/// A simplicial factorization is one that processes the elements of the QR factors of the
+/// input matrix one by one, rather than by blocks. This is more efficient if the QR factors are
+/// very sparse.
 pub mod simplicial {
     use super::*;
     use crate::{assert, sparse::linalg::triangular_solve};
 
+    /// Symbolic structure of the QR decomposition,
     #[derive(Debug)]
     pub struct SymbolicSimplicialQr<I> {
         nrows: usize,
@@ -1357,25 +1460,30 @@ pub mod simplicial {
     }
 
     impl<I: Index> SymbolicSimplicialQr<I> {
+        /// Returns the number of rows of the matrix $A$.
         #[inline]
         pub fn nrows(&self) -> usize {
             self.nrows
         }
+        /// Returns the number of columns of the matrix $A$.
         #[inline]
         pub fn ncols(&self) -> usize {
             self.ncols
         }
 
+        /// Returns the length of the slice that can be used to contain the Householder factors.
         #[inline]
         pub fn len_householder(&self) -> usize {
             self.h_nnz
         }
+        /// Returns the length of the slice that can be used to contain the $R$ factor.
         #[inline]
         pub fn len_r(&self) -> usize {
             self.l_nnz
         }
     }
 
+    /// QR factors containing both the symbolic and numeric representations.
     #[derive(Debug)]
     pub struct SimplicialQrRef<'a, I, E: Entity> {
         symbolic: &'a SymbolicSimplicialQr<I>,
@@ -1397,6 +1505,7 @@ pub mod simplicial {
     }
 
     impl<'a, I: Index, E: Entity> SimplicialQrRef<'a, I, E> {
+        /// Creates QR factors from their components.
         #[inline]
         pub fn new(
             symbolic: &'a SymbolicSimplicialQr<I>,
@@ -1438,26 +1547,35 @@ pub mod simplicial {
             }
         }
 
+        /// Returns the symbolic of the QR factorization.
         #[inline]
         pub fn symbolic(&self) -> &SymbolicSimplicialQr<I> {
             self.symbolic
         }
 
+        /// Returns the numerical values of the factor $R$ of the QR factorization.
         #[inline]
-        pub fn r_values(self) -> SliceGroup<'a, E> {
-            self.r_values
+        pub fn r_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.r_values.into_inner()
         }
 
+        /// Returns the numerical values of the Householder factors of the QR factorization.
         #[inline]
-        pub fn householder_values(self) -> SliceGroup<'a, E> {
-            self.householder_values
+        pub fn householder_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.householder_values.into_inner()
         }
 
+        /// Returns the numerical values of the $T$ factors of the QR factorization.
         #[inline]
-        pub fn tau_values(self) -> SliceGroup<'a, E> {
-            self.tau_values
+        pub fn tau_values(self) -> GroupFor<E, &'a [E::Unit]> {
+            self.tau_values.into_inner()
         }
 
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ in the sense of least squares, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`,
+        /// and stores the result in the upper part of `rhs`.
+        ///
+        /// `work` is a temporary workspace with the same dimensions as `rhs`.
         #[track_caller]
         pub fn solve_in_place_with_conj(
             &self,
@@ -1557,6 +1675,8 @@ pub mod simplicial {
         }
     }
 
+    /// Computes the size and alignment of the workspace required to compute the symbolic QR
+    /// factorization of a matrix with dimensions `(nrows, ncols)`.
     pub fn factorize_simplicial_symbolic_qr_req<I: Index>(
         nrows: usize,
         ncols: usize,
@@ -1565,6 +1685,8 @@ pub mod simplicial {
         StackReq::try_all_of([StackReq::try_new::<I>(ncols)?; 3])
     }
 
+    /// Computes the symbolic QR factorization of a matrix $A$, given the outputs of the
+    /// pre-factorization steps.
     pub fn factorize_simplicial_symbolic_qr<I: Index>(
         min_col: &[I],
         etree: EliminationTreeRef<'_, I>,
@@ -1623,6 +1745,8 @@ pub mod simplicial {
         })
     }
 
+    /// Computes the size and alignment of the workspace required to compute the numerical QR
+    /// factorization of the matrix whose structure was used to produce the symbolic structure.
     pub fn factorize_simplicial_numeric_qr_req<I: Index, E: Entity>(
         symbolic: &SymbolicSimplicialQr<I>,
     ) -> Result<StackReq, SizeOverflow> {
@@ -1635,6 +1759,15 @@ pub mod simplicial {
         ])
     }
 
+    /// Computes the numerical QR factorization of $A$.
+    ///
+    /// - `r_col_ptrs` has length `A.ncols()`.
+    /// - `r_row_indices` has length `symbolic.len_r()`.
+    /// - `r_values` has length `symbolic.len_r()`.
+    /// - `householder_col_ptrs` has length `A.ncols()`.
+    /// - `householder_row_indices` has length `symbolic.len_householder()`.
+    /// - `householder_values` has length `symbolic.len_householder()`.
+    /// - `tau_values` has length `A.ncols()`.
     pub fn factorize_simplicial_numeric_qr_unsorted<'a, I: Index, E: ComplexField>(
         r_col_ptrs: &'a mut [I],
         r_row_indices: &'a mut [I],
@@ -1808,17 +1941,23 @@ pub mod simplicial {
     }
 }
 
+/// Tuning parameters for the QR symbolic factorization.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct QrSymbolicParams<'a> {
+    /// Parameters for the fill reducing column permutation
     pub colamd_params: Control,
+    /// Threshold for selecting the supernodal factorization.
     pub supernodal_flop_ratio_threshold: SupernodalThreshold,
+    /// Supernodal factorization parameters.
     pub supernodal_params: SymbolicSupernodalParams<'a>,
 }
 
 /// The inner factorization used for the symbolic QR, either simplicial or symbolic.
 #[derive(Debug)]
 pub enum SymbolicQrRaw<I: Index> {
+    /// Simplicial structure.
     Simplicial(simplicial::SymbolicSimplicialQr<I>),
+    /// Supernodal structure.
     Supernodal(supernodal::SymbolicSupernodalQr<I>),
 }
 
@@ -1841,6 +1980,11 @@ pub struct QrRef<'a, I: Index, E: Entity> {
 impl_copy!(<'a><I: Index, E: Entity><QrRef<'a, I, E>>);
 
 impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
+    /// Creates a QR decomposition reference from its symbolic and numerical components.
+    ///
+    /// # Safety:
+    /// The indices must be filled by a previous call to [`SymbolicQr::factorize_numeric_qr`] with
+    /// the right parameters.
     #[inline]
     pub unsafe fn new_unchecked(
         symbolic: &'a SymbolicQr<I>,
@@ -1859,11 +2003,17 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
         }
     }
 
+    /// Returns the symbolic of the QR factorization.
     #[inline]
     pub fn symbolic(self) -> &'a SymbolicQr<I> {
         self.symbolic
     }
 
+    /// Solves the equation $\text{Op}(A) x = \text{rhs}$ in the sense of least squares, where
+    /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`,
+    /// and stores the result in the upper part of `rhs`.
+    ///
+    /// `work` is a temporary workspace with the same dimensions as `rhs`.
     #[track_caller]
     pub fn solve_in_place_with_conj(
         self,
@@ -1995,7 +2145,7 @@ impl<I: Index> SymbolicQr<I> {
         unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv) }
     }
 
-    /// Returns the length of the slice needed to store the numerical values of the QR
+    /// Returns the length of the slice needed to store the symbolic indices of the QR
     /// decomposition.
     #[inline]
     pub fn len_indices(&self) -> usize {
@@ -2025,6 +2175,8 @@ impl<I: Index> SymbolicQr<I> {
         }
     }
 
+    /// Returns the size and alignment of the workspace required to solve the system $Ax =
+    /// \text{rhs}$ in the sense of least squares.
     pub fn solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
@@ -2038,6 +2190,7 @@ impl<I: Index> SymbolicQr<I> {
         })
     }
 
+    /// Computes the required workspace size and alignment for a numerical QR factorization.
     pub fn factorize_numeric_qr_req<E: Entity>(
         &self,
         parallelism: Parallelism,
@@ -2061,6 +2214,7 @@ impl<I: Index> SymbolicQr<I> {
         }
     }
 
+    /// Computes a numerical QR factorization of A.
     #[track_caller]
     pub fn factorize_numeric_qr<'out, E: ComplexField>(
         &'out self,

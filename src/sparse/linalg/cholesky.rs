@@ -1001,7 +1001,7 @@ pub mod simplicial {
 /// Supernodal factorization module.
 ///
 /// A supernodal factorization is one that processes the elements of the Cholesky factor of the
-/// input matrix by blocks, rather one by one. This is more efficient if the Cholesky factor is
+/// input matrix by blocks, rather than one by one. This is more efficient if the Cholesky factor is
 /// somewhat dense.
 pub mod supernodal {
     use super::*;

@@ -241,6 +241,34 @@ impl<I: Index, E: Entity> SparseColMat<I, E> {
         self.symbolic.row_indices_of_col(j)
     }
 
+    /// Returns the numerical values of column `j` of the matrix.
+    ///
+    /// # Panics:
+    ///
+    /// Panics if `j >= ncols`.
+    #[inline]
+    #[track_caller]
+    pub fn values_of_col(&self, j: usize) -> GroupFor<E, &[E::Unit]> {
+        self.as_ref().values_of_col(j)
+    }
+
+    /// Returns the numerical values of column `j` of the matrix.
+    ///
+    /// # Panics:
+    ///
+    /// Panics if `j >= ncols`.
+    #[inline]
+    #[track_caller]
+    pub fn values_of_col_mut(&mut self, j: usize) -> GroupFor<E, &mut [E::Unit]> {
+        self.as_mut().values_of_col_mut(j)
+    }
+
+    /// Returns the symbolic structure of the matrix.
+    #[inline]
+    pub fn symbolic(&self) -> SymbolicSparseColMatRef<'_, I> {
+        self.symbolic.as_ref()
+    }
+
     /// Returns the range that the column `j` occupies in `self.row_indices()`.
     ///
     /// # Panics
