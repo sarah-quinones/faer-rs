@@ -292,29 +292,32 @@ pub fn column_counts_aat_req<I: Index>(
     ])
 }
 
-/// Computes the column counts of the Cholesky factor of $A A^H$.
+/// Computes the column counts of the Cholesky factor of $A\top A$.
 ///
-/// - `col_counts` has length `A.nrows()`.
-/// - `min_row` has length `A.ncols()`.
-/// - `row_perm` has length `A.nrows()`: fill reducing permutation.
-/// - `etree` has length `A.nrows()`: column elimination tree of $A A^H$.
-/// - `post` has length `A.nrows()`: postordering of `etree`.
-pub fn column_counts_aat<'m, 'n, I: Index>(
+/// - `col_counts` has length `A.ncols()`.
+/// - `min_col` has length `A.nrows()`.
+/// - `col_perm` has length `A.ncols()`: fill reducing permutation.
+/// - `etree` has length `A.ncols()`: column elimination tree of $A A^H$.
+/// - `post` has length `A.ncols()`: postordering of `etree`.
+///
+/// # Warning
+/// The function takes as input `A.transpose()`, not `A`.
+pub fn column_counts_ata<'m, 'n, I: Index>(
     col_counts: &mut [I],
-    min_row: &mut [I],
-    A: SymbolicSparseColMatRef<'_, I>,
-    row_perm: Option<PermRef<'_, I>>,
+    min_col: &mut [I],
+    AT: SymbolicSparseColMatRef<'_, I>,
+    col_perm: Option<PermRef<'_, I>>,
     etree: EliminationTreeRef<'_, I>,
     post: &[I],
     stack: PodStack<'_>,
 ) {
-    Size::with2(A.nrows(), A.ncols(), |M, N| {
-        let A = ghost::SymbolicSparseColMatRef::new(A, M, N);
+    Size::with2(AT.nrows(), AT.ncols(), |M, N| {
+        let A = ghost::SymbolicSparseColMatRef::new(AT, M, N);
         ghost_column_counts_aat(
             Array::from_mut(col_counts, M),
-            Array::from_mut(bytemuck::cast_slice_mut(min_row), N),
+            Array::from_mut(bytemuck::cast_slice_mut(min_col), N),
             A,
-            row_perm.map(|perm| ghost::PermRef::new(perm, M)),
+            col_perm.map(|perm| ghost::PermRef::new(perm, M)),
             etree.ghost_inner(M),
             Array::from_ref(Idx::from_slice_ref_checked(post, M), M),
             stack,

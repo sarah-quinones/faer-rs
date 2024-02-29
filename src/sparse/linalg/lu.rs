@@ -2509,7 +2509,7 @@ mod tests {
                 etree,
                 PodStack::new(&mut GlobalPodBuffer::new(StackReq::new::<usize>(3 * n))),
             );
-            crate::sparse::linalg::qr::column_counts_aat(
+            crate::sparse::linalg::qr::column_counts_ata(
                 &mut col_counts,
                 &mut min_col,
                 AT.symbolic(),
