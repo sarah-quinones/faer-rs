@@ -1,3 +1,5 @@
+// FIXME: support duplicate entries
+
 use crate::{assert, sparse::SparseColMatRef, utils::slice::*, Conj, Index, MatMut, Parallelism};
 use core::iter::zip;
 use faer_entity::ComplexField;
