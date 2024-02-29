@@ -193,6 +193,7 @@ impl core::fmt::Display for LuError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for LuError {}
 
 impl From<FaerError> for LuError {
@@ -221,6 +222,7 @@ impl core::fmt::Display for CholeskyError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for CholeskyError {}
 
 impl From<FaerError> for CholeskyError {

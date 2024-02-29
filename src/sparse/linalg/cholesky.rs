@@ -6,7 +6,521 @@
 //! # Note
 //! The functions in this module accept unsorted input, producing a sorted decomposition factor
 //! (simplicial).
-
+//!
+//! # Example (low level API)
+//! Simplicial:
+//! ```
+//! fn simplicial_cholesky() -> Result<(), faer::sparse::FaerError> {
+//!     use faer::{
+//!         assert_matrix_eq,
+//!         dyn_stack::{GlobalPodBuffer, PodStack, StackReq},
+//!         reborrow::*,
+//!         sparse::{
+//!             linalg::{
+//!                 amd,
+//!                 cholesky::{simplicial, LdltRegularization, LltRegularization},
+//!             },
+//!             CreationError, SparseColMat, SymbolicSparseColMat,
+//!         },
+//!     };
+//!     use rand::prelude::*;
+//!
+//!     // The simplicial Cholesky api takes an upper triangular matrix as input, to be
+//!     // interpreted as self-adjoint.
+//!     let dim = 4;
+//!     let A_upper = match SparseColMat::<usize, f64>::try_new_from_triplets(
+//!         dim,
+//!         dim,
+//!         &[
+//!             // diagonal entries
+//!             (0, 0, 10.0),
+//!             (1, 1, 11.0),
+//!             (2, 2, 12.0),
+//!             (3, 3, 13.0),
+//!             // non diagonal entries
+//!             (0, 1, 1.0),
+//!             (0, 3, 1.5),
+//!             (1, 3, -3.2),
+//!         ],
+//!     ) {
+//!         Ok(A) => Ok(A),
+//!         Err(CreationError::Generic(err)) => Err(err),
+//!         Err(CreationError::OutOfBounds { .. }) => panic!(),
+//!     }?;
+//!
+//!     let mut A = faer::sparse::ops::add(
+//!         A_upper.as_ref(),
+//!         A_upper.to_row_major()?.as_ref().transpose(),
+//!     )?;
+//!     for i in 0..dim {
+//!         A[(i, i)] /= 2.0;
+//!     }
+//!
+//!     let A_nnz = A_upper.compute_nnz();
+//!     let mut rhs = Vec::new();
+//!     let mut rng = StdRng::seed_from_u64(0);
+//!     rhs.try_reserve_exact(dim)?;
+//!     rhs.resize_with(dim, || rng.gen::<f64>());
+//!
+//!     let mut sol = Vec::new();
+//!     sol.try_reserve_exact(dim)?;
+//!     sol.resize(dim, 0.0f64);
+//!
+//!     let rhs = faer::mat::from_column_major_slice::<f64>(&rhs, dim, 1);
+//!     let mut sol = faer::mat::from_column_major_slice_mut::<f64>(&mut sol, dim, 1);
+//!
+//!     // Optional: fill reducing permutation
+//!     let (perm, perm_inv) = {
+//!         let mut perm = Vec::new();
+//!         let mut perm_inv = Vec::new();
+//!         perm.try_reserve_exact(dim)?;
+//!         perm_inv.try_reserve_exact(dim)?;
+//!         perm.resize(dim, 0usize);
+//!         perm_inv.resize(dim, 0usize);
+//!
+//!         let mut mem = GlobalPodBuffer::try_new(amd::order_req::<usize>(dim, A_nnz)?)?;
+//!         amd::order(
+//!             &mut perm,
+//!             &mut perm_inv,
+//!             A_upper.symbolic(),
+//!             amd::Control::default(),
+//!             PodStack::new(&mut mem),
+//!         )?;
+//!
+//!         (perm, perm_inv)
+//!     };
+//!
+//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv) };
+//!
+//!     let A_perm_upper = {
+//!         let mut A_perm_col_ptrs = Vec::new();
+//!         let mut A_perm_row_indices = Vec::new();
+//!         let mut A_perm_values = Vec::new();
+//!
+//!         A_perm_col_ptrs.try_reserve_exact(dim + 1)?;
+//!         A_perm_col_ptrs.resize(dim + 1, 0usize);
+//!         A_perm_row_indices.try_reserve_exact(A_nnz)?;
+//!         A_perm_row_indices.resize(A_nnz, 0usize);
+//!         A_perm_values.try_reserve_exact(A_nnz)?;
+//!         A_perm_values.resize(A_nnz, 0.0f64);
+//!
+//!         let mut mem = GlobalPodBuffer::try_new(faer::sparse::utils::permute_hermitian_req::<
+//!             usize,
+//!         >(dim)?)?;
+//!         faer::sparse::utils::permute_hermitian::<usize, f64>(
+//!             &mut A_perm_values,
+//!             &mut A_perm_col_ptrs,
+//!             &mut A_perm_row_indices,
+//!             A_upper.as_ref(),
+//!             perm,
+//!             faer::Side::Upper,
+//!             faer::Side::Upper,
+//!             PodStack::new(&mut mem),
+//!         );
+//!
+//!         SparseColMat::<usize, f64>::new(
+//!             unsafe {
+//!                 SymbolicSparseColMat::new_unchecked(
+//!                     dim,
+//!                     dim,
+//!                     A_perm_col_ptrs,
+//!                     None,
+//!                     A_perm_row_indices,
+//!                 )
+//!             },
+//!             A_perm_values,
+//!         )
+//!     };
+//!
+//!     // Symbolic analysis
+//!     let symbolic = {
+//!         let mut mem = GlobalPodBuffer::try_new(StackReq::try_any_of([
+//!             simplicial::prefactorize_symbolic_cholesky_req::<usize>(dim, A_nnz)?,
+//!             simplicial::factorize_simplicial_symbolic_req::<usize>(dim)?,
+//!         ])?)?;
+//!         let mut stack = PodStack::new(&mut mem);
+//!
+//!         let mut etree = Vec::new();
+//!         let mut col_counts = Vec::new();
+//!         etree.try_reserve_exact(dim)?;
+//!         etree.resize(dim, 0isize);
+//!         col_counts.try_reserve_exact(dim)?;
+//!         col_counts.resize(dim, 0usize);
+//!
+//!         simplicial::prefactorize_symbolic_cholesky(
+//!             &mut etree,
+//!             &mut col_counts,
+//!             A_perm_upper.symbolic(),
+//!             stack.rb_mut(),
+//!         );
+//!         simplicial::factorize_simplicial_symbolic(
+//!             A_perm_upper.symbolic(),
+//!             // SAFETY: `etree` was filled correctly by
+//!             // `simplicial::prefactorize_symbolic_cholesky`.
+//!             unsafe { simplicial::EliminationTreeRef::from_inner(&etree) },
+//!             &col_counts,
+//!             stack.rb_mut(),
+//!         )?
+//!     };
+//!
+//!     // Numerical factorization
+//!     let mut mem = GlobalPodBuffer::try_new(StackReq::try_all_of([
+//!         simplicial::factorize_simplicial_numeric_llt_req::<usize, f64>(dim)?,
+//!         simplicial::factorize_simplicial_numeric_ldlt_req::<usize, f64>(dim)?,
+//!         faer::perm::permute_rows_in_place_req::<usize, f64>(dim, 1)?,
+//!         symbolic.solve_in_place_req::<f64>(dim)?,
+//!     ])?)?;
+//!     let mut stack = PodStack::new(&mut mem);
+//!
+//!     // LLT
+//!     {
+//!         let mut L_values = Vec::new();
+//!         L_values.try_reserve_exact(symbolic.len_values())?;
+//!         L_values.resize(symbolic.len_values(), 0.0f64);
+//!
+//!         match simplicial::factorize_simplicial_numeric_llt::<usize, f64>(
+//!             &mut L_values,
+//!             A_perm_upper.as_ref(),
+//!             LltRegularization::default(),
+//!             &symbolic,
+//!             stack.rb_mut(),
+//!         ) {
+//!             Ok(_) => {}
+//!             Err(err) => panic!("matrix is not positive definite: {err}"),
+//!         };
+//!
+//!         let llt = simplicial::SimplicialLltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//!         sol.copy_from(rhs);
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack.rb_mut());
+//!         llt.solve_in_place_with_conj(
+//!             faer::Conj::No,
+//!             sol.rb_mut(),
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack.rb_mut());
+//!
+//!         assert_matrix_eq!(&A * &sol, &rhs, comp = abs, tol = 1e-14);
+//!     }
+//!
+//!     // LDLT
+//!     {
+//!         let mut L_values = Vec::new();
+//!         L_values.try_reserve_exact(symbolic.len_values())?;
+//!         L_values.resize(symbolic.len_values(), 0.0f64);
+//!
+//!         simplicial::factorize_simplicial_numeric_ldlt::<usize, f64>(
+//!             &mut L_values,
+//!             A_perm_upper.as_ref(),
+//!             LdltRegularization::default(),
+//!             &symbolic,
+//!             stack.rb_mut(),
+//!         );
+//!
+//!         let ldlt = simplicial::SimplicialLdltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//!         sol.copy_from(rhs);
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack.rb_mut());
+//!         ldlt.solve_in_place_with_conj(
+//!             faer::Conj::No,
+//!             sol.rb_mut(),
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack.rb_mut());
+//!
+//!         assert_matrix_eq!(&A * &sol, &rhs, comp = abs, tol = 1e-14);
+//!     }
+//!     Ok(())
+//! }
+//! simplicial_cholesky().unwrap()
+//! ```
+//! Supernodal:
+//! ```
+//! fn supernodal_cholesky() -> Result<(), faer::sparse::FaerError> {
+//!     use faer::{
+//!         assert_matrix_eq,
+//!         dyn_stack::{GlobalPodBuffer, PodStack, StackReq},
+//!         reborrow::*,
+//!         sparse::{
+//!             linalg::{
+//!                 amd,
+//!                 cholesky::{
+//!                     simplicial, supernodal, BunchKaufmanRegularization, LdltRegularization,
+//!                 },
+//!             },
+//!             CreationError, SparseColMat, SymbolicSparseColMat,
+//!         },
+//!     };
+//!     use rand::prelude::*;
+//!
+//!     // The supernodal Cholesky api takes a lower triangular matrix as input, to be
+//!     // interpreted as self-adjoint.
+//!     let dim = 8;
+//!     let A_lower = match SparseColMat::<usize, f64>::try_new_from_triplets(
+//!         dim,
+//!         dim,
+//!         &[
+//!             // diagonal entries
+//!             (0, 0, 11.0),
+//!             (1, 1, 11.0),
+//!             (2, 2, 12.0),
+//!             (3, 3, 13.0),
+//!             (4, 4, 14.0),
+//!             (5, 5, 16.0),
+//!             (6, 6, 16.0),
+//!             (7, 7, 16.0),
+//!             // non diagonal entries
+//!             (1, 0, 10.0),
+//!             (3, 0, 10.5),
+//!             (4, 0, 10.0),
+//!             (7, 0, 10.5),
+//!             (3, 1, 10.5),
+//!             (4, 1, 10.0),
+//!             (7, 1, 10.5),
+//!             (3, 2, 10.5),
+//!             (4, 2, 10.0),
+//!             (7, 2, 10.0),
+//!         ],
+//!     ) {
+//!         Ok(A) => Ok(A),
+//!         Err(CreationError::Generic(err)) => Err(err),
+//!         Err(CreationError::OutOfBounds { .. }) => panic!(),
+//!     }?;
+//!
+//!     let mut A = faer::sparse::ops::add(
+//!         A_lower.as_ref(),
+//!         A_lower.to_row_major()?.as_ref().transpose(),
+//!     )?;
+//!     for i in 0..dim {
+//!         A[(i, i)] /= 2.0;
+//!     }
+//!
+//!     let A_nnz = A_lower.compute_nnz();
+//!     let mut rhs = Vec::new();
+//!     let mut rng = StdRng::seed_from_u64(0);
+//!     rhs.try_reserve_exact(dim)?;
+//!     rhs.resize_with(dim, || rng.gen::<f64>());
+//!
+//!     let mut sol = Vec::new();
+//!     sol.try_reserve_exact(dim)?;
+//!     sol.resize(dim, 0.0f64);
+//!
+//!     let rhs = faer::mat::from_column_major_slice::<f64>(&rhs, dim, 1);
+//!     let mut sol = faer::mat::from_column_major_slice_mut::<f64>(&mut sol, dim, 1);
+//!
+//!     // Optional: fill reducing permutation
+//!     let (perm, perm_inv) = {
+//!         let mut perm = Vec::new();
+//!         let mut perm_inv = Vec::new();
+//!         perm.try_reserve_exact(dim)?;
+//!         perm_inv.try_reserve_exact(dim)?;
+//!         perm.resize(dim, 0usize);
+//!         perm_inv.resize(dim, 0usize);
+//!
+//!         let mut mem = GlobalPodBuffer::try_new(amd::order_req::<usize>(dim, A_nnz)?)?;
+//!         amd::order(
+//!             &mut perm,
+//!             &mut perm_inv,
+//!             A_lower.symbolic(),
+//!             amd::Control::default(),
+//!             PodStack::new(&mut mem),
+//!         )?;
+//!
+//!         (perm, perm_inv)
+//!     };
+//!
+//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv) };
+//!
+//!     let A_perm_lower = {
+//!         let mut A_perm_col_ptrs = Vec::new();
+//!         let mut A_perm_row_indices = Vec::new();
+//!         let mut A_perm_values = Vec::new();
+//!
+//!         A_perm_col_ptrs.try_reserve_exact(dim + 1)?;
+//!         A_perm_col_ptrs.resize(dim + 1, 0usize);
+//!         A_perm_row_indices.try_reserve_exact(A_nnz)?;
+//!         A_perm_row_indices.resize(A_nnz, 0usize);
+//!         A_perm_values.try_reserve_exact(A_nnz)?;
+//!         A_perm_values.resize(A_nnz, 0.0f64);
+//!
+//!         let mut mem = GlobalPodBuffer::try_new(faer::sparse::utils::permute_hermitian_req::<
+//!             usize,
+//!         >(dim)?)?;
+//!         faer::sparse::utils::permute_hermitian::<usize, f64>(
+//!             &mut A_perm_values,
+//!             &mut A_perm_col_ptrs,
+//!             &mut A_perm_row_indices,
+//!             A_lower.as_ref(),
+//!             perm,
+//!             faer::Side::Lower,
+//!             faer::Side::Lower,
+//!             PodStack::new(&mut mem),
+//!         );
+//!
+//!         SparseColMat::<usize, f64>::new(
+//!             unsafe {
+//!                 SymbolicSparseColMat::new_unchecked(
+//!                     dim,
+//!                     dim,
+//!                     A_perm_col_ptrs,
+//!                     None,
+//!                     A_perm_row_indices,
+//!                 )
+//!             },
+//!             A_perm_values,
+//!         )
+//!     };
+//!
+//!     let A_perm_upper = A_perm_lower
+//!         .as_ref()
+//!         .transpose()
+//!         .symbolic()
+//!         .to_col_major()?;
+//!
+//!     // Symbolic analysis
+//!     let symbolic = {
+//!         let mut mem = GlobalPodBuffer::try_new(StackReq::try_any_of([
+//!             simplicial::prefactorize_symbolic_cholesky_req::<usize>(dim, A_nnz)?,
+//!             supernodal::factorize_supernodal_symbolic_cholesky_req::<usize>(dim)?,
+//!         ])?)?;
+//!         let mut stack = PodStack::new(&mut mem);
+//!
+//!         let mut etree = Vec::new();
+//!         let mut col_counts = Vec::new();
+//!         etree.try_reserve_exact(dim)?;
+//!         etree.resize(dim, 0isize);
+//!         col_counts.try_reserve_exact(dim)?;
+//!         col_counts.resize(dim, 0usize);
+//!
+//!         simplicial::prefactorize_symbolic_cholesky(
+//!             &mut etree,
+//!             &mut col_counts,
+//!             A_perm_upper.as_ref(),
+//!             stack.rb_mut(),
+//!         );
+//!         supernodal::factorize_supernodal_symbolic(
+//!             A_perm_upper.as_ref(),
+//!             // SAFETY: `etree` was filled correctly by
+//!             // `simplicial::prefactorize_symbolic_cholesky`.
+//!             unsafe { simplicial::EliminationTreeRef::from_inner(&etree) },
+//!             &col_counts,
+//!             stack.rb_mut(),
+//!             faer::sparse::linalg::SymbolicSupernodalParams {
+//!                 relax: Some(&[(usize::MAX, 1.0)]),
+//!             },
+//!         )?
+//!     };
+//!
+//!     // Numerical factorization
+//!     let mut mem = GlobalPodBuffer::try_new(StackReq::try_all_of([
+//!         supernodal::factorize_supernodal_numeric_llt_req::<usize, f64>(
+//!             &symbolic,
+//!             faer::Parallelism::None,
+//!         )?,
+//!         supernodal::factorize_supernodal_numeric_ldlt_req::<usize, f64>(
+//!             &symbolic,
+//!             faer::Parallelism::None,
+//!         )?,
+//!         supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman_req::<usize, f64>(
+//!             &symbolic,
+//!             faer::Parallelism::None,
+//!         )?,
+//!         faer::perm::permute_rows_in_place_req::<usize, f64>(dim, 1)?,
+//!         symbolic.solve_in_place_req::<f64>(dim)?,
+//!     ])?)?;
+//!     let mut stack = PodStack::new(&mut mem);
+//!
+//!     // LLT skipped since A is not positive-definite
+//!
+//!     // LDLT
+//!     {
+//!         let mut L_values = Vec::new();
+//!         L_values.try_reserve_exact(symbolic.len_values())?;
+//!         L_values.resize(symbolic.len_values(), 0.0f64);
+//!
+//!         supernodal::factorize_supernodal_numeric_ldlt::<usize, f64>(
+//!             &mut L_values,
+//!             A_perm_lower.as_ref(),
+//!             LdltRegularization::default(),
+//!             &symbolic,
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!
+//!         let ldlt = supernodal::SupernodalLdltRef::<'_, usize, f64>::new(&symbolic, &L_values);
+//!
+//!         sol.copy_from(rhs);
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack.rb_mut());
+//!         ldlt.solve_in_place_with_conj(
+//!             faer::Conj::No,
+//!             sol.rb_mut(),
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack.rb_mut());
+//!
+//!         assert_matrix_eq!(&A * &sol, &rhs, comp = abs, tol = 1e-14);
+//!     }
+//!
+//!     // Intranodal Bunch-Kaufman
+//!     {
+//!         let mut L_values = Vec::new();
+//!         let mut subdiag = Vec::new();
+//!         let mut pivot_perm = Vec::new();
+//!         let mut pivot_perm_inv = Vec::new();
+//!
+//!         L_values.try_reserve_exact(symbolic.len_values())?;
+//!         L_values.resize(symbolic.len_values(), 0.0f64);
+//!         subdiag.try_reserve_exact(dim)?;
+//!         subdiag.resize(dim, 0.0f64);
+//!         pivot_perm.try_reserve(dim)?;
+//!         pivot_perm.resize(dim, 0usize);
+//!         pivot_perm_inv.try_reserve(dim)?;
+//!         pivot_perm_inv.resize(dim, 0usize);
+//!
+//!         supernodal::factorize_supernodal_numeric_intranode_bunch_kaufman::<usize, f64>(
+//!             &mut L_values,
+//!             &mut subdiag,
+//!             &mut pivot_perm,
+//!             &mut pivot_perm_inv,
+//!             A_perm_lower.as_ref(),
+//!             BunchKaufmanRegularization::default(),
+//!             &symbolic,
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!
+//!         let piv_perm =
+//!             unsafe { faer::perm::PermRef::new_unchecked(&pivot_perm, &pivot_perm_inv) };
+//!         let lblt = supernodal::SupernodalIntranodeBunchKaufmanRef::<'_, usize, f64>::new(
+//!             &symbolic, &L_values, &subdiag, piv_perm,
+//!         );
+//!
+//!         sol.copy_from(rhs);
+//!         // we can merge these two permutations if we want to be optimal
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm, stack.rb_mut());
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), piv_perm, stack.rb_mut());
+//!
+//!         lblt.solve_in_place_no_numeric_permute_with_conj(
+//!             faer::Conj::No,
+//!             sol.rb_mut(),
+//!             faer::Parallelism::None,
+//!             stack.rb_mut(),
+//!         );
+//!
+//!         // we can also merge these two permutations if we want to be optimal
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), piv_perm.inverse(), stack.rb_mut());
+//!         faer::perm::permute_rows_in_place(sol.rb_mut(), perm.inverse(), stack.rb_mut());
+//!
+//!         assert_matrix_eq!(&A * &sol, &rhs, comp = abs, tol = 1e-14);
+//!     }
+//!     Ok(())
+//! }
+//!
+//! supernodal_cholesky().unwrap()
+//! ```
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
 use super::{

@@ -103,6 +103,30 @@ pub enum FaerError {
     OutOfMemory,
 }
 
+impl From<dyn_stack::SizeOverflow> for FaerError {
+    #[inline]
+    fn from(value: dyn_stack::SizeOverflow) -> Self {
+        _ = value;
+        FaerError::OutOfMemory
+    }
+}
+
+impl From<dyn_stack::mem::AllocError> for FaerError {
+    #[inline]
+    fn from(value: dyn_stack::mem::AllocError) -> Self {
+        _ = value;
+        FaerError::OutOfMemory
+    }
+}
+
+impl From<alloc::collections::TryReserveError> for FaerError {
+    #[inline]
+    fn from(value: alloc::collections::TryReserveError) -> Self {
+        _ = value;
+        FaerError::OutOfMemory
+    }
+}
+
 impl core::fmt::Display for FaerError {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -111,11 +135,11 @@ impl core::fmt::Display for FaerError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for FaerError {}
 
 /// Errors that can occur in sparse algorithms.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-#[non_exhaustive]
 pub enum CreationError {
     /// Generic error (allocation or index overflow).
     Generic(FaerError),
@@ -142,6 +166,7 @@ impl core::fmt::Display for CreationError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for CreationError {}
 
 #[inline]
@@ -606,6 +631,13 @@ pub mod utils {
             )
             .into_inner()
         })
+    }
+
+    /// Computes the size and alignment of the workspace required to compute a two-sided permutation
+    /// of a self-adjoint matrix.
+    #[inline]
+    pub fn permute_hermitian_req<I: Index>(dim: usize) -> Result<StackReq, SizeOverflow> {
+        StackReq::try_new::<I>(dim)
     }
 
     /// Computes the self-adjoint permutation $P A P^\top$ of the matrix `A` and returns a view over

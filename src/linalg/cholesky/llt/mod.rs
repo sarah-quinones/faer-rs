@@ -22,6 +22,17 @@ pub struct CholeskyError {
     pub non_positive_definite_minor: usize,
 }
 
+impl core::fmt::Display for CholeskyError {
+    #[inline]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(self, f)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl std::error::Error for CholeskyError {}
+
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
