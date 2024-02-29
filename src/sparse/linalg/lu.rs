@@ -6,7 +6,6 @@
 //! # Warning
 //! The functions in this module accept unsorted input, and always produce unsorted decomposition
 //! factors.
-#![allow(missing_docs)]
 
 use super::{
     cholesky::simplicial::EliminationTreeRef,
@@ -93,10 +92,16 @@ fn resize_index<I: Index>(
     Ok(())
 }
 
+/// Supernodal factorization module.
+///
+/// A supernodal factorization is one that processes the elements of the LU factors of the
+/// input matrix by blocks, rather than by single elements. This is more efficient if the LU
+/// factors are somewhat dense.
 pub mod supernodal {
     use super::*;
     use crate::{assert, sparse::linalg::try_collect};
 
+    /// LU factor structure containing the symbolic structure.
     #[derive(Debug, Clone)]
     pub struct SymbolicSupernodalLu<I> {
         pub(super) supernode_ptr: alloc::vec::Vec<I>,
@@ -108,6 +113,7 @@ pub mod supernodal {
         pub(super) ncols: usize,
     }
 
+    /// LU factor structure containing the symbolic and numerical representations.
     #[derive(Debug, Clone)]
     pub struct SupernodalLu<I, E: Entity> {
         nrows: usize,
@@ -134,6 +140,7 @@ pub mod supernodal {
     }
 
     impl<I: Index, E: Entity> SupernodalLu<I, E> {
+        /// Creates a new Supernodal LU of a $0\times 0$ matrix.
         #[inline]
         pub fn new() -> Self {
             Self {
@@ -157,21 +164,30 @@ pub mod supernodal {
             }
         }
 
+        /// Returns the number of rows of $A$.
         #[inline]
         pub fn nrows(&self) -> usize {
             self.nrows
         }
 
+        /// Returns the number of columns of $A$.
         #[inline]
         pub fn ncols(&self) -> usize {
             self.ncols
         }
 
+        /// Returns the number of supernodes.
         #[inline]
         pub fn n_supernodes(&self) -> usize {
             self.nsupernodes
         }
 
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+        ///
+        /// # Panics
+        /// - Panics if `self.nrows() != self.ncols()`.
+        /// - Panics if `rhs.nrows() != self.nrows()`.
         #[track_caller]
         pub fn solve_in_place_with_conj(
             &self,
@@ -197,6 +213,13 @@ pub mod supernodal {
             crate::perm::permute_rows(X.rb_mut(), temp.rb(), col_perm.inverse());
         }
 
+        /// Solves the equation $\text{Op}(A^\top) x = \text{rhs}$ and stores the result in `rhs`,
+        /// where $\text{Op}$ is either the identity or the conjugate, depending on the
+        /// value of `conj`.
+        ///
+        /// # Panics
+        /// - Panics if `self.nrows() != self.ncols()`.
+        /// - Panics if `rhs.nrows() != self.nrows()`.
         #[track_caller]
         pub fn solve_transpose_in_place_with_conj(
             &self,
@@ -530,6 +553,8 @@ pub mod supernodal {
         }
     }
 
+    /// Computes the size and alignment of the workspace required to compute the symbolic
+    /// LU factorization of a square matrix with size `n`.
     pub fn factorize_supernodal_symbolic_lu_req<I: Index>(
         nrows: usize,
         ncols: usize,
@@ -540,6 +565,7 @@ pub mod supernodal {
         )
     }
 
+    /// Computes the symbolic structure of the LU factors of the matrix `A`.
     #[track_caller]
     pub fn factorize_supernodal_symbolic_lu<I: Index>(
         A: SymbolicSparseColMatRef<'_, I>,
@@ -644,6 +670,8 @@ pub mod supernodal {
         f()
     }
 
+    /// Computes the size and alignment of the workspace required to perform a numeric LU
+    /// factorization.
     pub fn factorize_supernodal_numeric_lu_req<I: Index, E: Entity>(
         symbolic: &SymbolicSupernodalLu<I>,
     ) -> Result<StackReq, SizeOverflow> {
@@ -652,6 +680,8 @@ pub mod supernodal {
         StackReq::try_all_of([n, m, m, m, m, m])
     }
 
+    /// Computes the numeric values of the LU factors of the matrix `A` as well as the row pivoting
+    /// permutation, and stores them in `lu` and `row_perm`/`row_perm_inv`.
     pub fn factorize_supernodal_numeric_lu<I: Index, E: ComplexField>(
         row_perm: &mut [I],
         row_perm_inv: &mut [I],
@@ -1333,10 +1363,16 @@ pub mod supernodal {
     }
 }
 
+/// Simplicial factorization module.
+///
+/// A supernodal factorization is one that processes the elements of the LU factors of the
+/// input matrix by single elements, rather than by blocks. This is more efficient if the LU
+/// factors are very sparse.
 pub mod simplicial {
     use super::*;
     use crate::{assert, sparse::linalg::triangular_solve};
 
+    /// LU factor structure containing the symbolic and numerical representations.
     #[derive(Debug, Clone)]
     pub struct SimplicialLu<I, E: Entity> {
         nrows: usize,
@@ -1358,6 +1394,7 @@ pub mod simplicial {
     }
 
     impl<I: Index, E: Entity> SimplicialLu<I, E> {
+        /// Creates a new Simplicial LU of a $0\times 0$ matrix.
         #[inline]
         pub fn new() -> Self {
             Self {
@@ -1375,16 +1412,20 @@ pub mod simplicial {
             }
         }
 
+        /// Returns the number of rows of $A$.
         #[inline]
         pub fn nrows(&self) -> usize {
             self.nrows
         }
 
+        /// Returns the number of columns of $A$.
         #[inline]
         pub fn ncols(&self) -> usize {
             self.ncols
         }
 
+        /// Returns the $L$ factor of the LU factorization. The row indices may or may not be
+        /// sorted.
         #[inline]
         pub fn l_factor_unsorted(&self) -> SparseColMatRef<'_, I, E> {
             SparseColMatRef::<'_, I, E>::new(
@@ -1401,6 +1442,8 @@ pub mod simplicial {
             )
         }
 
+        /// Returns the $U$ factor of the LU factorization. The row indices may or may not be
+        /// sorted.
         #[inline]
         pub fn u_factor_unsorted(&self) -> SparseColMatRef<'_, I, E> {
             SparseColMatRef::<'_, I, E>::new(
@@ -1417,6 +1460,12 @@ pub mod simplicial {
             )
         }
 
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+        ///
+        /// # Panics
+        /// - Panics if `self.nrows() != self.ncols()`.
+        /// - Panics if `rhs.nrows() != self.nrows()`.
         #[track_caller]
         pub fn solve_in_place_with_conj(
             &self,
@@ -1453,6 +1502,13 @@ pub mod simplicial {
             crate::perm::permute_rows(X.rb_mut(), temp.rb(), col_perm.inverse());
         }
 
+        /// Solves the equation $\text{Op}(A^\top) x = \text{rhs}$ and stores the result in `rhs`,
+        /// where $\text{Op}$ is either the identity or the conjugate, depending on the
+        /// value of `conj`.
+        ///
+        /// # Panics
+        /// - Panics if `self.nrows() != self.ncols()`.
+        /// - Panics if `rhs.nrows() != self.nrows()`.
         #[track_caller]
         pub fn solve_transpose_in_place_with_conj(
             &self,
@@ -1619,6 +1675,8 @@ pub mod simplicial {
         tail_start
     }
 
+    /// Computes the size and alignment of the workspace required to perform a numeric LU
+    /// factorization.
     pub fn factorize_simplicial_numeric_lu_req<I: Index, E: Entity>(
         nrows: usize,
         ncols: usize,
@@ -1629,6 +1687,8 @@ pub mod simplicial {
         StackReq::try_all_of([val, idx, idx, idx])
     }
 
+    /// Computes the numeric values of the LU factors of the matrix `A` as well as the row pivoting
+    /// permutation, and stores them in `lu` and `row_perm`/`row_perm_inv`.
     pub fn factorize_simplicial_numeric_lu<I: Index, E: ComplexField>(
         row_perm: &mut [I],
         row_perm_inv: &mut [I],
@@ -1774,17 +1834,28 @@ pub mod simplicial {
     }
 }
 
+/// Tuning parameters for the LU symbolic factorization.
 #[derive(Copy, Clone, Debug, Default)]
 pub struct LuSymbolicParams<'a> {
+    /// Parameters for the fill reducing column permutation
     pub colamd_params: Control,
+    /// Threshold for selecting the supernodal factorization.
     pub supernodal_flop_ratio_threshold: SupernodalThreshold,
+    /// Supernodal factorization parameters.
     pub supernodal_params: SymbolicSupernodalParams<'a>,
 }
 
 /// The inner factorization used for the symbolic LU, either simplicial or symbolic.
 #[derive(Debug, Clone)]
 pub enum SymbolicLuRaw<I> {
-    Simplicial { nrows: usize, ncols: usize },
+    /// Simplicial structure.
+    Simplicial {
+        /// Number of rows of $A$.
+        nrows: usize,
+        /// Number of columns of $A$.
+        ncols: usize,
+    },
+    /// Supernodal structure.
     Supernodal(supernodal::SymbolicSupernodalLu<I>),
 }
 
@@ -1804,6 +1875,8 @@ enum NumericLuRaw<I, E: Entity> {
     Simplicial(simplicial::SimplicialLu<I, E>),
 }
 
+/// Structure that contains the numerical values and row pivoting permutation of the LU
+/// decomposition.
 #[derive(Debug, Clone)]
 pub struct NumericLu<I, E: Entity> {
     raw: NumericLuRaw<I, E>,
@@ -1818,6 +1891,7 @@ impl<I: Index, E: Entity> Default for NumericLu<I, E> {
 }
 
 impl<I: Index, E: Entity> NumericLu<I, E> {
+    /// Creates a new LU of a $0\times 0$ matrix.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -1837,6 +1911,11 @@ pub struct LuRef<'a, I: Index, E: Entity> {
 impl_copy!(<'a><I: Index, E: Entity><LuRef<'a, I, E>>);
 
 impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
+    /// Creates LU factors from their components.
+    ///
+    /// # Safety
+    /// The numeric part must be the output of [`factorize_numeric_lu`], called with a matrix having
+    /// the same symbolic structure as the one used to create `symbolic`.
     #[inline]
     pub unsafe fn new_unchecked(symbolic: &'a SymbolicLu<I>, numeric: &'a NumericLu<I, E>) -> Self {
         match (&symbolic.raw, &numeric.raw) {
@@ -1847,21 +1926,30 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
         Self { symbolic, numeric }
     }
 
+    /// Returns the symbolic structure of the LU factorization.
     #[inline]
     pub fn symbolic(self) -> &'a SymbolicLu<I> {
         self.symbolic
     }
 
+    /// Returns the row pivoting permutation.
     #[inline]
     pub fn row_perm(self) -> PermRef<'a, I> {
         unsafe { PermRef::new_unchecked(&self.numeric.row_perm_fwd, &self.numeric.row_perm_inv) }
     }
 
+    /// Returns the fill reducing column permutation.
     #[inline]
     pub fn col_perm(self) -> PermRef<'a, I> {
         self.symbolic.col_perm()
     }
 
+    /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+    /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+    ///
+    /// # Panics
+    /// - Panics if `self.nrows() != self.ncols()`.
+    /// - Panics if `rhs.nrows() != self.nrows()`.
     #[track_caller]
     pub fn solve_in_place_with_conj(
         self,
@@ -1896,6 +1984,13 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
         }
     }
 
+    /// Solves the equation $\text{Op}(A^\top) x = \text{rhs}$ and stores the result in `rhs`,
+    /// where $\text{Op}$ is either the identity or the conjugate, depending on the
+    /// value of `conj`.
+    ///
+    /// # Panics
+    /// - Panics if `self.nrows() != self.ncols()`.
+    /// - Panics if `rhs.nrows() != self.nrows()`.
     #[track_caller]
     pub fn solve_transpose_in_place_with_conj(
         self,
@@ -1932,6 +2027,7 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
 }
 
 impl<I: Index> SymbolicLu<I> {
+    /// Returns the number of rows of $A$.
     #[inline]
     pub fn nrows(&self) -> usize {
         match &self.raw {
@@ -1940,6 +2036,7 @@ impl<I: Index> SymbolicLu<I> {
         }
     }
 
+    /// Returns the number of columns of $A$.
     #[inline]
     pub fn ncols(&self) -> usize {
         match &self.raw {
@@ -1954,6 +2051,8 @@ impl<I: Index> SymbolicLu<I> {
         unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv) }
     }
 
+    /// Computes the size and alignment of the workspace required to compute the numerical LU
+    /// factorization.
     pub fn factorize_numeric_lu_req<E: Entity>(
         &self,
         parallelism: Parallelism,
@@ -1980,6 +2079,7 @@ impl<I: Index> SymbolicLu<I> {
         }
     }
 
+    /// Computes the size and alignment of the workspace required to solve the equation $A x = b$.
     pub fn solve_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
@@ -1989,6 +2089,8 @@ impl<I: Index> SymbolicLu<I> {
         temp_mat_req::<E>(self.nrows(), rhs_ncols)
     }
 
+    /// Computes the size and alignment of the workspace required to solve the equation $A^\top x =
+    /// b$.
     pub fn solve_transpose_in_place_req<E: Entity>(
         &self,
         rhs_ncols: usize,
@@ -1998,6 +2100,7 @@ impl<I: Index> SymbolicLu<I> {
         temp_mat_req::<E>(self.nrows(), rhs_ncols)
     }
 
+    /// Computes a numerical LU factorization of A.
     #[track_caller]
     pub fn factorize_numeric_lu<'out, E: ComplexField>(
         &'out self,

@@ -51,8 +51,8 @@ enum Ordering<'a, I: Index> {
 /// Simplicial factorization module.
 ///
 /// A simplicial factorization is one that processes the elements of the Cholesky factor of the
-/// input matrix one by one, rather than by blocks. This is more efficient if the Cholesky factor is
-/// very sparse.
+/// input matrix single elements, rather than by blocks. This is more efficient if the Cholesky
+/// factor is very sparse.
 pub mod simplicial {
     use super::*;
     use crate::assert;
@@ -758,8 +758,8 @@ pub mod simplicial {
             self.values.into_inner()
         }
 
-        /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-        /// the identity or the conjugate, depending on the value of `conj`.
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
         ///
         /// # Panics
         /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -816,8 +816,8 @@ pub mod simplicial {
             self.values.into_inner()
         }
 
-        /// Solves the equation `Op(A)×x = rhs` and stores the result in `rhs`, where `Op` is either
-        /// the identity or the conjugate, depending on the value of `conj`.
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
         ///
         /// # Panics
         /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -1001,8 +1001,8 @@ pub mod simplicial {
 /// Supernodal factorization module.
 ///
 /// A supernodal factorization is one that processes the elements of the Cholesky factor of the
-/// input matrix by blocks, rather than one by one. This is more efficient if the Cholesky factor is
-/// somewhat dense.
+/// input matrix by blocks, rather than single elements. This is more efficient if the Cholesky
+/// factor is somewhat dense.
 pub mod supernodal {
     use super::*;
     use crate::{assert, debug_assert};
@@ -1197,8 +1197,8 @@ pub mod supernodal {
             }
         }
 
-        /// Solves the system $\text{Op}(L B L^H) x = \text{rhs}$, where `Op` is either the identity
-        /// or the conjugate depending on the value of `conj`.
+        /// Solves the system $\text{Op}(L B L^H) x = \text{rhs}$, where $\text{Op}$ is either the
+        /// identity or the conjugate depending on the value of `conj`.
         ///
         /// # Note
         /// Note that this function doesn't apply the pivoting permutation. Users are expected to
@@ -1411,8 +1411,8 @@ pub mod supernodal {
             }
         }
 
-        /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-        /// the identity or the conjugate, depending on the value of `conj`.
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
         ///
         /// # Panics
         /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -1572,8 +1572,8 @@ pub mod supernodal {
             }
         }
 
-        /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-        /// the identity or the conjugate, depending on the value of `conj`.
+        /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
         ///
         /// # Panics
         /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -3987,8 +3987,8 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
         self.symbolic
     }
 
-    /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-    /// the identity or the conjugate, depending on the value of `conj`.
+    /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+    /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
     ///
     /// # Panics
     /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -4075,8 +4075,8 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
         self.symbolic
     }
 
-    /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-    /// the identity or the conjugate, depending on the value of `conj`.
+    /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+    /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
     ///
     /// # Panics
     /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
@@ -4141,8 +4141,8 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         self.symbolic
     }
 
-    /// Solves the equation `Op(A) x = rhs` and stores the result in `rhs`, where `Op` is either
-    /// the identity or the conjugate, depending on the value of `conj`.
+    /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
+    /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
     ///
     /// # Panics
     /// Panics if `rhs.nrows() != self.symbolic().nrows()`.

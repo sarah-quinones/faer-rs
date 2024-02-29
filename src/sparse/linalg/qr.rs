@@ -5,7 +5,6 @@
 //! # Warning
 //! The functions in this module accept unsorted input, and always produce unsorted decomposition
 //! factors.
-#![allow(missing_docs)]
 
 use super::{
     cholesky::{
@@ -341,8 +340,8 @@ pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, sta
 /// Supernodal factorization module.
 ///
 /// A supernodal factorization is one that processes the elements of the QR factors of the
-/// input matrix by blocks, rather than one by one. This is more efficient if the QR factors are
-/// somewhat dense.
+/// input matrix by blocks, rather than by single elements. This is more efficient if the QR factors
+/// are somewhat dense.
 pub mod supernodal {
     use super::*;
     use crate::assert;
@@ -692,7 +691,7 @@ pub mod supernodal {
         /// Creates QR factors from their components.
         ///
         /// # Safety
-        /// The inputs must be the outputs of `factorize_numeric_qr`.
+        /// The inputs must be the outputs of [`factorize_numeric_qr`].
         #[inline]
         pub unsafe fn new_unchecked(
             symbolic: &'a SymbolicSupernodalQr<I>,
@@ -723,7 +722,7 @@ pub mod supernodal {
             }
         }
 
-        /// Returns the symbolic of the QR factorization.
+        /// Returns the symbolic structure of the QR factorization.
         #[inline]
         pub fn symbolic(self) -> &'a SymbolicSupernodalQr<I> {
             self.symbolic
@@ -1440,8 +1439,8 @@ pub mod supernodal {
 /// Simplicial factorization module.
 ///
 /// A simplicial factorization is one that processes the elements of the QR factors of the
-/// input matrix one by one, rather than by blocks. This is more efficient if the QR factors are
-/// very sparse.
+/// input matrix by single elements, rather than by blocks. This is more efficient if the QR factors
+/// are very sparse.
 pub mod simplicial {
     use super::*;
     use crate::{assert, sparse::linalg::triangular_solve};
@@ -1547,7 +1546,7 @@ pub mod simplicial {
             }
         }
 
-        /// Returns the symbolic of the QR factorization.
+        /// Returns the symbolic structure of the QR factorization.
         #[inline]
         pub fn symbolic(&self) -> &SymbolicSimplicialQr<I> {
             self.symbolic
@@ -2003,7 +2002,7 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
         }
     }
 
-    /// Returns the symbolic of the QR factorization.
+    /// Returns the symbolic structure of the QR factorization.
     #[inline]
     pub fn symbolic(self) -> &'a SymbolicQr<I> {
         self.symbolic
@@ -2123,6 +2122,7 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
 }
 
 impl<I: Index> SymbolicQr<I> {
+    /// Number of rows of $A$.
     #[inline]
     pub fn nrows(&self) -> usize {
         match &self.raw {
@@ -2131,6 +2131,7 @@ impl<I: Index> SymbolicQr<I> {
         }
     }
 
+    /// Number of columns of $A$.
     #[inline]
     pub fn ncols(&self) -> usize {
         match &self.raw {
