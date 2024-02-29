@@ -691,7 +691,7 @@ pub mod supernodal {
         /// Creates QR factors from their components.
         ///
         /// # Safety
-        /// The inputs must be the outputs of [`factorize_numeric_qr`].
+        /// The inputs must be the outputs of [`factorize_supernodal_numeric_qr`].
         #[inline]
         pub unsafe fn new_unchecked(
             symbolic: &'a SymbolicSupernodalQr<I>,

@@ -1914,8 +1914,8 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
     /// Creates LU factors from their components.
     ///
     /// # Safety
-    /// The numeric part must be the output of [`factorize_numeric_lu`], called with a matrix having
-    /// the same symbolic structure as the one used to create `symbolic`.
+    /// The numeric part must be the output of [`SymbolicLu::factorize_numeric_lu`], called with a
+    /// matrix having the same symbolic structure as the one used to create `symbolic`.
     #[inline]
     pub unsafe fn new_unchecked(symbolic: &'a SymbolicLu<I>, numeric: &'a NumericLu<I, E>) -> Self {
         match (&symbolic.raw, &numeric.raw) {
