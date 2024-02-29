@@ -807,7 +807,14 @@ fn amd_1<I: Index>(
         for k in N.indices() {
             // Construct A+A'.
             let mut seen = zero;
+            let mut j_prev = usize::MAX;
             for j in A.row_indices_of_col(k) {
+                if j_prev == *j {
+                    j_prev = *j;
+                    continue;
+                }
+                j_prev = *j;
+
                 if j < k {
                     // Entry A(j,k) in the strictly upper triangular part.
                     i_w[s_p[j].zx()] = I(*k);
@@ -827,7 +834,14 @@ fn amd_1<I: Index>(
                 // Scan lower triangular part of A, in column j until reaching
                 // row k. Start where last scan left off.
                 let mut seen_j = zero;
+                let mut i_prev = usize::MAX;
                 for i in &A.row_indices_of_col_raw(j)[t_p[j].zx()..] {
+                    if i_prev == *i.zx() {
+                        i_prev = *i.zx();
+                        continue;
+                    }
+                    i_prev = *i.zx();
+
                     let i = i.zx();
                     if i < k {
                         // A (i,j) is only in the lower part, not in upper.
@@ -853,7 +867,14 @@ fn amd_1<I: Index>(
 
         // Clean up, for remaining mismatched entries.
         for j in N.indices() {
+            let mut i_prev = usize::MAX;
             for i in &A.row_indices_of_col_raw(j)[t_p[j].zx()..] {
+                if i_prev == *i.zx() {
+                    i_prev = *i.zx();
+                    continue;
+                }
+                i_prev = *i.zx();
+
                 let i = i.zx();
                 i_w[s_p[i].zx()] = I(*j);
                 s_p[i] += one;
@@ -961,7 +982,14 @@ fn aat<I: Index>(
         for k in N.indices() {
             let mut seen = zero;
 
+            let mut j_prev = usize::MAX;
             for j in A.row_indices_of_col(k) {
+                if j_prev == *j {
+                    j_prev = *j;
+                    continue;
+                }
+                j_prev = *j;
+
                 if j < k {
                     seen += one;
                     len[j] += one;
@@ -974,7 +1002,13 @@ fn aat<I: Index>(
                 }
 
                 let mut seen_j = zero;
+                let mut i_prev = usize::MAX;
                 for i in &A.row_indices_of_col_raw(j)[t_p[j].zx()..] {
+                    if i_prev == *i.zx() {
+                        i_prev = *i.zx();
+                        continue;
+                    }
+                    i_prev = *i.zx();
                     let i = i.zx();
                     if i < k {
                         len[i] += one;
@@ -993,7 +1027,13 @@ fn aat<I: Index>(
         }
 
         for j in N.indices() {
+            let mut i_prev = usize::MAX;
             for i in &A.row_indices_of_col_raw(j)[t_p[j].zx()..] {
+                if i_prev == *i.zx() {
+                    i_prev = *i.zx();
+                    continue;
+                }
+                i_prev = *i.zx();
                 len[i.zx()] += one;
                 len[j] += one;
             }
@@ -1005,7 +1045,7 @@ fn aat<I: Index>(
 
 /// Computes the size and alignment of required workspace for computing the AMD ordering of a sorted
 /// matrix.
-pub fn order_sorted_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
+pub fn order_req<I: Index>(n: usize, nnz_upper: usize) -> Result<StackReq, SizeOverflow> {
     let n_req = StackReq::try_new::<I>(n)?;
     let nzaat = nnz_upper.checked_mul(2).ok_or(SizeOverflow)?;
     StackReq::try_all_of([
@@ -1042,7 +1082,7 @@ pub fn order_maybe_unsorted_req<I: Index>(
     nnz_upper: usize,
 ) -> Result<StackReq, SizeOverflow> {
     StackReq::try_all_of([
-        order_sorted_req::<I>(n, nnz_upper)?,
+        order_req::<I>(n, nnz_upper)?,
         StackReq::try_new::<I>(n + 1)?,
         StackReq::try_new::<I>(nnz_upper)?,
     ])
