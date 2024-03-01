@@ -37,6 +37,7 @@ pub mod bidiag;
 pub mod bidiag_real_svd;
 #[doc(hidden)]
 pub mod jacobi;
+pub mod pseudo_inverse;
 
 const JACOBI_FALLBACK_THRESHOLD: usize = 4;
 const BIDIAG_QR_FALLBACK_THRESHOLD: usize = 128;
