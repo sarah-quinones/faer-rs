@@ -1352,10 +1352,8 @@ impl<E: ComplexField> Svd<E> {
     pub fn v(&self) -> MatRef<'_, E> {
         self.v.as_ref()
     }
-}
 
-impl<E: ComplexField> Svd<E> {
-    /// Computes the pseudo inverse
+    /// Computes the pseudo inverse.
     pub fn pseudoinverse(&self) -> Mat<E> {
         crate::linalg::svd::pseudo_inverse::compute_pseudoinverse(
             self.s_diagonal(),
@@ -1480,6 +1478,15 @@ impl<E: ComplexField> ThinSvd<E> {
     /// Returns the factor $V$ of the SVD.
     pub fn v(&self) -> MatRef<'_, E> {
         self.inner.v.as_ref()
+    }
+
+    /// Computes the pseudo inverse.
+    pub fn pseudoinverse(&self) -> Mat<E> {
+        crate::linalg::svd::pseudo_inverse::compute_pseudoinverse(
+            self.s_diagonal(),
+            self.u(),
+            self.v(),
+        )
     }
 }
 impl<E: ComplexField> SpSolverCore<E> for ThinSvd<E> {
