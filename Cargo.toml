@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.14.3"
 coe-rs = "0.1.2"
-dbgf = "0.1.1"
+dbgf = "0.1.2"
 paste = "1.0.14"
 reborrow = "0.5.5"
 

@@ -1354,10 +1354,10 @@ impl<E: ComplexField> Svd<E> {
     }
 }
 
-impl<E: ComplexField + RealField> Svd<E> {
+impl<E: ComplexField> Svd<E> {
     /// Computes the pseudo inverse
-    pub fn pseudo_inverse(&self) -> Mat<E> {
-        crate::linalg::svd::pseudo_inverse::compute_pseudo_inverse(
+    pub fn pseudoinverse(&self) -> Mat<E> {
+        crate::linalg::svd::pseudo_inverse::compute_pseudoinverse(
             self.s_diagonal(),
             self.u(),
             self.v(),
@@ -2828,7 +2828,7 @@ mod tests {
     }
 
     #[test]
-    fn pseudo_inverse_square() {
+    fn pseudoinverse_square() {
         #[rustfmt::skip]
         let a = mat![
             [0.7071067811865476, 0.7071067811865476, 0.7071067811865475, 0.0],
@@ -2837,7 +2837,7 @@ mod tests {
             [0.7071067811865476, -0.7071067811865477, -0.7071067811865474, 0.0],
         ];
         let svd = a.svd();
-        let ai = svd.pseudo_inverse();
+        let ai = svd.pseudoinverse();
         #[rustfmt::skip]
         let ai_expected = mat![
             [0.35355339059327384, 0.35355339059327384, 0.35355339059327373, 0.3535533905932737],
@@ -2849,14 +2849,14 @@ mod tests {
     }
 
     #[test]
-    fn pseudo_inverse_stereo() {
+    fn pseudoinverse_stereo() {
         #[rustfmt::skip]
         let a: Mat<f64> = mat![
-          [0.7071067811865476, 6.123233995736766e-17, 1.0, 0.0],
-          [0.7071067811865476, -1.8369701987210297e-16, -1.0, 0.0],
+            [0.7071067811865476, 6.123233995736766e-17, 1.0, 0.0],
+            [0.7071067811865476, -1.8369701987210297e-16, -1.0, 0.0],
         ];
         let svd = a.svd();
-        let ai = svd.pseudo_inverse();
+        let ai = svd.pseudoinverse();
         #[rustfmt::skip]
         let ai_expected = mat![
             [0.7071067811865477, 0.7071067811865477],
@@ -2867,6 +2867,29 @@ mod tests {
         assert_matrix_eq!(ai, ai_expected, comp = float);
     }
 
+    #[test]
+    fn pseudoinverse_stereo_cplx() {
+        use crate::complex_native::c64;
+
+        let i = c64::new(0.0, 1.0);
+
+        #[rustfmt::skip]
+        let a = mat![
+            [0.7071067811865476 + 1.0 * i, 6.123233995736766e-17 + 0.0 * i, 1.0 + 2.5 * i, 0.0 + 0.0 * i],
+            [0.7071067811865476 + 1.0 * i, -1.8369701987210297e-16 + 0.0 * i, -1.0 - 3.1 * i, 0.0 + 0.0 * i],
+        ];
+        let svd = a.svd();
+        let ai = svd.pseudoinverse();
+        #[rustfmt::skip]
+        let ai_expected = mat![
+            [2.6941152495798565e-01 - 3.5700859598959406e-01 * i, 2.0199299583304597e-01 - 3.0965807067707252e-01 * i],
+            [1.0736369886583405e-17 - 2.6847648322568046e-19 * i, 4.4545230941902671e-18 - 6.9267352892949906e-19 * i],
+            [5.6561085972850679e-02 - 1.5837104072398192e-01 * i, -5.6561085972850672e-2 + 1.5837104072398187e-01 * i],
+            [0.0000000000000000e+00 - 0.0000000000000000e+00 * i, 0.0000000000000000e+00 - 0.0000000000000000e+00 * i]
+        ];
+
+        assert!((&ai - &ai_expected).norm_l2() < 2e-16);
+    }
     #[test]
     fn test_selfadjoint_eigendecomposition() {
         let n = 7;
