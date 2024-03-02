@@ -2086,6 +2086,119 @@ pub mod supernodal {
             }
         }
 
+        /// Solves the equation $\text{Op}(L) x = \text{rhs}$ and stores the result in `rhs`, where
+        /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
+        ///
+        /// # Panics
+        /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+        #[inline]
+        pub fn l_solve_with_conj(
+            &self,
+            conj: Conj,
+            rhs: MatMut<'_, E>,
+            parallelism: Parallelism,
+            stack: PodStack<'_>,
+        ) where
+            E: ComplexField,
+        {
+            let symbolic = self.symbolic();
+            let n = symbolic.nrows();
+            assert!(rhs.nrows() == n);
+
+            let mut x = rhs;
+            let mut stack = stack;
+            let k = x.ncols();
+            for s in 0..symbolic.n_supernodes() {
+                let s = self.supernode(s);
+                let size = s.matrix.ncols();
+                let Ls = s.matrix;
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
+                crate::linalg::triangular_solve::solve_lower_triangular_in_place_with_conj(
+                    Ls_top,
+                    conj,
+                    x_top.rb_mut(),
+                    parallelism,
+                );
+
+                let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
+                crate::linalg::matmul::matmul_with_conj(
+                    tmp.rb_mut(),
+                    Ls_bot,
+                    conj,
+                    x_top.rb(),
+                    Conj::No,
+                    None,
+                    E::faer_one(),
+                    parallelism,
+                );
+
+                for j in 0..k {
+                    for (idx, i) in s.pattern().iter().enumerate() {
+                        let i = i.zx();
+                        x.write(i, j, x.read(i, j).faer_sub(tmp.read(idx, j)))
+                    }
+                }
+            }
+        }
+
+        /// Solves the equation $\text{Op}(L^\top) x = \text{rhs}$ and stores the result in `rhs`,
+        /// where $\text{Op}$ is either the identity or the conjugate, depending on the
+        /// value of `conj`.
+        ///
+        /// # Panics
+        /// Panics if `rhs.nrows() != self.symbolic().nrows()`.
+        #[inline]
+        pub fn l_transpose_solve_with_conj(
+            &self,
+            conj: Conj,
+            rhs: MatMut<'_, E>,
+            parallelism: Parallelism,
+            stack: PodStack<'_>,
+        ) where
+            E: ComplexField,
+        {
+            let symbolic = self.symbolic();
+            let n = symbolic.nrows();
+            assert!(rhs.nrows() == n);
+
+            let mut x = rhs;
+            let mut stack = stack;
+            let k = x.ncols();
+            for s in (0..symbolic.n_supernodes()).rev() {
+                let s = self.supernode(s);
+                let size = s.matrix.ncols();
+                let Ls = s.matrix;
+                let (Ls_top, Ls_bot) = Ls.split_at_row(size);
+
+                let (mut tmp, _) = temp_mat_uninit::<E>(s.pattern().len(), k, stack.rb_mut());
+                for j in 0..k {
+                    for (idx, i) in s.pattern().iter().enumerate() {
+                        let i = i.zx();
+                        tmp.write(idx, j, x.read(i, j));
+                    }
+                }
+
+                let mut x_top = x.rb_mut().subrows_mut(s.start(), size);
+                crate::linalg::matmul::matmul_with_conj(
+                    x_top.rb_mut(),
+                    Ls_bot.transpose(),
+                    conj,
+                    tmp.rb(),
+                    Conj::No,
+                    Some(E::faer_one()),
+                    E::faer_one().faer_neg(),
+                    parallelism,
+                );
+                crate::linalg::triangular_solve::solve_upper_triangular_in_place_with_conj(
+                    Ls_top.transpose(),
+                    conj,
+                    x_top.rb_mut(),
+                    parallelism,
+                );
+            }
+        }
+
         /// Solves the equation $\text{Op}(A) x = \text{rhs}$ and stores the result in `rhs`, where
         /// $\text{Op}$ is either the identity or the conjugate, depending on the value of `conj`.
         ///
@@ -3097,6 +3210,10 @@ pub mod supernodal {
                     A_lower.row_indices_of_col(j),
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
+                    if i < j {
+                        continue;
+                    }
+
                     let val = val.read();
                     let (ix, iy) = if i >= s_end {
                         (global_to_local[i].sx(), j_shifted)
@@ -3307,6 +3424,10 @@ pub mod supernodal {
                     A_lower.row_indices_of_col(j),
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
+                    if i < j {
+                        continue;
+                    }
+
                     let val = val.read();
                     let (ix, iy) = if i >= s_end {
                         (global_to_local[i].sx(), j_shifted)
@@ -3549,6 +3670,10 @@ pub mod supernodal {
                     A_lower.row_indices_of_col(j),
                     slice_group(A_lower.values_of_col(j)).into_ref_iter(),
                 ) {
+                    if i < j {
+                        continue;
+                    }
+
                     let val = val.read();
                     let (ix, iy) = if i >= s_end {
                         (global_to_local[i].sx(), j_shifted)
