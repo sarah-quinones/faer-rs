@@ -1,7 +1,5 @@
 use super::{c64, c64conj};
 use faer_entity::*;
-#[cfg(not(feature = "std"))]
-use num_traits::float::FloatCore;
 use num_traits::{One, Zero};
 use pulp::{cast, Simd};
 #[cfg(feature = "rand")]

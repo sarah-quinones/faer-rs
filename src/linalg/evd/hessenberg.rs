@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::{
     assert,
     linalg::{
@@ -679,6 +680,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
     let n = a.nrows();
     let (mut tmp, stack) = temp_mat_uninit::<E>(n, 1, stack);
     let (mut z_tmp, stack) = temp_mat_uninit::<E>(n, parallelism_degree(parallelism), stack);
+    _ = &mut z_tmp;
     _ = stack;
 
     let one = E::faer_one();

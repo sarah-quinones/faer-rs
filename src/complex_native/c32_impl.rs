@@ -2,8 +2,6 @@ use super::{c32, c32conj};
 use faer_entity::*;
 #[cfg(feature = "std")]
 use num_complex::ComplexFloat;
-#[cfg(not(feature = "std"))]
-use num_traits::float::FloatCore;
 use num_traits::{One, Zero};
 use pulp::{cast, Simd};
 #[cfg(feature = "rand")]

@@ -16,7 +16,10 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
     /// `symbolic.col_indices()`.
     #[inline]
     #[track_caller]
-    pub fn new(symbolic: SymbolicSparseRowMat<I>, values: GroupFor<E, Vec<E::Unit>>) -> Self {
+    pub fn new(
+        symbolic: SymbolicSparseRowMat<I>,
+        values: GroupFor<E, alloc::vec::Vec<E::Unit>>,
+    ) -> Self {
         let values = VecGroup::from_inner(values);
         assert!(symbolic.col_indices().len() == values.len());
         Self { symbolic, values }
@@ -97,7 +100,12 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn into_parts(self) -> (SymbolicSparseRowMat<I>, GroupFor<E, Vec<E::Unit>>) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        SymbolicSparseRowMat<I>,
+        GroupFor<E, alloc::vec::Vec<E::Unit>>,
+    ) {
         (self.symbolic, self.values.into_inner())
     }
 
@@ -161,8 +169,8 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
             symbolic: self.symbolic,
             values: unsafe {
                 VecGroup::<E::Conj>::from_inner(transmute_unchecked::<
-                    GroupFor<E, Vec<UnitFor<E::Conj>>>,
-                    GroupFor<E::Conj, Vec<UnitFor<E::Conj>>>,
+                    GroupFor<E, alloc::vec::Vec<UnitFor<E::Conj>>>,
+                    GroupFor<E::Conj, alloc::vec::Vec<UnitFor<E::Conj>>>,
                 >(E::faer_map(
                     self.values.into_inner(),
                     |mut slice| {
@@ -170,7 +178,7 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
                         let cap = slice.capacity();
                         let ptr = slice.as_mut_ptr() as *mut UnitFor<E> as *mut UnitFor<E::Conj>;
 
-                        Vec::from_raw_parts(ptr, len, cap)
+                        alloc::vec::Vec::from_raw_parts(ptr, len, cap)
                     },
                 )))
             },

@@ -13,7 +13,7 @@ use core::cell::UnsafeCell;
 /// threads.
 #[derive(Clone, Debug)]
 pub struct SparseMatmulInfo {
-    flops_prefix_sum: Vec<f64>,
+    flops_prefix_sum: alloc::vec::Vec<f64>,
 }
 
 /// Performs a symbolic matrix multiplication of a sparse matrix `lhs` by a sparse matrix `rhs`,
@@ -31,7 +31,7 @@ pub fn sparse_sparse_matmul_symbolic<I: Index>(
     let m = lhs.nrows();
     let n = rhs.ncols();
     let mut col_ptrs = try_zeroed::<I>(n + 1)?;
-    let mut row_ind = Vec::new();
+    let mut row_ind = alloc::vec::Vec::new();
 
     let mut work = try_collect((0..m).into_iter().map(|_| I::truncate(usize::MAX)))?;
     let mut info = SparseMatmulInfo {

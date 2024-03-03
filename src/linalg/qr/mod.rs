@@ -127,7 +127,6 @@
 
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
-#![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod col_pivoting;
 pub mod no_pivoting;

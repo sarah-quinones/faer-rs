@@ -375,7 +375,7 @@ impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMatRef<'_, I, E> {
         let mut iter = (0..mat.nrows()).flat_map(move |i| {
             struct Wrapper<E>(usize, usize, E);
             impl<E: Entity> core::fmt::Debug for Wrapper<E> {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                     let row = self.0;
                     let col = self.1;
                     let val = self.2;

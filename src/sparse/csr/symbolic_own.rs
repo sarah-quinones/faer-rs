@@ -45,9 +45,9 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     pub fn new_checked(
         nrows: usize,
         ncols: usize,
-        row_ptrs: Vec<I>,
-        nnz_per_row: Option<Vec<I>>,
-        col_indices: Vec<I>,
+        row_ptrs: alloc::vec::Vec<I>,
+        nnz_per_row: Option<alloc::vec::Vec<I>>,
+        col_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseRowMatRef::new_checked(
             nrows,
@@ -77,9 +77,9 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     pub fn new_unsorted_checked(
         nrows: usize,
         ncols: usize,
-        row_ptrs: Vec<I>,
-        nnz_per_row: Option<Vec<I>>,
-        col_indices: Vec<I>,
+        row_ptrs: alloc::vec::Vec<I>,
+        nnz_per_row: Option<alloc::vec::Vec<I>>,
+        col_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseRowMatRef::new_unsorted_checked(
             nrows,
@@ -108,9 +108,9 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     pub unsafe fn new_unchecked(
         nrows: usize,
         ncols: usize,
-        row_ptrs: Vec<I>,
-        nnz_per_row: Option<Vec<I>>,
-        col_indices: Vec<I>,
+        row_ptrs: alloc::vec::Vec<I>,
+        nnz_per_row: Option<alloc::vec::Vec<I>>,
+        col_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseRowMatRef::new_unchecked(
             nrows,
@@ -136,7 +136,15 @@ impl<I: Index> SymbolicSparseRowMat<I> {
     /// - nonzeros per row,
     /// - column indices.
     #[inline]
-    pub fn into_parts(self) -> (usize, usize, Vec<I>, Option<Vec<I>>, Vec<I>) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        usize,
+        usize,
+        alloc::vec::Vec<I>,
+        Option<alloc::vec::Vec<I>>,
+        alloc::vec::Vec<I>,
+    ) {
         (
             self.nrows,
             self.ncols,

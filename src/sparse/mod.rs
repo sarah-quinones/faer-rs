@@ -197,7 +197,7 @@ fn try_collect<I: IntoIterator>(iter: I) -> Result<alloc::vec::Vec<I::Item>, Fae
 /// Allows separately creating the symbolic structure and filling the numerical values.
 #[derive(Debug, Clone)]
 pub struct ValuesOrder<I> {
-    argsort: Vec<usize>,
+    argsort: alloc::vec::Vec<usize>,
     all_nnz: usize,
     nnz: usize,
     __marker: core::marker::PhantomData<I>,
@@ -1044,8 +1044,8 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMatRe
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
-        let mut triplets = Vec::new();
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
+        let mut triplets = alloc::vec::Vec::new();
         for j in 0..self.ncols() {
             for (i, val) in self
                 .row_indices_of_col(j)
@@ -1084,8 +1084,8 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMatRe
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
-        let mut triplets = Vec::new();
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
+        let mut triplets = alloc::vec::Vec::new();
         for i in 0..self.nrows() {
             for (j, val) in self
                 .col_indices_of_row(i)
@@ -1124,7 +1124,7 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMatMu
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
         self.rb().fetch_triplets()
     }
 }
@@ -1155,7 +1155,7 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseColMat<I
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
         self.as_ref().fetch_triplets()
     }
 }
@@ -1186,7 +1186,7 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMatMu
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
         self.rb().fetch_triplets()
     }
 }
@@ -1217,7 +1217,7 @@ impl<I: Index, E: Entity> matrixcompare_core::SparseAccess<E> for SparseRowMat<I
     }
 
     #[inline]
-    fn fetch_triplets(&self) -> Vec<(usize, usize, E)> {
+    fn fetch_triplets(&self) -> alloc::vec::Vec<(usize, usize, E)> {
         self.as_ref().fetch_triplets()
     }
 }

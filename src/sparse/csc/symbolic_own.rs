@@ -45,9 +45,9 @@ impl<I: Index> SymbolicSparseColMat<I> {
     pub fn new_checked(
         nrows: usize,
         ncols: usize,
-        col_ptrs: Vec<I>,
-        nnz_per_col: Option<Vec<I>>,
-        row_indices: Vec<I>,
+        col_ptrs: alloc::vec::Vec<I>,
+        nnz_per_col: Option<alloc::vec::Vec<I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_checked(
             nrows,
@@ -77,9 +77,9 @@ impl<I: Index> SymbolicSparseColMat<I> {
     pub fn new_unsorted_checked(
         nrows: usize,
         ncols: usize,
-        col_ptrs: Vec<I>,
-        nnz_per_col: Option<Vec<I>>,
-        row_indices: Vec<I>,
+        col_ptrs: alloc::vec::Vec<I>,
+        nnz_per_col: Option<alloc::vec::Vec<I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unsorted_checked(
             nrows,
@@ -108,9 +108,9 @@ impl<I: Index> SymbolicSparseColMat<I> {
     pub unsafe fn new_unchecked(
         nrows: usize,
         ncols: usize,
-        col_ptrs: Vec<I>,
-        nnz_per_col: Option<Vec<I>>,
-        row_indices: Vec<I>,
+        col_ptrs: alloc::vec::Vec<I>,
+        nnz_per_col: Option<alloc::vec::Vec<I>>,
+        row_indices: alloc::vec::Vec<I>,
     ) -> Self {
         SymbolicSparseColMatRef::new_unchecked(
             nrows,
@@ -136,7 +136,15 @@ impl<I: Index> SymbolicSparseColMat<I> {
     /// - nonzeros per column,
     /// - row indices.
     #[inline]
-    pub fn into_parts(self) -> (usize, usize, Vec<I>, Option<Vec<I>>, Vec<I>) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        usize,
+        usize,
+        alloc::vec::Vec<I>,
+        Option<alloc::vec::Vec<I>>,
+        alloc::vec::Vec<I>,
+    ) {
         (
             self.nrows,
             self.ncols,
@@ -304,10 +312,10 @@ impl<I: Index> SymbolicSparseColMat<I> {
                     ncols,
                     col_ptr: try_zeroed(ncols + 1)?,
                     col_nnz: None,
-                    row_ind: Vec::new(),
+                    row_ind: alloc::vec::Vec::new(),
                 },
                 ValuesOrder {
-                    argsort: Vec::new(),
+                    argsort: alloc::vec::Vec::new(),
                     all_nnz,
                     nnz: 0,
                     __marker: PhantomData,
@@ -428,10 +436,10 @@ impl<I: Index> SymbolicSparseColMat<I> {
                     ncols,
                     col_ptr: try_zeroed(ncols + 1)?,
                     col_nnz: None,
-                    row_ind: Vec::new(),
+                    row_ind: alloc::vec::Vec::new(),
                 },
                 ValuesOrder {
-                    argsort: Vec::new(),
+                    argsort: alloc::vec::Vec::new(),
                     all_nnz,
                     nnz: 0,
                     __marker: PhantomData,

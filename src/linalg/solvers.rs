@@ -48,24 +48,24 @@ pub struct Cholesky<E: Entity> {
 pub struct Lblt<E: Entity> {
     factors: Mat<E>,
     subdiag: Mat<E>,
-    perm: Vec<usize>,
-    perm_inv: Vec<usize>,
+    perm: alloc::vec::Vec<usize>,
+    perm_inv: alloc::vec::Vec<usize>,
 }
 
 /// LU decomposition with partial pivoting.
 pub struct PartialPivLu<E: Entity> {
     pub(crate) factors: Mat<E>,
-    row_perm: Vec<usize>,
-    row_perm_inv: Vec<usize>,
+    row_perm: alloc::vec::Vec<usize>,
+    row_perm_inv: alloc::vec::Vec<usize>,
     n_transpositions: usize,
 }
 /// LU decomposition with full pivoting.
 pub struct FullPivLu<E: Entity> {
     factors: Mat<E>,
-    row_perm: Vec<usize>,
-    row_perm_inv: Vec<usize>,
-    col_perm: Vec<usize>,
-    col_perm_inv: Vec<usize>,
+    row_perm: alloc::vec::Vec<usize>,
+    row_perm_inv: alloc::vec::Vec<usize>,
+    col_perm: alloc::vec::Vec<usize>,
+    col_perm_inv: alloc::vec::Vec<usize>,
     n_transpositions: usize,
 }
 
@@ -78,8 +78,8 @@ pub struct Qr<E: Entity> {
 pub struct ColPivQr<E: Entity> {
     factors: Mat<E>,
     householder: Mat<E>,
-    col_perm: Vec<usize>,
-    col_perm_inv: Vec<usize>,
+    col_perm: alloc::vec::Vec<usize>,
+    col_perm_inv: alloc::vec::Vec<usize>,
 }
 
 /// Singular value decomposition.
@@ -270,8 +270,8 @@ impl<E: ComplexField> Lblt<E> {
 
         let mut factors = Mat::<E>::zeros(dim, dim);
         let mut subdiag = Mat::<E>::zeros(dim, 1);
-        let mut perm = vec![0; dim];
-        let mut perm_inv = vec![0; dim];
+        let mut perm = alloc::vec![0; dim];
+        let mut perm_inv = alloc::vec![0; dim];
 
         match side {
             Side::Lower => {
@@ -471,8 +471,8 @@ impl<E: ComplexField> PartialPivLu<E> {
 
         let params = Default::default();
 
-        let mut row_perm = vec![0usize; dim];
-        let mut row_perm_inv = vec![0usize; dim];
+        let mut row_perm = alloc::vec![0usize; dim];
+        let mut row_perm_inv = alloc::vec![0usize; dim];
 
         let (n_transpositions, _) = crate::linalg::lu::partial_pivoting::compute::lu_in_place(
             factors.as_mut(),
@@ -654,10 +654,10 @@ impl<E: ComplexField> FullPivLu<E> {
 
         let params = Default::default();
 
-        let mut row_perm = vec![0usize; m];
-        let mut row_perm_inv = vec![0usize; m];
-        let mut col_perm = vec![0usize; n];
-        let mut col_perm_inv = vec![0usize; n];
+        let mut row_perm = alloc::vec![0usize; m];
+        let mut row_perm_inv = alloc::vec![0usize; m];
+        let mut col_perm = alloc::vec![0usize; n];
+        let mut col_perm_inv = alloc::vec![0usize; n];
 
         let (n_transpositions, _, _) = crate::linalg::lu::full_pivoting::compute::lu_in_place(
             factors.as_mut(),
@@ -1092,8 +1092,8 @@ impl<E: ComplexField> ColPivQr<E> {
 
         let params = Default::default();
 
-        let mut col_perm = vec![0usize; ncols];
-        let mut col_perm_inv = vec![0usize; ncols];
+        let mut col_perm = alloc::vec![0usize; ncols];
+        let mut col_perm_inv = alloc::vec![0usize; ncols];
 
         crate::linalg::qr::col_pivoting::compute::qr_in_place(
             factors.as_mut(),
@@ -1664,7 +1664,7 @@ impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
 
 impl<E: ComplexField> Eigendecomposition<E> {
     #[track_caller]
-    pub(crate) fn __values_from_real(matrix: MatRef<'_, E::Real>) -> Vec<E> {
+    pub(crate) fn __values_from_real(matrix: MatRef<'_, E::Real>) -> alloc::vec::Vec<E> {
         assert!(matrix.nrows() == matrix.ncols());
         if coe::is_same::<E, E::Real>() {
             panic!(
@@ -1710,7 +1710,9 @@ impl<E: ComplexField> Eigendecomposition<E> {
     }
 
     #[track_caller]
-    pub(crate) fn __values_from_complex_impl((matrix, conj): (MatRef<'_, E>, Conj)) -> Vec<E> {
+    pub(crate) fn __values_from_complex_impl(
+        (matrix, conj): (MatRef<'_, E>, Conj),
+    ) -> alloc::vec::Vec<E> {
         assert!(matrix.nrows() == matrix.ncols());
         if coe::is_same::<E, E::Real>() {
             panic!(
@@ -2108,7 +2110,10 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn selfadjoint_eigenvalues(
+        &self,
+        side: Side,
+    ) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         let matrix = match side {
             Side::Lower => *self,
             Side::Upper => self.transpose(),
@@ -2142,7 +2147,7 @@ where
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
-    pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         let dim = Ord::min(self.nrows(), self.ncols());
         let parallelism = get_global_parallelism();
 
@@ -2176,7 +2181,7 @@ where
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
-    ) -> Vec<ComplexE> {
+    ) -> alloc::vec::Vec<ComplexE> {
         if coe::is_same::<E, <E::Canonical as ComplexField>::Real>() {
             let matrix: MatRef<'_, <E::Canonical as ComplexField>::Real> =
                 coe::coerce(self.as_ref());
@@ -2196,7 +2201,7 @@ where
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
+    pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         Eigendecomposition::<E::Canonical>::__values_from_complex_impl(self.canonicalize())
     }
 }
@@ -2362,13 +2367,16 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn selfadjoint_eigenvalues(
+        &self,
+        side: Side,
+    ) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().selfadjoint_eigenvalues(side)
     }
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
-    pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
 
@@ -2377,14 +2385,14 @@ where
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
-    ) -> Vec<ComplexE> {
+    ) -> alloc::vec::Vec<ComplexE> {
         self.as_ref().eigenvalues()
     }
 
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
+    pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
     }
 }
@@ -2550,13 +2558,16 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn selfadjoint_eigenvalues(&self, side: Side) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn selfadjoint_eigenvalues(
+        &self,
+        side: Side,
+    ) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().selfadjoint_eigenvalues(side)
     }
 
     /// Returns the singular values of `self`, in nonincreasing order.
     #[track_caller]
-    pub fn singular_values(&self) -> Vec<<E::Canonical as ComplexField>::Real> {
+    pub fn singular_values(&self) -> alloc::vec::Vec<<E::Canonical as ComplexField>::Real> {
         self.as_ref().singular_values()
     }
 
@@ -2565,14 +2576,14 @@ where
     #[track_caller]
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
-    ) -> Vec<ComplexE> {
+    ) -> alloc::vec::Vec<ComplexE> {
         self.as_ref().eigenvalues()
     }
 
     /// Returns the eigenvalues of `self`, when `E` is in the complex domain. The order of the
     /// eigenvalues is currently unspecified.
     #[track_caller]
-    pub fn complex_eigenvalues(&self) -> Vec<E::Canonical> {
+    pub fn complex_eigenvalues(&self) -> alloc::vec::Vec<E::Canonical> {
         self.as_ref().complex_eigenvalues()
     }
 }
@@ -2998,9 +3009,12 @@ mod tests {
             a[(*v, *u)] = 1.0;
             a[(*u, *v)] = 1.0;
         }
-        let eigs_complex: Vec<c64> = a.eigenvalues();
+        let eigs_complex: alloc::vec::Vec<c64> = a.eigenvalues();
         println!("{eigs_complex:?}");
-        let eigs_real = eigs_complex.iter().map(|e| e.re).collect::<Vec<_>>();
+        let eigs_real = eigs_complex
+            .iter()
+            .map(|e| e.re)
+            .collect::<alloc::vec::Vec<_>>();
         println!("{eigs_real:?}");
         let lambda_1 = *eigs_real
             .iter()
@@ -3021,8 +3035,11 @@ mod tests {
             a[(*v, *u)] = 1.0;
             a[(*u, *v)] = 1.0;
         }
-        let eigs_complex: Vec<c64> = a.eigenvalues();
-        let eigs_real = eigs_complex.iter().map(|e| e.re).collect::<Vec<_>>();
+        let eigs_complex: alloc::vec::Vec<c64> = a.eigenvalues();
+        let eigs_real = eigs_complex
+            .iter()
+            .map(|e| e.re)
+            .collect::<alloc::vec::Vec<_>>();
         let lambda_1 = *eigs_real
             .iter()
             .max_by(|a, b| a.partial_cmp(b).unwrap())
