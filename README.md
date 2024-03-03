@@ -1,18 +1,14 @@
 # faer
 
+[![Documentation](https://docs.rs/faer/badge.svg)](https://docs.rs/faer)
+[![Crate](https://img.shields.io/crates/v/faer.svg)](https://crates.io/crates/faer)
+
 `faer` is a Rust crate that implements low level linear algebra routines and a high level wrapper for ease of use, in pure Rust.
 The aim is to provide a fully featured library for linear algebra with focus on portability, correctness, and performance.
 
 See the [official website](https://faer-rs.github.io) and the [docs.rs](https://docs.rs/faer/latest/faer) documentation for code examples and usage instructions.
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
-
-## faer
-
-[![Documentation](https://docs.rs/faer/badge.svg)](https://docs.rs/faer)
-[![Crate](https://img.shields.io/crates/v/faer.svg)](https://crates.io/crates/faer)
-
-The faer module implements high level abstractions over the low level implementations in `faer::linalg` and `faer::sparse::linalg`, exposing easy to use matrix decomposition structures.
 
 # Contributing
 
