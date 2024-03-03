@@ -29,7 +29,7 @@ rand = { version = "0.8.5", default-features = false, optional = true }
 rand_distr = { version = "0.4.3", default-features = false, optional = true }
 
 [features]
-default = ["std", "rayon", "serde"]
+default = ["std", "rayon", "serde", "rand", "npy"]
 std = [
   "faer-entity/std",
   "gemm/std",

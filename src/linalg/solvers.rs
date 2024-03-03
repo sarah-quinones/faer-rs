@@ -71,7 +71,7 @@ pub struct FullPivLu<E: Entity> {
 
 /// QR decomposition.
 pub struct Qr<E: Entity> {
-    factors: Mat<E>,
+    pub(crate) factors: Mat<E>,
     householder: Mat<E>,
 }
 /// QR decomposition with column pivoting.

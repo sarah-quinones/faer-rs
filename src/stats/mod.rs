@@ -1,4 +1,4 @@
-use crate::{Col, ComplexField, Mat, Row};
+use crate::{unzipped, zipped, Col, ComplexField, Mat, Row};
 use rand::distributions::Distribution;
 use rand_distr::{Standard, StandardNormal};
 
@@ -150,13 +150,30 @@ where
     StandardNormal: Distribution<E>,
 {
     fn sample<R: rand::prelude::Rng + ?Sized>(&self, rng: &mut R) -> Mat<E> {
-        StandardNormalMat {
+        let qr = StandardNormalMat {
             nrows: self.dimension,
             ncols: self.dimension,
         }
         .sample(rng)
-        .qr()
-        .compute_q()
+        .qr();
+
+        let r_diag = qr.factors.as_ref().diagonal().column_vector();
+        let mut q = qr.compute_q();
+
+        for j in 0..self.dimension {
+            let r = r_diag.read(j);
+            let r = if r == E::faer_zero() {
+                E::faer_one()
+            } else {
+                r.faer_scale_real(r.faer_abs().faer_inv())
+            };
+
+            zipped!(q.as_mut().col_mut(j)).for_each(|unzipped!(mut q)| {
+                q.write(q.read().faer_mul(r));
+            });
+        }
+
+        q
     }
 }
 

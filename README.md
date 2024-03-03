@@ -1,71 +1,18 @@
 # faer
 
-`faer` is a collection of crates that implement low level linear algebra routines in pure Rust.
-The aim is to eventually provide a fully featured library for linear algebra with focus on portability, correctness, and performance.
+`faer` is a Rust crate that implements low level linear algebra routines and a high level wrapper for ease of use, in pure Rust.
+The aim is to provide a fully featured library for linear algebra with focus on portability, correctness, and performance.
 
-See the [official website](https://faer-rs.github.io) and the `docs.rs` documentation for code examples and usage instructions.
+See the [official website](https://faer-rs.github.io) and the [docs.rs](https://docs.rs/faer/latest/faer) documentation for code examples and usage instructions.
 
 Questions about using the library, contributing, and future directions can be discussed in the [Discord server](https://discord.gg/Ak5jDsAFVZ).
-
 
 ## faer
 
 [![Documentation](https://docs.rs/faer/badge.svg)](https://docs.rs/faer)
 [![Crate](https://img.shields.io/crates/v/faer.svg)](https://crates.io/crates/faer)
 
-The faer module implements high level abstractions over the other modules, exposing easy to use matrix decomposition structures.
-This is the recommended entry point for developers who are new to faer.
-
-For developers who want to know more about the data layout and underlying structures, the faer-core documentation is a good place to get more information.
-
-## faer-core
-
-[![Documentation](https://docs.rs/faer-core/badge.svg)](https://docs.rs/faer-core)
-[![Crate](https://img.shields.io/crates/v/faer-core.svg)](https://crates.io/crates/faer-core)
-
-The core module implements matrix structures, as well as BLAS-like matrix operations such as matrix multiplication and solving triangular linear systems.
-
-## faer-sparse
-
-[![Documentation](https://docs.rs/faer-sparse/badge.svg)](https://docs.rs/faer-sparse)
-[![Crate](https://img.shields.io/crates/v/faer-sparse.svg)](https://crates.io/crates/faer-sparse)
-
-The sparse module implements sparse matrix algorithms.
-
-## faer-cholesky
-
-[![Documentation](https://docs.rs/faer-cholesky/badge.svg)](https://docs.rs/faer-cholesky)
-[![Crate](https://img.shields.io/crates/v/faer-cholesky.svg)](https://crates.io/crates/faer-cholesky)
-
-The Cholesky module implements the LLT, LDLT and Bunch-Kaufman matrix decompositions. These allow for solving Hermitian (+positive definite for LLT) linear systems.
-
-## faer-lu
-
-[![Documentation](https://docs.rs/faer-lu/badge.svg)](https://docs.rs/faer-lu)
-[![Crate](https://img.shields.io/crates/v/faer-lu.svg)](https://crates.io/crates/faer-lu)
-
-The LU module implements the LU factorization with row pivoting, as well as the version with full pivoting.
-
-## faer-qr
-
-[![Documentation](https://docs.rs/faer-qr/badge.svg)](https://docs.rs/faer-qr)
-[![Crate](https://img.shields.io/crates/v/faer-qr.svg)](https://crates.io/crates/faer-qr)
-
-The QR module implements the QR decomposition with no pivoting, as well as the version with column pivoting.
-
-## faer-svd
-
-[![Documentation](https://docs.rs/faer-svd/badge.svg)](https://docs.rs/faer-svd)
-[![Crate](https://img.shields.io/crates/v/faer-svd.svg)](https://crates.io/crates/faer-svd)
-
-The SVD module implements the singular value decomposition.
-
-## faer-evd
-
-[![Documentation](https://docs.rs/faer-evd/badge.svg)](https://docs.rs/faer-evd)
-[![Crate](https://img.shields.io/crates/v/faer-evd.svg)](https://crates.io/crates/faer-evd)
-
-The EVD module implements the eigenvalue decomposition for Hermitian and non Hermitian matrices .
+The faer module implements high level abstractions over the low level implementations in `faer::linalg` and `faer::sparse::linalg`, exposing easy to use matrix decomposition structures.
 
 # Contributing
 

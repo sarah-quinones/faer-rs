@@ -1,3 +1,16 @@
+# 0.18
+- Refactored the project so that `faer` contains all the core and decomposition implementations. `faer-{core,cholesky,lu,qr,svd,evd,sparse}` are now deprecated and will no longer be updated.
+- Improved the multithreaded performance of the Eigenvalue decomposition for large matrices.
+- Decomposition solve functions now accept column vectors as well as matrices.
+- Implemented the L1 norm, and the squared L2 norm.
+- Implemented conversions from sparse to dense matrices, by calling `mat.to_dense()`.
+- Sparse matrices now support duplicated entries. Note that `faer` will not add duplicated entries to a matrix unless the opposite is explicitly mentioned in the function documentation. `faer` also will deduplicate entries when created with `Sparse{Col,Row}Mat::try_new_from_indices` and other similar functions.
+- Implemented conversions from unsorted to sorted sparse matrices by calling `mat.to_sorted()` (or `mat.sort_indices()` for owned matrices).
+- Implemented `{Col,Row}::try_as_slice[_mut]` functions that return data as a slice if it is contiguous.
+- Implemented `.for_each_with_index` and `.map_with_index` for the matrix zipping API, which passes the matrix row and column indices as well as the values.
+- Added `rand` support for randomly generating matrices in the `faer::stats` module, as well as for `faer::complex_native::{c32,c64}`.
+- Implemented a pseudoinverse helper for the high level SVD and thin SVD decompositions.
+
 # 0.17
 - Implemented sparse matrix arithmetic operators (other than sparse-sparse matrix multiplication), and added mutable sparse views as well as owning sparse matrix containers.
 - Implemented `try_from_triplets` for sparse matrices.
