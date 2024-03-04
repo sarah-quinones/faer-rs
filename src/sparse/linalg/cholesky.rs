@@ -1046,7 +1046,11 @@ pub mod simplicial {
                                     SliceGroup::<'_, E>::new(L_values.rb().subslice(range))
                                         .into_ref_iter(),
                                 ) {
-                                    let i = N.check(i.zx());
+                                    let i = i.zx();
+                                    if i >= *N {
+                                        panic!();
+                                    }
+                                    let i = unsafe { Idx::new_unchecked(i, N) };
                                     let mut xi = x.read(i);
                                     let prod = lij.read().faer_conj().faer_mul(xj);
                                     xi = xi.faer_sub(prod);
