@@ -19,7 +19,7 @@ reborrow = "0.5.5"
 
 dyn-stack = "0.10.0"
 equator = "0.1.10"
-faer-entity = { version ="0.17.0", default-features = false, path = "./faer-entity" }
+faer-entity = { version ="0.18.0", default-features = false, path = "./faer-entity" }
 
 gemm = { version = "0.17.1", default-features = false }
 num-complex = { version = "0.4.5", default-features = false }
