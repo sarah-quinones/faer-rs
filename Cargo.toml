@@ -2,6 +2,13 @@
 name = "faer"
 version = "0.18.0"
 edition = "2021"
+authors = ["sarah <>"]
+description = "Linear algebra routines"
+readme = "README.md"
+repository = "https://github.com/sarah-ek/faer-rs/"
+license = "MIT"
+keywords = ["math", "matrix", "linear-algebra"]
+rust-version = "1.67.0"
 
 [dependencies]
 bytemuck = "1.14.3"
