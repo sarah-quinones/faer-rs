@@ -1566,7 +1566,7 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
 
     /// Returns the eigenvalue decomposition of the Hermitian input matrix.
     ///
-    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// The factorization is such that $A = U S U^H$, where $S$ is a diagonal matrix, and $U$ is
     /// unitary.
     ///
     /// Only the provided side is accessed.
@@ -1754,7 +1754,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
 
     /// Returns the eigendecomposition of the real-valued input matrix.
     ///
-    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// The factorization is such that $A = U S U^H$, where $S$ is a diagonal matrix, and $U$ is
     /// unitary.
     #[track_caller]
     pub fn new_from_real(matrix: MatRef<'_, E::Real>) -> Self {
@@ -1877,7 +1877,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
 
     /// Returns the eigendecomposition of the complex-valued input matrix.
     ///
-    /// The factorization is such that $A = U S U^\H$, where $S$ is a diagonal matrix, and $U$ is
+    /// The factorization is such that $A = U S U^H$, where $S$ is a diagonal matrix, and $U$ is
     /// unitary.
     #[track_caller]
     pub fn new_from_complex<ViewE: Conjugate<Canonical = E>>(matrix: MatRef<'_, ViewE>) -> Self {
