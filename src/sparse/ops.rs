@@ -221,7 +221,7 @@ pub fn ternary_op_assign_into<I: Index, E: Entity, LhsE: Entity, RhsE: Entity>(
         for j in 0..n {
             let (dst, dst_val) = dst.rb_mut().into_parts_mut();
 
-            let mut dst_val = SliceGroupMut::<E>::new(dst_val);
+            let mut dst_val = SliceGroupMut::<E>::new(dst_val).subslice(dst.col_range(j));
             let lhs_val = SliceGroup::<LhsE>::new(lhs.values_of_col(j));
             let rhs_val = SliceGroup::<RhsE>::new(rhs.values_of_col(j));
 
@@ -355,7 +355,7 @@ pub fn ternary_op_assign_into<I: Index, E: Entity, LhsE: Entity, RhsE: Entity>(
 /// Returns the sparsity pattern containing the union of those of `lhs` and `rhs`.
 ///
 /// # Panics
-/// Panics if `lhs` and `rhs` don't have mathcing dimensions.  
+/// Panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 #[inline]
 pub fn union_symbolic<I: Index>(
@@ -375,7 +375,7 @@ pub fn union_symbolic<I: Index>(
 /// Returns the sum of `lhs` and `rhs`.
 ///
 /// # Panics
-/// Panics if `lhs` and `rhs` don't have mathcing dimensions.  
+/// Panics if `lhs` and `rhs` don't have matching dimensions.  
 #[track_caller]
 #[inline]
 pub fn add<
