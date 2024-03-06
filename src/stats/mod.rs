@@ -1,4 +1,4 @@
-use crate::{unzipped, zipped, Col, ComplexField, Mat, Row};
+use crate::{Col, ComplexField, Mat, Row};
 use rand::distributions::Distribution;
 use rand_distr::{Standard, StandardNormal};
 
@@ -168,7 +168,7 @@ where
                 r.faer_scale_real(r.faer_abs().faer_inv())
             };
 
-            zipped!(q.as_mut().col_mut(j)).for_each(|unzipped!(mut q)| {
+            crate::zipped!(q.as_mut().col_mut(j)).for_each(|crate::unzipped!(mut q)| {
                 q.write(q.read().faer_mul(r));
             });
         }

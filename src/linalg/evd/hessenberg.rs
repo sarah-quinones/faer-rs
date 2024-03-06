@@ -28,10 +28,13 @@ pub fn make_hessenberg_in_place_req<E: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     if n > BLOCKING_THRESHOLD {
-        StackReq::try_any_of([
-            temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
-            StackReq::try_all_of([
-                temp_mat_req::<E>(n, householder_blocksize)?,
+        StackReq::try_all_of([
+            temp_mat_req::<E>(n, householder_blocksize)?,
+            StackReq::try_any_of([
+                StackReq::try_all_of([
+                    temp_mat_req::<E>(n, 1)?,
+                    temp_mat_req::<E>(n, parallelism_degree(parallelism))?,
+                ])?,
                 temp_mat_req::<E>(n, householder_blocksize)?,
             ])?,
         ])
@@ -811,9 +814,11 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
                     let par = parallelism_degree(parallelism);
                     let chunk_size = n.msrv_div_ceil(par);
 
+                    let par = n.msrv_div_ceil(chunk_size);
+
                     a_2.par_col_chunks(chunk_size)
                         .zip_eq(u21.as_2d().par_row_chunks(chunk_size))
-                        .zip_eq(z_tmp.rb_mut().par_col_chunks_mut(1))
+                        .zip_eq(z_tmp.rb_mut().get_mut(.., ..par).par_col_chunks_mut(1))
                         .for_each(|((a_2, u21), z_tmp)| {
                             matmul(z_tmp, a_2, u21, None, one, Parallelism::None);
                         });
@@ -1051,7 +1056,7 @@ mod tests {
     #[test]
     fn test_make_hessenberg() {
         for n in [10, 20, 64, 128, 1024] {
-            for parallelism in [Parallelism::None, Parallelism::Rayon(4)] {
+            for parallelism in [Parallelism::None, Parallelism::Rayon(32)] {
                 let a = Mat::from_fn(n, n, |_, _| c64::new(rand::random(), rand::random()));
 
                 let mut h = a.clone();
