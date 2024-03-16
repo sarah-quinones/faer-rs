@@ -289,12 +289,15 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// * `self.nrows() == other.nrows()`.
     /// * `self.ncols() == other.ncols()`.
     #[track_caller]
-    pub fn copy_from(&mut self, other: impl AsColRef<E>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsColRef<ViewE>) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: ColMut<'_, E>, other: ColRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: ColMut<'_, E>,
+            other: ColRef<'_, ViewE>,
+        ) {
             zipped!(this.as_2d_mut(), other.as_2d())
-                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read().canonicalize()));
         }
         implementation(self.rb_mut(), other.as_col_ref())
     }

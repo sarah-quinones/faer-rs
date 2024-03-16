@@ -427,14 +427,20 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.ncols() == other.ncols()`.
     /// * `self.nrows() == self.ncols()`.
     #[track_caller]
-    pub fn copy_from_triangular_lower(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from_triangular_lower<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: MatMut<'_, E>, other: MatRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: MatMut<'_, E>,
+            other: MatRef<'_, ViewE>,
+        ) {
             zipped!(this, other).for_each_triangular_lower(
                 zip::Diag::Include,
                 #[inline(always)]
-                |unzipped!(mut dst, src)| dst.write(src.read()),
+                |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
             );
         }
         implementation(self.rb_mut(), other.as_mat_ref())
@@ -449,14 +455,20 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.ncols() == other.ncols()`.
     /// * `self.nrows() == self.ncols()`.
     #[track_caller]
-    pub fn copy_from_strict_triangular_lower(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from_strict_triangular_lower<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: MatMut<'_, E>, other: MatRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: MatMut<'_, E>,
+            other: MatRef<'_, ViewE>,
+        ) {
             zipped!(this, other).for_each_triangular_lower(
                 zip::Diag::Skip,
                 #[inline(always)]
-                |unzipped!(mut dst, src)| dst.write(src.read()),
+                |unzipped!(mut dst, src)| dst.write(src.read().canonicalize()),
             );
         }
         implementation(self.rb_mut(), other.as_mat_ref())
@@ -472,7 +484,10 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.nrows() == self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub fn copy_from_triangular_upper(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from_triangular_upper<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
         (*self)
             .rb_mut()
             .transpose_mut()
@@ -489,7 +504,10 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.nrows() == self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub fn copy_from_strict_triangular_upper(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from_strict_triangular_upper<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
         (*self)
             .rb_mut()
             .transpose_mut()
@@ -503,11 +521,15 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `self.nrows() == other.nrows()`.
     /// * `self.ncols() == other.ncols()`.
     #[track_caller]
-    pub fn copy_from(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsMatRef<ViewE>) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: MatMut<'_, E>, other: MatRef<'_, E>) {
-            zipped!(this, other).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: MatMut<'_, E>,
+            other: MatRef<'_, ViewE>,
+        ) {
+            zipped!(this, other)
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read().canonicalize()));
         }
         implementation(self.rb_mut(), other.as_mat_ref())
     }

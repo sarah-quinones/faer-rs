@@ -457,6 +457,7 @@ impl<E: Entity> Mat<E> {
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline]
+    #[track_caller]
     pub unsafe fn get_unchecked<RowRange, ColRange>(
         &self,
         row: RowRange,
@@ -480,6 +481,7 @@ impl<E: Entity> Mat<E> {
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline]
+    #[track_caller]
     pub fn get<RowRange, ColRange>(
         &self,
         row: RowRange,
@@ -503,6 +505,7 @@ impl<E: Entity> Mat<E> {
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline]
+    #[track_caller]
     pub unsafe fn get_mut_unchecked<RowRange, ColRange>(
         &mut self,
         row: RowRange,
@@ -526,6 +529,7 @@ impl<E: Entity> Mat<E> {
     /// * `row` must be contained in `[0, self.nrows())`.
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline]
+    #[track_caller]
     pub fn get_mut<RowRange, ColRange>(
         &mut self,
         row: RowRange,
@@ -588,16 +592,19 @@ impl<E: Entity> Mat<E> {
     /// Copies the values from `other` into `self`.
     #[inline(always)]
     #[track_caller]
-    pub fn copy_from(&mut self, other: impl AsMatRef<E>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsMatRef<ViewE>) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: &mut Mat<E>, other: MatRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: &mut Mat<E>,
+            other: MatRef<'_, ViewE>,
+        ) {
             let mut mat = Mat::<E>::new();
             mat.resize_with(
                 other.nrows(),
                 other.ncols(),
                 #[inline(always)]
-                |row, col| unsafe { other.read_unchecked(row, col) },
+                |row, col| unsafe { other.read_unchecked(row, col).canonicalize() },
             );
             *this = mat;
         }

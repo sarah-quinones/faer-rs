@@ -274,12 +274,15 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// The function panics if any of the following conditions are violated:
     /// * `self.ncols() == other.ncols()`.
     #[track_caller]
-    pub fn copy_from(&mut self, other: impl AsRowRef<E>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsRowRef<ViewE>) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: RowMut<'_, E>, other: RowRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: RowMut<'_, E>,
+            other: RowRef<'_, ViewE>,
+        ) {
             zipped!(this.as_2d_mut(), other.as_2d())
-                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+                .for_each(|unzipped!(mut dst, src)| dst.write(src.read().canonicalize()));
         }
         implementation(self.rb_mut(), other.as_row_ref())
     }

@@ -436,15 +436,18 @@ impl<E: Entity> Row<E> {
     /// Copies the values from `other` into `self`.
     #[inline(always)]
     #[track_caller]
-    pub fn copy_from(&mut self, other: impl AsRowRef<E>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsRowRef<ViewE>) {
         #[track_caller]
         #[inline(always)]
-        fn implementation<E: Entity>(this: &mut Row<E>, other: RowRef<'_, E>) {
+        fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
+            this: &mut Row<E>,
+            other: RowRef<'_, ViewE>,
+        ) {
             let mut mat = Row::<E>::new();
             mat.resize_with(
                 other.nrows(),
                 #[inline(always)]
-                |row| unsafe { other.read_unchecked(row) },
+                |row| unsafe { other.read_unchecked(row).canonicalize() },
             );
             *this = mat;
         }

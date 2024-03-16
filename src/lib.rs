@@ -423,11 +423,11 @@ macro_rules! __perf_warn {
 /// is perfectly acceptable.
 #[doc(hidden)]
 #[track_caller]
-pub fn concat_impl<E: ComplexField>(blocks: &[&[mat::MatRef<'_, E>]]) -> mat::Mat<E> {
+pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) -> mat::Mat<E> {
     #[inline(always)]
-    fn count_total_columns<E: ComplexField>(block_row: &[mat::MatRef<'_, E>]) -> usize {
+    fn count_total_columns<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
         let mut out: usize = 0;
-        for elem in block_row.iter() {
+        for (elem, _) in block_row.iter() {
             out += elem.ncols();
         }
         out
@@ -435,9 +435,9 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[mat::MatRef<'_, E>]]) -> mat::Ma
 
     #[inline(always)]
     #[track_caller]
-    fn count_rows<E: ComplexField>(block_row: &[mat::MatRef<'_, E>]) -> usize {
+    fn count_rows<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
         let mut out: usize = 0;
-        for (i, e) in block_row.iter().enumerate() {
+        for (i, (e, _)) in block_row.iter().enumerate() {
             if i.eq(&0) {
                 out = e.nrows();
             } else {
@@ -468,13 +468,18 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[mat::MatRef<'_, E>]]) -> mat::Ma
     for row in blocks.iter() {
         mj = 0;
 
-        for elem in row.iter() {
-            mat.as_mut()
-                .submatrix_mut(ni, mj, elem.nrows(), elem.ncols())
-                .copy_from(elem);
+        for (elem, conj) in row.iter() {
+            let mut dst = mat
+                .as_mut()
+                .submatrix_mut(ni, mj, elem.nrows(), elem.ncols());
+            if *conj == Conj::No {
+                dst.copy_from(elem);
+            } else {
+                dst.copy_from(elem.conjugate());
+            }
             mj += elem.ncols();
         }
-        ni += row[0].nrows();
+        ni += row[0].0.nrows();
     }
 
     mat
@@ -497,7 +502,7 @@ macro_rules! concat {
 
     ($([$($v:expr),* $(,)?] ),* $(,)?) => {
         {
-            $crate::concat_impl(&[$(&[$(($v).as_ref(),)*],)*])
+            $crate::concat_impl(&[$(&[$(($v).as_ref().canonicalize(),)*],)*])
         }
     };
 }

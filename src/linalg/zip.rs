@@ -391,9 +391,9 @@ pub enum VecLayoutTransform {
 /// Type with a given matrix shape.
 pub trait MatShape {
     /// Type of rows.
-    type Rows: Copy + Eq;
+    type Rows: Copy + Eq + core::fmt::Debug;
     /// Type of columns.
-    type Cols: Copy + Eq;
+    type Cols: Copy + Eq + core::fmt::Debug;
     /// Returns the number of rows.
     fn nrows(&self) -> Self::Rows;
     /// Returns the number of columns.
@@ -451,14 +451,15 @@ pub struct ZipEq<
 >(Head, Tail);
 
 impl<
-        Rows: Copy + Eq,
-        Cols: Copy + Eq,
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
         Head: MatShape<Rows = Rows, Cols = Cols>,
         Tail: MatShape<Rows = Rows, Cols = Cols>,
     > ZipEq<Rows, Cols, Head, Tail>
 {
     /// Creates a zipped matrix, after asserting that the dimensions match.
     #[inline(always)]
+    #[track_caller]
     pub fn new(head: Head, tail: Tail) -> Self {
         assert!((head.nrows(), head.ncols()) == (tail.nrows(), tail.ncols()));
         Self(head, tail)
@@ -466,14 +467,18 @@ impl<
 
     /// Creates a zipped matrix, assuming that the dimensions match.
     #[inline(always)]
+    #[track_caller]
     pub fn new_unchecked(head: Head, tail: Tail) -> Self {
         debug_assert!((head.nrows(), head.ncols()) == (tail.nrows(), tail.ncols()));
         Self(head, tail)
     }
 }
 
-impl<Rows: Copy + Eq, Cols: Copy + Eq, Mat: MatShape<Rows = Rows, Cols = Cols>> MatShape
-    for LastEq<Rows, Cols, Mat>
+impl<
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
+        Mat: MatShape<Rows = Rows, Cols = Cols>,
+    > MatShape for LastEq<Rows, Cols, Mat>
 {
     type Rows = Rows;
     type Cols = Cols;
@@ -488,8 +493,8 @@ impl<Rows: Copy + Eq, Cols: Copy + Eq, Mat: MatShape<Rows = Rows, Cols = Cols>> 
 }
 
 impl<
-        Rows: Copy + Eq,
-        Cols: Copy + Eq,
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
         Head: MatShape<Rows = Rows, Cols = Cols>,
         Tail: MatShape<Rows = Rows, Cols = Cols>,
     > MatShape for ZipEq<Rows, Cols, Head, Tail>
@@ -575,8 +580,11 @@ impl<E: Entity> MatShape for MatMut<'_, E> {
     }
 }
 
-unsafe impl<Rows: Copy + Eq, Cols: Copy + Eq, Mat: MaybeContiguous<Rows = Rows, Cols = Cols>>
-    MaybeContiguous for LastEq<Rows, Cols, Mat>
+unsafe impl<
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
+        Mat: MaybeContiguous<Rows = Rows, Cols = Cols>,
+    > MaybeContiguous for LastEq<Rows, Cols, Mat>
 {
     type Index = Mat::Index;
     type Slice = Last<Mat::Slice>;
@@ -587,8 +595,12 @@ unsafe impl<Rows: Copy + Eq, Cols: Copy + Eq, Mat: MaybeContiguous<Rows = Rows, 
     }
 }
 
-unsafe impl<'a, Rows: Copy + Eq, Cols: Copy + Eq, Mat: MatIndex<'a, Rows = Rows, Cols = Cols>>
-    MatIndex<'a> for LastEq<Rows, Cols, Mat>
+unsafe impl<
+        'a,
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
+        Mat: MatIndex<'a, Rows = Rows, Cols = Cols>,
+    > MatIndex<'a> for LastEq<Rows, Cols, Mat>
 {
     type Item = Last<Mat::Item>;
 
@@ -617,8 +629,8 @@ unsafe impl<'a, Rows: Copy + Eq, Cols: Copy + Eq, Mat: MatIndex<'a, Rows = Rows,
 }
 
 unsafe impl<
-        Rows: Copy + Eq,
-        Cols: Copy + Eq,
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
         Head: MaybeContiguous<Rows = Rows, Cols = Cols>,
         Tail: MaybeContiguous<
             Rows = Rows,
@@ -642,8 +654,8 @@ unsafe impl<
 
 unsafe impl<
         'a,
-        Rows: Copy + Eq,
-        Cols: Copy + Eq,
+        Rows: Copy + Eq + core::fmt::Debug,
+        Cols: Copy + Eq + core::fmt::Debug,
         Head: MatIndex<'a, Rows = Rows, Cols = Cols>,
         Tail: MatIndex<
             'a,
