@@ -1406,9 +1406,21 @@ mod tests {
         let c3: Mat<f64> = Mat::from_fn(6, 3, |_, _| 9f64);
 
         let x = concat_impl(&[
-            &[a0.as_ref(), a1.as_ref(), a2.as_ref()],
-            &[b0.as_ref(), b1.as_ref()],
-            &[c0.as_ref(), c1.as_ref(), c2.as_ref(), c3.as_ref()],
+            &[
+                a0.as_ref().canonicalize(),
+                a1.as_ref().canonicalize(),
+                a2.as_ref().canonicalize(),
+            ],
+            &[
+                b0.as_ref().canonicalize(), //
+                b1.as_ref().canonicalize(),
+            ],
+            &[
+                c0.as_ref().canonicalize(),
+                c1.as_ref().canonicalize(),
+                c2.as_ref().canonicalize(),
+                c3.as_ref().canonicalize(),
+            ],
         ]);
 
         assert!(x == concat![[a0, a1, a2], [b0, b1], [c0, c1, c2, &c3]]);
