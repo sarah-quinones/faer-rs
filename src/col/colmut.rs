@@ -382,8 +382,8 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// Returns a view over the subvector starting at row `row_start`, and with number of rows
     /// `nrows`.
     ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
     /// * `row_start <= self.nrows()`.
     /// * `nrows <= self.nrows() - row_start`.
     #[track_caller]
