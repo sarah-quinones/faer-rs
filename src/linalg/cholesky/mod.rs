@@ -7,6 +7,8 @@ pub mod bunch_kaufman;
 pub mod ldlt_diagonal;
 pub mod llt;
 
+pub(crate) mod piv_llt;
+
 /// Computes a permutation that reduces the chance of numerical errors during the $LDL^H$
 /// factorization with diagonal $D$, then stores the result in `perm_indices` and
 /// `perm_inv_indices`.

@@ -196,6 +196,8 @@ pub mod utils;
 pub mod col;
 /// Diagonal matrix type.
 pub mod diag;
+/// Matrix-free linear operator traits and algorithms.
+pub mod linop;
 /// Matrix type.
 pub mod mat;
 /// Permutation matrices.
@@ -901,9 +903,10 @@ mod serde;
 /// faer prelude. Includes useful types and traits for solving linear systems.
 pub mod prelude {
     pub use crate::{
+        col,
         complex_native::{c32, c64},
         linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq},
-        unzipped, zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
+        mat, row, unzipped, zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
     };
 }
 
