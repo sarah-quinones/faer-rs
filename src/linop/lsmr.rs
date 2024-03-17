@@ -2,6 +2,7 @@ use crate::{
     linalg::{householder, matmul::matmul, qr, temp_mat_req, temp_mat_uninit},
     linop::{BiLinOp, BiPrecond, InitialGuessStatus},
     prelude::*,
+    utils::DivCeil,
     ComplexField, Conj, Parallelism, RealField,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -217,7 +218,7 @@ pub fn lsmr_req<E: ComplexField>(
 
         assert!(k < isize::MAX as usize);
         if k > n {
-            k = k.next_multiple_of(n);
+            k = k.msrv_checked_next_multiple_of(n).unwrap();
         }
         assert!(k < isize::MAX as usize);
 
@@ -406,7 +407,7 @@ pub fn lsmr<E: ComplexField>(
         let actual_k = k;
         if k > n {
             // pad to avoid last block slowing down the rest
-            k = k.next_multiple_of(n);
+            k = k.msrv_checked_next_multiple_of(n).unwrap();
         }
         debug_assert!(k < isize::MAX as usize);
 
