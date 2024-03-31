@@ -819,7 +819,7 @@ mod tests {
             );
             assert!(result.is_ok());
             let result = result.unwrap();
-            assert!(result.iter_count <= (4 * n).div_ceil(Ord::min(k, n)));
+            assert!(result.iter_count <= (4 * n).msrv_div_ceil(Ord::min(k, n)));
         }
     }
 
@@ -859,7 +859,7 @@ mod tests {
             );
             assert!(result.is_ok());
             let result = result.unwrap();
-            assert!(result.iter_count <= (4 * n).div_ceil(Ord::min(k, n)));
+            assert!(result.iter_count <= (4 * n).msrv_div_ceil(Ord::min(k, n)));
         }
     }
 }
