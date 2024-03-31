@@ -20,12 +20,17 @@ pub(crate) fn compute_pseudoinverse<E: ComplexField>(
     let sv_tolerance = epsilon.faer_mul(s_max);
 
     let mut r = 0usize;
-    while r < s.nrows() && s.read(r).faer_real() > sv_tolerance {
+    let mut s_r = s_max;
+    let mut s_inv = Mat::<E>::zeros(v.nrows(), u.nrows());
+    while s_r > sv_tolerance {
+        s_inv.write(r, r, E::faer_from_real(s_r.faer_inv()));
         r += 1;
+        if r < s.nrows() {
+            s_r = s.read(r).faer_real();
+        } else {
+            break;
+        }
     }
 
-    let s_inv =
-        zipped!(s.get(..r)).map(|unzipped!(s)| E::faer_from_real(s.read().faer_real().faer_inv()));
-
-    (v.get(.., ..r) * s_inv.as_ref().column_vector_as_diagonal()) * u.get(.., ..r).adjoint()
+    (v.get(.., ..r) * s_inv.get(..r, ..r)) * u.get(.., ..r).adjoint()
 }
