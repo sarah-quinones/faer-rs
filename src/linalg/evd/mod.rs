@@ -9,7 +9,7 @@
 //!
 //! $$M = U S U^{-1}.$$
 //!
-//! If $M$ is hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
+//! If $M$ is Hermitian, then $U$ can be made unitary ($U^{-1} = U^H$), and $S$ is real valued.
 
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
@@ -69,7 +69,7 @@ pub enum ComputeVectors {
 #[non_exhaustive]
 pub struct HermitianEvdParams {}
 
-/// Computes the size and alignment of required workspace for performing a hermitian eigenvalue
+/// Computes the size and alignment of required workspace for performing a Hermitian eigenvalue
 /// decomposition. The eigenvectors may be optionally computed.
 pub fn compute_hermitian_evd_req<E: ComplexField>(
     n: usize,
@@ -109,7 +109,7 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
     ])
 }
 
-/// Computes the eigenvalue decomposition of a square hermitian `matrix`. Only the lower triangular
+/// Computes the eigenvalue decomposition of a square Hermitian `matrix`. Only the lower triangular
 /// half of the matrix is accessed.
 ///
 /// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the

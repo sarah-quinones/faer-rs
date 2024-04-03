@@ -1,7 +1,7 @@
-//! The Bunch Kaufman decomposition of a hermitian matrix $A$ is such that:
+//! The Bunch Kaufman decomposition of a Hermitian matrix $A$ is such that:
 //! $$P A P^\top = LBL^H,$$
-//! where $B$ is a block diagonal matrix, with $1\times 1$ or $2 \times 2 $ diagonal blocks, and
-//! $L$ is a unit lower triangular matrix.
+//! where $P$ is a permutation matrix, $B$ is a block diagonal matrix, with $1\times 1$ or $2 \times
+//! 2 $ diagonal blocks, and $L$ is a unit lower triangular matrix.
 
 use crate::{
     linalg::{

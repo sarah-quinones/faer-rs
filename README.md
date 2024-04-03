@@ -286,7 +286,7 @@ Computing the SVD of a rectangular matrix with shape `(4096, n)`.
 
 ## Hermitian matrix eigenvalue decomposition
 
-Computing the EVD of a hermitian matrix with shape `(n, n)`.
+Computing the EVD of a Hermitian matrix with shape `(n, n)`.
 
 ```
     n       faer  faer(par)    ndarray   nalgebra      eigen

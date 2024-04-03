@@ -12,6 +12,12 @@ pub mod bicgstab;
 pub mod conjugate_gradient;
 #[allow(missing_docs)]
 pub mod lsmr;
+// #[allow(missing_docs)]
+// pub mod minres;
+// #[allow(missing_docs)]
+// pub mod minres_qlp;
+// #[allow(missing_docs)]
+// pub mod gmres;
 
 mod linop_impl;
 

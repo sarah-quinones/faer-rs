@@ -1,4 +1,4 @@
-//! The Cholesky decomposition of a hermitian positive definite matrix $A$ is such that:
+//! The Cholesky decomposition of a Hermitian positive definite matrix $A$ is such that:
 //! $$A = LL^H,$$
 //! where $L$ is a lower triangular matrix.
 

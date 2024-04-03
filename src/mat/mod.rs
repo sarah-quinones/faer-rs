@@ -140,14 +140,15 @@ mod mat_index;
 
 mod matref;
 pub use matref::{
-    from_column_major_slice, from_column_major_slice_with_stride, from_raw_parts,
-    from_row_major_slice, from_row_major_slice_with_stride, MatRef,
+    from_column_major_slice, from_column_major_slice_with_stride, from_raw_parts, from_ref,
+    from_repeated_col, from_repeated_ref, from_repeated_row, from_row_major_slice,
+    from_row_major_slice_with_stride, MatRef,
 };
 
 mod matmut;
 pub use matmut::{
-    from_column_major_slice_mut, from_column_major_slice_with_stride_mut, from_raw_parts_mut,
-    from_row_major_slice_mut, from_row_major_slice_with_stride_mut, MatMut,
+    from_column_major_slice_mut, from_column_major_slice_with_stride_mut, from_mut,
+    from_raw_parts_mut, from_row_major_slice_mut, from_row_major_slice_with_stride_mut, MatMut,
 };
 
 mod matown;
@@ -173,13 +174,15 @@ fn from_strided_column_major_slice_assert(
     col_stride: usize,
     len: usize,
 ) {
-    // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
-    // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
-    // we don't care
-    let last = usize::checked_mul(col_stride, ncols - 1)
-        .and_then(|last_col| last_col.checked_add(nrows - 1))
-        .unwrap_or(usize::MAX);
-    assert!(last < len);
+    if nrows > 0 && ncols > 0 {
+        // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
+        // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
+        // we don't care
+        let last = usize::checked_mul(col_stride, ncols - 1)
+            .and_then(|last_col| last_col.checked_add(nrows - 1))
+            .unwrap_or(usize::MAX);
+        assert!(last < len);
+    }
 }
 
 #[track_caller]
@@ -190,11 +193,38 @@ fn from_strided_column_major_slice_mut_assert(
     col_stride: usize,
     len: usize,
 ) {
-    // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
-    // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
-    // we don't care
-    let last = usize::checked_mul(col_stride, ncols - 1)
-        .and_then(|last_col| last_col.checked_add(nrows - 1))
-        .unwrap_or(usize::MAX);
-    assert!(all(col_stride >= nrows, last < len));
+    if nrows > 0 && ncols > 0 {
+        // we don't have to worry about size == usize::MAX == slice.len(), because the length of a
+        // slice can never exceed isize::MAX in bytes, unless the type is zero sized, in which case
+        // we don't care
+        let last = usize::checked_mul(col_stride, ncols - 1)
+            .and_then(|last_col| last_col.checked_add(nrows - 1))
+            .unwrap_or(usize::MAX);
+        assert!(all(col_stride >= nrows, last < len));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use equator::assert;
+
+    #[test]
+    fn test_from_ref() {
+        let x = crate::mat![[1.0, 2.0], [3.0, 4.0]];
+        let c = 100.0;
+
+        let sum = crate::mat![[101.0, 102.0], [103.0, 104.0]];
+        crate::dbgf!("6.2?", &sum);
+
+        // this converts a &f64 to a MatRef<'_, f64> without allocating
+        assert!(&x + from_repeated_ref::<f64>(&c, x.nrows(), x.ncols()) == sum);
+    }
+
+    #[test]
+    fn test_from_mut() {
+        let mut c = 100.0;
+        from_mut::<f64>(&mut c).fill(3.0);
+        assert!(c == 3.0);
+    }
 }

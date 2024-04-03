@@ -4,7 +4,7 @@
 use crate::prelude::*;
 use faer_entity::{ComplexField, RealField};
 
-/// See: https://en.wikipedia.org//wiki/Singular_value_decomposition#Pseudoinverse
+/// See: <https://en.wikipedia.org//wiki/Singular_value_decomposition#Pseudoinverse>
 pub(crate) fn compute_pseudoinverse<E: ComplexField>(
     s: ColRef<'_, E>,
     u: MatRef<'_, E>,

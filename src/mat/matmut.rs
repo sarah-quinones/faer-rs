@@ -1347,3 +1347,8 @@ impl<E: Conjugate> RowBatch<E> for MatMut<'_, E> {
 }
 
 impl<E: Conjugate> RowBatchMut<E> for MatMut<'_, E> {}
+
+/// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
+pub fn from_mut<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> MatMut<'_, E> {
+    unsafe { from_raw_parts_mut(E::faer_map(value, |ptr| ptr as *mut E::Unit), 1, 1, 0, 0) }
+}

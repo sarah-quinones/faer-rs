@@ -53,10 +53,10 @@ impl<E: Entity, T: AsRowMut<E>> AsRowMut<E> for &mut T {
 mod row_index;
 
 mod rowref;
-pub use rowref::{from_raw_parts, from_slice, RowRef};
+pub use rowref::{from_raw_parts, from_ref, from_repeated_ref, from_slice, RowRef};
 
 mod rowmut;
-pub use rowmut::{from_raw_parts_mut, from_slice_mut, RowMut};
+pub use rowmut::{from_mut, from_raw_parts_mut, from_slice_mut, RowMut};
 
 mod rowown;
 pub use rowown::Row;

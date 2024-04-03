@@ -26,13 +26,13 @@ macro_rules! impl_from_num_complex {
 impl c64 {
     /// Create a new complex number.
     #[inline(always)]
-    pub fn new(re: f64, im: f64) -> Self {
+    pub const fn new(re: f64, im: f64) -> Self {
         Self { re, im }
     }
 
     /// Construct the imaginary number.
     #[inline(always)]
-    pub fn i() -> Self {
+    pub const fn i() -> Self {
         Self::new(0.0, 1.0)
     }
 

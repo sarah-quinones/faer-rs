@@ -1525,7 +1525,8 @@ pub mod supernodal {
     use super::*;
     use crate::{assert, debug_assert};
 
-    fn ereach_super<'n, 'nsuper, I: Index>(
+    #[doc(hidden)]
+    pub fn ereach_super<'n, 'nsuper, I: Index>(
         A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
         super_etree: &Array<'nsuper, MaybeIdx<'nsuper, I>>,
         index_to_super: &Array<'n, Idx<'nsuper, I>>,
@@ -2377,6 +2378,109 @@ pub mod supernodal {
             }
             Ok(req)
         }
+
+        #[doc(hidden)]
+        pub fn __prepare_for_refactorize(&mut self) -> Result<(), FaerError> {
+            let mut v = try_zeroed(self.n_supernodes())?;
+            for s in 0..self.n_supernodes() {
+                v[s] = self.col_ptrs_for_row_indices[s + 1] - self.col_ptrs_for_row_indices[s];
+            }
+            self.nnz_per_super = Some(v);
+            Ok(())
+        }
+
+        #[doc(hidden)]
+        #[track_caller]
+        pub fn __nnz_per_super(&self) -> &[I] {
+            self.nnz_per_super.as_deref().unwrap()
+        }
+
+        #[doc(hidden)]
+        pub fn __refactorize(
+            &mut self,
+            A: SymbolicSparseColMatRef<'_, I>,
+            etree: &[I::Signed],
+            stack: PodStack<'_>,
+        ) {
+            ghost::Size::with2(self.nrows(), self.n_supernodes(), |N, N_SUPERNODES| {
+                let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
+                let n = *N;
+                let n_supernodes = *N_SUPERNODES;
+                let none = I::Signed::truncate(NONE);
+
+                let etree = MaybeIdx::<I>::from_slice_ref_checked(etree, N);
+                let etree = Array::from_ref(etree, N);
+
+                let mut stack = stack;
+                let (index_to_super, mut stack) = stack.rb_mut().make_raw::<I>(n);
+                let (current_row_positions, mut stack) = stack.rb_mut().make_raw::<I>(n_supernodes);
+                let (visited, mut stack) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
+                let (super_etree, _) = stack.rb_mut().make_raw::<I::Signed>(n_supernodes);
+
+                let super_etree = Array::from_mut(super_etree, N_SUPERNODES);
+                let index_to_super = Array::from_mut(index_to_super, N);
+
+                let mut supernode_begin = 0usize;
+                for s in N_SUPERNODES.indices() {
+                    let size = self.supernode_end()[*s].zx() - self.supernode_begin()[*s].zx();
+                    index_to_super.as_mut()[supernode_begin..][..size].fill(*s.truncate::<I>());
+                    supernode_begin += size;
+                }
+
+                let index_to_super = Array::from_mut(
+                    Idx::from_slice_mut_checked(index_to_super.as_mut(), N_SUPERNODES),
+                    N,
+                );
+
+                let mut supernode_begin = 0usize;
+                for s in N_SUPERNODES.indices() {
+                    let size = self.supernode_end()[*s + 1].zx() - self.supernode_begin()[*s].zx();
+                    let last = supernode_begin + size - 1;
+                    if let Some(parent) = etree[N.check(last)].idx() {
+                        super_etree[s] = index_to_super[parent.zx()].to_signed();
+                    } else {
+                        super_etree[s] = none;
+                    }
+                    supernode_begin += size;
+                }
+
+                let super_etree = Array::from_mut(
+                    MaybeIdx::<'_, I>::from_slice_mut_checked(super_etree.as_mut(), N_SUPERNODES),
+                    N_SUPERNODES,
+                );
+
+                let visited = Array::from_mut(visited, N_SUPERNODES);
+                let current_row_positions = Array::from_mut(current_row_positions, N_SUPERNODES);
+
+                mem::fill_none::<I::Signed>(visited.as_mut());
+                mem::fill_zero(current_row_positions.as_mut());
+
+                for s in N_SUPERNODES.indices() {
+                    let k1 = ghost::IdxInclusive::new_checked(self.supernode_begin()[*s].zx(), N);
+                    let k2 = ghost::IdxInclusive::new_checked(self.supernode_end()[*s].zx(), N);
+
+                    for k in k1.range_to(k2) {
+                        ereach_super(
+                            A,
+                            super_etree,
+                            index_to_super,
+                            current_row_positions,
+                            unsafe { Idx::from_slice_mut_unchecked(&mut self.row_indices) },
+                            k,
+                            visited,
+                        );
+                    }
+                }
+
+                let Some(nnz_per_super) = self.nnz_per_super.as_deref_mut() else {
+                    panic!()
+                };
+
+                for s in N_SUPERNODES.indices() {
+                    nnz_per_super[*s] = current_row_positions[s] - self.supernode_begin[*s];
+                }
+            });
+        }
     }
 
     /// Returns the size and alignment of the workspace required to compute the symbolic supernodal
@@ -2462,6 +2566,7 @@ pub mod supernodal {
                 col_ptrs_for_row_indices: try_collect([zero])?,
                 col_ptrs_for_values: try_collect([zero])?,
                 row_indices: alloc::vec::Vec::new(),
+                nnz_per_super: None,
             });
         }
         let mut original_stack = stack;
@@ -2962,6 +3067,7 @@ pub mod supernodal {
             col_ptrs_for_row_indices: col_ptrs_for_row_indices__,
             col_ptrs_for_values: col_ptrs_for_values__,
             row_indices: row_indices__,
+            nnz_per_super: None,
         })
     }
 
@@ -3404,8 +3510,12 @@ pub mod supernodal {
         for s in 0..n_supernodes {
             let s_start = symbolic.supernode_begin[s].zx();
             let s_end = symbolic.supernode_begin[s + 1].zx();
+            let s_pattern = if let Some(nnz_per_super) = symbolic.nnz_per_super.as_deref() {
+                &row_ind[col_ptr_row[s].zx()..][..nnz_per_super[s].zx()]
+            } else {
+                &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()]
+            };
 
-            let s_pattern = &row_ind[col_ptr_row[s].zx()..col_ptr_row[s + 1].zx()];
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
@@ -3415,11 +3525,12 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = crate::mat::from_column_major_slice_mut::<'_, E>(
+            let mut Ls = crate::mat::from_column_major_slice_with_stride_mut::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
                 s_ncols,
+                s_nrows,
             );
 
             for j in s_start..s_end {
@@ -3448,16 +3559,21 @@ pub mod supernodal {
                 let d = d.zx();
                 let d_start = symbolic.supernode_begin[d].zx();
                 let d_end = symbolic.supernode_begin[d + 1].zx();
+                let d_pattern = if let Some(nnz_per_super) = symbolic.nnz_per_super.as_deref() {
+                    &row_ind[col_ptr_row[d].zx()..][..nnz_per_super[d].zx()]
+                } else {
+                    &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()]
+                };
 
-                let d_pattern = &row_ind[col_ptr_row[d].zx()..col_ptr_row[d + 1].zx()];
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = crate::mat::from_column_major_slice::<'_, E>(
+                let Ld = crate::mat::from_column_major_slice_with_stride::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
                     d_ncols,
+                    d_nrows,
                 );
 
                 let d_pattern_start = d_pattern.partition_point(partition_fn(s_start));
@@ -3956,6 +4072,8 @@ pub mod supernodal {
         pub(crate) col_ptrs_for_row_indices: alloc::vec::Vec<I>,
         pub(crate) col_ptrs_for_values: alloc::vec::Vec<I>,
         pub(crate) row_indices: alloc::vec::Vec<I>,
+
+        pub(crate) nnz_per_super: Option<alloc::vec::Vec<I>>,
     }
 }
 

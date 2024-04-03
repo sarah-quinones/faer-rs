@@ -1390,3 +1390,38 @@ impl<E: Conjugate> RowBatch<E> for MatRef<'_, E> {
         <Self::Owned as RowBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
     }
 }
+
+/// Returns a view over an `nrows×ncols` matrix containing `value` repeated for all elements.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_ref<E: Entity>(
+    value: GroupFor<E, &E::Unit>,
+    nrows: usize,
+    ncols: usize,
+) -> MatRef<'_, E> {
+    unsafe {
+        from_raw_parts(
+            E::faer_map(value, |ptr| ptr as *const E::Unit),
+            nrows,
+            ncols,
+            0,
+            0,
+        )
+    }
+}
+
+/// Returns a view over a matrix containing `col` repeated `ncols` times.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_col<E: Entity>(col: ColRef<'_, E>, ncols: usize) -> MatRef<'_, E> {
+    unsafe { from_raw_parts(col.as_ptr(), col.nrows(), ncols, col.row_stride(), 0) }
+}
+
+/// Returns a view over a matrix containing `row` repeated `nrows` times.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_row<E: Entity>(row: RowRef<'_, E>, nrows: usize) -> MatRef<'_, E> {
+    unsafe { from_raw_parts(row.as_ptr(), nrows, row.ncols(), 0, row.col_stride()) }
+}
+
+/// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
+pub fn from_ref<E: Entity>(value: GroupFor<E, &E::Unit>) -> MatRef<'_, E> {
+    from_repeated_ref(value, 1, 1)
+}

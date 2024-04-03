@@ -585,3 +585,15 @@ impl<E: Conjugate> RowBatch<E> for RowRef<'_, E> {
         <Self::Owned as RowBatch<E::Canonical>>::resize_owned(owned, nrows, ncols)
     }
 }
+
+/// Returns a view over a row with `ncols` columns containing `value` repeated for all elements.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_ref<E: Entity>(value: GroupFor<E, &E::Unit>, ncols: usize) -> RowRef<'_, E> {
+    unsafe { from_raw_parts(E::faer_map(value, |ptr| ptr as *const E::Unit), ncols, 0) }
+}
+
+/// Returns a view over a row with 1 column containing value as its only element, pointing to
+/// `value`.
+pub fn from_ref<E: Entity>(value: GroupFor<E, &E::Unit>) -> RowRef<'_, E> {
+    from_repeated_ref(value, 1)
+}

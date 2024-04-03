@@ -1,4 +1,4 @@
-//! The Cholesky decomposition with diagonal $D$ of a hermitian matrix $A$ is such that:
+//! The Cholesky decomposition with diagonal $D$ of a Hermitian matrix $A$ is such that:
 //! $$A = LDL^H,$$
 //! where $D$ is a diagonal matrix, and $L$ is a unit lower triangular matrix.
 //!
