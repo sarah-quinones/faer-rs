@@ -540,8 +540,10 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let n = diag.len();
 
     if n <= 1 {
-        zipped!(u.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut())
-            .for_each(|unzipped!(mut x)| x.write(E::faer_one()));
+        u.rb_mut()
+            .diagonal_mut()
+            .column_vector_mut()
+            .fill(E::faer_one());
         return;
     }
 
@@ -722,14 +724,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // diag([D0 D1]) + rho×z×z.T = Pl_before^-1×H^-1×Pl_after^-1×Q×Pr × E × ...
 
     let (mut z0, mut z1) = z.rb_mut().split_at_row_mut(n1);
-    zipped!(z0.rb_mut(), u0.rb().row(n1 - 1).transpose().as_2d())
-        .for_each(|unzipped!(mut z, u)| z.write(u.read()));
+    z0.rb_mut()
+        .copy_from(u0.rb().row(n1 - 1).transpose().as_2d());
     if rho < E::faer_zero() {
         zipped!(z1.rb_mut(), u1.rb().row(0).transpose().as_2d())
             .for_each(|unzipped!(mut z, u)| z.write(u.read().faer_neg()));
     } else {
-        zipped!(z1.rb_mut(), u1.rb().row(0).transpose().as_2d())
-            .for_each(|unzipped!(mut z, u)| z.write(u.read()));
+        z1.rb_mut().copy_from(u1.rb().row(0).transpose().as_2d());
     }
 
     let inv_sqrt2 = E::faer_from_f64(2.0).faer_sqrt().faer_inv();
@@ -793,17 +794,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         // return
 
         let (mut tmp_tl, mut tmp_tr, mut tmp_bl, mut tmp_br) = tmp.rb_mut().split_at_mut(n1, n1);
-        zipped!(tmp_tl.rb_mut(), u0.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
-        zipped!(tmp_br.rb_mut(), u1.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
-        zipped!(tmp_tr.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
-        zipped!(tmp_bl.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+        tmp_tl.rb_mut().copy_from(u0.rb());
+        tmp_br.rb_mut().copy_from(u1.rb());
+        tmp_tr.fill_zero();
+        tmp_bl.fill_zero();
 
-        for (j, &dst_j) in pl_before.iter().enumerate() {
-            zipped!(
-                u.rb_mut().col_mut(dst_j).as_2d_mut(),
-                tmp.rb().col(j).as_2d()
-            )
-            .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+        for (j, &pl_before) in pl_before.iter().enumerate() {
+            u.rb_mut().col_mut(j).copy_from(tmp.rb().col(pl_before));
         }
 
         for (j, diag) in diag.iter_mut().enumerate() {
@@ -846,8 +843,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
             let mut permuted_z = permuted_z.rb_mut().subrows_mut(idx, run_len);
 
-            zipped!(householder.rb_mut(), permuted_z.rb())
-                .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+            householder.rb_mut().copy_from(permuted_z.rb());
 
             let head = householder.read(run_len - 1, 0);
             let tail_norm = householder.rb().subrows(0, run_len - 1).norm_l2();
@@ -864,7 +860,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             );
 
             householder.write(run_len - 1, 0, tau);
-            zipped!(permuted_z.rb_mut()).for_each(|unzipped!(mut dst)| dst.write(E::faer_zero()));
+            permuted_z.fill_zero();
             permuted_z.write(run_len - 1, 0, beta);
         }
 
@@ -971,8 +967,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // compute singular vectors
     for (j, &pj) in pr.iter().enumerate() {
         if pj >= non_deflated {
-            zipped!(repaired_u.rb_mut().col_mut(j).as_2d_mut())
-                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+            repaired_u.rb_mut().col_mut(j).fill_zero();
             repaired_u.write(pl_after[pj], j, E::faer_one());
         } else {
             let mu_j = mus.read(pj, 0);
@@ -1078,7 +1073,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         parallelism,
     );
 
-    zipped!(u.rb_mut(), tmp.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
+    u.copy_from(tmp.rb());
     for i in 0..n {
         let mu_i = mus.read(pr[i], 0);
         let shift_i = shifts.read(pr[i], 0);
@@ -1219,6 +1214,25 @@ mod tests {
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, x, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         ];
         test_evd(&diag, &offdiag);
+    }
+
+    #[test]
+    fn test_gh124() {
+        use crate::prelude::*;
+
+        let n = 33;
+
+        let mut a = Mat::zeros(n, n);
+        for i in 0..n {
+            a[(i, i)] = (n - i) as f64;
+        }
+
+        let eig = a.selfadjoint_eigendecomposition(crate::Side::Upper);
+        let a_reconstructed = eig.reconstruct();
+
+        for i in 0..n {
+            equator::assert!(a[(i, i)] == a_reconstructed[(i, i)]);
+        }
     }
 
     #[test]

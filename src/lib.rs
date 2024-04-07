@@ -905,7 +905,10 @@ pub mod prelude {
     pub use crate::{
         col,
         complex_native::{c32, c64},
-        linalg::solvers::{Solver, SolverLstsq, SpSolver, SpSolverLstsq},
+        linalg::solvers::{
+            Solver, SolverCore, SolverLstsq, SolverLstsqCore, SpSolver, SpSolverCore,
+            SpSolverLstsq, SpSolverLstsqCore,
+        },
         mat, row, unzipped, zipped, Col, ColMut, ColRef, Mat, MatMut, MatRef, Row, RowMut, RowRef,
     };
 }

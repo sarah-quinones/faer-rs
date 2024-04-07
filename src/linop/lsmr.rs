@@ -60,8 +60,6 @@ fn lsmr_prototype_v2<E: ComplexField>(
     let mut alpha = vec![];
     let mut beta = vec![];
 
-    // let m = A.nrows();
-    // let n = A.ncols();
     let s = b.ncols();
 
     let qr = (b - A * &x).qr();
