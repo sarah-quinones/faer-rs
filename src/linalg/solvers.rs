@@ -715,6 +715,11 @@ impl<E: ComplexField> FullPivLu<E> {
                 dst.write(E::faer_zero())
             });
         factor
+            .as_mut()
+            .diagonal_mut()
+            .column_vector_mut()
+            .fill(E::faer_one());
+        factor
     }
     /// Returns the factor $U$ of the LU decomposition.
     pub fn compute_u(&self) -> Mat<E> {
@@ -728,11 +733,6 @@ impl<E: ComplexField> FullPivLu<E> {
             .for_each_triangular_lower(crate::linalg::zip::Diag::Skip, |unzipped!(mut dst)| {
                 dst.write(E::faer_zero())
             });
-        factor
-            .as_mut()
-            .diagonal_mut()
-            .column_vector_mut()
-            .fill(E::faer_one());
         factor
     }
 }
@@ -3052,7 +3052,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lu() {
+    fn test_plu() {
         let a = mat![
             [0.75026225, 0.35005635, -0.55833477],
             [0.57985423, -0.75391293, 0.30216142],
@@ -3064,6 +3064,23 @@ mod tests {
         let u = plu.compute_u();
 
         let diff = (p * a) - (l * u);
+        assert!(diff.norm_max() < 1e-12);
+    }
+
+    #[test]
+    fn test_flu() {
+        let a = mat![
+            [0.75026225, 0.35005635, -0.55833477],
+            [0.57985423, -0.75391293, 0.30216142],
+            [0.31665369, 0.54900739, 0.76136962],
+        ];
+        let plu = a.full_piv_lu();
+        let p = plu.row_permutation();
+        let q = plu.col_permutation();
+        let l = plu.compute_l();
+        let u = plu.compute_u();
+
+        let diff = (p * a * q.inverse()) - (l * u);
         assert!(diff.norm_max() < 1e-12);
     }
 }
