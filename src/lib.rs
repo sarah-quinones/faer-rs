@@ -440,10 +440,10 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) ->
     fn count_rows<E: ComplexField>(block_row: &[(mat::MatRef<'_, E>, Conj)]) -> usize {
         let mut out: usize = 0;
         for (i, (e, _)) in block_row.iter().enumerate() {
-            if i.eq(&0) {
+            if i == 0 {
                 out = e.nrows();
             } else {
-                assert!(e.nrows().eq(&out));
+                assert!(e.nrows() == out);
             }
         }
         out
@@ -457,10 +457,10 @@ pub fn concat_impl<E: ComplexField>(blocks: &[&[(mat::MatRef<'_, E>, Conj)]]) ->
     }
     for (i, row) in blocks.iter().enumerate() {
         let cols = count_total_columns(row);
-        if i.eq(&0) {
+        if i == 0 {
             m = cols;
         } else {
-            assert!(cols.eq(&m));
+            assert!(cols == m);
         }
     }
 
