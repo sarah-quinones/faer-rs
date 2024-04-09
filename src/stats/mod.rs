@@ -2,6 +2,9 @@ use crate::{Col, ComplexField, Mat, Row};
 use rand::distributions::Distribution;
 use rand_distr::{Standard, StandardNormal};
 
+mod meanvar;
+pub use meanvar::{col_mean, col_varm, row_mean, row_varm};
+
 /// The normal distribution, `N(mean, std_dev**2)`.
 pub struct Normal<E: ComplexField> {
     mean: E,
