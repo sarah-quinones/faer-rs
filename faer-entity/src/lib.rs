@@ -210,7 +210,7 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     type Index: Copy + Pod + Send + Sync + Debug + 'static;
     type SimdUnit<S: Simd>: Copy + Pod + Send + Sync + Debug + 'static;
     type SimdMask<S: Simd>: Copy + Send + Sync + Debug + 'static;
-    type SimdIndex<S: Simd>: Copy + Send + Sync + Debug + 'static;
+    type SimdIndex<S: Simd>: Copy + Pod + Send + Sync + Debug + 'static;
     type Iter<I: Iterator>: Iterator<Item = GroupFor<Self, I::Item>>;
 
     type PrefixUnit<'a, S: Simd>: Copy + pulp::Read<Output = SimdUnitFor<Self, S>> + Copy;
