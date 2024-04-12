@@ -3,7 +3,7 @@ use rand::distributions::Distribution;
 use rand_distr::{Standard, StandardNormal};
 
 mod meanvar;
-pub use meanvar::{col_mean, col_varm, row_mean, row_varm};
+pub use meanvar::{col_mean, col_varm, row_mean, row_varm, NanHandling};
 
 /// The normal distribution, `N(mean, std_dev**2)`.
 pub struct Normal<E: ComplexField> {

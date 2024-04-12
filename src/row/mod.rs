@@ -4,6 +4,7 @@ use crate::{
     utils::slice::*,
     Conj,
 };
+use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
@@ -121,3 +122,18 @@ impl<E: Conjugate, T: RowBatch<E>> RowBatch<E> for &mut T {
 }
 
 impl<E: Conjugate, T: RowBatchMut<E>> RowBatchMut<E> for &mut T {}
+
+impl<'a, FromE: Entity, ToE: Entity> Coerce<RowRef<'a, ToE>> for RowRef<'a, FromE> {
+    #[inline(always)]
+    fn coerce(self) -> RowRef<'a, ToE> {
+        assert!(coe::is_same::<FromE, ToE>());
+        unsafe { transmute_unchecked::<RowRef<'a, FromE>, RowRef<'a, ToE>>(self) }
+    }
+}
+impl<'a, FromE: Entity, ToE: Entity> Coerce<RowMut<'a, ToE>> for RowMut<'a, FromE> {
+    #[inline(always)]
+    fn coerce(self) -> RowMut<'a, ToE> {
+        assert!(coe::is_same::<FromE, ToE>());
+        unsafe { transmute_unchecked::<RowMut<'a, FromE>, RowMut<'a, ToE>>(self) }
+    }
+}
