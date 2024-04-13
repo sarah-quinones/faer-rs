@@ -3,14 +3,16 @@ use crate::{
     prelude::*,
     utils::{
         simd::SimdFor,
-        slice::{RefGroup, SliceGroup},
+        slice::{RefGroup, SliceGroup, SliceGroupMut},
     },
     ComplexField, RealField,
 };
 use coe::Coerce;
+use core::iter::zip;
 use equator::assert;
 use num_complex::Complex;
-use pulp::Read;
+use pulp::{Read, Write};
+use reborrow::*;
 
 /// Specifies how missing values should be handled in mean and variance computations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1238,6 +1240,75 @@ fn col_mean_propagate<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
         E::Simd::default().dispatch(Impl { out, mat });
     }
 
+    fn col_mean_col_major<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
+        struct Impl<'a, E: ComplexField> {
+            out: ColMut<'a, E>,
+            mat: MatRef<'a, E>,
+        }
+
+        impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self { out, mat } = self;
+                let simd_real = SimdFor::<E::Real, S>::new(simd);
+                let simd = SimdFor::<E, S>::new(simd);
+
+                let m = mat.nrows();
+                let n = mat.ncols();
+                let one_n = simd_real.splat(from_usize::<E::Real>(n).faer_inv());
+
+                let offset = simd.align_offset_ptr(mat.as_ptr(), m);
+                let mut out = SliceGroupMut::<'_, E>::new(out.try_as_slice_mut().unwrap());
+
+                out.fill_zero();
+                for j in 0..n {
+                    let col = SliceGroup::<'_, E>::new(mat.col(j).try_as_slice().unwrap());
+                    let (head, body, tail) = simd.as_aligned_simd(col, offset);
+                    let (out_head, out_body, out_tail) =
+                        simd.as_aligned_simd_mut(out.rb_mut(), offset);
+
+                    #[inline(always)]
+                    fn process<E: ComplexField, S: pulp::Simd>(
+                        simd: SimdFor<E, S>,
+                        mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                        val: impl Read<Output = SimdGroupFor<E, S>>,
+                    ) {
+                        out.write(simd.add(
+                            out.read_or(simd.splat(E::faer_zero())),
+                            val.read_or(simd.splat(E::faer_zero())),
+                        ))
+                    }
+
+                    process(simd, out_head, head);
+                    for (out, x) in zip(out_body.into_mut_iter(), body.into_ref_iter()) {
+                        process(simd, out, x)
+                    }
+                    process(simd, out_tail, tail);
+                }
+
+                #[inline(always)]
+                fn process<E: ComplexField, S: pulp::Simd>(
+                    simd: SimdFor<E, S>,
+                    mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                    one_n: SimdGroupFor<E::Real, S>,
+                ) {
+                    out.write(simd.scale_real(one_n, out.read_or(simd.splat(E::faer_zero()))))
+                }
+                let (out_head, out_body, out_tail) = simd.as_aligned_simd_mut(out.rb_mut(), offset);
+                process(simd, out_head, one_n);
+                for out in out_body.into_mut_iter() {
+                    process(simd, out, one_n);
+                }
+                process(simd, out_tail, one_n);
+            }
+        }
+
+        E::Simd::default().dispatch(Impl { out, mat });
+    }
+
+    let mut mat = mat;
     let mut out = out;
 
     if mat.ncols() == 0 {
@@ -1245,13 +1316,18 @@ fn col_mean_propagate<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
         return;
     }
 
-    let mat = if mat.col_stride() >= 0 {
-        mat
-    } else {
-        mat.reverse_cols()
+    if mat.col_stride() < 0 {
+        mat = mat.reverse_cols();
     };
+    if mat.row_stride() < 0 {
+        mat = mat.reverse_rows();
+        out = out.reverse_rows_mut();
+    };
+
     if mat.col_stride() == 1 {
         col_mean_row_major(out, mat)
+    } else if mat.row_stride() == 1 && out.row_stride() == 1 {
+        col_mean_col_major(out, mat)
     } else {
         let n = mat.ncols();
         let one_n = from_usize::<E::Real>(n).faer_inv();
@@ -1401,7 +1477,176 @@ fn col_varm_propagate<E: ComplexField>(
         E::Simd::default().dispatch(Impl { out, mat, col_mean });
     }
 
+    fn col_varm_col_major_real<E: RealField>(
+        out: ColMut<'_, E>,
+        mat: MatRef<'_, E>,
+        col_mean: ColRef<'_, E>,
+    ) {
+        struct Impl<'a, E: RealField> {
+            out: ColMut<'a, E>,
+            mat: MatRef<'a, E>,
+            col_mean: ColRef<'a, E>,
+        }
+
+        impl<E: RealField> pulp::WithSimd for Impl<'_, E> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self { out, mat, col_mean } = self;
+
+                let simd = SimdFor::<E, S>::new(simd);
+
+                let n = mat.ncols();
+                let one_n1 = simd.splat(from_usize::<E::Real>(n - 1).faer_inv());
+
+                let offset = simd.align_offset_ptr(mat.as_ptr(), mat.nrows());
+
+                let mut out = SliceGroupMut::<'_, E>::new(out.try_as_slice_mut().unwrap());
+                let col_mean = SliceGroup::<'_, E>::new(col_mean.try_as_slice().unwrap());
+
+                out.fill_zero();
+                for j in 0..n {
+                    let col = SliceGroup::<'_, E>::new(mat.col(j).try_as_slice().unwrap());
+                    let (head, body, tail) = simd.as_aligned_simd(col, offset);
+                    let (out_head, out_body, out_tail) =
+                        simd.as_aligned_simd_mut(out.rb_mut(), offset);
+                    let (mean_head, mean_body, mean_tail) = simd.as_aligned_simd(col_mean, offset);
+
+                    #[inline(always)]
+                    fn process<E: RealField, S: pulp::Simd>(
+                        simd: SimdFor<E, S>,
+                        mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                        val: impl Read<Output = SimdGroupFor<E, S>>,
+                        mean: impl Read<Output = SimdGroupFor<E, S>>,
+                    ) {
+                        let zero = simd.splat(E::faer_zero());
+                        let diff = simd.sub(val.read_or(zero), mean.read_or(zero));
+                        out.write(simd.mul_add_e(diff, diff, out.read_or(zero)))
+                    }
+
+                    process(simd, out_head, head, mean_head);
+                    for (out, (x, mean)) in zip(
+                        out_body.into_mut_iter(),
+                        zip(body.into_ref_iter(), mean_body.into_ref_iter()),
+                    ) {
+                        process(simd, out, x, mean);
+                    }
+                    process(simd, out_tail, tail, mean_tail);
+                }
+
+                #[inline(always)]
+                fn process<E: RealField, S: pulp::Simd>(
+                    simd: SimdFor<E, S>,
+                    mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                    one_n1: SimdGroupFor<E, S>,
+                ) {
+                    out.write(simd.scale_real(one_n1, out.read_or(simd.splat(E::faer_zero()))))
+                }
+                let (out_head, out_body, out_tail) = simd.as_aligned_simd_mut(out.rb_mut(), offset);
+                process(simd, out_head, one_n1);
+                for out in out_body.into_mut_iter() {
+                    process(simd, out, one_n1);
+                }
+                process(simd, out_tail, one_n1);
+            }
+        }
+
+        E::Simd::default().dispatch(Impl { out, mat, col_mean });
+    }
+
+    fn col_varm_col_major_cplx<E: RealField>(
+        out: ColMut<'_, E>,
+        mat: MatRef<'_, Complex<E>>,
+        col_mean: ColRef<'_, Complex<E>>,
+    ) {
+        struct Impl<'a, E: RealField> {
+            out: ColMut<'a, E>,
+            mat: MatRef<'a, Complex<E>>,
+            col_mean: ColRef<'a, Complex<E>>,
+        }
+
+        impl<E: RealField> pulp::WithSimd for Impl<'_, E> {
+            type Output = ();
+
+            #[inline(always)]
+            fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                let Self { out, mat, col_mean } = self;
+
+                let simd_cplx = SimdFor::<Complex<E>, S>::new(simd);
+                let simd = SimdFor::<E, S>::new(simd);
+
+                let n = mat.ncols();
+                let one_n1 = simd.splat(from_usize::<E::Real>(n - 1).faer_inv());
+
+                let offset = simd_cplx.align_offset_ptr(mat.as_ptr(), mat.nrows());
+
+                let mut out = SliceGroupMut::<'_, E>::new(out.try_as_slice_mut().unwrap());
+                let col_mean = SliceGroup::<'_, Complex<E>>::new(col_mean.try_as_slice().unwrap());
+
+                out.fill_zero();
+                for j in 0..n {
+                    let col = SliceGroup::<'_, Complex<E>>::new(mat.col(j).try_as_slice().unwrap());
+                    let (head, body, tail) = simd_cplx.as_aligned_simd(col, offset);
+                    let (out_head, out_body, out_tail) =
+                        simd.as_aligned_simd_mut(out.rb_mut(), offset);
+                    let (mean_head, mean_body, mean_tail) =
+                        simd_cplx.as_aligned_simd(col_mean, offset);
+
+                    #[inline(always)]
+                    fn process<E: RealField, S: pulp::Simd>(
+                        simd: SimdFor<E, S>,
+                        mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                        val: impl Read<Output = SimdGroupFor<Complex<E>, S>>,
+                        mean: impl Read<Output = SimdGroupFor<Complex<E>, S>>,
+                    ) {
+                        let simd_cplx = SimdFor::<Complex<E>, S>::new(simd.simd);
+                        let zero = simd_cplx.splat(Complex::<E>::faer_zero());
+                        let zero_r = simd.splat(E::faer_zero());
+                        let val = val.read_or(zero);
+                        let mean = mean.read_or(zero);
+                        let diff_re = simd.sub(val.re, mean.re);
+                        let diff_im = simd.sub(val.im, mean.im);
+                        out.write(simd.mul_add_e(
+                            diff_im,
+                            diff_im,
+                            simd.mul_add_e(diff_re, diff_re, out.read_or(zero_r)),
+                        ))
+                    }
+
+                    process(simd, out_head, head, mean_head);
+                    for (out, (x, mean)) in zip(
+                        out_body.into_mut_iter(),
+                        zip(body.into_ref_iter(), mean_body.into_ref_iter()),
+                    ) {
+                        process(simd, out, x, mean);
+                    }
+                    process(simd, out_tail, tail, mean_tail);
+                }
+
+                #[inline(always)]
+                fn process<E: RealField, S: pulp::Simd>(
+                    simd: SimdFor<E, S>,
+                    mut out: impl Write<Output = SimdGroupFor<E, S>>,
+                    one_n1: SimdGroupFor<E, S>,
+                ) {
+                    out.write(simd.scale_real(one_n1, out.read_or(simd.splat(E::faer_zero()))))
+                }
+                let (out_head, out_body, out_tail) = simd.as_aligned_simd_mut(out.rb_mut(), offset);
+                process(simd, out_head, one_n1);
+                for out in out_body.into_mut_iter() {
+                    process(simd, out, one_n1);
+                }
+                process(simd, out_tail, one_n1);
+            }
+        }
+
+        E::Simd::default().dispatch(Impl { out, mat, col_mean });
+    }
+
     let mut out = out;
+    let mut mat = mat;
+    let mut col_mean = col_mean;
 
     if mat.ncols() == 0 {
         out.fill(E::Real::faer_nan());
@@ -1412,13 +1657,73 @@ fn col_varm_propagate<E: ComplexField>(
         return;
     }
 
-    let mat = if mat.col_stride() >= 0 {
-        mat
-    } else {
-        mat.reverse_cols()
+    if mat.col_stride() < 0 {
+        mat = mat.reverse_cols();
     };
+    if mat.row_stride() < 0 {
+        out = out.reverse_rows_mut();
+        mat = mat.reverse_rows();
+        col_mean = col_mean.reverse_rows();
+    };
+
     if mat.col_stride() == 1 {
         col_varm_row_major(out, mat, col_mean)
+    } else if mat.row_stride() == 1 && out.row_stride() == 1 && col_mean.row_stride() == 1 {
+        if coe::is_same::<E, E::Real>() {
+            col_varm_col_major_real::<E::Real>(out, mat.coerce(), col_mean.coerce())
+        } else if coe::is_same::<E, Complex<E::Real>>() {
+            col_varm_col_major_cplx::<E::Real>(out, mat.coerce(), col_mean.coerce())
+        } else if coe::is_same::<E, c32>() {
+            let m = mat.nrows();
+
+            let mut tmp = Col::<f32>::zeros(2 * m);
+            let mut out: ColMut<'_, f32> = out.coerce();
+            let mat: MatRef<'_, c32> = mat.coerce();
+            let col_mean: ColRef<'_, c32> = col_mean.coerce();
+
+            let mat = unsafe {
+                mat::from_raw_parts::<f32>(
+                    mat.as_ptr() as *const f32,
+                    2 * m,
+                    mat.ncols(),
+                    1,
+                    mat.col_stride() * 2,
+                )
+            };
+            let col_mean =
+                unsafe { col::from_raw_parts::<f32>(col_mean.as_ptr() as *const f32, 2 * m, 1) };
+
+            col_varm_col_major_real::<f32>(tmp.as_mut(), mat, col_mean);
+            for i in 0..m {
+                out.write(i, tmp.read(2 * i) + tmp.read(2 * i + 1));
+            }
+        } else if coe::is_same::<E, c64>() {
+            let m = mat.nrows();
+
+            let mut tmp = Col::<f64>::zeros(2 * m);
+            let mut out: ColMut<'_, f64> = out.coerce();
+            let mat: MatRef<'_, c64> = mat.coerce();
+            let col_mean: ColRef<'_, c64> = col_mean.coerce();
+
+            let mat = unsafe {
+                mat::from_raw_parts::<f64>(
+                    mat.as_ptr() as *const f64,
+                    2 * m,
+                    mat.ncols(),
+                    1,
+                    mat.col_stride() * 2,
+                )
+            };
+            let col_mean =
+                unsafe { col::from_raw_parts::<f64>(col_mean.as_ptr() as *const f64, 2 * m, 1) };
+
+            col_varm_col_major_real::<f64>(tmp.as_mut(), mat, col_mean);
+            for i in 0..m {
+                out.write(i, tmp.read(2 * i) + tmp.read(2 * i + 1));
+            }
+        } else {
+            panic!()
+        }
     } else {
         let n = mat.ncols();
         let one_n1 = from_usize::<E::Real>(n - 1).faer_inv();
@@ -1443,7 +1748,16 @@ fn row_varm_propagate<E: ComplexField>(
 }
 
 fn col_mean_ignore<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
+    let mut mat = mat;
     let mut out = out;
+    if mat.col_stride() < 0 {
+        mat = mat.reverse_cols();
+    };
+    if mat.row_stride() < 0 {
+        mat = mat.reverse_rows();
+        out = out.reverse_rows_mut();
+    };
+
     if mat.ncols() == 0 {
         out.fill(E::faer_nan());
         return;
@@ -1473,13 +1787,72 @@ fn col_mean_ignore<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
         let mut valid_count = vec![0usize; m];
 
         out.fill_zero();
-        for j in 0..n {
-            for i in 0..m {
-                let elem = unsafe { mat.read_unchecked(i, j) };
-                let is_nan = elem.faer_is_nan();
-                valid_count[i] += (!is_nan) as usize;
-                let acc = unsafe { out.read_unchecked(i) };
-                unsafe { out.write_unchecked(i, if is_nan { acc } else { acc.faer_add(elem) }) };
+        if mat.row_stride() == 1 && out.row_stride() == 1 {
+            struct Impl<'a, E: ComplexField> {
+                out: ColMut<'a, E>,
+                mat: MatRef<'a, E>,
+                valid_count: &'a mut [usize],
+            }
+
+            impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    _ = simd;
+                    let Self {
+                        mut out,
+                        mat,
+                        valid_count,
+                    } = self;
+
+                    for j in 0..mat.ncols() {
+                        let col = mat.col(j);
+                        if col.row_stride() != 1 {
+                            unsafe { core::hint::unreachable_unchecked() };
+                        }
+                        if out.row_stride() != 1 {
+                            unsafe { core::hint::unreachable_unchecked() };
+                        }
+
+                        for i in 0..mat.nrows() {
+                            let elem = unsafe { col.read_unchecked(i) };
+                            let is_nan = elem.faer_is_nan();
+                            *unsafe { valid_count.get_unchecked_mut(i) } += (!is_nan) as usize;
+                            let acc = unsafe { out.read_unchecked(i) };
+                            unsafe {
+                                out.write_unchecked(
+                                    i,
+                                    if is_nan {
+                                        acc.faer_add(E::faer_zero())
+                                    } else {
+                                        acc.faer_add(elem)
+                                    },
+                                )
+                            };
+                        }
+                    }
+                }
+            }
+
+            E::Simd::default().dispatch(Impl {
+                out: out.rb_mut(),
+                mat,
+                valid_count: &mut valid_count,
+            })
+        } else {
+            for j in 0..n {
+                let col = mat.col(j);
+
+                for i in 0..m {
+                    let elem = unsafe { col.read_unchecked(i) };
+                    let is_nan = elem.faer_is_nan();
+                    *unsafe { valid_count.get_unchecked_mut(i) } += (!is_nan) as usize;
+                    let acc = unsafe { out.read_unchecked(i) };
+                    unsafe {
+                        out.write_unchecked(i, if is_nan { acc } else { acc.faer_add(elem) })
+                    };
+                }
             }
         }
 
@@ -1540,23 +1913,85 @@ fn col_varm_ignore<E: ComplexField>(
         let mut valid_count = vec![0usize; m];
 
         out.fill_zero();
-        for j in 0..n {
-            for i in 0..m {
-                let elem = unsafe { mat.read_unchecked(i, j) };
-                let diff = elem.faer_sub(unsafe { col_mean.read_unchecked(i) });
-                let is_nan = elem.faer_is_nan();
-                valid_count[i] += (!is_nan) as usize;
-                let acc = unsafe { out.read_unchecked(i) };
-                unsafe {
-                    out.write_unchecked(
-                        i,
-                        if is_nan {
-                            acc
-                        } else {
-                            acc.faer_add(diff.faer_abs2())
-                        },
-                    )
-                };
+        if mat.row_stride() == 1 && out.row_stride() == 1 && col_mean.row_stride() == 1 {
+            struct Impl<'a, E: ComplexField> {
+                out: ColMut<'a, E::Real>,
+                mat: MatRef<'a, E>,
+                col_mean: ColRef<'a, E>,
+                valid_count: &'a mut [usize],
+            }
+
+            impl<E: ComplexField> pulp::WithSimd for Impl<'_, E> {
+                type Output = ();
+
+                #[inline(always)]
+                fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
+                    _ = simd;
+                    let Self {
+                        mut out,
+                        mat,
+                        col_mean,
+                        valid_count,
+                    } = self;
+
+                    for j in 0..mat.ncols() {
+                        let col = mat.col(j);
+                        if col.row_stride() != 1 {
+                            unsafe { core::hint::unreachable_unchecked() };
+                        }
+                        if col_mean.row_stride() != 1 {
+                            unsafe { core::hint::unreachable_unchecked() };
+                        }
+                        if out.row_stride() != 1 {
+                            unsafe { core::hint::unreachable_unchecked() };
+                        }
+
+                        for i in 0..mat.nrows() {
+                            let elem = unsafe { col.read_unchecked(i) };
+                            let diff = elem.faer_sub(unsafe { col_mean.read_unchecked(i) });
+                            let is_nan = elem.faer_is_nan();
+                            *unsafe { valid_count.get_unchecked_mut(i) } += (!is_nan) as usize;
+                            let acc = unsafe { out.read_unchecked(i) };
+                            unsafe {
+                                out.write_unchecked(
+                                    i,
+                                    if is_nan {
+                                        acc
+                                    } else {
+                                        acc.faer_add(diff.faer_abs2())
+                                    },
+                                )
+                            };
+                        }
+                    }
+                }
+            }
+
+            E::Simd::default().dispatch(Impl {
+                out: out.rb_mut(),
+                mat,
+                col_mean,
+                valid_count: &mut valid_count,
+            })
+        } else {
+            for j in 0..n {
+                for i in 0..m {
+                    let elem = unsafe { mat.read_unchecked(i, j) };
+                    let diff = elem.faer_sub(unsafe { col_mean.read_unchecked(i) });
+                    let is_nan = elem.faer_is_nan();
+                    *unsafe { valid_count.get_unchecked_mut(i) } += (!is_nan) as usize;
+                    let acc = unsafe { out.read_unchecked(i) };
+                    unsafe {
+                        out.write_unchecked(
+                            i,
+                            if is_nan {
+                                acc
+                            } else {
+                                acc.faer_add(diff.faer_abs2())
+                            },
+                        )
+                    };
+                }
             }
         }
 
