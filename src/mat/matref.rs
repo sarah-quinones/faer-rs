@@ -147,7 +147,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
     }
 
     #[inline(always)]
-    unsafe fn unchecked_ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_unchecked(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         let offset = crate::utils::unchecked_add(
             crate::utils::unchecked_mul(row, self.inner.row_stride),
             crate::utils::unchecked_mul(col, self.inner.col_stride),
@@ -160,11 +161,8 @@ impl<'a, E: Entity> MatRef<'a, E> {
     }
 
     #[inline(always)]
-    pub(crate) unsafe fn overflowing_ptr_at(
-        self,
-        row: usize,
-        col: usize,
-    ) -> GroupFor<E, *const E::Unit> {
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
             let offset = (cond as usize).wrapping_neg() as isize
@@ -191,7 +189,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[track_caller]
     pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
-        self.unchecked_ptr_at(row, col)
+        self.ptr_at_unchecked(row, col)
     }
 
     /// Splits the matrix horizontally and vertically at the given indices into four corners and
@@ -471,6 +469,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline(always)]
+    #[must_use]
     pub fn adjoint(self) -> MatRef<'a, E::Conj>
     where
         E: Conjugate,
@@ -481,6 +480,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// Returns a view over the canonical representation of `self`, as well as a flag declaring
     /// whether `self` is implicitly conjugated or not.
     #[inline(always)]
+    #[must_use]
     pub fn canonicalize(self) -> (MatRef<'a, E::Canonical>, Conj)
     where
         E: Conjugate,
@@ -528,7 +528,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let row_stride = self.row_stride().wrapping_neg();
         let col_stride = self.col_stride();
 
-        let ptr = unsafe { self.unchecked_ptr_at(nrows.saturating_sub(1), 0) };
+        let ptr = unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1), 0) };
         unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
@@ -552,7 +552,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let ncols = self.ncols();
         let row_stride = self.row_stride();
         let col_stride = self.col_stride().wrapping_neg();
-        let ptr = unsafe { self.unchecked_ptr_at(0, ncols.saturating_sub(1)) };
+        let ptr = unsafe { self.ptr_at_unchecked(0, ncols.saturating_sub(1)) };
         unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
@@ -578,7 +578,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let col_stride = -self.col_stride();
 
         let ptr =
-            unsafe { self.unchecked_ptr_at(nrows.saturating_sub(1), ncols.saturating_sub(1)) };
+            unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1), ncols.saturating_sub(1)) };
         unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
     }
 
@@ -1060,25 +1060,6 @@ impl<'a, E: Entity> MatRef<'a, E> {
         self.transpose()
             .par_col_chunks(chunk_size)
             .map(|chunk| chunk.transpose())
-    }
-
-    /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
-    /// with each having at most `chunk_size` rows.
-    ///
-    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
-    /// rows.
-    ///
-    /// Only available with the `rayon` feature.
-    #[cfg(feature = "rayon")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
-    #[inline]
-    #[track_caller]
-    #[deprecated = "replaced by `MatRef::par_row_chunks`"]
-    pub fn into_par_row_chunks(
-        self,
-        chunk_size: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
-        self.par_row_chunks(chunk_size)
     }
 }
 

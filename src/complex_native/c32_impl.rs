@@ -25,13 +25,13 @@ macro_rules! impl_from_num_complex {
 impl c32 {
     /// Create a new complex number.
     #[inline(always)]
-    pub fn new(re: f32, im: f32) -> Self {
+    pub const fn new(re: f32, im: f32) -> Self {
         Self { re, im }
     }
 
     /// Construct the imaginary number.
     #[inline(always)]
-    pub fn i() -> Self {
+    pub const fn i() -> Self {
         Self::new(0.0, 1.0)
     }
 
@@ -57,13 +57,13 @@ impl c32 {
 
     /// Returns the real part of the complex number.
     #[inline(always)]
-    pub fn re(self) -> f32 {
+    pub const fn re(self) -> f32 {
         self.re
     }
 
     /// Returns the imaginary part of the complex number.
     #[inline(always)]
-    pub fn im(self) -> f32 {
+    pub const fn im(self) -> f32 {
         self.im
     }
 

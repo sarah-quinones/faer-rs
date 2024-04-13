@@ -135,7 +135,8 @@ impl<'a, E: Entity> ColRef<'a, E> {
     }
 
     #[inline(always)]
-    unsafe fn unchecked_ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_unchecked(self, row: usize) -> GroupFor<E, *const E::Unit> {
         let offset = crate::utils::unchecked_mul(row, self.inner.stride);
         E::faer_map(
             self.as_ptr(),
@@ -145,7 +146,8 @@ impl<'a, E: Entity> ColRef<'a, E> {
     }
 
     #[inline(always)]
-    unsafe fn overflowing_ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = row != self.nrows();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -168,7 +170,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
     #[track_caller]
     pub unsafe fn ptr_inbounds_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
         debug_assert!(row < self.nrows());
-        self.unchecked_ptr_at(row)
+        self.ptr_at_unchecked(row)
     }
 
     /// Splits the column vector at the given index into two parts and
@@ -209,7 +211,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at(self, row: usize) -> (Self, Self) {
+    pub fn split_at(self, row: usize) -> (Self, Self) {
         assert!(row <= self.nrows());
         unsafe { self.split_at_unchecked(row) }
     }
@@ -356,7 +358,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
         let nrows = self.nrows();
         let row_stride = self.row_stride().wrapping_neg();
 
-        let ptr = unsafe { self.unchecked_ptr_at(nrows.saturating_sub(1)) };
+        let ptr = unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1)) };
         unsafe { Self::__from_raw_parts(ptr, nrows, row_stride) }
     }
 

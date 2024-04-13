@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     assert, debug_assert,
-    diag::DiagRef,
+    diag::{DiagMut, DiagRef},
     mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     utils::DivCeil,
 };
@@ -116,6 +116,7 @@ impl<E: Entity> Mat<E> {
     /// # Panics
     /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
     #[inline]
+    #[doc(alias = "eye")]
     pub fn identity(nrows: usize, ncols: usize) -> Self
     where
         E: ComplexField,
@@ -193,6 +194,80 @@ impl<E: Entity> Mat<E> {
     #[inline]
     pub fn col_stride(&self) -> isize {
         self.row_capacity() as isize
+    }
+
+    /// Returns raw pointers to the element at the given indices.
+    #[inline(always)]
+    pub fn ptr_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.as_ref().ptr_at(row, col)
+    }
+
+    /// Returns raw pointers to the element at the given indices.
+    #[inline(always)]
+    pub fn ptr_at_mut(&mut self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
+        self.as_mut().ptr_at_mut(row, col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_unchecked(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.as_ref().ptr_at_unchecked(row, col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_mut_unchecked(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> GroupFor<E, *mut E::Unit> {
+        self.as_mut().ptr_at_mut_unchecked(row, col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.as_ref().overflowing_ptr_at(row, col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at_mut(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> GroupFor<E, *mut E::Unit> {
+        self.as_mut().overflowing_ptr_at_mut(row, col)
+    }
+
+    /// Returns raw pointers to the element at the given indices, assuming the provided indices
+    /// are within the matrix dimensions.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row < self.nrows()`.
+    /// * `col < self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn ptr_inbounds_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.as_ref().ptr_inbounds_at(row, col)
+    }
+
+    /// Returns raw pointers to the element at the given indices, assuming the provided indices
+    /// are within the matrix dimensions.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row < self.nrows()`.
+    /// * `col < self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn ptr_inbounds_at_mut(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> GroupFor<E, *mut E::Unit> {
+        self.as_mut().ptr_inbounds_at_mut(row, col)
     }
 
     #[cold]
@@ -401,22 +476,6 @@ impl<E: Entity> Mat<E> {
         )
     }
 
-    /// Returns a reference to a slice over the column at the given index.
-    #[inline]
-    #[track_caller]
-    #[deprecated = "replaced by `Mat::col_as_slice`"]
-    pub fn col_ref(&self, col: usize) -> GroupFor<E, &[E::Unit]> {
-        self.col_as_slice(col)
-    }
-
-    /// Returns a mutable reference to a slice over the column at the given index.
-    #[inline]
-    #[track_caller]
-    #[deprecated = "replaced by `Mat::col_as_slice_mut`"]
-    pub fn col_mut(&mut self, col: usize) -> GroupFor<E, &mut [E::Unit]> {
-        self.col_as_slice_mut(col)
-    }
-
     /// Returns a view over the matrix.
     #[inline]
     pub fn as_ref(&self) -> MatRef<'_, E> {
@@ -443,6 +502,214 @@ impl<E: Entity> Mat<E> {
                 self.col_stride(),
             )
         }
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(&self) -> MatMut<'_, E> {
+        self.as_ref().const_cast()
+    }
+
+    /// Splits the matrix horizontally and vertically at the given indices into four corners and
+    /// returns an array of each submatrix, in the following order:
+    /// * top left.
+    /// * top right.
+    /// * bottom left.
+    /// * bottom right.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row <= self.nrows()`.
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_unchecked(
+        &self,
+        row: usize,
+        col: usize,
+    ) -> (MatRef<'_, E>, MatRef<'_, E>, MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at_unchecked(row, col)
+    }
+
+    /// Splits the matrix horizontally and vertically at the given indices into four corners and
+    /// returns an array of each submatrix, in the following order:
+    /// * top left.
+    /// * top right.
+    /// * bottom left.
+    /// * bottom right.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row <= self.nrows()`.
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at(
+        &self,
+        row: usize,
+        col: usize,
+    ) -> (MatRef<'_, E>, MatRef<'_, E>, MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at(row, col)
+    }
+
+    /// Splits the matrix horizontally and vertically at the given indices into four corners and
+    /// returns an array of each submatrix, in the following order:
+    /// * top left.
+    /// * top right.
+    /// * bottom left.
+    /// * bottom right.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row <= self.nrows()`.
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_mut_unchecked(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> (MatMut<'_, E>, MatMut<'_, E>, MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_mut_unchecked(row, col)
+    }
+
+    /// Splits the matrix horizontally and vertically at the given indices into four corners and
+    /// returns an array of each submatrix, in the following order:
+    /// * top left.
+    /// * top right.
+    /// * bottom left.
+    /// * bottom right.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row <= self.nrows()`.
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_mut(
+        &mut self,
+        row: usize,
+        col: usize,
+    ) -> (MatMut<'_, E>, MatMut<'_, E>, MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_mut(row, col)
+    }
+
+    /// Splits the matrix horizontally at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * top.
+    /// * bottom.
+    ///
+    /// # Safety
+    /// The behavior is undefined if the following condition is violated:
+    /// * `row <= self.nrows()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_row_unchecked(&self, row: usize) -> (MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at_row_unchecked(row)
+    }
+
+    /// Splits the matrix horizontally at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * top.
+    /// * bottom.
+    ///
+    /// # Panics
+    /// The function panics if the following condition is violated:
+    /// * `row <= self.nrows()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_row(&self, row: usize) -> (MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at_row(row)
+    }
+
+    /// Splits the matrix horizontally at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * top.
+    /// * bottom.
+    ///
+    /// # Safety
+    /// The behavior is undefined if the following condition is violated:
+    /// * `row <= self.nrows()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_row_mut_unchecked(
+        &mut self,
+        row: usize,
+    ) -> (MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_row_mut_unchecked(row)
+    }
+
+    /// Splits the matrix horizontally at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * top.
+    /// * bottom.
+    ///
+    /// # Panics
+    /// The function panics if the following condition is violated:
+    /// * `row <= self.nrows()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_row_mut(&mut self, row: usize) -> (MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_row_mut(row)
+    }
+
+    /// Splits the matrix vertically at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * left.
+    /// * right.
+    ///
+    /// # Safety
+    /// The behavior is undefined if the following condition is violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_col_unchecked(&self, col: usize) -> (MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at_col_unchecked(col)
+    }
+
+    /// Splits the matrix vertically at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * left.
+    /// * right.
+    ///
+    /// # Panics
+    /// The function panics if the following condition is violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_col(&self, col: usize) -> (MatRef<'_, E>, MatRef<'_, E>) {
+        self.as_ref().split_at_col(col)
+    }
+
+    /// Splits the matrix vertically at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * left.
+    /// * right.
+    ///
+    /// # Safety
+    /// The behavior is undefined if the following condition is violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_col_mut_unchecked(
+        &mut self,
+        col: usize,
+    ) -> (MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_col_mut_unchecked(col)
+    }
+
+    /// Splits the matrix vertically at the given row into two parts and returns an array of
+    /// each submatrix, in the following order:
+    /// * left.
+    /// * right.
+    ///
+    /// # Panics
+    /// The function panics if the following condition is violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn split_at_col_mut(&mut self, col: usize) -> (MatMut<'_, E>, MatMut<'_, E>) {
+        self.as_mut().split_at_col_mut(col)
     }
 
     /// Returns references to the element at the given indices, or submatrices if either `row` or
@@ -589,6 +856,72 @@ impl<E: Entity> Mat<E> {
         self.as_mut().write(row, col, value);
     }
 
+    /// Copies the values from the lower triangular part of `other` into the lower triangular
+    /// part of `self`. The diagonal part is included.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `self.nrows() == other.nrows()`.
+    /// * `self.ncols() == other.ncols()`.
+    /// * `self.nrows() == self.ncols()`.
+    #[track_caller]
+    pub fn copy_from_triangular_lower<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
+        self.as_mut().copy_from_triangular_lower(other)
+    }
+
+    /// Copies the values from the lower triangular part of `other` into the lower triangular
+    /// part of `self`. The diagonal part is excluded.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `self.nrows() == other.nrows()`.
+    /// * `self.ncols() == other.ncols()`.
+    /// * `self.nrows() == self.ncols()`.
+    #[track_caller]
+    pub fn copy_from_strict_triangular_lower<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
+        self.as_mut().copy_from_strict_triangular_lower(other)
+    }
+
+    /// Copies the values from the upper triangular part of `other` into the upper triangular
+    /// part of `self`. The diagonal part is included.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `self.nrows() == other.nrows()`.
+    /// * `self.ncols() == other.ncols()`.
+    /// * `self.nrows() == self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn copy_from_triangular_upper<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
+        self.as_mut().copy_from_triangular_upper(other)
+    }
+
+    /// Copies the values from the upper triangular part of `other` into the upper triangular
+    /// part of `self`. The diagonal part is excluded.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `self.nrows() == other.nrows()`.
+    /// * `self.ncols() == other.ncols()`.
+    /// * `self.nrows() == self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn copy_from_strict_triangular_upper<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE>,
+    ) {
+        self.as_mut().copy_from_strict_triangular_upper(other)
+    }
+
     /// Copies the values from `other` into `self`.
     #[inline(always)]
     #[track_caller]
@@ -630,12 +963,21 @@ impl<E: Entity> Mat<E> {
 
     /// Returns a view over the transpose of `self`.
     #[inline]
+    #[must_use]
     pub fn transpose(&self) -> MatRef<'_, E> {
         self.as_ref().transpose()
     }
 
+    /// Returns a view over the transpose of `self`.
+    #[inline]
+    #[must_use]
+    pub fn transpose_mut(&mut self) -> MatMut<'_, E> {
+        self.as_mut().transpose_mut()
+    }
+
     /// Returns a view over the conjugate of `self`.
     #[inline]
+    #[must_use]
     pub fn conjugate(&self) -> MatRef<'_, E::Conj>
     where
         E: Conjugate,
@@ -643,8 +985,19 @@ impl<E: Entity> Mat<E> {
         self.as_ref().conjugate()
     }
 
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    #[must_use]
+    pub fn conjugate_mut(&mut self) -> MatMut<'_, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.as_mut().conjugate_mut()
+    }
+
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
+    #[must_use]
     pub fn adjoint(&self) -> MatRef<'_, E::Conj>
     where
         E: Conjugate,
@@ -652,10 +1005,607 @@ impl<E: Entity> Mat<E> {
         self.as_ref().adjoint()
     }
 
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline]
+    #[must_use]
+    pub fn adjoint_mut(&mut self) -> MatMut<'_, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.as_mut().adjoint_mut()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize(&self) -> (MatRef<'_, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        self.as_ref().canonicalize()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize_mut(&mut self) -> (MatMut<'_, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        self.as_mut().canonicalize_mut()
+    }
+
+    /// Returns a view over the `self`, with the rows in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed_rows = view.reverse_rows();
+    ///
+    /// let expected = mat![[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]];
+    /// assert_eq!(expected.as_ref(), reversed_rows);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows(&self) -> MatRef<'_, E> {
+        self.as_ref().reverse_rows()
+    }
+
+    /// Returns a view over the `self`, with the rows in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_mut();
+    /// let reversed_rows = view.reverse_rows_mut();
+    ///
+    /// let mut expected = mat![[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]];
+    /// assert_eq!(expected.as_mut(), reversed_rows);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_mut(&mut self) -> MatMut<'_, E> {
+        self.as_mut().reverse_rows_mut()
+    }
+
+    /// Returns a view over the `self`, with the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed_cols = view.reverse_cols();
+    ///
+    /// let expected = mat![[3.0, 2.0, 1.0], [6.0, 5.0, 4.0]];
+    /// assert_eq!(expected.as_ref(), reversed_cols);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_cols(&self) -> MatRef<'_, E> {
+        self.as_ref().reverse_cols()
+    }
+
+    /// Returns a view over the `self`, with the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_mut();
+    /// let reversed_cols = view.reverse_cols_mut();
+    ///
+    /// let mut expected = mat![[3.0, 2.0, 1.0], [6.0, 5.0, 4.0]];
+    /// assert_eq!(expected.as_mut(), reversed_cols);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_cols_mut(&mut self) -> MatMut<'_, E> {
+        self.as_mut().reverse_cols_mut()
+    }
+
+    /// Returns a view over the `self`, with the rows and the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed = view.reverse_rows_and_cols();
+    ///
+    /// let expected = mat![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]];
+    /// assert_eq!(expected.as_ref(), reversed);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_and_cols(&self) -> MatRef<'_, E> {
+        self.as_ref().reverse_rows_and_cols()
+    }
+
+    /// Returns a view over the `self`, with the rows and the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_mut();
+    /// let reversed = view.reverse_rows_and_cols_mut();
+    ///
+    /// let mut expected = mat![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]];
+    /// assert_eq!(expected.as_mut(), reversed);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_and_cols_mut(&mut self) -> MatMut<'_, E> {
+        self.as_mut().reverse_rows_and_cols_mut()
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn submatrix_unchecked(
+        &self,
+        row_start: usize,
+        col_start: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> MatRef<'_, E> {
+        self.as_ref()
+            .submatrix_unchecked(row_start, col_start, nrows, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn submatrix_mut_unchecked(
+        &mut self,
+        row_start: usize,
+        col_start: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> MatMut<'_, E> {
+        self.as_mut()
+            .submatrix_mut_unchecked(row_start, col_start, nrows, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let submatrix = view.submatrix(2, 1, 2, 2);
+    ///
+    /// let expected = mat![[7.0, 11.0], [8.0, 12.0f64]];
+    /// assert_eq!(expected.as_ref(), submatrix);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn submatrix(
+        &self,
+        row_start: usize,
+        col_start: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> MatRef<'_, E> {
+        self.as_ref().submatrix(row_start, col_start, nrows, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_mut();
+    /// let submatrix = view.submatrix_mut(2, 1, 2, 2);
+    ///
+    /// let mut expected = mat![[7.0, 11.0], [8.0, 12.0f64]];
+    /// assert_eq!(expected.as_mut(), submatrix);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn submatrix_mut(
+        &mut self,
+        row_start: usize,
+        col_start: usize,
+        nrows: usize,
+        ncols: usize,
+    ) -> MatMut<'_, E> {
+        self.as_mut()
+            .submatrix_mut(row_start, col_start, nrows, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subrows_unchecked(&self, row_start: usize, nrows: usize) -> MatRef<'_, E> {
+        self.as_ref().subrows_unchecked(row_start, nrows)
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subrows_mut_unchecked(
+        &mut self,
+        row_start: usize,
+        nrows: usize,
+    ) -> MatMut<'_, E> {
+        self.as_mut().subrows_mut_unchecked(row_start, nrows)
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let subrows = view.subrows(1, 2);
+    ///
+    /// let expected = mat![[2.0, 6.0, 10.0], [3.0, 7.0, 11.0],];
+    /// assert_eq!(expected.as_ref(), subrows);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subrows(&self, row_start: usize, nrows: usize) -> MatRef<'_, E> {
+        self.as_ref().subrows(row_start, nrows)
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_mut();
+    /// let subrows = view.subrows_mut(1, 2);
+    ///
+    /// let mut expected = mat![[2.0, 6.0, 10.0], [3.0, 7.0, 11.0],];
+    /// assert_eq!(expected.as_mut(), subrows);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subrows_mut(&mut self, row_start: usize, nrows: usize) -> MatMut<'_, E> {
+        self.as_mut().subrows_mut(row_start, nrows)
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subcols_unchecked(&self, col_start: usize, ncols: usize) -> MatRef<'_, E> {
+        self.as_ref().subcols_unchecked(col_start, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subcols_mut_unchecked(
+        &mut self,
+        col_start: usize,
+        ncols: usize,
+    ) -> MatMut<'_, E> {
+        self.as_mut().subcols_mut_unchecked(col_start, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let subcols = view.subcols(2, 1);
+    ///
+    /// let expected = mat![[9.0], [10.0], [11.0], [12.0f64]];
+    /// assert_eq!(expected.as_ref(), subcols);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols(&self, col_start: usize, ncols: usize) -> MatRef<'_, E> {
+        self.as_ref().subcols(col_start, ncols)
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_mut();
+    /// let subcols = view.subcols_mut(2, 1);
+    ///
+    /// let mut expected = mat![[9.0], [10.0], [11.0], [12.0f64]];
+    /// assert_eq!(expected.as_mut(), subcols);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols_mut(&mut self, col_start: usize, ncols: usize) -> MatMut<'_, E> {
+        self.as_mut().subcols_mut(col_start, ncols)
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Safety
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn row_unchecked(&self, row_idx: usize) -> RowRef<'_, E> {
+        self.as_ref().row_unchecked(row_idx)
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Safety
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn row_mut_unchecked(&mut self, row_idx: usize) -> RowMut<'_, E> {
+        self.as_mut().row_mut_unchecked(row_idx)
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn row(&self, row_idx: usize) -> RowRef<'_, E> {
+        self.as_ref().row(row_idx)
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn row_mut(&mut self, row_idx: usize) -> RowMut<'_, E> {
+        self.as_mut().row_mut(row_idx)
+    }
+
+    /// Returns views over the rows at the given indices.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx0 < self.nrows()`.
+    /// * `row_idx1 < self.nrows()`.
+    /// * `row_idx0 == row_idx1`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn two_rows_mut(
+        &mut self,
+        row_idx0: usize,
+        row_idx1: usize,
+    ) -> (RowMut<'_, E>, RowMut<'_, E>) {
+        self.as_mut().two_rows_mut(row_idx0, row_idx1)
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn col_unchecked(&self, col_idx: usize) -> ColRef<'_, E> {
+        self.as_ref().col_unchecked(col_idx)
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn col_mut_unchecked(&mut self, col_idx: usize) -> ColMut<'_, E> {
+        self.as_mut().col_mut_unchecked(col_idx)
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn col(&self, col_idx: usize) -> ColRef<'_, E> {
+        self.as_ref().col(col_idx)
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn col_mut(&mut self, col_idx: usize) -> ColMut<'_, E> {
+        self.as_mut().col_mut(col_idx)
+    }
+
+    /// Returns views over the columns at the given indices.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_idx0 < self.ncols()`.
+    /// * `col_idx1 < self.ncols()`.
+    /// * `col_idx0 == col_idx1`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn two_cols_mut(
+        &mut self,
+        col_idx0: usize,
+        col_idx1: usize,
+    ) -> (ColMut<'_, E>, ColMut<'_, E>) {
+        self.as_mut().two_cols_mut(col_idx0, col_idx1)
+    }
+
+    /// Given a matrix with a single column, returns an object that interprets
+    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
+    #[track_caller]
+    #[inline(always)]
+    pub fn column_vector_as_diagonal(&self) -> DiagRef<'_, E> {
+        self.as_ref().column_vector_as_diagonal()
+    }
+
+    /// Given a matrix with a single column, returns an object that interprets
+    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
+    #[track_caller]
+    #[inline(always)]
+    pub fn column_vector_as_diagonal_mut(&mut self) -> DiagMut<'_, E> {
+        self.as_mut().column_vector_as_diagonal_mut()
+    }
+
     /// Returns a view over the diagonal of the matrix.
     #[inline]
     pub fn diagonal(&self) -> DiagRef<'_, E> {
         self.as_ref().diagonal()
+    }
+
+    /// Returns a view over the diagonal of the matrix.
+    #[inline]
+    pub fn diagonal_mut(&mut self) -> DiagMut<'_, E> {
+        self.as_mut().diagonal_mut()
     }
 
     /// Returns an owning [`Mat`] of the data
@@ -869,6 +1819,34 @@ impl<E: Entity> Mat<E> {
         chunk_size: usize,
     ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
         self.as_mut().par_row_chunks_mut(chunk_size)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col(&self, j: usize) -> GroupFor<E, &[E::Unit]> {
+        self.as_ref().try_get_contiguous_col(j)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col_mut(&mut self, j: usize) -> GroupFor<E, &mut [E::Unit]> {
+        self.as_mut().try_get_contiguous_col_mut(j)
+    }
+}
+
+impl<E: RealField> Mat<num_complex::Complex<E>> {
+    /// Returns the real and imaginary components of `self`.
+    #[inline(always)]
+    pub fn real_imag(&self) -> num_complex::Complex<MatRef<'_, E>> {
+        self.as_ref().real_imag()
+    }
+
+    /// Returns the real and imaginary components of `self`.
+    #[inline(always)]
+    pub fn real_imag_mut(&mut self) -> num_complex::Complex<MatMut<'_, E>> {
+        self.as_mut().real_imag_mut()
     }
 }
 

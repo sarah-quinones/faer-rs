@@ -58,13 +58,13 @@ impl c64 {
 
     /// Returns the real part of the complex number.
     #[inline(always)]
-    pub fn re(self) -> f64 {
+    pub const fn re(self) -> f64 {
         self.re
     }
 
     /// Returns the imaginary part of the complex number.
     #[inline(always)]
-    pub fn im(self) -> f64 {
+    pub const fn im(self) -> f64 {
         self.im
     }
 

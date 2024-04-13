@@ -1,5 +1,5 @@
 use super::*;
-use crate::col::ColMut;
+use crate::col::{ColMut, ColRef};
 
 /// Diagonal mutable matrix view.
 pub struct DiagMut<'a, E: Entity> {
@@ -7,6 +7,12 @@ pub struct DiagMut<'a, E: Entity> {
 }
 
 impl<'a, E: Entity> DiagMut<'a, E> {
+    /// Returns the diagonal as a column vector view.
+    #[inline(always)]
+    pub fn column_vector(self) -> ColRef<'a, E> {
+        self.into_const().column_vector()
+    }
+
     /// Returns the diagonal as a mutable column vector view.
     #[inline(always)]
     pub fn column_vector_mut(self) -> ColMut<'a, E> {

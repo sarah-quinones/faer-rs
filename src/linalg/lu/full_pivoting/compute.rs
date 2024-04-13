@@ -12,7 +12,6 @@ use coe::Coerce;
 use core::slice;
 use dyn_stack::{PodStack, StackReq};
 use faer_entity::*;
-use paste::paste;
 use pulp::{cast_lossy, Simd};
 use reborrow::*;
 
@@ -433,145 +432,212 @@ fn update_and_best_in_col<E: ComplexField, S: Simd>(
     )
 }
 
-macro_rules! best_in_col_simd {
-    ($scalar: ident, $real_scalar: ident, $uint: ident) => {
-        paste! {
-            #[inline(always)]
-            fn [<best_in_col_ $scalar _generic>]<S: pulp::Simd>(
-                simd: S,
-                iota: S::[<$uint s>],
-                data: &[$scalar],
-            ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
-                let (head, tail) = S::[<$scalar s_as_simd>](bytemuck::cast_slice(data));
-
-                let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
-                let increment1 = simd.[<$uint s_splat>](lane_count as $uint);
-                let increment3 = simd.[<$uint s_splat>](3 * lane_count as $uint);
-
-                let mut best_value0 = simd.[<$real_scalar s_splat>](0.0);
-                let mut best_value1 = simd.[<$real_scalar s_splat>](0.0);
-                let mut best_value2 = simd.[<$real_scalar s_splat>](0.0);
-                let mut best_indices0 = simd.[<$uint s_splat>](0);
-                let mut best_indices1 = simd.[<$uint s_splat>](0);
-                let mut best_indices2 = simd.[<$uint s_splat>](0);
-                let mut indices0 = iota;
-                let mut indices1 = simd.[<$uint s_add>](indices0, increment1);
-                let mut indices2 = simd.[<$uint s_add>](indices1, increment1);
-
-                let (head3, tail3) = pulp::as_arrays::<3, _>(head);
-
-                for &data in head3.clone() {
-                    (best_value0, best_indices0) =
-                        [<best_ $scalar>](simd, best_value0, best_indices0, data[0], indices0);
-                    (best_value1, best_indices1) =
-                        [<best_ $scalar>](simd, best_value1, best_indices1, data[1], indices1);
-                    (best_value2, best_indices2) =
-                        [<best_ $scalar>](simd, best_value2, best_indices2, data[2], indices2);
-                    indices0 = simd.[<$uint s_add>](indices0, increment3);
-                    indices1 = simd.[<$uint s_add>](indices1, increment3);
-                    indices2 = simd.[<$uint s_add>](indices2, increment3);
-                }
-
-                (best_value0, best_indices0) =
-                    [<best_ $real_scalar>](simd, best_value0, best_indices0, best_value1, best_indices1);
-                (best_value0, best_indices0) =
-                    [<best_ $real_scalar>](simd, best_value0, best_indices0, best_value2, best_indices2);
-
-                for &data in tail3 {
-                    (best_value0, best_indices0) = [<best_ $scalar>](simd, best_value0, best_indices0, data, indices0);
-                    indices0 = simd.[<$uint s_add>](indices0, increment1);
-                }
-
-                (best_value0, best_indices0) = [<best_ $scalar>](
-                    simd,
-                    best_value0,
-                    best_indices0,
-                    simd.[<$scalar s_partial_load>](tail),
-                    indices0
-                );
-
-                (
-                    best_value0,
-                    best_indices0,
-                )
-            }
-
-            #[inline(always)]
-            fn [<update_and_best_in_col_ $scalar _generic>]<S: pulp::Simd>(
-                simd: S,
-                iota: S::[<$uint s>],
-                dst: &mut [$scalar],
-                lhs: &[$scalar],
-                rhs: $scalar,
-            ) -> (S::[<$real_scalar s>], S::[<$uint s>]) {
-                let lane_count = core::mem::size_of::<S::[<$scalar s>]>() / core::mem::size_of::<$scalar>();
-
-                let (dst_head, dst_tail) = S::[<$scalar s_as_mut_simd>](bytemuck::cast_slice_mut(dst));
-                let (lhs_head, lhs_tail) = S::[<$scalar s_as_simd>](bytemuck::cast_slice(lhs));
-
-                let increment1 = simd.[<$uint s_splat>](lane_count as $uint);
-                let increment2 = simd.[<$uint s_splat>](2 * lane_count as $uint);
-
-                let mut best_value0 = simd.[<$real_scalar s_splat>](0.0);
-                let mut best_value1 = simd.[<$real_scalar s_splat>](0.0);
-                let mut best_indices0 = simd.[<$uint s_splat>](0);
-                let mut best_indices1 = simd.[<$uint s_splat>](0);
-                let mut indices0 = simd.[<$uint s_add>](iota, simd.[<$uint s_splat>](0));
-                let mut indices1 = simd.[<$uint s_add>](indices0, increment1);
-
-                let (dst_head2, dst_tail2) = pulp::as_arrays_mut::<2, _>(dst_head);
-                let (lhs_head2, lhs_tail2) = pulp::as_arrays::<2, _>(lhs_head);
-
-                let rhs_v = simd.[<$scalar s_splat>](pulp::cast(rhs));
-                for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
-                    let new_dst0 = simd.[<$scalar s_mul_add_e>](*lhs0, rhs_v, *dst0);
-                    let new_dst1 = simd.[<$scalar s_mul_add_e>](*lhs1, rhs_v, *dst1);
-                    *dst0 = new_dst0;
-                    *dst1 = new_dst1;
-
-                    (best_value0, best_indices0) =
-                        [<best_ $scalar>](simd, best_value0, best_indices0, new_dst0, indices0);
-                    (best_value1, best_indices1) =
-                        [<best_ $scalar>](simd, best_value1, best_indices1, new_dst1, indices1);
-                    indices0 = simd.[<$uint s_add>](indices0, increment2);
-                    indices1 = simd.[<$uint s_add>](indices1, increment2);
-                }
-
-                (best_value0, best_indices0) =
-                    [<best_ $real_scalar>](simd, best_value0, best_indices0, best_value1, best_indices1);
-
-                for (dst, lhs) in dst_tail2
-                    .iter_mut()
-                    .zip(lhs_tail2)
-                {
-                    let new_dst = simd.[<$scalar s_mul_add_e>](*lhs, rhs_v, *dst);
-                    *dst = new_dst;
-                    (best_value0, best_indices0) =
-                        [<best_ $scalar>](simd, best_value0, best_indices0, new_dst, indices0);
-                    indices0 = simd.[<$uint s_add>](indices0, increment1);
-                }
-
-                {
-                    let new_dst = simd.[<$scalar s_mul_add_e>](
-                        simd.[<$scalar s_partial_load>](lhs_tail),
-                        rhs_v,
-                        simd.[<$scalar s_partial_load>](dst_tail),
-                    );
-                    simd.[<$scalar s_partial_store>](dst_tail, new_dst);
-                    (best_value0, best_indices0) =
-                        [<best_ $scalar>](simd, best_value0, best_indices0, new_dst, indices0);
-                }
-
-                (
-                    best_value0,
-                    best_indices0,
-                )
-            }
-        }
-    };
+#[inline(always)]
+fn best_in_col_c64_generic<S: pulp::Simd>(
+    simd: S,
+    iota: S::u64s,
+    data: &[c64],
+) -> (S::f64s, S::u64s) {
+    let (head, tail) = S::c64s_as_simd(bytemuck::cast_slice(data));
+    let lane_count = core::mem::size_of::<S::c64s>() / core::mem::size_of::<c64>();
+    let increment1 = simd.u64s_splat(lane_count as u64);
+    let increment3 = simd.u64s_splat(3 * lane_count as u64);
+    let mut best_value0 = simd.f64s_splat(0.0);
+    let mut best_value1 = simd.f64s_splat(0.0);
+    let mut best_value2 = simd.f64s_splat(0.0);
+    let mut best_indices0 = simd.u64s_splat(0);
+    let mut best_indices1 = simd.u64s_splat(0);
+    let mut best_indices2 = simd.u64s_splat(0);
+    let mut indices0 = iota;
+    let mut indices1 = simd.u64s_add(indices0, increment1);
+    let mut indices2 = simd.u64s_add(indices1, increment1);
+    let (head3, tail3) = pulp::as_arrays::<3, _>(head);
+    for &data in head3 {
+        (best_value0, best_indices0) =
+            best_c64(simd, best_value0, best_indices0, data[0], indices0);
+        (best_value1, best_indices1) =
+            best_c64(simd, best_value1, best_indices1, data[1], indices1);
+        (best_value2, best_indices2) =
+            best_c64(simd, best_value2, best_indices2, data[2], indices2);
+        indices0 = simd.u64s_add(indices0, increment3);
+        indices1 = simd.u64s_add(indices1, increment3);
+        indices2 = simd.u64s_add(indices2, increment3);
+    }
+    (best_value0, best_indices0) =
+        best_f64(simd, best_value0, best_indices0, best_value1, best_indices1);
+    (best_value0, best_indices0) =
+        best_f64(simd, best_value0, best_indices0, best_value2, best_indices2);
+    for &data in tail3 {
+        (best_value0, best_indices0) = best_c64(simd, best_value0, best_indices0, data, indices0);
+        indices0 = simd.u64s_add(indices0, increment1);
+    }
+    (best_value0, best_indices0) = best_c64(
+        simd,
+        best_value0,
+        best_indices0,
+        simd.c64s_partial_load(tail),
+        indices0,
+    );
+    (best_value0, best_indices0)
 }
-best_in_col_simd!(c64, f64, u64);
-best_in_col_simd!(c32, f32, u32);
+#[inline(always)]
+fn update_and_best_in_col_c64_generic<S: pulp::Simd>(
+    simd: S,
+    iota: S::u64s,
+    dst: &mut [c64],
+    lhs: &[c64],
+    rhs: c64,
+) -> (S::f64s, S::u64s) {
+    let lane_count = core::mem::size_of::<S::c64s>() / core::mem::size_of::<c64>();
+    let (dst_head, dst_tail) = S::c64s_as_mut_simd(bytemuck::cast_slice_mut(dst));
+    let (lhs_head, lhs_tail) = S::c64s_as_simd(bytemuck::cast_slice(lhs));
+    let increment1 = simd.u64s_splat(lane_count as u64);
+    let increment2 = simd.u64s_splat(2 * lane_count as u64);
+    let mut best_value0 = simd.f64s_splat(0.0);
+    let mut best_value1 = simd.f64s_splat(0.0);
+    let mut best_indices0 = simd.u64s_splat(0);
+    let mut best_indices1 = simd.u64s_splat(0);
+    let mut indices0 = simd.u64s_add(iota, simd.u64s_splat(0));
+    let mut indices1 = simd.u64s_add(indices0, increment1);
+    let (dst_head2, dst_tail2) = pulp::as_arrays_mut::<2, _>(dst_head);
+    let (lhs_head2, lhs_tail2) = pulp::as_arrays::<2, _>(lhs_head);
+    let rhs_v = simd.c64s_splat(pulp::cast(rhs));
+    for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
+        let new_dst0 = simd.c64s_mul_add_e(*lhs0, rhs_v, *dst0);
+        let new_dst1 = simd.c64s_mul_add_e(*lhs1, rhs_v, *dst1);
+        *dst0 = new_dst0;
+        *dst1 = new_dst1;
+        (best_value0, best_indices0) =
+            best_c64(simd, best_value0, best_indices0, new_dst0, indices0);
+        (best_value1, best_indices1) =
+            best_c64(simd, best_value1, best_indices1, new_dst1, indices1);
+        indices0 = simd.u64s_add(indices0, increment2);
+        indices1 = simd.u64s_add(indices1, increment2);
+    }
+    (best_value0, best_indices0) =
+        best_f64(simd, best_value0, best_indices0, best_value1, best_indices1);
+    for (dst, lhs) in dst_tail2.iter_mut().zip(lhs_tail2) {
+        let new_dst = simd.c64s_mul_add_e(*lhs, rhs_v, *dst);
+        *dst = new_dst;
+        (best_value0, best_indices0) =
+            best_c64(simd, best_value0, best_indices0, new_dst, indices0);
+        indices0 = simd.u64s_add(indices0, increment1);
+    }
+    {
+        let new_dst = simd.c64s_mul_add_e(
+            simd.c64s_partial_load(lhs_tail),
+            rhs_v,
+            simd.c64s_partial_load(dst_tail),
+        );
+        simd.c64s_partial_store(dst_tail, new_dst);
+        (best_value0, best_indices0) =
+            best_c64(simd, best_value0, best_indices0, new_dst, indices0);
+    }
+    (best_value0, best_indices0)
+}
+#[inline(always)]
+fn best_in_col_c32_generic<S: pulp::Simd>(
+    simd: S,
+    iota: S::u32s,
+    data: &[c32],
+) -> (S::f32s, S::u32s) {
+    let (head, tail) = S::c32s_as_simd(bytemuck::cast_slice(data));
+    let lane_count = core::mem::size_of::<S::c32s>() / core::mem::size_of::<c32>();
+    let increment1 = simd.u32s_splat(lane_count as u32);
+    let increment3 = simd.u32s_splat(3 * lane_count as u32);
+    let mut best_value0 = simd.f32s_splat(0.0);
+    let mut best_value1 = simd.f32s_splat(0.0);
+    let mut best_value2 = simd.f32s_splat(0.0);
+    let mut best_indices0 = simd.u32s_splat(0);
+    let mut best_indices1 = simd.u32s_splat(0);
+    let mut best_indices2 = simd.u32s_splat(0);
+    let mut indices0 = iota;
+    let mut indices1 = simd.u32s_add(indices0, increment1);
+    let mut indices2 = simd.u32s_add(indices1, increment1);
+    let (head3, tail3) = pulp::as_arrays::<3, _>(head);
+    for &data in head3 {
+        (best_value0, best_indices0) =
+            best_c32(simd, best_value0, best_indices0, data[0], indices0);
+        (best_value1, best_indices1) =
+            best_c32(simd, best_value1, best_indices1, data[1], indices1);
+        (best_value2, best_indices2) =
+            best_c32(simd, best_value2, best_indices2, data[2], indices2);
+        indices0 = simd.u32s_add(indices0, increment3);
+        indices1 = simd.u32s_add(indices1, increment3);
+        indices2 = simd.u32s_add(indices2, increment3);
+    }
+    (best_value0, best_indices0) =
+        best_f32(simd, best_value0, best_indices0, best_value1, best_indices1);
+    (best_value0, best_indices0) =
+        best_f32(simd, best_value0, best_indices0, best_value2, best_indices2);
+    for &data in tail3 {
+        (best_value0, best_indices0) = best_c32(simd, best_value0, best_indices0, data, indices0);
+        indices0 = simd.u32s_add(indices0, increment1);
+    }
+    (best_value0, best_indices0) = best_c32(
+        simd,
+        best_value0,
+        best_indices0,
+        simd.c32s_partial_load(tail),
+        indices0,
+    );
+    (best_value0, best_indices0)
+}
+#[inline(always)]
+fn update_and_best_in_col_c32_generic<S: pulp::Simd>(
+    simd: S,
+    iota: S::u32s,
+    dst: &mut [c32],
+    lhs: &[c32],
+    rhs: c32,
+) -> (S::f32s, S::u32s) {
+    let lane_count = core::mem::size_of::<S::c32s>() / core::mem::size_of::<c32>();
+    let (dst_head, dst_tail) = S::c32s_as_mut_simd(bytemuck::cast_slice_mut(dst));
+    let (lhs_head, lhs_tail) = S::c32s_as_simd(bytemuck::cast_slice(lhs));
+    let increment1 = simd.u32s_splat(lane_count as u32);
+    let increment2 = simd.u32s_splat(2 * lane_count as u32);
+    let mut best_value0 = simd.f32s_splat(0.0);
+    let mut best_value1 = simd.f32s_splat(0.0);
+    let mut best_indices0 = simd.u32s_splat(0);
+    let mut best_indices1 = simd.u32s_splat(0);
+    let mut indices0 = simd.u32s_add(iota, simd.u32s_splat(0));
+    let mut indices1 = simd.u32s_add(indices0, increment1);
+    let (dst_head2, dst_tail2) = pulp::as_arrays_mut::<2, _>(dst_head);
+    let (lhs_head2, lhs_tail2) = pulp::as_arrays::<2, _>(lhs_head);
+    let rhs_v = simd.c32s_splat(pulp::cast(rhs));
+    for ([dst0, dst1], [lhs0, lhs1]) in dst_head2.iter_mut().zip(lhs_head2) {
+        let new_dst0 = simd.c32s_mul_add_e(*lhs0, rhs_v, *dst0);
+        let new_dst1 = simd.c32s_mul_add_e(*lhs1, rhs_v, *dst1);
+        *dst0 = new_dst0;
+        *dst1 = new_dst1;
+        (best_value0, best_indices0) =
+            best_c32(simd, best_value0, best_indices0, new_dst0, indices0);
+        (best_value1, best_indices1) =
+            best_c32(simd, best_value1, best_indices1, new_dst1, indices1);
+        indices0 = simd.u32s_add(indices0, increment2);
+        indices1 = simd.u32s_add(indices1, increment2);
+    }
+    (best_value0, best_indices0) =
+        best_f32(simd, best_value0, best_indices0, best_value1, best_indices1);
+    for (dst, lhs) in dst_tail2.iter_mut().zip(lhs_tail2) {
+        let new_dst = simd.c32s_mul_add_e(*lhs, rhs_v, *dst);
+        *dst = new_dst;
+        (best_value0, best_indices0) =
+            best_c32(simd, best_value0, best_indices0, new_dst, indices0);
+        indices0 = simd.u32s_add(indices0, increment1);
+    }
+    {
+        let new_dst = simd.c32s_mul_add_e(
+            simd.c32s_partial_load(lhs_tail),
+            rhs_v,
+            simd.c32s_partial_load(dst_tail),
+        );
+        simd.c32s_partial_store(dst_tail, new_dst);
+        (best_value0, best_indices0) =
+            best_c32(simd, best_value0, best_indices0, new_dst, indices0);
+    }
+    (best_value0, best_indices0)
+}
 
 #[inline(always)]
 fn reduce2d<E: RealField>(

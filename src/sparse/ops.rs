@@ -144,7 +144,7 @@ pub fn binary_op_assign_into<I: Index, E: Entity, SrcE: Entity>(
         }
 
         for j in 0..n {
-            let (dst, dst_val) = dst.rb_mut().into_parts_mut();
+            let (dst, dst_val) = dst.rb_mut().parts_mut();
 
             let mut dst_val = SliceGroupMut::<E>::new(dst_val).subslice(dst.col_range(j));
             let src_val = SliceGroup::<SrcE>::new(src.values_of_col(j));
@@ -219,7 +219,7 @@ pub fn ternary_op_assign_into<I: Index, E: Entity, LhsE: Entity, RhsE: Entity>(
         }
 
         for j in 0..n {
-            let (dst, dst_val) = dst.rb_mut().into_parts_mut();
+            let (dst, dst_val) = dst.rb_mut().parts_mut();
 
             let mut dst_val = SliceGroupMut::<E>::new(dst_val).subslice(dst.col_range(j));
             let lhs_val = SliceGroup::<LhsE>::new(lhs.values_of_col(j));

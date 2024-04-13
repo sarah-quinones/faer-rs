@@ -2014,16 +2014,20 @@ where
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "llt")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         Cholesky::try_new(self.as_ref(), side)
     }
     /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "ldl")]
+    #[doc(alias = "ldlt")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         Lblt::new(self.as_ref(), side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
+    #[doc(alias = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         PartialPivLu::<E::Canonical>::new(self.as_ref())
     }
@@ -2055,6 +2059,7 @@ where
     /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed.
     #[track_caller]
+    #[doc(alias = "hermitian_eigendecomposition")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2110,6 +2115,7 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
+    #[doc(alias = "hermitian_eigenvalues")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,
@@ -2294,16 +2300,20 @@ where
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "llt")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
     /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "ldl")]
+    #[doc(alias = "ldlt")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
+    #[doc(alias = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
@@ -2335,6 +2345,7 @@ where
     /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed.
     #[track_caller]
+    #[doc(alias = "hermitian_eigendecomposition")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2367,6 +2378,7 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
+    #[doc(alias = "hermitian_eigenvalues")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,
@@ -2485,16 +2497,20 @@ where
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "llt")]
     pub fn cholesky(&self, side: Side) -> Result<Cholesky<E::Canonical>, CholeskyError> {
         self.as_ref().cholesky(side)
     }
     /// Returns the Bunch-Kaufman decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "ldl")]
+    #[doc(alias = "ldlt")]
     pub fn lblt(&self, side: Side) -> Lblt<E::Canonical> {
         self.as_ref().lblt(side)
     }
     /// Returns the LU decomposition of `self` with partial (row) pivoting.
     #[track_caller]
+    #[doc(alias = "lu")]
     pub fn partial_piv_lu(&self) -> PartialPivLu<E::Canonical> {
         self.as_ref().partial_piv_lu()
     }
@@ -2526,6 +2542,7 @@ where
     /// Returns the eigendecomposition of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed.
     #[track_caller]
+    #[doc(alias = "hermitian_eigendecomposition")]
     pub fn selfadjoint_eigendecomposition(
         &self,
         side: Side,
@@ -2558,6 +2575,7 @@ where
     /// Returns the eigenvalues of `self`, assuming it is self-adjoint. Only the provided
     /// side is accessed. The order of the eigenvalues is currently unspecified.
     #[track_caller]
+    #[doc(alias = "hermitian_eigenvalues")]
     pub fn selfadjoint_eigenvalues(
         &self,
         side: Side,

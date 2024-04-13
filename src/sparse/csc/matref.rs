@@ -244,7 +244,8 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
         }
     }
 
-    /// Returns a view over the conjugate of `self`.
+    /// Returns a view over the canonical view of `self`, along with whether it has been conjugated
+    /// or not.
     #[inline]
     pub fn canonicalize(self) -> (SparseColMatRef<'a, I, E::Canonical>, Conj)
     where
@@ -311,7 +312,7 @@ impl<'a, I: Index, E: Entity> SparseColMatRef<'a, I, E> {
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn into_parts(self) -> (SymbolicSparseColMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
+    pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
         (self.symbolic, self.values.into_inner())
     }
 

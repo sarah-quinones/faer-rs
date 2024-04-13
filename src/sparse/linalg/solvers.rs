@@ -613,6 +613,7 @@ impl<I: Index, E: ComplexField> SparseColMatRef<'_, I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         Cholesky::try_new_with_symbolic(
             SymbolicCholesky::try_new(self.symbolic(), side)?,
@@ -698,6 +699,7 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         let this = self.to_col_major()?;
         let this = this.as_ref();
@@ -769,6 +771,7 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         self.as_ref().sp_cholesky(side)
     }
@@ -830,6 +833,7 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         self.as_ref().sp_cholesky(side)
     }
@@ -890,6 +894,7 @@ impl<I: Index, E: ComplexField> SparseColMat<I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         self.as_ref().sp_cholesky(side)
     }
@@ -951,6 +956,7 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
 
     /// Returns the Cholesky decomposition of `self`. Only the provided side is accessed.
     #[track_caller]
+    #[doc(alias = "sp_llt")]
     pub fn sp_cholesky(&self, side: Side) -> Result<Cholesky<I, E>, CholeskyError> {
         self.as_ref().sp_cholesky(side)
     }

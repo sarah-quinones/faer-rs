@@ -137,6 +137,12 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
 
     /// Returns a view over the transpose of `self` in row-major format.
     #[inline]
+    pub fn transpose(self) -> SparseRowMatRef<'a, I, E> {
+        self.into_const().transpose()
+    }
+
+    /// Returns a view over the transpose of `self` in row-major format.
+    #[inline]
     pub fn transpose_mut(self) -> SparseRowMatMut<'a, I, E> {
         SparseRowMatMut {
             symbolic: SymbolicSparseRowMatRef {
@@ -148,6 +154,15 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
             },
             values: self.values,
         }
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline]
+    pub fn conjugate(self) -> SparseColMatRef<'a, I, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.into_const().conjugate()
     }
 
     /// Returns a view over the conjugate of `self`.
@@ -176,7 +191,18 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         }
     }
 
-    /// Returns a view over the conjugate of `self`.
+    /// Returns a view over the canonical view of `self`, along with whether it has been conjugated
+    /// or not.
+    #[inline]
+    pub fn canonicalize(self) -> (SparseColMatRef<'a, I, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        self.into_const().canonicalize()
+    }
+
+    /// Returns a view over the canonical view of `self`, along with whether it has been conjugated
+    /// or not.
     #[inline]
     pub fn canonicalize_mut(self) -> (SparseColMatMut<'a, I, E::Canonical>, Conj)
     where
@@ -211,6 +237,15 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline]
+    pub fn adjoint(self) -> SparseRowMatRef<'a, I, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.into_const().adjoint()
+    }
+
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline]
     pub fn adjoint_mut(self) -> SparseRowMatMut<'a, I, E::Conj>
     where
         E: Conjugate,
@@ -220,8 +255,25 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
 
     /// Returns the numerical values of the matrix.
     #[inline]
+    pub fn values(self) -> GroupFor<E, &'a [E::Unit]> {
+        self.into_const().values()
+    }
+
+    /// Returns the numerical values of the matrix.
+    #[inline]
     pub fn values_mut(self) -> GroupFor<E, &'a mut [E::Unit]> {
         self.values.into_inner()
+    }
+
+    /// Returns the numerical values of column `j` of the matrix.
+    ///
+    /// # Panics:
+    ///
+    /// Panics if `j >= ncols`.
+    #[inline]
+    #[track_caller]
+    pub fn values_of_col(self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
+        self.into_const().values_of_col(j)
     }
 
     /// Returns the numerical values of column `j` of the matrix.
@@ -244,7 +296,13 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn into_parts_mut(
+    pub fn parts(self) -> (SymbolicSparseColMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
+        self.into_const().parts()
+    }
+
+    /// Decomposes the matrix into the symbolic part and the numerical values.
+    #[inline]
+    pub fn parts_mut(
         self,
     ) -> (
         SymbolicSparseColMatRef<'a, I>,
@@ -396,6 +454,8 @@ impl<I: Index, E: ComplexField> SparseColMatMut<'_, I, E> {
     ///
     /// # Note
     /// The symbolic structure is not changed.
+    #[track_caller]
+    #[inline]
     pub fn fill_from_order_and_values(
         &mut self,
         order: &ValuesOrder<I>,

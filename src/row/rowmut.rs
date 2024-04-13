@@ -1,5 +1,9 @@
 use super::*;
-use crate::{assert, col::ColMut, debug_assert, mat, unzipped, zipped};
+use crate::{
+    assert,
+    col::{ColMut, ColRef},
+    debug_assert, mat, unzipped, zipped,
+};
 use core::mem::MaybeUninit;
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].
@@ -89,6 +93,12 @@ impl<'a, E: Entity> RowMut<'a, E> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
+    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+        self.into_const().as_ptr()
+    }
+
+    /// Returns pointers to the matrix data.
+    #[inline(always)]
     pub fn as_ptr_mut(self) -> GroupFor<E, *mut E::Unit> {
         E::faer_map(
             from_copy::<E, _>(self.inner.ptr),
@@ -103,12 +113,24 @@ impl<'a, E: Entity> RowMut<'a, E> {
         self.inner.stride
     }
 
+    /// Returns `self` as a matrix view.
+    #[inline(always)]
+    pub fn as_2d(self) -> MatRef<'a, E> {
+        self.into_const().as_2d()
+    }
+
     /// Returns `self` as a mutable matrix view.
     #[inline(always)]
     pub fn as_2d_mut(self) -> MatMut<'a, E> {
         let ncols = self.ncols();
         let col_stride = self.col_stride();
         unsafe { mat::from_raw_parts_mut(self.as_ptr_mut(), 1, ncols, isize::MAX, col_stride) }
+    }
+
+    /// Returns raw pointers to the element at the given index.
+    #[inline(always)]
+    pub fn ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.into_const().ptr_at(col)
     }
 
     /// Returns raw pointers to the element at the given index.
@@ -124,13 +146,53 @@ impl<'a, E: Entity> RowMut<'a, E> {
     }
 
     #[inline(always)]
-    unsafe fn ptr_at_mut_unchecked(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_unchecked(self, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.into_const().ptr_at_unchecked(col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn ptr_at_mut_unchecked(self, col: usize) -> GroupFor<E, *mut E::Unit> {
         let offset = crate::utils::unchecked_mul(col, self.inner.stride);
         E::faer_map(
             self.as_ptr_mut(),
             #[inline(always)]
             |ptr| ptr.offset(offset),
         )
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.into_const().overflowing_ptr_at(col)
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub unsafe fn overflowing_ptr_at_mut(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+        unsafe {
+            let cond = col != self.ncols();
+            let offset = (cond as usize).wrapping_neg() as isize
+                & (col as isize).wrapping_mul(self.inner.stride);
+            E::faer_map(
+                self.as_ptr_mut(),
+                #[inline(always)]
+                |ptr| ptr.offset(offset),
+            )
+        }
+    }
+
+    /// Returns raw pointers to the element at the given index, assuming the provided index
+    /// is within the size of the vector.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col < self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn ptr_inbounds_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+        self.into_const().ptr_inbounds_at(col)
     }
 
     /// Returns raw pointers to the element at the given index, assuming the provided index
@@ -144,6 +206,20 @@ impl<'a, E: Entity> RowMut<'a, E> {
     pub unsafe fn ptr_inbounds_at_mut(self, col: usize) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(col < self.ncols());
         self.ptr_at_mut_unchecked(col)
+    }
+
+    /// Splits the column vector at the given index into two parts and
+    /// returns an array of each subvector, in the following order:
+    /// * left.
+    /// * right.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn split_at_unchecked(self, col: usize) -> (RowRef<'a, E>, RowRef<'a, E>) {
+        self.into_const().split_at_unchecked(col)
     }
 
     /// Splits the column vector at the given index into two parts and
@@ -171,9 +247,64 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
+    pub unsafe fn split_at(self, col: usize) -> (RowRef<'a, E>, RowRef<'a, E>) {
+        self.into_const().split_at(col)
+    }
+
+    /// Splits the column vector at the given index into two parts and
+    /// returns an array of each subvector, in the following order:
+    /// * top.
+    /// * bottom.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col <= self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
     pub fn split_at_mut(self, col: usize) -> (Self, Self) {
         assert!(col <= self.ncols());
         unsafe { self.split_at_mut_unchecked(col) }
+    }
+
+    /// Returns references to the element at the given index, or subvector if `row` is a
+    /// range.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn get_unchecked<ColRange>(
+        self,
+        col: ColRange,
+    ) -> <RowRef<'a, E> as RowIndex<ColRange>>::Target
+    where
+        RowRef<'a, E>: RowIndex<ColRange>,
+    {
+        self.into_const().get_unchecked(col)
+    }
+
+    /// Returns references to the element at the given index, or subvector if `col` is a
+    /// range, with bound checks.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col` must be contained in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn get<ColRange>(self, col: ColRange) -> <RowRef<'a, E> as RowIndex<ColRange>>::Target
+    where
+        RowRef<'a, E>: RowIndex<ColRange>,
+    {
+        self.into_const().get(col)
     }
 
     /// Returns references to the element at the given index, or subvector if `col` is a
@@ -311,8 +442,25 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// Returns a view over the transpose of `self`.
     #[inline(always)]
     #[must_use]
+    pub fn transpose(self) -> ColRef<'a, E> {
+        self.into_const().transpose()
+    }
+
+    /// Returns a view over the transpose of `self`.
+    #[inline(always)]
+    #[must_use]
     pub fn transpose_mut(self) -> ColMut<'a, E> {
         unsafe { self.into_const().transpose().const_cast() }
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate(self) -> RowRef<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.into_const().conjugate()
     }
 
     /// Returns a view over the conjugate of `self`.
@@ -327,11 +475,30 @@ impl<'a, E: Entity> RowMut<'a, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline(always)]
+    pub fn adjoint(self) -> ColRef<'a, E::Conj>
+    where
+        E: Conjugate,
+    {
+        self.into_const().adjoint()
+    }
+
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline(always)]
     pub fn adjoint_mut(self) -> ColMut<'a, E::Conj>
     where
         E: Conjugate,
     {
         self.conjugate_mut().transpose_mut()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    pub fn canonicalize(self) -> (RowRef<'a, E::Canonical>, Conj)
+    where
+        E: Conjugate,
+    {
+        self.into_const().canonicalize()
     }
 
     /// Returns a view over the canonical representation of `self`, as well as a flag declaring
@@ -348,8 +515,41 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// Returns a view over the `self`, with the columnss in reversed order.
     #[inline(always)]
     #[must_use]
+    pub fn reverse_cols(self) -> RowRef<'a, E> {
+        self.into_const().reverse_cols()
+    }
+
+    /// Returns a view over the `self`, with the columnss in reversed order.
+    #[inline(always)]
+    #[must_use]
     pub fn reverse_cols_mut(self) -> Self {
         unsafe { self.into_const().reverse_cols().const_cast() }
+    }
+
+    /// Returns a view over the subvector starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subcols_unchecked(self, col_start: usize, ncols: usize) -> RowRef<'a, E> {
+        self.into_const().subcols_unchecked(col_start, ncols)
+    }
+
+    /// Returns a view over the subvector starting at col `col_start`, and with number of cols
+    /// `ncols`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols(self, col_start: usize, ncols: usize) -> RowRef<'a, E> {
+        self.into_const().subcols(col_start, ncols)
     }
 
     /// Returns a view over the subvector starting at col `col_start`, and with number of
@@ -497,7 +697,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// equal to `1`.
     ///
     /// # Safety
-    /// If uninit data is written to the slice, it must not be later read.
+    /// If uninit data is written to the slice, it must not be read at some later point.
     pub unsafe fn try_as_uninit_slice_mut(
         self,
     ) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
@@ -523,6 +723,12 @@ impl<'a, E: Entity> RowMut<'a, E> {
     #[inline]
     pub fn as_mut(&mut self) -> RowMut<'_, E> {
         (*self).rb_mut()
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(self) -> RowMut<'a, E> {
+        self
     }
 }
 

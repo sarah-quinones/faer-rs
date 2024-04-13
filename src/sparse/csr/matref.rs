@@ -190,7 +190,8 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
         }
     }
 
-    /// Returns a view over the conjugate of `self`.
+    /// Returns a view over the canonical view of `self`, along with whether it has been conjugated
+    /// or not.
     #[inline]
     pub fn canonicalize(self) -> (SparseRowMatRef<'a, I, E::Canonical>, Conj)
     where
@@ -251,7 +252,7 @@ impl<'a, I: Index, E: Entity> SparseRowMatRef<'a, I, E> {
 
     /// Decomposes the matrix into the symbolic part and the numerical values.
     #[inline]
-    pub fn into_parts(self) -> (SymbolicSparseRowMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
+    pub fn parts(self) -> (SymbolicSparseRowMatRef<'a, I>, GroupFor<E, &'a [E::Unit]>) {
         (self.symbolic, self.values.into_inner())
     }
 

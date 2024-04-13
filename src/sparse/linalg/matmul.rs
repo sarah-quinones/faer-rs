@@ -102,7 +102,7 @@ pub fn sparse_sparse_matmul_numeric<
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    let (c_symbolic, c_values) = dst.into_parts_mut();
+    let (c_symbolic, c_values) = dst.parts_mut();
     {
         let c_values = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&c_values)));
         assert!(all(
