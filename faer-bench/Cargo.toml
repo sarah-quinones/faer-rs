@@ -8,12 +8,12 @@ edition = "2021"
 [dependencies]
 eyre = "0.6.8"
 nalgebra = "0.32.1"
-ndarray = { version = "0.15.6", features = ["blas"] }
-blas-src = { version = "0.8", features = ["openblas"] }
 faer-entity = { path = "../faer-entity", features = ["nightly"] }
 faer     = { path = "..", features = ["nightly"] }
 
 human-repr = "1.0.1"
+blas-src = { version = "0.8", features = ["openblas"] }
+ndarray = { version = "0.15.6", features = ["blas"] }
 ndarray-linalg = { version = "0.16.0", features = ["openblas-system"], git = "https://github.com/mike-kfed/ndarray-linalg.git", branch="arm-cross-compile"}
 rand = "0.8.5"
 dyn-stack = "0.10"

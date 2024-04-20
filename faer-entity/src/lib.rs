@@ -397,7 +397,17 @@ impl SimdCtx for NoSimd {
 }
 
 /// Unstable trait containing the operations that a number type needs to implement.
-pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
+pub trait ComplexField:
+    Entity
+    + Conjugate<Canonical = Self>
+    + core::ops::Neg<Output = Self>
+    + core::ops::Add<Self, Output = Self>
+    + core::ops::Sub<Self, Output = Self>
+    + core::ops::Mul<Self, Output = Self>
+    + core::ops::AddAssign<Self>
+    + core::ops::SubAssign<Self>
+    + core::ops::MulAssign<Self>
+{
     type Real: RealField;
     type Simd: SimdCtx;
     type ScalarSimd: SimdCtx;
@@ -667,7 +677,9 @@ pub trait ComplexField: Entity + Conjugate<Canonical = Self> {
 }
 
 /// Unstable trait containing the operations that a real number type needs to implement.
-pub trait RealField: ComplexField<Real = Self> + PartialOrd {
+pub trait RealField:
+    ComplexField<Real = Self> + PartialOrd + num_traits::Num + num_traits::NumAssignOps
+{
     fn faer_epsilon() -> Self;
     fn faer_zero_threshold() -> Self;
 
@@ -2697,6 +2709,81 @@ impl Symbolic {
         }
     }
 }
+
+impl num_traits::Num for Symbolic {
+    type FromStrRadixErr = ();
+    fn from_str_radix(_: &str, _: u32) -> Result<Self, Self::FromStrRadixErr> {
+        Ok(Self)
+    }
+}
+
+impl num_traits::Zero for Symbolic {
+    fn zero() -> Self {
+        Self
+    }
+    fn is_zero(&self) -> bool {
+        true
+    }
+}
+impl num_traits::One for Symbolic {
+    fn one() -> Self {
+        Self
+    }
+}
+
+impl core::ops::Neg for Symbolic {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self
+    }
+}
+impl core::ops::Add<Symbolic> for Symbolic {
+    type Output = Self;
+    fn add(self, _: Self) -> Self {
+        Self
+    }
+}
+impl core::ops::Sub<Symbolic> for Symbolic {
+    type Output = Self;
+    fn sub(self, _: Self) -> Self {
+        Self
+    }
+}
+impl core::ops::Mul<Symbolic> for Symbolic {
+    type Output = Self;
+    fn mul(self, _: Self) -> Self {
+        Self
+    }
+}
+impl core::ops::Div<Symbolic> for Symbolic {
+    type Output = Self;
+    fn div(self, _: Self) -> Self {
+        Self
+    }
+}
+impl core::ops::Rem<Symbolic> for Symbolic {
+    type Output = Self;
+    fn rem(self, _: Self) -> Self {
+        Self
+    }
+}
+
+impl core::ops::AddAssign<Symbolic> for Symbolic {
+    fn add_assign(&mut self, _: Self) {}
+}
+impl core::ops::SubAssign<Symbolic> for Symbolic {
+    fn sub_assign(&mut self, _: Self) {}
+}
+impl core::ops::MulAssign<Symbolic> for Symbolic {
+    fn mul_assign(&mut self, _: Self) {}
+}
+impl core::ops::DivAssign<Symbolic> for Symbolic {
+    fn div_assign(&mut self, _: Self) {}
+}
+impl core::ops::RemAssign<Symbolic> for Symbolic {
+    fn rem_assign(&mut self, _: Self) {}
+}
+
 unsafe impl bytemuck::Zeroable for Symbolic {}
 unsafe impl Pod for Symbolic {}
 unsafe impl Entity for Symbolic {

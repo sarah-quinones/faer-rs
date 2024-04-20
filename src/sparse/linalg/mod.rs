@@ -598,6 +598,14 @@ pub(crate) mod qd {
         }
     }
 
+    impl core::ops::Rem for Double<f64> {
+        type Output = Self;
+
+        #[inline(always)]
+        fn rem(self, _: Self) -> Self::Output {
+            todo!()
+        }
+    }
     impl core::ops::Div for Double<f64> {
         type Output = Self;
 
@@ -634,6 +642,12 @@ pub(crate) mod qd {
             *self = *self / rhs;
         }
     }
+    impl core::ops::RemAssign for Double<f64> {
+        #[inline(always)]
+        fn rem_assign(&mut self, _: Self) {
+            todo!()
+        }
+    }
 
     impl core::ops::Neg for Double<f64> {
         type Output = Self;
@@ -641,6 +655,27 @@ pub(crate) mod qd {
         #[inline(always)]
         fn neg(self) -> Self::Output {
             Self(-self.0, -self.1)
+        }
+    }
+
+    impl num_traits::Num for Double<f64> {
+        type FromStrRadixErr = ();
+        fn from_str_radix(_: &str, _: u32) -> Result<Self, Self::FromStrRadixErr> {
+            Err(())
+        }
+    }
+
+    impl num_traits::Zero for Double<f64> {
+        fn zero() -> Self {
+            Self(0.0, 0.0)
+        }
+        fn is_zero(&self) -> bool {
+            *self == Self::zero()
+        }
+    }
+    impl num_traits::One for Double<f64> {
+        fn one() -> Self {
+            Self(1.0, 0.0)
         }
     }
 

@@ -109,11 +109,7 @@ fn row_varm_ignore<E: ComplexField>(bencher: Bencher, unlist![m, n]: List![usize
     })
 }
 
-fn run_benches<E: ComplexField>() {
-    let mut bench = Bench::new(BenchConfig {
-        split: Split::ByGroup,
-        ..BenchConfig::default()
-    });
+fn run_benches<E: ComplexField>(bench: &mut Bench) {
     bench.register(col_mean_propagate::<E>, args());
     bench.register(col_mean_ignore::<E>, args());
     bench.register(row_mean_propagate::<E>, args());
@@ -122,12 +118,14 @@ fn run_benches<E: ComplexField>() {
     bench.register(col_varm_ignore::<E>, args());
     bench.register(row_varm_propagate::<E>, args());
     bench.register(row_varm_ignore::<E>, args());
-    bench.run();
 }
 
-fn main() {
-    run_benches::<f32>();
-    run_benches::<f64>();
-    run_benches::<c32>();
-    run_benches::<c64>();
+fn main() -> std::io::Result<()> {
+    let mut bench = Bench::new(BenchConfig::from_args());
+    run_benches::<f32>(&mut bench);
+    run_benches::<f64>(&mut bench);
+    run_benches::<c32>(&mut bench);
+    run_benches::<c64>(&mut bench);
+    bench.run()?;
+    Ok(())
 }
