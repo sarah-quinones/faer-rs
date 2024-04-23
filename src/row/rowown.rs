@@ -84,6 +84,30 @@ impl<E: Entity> Row<E> {
         Self::from_fn(ncols, |_| unsafe { core::mem::zeroed() })
     }
 
+    /// Returns a new matrix with number of columns `ncols`, filled with ones.
+    ///
+    /// # Panics
+    /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn ones(ncols: usize) -> Self
+    where
+        E: ComplexField,
+    {
+        Self::from_fn(ncols, |_| E::faer_one())
+    }
+
+    /// Returns a new matrix with number of columns `ncols`, filled with a constant value.
+    ///
+    /// # Panics
+    /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn full(ncols: usize, constant: E) -> Self
+    where
+        E: ComplexField,
+    {
+        Self::from_fn(ncols, |_| constant)
+    }
+
     /// Returns the number of rows of the row. This is always equal to `1`.
     #[inline(always)]
     pub fn nrows(&self) -> usize {

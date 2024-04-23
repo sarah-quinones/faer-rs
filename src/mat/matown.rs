@@ -110,6 +110,30 @@ impl<E: Entity> Mat<E> {
         Self::from_fn(nrows, ncols, |_, _| unsafe { core::mem::zeroed() })
     }
 
+    /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with ones.
+    ///
+    /// # Panics
+    /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn ones(nrows: usize, ncols: usize) -> Self
+    where
+        E: ComplexField,
+    {
+        Self::from_fn(nrows, ncols, |_, _| E::faer_one())
+    }
+
+    /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with a constant value.
+    ///
+    /// # Panics
+    /// The function panics if the total capacity in bytes exceeds `isize::MAX`.
+    #[inline]
+    pub fn full(nrows: usize, ncols: usize, constant: E) -> Self
+    where
+        E: ComplexField,
+    {
+        Self::from_fn(nrows, ncols, |_, _| constant)
+    }
+
     /// Returns a new matrix with dimensions `(nrows, ncols)`, filled with zeros, except the main
     /// diagonal which is filled with ones.
     ///
