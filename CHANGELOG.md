@@ -1,3 +1,6 @@
+# [Unreleased]
+- Add `full` and `zeros` constructors to owned Col, Row, and Matrix ([issue-125](https://github.com/sarah-ek/faer-rs/issues/125)).
+
 # 0.18
 - Refactored the project so that `faer` contains all the core and decomposition implementations. `faer-{core,cholesky,lu,qr,svd,evd,sparse}` are now deprecated and will no longer be updated.
 - Improved the multithreaded performance of the Eigenvalue decomposition for large matrices.
