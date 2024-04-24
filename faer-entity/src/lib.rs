@@ -423,6 +423,10 @@ pub trait ComplexField:
     fn faer_sub(self, rhs: Self) -> Self;
     /// Returns `self * rhs`.
     fn faer_mul(self, rhs: Self) -> Self;
+    /// Returns `self * mul + add`.
+    fn faer_mul_add(self, mul: Self, add: Self) -> Self;
+    /// Returns `self * self + rhs`.
+    fn faer_abs2_add(self, rhs: Self) -> Self;
 
     /// Returns `-self`.
     fn faer_neg(self) -> Self;
@@ -771,6 +775,16 @@ impl ComplexField for f32 {
     }
 
     #[inline(always)]
+    fn faer_mul_add(self, mul: Self, add: Self) -> Self {
+        self.mul_add(mul, add)
+    }
+
+    #[inline(always)]
+    fn faer_abs2_add(self, rhs: Self) -> Self {
+        self.mul_add(self, rhs)
+    }
+
+    #[inline(always)]
     fn faer_neg(self) -> Self {
         -self
     }
@@ -1097,6 +1111,16 @@ impl ComplexField for f64 {
     #[inline(always)]
     fn faer_mul(self, rhs: Self) -> Self {
         self * rhs
+    }
+
+    #[inline(always)]
+    fn faer_mul_add(self, mul: Self, add: Self) -> Self {
+        self.mul_add(mul, add)
+    }
+
+    #[inline(always)]
+    fn faer_abs2_add(self, rhs: Self) -> Self {
+        self.mul_add(self, rhs)
     }
 
     #[inline(always)]
@@ -2136,6 +2160,23 @@ impl<E: RealField> ComplexField for Complex<E> {
     }
 
     #[inline(always)]
+    fn faer_mul_add(self, mul: Self, add: Self) -> Self {
+        Self {
+            re: self
+                .re
+                .faer_mul_add(mul.re, self.im.faer_mul_add(mul.im.faer_neg(), add.re)),
+            im: self
+                .re
+                .faer_mul_add(mul.im, self.im.faer_mul_add(mul.re, add.im)),
+        }
+    }
+
+    #[inline(always)]
+    fn faer_abs2_add(self, rhs: Self) -> Self {
+        self.faer_mul_add(self, rhs)
+    }
+
+    #[inline(always)]
     fn faer_neg(self) -> Self {
         Self {
             re: self.re.faer_neg(),
@@ -3046,6 +3087,16 @@ impl ComplexField for Symbolic {
     }
 
     #[inline(always)]
+    fn faer_mul_add(self, _mul: Self, _add: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
+    fn faer_abs2_add(self, _rhs: Self) -> Self {
+        Self
+    }
+
+    #[inline(always)]
     fn faer_neg(self) -> Self {
         Self
     }
@@ -3364,6 +3415,31 @@ mod tests {
             let (sqrt_re, sqrt_im) = sqrt_impl(a.re, a.im);
             assert_approx_eq!(target_re, sqrt_re);
             assert_approx_eq!(target_im, sqrt_im);
+        }
+    }
+
+    #[test]
+    fn test_mul_add() {
+        for _ in 0..100 {
+            let a = num_complex::Complex64::new(rand::random(), rand::random());
+            let b = num_complex::Complex64::new(rand::random(), rand::random());
+            let c = num_complex::Complex64::new(rand::random(), rand::random());
+            let d = a.faer_mul_add(b, c);
+            let e = a.faer_mul(b).faer_add(c);
+            assert_approx_eq!(d.re, e.re);
+            assert_approx_eq!(d.im, e.im);
+        }
+    }
+
+    #[test]
+    fn test_abs2_add() {
+        for _ in 0..100 {
+            let a = num_complex::Complex64::new(rand::random(), rand::random());
+            let b = num_complex::Complex64::new(rand::random(), rand::random());
+            let c = a.faer_abs2_add(b);
+            let d = a.faer_mul(a).faer_add(b);
+            assert_approx_eq!(c.re, d.re);
+            assert_approx_eq!(c.im, d.im);
         }
     }
 }

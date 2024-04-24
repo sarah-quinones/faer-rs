@@ -648,6 +648,19 @@ impl ComplexField for c64 {
     }
 
     #[inline(always)]
+    fn faer_mul_add(self, mul: Self, add: Self) -> Self {
+        Self {
+            re: self.re.mul_add(mul.re, self.im.mul_add(-mul.im, add.re)),
+            im: self.re.mul_add(mul.im, self.im.mul_add(mul.re, add.im)),
+        }
+    }
+
+    #[inline(always)]
+    fn faer_abs2_add(self, rhs: Self) -> Self {
+        self.faer_mul_add(self, rhs)
+    }
+
+    #[inline(always)]
     fn faer_neg(self) -> Self {
         Self {
             re: -self.re,
@@ -1072,6 +1085,37 @@ impl Distribution<c64> for StandardNormal {
         c64 {
             re: self.sample(rng),
             im: self.sample(rng),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_approx_eq::assert_approx_eq;
+
+    #[test]
+    fn test_mul_add() {
+        for _ in 0..100 {
+            let a = c64::new(rand::random(), rand::random());
+            let b = c64::new(rand::random(), rand::random());
+            let c = c64::new(rand::random(), rand::random());
+            let d = a.faer_mul_add(b, c);
+            let e = a.faer_mul(b).faer_add(c);
+            assert_approx_eq!(d.re, e.re);
+            assert_approx_eq!(d.im, e.im);
+        }
+    }
+
+    #[test]
+    fn test_abs2_add() {
+        for _ in 0..100 {
+            let a = c64::new(rand::random(), rand::random());
+            let b = c64::new(rand::random(), rand::random());
+            let c = a.faer_abs2_add(b);
+            let d = a.faer_mul(a).faer_add(b);
+            assert_approx_eq!(c.re, d.re);
+            assert_approx_eq!(c.im, d.im);
         }
     }
 }

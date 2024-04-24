@@ -1016,6 +1016,16 @@ pub(crate) mod qd {
             }
 
             #[inline(always)]
+            fn faer_mul_add(self, mul: Self, add: Self) -> Self {
+                self * mul + add
+            }
+
+            #[inline(always)]
+            fn faer_abs2_add(self, rhs: Self) -> Self {
+                self * self + rhs
+            }
+
+            #[inline(always)]
             fn faer_neg(self) -> Self {
                 -self
             }
