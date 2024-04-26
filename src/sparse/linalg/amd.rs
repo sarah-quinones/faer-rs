@@ -463,8 +463,8 @@ fn amd_2<I: Index>(
 
             wflg = clear_flag(wflg, wbig, w);
             assert!(pme1 >= zero);
-            assert!(pme2 >= zero);
-            for pme in pme1.zx()..pme2.zx() + 1 {
+            //assert!(pme2 >= zero);
+            for pme in pme1.zx()..(pme2 + one).zx() {
                 let i = iw[pme].zx();
                 let eln = elen[i];
                 if eln > zero {
@@ -483,7 +483,7 @@ fn amd_2<I: Index>(
                 }
             }
 
-            for pme in pme1.zx()..pme2.zx() + 1 {
+            for pme in pme1.zx()..(pme2 + one).zx() {
                 let i = iw[pme].zx();
                 let p1 = pe[i].zx();
                 let p2 = p1 + elen[i].zx();
@@ -571,7 +571,7 @@ fn amd_2<I: Index>(
             wflg += I(lemax);
             wflg = clear_flag(wflg, wbig, w);
 
-            for pme in pme1.zx()..pme2.zx() + 1 {
+            for pme in pme1.zx()..(pme2 + one).zx() {
                 let mut i = iw[pme].zx();
                 if nv[i] < zero {
                     let hash = last[i].zx();
@@ -625,7 +625,7 @@ fn amd_2<I: Index>(
 
             let mut p = pme1.zx();
             let nleft = n - nel;
-            for pme in pme1.zx()..pme2.zx() + 1 {
+            for pme in pme1.zx()..(pme2 + one).zx() {
                 let i = iw[pme].zx();
                 let nvi = -nv[i];
                 if nvi > zero {
