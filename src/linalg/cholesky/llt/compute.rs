@@ -5,9 +5,7 @@ use crate::{
         cholesky::ldlt_diagonal::compute::RankUpdate, entity::SimdCtx,
         matmul::triangular::BlockStructure, triangular_solve,
     },
-    unzipped,
-    utils::thread::parallelism_degree,
-    zipped, ComplexField, Entity, MatMut, Parallelism,
+    unzipped, zipped, ComplexField, Entity, MatMut, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
@@ -199,7 +197,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
         )?;
         Ok(())
     } else {
-        let block_size = Ord::min(n / 2, 128 * parallelism_degree(parallelism));
+        let block_size = n / 2;
         let (mut l00, _, mut a10, mut a11) = matrix.rb_mut().split_at_mut(block_size, block_size);
 
         cholesky_in_place_impl(

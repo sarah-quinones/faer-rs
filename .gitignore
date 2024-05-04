@@ -7,6 +7,9 @@ f128.txt
 c32.txt
 c64.txt
 c128.txt
-faer-libs/faer-sparse/bench_data
-faer-libs/faer-sparse/data
 *.pdf
+compile_commands.json
+.cache
+diol*.json
+mkl_bench
+openblas_bench

@@ -1,14 +1,11 @@
 #![allow(non_snake_case)]
 
-extern crate blas_src;
-
 use diol::{
     config::{PlotMetric, PlotName},
     prelude::*,
 };
 use dyn_stack::{GlobalPodBuffer, PodStack};
 use faer::{prelude::*, ComplexField};
-use ndarray_linalg::Scalar;
 use rand::{distributions::Distribution, prelude::*};
 use rand_distr::Standard;
 
@@ -16,7 +13,7 @@ type C32 = num_complex::Complex32;
 type C64 = num_complex::Complex64;
 
 trait TypeDispatch: faer::ComplexField {
-    type Type: faer::ComplexField + nalgebra::ComplexField + ndarray_linalg::Lapack;
+    type Type: faer::ComplexField + nalgebra::ComplexField;
     type Cplx: faer::ComplexField<Real = Self::Real>;
 }
 
@@ -37,6 +34,8 @@ impl TypeDispatch for c64 {
     type Cplx = c64;
 }
 
+const NALGEBRA_LIMIT: usize = 2048;
+
 #[derive(Copy, Clone, Debug)]
 struct ApproxFlops;
 
@@ -46,6 +45,10 @@ impl diol::traits::PlotMetric for ApproxFlops {
     }
     fn name(&self) -> &'static str {
         "n³/s"
+    }
+
+    fn monotonicity(&self) -> diol::traits::Monotonicity {
+        diol::traits::Monotonicity::HigherIsBetter
     }
 }
 
@@ -61,7 +64,7 @@ where
 mod bench_cholesky {
     use super::*;
 
-    pub fn cholesky_faer<E: ComplexField>(bencher: Bencher, n: usize, par: faer::Parallelism)
+    pub fn faer_cholesky<E: ComplexField>(bencher: Bencher, n: usize, par: faer::Parallelism)
     where
         Standard: Distribution<E>,
     {
@@ -90,21 +93,21 @@ mod bench_cholesky {
         })
     }
 
-    pub fn cholesky_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_cholesky<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
-        cholesky_faer::<E>(bencher, n, faer::Parallelism::None)
+        faer_cholesky::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn cholesky_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_cholesky<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
-        cholesky_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
+        faer_cholesky::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn cholesky_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_cholesky<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -114,27 +117,18 @@ mod bench_cholesky {
         bencher.bench(|| H.cholesky(faer::Side::Lower))
     }
 
-    pub fn cholesky_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_cholesky<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = &H * H.adjoint() + Mat::<E::Type>::identity(n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().cholesky().unwrap())
-    }
-
-    pub fn cholesky_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let H = random_mat::<E::Type>(rng, n, n);
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| H.read(i, j));
-        let H = &H.dot(&H.view().reversed_axes().mapv(|x| x.conj())) + ndarray::Array2::eye(n);
-        bencher
-            .bench(|| ndarray_linalg::Cholesky::cholesky(&H, ndarray_linalg::UPLO::Lower).unwrap())
     }
 }
 
@@ -177,21 +171,21 @@ mod bench_col_qr {
         })
     }
 
-    pub fn piv_qr_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_piv_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         piv_qr_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn piv_qr_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_piv_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         piv_qr_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn piv_qr_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_piv_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -200,20 +194,17 @@ mod bench_col_qr {
         bencher.bench(|| H.col_piv_qr())
     }
 
-    pub fn piv_qr_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_piv_qr<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().col_piv_qr())
-    }
-
-    pub fn piv_qr_ndarray<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
     }
 }
 mod bench_qr {
@@ -251,21 +242,21 @@ mod bench_qr {
         })
     }
 
-    pub fn qr_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         qr_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn qr_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         qr_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn qr_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_qr<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -274,24 +265,17 @@ mod bench_qr {
         bencher.bench(|| H.qr())
     }
 
-    pub fn qr_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_qr<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().qr())
-    }
-
-    pub fn qr_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let H = random_mat::<E::Type>(rng, n, n);
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| H.read(i, j));
-        bencher.bench(|| ndarray_linalg::QR::qr(&H).unwrap())
     }
 }
 
@@ -329,21 +313,21 @@ mod bench_lu {
         })
     }
 
-    pub fn lu_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         lu_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn lu_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         lu_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn lu_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -352,24 +336,17 @@ mod bench_lu {
         bencher.bench(|| H.partial_piv_lu())
     }
 
-    pub fn lu_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_lu<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().lu())
-    }
-
-    pub fn lu_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let H = random_mat::<E::Type>(rng, n, n);
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| H.read(i, j));
-        bencher.bench(|| ndarray_linalg::Factorize::factorize(&H).unwrap())
     }
 }
 mod bench_piv_lu {
@@ -410,21 +387,21 @@ mod bench_piv_lu {
         })
     }
 
-    pub fn piv_lu_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_piv_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         piv_lu_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn piv_lu_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_piv_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         piv_lu_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn piv_lu_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_piv_lu<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -433,20 +410,17 @@ mod bench_piv_lu {
         bencher.bench(|| H.full_piv_lu())
     }
 
-    pub fn piv_lu_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_piv_lu<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().full_piv_lu())
-    }
-
-    pub fn piv_lu_ndarray<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
     }
 }
 
@@ -486,21 +460,21 @@ mod bench_svd {
         })
     }
 
-    pub fn svd_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         svd_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn svd_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         svd_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn svd_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -509,24 +483,17 @@ mod bench_svd {
         bencher.bench(|| H.svd())
     }
 
-    pub fn svd_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_svd<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let H = random_mat::<E::Type>(rng, n, n);
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().svd(true, true))
-    }
-
-    pub fn svd_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let H = random_mat::<E::Type>(rng, n, n);
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| H.read(i, j));
-        bencher.bench(|| ndarray_linalg::SVDDC::svddc(&H, ndarray_linalg::JobSvd::All).unwrap())
     }
 }
 mod bench_thin_svd {
@@ -566,21 +533,21 @@ mod bench_thin_svd {
         })
     }
 
-    pub fn thin_svd_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_thin_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         thin_svd_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn thin_svd_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_thin_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         thin_svd_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn thin_svd_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_thin_svd<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -590,13 +557,7 @@ mod bench_thin_svd {
         bencher.bench(|| A.thin_svd())
     }
 
-    pub fn thin_svd_nalgebra<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-    }
-
-    pub fn thin_svd_ndarray<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
+    pub fn nalgebra_thin_svd<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
@@ -650,21 +611,21 @@ mod bench_evd {
         })
     }
 
-    pub fn eig_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_eig<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         evd_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn eig_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_eig<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         evd_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn eig_faer_api<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_eig<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -673,20 +634,10 @@ mod bench_evd {
         bencher.bench(|| A.eigendecomposition::<E::Cplx>())
     }
 
-    pub fn eig_nalgebra<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
+    pub fn nalgebra_eig<E: TypeDispatch>(_: Bencher, PlotArg(_): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
-    }
-
-    pub fn eig_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let A = random_mat::<E::Type>(rng, n, n);
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| A.read(i, j));
-        bencher.bench(|| ndarray_linalg::Eig::eig(&H).unwrap())
     }
 }
 mod bench_selfadjoint_evd {
@@ -722,21 +673,21 @@ mod bench_selfadjoint_evd {
         })
     }
 
-    pub fn eigh_faer_seq<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_seq_eigh<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         selfadjoint_evd_faer::<E>(bencher, n, faer::Parallelism::None)
     }
 
-    pub fn eigh_faer_par<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_par_eigh<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: rand_distr::Distribution<E>,
     {
         selfadjoint_evd_faer::<E>(bencher, n, faer::Parallelism::Rayon(0))
     }
 
-    pub fn eigh_faer_api<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn faer_api_eigh<E: ComplexField>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E>,
     {
@@ -746,26 +697,18 @@ mod bench_selfadjoint_evd {
         bencher.bench(|| H.selfadjoint_eigendecomposition(faer::Side::Lower))
     }
 
-    pub fn eigh_nalgebra<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
+    pub fn nalgebra_eigh<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
     where
         Standard: Distribution<E::Type>,
     {
+        if n > NALGEBRA_LIMIT {
+            return bencher.skip();
+        }
         let rng = &mut StdRng::seed_from_u64(0);
         let A = random_mat::<E::Type>(rng, n, n);
         let H = &A + A.adjoint();
         let H = nalgebra::DMatrix::from_fn(n, n, |i, j| H.read(i, j));
         bencher.bench(|| H.clone().symmetric_eigen())
-    }
-
-    pub fn eigh_ndarray<E: TypeDispatch>(bencher: Bencher, PlotArg(n): PlotArg)
-    where
-        Standard: Distribution<E::Type>,
-    {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let A = random_mat::<E::Type>(rng, n, n);
-        let A = &A + A.adjoint();
-        let H = ndarray::Array2::from_shape_fn((n, n), |(i, j)| A.read(i, j));
-        bencher.bench(|| ndarray_linalg::Eigh::eigh(&H, ndarray_linalg::UPLO::Lower).unwrap())
     }
 }
 
@@ -773,103 +716,97 @@ fn register_for<E: TypeDispatch>(bench: &mut Bench)
 where
     Standard: Distribution<E> + Distribution<E::Type>,
 {
-    let args = [4, 8, 12, 16, 24, 32, 48, 64, 128, 256].map(PlotArg);
+    let args = [
+        4, 8, 12, 16, 24, 32, 48, 64, 128, 256, 512, 1024, 1536, 2048, 2560, 3072, 3584, 4096,
+    ]
+    .map(PlotArg);
 
     bench.register_many(
         list![
-            bench_cholesky::cholesky_faer_seq::<E>,
-            bench_cholesky::cholesky_faer_par::<E>,
-            bench_cholesky::cholesky_faer_api::<E>,
-            bench_cholesky::cholesky_nalgebra::<E>,
-            bench_cholesky::cholesky_ndarray::<E>,
+            bench_cholesky::faer_seq_cholesky::<E>,
+            bench_cholesky::faer_par_cholesky::<E>,
+            bench_cholesky::faer_api_cholesky::<E>,
+            bench_cholesky::nalgebra_cholesky::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_qr::qr_faer_seq::<E>,
-            bench_qr::qr_faer_par::<E>,
-            bench_qr::qr_faer_api::<E>,
-            bench_qr::qr_nalgebra::<E>,
-            bench_qr::qr_ndarray::<E>,
+            bench_qr::faer_seq_qr::<E>,
+            bench_qr::faer_par_qr::<E>,
+            bench_qr::faer_api_qr::<E>,
+            bench_qr::nalgebra_qr::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_col_qr::piv_qr_faer_seq::<E>,
-            bench_col_qr::piv_qr_faer_par::<E>,
-            bench_col_qr::piv_qr_faer_api::<E>,
-            bench_col_qr::piv_qr_nalgebra::<E>,
-            bench_col_qr::piv_qr_ndarray::<E>,
+            bench_col_qr::faer_seq_piv_qr::<E>,
+            bench_col_qr::faer_par_piv_qr::<E>,
+            bench_col_qr::faer_api_piv_qr::<E>,
+            bench_col_qr::nalgebra_piv_qr::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_lu::lu_faer_seq::<E>,
-            bench_lu::lu_faer_par::<E>,
-            bench_lu::lu_faer_api::<E>,
-            bench_lu::lu_nalgebra::<E>,
-            bench_lu::lu_ndarray::<E>,
+            bench_lu::faer_seq_lu::<E>,
+            bench_lu::faer_par_lu::<E>,
+            bench_lu::faer_api_lu::<E>,
+            bench_lu::nalgebra_lu::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_piv_lu::piv_lu_faer_seq::<E>,
-            bench_piv_lu::piv_lu_faer_par::<E>,
-            bench_piv_lu::piv_lu_faer_api::<E>,
-            bench_piv_lu::piv_lu_nalgebra::<E>,
-            bench_piv_lu::piv_lu_ndarray::<E>,
+            bench_piv_lu::faer_seq_piv_lu::<E>,
+            bench_piv_lu::faer_par_piv_lu::<E>,
+            bench_piv_lu::faer_api_piv_lu::<E>,
+            bench_piv_lu::nalgebra_piv_lu::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_svd::svd_faer_seq::<E>,
-            bench_svd::svd_faer_par::<E>,
-            bench_svd::svd_faer_api::<E>,
-            bench_svd::svd_nalgebra::<E>,
-            bench_svd::svd_ndarray::<E>,
+            bench_svd::faer_seq_svd::<E>,
+            bench_svd::faer_par_svd::<E>,
+            bench_svd::faer_api_svd::<E>,
+            bench_svd::nalgebra_svd::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_thin_svd::thin_svd_faer_seq::<E>,
-            bench_thin_svd::thin_svd_faer_par::<E>,
-            bench_thin_svd::thin_svd_faer_api::<E>,
-            bench_thin_svd::thin_svd_nalgebra::<E>,
-            bench_thin_svd::thin_svd_ndarray::<E>,
+            bench_thin_svd::faer_seq_thin_svd::<E>,
+            bench_thin_svd::faer_par_thin_svd::<E>,
+            bench_thin_svd::faer_api_thin_svd::<E>,
+            bench_thin_svd::nalgebra_thin_svd::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_selfadjoint_evd::eigh_faer_seq::<E>,
-            bench_selfadjoint_evd::eigh_faer_par::<E>,
-            bench_selfadjoint_evd::eigh_faer_api::<E>,
-            bench_selfadjoint_evd::eigh_nalgebra::<E>,
-            bench_selfadjoint_evd::eigh_ndarray::<E>,
+            bench_selfadjoint_evd::faer_seq_eigh::<E>,
+            bench_selfadjoint_evd::faer_par_eigh::<E>,
+            bench_selfadjoint_evd::faer_api_eigh::<E>,
+            bench_selfadjoint_evd::nalgebra_eigh::<E>,
         ],
         args,
     );
 
     bench.register_many(
         list![
-            bench_evd::eig_faer_seq::<E>,
-            bench_evd::eig_faer_par::<E>,
-            bench_evd::eig_faer_api::<E>,
-            bench_evd::eig_nalgebra::<E>,
-            bench_evd::eig_ndarray::<E>,
+            bench_evd::faer_seq_eig::<E>,
+            bench_evd::faer_par_eig::<E>,
+            bench_evd::faer_api_eig::<E>,
+            bench_evd::nalgebra_eig::<E>,
         ],
         args,
     );
@@ -878,10 +815,9 @@ where
 fn main() -> std::io::Result<()> {
     let config = BenchConfig {
         plot_metric: PlotMetric(Box::new(ApproxFlops)),
-        ..BenchConfig::from_args()
+        ..BenchConfig::from_args()?
     };
     let bench = &mut Bench::new(BenchConfig {
-        output: Some("./target/diol.json".into()),
         plot_name: PlotName("plot".into()),
         ..config.clone()
     });
