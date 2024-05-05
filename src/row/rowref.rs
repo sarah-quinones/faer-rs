@@ -336,7 +336,7 @@ impl<'a, E: Entity> RowRef<'a, E> {
         )
     }
 
-    /// Returns a view over the `self`, with the columnss in reversed order.
+    /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
     pub fn reverse_cols(self) -> Self {

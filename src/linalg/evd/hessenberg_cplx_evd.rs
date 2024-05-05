@@ -900,7 +900,7 @@ fn aggressive_early_deflation<E: ComplexField>(
     }
 
     if ns == jw {
-        // Agressive early deflation didn't deflate any eigenvalues
+        // Aggressive early deflation didn't deflate any eigenvalues
         // We don't need to apply the update to the rest of the matrix
         nd = jw - ns;
         ns -= infqr;
@@ -959,7 +959,7 @@ fn aggressive_early_deflation<E: ComplexField>(
         i += 1;
     }
 
-    // Reduce A back to Hessenberg form (if neccesary)
+    // Reduce A back to Hessenberg form (if necessary)
     if s_spike != E::faer_zero() {
         // Reflect spike back
         {
@@ -1396,7 +1396,7 @@ pub fn multishift_qr<E: ComplexField>(
         }
 
         //
-        // Agressive early deflation
+        // Aggressive early deflation
         //
         let nh = istop - istart;
         let nwupbd = Ord::min(nh, nw_max);
@@ -2021,7 +2021,7 @@ fn multishift_qr_sweep<E: ComplexField>(
     }
 
     //
-    // The following code block moves the bulges down untill they are low enough
+    // The following code block moves the bulges down until they are low enough
     // to be removed
     //
     while i_pos_block + n_block_desired < ihi {

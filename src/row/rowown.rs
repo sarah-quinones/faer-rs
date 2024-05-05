@@ -46,7 +46,7 @@ impl<E: Entity> Row<E> {
     }
 
     /// Returns a new column vector with 0 columns, with enough capacity to hold a maximum of
-    /// `col_capacity` columnss columns without reallocating. If `col_capacity` is `0`,
+    /// `col_capacity` columns without reallocating. If `col_capacity` is `0`,
     /// the function will not allocate.
     ///
     /// # Panics
@@ -778,14 +778,14 @@ impl<E: Entity> Row<E> {
         self.as_mut().canonicalize_mut()
     }
 
-    /// Returns a view over the `self`, with the columnss in reversed order.
+    /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
     pub fn reverse_cols(&self) -> RowRef<'_, E> {
         self.as_ref().reverse_cols()
     }
 
-    /// Returns a view over the `self`, with the columnss in reversed order.
+    /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
     pub fn reverse_cols_mut(&mut self) -> RowMut<'_, E> {

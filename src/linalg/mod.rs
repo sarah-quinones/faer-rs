@@ -26,7 +26,7 @@
 //! required memory. The simplest way to do so is through [`dyn_stack::GlobalMemBuffer::new`].
 //!
 //! # Entity trait
-//! Matrices are built on top of the [`Entity`] trait, which describes the prefered memory
+//! Matrices are built on top of the [`Entity`] trait, which describes the preferred memory
 //! storage layout for a given type `E`. An entity can be decomposed into a group of units: for
 //! a natively supported type ([`f32`], [`f64`], [`c32`](crate::complex_native::c32),
 //! [`c64`](crate::complex_native::c64)), the unit is simply the type itself, and a group
@@ -45,8 +45,8 @@
 //! respectively to a view over the real and the imaginary components.
 //!
 //! While the design of the entity trait is unconventional, it helps us achieve much higher
-//! performance when targetting non native types, due to the design matching the typical
-//! preffered CPU layout for SIMD operations. And for native types, since [`Group<T>` is just
+//! performance when targeting non native types, due to the design matching the typical
+//! preferred CPU layout for SIMD operations. And for native types, since [`Group<T>` is just
 //! `T`](Entity#impl-Entity-for-f64), the entity layer is a no-op, and the matrix layout is
 //! compatible with the classic contiguous layout that's commonly used by other libraries.
 

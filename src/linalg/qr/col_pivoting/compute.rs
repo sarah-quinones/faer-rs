@@ -701,7 +701,7 @@ pub struct ColPivQrInfo {
 /// an implicit unit diagonal, and its upper triangular Householder factors are stored in
 /// `householder_factor`, blockwise in chunks of `blocksize×blocksize`.
 ///
-/// The block size is chosed as the number of rows of `householder_factor`.
+/// The block size is chosen as the number of rows of `householder_factor`.
 ///
 /// After the function returns, `col_perm` contains the order of the columns after pivoting, i.e.
 /// the result is the same as computing the non-pivoted QR decomposition of the matrix `matrix[:,

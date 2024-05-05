@@ -1611,7 +1611,7 @@ impl<E: Entity> Mat<E> {
     }
 
     /// Given a matrix with a single column, returns an object that interprets
-    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
+    /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
     pub fn column_vector_as_diagonal(&self) -> DiagRef<'_, E> {
@@ -1619,7 +1619,7 @@ impl<E: Entity> Mat<E> {
     }
 
     /// Given a matrix with a single column, returns an object that interprets
-    /// the column as a diagonal matrix, whoes diagonal elements are values in the column.
+    /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
     pub fn column_vector_as_diagonal_mut(&mut self) -> DiagMut<'_, E> {

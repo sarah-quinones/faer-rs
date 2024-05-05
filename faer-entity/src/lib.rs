@@ -2646,7 +2646,7 @@ impl<I: Iterator> Iterator for ComplexConjIter<I> {
 /// Utilities for split complex number types whose real and imaginary parts are stored separately.
 pub mod complex_split {
 
-    /// This structure contains the real and imaginary parts of an implicity conjugated value.
+    /// This structure contains the real and imaginary parts of an implicitly conjugated value.
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     #[repr(C)]
     pub struct ComplexConj<T> {
