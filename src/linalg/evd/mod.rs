@@ -335,6 +335,118 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     );
 }
 
+/// Computes the size and alignment of required workspace for performing a decomposed
+/// Hermitian matrix pseudoi inverse
+pub fn compute_hermitian_pseudoinverse_req<E: ComplexField>(
+    n: usize,
+    parallelism: Parallelism,
+) -> Result<StackReq, SizeOverflow> {
+    let _ = parallelism;
+    StackReq::try_all_of([
+        temp_mat_req::<E>(n, n)?,
+        temp_mat_req::<E>(n, n)?,
+        temp_mat_req::<E::Real>(1, n)?,
+        StackReq::try_new::<usize>(n)?,
+    ])
+}
+
+/// Computes the pseudo inverse of ai decomposed square Hermitian matrix.
+///
+/// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the
+/// matrix.
+///
+/// `u` represents the eigenvectors.
+///
+/// `pinv` represents the pseudo inversion of decomposed matrix.
+///
+/// This can also panic if the provided memory in `stack` is insufficient (see
+/// [`compute_hermitian_pseudoinverse_req`]).
+pub fn compute_hermitian_pseudoinverse<E: ComplexField>(
+    s: MatRef<'_, E>,
+    u: MatRef<'_, E>,
+    pinv: MatMut<'_, E>,
+    parallelism: Parallelism,
+    stack: PodStack<'_>,
+) {
+    compute_hermitian_pseudoinverse_custom_epsilon(s, u, pinv, None, None, parallelism, stack);
+}
+
+/// See [`compute_hermitian_pseudoinverse`].
+///
+/// This function takes an additional `atol` and `rtol` parameters. `atol`
+/// represents the absolute threshold term, if `None` provided value is 0, and `rtol` represents the
+/// relative threshold term, if `None` provided value is `N * eps` where
+/// `eps` is the machine precision value of the `E::Real`
+///
+/// # Panics
+/// Panics if `atol` or `rtol` equal or less than zero
+pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
+    s: MatRef<'_, E>,
+    u: MatRef<'_, E>,
+    mut pinv: MatMut<'_, E>,
+    atol: Option<E::Real>,
+    rtol: Option<E::Real>,
+    parallelism: Parallelism,
+    stack: PodStack<'_>,
+) {
+    let n = u.ncols();
+    let mut max_s = E::Real::faer_zero();
+    for i in 0..n {
+        let v = s.read(i, 0).faer_abs();
+        if v > max_s {
+            max_s = v;
+        }
+    }
+
+    let atol = atol.unwrap_or(E::Real::faer_zero());
+    let rtol = rtol.unwrap_or(E::Real::faer_epsilon() * E::Real::faer_from_f64(n as f64));
+    assert!(
+        rtol >= E::Real::faer_zero() && atol >= E::Real::faer_zero(),
+        "atol and rtol values must be positive.",
+    );
+    let (above_cutoff, stack) = stack.make_raw::<usize>(n);
+    let val = atol + max_s * rtol;
+
+    let mut r_take = 0;
+    for i in 0..n {
+        if s.read(i, 0).faer_abs() > val {
+            above_cutoff[r_take] = i;
+            r_take += 1;
+        }
+    }
+
+    let (mut psigma_diag, stack) = temp_mat_uninit::<E::Real>(1, r_take, stack);
+    for i in 0..r_take {
+        psigma_diag.write(
+            0,
+            i,
+            E::Real::faer_one() / s.read(above_cutoff[i], 0).faer_real(),
+        );
+    }
+    let (mut ru, stack) = temp_mat_uninit::<E>(n, r_take, stack);
+    for i in 0..r_take {
+        ru.as_mut().col_mut(i).copy_from(u.col(above_cutoff[i]));
+    }
+
+    let (mut up, _stack) = temp_mat_uninit::<E>(n, r_take, stack);
+    up.as_mut().copy_from(ru.as_ref());
+    for i in 0..n {
+        zipped!(up.as_mut().row_mut(i), psigma_diag.as_ref().row(0)).for_each(
+            |unzipped!(mut dst, src)| dst.write(dst.read() * E::faer_from_real(src.read())),
+        );
+    }
+    crate::linalg::matmul::matmul_with_conj(
+        pinv.as_mut(),
+        up.as_ref(),
+        crate::Conj::No,
+        ru.transpose(),
+        crate::Conj::Yes,
+        None,
+        E::faer_one(),
+        parallelism,
+    );
+}
+
 /// Computes the eigenvalue decomposition of a square real `matrix`.
 ///
 /// `s_re` and `s_im` respectively represent the real and imaginary parts of the diagonal of the
@@ -1484,6 +1596,61 @@ mod herm_tests {
     }
 
     #[test]
+    fn test_real_pseudoinverse() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
+            let mut mat = &mat * mat.transpose();
+            for i in 0..n / 2 {
+                for j in 0..n / 2 {
+                    mat.as_mut().write(i, j, 0.0);
+                }
+            }
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+            let mut pinv = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                Some(u.as_mut()),
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<f64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            compute_hermitian_pseudoinverse(
+                s.as_ref().diagonal().column_vector().as_2d(),
+                u.as_ref(),
+                pinv.as_mut(),
+                Parallelism::None,
+                make_stack!(compute_hermitian_pseudoinverse_req::<f64>(
+                    n,
+                    Parallelism::None,
+                )),
+            );
+            let reconstructed = &mat * &pinv * &mat;
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                }
+            }
+
+            let reconstructed_pinv = &pinv * &mat * &pinv;
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed_pinv.read(i, j), pinv.read(i, j), 1e-5);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_cplx() {
         for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
             let mat = Mat::from_fn(n, n, |i, j| {
@@ -1513,6 +1680,64 @@ mod herm_tests {
             for j in 0..n {
                 for i in j..n {
                     assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-10);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cplx_pseudoinverse() {
+        for n in [2, 3, 4, 5, 6, 7, 10, 15, 25] {
+            let mat = Mat::from_fn(n, n, |i, j| {
+                c64::new(rand::random(), if i == j { 0.0 } else { rand::random() })
+            });
+
+            let mut mat = &mat * mat.adjoint();
+            for i in 0..n / 2 {
+                for j in 0..n / 2 {
+                    mat.as_mut().write(i, j, c64::new(0.0, 0.0));
+                }
+            }
+
+            let mut s = Mat::zeros(n, n);
+            let mut u = Mat::zeros(n, n);
+            let mut pinv = Mat::zeros(n, n);
+
+            compute_hermitian_evd(
+                mat.as_ref(),
+                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                Some(u.as_mut()),
+                Parallelism::None,
+                make_stack!(compute_hermitian_evd_req::<c64>(
+                    n,
+                    ComputeVectors::Yes,
+                    Parallelism::None,
+                    Default::default(),
+                )),
+                Default::default(),
+            );
+
+            compute_hermitian_pseudoinverse(
+                s.as_ref().diagonal().column_vector().as_2d(),
+                u.as_ref(),
+                pinv.as_mut(),
+                Parallelism::None,
+                make_stack!(compute_hermitian_pseudoinverse_req::<c64>(
+                    n,
+                    Parallelism::None,
+                )),
+            );
+            let reconstructed = &mat * &pinv * &mat;
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                }
+            }
+
+            let reconstructed_pinv = &pinv * &mat * &pinv;
+            for j in 0..n {
+                for i in j..n {
+                    assert_approx_eq!(reconstructed_pinv.read(i, j), pinv.read(i, j), 1e-5);
                 }
             }
         }
