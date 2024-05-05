@@ -303,7 +303,7 @@ fn qr_in_place_blocked<E: ComplexField>(
 /// an implicit unit diagonal, and its upper triangular Householder factors are stored in
 /// `householder_factor`, blockwise in chunks of `blocksize×blocksize`.
 ///
-/// The block size is chosed as the number of rows of `householder_factor`.
+/// The block size is chosen as the number of rows of `householder_factor`.
 ///
 /// # Panics
 ///

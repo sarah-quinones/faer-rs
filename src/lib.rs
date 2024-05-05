@@ -413,7 +413,7 @@ macro_rules! __perf_warn {
     }};
 }
 
-/// Convenience function to concatonate a nested list of matrices into a single
+/// Convenience function to concatenate a nested list of matrices into a single
 /// big ['Mat']. Concatonation pattern follows the numpy.block convention that
 /// each sub-list must have an equal number of columns (net) but the boundaries
 /// do not need to align. In other words, this sort of thing:
@@ -830,7 +830,7 @@ pub enum Parallelism {
     /// The code is executed sequentially on the same thread that calls a function
     /// and passes this argument.
     None,
-    /// Rayon parallelism. Only avaialble with the `rayon` feature.
+    /// Rayon parallelism. Only available with the `rayon` feature.
     ///
     /// The code is possibly executed in parallel on the current thread, as well as the currently
     /// active rayon thread pool.

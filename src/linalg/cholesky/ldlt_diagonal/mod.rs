@@ -9,7 +9,7 @@
 
 /// Computing the decomposition.
 pub mod compute;
-/// Solving a linear system usin the decomposition.
+/// Solving a linear system using the decomposition.
 pub mod solve;
 /// Updating the decomposition.
 pub mod update;

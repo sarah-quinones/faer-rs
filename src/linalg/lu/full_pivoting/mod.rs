@@ -12,5 +12,5 @@ pub mod compute;
 pub mod inverse;
 /// Reconstructing the inverse of the original matrix from the decomposition.
 pub mod reconstruct;
-/// Solving a linear system usin the decomposition.
+/// Solving a linear system using the decomposition.
 pub mod solve;

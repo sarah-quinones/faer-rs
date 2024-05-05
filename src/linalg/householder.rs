@@ -1,6 +1,6 @@
 //! Block Householder transformations.
 //!
-//! A Householder reflection is linear transformation that describes a relfection about a
+//! A Householder reflection is linear transformation that describes a reflection about a
 //! hyperplane that crosses the origin of the space.
 //!
 //! Let $v$ be a unit vector that is orthogonal to the hyperplane. Then the corresponding

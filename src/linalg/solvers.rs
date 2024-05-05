@@ -508,7 +508,7 @@ impl<E: ComplexField> PartialPivLu<E> {
         unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
     }
 
-    /// Returns the number of transpositions that consitute the permutation.
+    /// Returns the number of transpositions that constitute the permutation.
     pub fn transposition_count(&self) -> usize {
         self.n_transpositions
     }
@@ -697,7 +697,7 @@ impl<E: ComplexField> FullPivLu<E> {
         unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
     }
 
-    /// Returns the number of transpositions that consitute the two permutations.
+    /// Returns the number of transpositions that constitute the two permutations.
     pub fn transposition_count(&self) -> usize {
         self.n_transpositions
     }

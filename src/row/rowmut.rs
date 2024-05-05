@@ -512,14 +512,14 @@ impl<'a, E: Entity> RowMut<'a, E> {
         unsafe { (canon.const_cast(), conj) }
     }
 
-    /// Returns a view over the `self`, with the columnss in reversed order.
+    /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
     pub fn reverse_cols(self) -> RowRef<'a, E> {
         self.into_const().reverse_cols()
     }
 
-    /// Returns a view over the `self`, with the columnss in reversed order.
+    /// Returns a view over the `self`, with the columns in reversed order.
     #[inline(always)]
     #[must_use]
     pub fn reverse_cols_mut(self) -> Self {
