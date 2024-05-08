@@ -36,6 +36,12 @@ impl<I: Index, E: Entity> SparseRowMat<I, E> {
         self.symbolic.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Copies `self` into a newly allocated matrix.
     ///
     /// # Note

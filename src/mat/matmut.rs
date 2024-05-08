@@ -157,6 +157,12 @@ impl<'a, E: Entity> MatMut<'a, E> {
         self.inner.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Returns pointers to the matrix data.
     #[inline(always)]
     pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {

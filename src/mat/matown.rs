@@ -165,6 +165,12 @@ impl<E: Entity> Mat<E> {
         self.inner.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Set the dimensions of the matrix.
     ///
     /// # Safety

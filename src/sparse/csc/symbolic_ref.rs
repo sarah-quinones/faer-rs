@@ -220,6 +220,12 @@ impl<'a, I: Index> SymbolicSparseColMatRef<'a, I> {
         self.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Returns a view over the transpose of `self` in row-major format.
     #[inline]
     pub fn transpose(self) -> SymbolicSparseRowMatRef<'a, I> {

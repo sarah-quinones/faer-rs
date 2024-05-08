@@ -121,6 +121,12 @@ impl<'a, E: Entity> MatRef<'a, E> {
         self.inner.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Returns the row stride of the matrix, specified in number of elements, not in bytes.
     #[inline]
     pub fn row_stride(&self) -> isize {

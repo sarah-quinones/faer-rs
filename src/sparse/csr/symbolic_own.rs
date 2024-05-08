@@ -177,6 +177,12 @@ impl<I: Index> SymbolicSparseRowMat<I> {
         self.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Consumes the matrix, and returns its transpose in column-major format without reallocating.
     ///
     /// # Note

@@ -72,6 +72,12 @@ impl<'a, I: Index, E: Entity> SparseColMatMut<'a, I, E> {
         self.symbolic.ncols
     }
 
+    /// Returns the number of rows and columns of the matrix.
+    #[inline]
+    pub fn shape(&self) -> (usize, usize) {
+        (self.nrows(), self.ncols())
+    }
+
     /// Returns a view over `self`.
     #[inline]
     pub fn as_ref(&self) -> SparseColMatRef<'_, I, E> {
