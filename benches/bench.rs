@@ -813,6 +813,14 @@ where
 }
 
 fn main() -> std::io::Result<()> {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_cpus::get_physical())
+        .start_handler(|id| {
+            core_affinity::set_for_current(core_affinity::CoreId { id });
+        })
+        .build_global()
+        .unwrap();
+
     let config = BenchConfig {
         plot_metric: PlotMetric(Box::new(ApproxFlops)),
         ..BenchConfig::from_args()?

@@ -678,42 +678,26 @@ pub trait SignedIndex:
     }
 }
 
-#[cfg(any(
-    target_pointer_width = "32",
-    target_pointer_width = "64",
-    target_pointer_width = "128",
-))]
+#[cfg(any(target_pointer_width = "32", target_pointer_width = "64",))]
 impl Index for u32 {
     type FixedWidth = u32;
     type Signed = i32;
 }
-#[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
+#[cfg(any(target_pointer_width = "64"))]
 impl Index for u64 {
     type FixedWidth = u64;
     type Signed = i64;
 }
-#[cfg(target_pointer_width = "128")]
-impl Index for u128 {
-    type FixedWidth = u128;
-    type Signed = i128;
-}
-
 impl Index for usize {
     #[cfg(target_pointer_width = "32")]
     type FixedWidth = u32;
     #[cfg(target_pointer_width = "64")]
     type FixedWidth = u64;
-    #[cfg(target_pointer_width = "128")]
-    type FixedWidth = u128;
 
     type Signed = isize;
 }
 
-#[cfg(any(
-    target_pointer_width = "32",
-    target_pointer_width = "64",
-    target_pointer_width = "128",
-))]
+#[cfg(any(target_pointer_width = "32", target_pointer_width = "64",))]
 impl SignedIndex for i32 {
     const MAX: Self = Self::MAX;
 
@@ -737,7 +721,7 @@ impl SignedIndex for i32 {
     }
 }
 
-#[cfg(any(target_pointer_width = "64", target_pointer_width = "128"))]
+#[cfg(any(target_pointer_width = "64"))]
 impl SignedIndex for i64 {
     const MAX: Self = Self::MAX;
 
@@ -753,30 +737,6 @@ impl SignedIndex for i64 {
     #[inline(always)]
     fn zx(self) -> usize {
         self as u64 as usize
-    }
-
-    #[inline(always)]
-    fn sx(self) -> usize {
-        self as isize as usize
-    }
-}
-
-#[cfg(target_pointer_width = "128")]
-impl SignedIndex for i128 {
-    const MAX: Self = Self::MAX;
-
-    #[inline(always)]
-    fn truncate(value: usize) -> Self {
-        #[allow(clippy::assertions_on_constants)]
-        const _: () = {
-            core::assert!(i128::BITS <= usize::BITS);
-        };
-        value as isize as Self
-    }
-
-    #[inline(always)]
-    fn zx(self) -> usize {
-        self as u128 as usize
     }
 
     #[inline(always)]

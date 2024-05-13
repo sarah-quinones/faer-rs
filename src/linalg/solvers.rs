@@ -372,44 +372,31 @@ impl<E: ComplexField> SolverCore<E> for Lblt<E> {
         let subdiag = self.subdiag.as_ref();
         let mut mat = Mat::<E>::identity(n, n);
         let mut mat2 = Mat::<E>::identity(n, n);
-        zipped!(mat.as_mut(), lbl).for_each_triangular_lower(
-            crate::linalg::zip::Diag::Skip,
-            |unzipped!(mut dst, src)| dst.write(src.read()),
-        );
+        mat.copy_from_strict_triangular_lower(lbl);
 
         let mut j = 0;
         while j < n {
             if subdiag.read(j, 0) == E::faer_zero() {
-                let d = lbl.read(j, j).faer_real().faer_inv();
+                let d = lbl.read(j, j).faer_real();
                 for i in 0..n {
                     mat.write(i, j, mat.read(i, j).faer_scale_real(d));
                 }
                 j += 1;
             } else {
-                let akp1k = subdiag.read(j, 0).faer_inv();
-                let ak = akp1k.faer_scale_real(lbl.read(j, j).faer_real());
-                let akp1 = akp1k
-                    .faer_conj()
-                    .faer_scale_real(lbl.read(j + 1, j + 1).faer_real());
-                let denom = ak
-                    .faer_mul(akp1)
-                    .faer_sub(E::faer_one())
-                    .faer_real()
-                    .faer_inv();
+                let akp1k = subdiag.read(j, 0);
+                let ak = lbl.read(j, j).faer_real();
+                let akp1 = lbl.read(j + 1, j + 1).faer_real();
 
                 for i in 0..n {
-                    let xk = mat.read(i, j).faer_mul(akp1k);
-                    let xkp1 = mat.read(i, j + 1).faer_mul(akp1k.faer_conj());
+                    let xk = mat.read(i, j);
+                    let xkp1 = mat.read(i, j + 1);
 
-                    mat.write(
-                        i,
-                        j,
-                        (akp1.faer_mul(xk).faer_sub(xkp1)).faer_scale_real(denom),
-                    );
+                    mat.write(i, j, xk.faer_scale_real(ak).faer_add(xkp1.faer_mul(akp1k)));
                     mat.write(
                         i,
                         j + 1,
-                        (ak.faer_mul(xkp1).faer_sub(xk)).faer_scale_real(denom),
+                        xkp1.faer_scale_real(akp1)
+                            .faer_add(xk.faer_mul(akp1k.faer_conj())),
                     );
                 }
                 j += 2;
