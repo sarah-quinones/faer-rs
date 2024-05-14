@@ -977,22 +977,22 @@ pub mod solve {
                 }
                 i += 1;
             } else {
-                let mut akm1k = subdiag.read(i, 0);
+                let mut akp1k = subdiag.read(i, 0);
                 if conj == Conj::Yes {
-                    akm1k = akm1k.faer_conj();
+                    akp1k = akp1k.faer_conj();
                 }
-                akm1k = akm1k.faer_inv();
-                let akm1 = akm1k.faer_conj().faer_scale_real(a.read(i, i).faer_real());
-                let ak = akm1k.faer_scale_real(a.read(i + 1, i + 1).faer_real());
+                akp1k = akp1k.faer_inv();
+                let ak = akp1k.faer_conj().faer_scale_real(a.read(i, i).faer_real());
+                let akp1 = akp1k.faer_scale_real(a.read(i + 1, i + 1).faer_real());
 
-                let denom = akm1.faer_mul(ak).faer_sub(E::faer_one()).faer_inv();
+                let denom = ak.faer_mul(akp1).faer_sub(E::faer_one()).faer_inv();
 
                 for j in 0..k {
-                    let xkm1 = x.read(i, j).faer_mul(akm1k.faer_conj());
-                    let xk = x.read(i + 1, j).faer_mul(akm1k);
+                    let xk = x.read(i, j).faer_mul(akp1k.faer_conj());
+                    let xkp1 = x.read(i + 1, j).faer_mul(akp1k);
 
-                    x.write(i, j, (ak.faer_mul(xkm1).faer_sub(xk)).faer_mul(denom));
-                    x.write(i + 1, j, (akm1.faer_mul(xk).faer_sub(xkm1)).faer_mul(denom));
+                    x.write(i, j, (akp1.faer_mul(xk).faer_sub(xkp1)).faer_mul(denom));
+                    x.write(i + 1, j, (ak.faer_mul(xkp1).faer_sub(xk)).faer_mul(denom));
                 }
 
                 i += 2;

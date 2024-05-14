@@ -1787,46 +1787,30 @@ pub mod supernodal {
                     let subdiag = subdiag.read(idx);
                     let i = idx + s.start();
                     if subdiag == E::faer_zero() {
-                        let d = Bs.read(idx, idx).faer_real();
+                        let d = Bs.read(idx, idx).faer_real().faer_inv();
                         for j in 0..k {
                             x.write(i, j, x.read(i, j).faer_scale_real(d))
                         }
                         idx += 1;
                     } else {
-                        let d11 = Bs.read(idx, idx).faer_real();
-                        let d22 = Bs.read(idx + 1, idx + 1).faer_real();
-                        let d21 = subdiag;
-
+                        let mut d21 = subdiag;
                         if conj == Conj::Yes {
-                            for j in 0..k {
-                                let xi = x.read(i, j);
-                                let xip1 = x.read(i + 1, j);
+                            d21 = d21.faer_conj();
+                        }
+                        d21 = d21.faer_inv();
+                        let d11 = d21
+                            .faer_conj()
+                            .faer_scale_real(Bs.read(idx, idx).faer_real());
+                        let d22 = d21.faer_scale_real(Bs.read(idx + 1, idx + 1).faer_real());
 
-                                x.write(i, j, xi.faer_scale_real(d11).faer_add(xip1.faer_mul(d21)));
-                                x.write(
-                                    i + 1,
-                                    j,
-                                    xip1.faer_scale_real(d22)
-                                        .faer_add(xi.faer_mul(d21.faer_conj())),
-                                );
-                            }
-                        } else {
-                            for j in 0..k {
-                                let xi = x.read(i, j);
-                                let xip1 = x.read(i + 1, j);
+                        let denom = d11.faer_mul(d22).faer_sub(E::faer_one()).faer_inv();
 
-                                x.write(
-                                    i,
-                                    j,
-                                    xi.faer_scale_real(d11)
-                                        .faer_add(xip1.faer_mul(d21.faer_conj())),
-                                );
-                                x.write(
-                                    i + 1,
-                                    j,
-                                    xip1.faer_scale_real(d22).faer_add(xi.faer_mul(d21)),
-                                );
-                            }
+                        for j in 0..k {
+                            let xk = x.read(i, j).faer_mul(d21.faer_conj());
+                            let xkp1 = x.read(i + 1, j).faer_mul(d21);
+
+                            x.write(i, j, (d22.faer_mul(xk).faer_sub(xkp1)).faer_mul(denom));
+                            x.write(i + 1, j, (d11.faer_mul(xkp1).faer_sub(xk)).faer_mul(denom));
                         }
                         idx += 2;
                     }
@@ -3843,48 +3827,30 @@ pub mod supernodal {
                 while j < d_ncols {
                     let subdiag = d_subdiag.read(j);
                     if subdiag == E::faer_zero() {
-                        let d = Ld_top.read(j, j).faer_real().faer_inv();
+                        let d = Ld_top.read(j, j).faer_real();
                         for i in 0..d_pattern_mid_len {
                             Ld_mid_x_D.write(i, j, Ld_mid.read(i, j).faer_scale_real(d));
                         }
                         j += 1;
                     } else {
-                        // 1/d21
-                        let akp1k = subdiag.faer_inv();
-                        // d11/d21
-                        let ak = akp1k.faer_scale_real(Ld_top.read(j, j).faer_real());
-                        // d22/conj(d21)
-                        let akp1 = akp1k
-                            .faer_conj()
-                            .faer_scale_real(Ld_top.read(j + 1, j + 1).faer_real());
-
-                        // (d11 * d21 / |d21|^2  -  1)^-1
-                        // = |d21|^2 / ( d11 * d21 - |d21|^2 )
-                        let denom = ak
-                            .faer_mul(akp1)
-                            .faer_real()
-                            .faer_sub(E::Real::faer_one())
-                            .faer_inv();
+                        let akp1k = subdiag;
+                        let ak = Ld_top.read(j, j).faer_real();
+                        let akp1 = Ld_top.read(j + 1, j + 1).faer_real();
 
                         for i in 0..d_pattern_mid_len {
-                            // x1 / d21
-                            let xk = Ld_mid.read(i, j).faer_mul(akp1k);
-                            // x2 / conj(d21)
-                            let xkp1 = Ld_mid.read(i, j + 1).faer_mul(akp1k.faer_conj());
+                            let xk = Ld_mid.read(i, j);
+                            let xkp1 = Ld_mid.read(i, j + 1);
 
-                            // d22/conj(d21) * x1/d21 * |d21|^2 / (d11 * d21 - |d21|^2)
-                            // - x2/conj(d21) * |d21|^2 / (d11 * d21 - |d21|^2)
-                            //
-                            // =  x1 * d22/det - x2 * d21/det
                             Ld_mid_x_D.write(
                                 i,
                                 j,
-                                (akp1.faer_mul(xk).faer_sub(xkp1)).faer_scale_real(denom),
+                                xk.faer_scale_real(ak).faer_add(xkp1.faer_mul(akp1k)),
                             );
                             Ld_mid_x_D.write(
                                 i,
                                 j + 1,
-                                (ak.faer_mul(xkp1).faer_sub(xk)).faer_scale_real(denom),
+                                xkp1.faer_scale_real(akp1)
+                                    .faer_add(xk.faer_mul(akp1k.faer_conj())),
                             );
                         }
                         j += 2;
@@ -4004,27 +3970,26 @@ pub mod supernodal {
             let mut j = 0;
             while j < s_ncols {
                 if s_subdiag.read(j) == E::faer_zero() {
-                    let d = Ls_top.read(j, j).faer_real();
+                    let d = Ls_top.read(j, j).faer_real().faer_inv();
                     for i in 0..s_pattern.len() {
                         Ls_bot.write(i, j, Ls_bot.read(i, j).faer_scale_real(d));
                     }
                     j += 1;
                 } else {
-                    let akp1k = s_subdiag.read(j);
-                    let ak = Ls_top.read(j, j).faer_real();
-                    let akp1 = Ls_top.read(j + 1, j + 1).faer_real();
+                    let akp1k = s_subdiag.read(j).faer_conj().faer_inv();
+                    let ak = akp1k
+                        .faer_conj()
+                        .faer_scale_real(Ls_top.read(j, j).faer_real());
+                    let akp1 = akp1k.faer_scale_real(Ls_top.read(j + 1, j + 1).faer_real());
+
+                    let denom = ak.faer_mul(akp1).faer_sub(E::faer_one()).faer_inv();
 
                     for i in 0..s_pattern.len() {
-                        let xk = Ls_bot.read(i, j);
-                        let xkp1 = Ls_bot.read(i, j + 1);
+                        let xk = Ls_bot.read(i, j).faer_mul(akp1k.faer_conj());
+                        let xkp1 = Ls_bot.read(i, j + 1).faer_mul(akp1k);
 
-                        Ls_bot.write(i, j, xk.faer_scale_real(ak).faer_add(xkp1.faer_mul(akp1k)));
-                        Ls_bot.write(
-                            i,
-                            j + 1,
-                            xkp1.faer_scale_real(akp1)
-                                .faer_add(xk.faer_mul(akp1k.faer_conj())),
-                        );
+                        Ls_bot.write(i, j, (akp1.faer_mul(xk).faer_sub(xkp1)).faer_mul(denom));
+                        Ls_bot.write(i, j + 1, (ak.faer_mul(xkp1).faer_sub(xk)).faer_mul(denom));
                     }
                     j += 2;
                 }
