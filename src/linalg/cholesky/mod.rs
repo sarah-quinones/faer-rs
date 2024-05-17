@@ -7,6 +7,8 @@ pub mod bunch_kaufman;
 pub mod ldlt_diagonal;
 pub mod llt;
 
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 pub(crate) mod piv_llt;
 
 /// Computes a permutation that reduces the chance of numerical errors during the $LDL^H$

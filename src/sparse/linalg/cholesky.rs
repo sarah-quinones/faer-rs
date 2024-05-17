@@ -3928,11 +3928,7 @@ pub mod supernodal {
             let params = Default::default();
             let (info, perm) = crate::linalg::cholesky::bunch_kaufman::compute::cholesky_in_place(
                 Ls_top.rb_mut(),
-                crate::mat::from_column_major_slice_mut::<'_, E>(
-                    s_subdiag.rb_mut().into_inner(),
-                    s_ncols,
-                    1,
-                ),
+                crate::col::from_slice_mut::<'_, E>(s_subdiag.rb_mut().into_inner()),
                 BunchKaufmanRegularization {
                     dynamic_regularization_signs: regularization
                         .dynamic_regularization_signs

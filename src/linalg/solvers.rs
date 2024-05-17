@@ -47,7 +47,7 @@ pub struct Cholesky<E: Entity> {
 /// Bunch-Kaufman decomposition.
 pub struct Lblt<E: Entity> {
     factors: Mat<E>,
-    subdiag: Mat<E>,
+    subdiag: Col<E>,
     perm: alloc::vec::Vec<usize>,
     perm_inv: alloc::vec::Vec<usize>,
 }
@@ -84,7 +84,7 @@ pub struct ColPivQr<E: Entity> {
 
 /// Singular value decomposition.
 pub struct Svd<E: Entity> {
-    s: Mat<E>,
+    s: Col<E>,
     u: Mat<E>,
     v: Mat<E>,
 }
@@ -95,7 +95,7 @@ pub struct ThinSvd<E: Entity> {
 
 /// Self-adjoint eigendecomposition.
 pub struct SelfAdjointEigendecomposition<E: Entity> {
-    s: Mat<E>,
+    s: Col<E>,
     u: Mat<E>,
 }
 
@@ -269,7 +269,7 @@ impl<E: ComplexField> Lblt<E> {
         let parallelism = get_global_parallelism();
 
         let mut factors = Mat::<E>::zeros(dim, dim);
-        let mut subdiag = Mat::<E>::zeros(dim, 1);
+        let mut subdiag = Col::<E>::zeros(dim);
         let mut perm = alloc::vec![0; dim];
         let mut perm_inv = alloc::vec![0; dim];
 
@@ -376,14 +376,14 @@ impl<E: ComplexField> SolverCore<E> for Lblt<E> {
 
         let mut j = 0;
         while j < n {
-            if subdiag.read(j, 0) == E::faer_zero() {
+            if subdiag.read(j) == E::faer_zero() {
                 let d = lbl.read(j, j).faer_real();
                 for i in 0..n {
                     mat.write(i, j, mat.read(i, j).faer_scale_real(d));
                 }
                 j += 1;
             } else {
-                let akp1k = subdiag.read(j, 0);
+                let akp1k = subdiag.read(j);
                 let ak = lbl.read(j, j).faer_real();
                 let akp1 = lbl.read(j + 1, j + 1).faer_real();
 
@@ -1278,7 +1278,7 @@ impl<E: ComplexField> Svd<E> {
         let n = matrix.ncols();
         let size = Ord::min(m, n);
 
-        let mut s = Mat::<E>::zeros(size, 1);
+        let mut s = Col::<E>::zeros(size);
         let mut u = Mat::<E>::zeros(m, if thin { size } else { m });
         let mut v = Mat::<E>::zeros(n, if thin { size } else { n });
 
@@ -1333,7 +1333,7 @@ impl<E: ComplexField> Svd<E> {
     }
     /// Returns the diagonal of the factor $S$ of the SVD as a column vector.
     pub fn s_diagonal(&self) -> ColRef<'_, E> {
-        self.s.as_ref().col(0)
+        self.s.as_ref()
     }
     /// Returns the factor $V$ of the SVD.
     pub fn v(&self) -> MatRef<'_, E> {
@@ -1350,10 +1350,10 @@ impl<E: ComplexField> Svd<E> {
     }
 }
 
-fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: MatRef<'_, E>) {
+fn div_by_s<E: ComplexField>(rhs: MatMut<'_, E>, s: ColRef<'_, E>) {
     let mut rhs = rhs;
     for j in 0..rhs.ncols() {
-        zipped!(rhs.rb_mut().col_mut(j).as_2d_mut(), s).for_each(|unzipped!(mut rhs, s)| {
+        zipped!(rhs.rb_mut().col_mut(j), s).for_each(|unzipped!(mut rhs, s)| {
             rhs.write(rhs.read().faer_scale_real(s.read().faer_real().faer_inv()))
         });
     }
@@ -1421,7 +1421,7 @@ impl<E: ComplexField> SolverCore<E> for Svd<E> {
 
         let thin_u = self.u.as_ref().submatrix(0, 0, m, size);
         let s = self.s.as_ref();
-        let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).faer_mul(s.read(j, 0)));
+        let us = Mat::<E>::from_fn(m, size, |i, j| thin_u.read(i, j).faer_mul(s.read(j)));
 
         us * self.v.adjoint()
     }
@@ -1434,9 +1434,8 @@ impl<E: ComplexField> SolverCore<E> for Svd<E> {
         let v = self.v.as_ref();
         let s = self.s.as_ref();
 
-        let vs_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
-            v.read(i, j).faer_mul(s.read(j, 0).faer_inv())
-        });
+        let vs_inv =
+            Mat::<E>::from_fn(dim, dim, |i, j| v.read(i, j).faer_mul(s.read(j).faer_inv()));
 
         vs_inv * u.adjoint()
     }
@@ -1460,7 +1459,7 @@ impl<E: ComplexField> ThinSvd<E> {
     }
     /// Returns the diagonal of the factor $S$ of the SVD as a column vector.
     pub fn s_diagonal(&self) -> ColRef<'_, E> {
-        self.inner.s.as_ref().col(0)
+        self.inner.s.as_ref()
     }
     /// Returns the factor $V$ of the SVD.
     pub fn v(&self) -> MatRef<'_, E> {
@@ -1514,7 +1513,7 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
 
         let dim = matrix.nrows();
 
-        let mut s = Mat::<E>::zeros(dim, 1);
+        let mut s = Col::<E>::zeros(dim);
         let mut u = Mat::<E>::zeros(dim, dim);
 
         let matrix = match side {
@@ -1568,7 +1567,7 @@ impl<E: ComplexField> SelfAdjointEigendecomposition<E> {
     }
     /// Returns the factor $S$ of the eigenvalue decomposition.
     pub fn s(&self) -> DiagRef<'_, E> {
-        self.s.as_ref().col(0).column_vector_as_diagonal()
+        self.s.as_ref().column_vector_as_diagonal()
     }
 }
 impl<E: ComplexField> SpSolverCore<E> for SelfAdjointEigendecomposition<E> {
@@ -1630,7 +1629,7 @@ impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
 
         let u = self.u.as_ref();
         let s = self.s.as_ref();
-        let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).faer_mul(s.read(j, 0)));
+        let us = Mat::<E>::from_fn(size, size, |i, j| u.read(i, j).faer_mul(s.read(j)));
 
         us * u.adjoint()
     }
@@ -1641,9 +1640,8 @@ impl<E: ComplexField> SolverCore<E> for SelfAdjointEigendecomposition<E> {
         let u = self.u.as_ref();
         let s = self.s.as_ref();
 
-        let us_inv = Mat::<E>::from_fn(dim, dim, |i, j| {
-            u.read(i, j).faer_mul(s.read(j, 0).faer_inv())
-        });
+        let us_inv =
+            Mat::<E>::from_fn(dim, dim, |i, j| u.read(i, j).faer_mul(s.read(j).faer_inv()));
 
         us_inv * u.adjoint()
     }
@@ -1663,8 +1661,8 @@ impl<E: ComplexField> Eigendecomposition<E> {
         let parallelism = get_global_parallelism();
 
         let dim = matrix.nrows();
-        let mut s_re = Mat::<E::Real>::zeros(dim, 1);
-        let mut s_im = Mat::<E::Real>::zeros(dim, 1);
+        let mut s_re = Col::<E::Real>::zeros(dim);
+        let mut s_im = Col::<E::Real>::zeros(dim);
 
         let params = Default::default();
 
@@ -1691,9 +1689,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
             E::faer_from_real(re).faer_add(imag.faer_mul(E::faer_from_real(im)))
         };
 
-        (0..dim)
-            .map(|i| cplx(s_re.read(i, 0), s_im.read(i, 0)))
-            .collect()
+        (0..dim).map(|i| cplx(s_re.read(i), s_im.read(i))).collect()
     }
 
     #[track_caller]
@@ -1711,7 +1707,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
         let parallelism = get_global_parallelism();
         let dim = matrix.nrows();
 
-        let mut s = Mat::<E>::zeros(dim, 1);
+        let mut s = Col::<E>::zeros(dim);
 
         let params = Default::default();
 
@@ -1736,7 +1732,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
             zipped!(s.as_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
         }
 
-        (0..dim).map(|i| s.read(i, 0)).collect()
+        (0..dim).map(|i| s.read(i)).collect()
     }
 
     /// Returns the eigendecomposition of the real-valued input matrix.
@@ -1764,8 +1760,8 @@ impl<E: ComplexField> Eigendecomposition<E> {
 
         crate::linalg::evd::compute_evd_real(
             matrix,
-            s_re.as_mut().as_2d_mut(),
-            s_im.as_mut().as_2d_mut(),
+            s_re.as_mut(),
+            s_im.as_mut(),
             Some(u_real.as_mut()),
             parallelism,
             PodStack::new(&mut GlobalPodBuffer::new(
@@ -1838,7 +1834,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
 
         crate::linalg::evd::compute_evd_complex(
             matrix,
-            s.as_mut().as_2d_mut(),
+            s.as_mut(),
             Some(u.as_mut()),
             parallelism,
             PodStack::new(&mut GlobalPodBuffer::new(
@@ -2116,7 +2112,7 @@ where
         let dim = matrix.nrows();
         let parallelism = get_global_parallelism();
 
-        let mut s = Mat::<E::Canonical>::zeros(dim, 1);
+        let mut s = Col::<E::Canonical>::zeros(dim);
         let params = Default::default();
         crate::linalg::evd::compute_hermitian_evd(
             matrix.canonicalize().0,
@@ -2135,7 +2131,7 @@ where
             params,
         );
 
-        (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
+        (0..dim).map(|i| s.read(i).faer_real()).collect()
     }
 
     /// Returns the singular values of `self`, in nonincreasing order.
@@ -2144,7 +2140,7 @@ where
         let dim = Ord::min(self.nrows(), self.ncols());
         let parallelism = get_global_parallelism();
 
-        let mut s = Mat::<E::Canonical>::zeros(dim, 1);
+        let mut s = Col::<E::Canonical>::zeros(dim);
         let params = Default::default();
         crate::linalg::svd::compute_svd(
             self.canonicalize().0,
@@ -2166,7 +2162,7 @@ where
             params,
         );
 
-        (0..dim).map(|i| s.read(i, 0).faer_real()).collect()
+        (0..dim).map(|i| s.read(i).faer_real()).collect()
     }
 
     /// Returns the eigenvalues of `self`, as complex values. The order of the eigenvalues is

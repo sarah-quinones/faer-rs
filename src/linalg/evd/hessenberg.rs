@@ -12,7 +12,7 @@ use crate::{
     },
     unzipped,
     utils::{thread::parallelism_degree, DivCeil},
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -54,14 +54,14 @@ pub fn make_hessenberg_in_place_req<E: Entity>(
 
 struct HessenbergFusedUpdate<'a, E: ComplexField> {
     a: MatMut<'a, E>,
-    v: MatMut<'a, E>,
-    w: MatMut<'a, E>,
+    v: ColMut<'a, E>,
+    w: ColMut<'a, E>,
 
-    u: MatRef<'a, E>,
-    y: MatRef<'a, E>,
-    z: MatRef<'a, E>,
+    u: ColRef<'a, E>,
+    y: ColRef<'a, E>,
+    z: ColRef<'a, E>,
 
-    x: MatRef<'a, E>,
+    x: ColRef<'a, E>,
 }
 
 impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
@@ -170,9 +170,9 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 let a_suffix = faer_entity::slice_as_mut_simd::<E, S>(a_suffix).0;
                 let (a_head, a_tail) = E::faer_as_arrays_mut::<4, _>(a_suffix);
 
-                let y_rhs = E::faer_simd_splat(simd, y.read(j, 0).faer_conj().faer_neg());
-                let u_rhs = E::faer_simd_splat(simd, u_.read(j, 0).faer_conj().faer_neg());
-                let x_rhs = E::faer_simd_splat(simd, x_.read(j, 0));
+                let y_rhs = E::faer_simd_splat(simd, y.read(j).faer_conj().faer_neg());
+                let u_rhs = E::faer_simd_splat(simd, u_.read(j).faer_conj().faer_neg());
+                let x_rhs = E::faer_simd_splat(simd, x_.read(j));
 
                 let mut sum0 = E::faer_simd_splat(simd, zero);
                 let mut sum1 = E::faer_simd_splat(simd, zero);
@@ -410,7 +410,7 @@ impl<E: ComplexField> pulp::WithSimd for HessenbergFusedUpdate<'_, E> {
                 }
 
                 let sum = E::faer_simd_reduce_add(simd, sum0);
-                v.write(j, 0, sum);
+                v.write(j, sum);
             }
         }
     }
@@ -457,42 +457,43 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
     let mut stack = stack;
 
     {
-        let (mut u, stack) = temp_mat_zeroed::<E>(n, 1, stack.rb_mut());
-        let (mut y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
-        let (mut z, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+        let (u, stack) = temp_mat_zeroed::<E>(n, 1, stack.rb_mut());
+        let (y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+        let (z, stack) = temp_mat_zeroed::<E>(n, 1, stack);
 
-        let (mut v, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+        let (v, stack) = temp_mat_zeroed::<E>(n, 1, stack);
         let (mut w, _) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
 
-        let mut u = u.as_mut();
-        let mut y = y.as_mut();
-        let mut z = z.as_mut();
-        let mut v = v.as_mut();
-        let mut w = w.as_mut();
+        let mut u = u.col_mut(0);
+        let mut y = y.col_mut(0);
+        let mut z = z.col_mut(0);
+        let mut v = v.col_mut(0);
 
         let arch = E::Simd::default();
         for k in 0..n - 1 {
             let a_cur = a.rb_mut().submatrix_mut(k, k, n - k, n - k);
-            let (mut a11, mut a12, mut a21, mut a22) = a_cur.split_at_mut(1, 1);
+            let (mut a11, a12, a21, mut a22) = a_cur.split_at_mut(1, 1);
+            let mut a21 = a21.col_mut(0);
+            let mut a12 = a12.row_mut(0);
 
-            let (_, u) = u.rb_mut().split_at_row_mut(k);
-            let (nu, mut u21) = u.split_at_row_mut(1);
-            let (_, y) = y.rb_mut().split_at_row_mut(k);
-            let (psi, mut y21) = y.split_at_row_mut(1);
-            let (_, z) = z.rb_mut().split_at_row_mut(k);
-            let (zeta, mut z21) = z.split_at_row_mut(1);
+            let (_, u) = u.rb_mut().split_at_mut(k);
+            let (nu, mut u21) = u.split_at_mut(1);
+            let (_, y) = y.rb_mut().split_at_mut(k);
+            let (psi, mut y21) = y.split_at_mut(1);
+            let (_, z) = z.rb_mut().split_at_mut(k);
+            let (zeta, mut z21) = z.split_at_mut(1);
 
-            let (_, v) = v.rb_mut().split_at_row_mut(k);
-            let (_, mut v21) = v.split_at_row_mut(1);
+            let (_, v) = v.rb_mut().split_at_mut(k);
+            let (_, mut v21) = v.split_at_mut(1);
 
             let (_, w) = w.rb_mut().split_at_row_mut(k);
             let (_, w21) = w.split_at_row_mut(1);
             let mut w21 = w21.subcols_mut(0, parallelism_degree(parallelism));
 
             if k > 0 {
-                let nu = nu.read(0, 0);
-                let psi = psi.read(0, 0);
-                let zeta = zeta.read(0, 0);
+                let nu = nu.read(0);
+                let psi = psi.read(0);
+                let zeta = zeta.read(0);
 
                 a11.write(
                     0,
@@ -520,11 +521,11 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
             }
 
             let (tau, new_head) = {
-                let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+                let (head, tail) = a21.rb_mut().split_at_mut(1);
                 let norm = tail.rb().norm_l2();
-                make_householder_in_place(Some(tail), head.read(0, 0), norm)
+                make_householder_in_place(Some(tail), head.read(0), norm)
             };
-            a21.write(0, 0, E::faer_one());
+            a21.write(0, E::faer_one());
             let tau_inv = tau.faer_inv();
             householder.write(k, 0, tau);
 
@@ -533,7 +534,7 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
                 arch.dispatch(HessenbergFusedUpdate {
                     a: a22.rb_mut(),
                     v: v21.rb_mut(),
-                    w: w21.rb_mut().col_mut(0).as_2d_mut(),
+                    w: w21.rb_mut().col_mut(0),
                     u: u21.rb(),
                     y: y21.rb(),
                     z: z21.rb(),
@@ -541,20 +542,20 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
                 });
 
                 y21.rb_mut().copy_from(v21.rb());
-                z21.rb_mut().copy_from(w21.rb().col(0).as_2d());
+                z21.rb_mut().copy_from(w21.rb().col(0));
             } else {
                 matmul(
-                    y21.rb_mut(),
+                    y21.rb_mut().as_2d_mut(),
                     a22.rb().adjoint(),
-                    a21.rb(),
+                    a21.rb().as_2d(),
                     None,
                     E::faer_one(),
                     parallelism,
                 );
                 matmul(
-                    z21.rb_mut(),
+                    z21.rb_mut().as_2d_mut(),
                     a22.rb(),
-                    a21.rb(),
+                    a21.rb().as_2d(),
                     None,
                     E::faer_one(),
                     parallelism,
@@ -563,7 +564,7 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
 
             zipped!(u21.rb_mut(), a21.rb())
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
-            a21.write(0, 0, new_head);
+            a21.write(0, new_head);
 
             let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, z21.rb(), Conj::No)
                 .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));
@@ -785,7 +786,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
             let (tau, new_head) = {
                 let (head, tail) = a21.rb_mut().split_at_mut(1);
                 let norm = tail.rb().norm_l2();
-                make_householder_in_place(Some(tail.as_2d_mut()), head.read(0), norm)
+                make_householder_in_place(Some(tail), head.read(0), norm)
             };
             t.rb_mut().write(k, k, tau);
             a21.write(0, one);

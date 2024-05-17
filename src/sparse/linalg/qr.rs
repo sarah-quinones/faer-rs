@@ -1907,7 +1907,7 @@ pub mod simplicial {
             let (mut head, tail) = h_col.rb_mut().split_at_mut(1);
             let tail_norm = tail.norm_l2();
             let (tau, beta) = crate::linalg::householder::make_householder_in_place(
-                Some(tail.as_2d_mut()),
+                Some(tail),
                 head.read(0),
                 tail_norm,
             );

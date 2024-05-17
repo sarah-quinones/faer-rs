@@ -13,7 +13,7 @@ use crate::{
         },
     },
     perm::{permute_rows, swap_cols_idx as swap_cols, swap_rows_idx as swap_rows, PermRef},
-    unzipped, zipped, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
+    unzipped, zipped, ColMut, ColRef, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::{ComplexField, Entity, RealField};
@@ -245,11 +245,8 @@ pub mod compute {
                     kp = k;
                 } else {
                     zipped!(
-                        w.rb_mut()
-                            .subrows_mut(k, imax - k)
-                            .col_mut(k + 1)
-                            .as_2d_mut(),
-                        a.rb().row(imax).subcols(k, imax - k).transpose().as_2d(),
+                        w.rb_mut().subrows_mut(k, imax - k).col_mut(k + 1),
+                        a.rb().row(imax).subcols(k, imax - k).transpose(),
                     )
                     .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_conj()));
 
@@ -337,14 +334,9 @@ pub mod compute {
                     let d11 = d11.faer_inv();
 
                     let x = a.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k);
-                    zipped!(x.as_2d_mut())
-                        .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
-                    zipped!(w
-                        .rb_mut()
-                        .subrows_mut(k + 1, n - k - 1)
-                        .col_mut(k)
-                        .as_2d_mut())
-                    .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
+                    zipped!(x).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d11)));
+                    zipped!(w.rb_mut().subrows_mut(k + 1, n - k - 1).col_mut(k))
+                        .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj()));
                 } else {
                     let dd = w.read(k + 1, k).faer_abs();
                     let dd_inv = dd.faer_inv();
@@ -451,7 +443,7 @@ pub mod compute {
             parallelism,
         );
 
-        zipped!(a_right.diagonal_mut().column_vector_mut().as_2d_mut())
+        zipped!(a_right.diagonal_mut().column_vector_mut())
             .for_each(|unzipped!(mut x)| x.write(E::faer_from_real(x.read().faer_real())));
 
         let mut j = k - 1;
@@ -709,7 +701,7 @@ pub mod compute {
     fn convert<I: Index, E: ComplexField>(
         mut a: MatMut<'_, E>,
         pivots: &[I],
-        mut subdiag: MatMut<'_, E>,
+        mut subdiag: ColMut<'_, E>,
     ) {
         assert!(a.nrows() == a.ncols());
         let n = a.nrows();
@@ -717,12 +709,12 @@ pub mod compute {
         let mut i = 0;
         while i < n {
             if (pivots[i].to_signed().sx() as isize) < 0 {
-                subdiag.write(i, 0, a.read(i + 1, i));
-                subdiag.write(i + 1, 0, E::faer_zero());
+                subdiag.write(i, a.read(i + 1, i));
+                subdiag.write(i + 1, E::faer_zero());
                 a.write(i + 1, i, E::faer_zero());
                 i += 2;
             } else {
-                subdiag.write(i, 0, E::faer_zero());
+                subdiag.write(i, E::faer_zero());
                 i += 1;
             }
         }
@@ -768,8 +760,8 @@ pub mod compute {
     /// Computes the Cholesky factorization with Bunch-Kaufman  pivoting of the input matrix and
     /// stores the factorization in `matrix` and `subdiag`.
     ///
-    /// The inverses of the diagonal blocks of the block diagonal matrix are stored on the diagonal
-    /// of `matrix`, while the subdiagonal elements of those inverses are stored in `subdiag`.
+    /// The diagonal of the block diagonal matrix is stored on the diagonal
+    /// of `matrix`, while the subdiagonal elements of the blocks are stored in `subdiag`.
     ///
     /// # Panics
     ///
@@ -780,7 +772,7 @@ pub mod compute {
     #[track_caller]
     pub fn cholesky_in_place<'out, I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
-        subdiag: MatMut<'_, E>,
+        subdiag: ColMut<'_, E>,
         regularization: BunchKaufmanRegularization<'_, E>,
         perm: &'out mut [I],
         perm_inv: &'out mut [I],
@@ -795,7 +787,6 @@ pub mod compute {
         assert!(all(
             matrix.nrows() == matrix.ncols(),
             subdiag.nrows() == n,
-            subdiag.ncols() == 1,
             perm.len() == n,
             perm_inv.len() == n
         ));
@@ -940,7 +931,7 @@ pub mod solve {
     #[track_caller]
     pub fn solve_in_place_with_conj<I: Index, E: ComplexField>(
         lb_factors: MatRef<'_, E>,
-        subdiag: MatRef<'_, E>,
+        subdiag: ColRef<'_, E>,
         conj: Conj,
         perm: PermRef<'_, I>,
         rhs: MatMut<'_, E>,
@@ -954,7 +945,6 @@ pub mod solve {
             lb_factors.nrows() == lb_factors.ncols(),
             rhs.nrows() == n,
             subdiag.nrows() == n,
-            subdiag.ncols() == 1,
             perm.len() == n
         ));
 
@@ -970,14 +960,14 @@ pub mod solve {
 
         let mut i = 0;
         while i < n {
-            if subdiag.read(i, 0) == E::faer_zero() {
+            if subdiag.read(i) == E::faer_zero() {
                 let d_inv = a.read(i, i).faer_real().faer_inv();
                 for j in 0..k {
                     x.write(i, j, x.read(i, j).faer_scale_real(d_inv));
                 }
                 i += 1;
             } else {
-                let mut akp1k = subdiag.read(i, 0);
+                let mut akp1k = subdiag.read(i);
                 if conj == Conj::Yes {
                     akp1k = akp1k.faer_conj();
                 }
@@ -1007,7 +997,7 @@ pub mod solve {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, complex_native::c64, Mat};
+    use crate::{assert, complex_native::c64, Col, Mat};
     use compute::BunchKaufmanParams;
     use dyn_stack::GlobalPodBuffer;
     use rand::random;
@@ -1020,7 +1010,7 @@ mod tests {
             let rhs = Mat::<f64>::from_fn(n, 2, |_, _| random());
 
             let mut ldl = a.clone();
-            let mut subdiag = Mat::<f64>::zeros(n, 1);
+            let mut subdiag = Col::<f64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];
@@ -1074,7 +1064,7 @@ mod tests {
             let rhs = Mat::<c64>::from_fn(n, 2, |_, _| c64::new(random(), random()));
 
             let mut ldl = a.clone();
-            let mut subdiag = Mat::<c64>::zeros(n, 1);
+            let mut subdiag = Col::<c64>::zeros(n);
 
             let mut perm = vec![0usize; n];
             let mut perm_inv = vec![0; n];

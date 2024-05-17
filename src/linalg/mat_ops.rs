@@ -1041,8 +1041,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     fn mul(self, rhs: ColRef<'_, RhsE>) -> Self::Output {
         let lhs = self;
         assert!(lhs.ncols() == rhs.nrows());
-        let (lhs, conj_lhs) = lhs.as_2d().transpose().canonicalize();
-        let (rhs, conj_rhs) = rhs.as_2d().canonicalize();
+        let (lhs, conj_lhs) = lhs.transpose().canonicalize();
+        let (rhs, conj_rhs) = rhs.canonicalize();
         crate::linalg::matmul::inner_prod::inner_prod_with_conj(lhs, conj_lhs, rhs, conj_rhs)
     }
 }

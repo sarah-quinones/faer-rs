@@ -4,28 +4,26 @@ use crate::{
     perm::PermRef,
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, Index, MatMut, Parallelism, SignedIndex,
+    zipped, ColMut, Index, MatMut, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
 use reborrow::*;
 
 #[inline(always)]
-fn swap_two_elems<E: ComplexField>(mut m: MatMut<'_, E>, i: usize, j: usize) {
-    debug_assert!(m.ncols() == 1);
+fn swap_two_elems<E: ComplexField>(mut m: ColMut<'_, E>, i: usize, j: usize) {
     debug_assert!(i < m.nrows());
     debug_assert!(j < m.nrows());
     unsafe {
-        let a = m.read_unchecked(i, 0);
-        let b = m.read_unchecked(j, 0);
-        m.write_unchecked(i, 0, b);
-        m.write_unchecked(j, 0, a);
+        let a = m.read_unchecked(i);
+        let b = m.read_unchecked(j);
+        m.write_unchecked(i, b);
+        m.write_unchecked(j, a);
     }
 }
 
 #[inline(always)]
-fn swap_two_elems_contiguous<E: ComplexField>(m: MatMut<'_, E>, i: usize, j: usize) {
-    debug_assert!(m.ncols() == 1);
+fn swap_two_elems_contiguous<E: ComplexField>(m: ColMut<'_, E>, i: usize, j: usize) {
     debug_assert!(m.row_stride() == 1);
     debug_assert!(i < m.nrows());
     debug_assert!(j < m.nrows());
@@ -190,7 +188,7 @@ fn update<E: ComplexField>(arch: E::Simd, mut matrix: MatMut<E>, j: usize) {
         for k in 0..mat.ncols() {
             let col = mat.rb_mut().col_mut(k);
             let rhs = rhs.read(k);
-            zipped!(col.as_2d_mut(), lhs.as_2d()).for_each(|unzipped!(mut x, lhs)| {
+            zipped!(col, lhs).for_each(|unzipped!(mut x, lhs)| {
                 x.write(x.read().faer_sub(lhs.read().faer_mul(rhs)))
             });
         }
@@ -285,7 +283,7 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
                 let mut col = unsafe { matrix.rb().col(j).const_cast() };
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
                     swap_two_elems_contiguous(
-                        col.rb_mut().as_2d_mut(),
+                        col.rb_mut(),
                         i,
                         t.to_signed().zx() + i.to_signed().zx(),
                     );
@@ -293,7 +291,7 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
                 let (_, mut col) = col.split_at_mut(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
                     swap_two_elems_contiguous(
-                        col.rb_mut().as_2d_mut(),
+                        col.rb_mut(),
                         i,
                         t.to_signed().zx() + i.to_signed().zx(),
                     );
@@ -308,19 +306,11 @@ pub fn lu_in_place_impl<I: Index, E: ComplexField>(
                 let j = if j >= col_start { col_start + n + j } else { j };
                 let mut col = unsafe { matrix.rb().col(j).const_cast() };
                 for (i, &t) in transpositions[..bs].iter().enumerate() {
-                    swap_two_elems(
-                        col.rb_mut().as_2d_mut(),
-                        i,
-                        t.to_signed().zx() + i.to_signed().zx(),
-                    );
+                    swap_two_elems(col.rb_mut(), i, t.to_signed().zx() + i.to_signed().zx());
                 }
                 let (_, mut col) = col.split_at_mut(bs);
                 for (i, &t) in transpositions[bs..].iter().enumerate() {
-                    swap_two_elems(
-                        col.rb_mut().as_2d_mut(),
-                        i,
-                        t.to_signed().zx() + i.to_signed().zx(),
-                    );
+                    swap_two_elems(col.rb_mut(), i, t.to_signed().zx() + i.to_signed().zx());
                 }
             },
             parallelism,

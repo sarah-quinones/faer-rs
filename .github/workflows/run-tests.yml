@@ -69,7 +69,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Collect coverage data
-        run: cargo llvm-cov nextest --lcov --output-path lcov.info --workspace
+        run: cargo llvm-cov nextest --features=unstable --lcov --output-path lcov.info
 
       - name: Upload coverage data to codecov
         uses: codecov/codecov-action@v3

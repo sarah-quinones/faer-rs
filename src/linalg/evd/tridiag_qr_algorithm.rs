@@ -38,7 +38,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
 
     if let Some(mut u) = u.rb_mut() {
         zipped!(u.rb_mut()).for_each(|unzipped!(mut u)| u.write(E::faer_zero()));
-        zipped!(u.rb_mut().diagonal_mut().column_vector_mut().as_2d_mut())
+        zipped!(u.rb_mut().diagonal_mut().column_vector_mut())
             .for_each(|unzipped!(mut u)| u.write(E::faer_one()));
     }
 
@@ -138,7 +138,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
                     unsafe {
                         let x = u.rb().col(k).const_cast();
                         let y = u.rb().col(k + 1).const_cast();
-                        rot.apply_on_the_right_in_place_arch(arch, x.as_2d_mut(), y.as_2d_mut());
+                        rot.apply_on_the_right_in_place_arch(arch, x, y);
                     }
                 }
                 k += 1;

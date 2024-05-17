@@ -31,7 +31,7 @@ use crate::{
     },
     unzipped,
     utils::thread::parallelism_degree,
-    zipped, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    zipped, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use coe::Coerce;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -126,7 +126,7 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
 /// [`compute_hermitian_evd_req`]).
 pub fn compute_hermitian_evd<E: ComplexField>(
     matrix: MatRef<'_, E>,
-    s: MatMut<'_, E>,
+    s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -154,7 +154,7 @@ pub fn compute_hermitian_evd<E: ComplexField>(
 /// compile time, e.g. a dynamic multiprecision floating point type.
 pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     matrix: MatRef<'_, E>,
-    s: MatMut<'_, E>,
+    s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     epsilon: E::Real,
     zero_threshold: E::Real,
@@ -165,11 +165,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     let _ = params;
     let n = matrix.nrows();
 
-    assert!(all(
-        matrix.nrows() == matrix.ncols(),
-        s.nrows() == n,
-        s.ncols() == 1
-    ));
+    assert!(all(matrix.nrows() == matrix.ncols(), s.nrows() == n));
     if let Some(u) = u.rb() {
         assert!(all(u.nrows() == n, u.ncols() == n));
     }
@@ -239,7 +235,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
                 zero_threshold,
             );
             for (i, &diag) in diag.iter().enumerate() {
-                s.write(i, 0, E::faer_from_real(diag));
+                s.write(i, E::faer_from_real(diag));
             }
 
             return;
@@ -316,13 +312,13 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
         }
 
         for (i, &diag) in diag.iter().enumerate() {
-            s.write(i, 0, E::faer_from_real(diag));
+            s.write(i, E::faer_from_real(diag));
         }
     }
 
     let mut m = crate::Mat::<E>::zeros(n, n);
     for i in 0..n {
-        m.write(i, i, s.read(i, 0));
+        m.write(i, i, s.read(i));
     }
 
     crate::linalg::householder::apply_block_householder_sequence_on_the_left_in_place_with_conj(
@@ -350,25 +346,22 @@ pub fn compute_hermitian_pseudoinverse_req<E: ComplexField>(
     ])
 }
 
-/// Computes the pseudo inverse of ai decomposed square Hermitian matrix.
-///
+/// Computes the pseudo inverse of a decomposed square Hermitian matrix.  
 /// `s` represents the diagonal of the matrix $S$, and must have size equal to the dimension of the
-/// matrix.
-///
-/// `u` represents the eigenvectors.
-///
-/// `pinv` represents the pseudo inversion of decomposed matrix.
+/// matrix.  
+/// `u` represents the eigenvectors.  
+/// The result is stored into `pinv`.  
 ///
 /// This can also panic if the provided memory in `stack` is insufficient (see
 /// [`compute_hermitian_pseudoinverse_req`]).
 pub fn compute_hermitian_pseudoinverse<E: ComplexField>(
-    s: MatRef<'_, E>,
-    u: MatRef<'_, E>,
     pinv: MatMut<'_, E>,
+    s: ColRef<'_, E>,
+    u: MatRef<'_, E>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
-    compute_hermitian_pseudoinverse_custom_epsilon(s, u, pinv, None, None, parallelism, stack);
+    compute_hermitian_pseudoinverse_custom_epsilon(pinv, s, u, None, None, parallelism, stack);
 }
 
 /// See [`compute_hermitian_pseudoinverse`].
@@ -381,18 +374,19 @@ pub fn compute_hermitian_pseudoinverse<E: ComplexField>(
 /// # Panics
 /// Panics if `atol` or `rtol` equal or less than zero
 pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
-    s: MatRef<'_, E>,
+    pinv: MatMut<'_, E>,
+    s: ColRef<'_, E>,
     u: MatRef<'_, E>,
-    mut pinv: MatMut<'_, E>,
     atol: Option<E::Real>,
     rtol: Option<E::Real>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) {
+    let mut pinv = pinv;
     let n = u.ncols();
     let mut max_s = E::Real::faer_zero();
     for i in 0..n {
-        let v = s.read(i, 0).faer_abs();
+        let v = s.read(i).faer_abs();
         if v > max_s {
             max_s = v;
         }
@@ -409,7 +403,7 @@ pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
 
     let mut r_take = 0;
     for i in 0..n {
-        if s.read(i, 0).faer_abs() > val {
+        if s.read(i).faer_abs() > val {
             above_cutoff[r_take] = i;
             r_take += 1;
         }
@@ -420,7 +414,7 @@ pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
         psigma_diag.write(
             0,
             i,
-            E::Real::faer_one() / s.read(above_cutoff[i], 0).faer_real(),
+            E::Real::faer_one() / s.read(above_cutoff[i]).faer_real(),
         );
     }
     let (mut ru, stack) = temp_mat_uninit::<E>(n, r_take, stack);
@@ -470,8 +464,8 @@ pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
 /// This can also panic if the provided memory in `stack` is insufficient (see [`compute_evd_req`]).
 pub fn compute_evd_real<E: RealField>(
     matrix: MatRef<'_, E>,
-    s_re: MatMut<'_, E>,
-    s_im: MatMut<'_, E>,
+    s_re: ColMut<'_, E>,
+    s_im: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -490,10 +484,7 @@ pub fn compute_evd_real<E: RealField>(
     );
 }
 
-fn dot2<E: RealField>(lhs0: MatRef<'_, E>, lhs1: MatRef<'_, E>, rhs: MatRef<'_, E>) -> (E, E) {
-    assert!(lhs0.ncols() == 1);
-    assert!(lhs1.ncols() == 1);
-    assert!(rhs.ncols() == 1);
+fn dot2<E: RealField>(lhs0: ColRef<'_, E>, lhs1: ColRef<'_, E>, rhs: ColRef<'_, E>) -> (E, E) {
     let n = rhs.nrows();
     assert!(lhs0.nrows() == n);
     assert!(lhs1.nrows() == n);
@@ -513,51 +504,39 @@ fn dot2<E: RealField>(lhs0: MatRef<'_, E>, lhs1: MatRef<'_, E>, rhs: MatRef<'_, 
     let mut i = 0;
     unsafe {
         while i < n4 {
-            acc00 = acc00.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs.read_unchecked(i, 0),
-            ));
+            acc00 = acc00.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs.read_unchecked(i)));
             acc01 = acc01.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i + 1, 0),
-                rhs.read_unchecked(i + 1, 0),
+                lhs0.read_unchecked(i + 1),
+                rhs.read_unchecked(i + 1),
             ));
             acc02 = acc02.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i + 2, 0),
-                rhs.read_unchecked(i + 2, 0),
+                lhs0.read_unchecked(i + 2),
+                rhs.read_unchecked(i + 2),
             ));
             acc03 = acc03.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i + 3, 0),
-                rhs.read_unchecked(i + 3, 0),
+                lhs0.read_unchecked(i + 3),
+                rhs.read_unchecked(i + 3),
             ));
 
-            acc10 = acc10.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs.read_unchecked(i, 0),
-            ));
+            acc10 = acc10.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs.read_unchecked(i)));
             acc11 = acc11.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i + 1, 0),
-                rhs.read_unchecked(i + 1, 0),
+                lhs1.read_unchecked(i + 1),
+                rhs.read_unchecked(i + 1),
             ));
             acc12 = acc12.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i + 2, 0),
-                rhs.read_unchecked(i + 2, 0),
+                lhs1.read_unchecked(i + 2),
+                rhs.read_unchecked(i + 2),
             ));
             acc13 = acc13.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i + 3, 0),
-                rhs.read_unchecked(i + 3, 0),
+                lhs1.read_unchecked(i + 3),
+                rhs.read_unchecked(i + 3),
             ));
 
             i += 4;
         }
         while i < n {
-            acc00 = acc00.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs.read_unchecked(i, 0),
-            ));
-            acc10 = acc10.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs.read_unchecked(i, 0),
-            ));
+            acc00 = acc00.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs.read_unchecked(i)));
+            acc10 = acc10.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs.read_unchecked(i)));
 
             i += 1;
         }
@@ -570,13 +549,11 @@ fn dot2<E: RealField>(lhs0: MatRef<'_, E>, lhs1: MatRef<'_, E>, rhs: MatRef<'_, 
 }
 
 fn dot4<E: RealField>(
-    lhs0: MatRef<'_, E>,
-    lhs1: MatRef<'_, E>,
-    rhs0: MatRef<'_, E>,
-    rhs1: MatRef<'_, E>,
+    lhs0: ColRef<'_, E>,
+    lhs1: ColRef<'_, E>,
+    rhs0: ColRef<'_, E>,
+    rhs1: ColRef<'_, E>,
 ) -> (E, E, E, E) {
-    assert!(lhs0.ncols() == 1);
-    assert!(lhs1.ncols() == 1);
     let n = rhs0.nrows();
     assert!(lhs0.nrows() == n);
     assert!(lhs1.nrows() == n);
@@ -600,61 +577,37 @@ fn dot4<E: RealField>(
     let mut i = 0;
     unsafe {
         while i < n2 {
-            acc00 = acc00.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs0.read_unchecked(i, 0),
-            ));
+            acc00 = acc00.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs0.read_unchecked(i)));
             acc01 = acc01.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i + 1, 0),
-                rhs0.read_unchecked(i + 1, 0),
+                lhs0.read_unchecked(i + 1),
+                rhs0.read_unchecked(i + 1),
             ));
 
-            acc10 = acc10.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs0.read_unchecked(i, 0),
-            ));
+            acc10 = acc10.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs0.read_unchecked(i)));
             acc11 = acc11.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i + 1, 0),
-                rhs0.read_unchecked(i + 1, 0),
+                lhs1.read_unchecked(i + 1),
+                rhs0.read_unchecked(i + 1),
             ));
 
-            acc20 = acc20.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs1.read_unchecked(i, 0),
-            ));
+            acc20 = acc20.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs1.read_unchecked(i)));
             acc21 = acc21.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i + 1, 0),
-                rhs1.read_unchecked(i + 1, 0),
+                lhs0.read_unchecked(i + 1),
+                rhs1.read_unchecked(i + 1),
             ));
 
-            acc30 = acc30.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs1.read_unchecked(i, 0),
-            ));
+            acc30 = acc30.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs1.read_unchecked(i)));
             acc31 = acc31.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i + 1, 0),
-                rhs1.read_unchecked(i + 1, 0),
+                lhs1.read_unchecked(i + 1),
+                rhs1.read_unchecked(i + 1),
             ));
 
             i += 2;
         }
         while i < n {
-            acc00 = acc00.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs0.read_unchecked(i, 0),
-            ));
-            acc10 = acc10.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs0.read_unchecked(i, 0),
-            ));
-            acc20 = acc20.faer_add(E::faer_mul(
-                lhs0.read_unchecked(i, 0),
-                rhs1.read_unchecked(i, 0),
-            ));
-            acc30 = acc30.faer_add(E::faer_mul(
-                lhs1.read_unchecked(i, 0),
-                rhs1.read_unchecked(i, 0),
-            ));
+            acc00 = acc00.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs0.read_unchecked(i)));
+            acc10 = acc10.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs0.read_unchecked(i)));
+            acc20 = acc20.faer_add(E::faer_mul(lhs0.read_unchecked(i), rhs1.read_unchecked(i)));
+            acc30 = acc30.faer_add(E::faer_mul(lhs1.read_unchecked(i), rhs1.read_unchecked(i)));
 
             i += 1;
         }
@@ -691,9 +644,9 @@ fn solve_shifted_upper_quasi_triangular_system<E: RealField>(
             if i == 0 || h.read(i, i - 1) == E::faer_zero() {
                 // 1x1 block
                 let dot = inner_prod_with_conj(
-                    h.row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    h.row(i).subcols(i + 1, k - i - 1).transpose(),
                     Conj::No,
-                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    x.rb().subrows(i + 1, k - i - 1),
                     Conj::No,
                 );
 
@@ -710,15 +663,15 @@ fn solve_shifted_upper_quasi_triangular_system<E: RealField>(
             } else {
                 // 2x2 block
                 let dot0 = inner_prod_with_conj(
-                    h.row(i - 1).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    h.row(i - 1).subcols(i + 1, k - i - 1).transpose(),
                     Conj::No,
-                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    x.rb().subrows(i + 1, k - i - 1),
                     Conj::No,
                 );
                 let dot1 = inner_prod_with_conj(
-                    h.row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    h.row(i).subcols(i + 1, k - i - 1).transpose(),
                     Conj::No,
-                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    x.rb().subrows(i + 1, k - i - 1),
                     Conj::No,
                 );
 
@@ -770,9 +723,9 @@ fn solve_shifted_upper_quasi_triangular_system<E: RealField>(
             |i| {
                 let mut x = unsafe { x.rb().const_cast() };
                 let dot = inner_prod_with_conj(
-                    h.get(i, mid..).transpose().as_2d(),
+                    h.get(i, mid..).transpose(),
                     Conj::No,
-                    x.rb().get(mid..).as_2d(),
+                    x.rb().get(mid..),
                     Conj::No,
                 );
                 x.write(i, x.read(i).faer_sub(dot));
@@ -807,9 +760,9 @@ fn solve_shifted_upper_triangular_system<E: ComplexField>(
         for i in (0..k).rev() {
             if k > i + 1 {
                 let dot = inner_prod_with_conj(
-                    h.rb().row(i).subcols(i + 1, k - i - 1).transpose().as_2d(),
+                    h.rb().row(i).subcols(i + 1, k - i - 1).transpose(),
                     Conj::No,
-                    x.rb().subrows(i + 1, k - i - 1).as_2d(),
+                    x.rb().subrows(i + 1, k - i - 1),
                     Conj::No,
                 );
                 x.write(i, x.read(i).faer_sub(dot));
@@ -842,9 +795,9 @@ fn solve_shifted_upper_triangular_system<E: ComplexField>(
             |i| {
                 let mut x = unsafe { x.rb().const_cast() };
                 let dot = inner_prod_with_conj(
-                    h.get(i, mid..).transpose().as_2d(),
+                    h.get(i, mid..).transpose(),
                     Conj::No,
-                    x.rb().get(mid..).as_2d(),
+                    x.rb().get(mid..),
                     Conj::No,
                 );
                 x.write(i, x.read(i).faer_sub(dot));
@@ -894,9 +847,9 @@ fn solve_complex_shifted_upper_quasi_triangular_system<E: RealField>(
                 let start = i + 1;
                 let len = k - (i + 1);
                 let (dot_re, dot_im) = dot2(
-                    x.rb().col(0).subrows(start, len).as_2d(),
-                    x.rb().col(1).subrows(start, len).as_2d(),
-                    h.transpose().col(i).subrows(start, len).as_2d(),
+                    x.rb().col(0).subrows(start, len),
+                    x.rb().col(1).subrows(start, len),
+                    h.transpose().col(i).subrows(start, len),
                 );
 
                 x.write(i, 0, x.read(i, 0).faer_sub(dot_re));
@@ -921,10 +874,10 @@ fn solve_complex_shifted_upper_quasi_triangular_system<E: RealField>(
                 let start = i + 1;
                 let len = k - (i + 1);
                 let (dot0_re, dot0_im, dot1_re, dot1_im) = dot4(
-                    x.rb().col(0).subrows(start, len).as_2d(),
-                    x.rb().col(1).subrows(start, len).as_2d(),
-                    h.transpose().col(i - 1).subrows(start, len).as_2d(),
-                    h.transpose().col(i).subrows(start, len).as_2d(),
+                    x.rb().col(0).subrows(start, len),
+                    x.rb().col(1).subrows(start, len),
+                    h.transpose().col(i - 1).subrows(start, len),
+                    h.transpose().col(i).subrows(start, len),
                 );
                 let mut dot0 = Complex::<E>::faer_zero();
                 let mut dot1 = Complex::<E>::faer_zero();
@@ -1010,9 +963,9 @@ fn solve_complex_shifted_upper_quasi_triangular_system<E: RealField>(
             |i| {
                 let mut x = unsafe { x.rb().const_cast() };
                 let (dot0, dot1) = dot2(
-                    x.rb().get(mid.., 0).as_2d(),
-                    x.rb().get(mid.., 1).as_2d(),
-                    h.get(i, mid..).transpose().as_2d(),
+                    x.rb().get(mid.., 0),
+                    x.rb().get(mid.., 1),
+                    h.get(i, mid..).transpose(),
                 );
                 x.write(i, 0, x.read(i, 0).faer_sub(dot0));
                 x.write(i, 1, x.read(i, 1).faer_sub(dot1));
@@ -1042,8 +995,8 @@ fn solve_complex_shifted_upper_quasi_triangular_system<E: RealField>(
 /// compile time, e.g. a dynamic multiprecision floating point type.
 pub fn compute_evd_real_custom_epsilon<E: RealField>(
     matrix: MatRef<'_, E>,
-    s_re: MatMut<'_, E>,
-    s_im: MatMut<'_, E>,
+    s_re: ColMut<'_, E>,
+    s_im: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     epsilon: E,
     zero_threshold: E,
@@ -1165,8 +1118,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
             .rb()
             .submatrix(1, 0, n - 1, n - 1)
             .diagonal()
-            .column_vector()
-            .as_2d())
+            .column_vector())
         .for_each(|unzipped!(x)| {
             norm = norm.faer_add(x.read().faer_abs());
         });
@@ -1355,7 +1307,7 @@ pub fn compute_evd_req<E: ComplexField>(
 /// This can also panic if the provided memory in `stack` is insufficient (see [`compute_evd_req`]).
 pub fn compute_evd_complex<E: ComplexField>(
     matrix: MatRef<'_, E>,
-    s: MatMut<'_, E>,
+    s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
     stack: PodStack<'_>,
@@ -1383,7 +1335,7 @@ pub fn compute_evd_complex<E: ComplexField>(
 /// compile time, e.g. a dynamic multiprecision floating point type.
 pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     matrix: MatRef<'_, E>,
-    s: MatMut<'_, E>,
+    s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     epsilon: E::Real,
     zero_threshold: E::Real,
@@ -1573,7 +1525,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1612,7 +1564,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1625,9 +1577,9 @@ mod herm_tests {
             );
 
             compute_hermitian_pseudoinverse(
-                s.as_ref().diagonal().column_vector().as_2d(),
-                u.as_ref(),
                 pinv.as_mut(),
+                s.as_ref().diagonal().column_vector(),
+                u.as_ref(),
                 Parallelism::None,
                 make_stack!(compute_hermitian_pseudoinverse_req::<f64>(
                     n,
@@ -1662,7 +1614,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1705,7 +1657,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1718,9 +1670,9 @@ mod herm_tests {
             );
 
             compute_hermitian_pseudoinverse(
-                s.as_ref().diagonal().column_vector().as_2d(),
-                u.as_ref(),
                 pinv.as_mut(),
+                s.as_ref().diagonal().column_vector(),
+                u.as_ref(),
                 Parallelism::None,
                 make_stack!(compute_hermitian_pseudoinverse_req::<c64>(
                     n,
@@ -1759,7 +1711,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1797,7 +1749,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1830,7 +1782,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<f64>(
@@ -1862,7 +1814,7 @@ mod herm_tests {
 
             compute_hermitian_evd(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::None,
                 make_stack!(compute_hermitian_evd_req::<c64>(
@@ -1920,8 +1872,8 @@ mod tests {
 
         compute_evd_real(
             mat.as_ref(),
-            s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
-            s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+            s_re.as_mut().diagonal_mut().column_vector_mut(),
+            s_im.as_mut().diagonal_mut().column_vector_mut(),
             Some(u_re.as_mut()),
             Parallelism::Rayon(0),
             make_stack!(compute_evd_req::<c64>(
@@ -1983,8 +1935,8 @@ mod tests {
 
                 compute_evd_real(
                     mat.as_ref(),
-                    s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
-                    s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                    s_re.as_mut().diagonal_mut().column_vector_mut(),
+                    s_im.as_mut().diagonal_mut().column_vector_mut(),
                     Some(u_re.as_mut()),
                     Parallelism::Rayon(0),
                     make_stack!(compute_evd_req::<c64>(
@@ -2052,8 +2004,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
-                s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s_re.as_mut().diagonal_mut().column_vector_mut(),
+                s_im.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u_re.as_mut()),
                 Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
@@ -2114,8 +2066,8 @@ mod tests {
 
             compute_evd_real(
                 mat.as_ref(),
-                s_re.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
-                s_im.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s_re.as_mut().diagonal_mut().column_vector_mut(),
+                s_im.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u_re.as_mut()),
                 Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
@@ -2172,7 +2124,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
@@ -2213,7 +2165,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
@@ -2246,7 +2198,7 @@ mod tests {
 
             compute_evd_complex(
                 mat.as_ref(),
-                s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+                s.as_mut().diagonal_mut().column_vector_mut(),
                 Some(u.as_mut()),
                 Parallelism::Rayon(0),
                 make_stack!(compute_evd_req::<c64>(
@@ -2307,7 +2259,7 @@ mod tests {
 
         compute_evd_complex(
             mat.as_ref(),
-            s.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
+            s.as_mut().diagonal_mut().column_vector_mut(),
             Some(u.as_mut()),
             Parallelism::None,
             make_stack!(compute_evd_req::<c64>(

@@ -29,6 +29,7 @@ pub fn join_raw(
                     rayon::join(|| op_a(parallelism), || op_b(parallelism))
                 }
             }
+            Parallelism::__Private(_) => panic!(),
         };
     }
     let mut op_a = Some(op_a);
@@ -71,6 +72,7 @@ pub fn for_each_raw(n_tasks: usize, op: impl Send + Sync + Fn(usize), parallelis
                     .with_min_len(min_len)
                     .for_each(op);
             }
+            Parallelism::__Private(_) => panic!(),
         }
     }
     implementation(n_tasks, &op, parallelism);
@@ -97,6 +99,7 @@ pub fn parallelism_degree(parallelism: Parallelism) -> usize {
         Parallelism::Rayon(0) => rayon::current_num_threads(),
         #[cfg(feature = "rayon")]
         Parallelism::Rayon(n_threads) => n_threads,
+        Parallelism::__Private(_) => panic!(),
     }
 }
 

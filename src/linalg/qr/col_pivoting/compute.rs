@@ -10,7 +10,7 @@ use crate::{
     perm::{swap_cols_idx as swap_cols, PermRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, Conj, Index, MatMut, MatRef, Parallelism, SignedIndex,
+    zipped, ColMut, ColRef, Conj, Index, MatMut, Parallelism, SignedIndex,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -377,15 +377,15 @@ impl<E: ComplexField> UpdateAndNorm2<'_, E> {
 }
 
 #[inline(always)]
-fn norm2<E: ComplexField>(arch: E::Simd, a: MatRef<'_, E>) -> E::Real {
+fn norm2<E: ComplexField>(arch: E::Simd, a: ColRef<'_, E>) -> E::Real {
     inner_prod_with_conj_arch(arch, a, Conj::Yes, a, Conj::No).faer_real()
 }
 
 #[inline(always)]
 fn update_and_norm2<E: ComplexField>(
     arch: E::Simd,
-    a: MatMut<'_, E>,
-    b: MatRef<'_, E>,
+    a: ColMut<'_, E>,
+    b: ColRef<'_, E>,
     k: E,
 ) -> E::Real {
     let _ = arch;
@@ -426,7 +426,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
     let arch = E::Simd::default();
 
     for j in 0..n {
-        let col_value = norm2(arch, matrix.rb().col(j).as_2d());
+        let col_value = norm2(arch, matrix.rb().col(j));
         if col_value > biggest_col_value {
             biggest_col_value = col_value;
             biggest_col_idx = j;
@@ -453,7 +453,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
         let tail_norm = first_tail.norm_l2();
 
         let (tau, beta) = crate::linalg::householder::make_householder_in_place(
-            Some(first_tail.rb_mut().as_2d_mut()),
+            Some(first_tail.rb_mut()),
             first_head.read(0),
             tail_norm,
         );
@@ -482,7 +482,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
                     arch,
                     last_cols,
                     0,
-                    first_tail.as_2d(),
+                    first_tail,
                     tau_inv,
                     &mut biggest_col_value,
                     &mut biggest_col_idx,
@@ -513,7 +513,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
                                 arch,
                                 matrix,
                                 col_start,
-                                first_tail.as_2d(),
+                                first_tail,
                                 tau_inv,
                                 &mut local_biggest_col_value,
                                 &mut local_biggest_col_idx,
@@ -537,6 +537,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
                     }
                 }
             }
+            Parallelism::__Private(_) => panic!(),
         }
     }
 
@@ -546,7 +547,7 @@ fn qr_in_place_colmajor<I: Index, E: ComplexField>(
 struct ProcessCols<'a, E: ComplexField> {
     matrix: MatMut<'a, E>,
     offset: usize,
-    first_tail: MatRef<'a, E>,
+    first_tail: ColRef<'a, E>,
     tau_inv: E,
     biggest_col_value: &'a mut E::Real,
     biggest_col_idx: &'a mut usize,
@@ -573,7 +574,7 @@ impl<E: ComplexField> pulp::WithSimd for ProcessCols<'_, E> {
             return;
         }
 
-        let first = SliceGroup::<'_, E>::new(first_tail.try_get_contiguous_col(0));
+        let first = SliceGroup::<'_, E>::new(first_tail.try_get_contiguous_col());
         let simd = SimdFor::<E, S>::new(simd);
         let offset = simd.align_offset(first.rb());
 
@@ -609,7 +610,7 @@ fn process_cols<E: ComplexField>(
     arch: E::Simd,
     mut matrix: MatMut<'_, E>,
     offset: usize,
-    first_tail: MatRef<'_, E>,
+    first_tail: ColRef<'_, E>,
     tau_inv: E,
     biggest_col_value: &mut E::Real,
     biggest_col_idx: &mut usize,
@@ -632,13 +633,13 @@ fn process_cols<E: ComplexField>(
                 arch,
                 first_tail,
                 Conj::Yes,
-                col_tail.rb().as_2d(),
+                col_tail.rb(),
                 Conj::No,
             ));
             let k = (tau_inv.faer_mul(dot)).faer_neg();
             col_head.write(0, col_head_.faer_add(k));
 
-            let col_value = update_and_norm2(arch, col_tail.as_2d_mut(), first_tail, k);
+            let col_value = update_and_norm2(arch, col_tail, first_tail, k);
             if col_value > *biggest_col_value {
                 *biggest_col_value = col_value;
                 *biggest_col_idx = j + offset;
@@ -804,6 +805,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
                         use rayon::prelude::*;
                         (0..n_blocks).into_par_iter().for_each(func)
                     }
+                    Parallelism::__Private(_) => panic!(),
                 }
             }
 
@@ -847,7 +849,7 @@ mod tests {
             matmul::matmul,
             zip::Diag,
         },
-        Mat,
+        Mat, MatRef,
     };
     use assert_approx_eq::assert_approx_eq;
     use matrixcompare::assert_matrix_eq;

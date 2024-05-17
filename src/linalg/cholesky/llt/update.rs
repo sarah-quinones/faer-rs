@@ -12,7 +12,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, MatMut, Parallelism,
+    zipped, ColMut, MatMut, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -502,7 +502,7 @@ impl<'a, E: ComplexField> pulp::WithSimd for RankUpdateStepImpl<'a, E, 1> {
 
 fn rank_update_step_impl4<E: ComplexField>(
     arch: E::Simd,
-    l_col: MatMut<'_, E>,
+    l_col: ColMut<'_, E>,
     w: MatMut<'_, E>,
     neg_wj_over_ljj_array: [E; 4],
     alpha_wj_over_nljj_array: [E; 4],
@@ -515,7 +515,7 @@ fn rank_update_step_impl4<E: ComplexField>(
     let w3 = unsafe { w.col(3).const_cast() };
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 4> {
-            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut()),
             w: [
                 SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
                 SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
@@ -533,91 +533,13 @@ fn rank_update_step_impl4<E: ComplexField>(
         let [alpha_wj_over_nljj0, alpha_wj_over_nljj1, alpha_wj_over_nljj2, alpha_wj_over_nljj3] =
             alpha_wj_over_nljj_array;
 
-        zipped!(
-            l_col,
-            w0.as_2d_mut(),
-            w1.as_2d_mut(),
-            w2.as_2d_mut(),
-            w3.as_2d_mut(),
-        )
-        .for_each(|unzipped!(mut l, mut w0, mut w1, mut w2, mut w3)| {
-            let mut local_l = l.read();
-            let mut local_w0 = w0.read();
-            let mut local_w1 = w1.read();
-            let mut local_w2 = w2.read();
-            let mut local_w3 = w3.read();
-
-            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
-            local_l = E::faer_add(
-                E::faer_mul(alpha_wj_over_nljj0, local_w0),
-                E::faer_mul(nljj_over_ljj0, local_l),
-            );
-            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
-            local_l = E::faer_add(
-                E::faer_mul(alpha_wj_over_nljj1, local_w1),
-                E::faer_mul(nljj_over_ljj1, local_l),
-            );
-            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
-            local_l = E::faer_add(
-                E::faer_mul(alpha_wj_over_nljj2, local_w2),
-                E::faer_mul(nljj_over_ljj2, local_l),
-            );
-            local_w3 = local_w3.faer_add(E::faer_mul(neg_wj_over_ljj3, local_l));
-            local_l = E::faer_add(
-                E::faer_mul(alpha_wj_over_nljj3, local_w3),
-                E::faer_mul(nljj_over_ljj3, local_l),
-            );
-
-            l.write(local_l);
-            w0.write(local_w0);
-            w1.write(local_w1);
-            w2.write(local_w2);
-            w3.write(local_w3);
-        });
-    }
-}
-
-fn rank_update_step_impl3<E: ComplexField>(
-    arch: E::Simd,
-    l_col: MatMut<'_, E>,
-    w: MatMut<'_, E>,
-    neg_wj_over_ljj_array: [E; 4],
-    alpha_wj_over_nljj_array: [E; 4],
-    nljj_over_ljj_array: [E; 4],
-) {
-    let w = w.into_const();
-    let w0 = unsafe { w.col(0).const_cast() };
-    let w1 = unsafe { w.col(1).const_cast() };
-    let w2 = unsafe { w.col(2).const_cast() };
-
-    let [neg_wj_over_ljj_array @ .., _] = neg_wj_over_ljj_array;
-    let [alpha_wj_over_nljj_array @ .., _] = alpha_wj_over_nljj_array;
-    let [nljj_over_ljj_array @ .., _] = nljj_over_ljj_array;
-
-    if l_col.row_stride() == 1 && w.row_stride() == 1 {
-        arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
-            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
-            w: [
-                SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
-                SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
-                SliceGroupMut::new(w2.try_get_contiguous_col_mut()),
-            ],
-            neg_wj_over_ljj_array,
-            alpha_wj_over_nljj_array,
-            nljj_over_ljj_array,
-        });
-    } else {
-        let [neg_wj_over_ljj0, neg_wj_over_ljj1, neg_wj_over_ljj2] = neg_wj_over_ljj_array;
-        let [nljj_over_ljj0, nljj_over_ljj1, nljj_over_ljj2] = nljj_over_ljj_array;
-        let [alpha_wj_over_nljj0, alpha_wj_over_nljj1, alpha_wj_over_nljj2] =
-            alpha_wj_over_nljj_array;
-
-        zipped!(l_col, w0.as_2d_mut(), w1.as_2d_mut(), w2.as_2d_mut()).for_each(
-            |unzipped!(mut l, mut w0, mut w1, mut w2)| {
+        zipped!(l_col, w0, w1, w2, w3,).for_each(
+            |unzipped!(mut l, mut w0, mut w1, mut w2, mut w3)| {
                 let mut local_l = l.read();
                 let mut local_w0 = w0.read();
                 let mut local_w1 = w1.read();
                 let mut local_w2 = w2.read();
+                let mut local_w3 = w3.read();
 
                 local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
                 local_l = E::faer_add(
@@ -634,19 +556,90 @@ fn rank_update_step_impl3<E: ComplexField>(
                     E::faer_mul(alpha_wj_over_nljj2, local_w2),
                     E::faer_mul(nljj_over_ljj2, local_l),
                 );
+                local_w3 = local_w3.faer_add(E::faer_mul(neg_wj_over_ljj3, local_l));
+                local_l = E::faer_add(
+                    E::faer_mul(alpha_wj_over_nljj3, local_w3),
+                    E::faer_mul(nljj_over_ljj3, local_l),
+                );
 
                 l.write(local_l);
                 w0.write(local_w0);
                 w1.write(local_w1);
                 w2.write(local_w2);
+                w3.write(local_w3);
             },
         );
     }
 }
 
+fn rank_update_step_impl3<E: ComplexField>(
+    arch: E::Simd,
+    l_col: ColMut<'_, E>,
+    w: MatMut<'_, E>,
+    neg_wj_over_ljj_array: [E; 4],
+    alpha_wj_over_nljj_array: [E; 4],
+    nljj_over_ljj_array: [E; 4],
+) {
+    let w = w.into_const();
+    let w0 = unsafe { w.col(0).const_cast() };
+    let w1 = unsafe { w.col(1).const_cast() };
+    let w2 = unsafe { w.col(2).const_cast() };
+
+    let [neg_wj_over_ljj_array @ .., _] = neg_wj_over_ljj_array;
+    let [alpha_wj_over_nljj_array @ .., _] = alpha_wj_over_nljj_array;
+    let [nljj_over_ljj_array @ .., _] = nljj_over_ljj_array;
+
+    if l_col.row_stride() == 1 && w.row_stride() == 1 {
+        arch.dispatch(RankUpdateStepImpl::<'_, E, 3> {
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut()),
+            w: [
+                SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
+                SliceGroupMut::new(w2.try_get_contiguous_col_mut()),
+            ],
+            neg_wj_over_ljj_array,
+            alpha_wj_over_nljj_array,
+            nljj_over_ljj_array,
+        });
+    } else {
+        let [neg_wj_over_ljj0, neg_wj_over_ljj1, neg_wj_over_ljj2] = neg_wj_over_ljj_array;
+        let [nljj_over_ljj0, nljj_over_ljj1, nljj_over_ljj2] = nljj_over_ljj_array;
+        let [alpha_wj_over_nljj0, alpha_wj_over_nljj1, alpha_wj_over_nljj2] =
+            alpha_wj_over_nljj_array;
+
+        zipped!(l_col, w0, w1, w2).for_each(|unzipped!(mut l, mut w0, mut w1, mut w2)| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+            let mut local_w1 = w1.read();
+            let mut local_w2 = w2.read();
+
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
+            );
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
+            );
+            local_w2 = local_w2.faer_add(E::faer_mul(neg_wj_over_ljj2, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj2, local_w2),
+                E::faer_mul(nljj_over_ljj2, local_l),
+            );
+
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+            w2.write(local_w2);
+        });
+    }
+}
+
 fn rank_update_step_impl2<E: ComplexField>(
     arch: E::Simd,
-    l_col: MatMut<'_, E>,
+    l_col: ColMut<'_, E>,
     w: MatMut<'_, E>,
     neg_wj_over_ljj_array: [E; 4],
     alpha_wj_over_nljj_array: [E; 4],
@@ -661,7 +654,7 @@ fn rank_update_step_impl2<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w.row_stride() == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 2> {
-            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut()),
             w: [
                 SliceGroupMut::new(w0.try_get_contiguous_col_mut()),
                 SliceGroupMut::new(w1.try_get_contiguous_col_mut()),
@@ -675,34 +668,32 @@ fn rank_update_step_impl2<E: ComplexField>(
         let [nljj_over_ljj0, nljj_over_ljj1] = nljj_over_ljj_array;
         let [alpha_wj_over_nljj0, alpha_wj_over_nljj1] = alpha_wj_over_nljj_array;
 
-        zipped!(l_col, w0.as_2d_mut(), w1.as_2d_mut()).for_each(
-            |unzipped!(mut l, mut w0, mut w1)| {
-                let mut local_l = l.read();
-                let mut local_w0 = w0.read();
-                let mut local_w1 = w1.read();
+        zipped!(l_col, w0, w1).for_each(|unzipped!(mut l, mut w0, mut w1)| {
+            let mut local_l = l.read();
+            let mut local_w0 = w0.read();
+            let mut local_w1 = w1.read();
 
-                local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
-                local_l = E::faer_add(
-                    E::faer_mul(alpha_wj_over_nljj0, local_w0),
-                    E::faer_mul(nljj_over_ljj0, local_l),
-                );
-                local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
-                local_l = E::faer_add(
-                    E::faer_mul(alpha_wj_over_nljj1, local_w1),
-                    E::faer_mul(nljj_over_ljj1, local_l),
-                );
+            local_w0 = local_w0.faer_add(E::faer_mul(neg_wj_over_ljj0, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj0, local_w0),
+                E::faer_mul(nljj_over_ljj0, local_l),
+            );
+            local_w1 = local_w1.faer_add(E::faer_mul(neg_wj_over_ljj1, local_l));
+            local_l = E::faer_add(
+                E::faer_mul(alpha_wj_over_nljj1, local_w1),
+                E::faer_mul(nljj_over_ljj1, local_l),
+            );
 
-                l.write(local_l);
-                w0.write(local_w0);
-                w1.write(local_w1);
-            },
-        );
+            l.write(local_l);
+            w0.write(local_w0);
+            w1.write(local_w1);
+        });
     }
 }
 
 fn rank_update_step_impl1<E: ComplexField>(
     arch: E::Simd,
-    l_col: MatMut<'_, E>,
+    l_col: ColMut<'_, E>,
     w: MatMut<'_, E>,
     neg_wj_over_ljj_array: [E; 4],
     alpha_wj_over_nljj_array: [E; 4],
@@ -717,7 +708,7 @@ fn rank_update_step_impl1<E: ComplexField>(
 
     if l_col.row_stride() == 1 && w_rs == 1 {
         arch.dispatch(RankUpdateStepImpl::<'_, E, 1> {
-            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut(0)),
+            l_col: SliceGroupMut::new(l_col.try_get_contiguous_col_mut()),
             w: [SliceGroupMut::new(w0.try_get_contiguous_col_mut())],
             neg_wj_over_ljj_array,
             alpha_wj_over_nljj_array,
@@ -728,7 +719,7 @@ fn rank_update_step_impl1<E: ComplexField>(
         let [nljj_over_ljj0] = nljj_over_ljj_array;
         let [alpha_wj_over_nljj0] = alpha_wj_over_nljj_array;
 
-        zipped!(l_col, w0.as_2d_mut()).for_each(|unzipped!(mut l, mut w0)| {
+        zipped!(l_col, w0).for_each(|unzipped!(mut l, mut w0)| {
             let mut local_l = l.read();
             let mut local_w0 = w0.read();
 
@@ -747,7 +738,7 @@ fn rank_update_step_impl1<E: ComplexField>(
 struct RankRUpdate<'a, E: Entity> {
     l: MatMut<'a, E>,
     w: MatMut<'a, E>,
-    alpha: MatMut<'a, E>,
+    alpha: ColMut<'a, E>,
     r: &'a mut dyn FnMut() -> usize,
 }
 
@@ -802,7 +793,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     let alpha_conj_wj_over_nljj = &mut alpha_wj_over_nljj_array[k];
                     let nljj_over_ljj = &mut nljj_over_ljj_array[k];
 
-                    let local_alpha = alpha.read(r_idx + k, 0);
+                    let local_alpha = alpha.read(r_idx + k);
                     let wj = w.read(j, r_idx + k);
                     let alpha_conj_wj = local_alpha.faer_mul(wj.faer_conj());
 
@@ -824,7 +815,6 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     *alpha_conj_wj_over_nljj = alpha_conj_wj.faer_mul(inv_nljj);
                     alpha.write(
                         r_idx + k,
-                        0,
                         local_alpha.faer_sub(
                             (*alpha_conj_wj_over_nljj)
                                 .faer_mul((*alpha_conj_wj_over_nljj).faer_conj()),
@@ -846,7 +836,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                 match r_chunk {
                     1 => rank_update_step_impl1(
                         arch,
-                        l_col.as_2d_mut(),
+                        l_col,
                         w,
                         neg_wj_over_ljj_array,
                         alpha_wj_over_nljj_array,
@@ -854,7 +844,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     ),
                     2 => rank_update_step_impl2(
                         arch,
-                        l_col.as_2d_mut(),
+                        l_col,
                         w,
                         neg_wj_over_ljj_array,
                         alpha_wj_over_nljj_array,
@@ -862,7 +852,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     ),
                     3 => rank_update_step_impl3(
                         arch,
-                        l_col.as_2d_mut(),
+                        l_col,
                         w,
                         neg_wj_over_ljj_array,
                         alpha_wj_over_nljj_array,
@@ -870,7 +860,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     ),
                     4 => rank_update_step_impl4(
                         arch,
-                        l_col.as_2d_mut(),
+                        l_col,
                         w,
                         neg_wj_over_ljj_array,
                         alpha_wj_over_nljj_array,
@@ -908,7 +898,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
 pub fn rank_r_update_clobber<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
     w: MatMut<'_, E>,
-    alpha: MatMut<'_, E>,
+    alpha: ColMut<'_, E>,
 ) -> Result<(), CholeskyError> {
     let n = cholesky_factor.nrows();
     let k = w.ncols();
@@ -1023,7 +1013,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     RankRUpdate {
         l: cholesky_factor.submatrix_mut(first, first, n - first - r, n - first - r),
         w,
-        alpha: alpha.as_2d_mut(),
+        alpha,
         r: &mut rank_update_indices(first, indices),
     }
     .run()
@@ -1190,5 +1180,5 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         }
     }
 
-    rank_r_update_clobber(ld22, w, alpha.as_2d_mut())
+    rank_r_update_clobber(ld22, w, alpha)
 }

@@ -38,6 +38,7 @@ libm = "0.2.8"
 
 [features]
 default = ["std", "rayon", "serde", "rand", "npy"]
+unstable = []
 std = [
   "faer-entity/std",
   "gemm/std",

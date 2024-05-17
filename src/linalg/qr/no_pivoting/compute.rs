@@ -38,7 +38,7 @@ fn qr_in_place_unblocked<E: ComplexField>(
         let tail_norm = first_col_tail.norm_l2();
 
         let (tau, beta) = householder::make_householder_in_place(
-            Some(first_col_tail.rb_mut().as_2d_mut()),
+            Some(first_col_tail.rb_mut()),
             first_col_head.read(0),
             tail_norm,
         );
@@ -134,9 +134,9 @@ fn qr_in_place_unblocked<E: ComplexField>(
 
                 let dot = col_head_.faer_add(inner_prod_with_conj_arch(
                     arch,
-                    first_col_tail.rb().as_2d(),
+                    first_col_tail.rb(),
                     Conj::Yes,
-                    col_tail.rb().as_2d(),
+                    col_tail.rb(),
                     Conj::No,
                 ));
                 let k = (dot.faer_mul(tau_inv)).faer_neg();

@@ -13,7 +13,7 @@ use crate::{
     perm::swap_cols_idx as swap_cols,
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, MatMut, RealField,
+    zipped, ColMut, MatMut, RealField, RowMut,
 };
 use faer_entity::{pulp, SimdCtx, SimdGroupFor};
 use reborrow::*;
@@ -124,12 +124,12 @@ impl<E: RealField> JacobiRotation<E> {
     }
 
     #[inline]
-    pub fn apply_on_the_left_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
+    pub fn apply_on_the_left_in_place(&self, x: RowMut<'_, E>, y: RowMut<'_, E>) {
         self.apply_on_the_left_in_place_arch(E::Simd::default(), x, y);
     }
 
     #[inline(never)]
-    fn apply_on_the_left_in_place_fallback(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
+    fn apply_on_the_left_in_place_fallback(&self, x: RowMut<'_, E>, y: RowMut<'_, E>) {
         let Self { c, s } = *self;
         zipped!(x, y).for_each(move |unzipped!(mut x, mut y)| {
             let x_ = x.read();
@@ -144,8 +144,8 @@ impl<E: RealField> JacobiRotation<E> {
         &self,
         simd: S,
         offset: pulp::Offset<E::SimdMask<S>>,
-        x: MatMut<'_, E>,
-        y: MatMut<'_, E>,
+        x: ColMut<'_, E>,
+        y: ColMut<'_, E>,
     ) {
         self.transpose()
             .apply_on_the_left_in_place_with_simd_and_offset(
@@ -161,8 +161,8 @@ impl<E: RealField> JacobiRotation<E> {
         &self,
         simd: S,
         offset: pulp::Offset<E::SimdMask<S>>,
-        x: MatMut<'_, E>,
-        y: MatMut<'_, E>,
+        x: RowMut<'_, E>,
+        y: RowMut<'_, E>,
     ) {
         let Self { c, s } = *self;
         assert!(all(x.nrows() == 1, y.nrows() == 1, x.ncols() == y.ncols()));
@@ -178,8 +178,8 @@ impl<E: RealField> JacobiRotation<E> {
 
         let simd = SimdFor::<E, S>::new(simd);
 
-        let x = SliceGroupMut::<'_, E>::new(x.transpose_mut().try_get_contiguous_col_mut(0));
-        let y = SliceGroupMut::<'_, E>::new(y.transpose_mut().try_get_contiguous_col_mut(0));
+        let x = SliceGroupMut::<'_, E>::new(x.transpose_mut().try_as_slice_mut().unwrap());
+        let y = SliceGroupMut::<'_, E>::new(y.transpose_mut().try_as_slice_mut().unwrap());
 
         let c = simd.splat(c);
         let s = simd.splat(s);
@@ -213,14 +213,14 @@ impl<E: RealField> JacobiRotation<E> {
     pub fn apply_on_the_left_in_place_arch(
         &self,
         arch: E::Simd,
-        x: MatMut<'_, E>,
-        y: MatMut<'_, E>,
+        x: RowMut<'_, E>,
+        y: RowMut<'_, E>,
     ) {
         struct ApplyOnLeft<'a, E: RealField> {
             c: E,
             s: E,
-            x: MatMut<'a, E>,
-            y: MatMut<'a, E>,
+            x: RowMut<'a, E>,
+            y: RowMut<'a, E>,
         }
 
         impl<E: RealField> pulp::WithSimd for ApplyOnLeft<'_, E> {
@@ -237,10 +237,8 @@ impl<E: RealField> JacobiRotation<E> {
 
                 let simd = SimdFor::<E, S>::new(simd);
 
-                let x =
-                    SliceGroupMut::<'_, E>::new(x.transpose_mut().try_get_contiguous_col_mut(0));
-                let y =
-                    SliceGroupMut::<'_, E>::new(y.transpose_mut().try_get_contiguous_col_mut(0));
+                let x = SliceGroupMut::<'_, E>::new(x.transpose_mut().try_as_slice_mut().unwrap());
+                let y = SliceGroupMut::<'_, E>::new(y.transpose_mut().try_as_slice_mut().unwrap());
 
                 let offset = simd.align_offset(x.rb());
 
@@ -291,7 +289,7 @@ impl<E: RealField> JacobiRotation<E> {
     }
 
     #[inline]
-    pub fn apply_on_the_right_in_place(&self, x: MatMut<'_, E>, y: MatMut<'_, E>) {
+    pub fn apply_on_the_right_in_place(&self, x: ColMut<'_, E>, y: ColMut<'_, E>) {
         self.transpose()
             .apply_on_the_left_in_place(x.transpose_mut(), y.transpose_mut());
     }
@@ -300,8 +298,8 @@ impl<E: RealField> JacobiRotation<E> {
     pub fn apply_on_the_right_in_place_arch(
         &self,
         arch: E::Simd,
-        x: MatMut<'_, E>,
-        y: MatMut<'_, E>,
+        x: ColMut<'_, E>,
+        y: ColMut<'_, E>,
     ) {
         self.transpose().apply_on_the_left_in_place_arch(
             arch,
@@ -467,29 +465,19 @@ pub fn jacobi_svd<E: RealField>(
                     );
 
                     let (top, bottom) = matrix.rb_mut().split_at_row_mut(p);
-                    j_left.apply_on_the_left_in_place(
-                        bottom.row_mut(0).as_2d_mut(),
-                        top.row_mut(q).as_2d_mut(),
-                    );
+                    j_left.apply_on_the_left_in_place(bottom.row_mut(0), top.row_mut(q));
                     let (left, right) = matrix.rb_mut().split_at_col_mut(p);
-                    j_right.apply_on_the_right_in_place(
-                        right.col_mut(0).as_2d_mut(),
-                        left.col_mut(q).as_2d_mut(),
-                    );
+                    j_right.apply_on_the_right_in_place(right.col_mut(0), left.col_mut(q));
 
                     if let Some(u) = u.rb_mut() {
                         let (left, right) = u.split_at_col_mut(p);
-                        j_left.transpose().apply_on_the_right_in_place(
-                            right.col_mut(0).as_2d_mut(),
-                            left.col_mut(q).as_2d_mut(),
-                        )
+                        j_left
+                            .transpose()
+                            .apply_on_the_right_in_place(right.col_mut(0), left.col_mut(q))
                     }
                     if let Some(v) = v.rb_mut() {
                         let (left, right) = v.split_at_col_mut(p);
-                        j_right.apply_on_the_right_in_place(
-                            right.col_mut(0).as_2d_mut(),
-                            left.col_mut(q).as_2d_mut(),
-                        )
+                        j_right.apply_on_the_right_in_place(right.col_mut(0), left.col_mut(q))
                     }
 
                     for idx in [p, q] {

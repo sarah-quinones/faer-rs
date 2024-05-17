@@ -212,7 +212,7 @@ mod tests {
                 )),
                 Default::default(),
             );
-            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
+            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha.col_mut(0));
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
 

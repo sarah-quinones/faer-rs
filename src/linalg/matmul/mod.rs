@@ -6,7 +6,7 @@ use crate::{
     mat::{MatMut, MatRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
-    zipped, ComplexField, Conj, Conjugate, Parallelism,
+    zipped, ColRef, ComplexField, Conj, Conjugate, Parallelism,
 };
 use core::{iter::zip, marker::PhantomData, mem::MaybeUninit};
 use faer_entity::*;
@@ -194,16 +194,12 @@ pub mod inner_prod {
     #[track_caller]
     pub fn inner_prod_with_conj_arch<E: ComplexField>(
         arch: E::Simd,
-        lhs: MatRef<'_, E>,
+        lhs: ColRef<'_, E>,
         conj_lhs: Conj,
-        rhs: MatRef<'_, E>,
+        rhs: ColRef<'_, E>,
         conj_rhs: Conj,
     ) -> E {
-        assert!(all(
-            lhs.nrows() == rhs.nrows(),
-            lhs.ncols() == 1,
-            rhs.ncols() == 1,
-        ));
+        assert!(all(lhs.nrows() == rhs.nrows()));
         let nrows = lhs.nrows();
         let mut a = lhs;
         let mut b = rhs;
@@ -213,8 +209,8 @@ pub mod inner_prod {
         }
 
         let res = if a.row_stride() == 1 && b.row_stride() == 1 {
-            let a = SliceGroup::<'_, E>::new(a.try_get_contiguous_col(0));
-            let b = SliceGroup::<'_, E>::new(b.try_get_contiguous_col(0));
+            let a = SliceGroup::<'_, E>::new(a.try_get_contiguous_col());
+            let b = SliceGroup::<'_, E>::new(b.try_get_contiguous_col());
             if conj_lhs == conj_rhs {
                 arch.dispatch(Impl { a, b, conj: NoConj })
             } else {
@@ -232,8 +228,8 @@ pub mod inner_prod {
                 |nrows, ncols| {
                     let zero_idx = ncols.check(0);
 
-                    let a = crate::utils::constrained::mat::MatRef::new(a, nrows, ncols);
-                    let b = crate::utils::constrained::mat::MatRef::new(b, nrows, ncols);
+                    let a = crate::utils::constrained::mat::MatRef::new(a.as_2d(), nrows, ncols);
+                    let b = crate::utils::constrained::mat::MatRef::new(b.as_2d(), nrows, ncols);
                     let mut acc = E::faer_zero();
                     if conj_lhs == conj_rhs {
                         for i in nrows.indices() {
@@ -262,9 +258,9 @@ pub mod inner_prod {
     #[inline]
     #[track_caller]
     pub fn inner_prod_with_conj<E: ComplexField>(
-        lhs: MatRef<'_, E>,
+        lhs: ColRef<'_, E>,
         conj_lhs: Conj,
-        rhs: MatRef<'_, E>,
+        rhs: ColRef<'_, E>,
         conj_rhs: Conj,
     ) -> E {
         inner_prod_with_conj_arch(E::Simd::default(), lhs, conj_lhs, rhs, conj_rhs)
@@ -298,9 +294,10 @@ pub mod matvec_rowmajor {
         ));
 
         let mut acc = acc;
+        let b = b.col(0);
 
         for i in 0..m {
-            let a = a.submatrix(i, 0, 1, n);
+            let a = a.row(i);
             let res = inner_prod::inner_prod_with_conj(a.transpose(), conj_a, b, conj_b);
             match alpha {
                 Some(alpha) => acc.write(
@@ -1256,7 +1253,12 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 
     if m == 1 && n == 1 {
         let mut acc = acc;
-        let ab = inner_prod::inner_prod_with_conj(lhs.transpose(), conj_lhs, rhs, conj_rhs);
+        let ab = inner_prod::inner_prod_with_conj(
+            lhs.row(0).transpose(),
+            conj_lhs,
+            rhs.col(0),
+            conj_rhs,
+        );
         match alpha {
             Some(alpha) => {
                 acc.write(
@@ -1571,6 +1573,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             Parallelism::Rayon(0) => gemm::Parallelism::Rayon(rayon::current_num_threads()),
             #[cfg(feature = "rayon")]
             Parallelism::Rayon(n_threads) => gemm::Parallelism::Rayon(n_threads),
+            Parallelism::__Private(_) => panic!(),
         };
         if coe::is_same::<f32, E>() {
             let mut acc: MatMut<'_, f32> = coe::coerce(acc);

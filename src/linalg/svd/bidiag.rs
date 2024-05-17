@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::matmul, temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::thread::{for_each_raw, par_split_indices, parallelism_degree},
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism, RowMut, RowRef,
 };
 use core::slice;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -25,8 +25,8 @@ pub fn bidiagonalize_in_place_req<E: Entity>(
 
 pub fn bidiagonalize_in_place<E: ComplexField>(
     mut a: MatMut<'_, E>,
-    mut householder_left: MatMut<'_, E>,
-    mut householder_right: MatMut<'_, E>,
+    mut householder_left: ColMut<'_, E>,
+    mut householder_right: ColMut<'_, E>,
     parallelism: Parallelism,
     mut stack: PodStack<'_>,
 ) {
@@ -37,10 +37,10 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
 
     let n_threads = parallelism_degree(parallelism);
 
-    let (mut y, mut stack) = temp_mat_uninit::<E>(n, 1, stack.rb_mut());
-    let mut y = y.as_mut();
-    let (mut z, mut stack) = temp_mat_uninit::<E>(m, 1, stack.rb_mut());
-    let mut z = z.as_mut();
+    let (y, mut stack) = temp_mat_uninit::<E>(n, 1, stack.rb_mut());
+    let mut y = y.col_mut(0);
+    let (z, mut stack) = temp_mat_uninit::<E>(m, 1, stack.rb_mut());
+    let mut z = z.col_mut(0);
 
     let (mut z_tmp, _) = temp_mat_zeroed::<E>(m, n_threads, stack.rb_mut());
     let mut z_tmp = z_tmp.as_mut();
@@ -56,17 +56,19 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
         let m = a_cur.nrows();
         let n = a_cur.ncols();
 
-        let (mut a_col, a_right) = a_cur.rb_mut().split_at_col_mut(1);
-        let (mut a_row, mut a_next) = a_right.split_at_row_mut(1);
+        let (a_col, a_right) = a_cur.rb_mut().split_at_col_mut(1);
+        let (a_row, mut a_next) = a_right.split_at_row_mut(1);
+        let mut a_col = a_col.col_mut(0);
+        let mut a_row = a_row.row_mut(0);
 
         if k > 0 {
-            let u = a_left.rb().submatrix(k, k - 1, m, 1);
-            let mut v = a_top.rb_mut().submatrix_mut(k - 1, 0, 1, n);
-            let y = y.rb().submatrix(k - 1, 0, n, 1);
-            let z = z.rb().submatrix(k - 1, 0, m, 1);
+            let u = a_left.rb().submatrix(k, k - 1, m, 1).col(0);
+            let mut v = a_top.rb_mut().submatrix_mut(k - 1, 0, 1, n).row_mut(0);
+            let y = y.rb().subrows(k - 1, n);
+            let z = z.rb().subrows(k - 1, m);
 
-            let f0 = y.read(0, 0).faer_conj().faer_mul(tl.faer_inv());
-            let f1 = v.read(0, 0).faer_conj().faer_mul(tr.faer_inv());
+            let f0 = y.read(0).faer_conj().faer_mul(tl.faer_inv());
+            let f1 = v.read(0).faer_conj().faer_mul(tr.faer_inv());
 
             zipped!(a_col.rb_mut(), u, z).for_each(|unzipped!(mut a, b, c)| {
                 a.write(
@@ -76,12 +78,12 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
                 )
             });
 
-            let f0 = u.read(0, 0).faer_mul(tl.faer_inv());
-            let f1 = z.read(0, 0).faer_mul(tr.faer_inv());
+            let f0 = u.read(0).faer_mul(tl.faer_inv());
+            let f1 = z.read(0).faer_mul(tr.faer_inv());
             zipped!(
                 a_row.rb_mut(),
-                y.submatrix(1, 0, n - 1, 1).transpose(),
-                v.rb().submatrix(0, 1, 1, n - 1),
+                y.subrows(1, n - 1).transpose(),
+                v.rb().subcols(1, n - 1),
             )
             .for_each(|unzipped!(mut a, b, c)| {
                 a.write(
@@ -91,33 +93,29 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
                 )
             });
 
-            v.write(0, 0, a01);
+            v.write(0, a01);
         }
 
-        let mut y = y.rb_mut().submatrix_mut(k, 0, n - 1, 1);
-        let mut z = z.rb_mut().submatrix_mut(k, 0, m - 1, 1);
+        let mut y = y.rb_mut().subrows_mut(k, n - 1);
+        let mut z = z.rb_mut().subrows_mut(k, m - 1);
         let z_tmp = z_tmp.rb_mut().submatrix_mut(k, 0, m - 1, n_threads);
 
         let tl_prev = tl;
         let a00;
         (tl, a00) = {
-            let head = a_col.read(0, 0);
-            let essential = a_col.rb_mut().col_mut(0).subrows_mut(1, m - 1);
+            let head = a_col.read(0);
+            let essential = a_col.rb_mut().subrows_mut(1, m - 1);
             let tail_norm = essential.norm_l2();
-            crate::linalg::householder::make_householder_in_place(
-                Some(essential.as_2d_mut()),
-                head,
-                tail_norm,
-            )
+            crate::linalg::householder::make_householder_in_place(Some(essential), head, tail_norm)
         };
-        a_col.write(0, 0, a00);
-        householder_left.write(k, 0, tl);
+        a_col.write(0, a00);
+        householder_left.write(k, tl);
 
         if n == 1 {
             break;
         }
 
-        let u = a_col.rb().submatrix(1, 0, m - 1, 1);
+        let u = a_col.rb().subrows(1, m - 1);
 
         bidiag_fused_op(
             k,
@@ -138,39 +136,30 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
         );
 
         (tr, a01) = {
-            let head = a_row.read(0, 0);
-            let essential = a_row.rb().row(0).subcols(1, n - 2).transpose();
+            let head = a_row.read(0);
+            let essential = a_row.rb().subcols(1, n - 2).transpose();
             let tail_norm = essential.norm_l2();
             crate::linalg::householder::make_householder_in_place(None, head, tail_norm)
         };
-        householder_right.write(k, 0, tr);
+        householder_right.write(k, tr);
 
-        let diff = a_row.read(0, 0).faer_sub(a01);
+        let diff = a_row.read(0).faer_sub(a01);
 
         if diff != E::faer_zero() {
             let f = diff.faer_inv().faer_conj();
-            zipped!(a_row
-                .rb_mut()
-                .row_mut(0)
-                .subcols_mut(1, n - 2)
-                .transpose_mut()
-                .as_2d_mut())
-            .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj().faer_mul(f)));
+            zipped!(a_row.rb_mut().subcols_mut(1, n - 2).transpose_mut())
+                .for_each(|unzipped!(mut x)| x.write(x.read().faer_conj().faer_mul(f)));
 
-            zipped!(
-                z.rb_mut().col_mut(0).as_2d_mut(),
-                a_next.rb().col(0).as_2d(),
-            )
-            .for_each(|unzipped!(mut z, a)| {
+            zipped!(z.rb_mut(), a_next.rb().col(0),).for_each(|unzipped!(mut z, a)| {
                 z.write(f.faer_mul(z.read().faer_sub(a01.faer_conj().faer_mul(a.read()))))
             });
         }
 
-        a_row.write(0, 0, E::faer_one());
+        a_row.write(0, E::faer_one());
         let b = crate::linalg::matmul::inner_prod::inner_prod_with_conj(
-            y.rb().col(0).as_2d(),
+            y.rb(),
             Conj::Yes,
-            a_row.rb().row(0).transpose().as_2d(),
+            a_row.rb().transpose(),
             Conj::No,
         );
 
@@ -511,14 +500,14 @@ fn bidiag_fused_op_step1<'a, E: ComplexField>(
 
 fn bidiag_fused_op_process_batch<E: ComplexField>(
     arch: E::Simd,
-    mut z_tmp: MatMut<'_, E>,
+    mut z_tmp: ColMut<'_, E>,
     mut a_next: MatMut<'_, E>,
-    mut a_row: MatMut<'_, E>,
-    u: MatRef<'_, E>,
-    u_prev: MatRef<'_, E>,
-    v_prev: MatRef<'_, E>,
-    mut y: MatMut<'_, E>,
-    z: MatRef<'_, E>,
+    mut a_row: RowMut<'_, E>,
+    u: ColRef<'_, E>,
+    u_prev: ColRef<'_, E>,
+    v_prev: RowRef<'_, E>,
+    mut y: ColMut<'_, E>,
+    z: ColRef<'_, E>,
     tl_prev_inv: E,
     tr_prev_inv: E,
     tl_inv: E,
@@ -526,8 +515,8 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
     let ncols = a_next.ncols();
     let nrows = a_next.nrows();
     for j in 0..ncols {
-        let u_rhs = y.read(j, 0).faer_conj().faer_mul(tl_prev_inv);
-        let z_rhs = v_prev.read(0, j).faer_conj().faer_mul(tr_prev_inv);
+        let u_rhs = y.read(j).faer_conj().faer_mul(tl_prev_inv);
+        let z_rhs = v_prev.read(j).faer_conj().faer_mul(tr_prev_inv);
 
         let yj = {
             let a_next = a_next.rb_mut();
@@ -559,16 +548,15 @@ fn bidiag_fused_op_process_batch<E: ComplexField>(
                 )
             }
         };
-        y.write(j, 0, yj.faer_add(a_row.read(0, j).faer_conj()));
+        y.write(j, yj.faer_add(a_row.read(j).faer_conj()));
         a_row.write(
-            0,
             j,
             a_row
-                .read(0, j)
-                .faer_sub(y.read(j, 0).faer_conj().faer_mul(tl_inv)),
+                .read(j)
+                .faer_sub(y.read(j).faer_conj().faer_mul(tl_inv)),
         );
 
-        let rhs = a_row.read(0, j).faer_conj();
+        let rhs = a_row.read(j).faer_conj();
 
         let a_next = a_next.rb();
         let z_tmp = z_tmp.rb_mut();
@@ -596,11 +584,11 @@ fn bidiag_fused_op<E: ComplexField>(
     a_left: MatMut<'_, E>,
     a_top: MatMut<'_, E>,
     mut a_next: MatMut<'_, E>,
-    mut y: MatMut<'_, E>,
+    mut y: ColMut<'_, E>,
     parallelism: Parallelism,
-    mut z: MatMut<'_, E>,
-    u: MatRef<'_, E>,
-    mut a_row: MatMut<'_, E>,
+    mut z: ColMut<'_, E>,
+    u: ColRef<'_, E>,
+    mut a_row: RowMut<'_, E>,
 ) {
     let parallelism = if m * n < 128 * 128 {
         Parallelism::None
@@ -629,14 +617,14 @@ fn bidiag_fused_op<E: ComplexField>(
                 1 => {
                     bidiag_fused_op_process_batch(
                         arch,
-                        z_tmp.rb_mut().col_mut(0).as_2d_mut(),
+                        z_tmp.rb_mut().col_mut(0),
                         a_next,
-                        a_row.row_mut(0).as_2d_mut(),
-                        u.col(0).as_2d(),
-                        u_prev.as_2d(),
-                        v_prev.as_2d(),
-                        y.col_mut(0).as_2d_mut(),
-                        z.rb().col(0).as_2d(),
+                        a_row,
+                        u,
+                        u_prev,
+                        v_prev,
+                        y,
+                        z.rb(),
                         tl_prev_inv,
                         tr_prev_inv,
                         tl_inv,
@@ -658,12 +646,12 @@ fn bidiag_fused_op<E: ComplexField>(
 
                             bidiag_fused_op_process_batch(
                                 arch,
-                                z_tmp.as_2d_mut(),
+                                z_tmp,
                                 a_next,
                                 a_row,
                                 u,
-                                u_prev.as_2d(),
-                                v_prev.as_2d(),
+                                u_prev,
+                                v_prev,
                                 y,
                                 z.rb(),
                                 tl_prev_inv,
@@ -686,31 +674,22 @@ fn bidiag_fused_op<E: ComplexField>(
                     1 => {
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         if first_init {
-                            zipped!(z.rb_mut().col_mut(0).as_2d_mut(), z0.as_2d_mut()).for_each(
-                                |unzipped!(mut z, mut z0)| {
-                                    z.write(z0.read());
-                                    z0.write(E::faer_zero());
-                                },
-                            );
+                            zipped!(z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
+                                z.write(z0.read());
+                                z0.write(E::faer_zero());
+                            });
                         } else {
-                            zipped!(z.rb_mut().col_mut(0).as_2d_mut(), z0.as_2d_mut()).for_each(
-                                |unzipped!(mut z, mut z0)| {
-                                    z.write(z.read().faer_add(z0.read()));
-                                    z0.write(E::faer_zero());
-                                },
-                            );
+                            zipped!(z.rb_mut(), z0).for_each(|unzipped!(mut z, mut z0)| {
+                                z.write(z.read().faer_add(z0.read()));
+                                z0.write(E::faer_zero());
+                            });
                         }
                     }
                     2 => {
                         let z0 = unsafe { z_block.rb().col(0).const_cast() };
                         let z1 = unsafe { z_block.rb().col(1).const_cast() };
                         if first_init {
-                            zipped!(
-                                z.rb_mut().col_mut(0).as_2d_mut(),
-                                z0.as_2d_mut(),
-                                z1.as_2d_mut(),
-                            )
-                            .for_each(
+                            zipped!(z.rb_mut(), z0, z1).for_each(
                                 |unzipped!(mut z, mut z0, mut z1)| {
                                     z.write(z0.read().faer_add(z1.read()));
                                     z0.write(E::faer_zero());
@@ -718,12 +697,7 @@ fn bidiag_fused_op<E: ComplexField>(
                                 },
                             );
                         } else {
-                            zipped!(
-                                z.rb_mut().col_mut(0).as_2d_mut(),
-                                z0.as_2d_mut(),
-                                z1.as_2d_mut(),
-                            )
-                            .for_each(
+                            zipped!(z.rb_mut(), z0, z1).for_each(
                                 |unzipped!(mut z, mut z0, mut z1)| {
                                     z.write(z.read().faer_add(z0.read().faer_add(z1.read())));
                                     z0.write(E::faer_zero());
@@ -738,29 +712,29 @@ fn bidiag_fused_op<E: ComplexField>(
                 first_init = false;
             }
         } else {
-            let u_prev = a_left.rb().submatrix(k + 1, k - 1, m - 1, 1);
-            let v_prev = a_top.rb().submatrix(k - 1, 1, 1, n - 1);
+            let u_prev = a_left.rb().submatrix(k + 1, k - 1, m - 1, 1).col(0);
+            let v_prev = a_top.rb().submatrix(k - 1, 1, 1, n - 1).row(0);
             matmul(
                 a_next.rb_mut(),
-                u_prev,
-                y.rb().adjoint(),
+                u_prev.as_2d(),
+                y.rb().adjoint().as_2d(),
                 Some(E::faer_one()),
                 tl_prev.faer_inv().faer_neg(),
                 parallelism,
             );
             matmul(
                 a_next.rb_mut(),
-                z.rb(),
-                v_prev.conjugate(),
+                z.rb().as_2d(),
+                v_prev.conjugate().as_2d(),
                 Some(E::faer_one()),
                 tr.faer_inv().faer_neg(),
                 parallelism,
             );
 
             matmul(
-                y.rb_mut(),
+                y.rb_mut().as_2d_mut(),
                 a_next.rb().adjoint(),
-                u,
+                u.as_ref().as_2d(),
                 None,
                 E::faer_one(),
                 parallelism,
@@ -773,9 +747,9 @@ fn bidiag_fused_op<E: ComplexField>(
                 dst.write(dst.read().faer_sub(src.read().faer_conj().faer_mul(tl_inv)))
             });
             matmul(
-                z.rb_mut(),
+                z.rb_mut().as_2d_mut(),
                 a_next.rb(),
-                a_row.rb().adjoint(),
+                a_row.rb().adjoint().as_2d(),
                 None,
                 E::faer_one(),
                 parallelism,
@@ -783,9 +757,9 @@ fn bidiag_fused_op<E: ComplexField>(
         }
     } else {
         matmul(
-            y.rb_mut(),
+            y.rb_mut().as_2d_mut(),
             a_next.rb().adjoint(),
-            u,
+            u.as_2d(),
             None,
             E::faer_one(),
             parallelism,
@@ -799,9 +773,9 @@ fn bidiag_fused_op<E: ComplexField>(
         });
 
         matmul(
-            z.rb_mut(),
+            z.rb_mut().as_2d_mut(),
             a_next.rb(),
-            a_row.rb().adjoint(),
+            a_row.rb().adjoint().as_2d(),
             None,
             E::faer_one(),
             parallelism,
@@ -844,8 +818,8 @@ mod tests {
 
         bidiagonalize_in_place(
             bid.as_mut(),
-            tau_left.as_mut().col_mut(0).as_2d_mut(),
-            tau_right.as_mut().col_mut(0).as_2d_mut(),
+            tau_left.as_mut().col_mut(0),
+            tau_right.as_mut().col_mut(0),
             Parallelism::None,
             make_stack!(bidiagonalize_in_place_req::<f64>(m, n, Parallelism::None)),
         );
@@ -897,8 +871,8 @@ mod tests {
 
         bidiagonalize_in_place(
             bid.as_mut(),
-            tau_left.as_mut().col_mut(0).as_2d_mut(),
-            tau_right.as_mut().col_mut(0).as_2d_mut(),
+            tau_left.as_mut().col_mut(0),
+            tau_right.as_mut().col_mut(0),
             Parallelism::Rayon(0),
             make_stack!(bidiagonalize_in_place_req::<c64>(
                 m,

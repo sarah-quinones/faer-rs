@@ -242,7 +242,7 @@ mod tests {
             )
             .unwrap();
 
-            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha).unwrap();
+            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha.col_mut(0)).unwrap();
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
 

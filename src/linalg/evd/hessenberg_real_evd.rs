@@ -21,7 +21,7 @@ use crate::{
         matmul::matmul,
         zip::Diag,
     },
-    unzipped, zipped, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    unzipped, zipped, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use dyn_stack::PodStack;
 use reborrow::*;
@@ -61,7 +61,7 @@ fn abs1<E: RealField>(a: E) -> E::Real {
     a.faer_abs()
 }
 
-fn rot<E: RealField>(x: MatMut<'_, E>, y: MatMut<'_, E>, c: E, s: E) {
+fn rot<E: RealField>(x: ColMut<'_, E>, y: ColMut<'_, E>, c: E, s: E) {
     zipped!(x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
@@ -259,12 +259,11 @@ fn lahqr_eig22<E: RealField>(mut a00: E, mut a01: E, mut a10: E, mut a11: E) -> 
     }
 }
 
-fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (E, E), s2: (E, E)) {
+fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: ColMut<'_, E>, s1: (E, E), s2: (E, E)) {
     debug_assert!(h.nrows() == h.ncols());
     let n = h.nrows();
 
     debug_assert!(v.nrows() == n);
-    debug_assert!(v.ncols() == 1);
 
     if n == 2 {
         let s = (h.read(0, 0).faer_sub(s2.0))
@@ -273,8 +272,8 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
             .faer_add(h.read(1, 0).faer_abs());
 
         if s == E::faer_zero() {
-            v.write(0, 0, E::faer_zero());
-            v.write(1, 0, E::faer_zero());
+            v.write(0, E::faer_zero());
+            v.write(1, E::faer_zero());
         } else {
             let h10s = h.read(1, 0).faer_div(s);
 
@@ -290,8 +289,8 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
                     .faer_sub(s1.0)
                     .faer_sub(s2.0),
             );
-            v.write(0, 0, v0);
-            v.write(1, 0, v1);
+            v.write(0, v0);
+            v.write(1, v1);
         }
     } else {
         let s = (h.read(0, 0).faer_sub(s2.0))
@@ -301,9 +300,9 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
             .faer_add(h.read(2, 0).faer_abs());
 
         if s == E::faer_zero() {
-            v.write(0, 0, E::faer_zero());
-            v.write(1, 0, E::faer_zero());
-            v.write(2, 0, E::faer_zero());
+            v.write(0, E::faer_zero());
+            v.write(1, E::faer_zero());
+            v.write(2, E::faer_zero());
         } else {
             let h10s = h.read(1, 0).faer_div(s);
             let h20s = h.read(2, 0).faer_div(s);
@@ -327,9 +326,9 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: MatMut<'_, E>, s1: (
             ))
             .faer_add(h10s.faer_mul(h.read(2, 1)));
 
-            v.write(0, 0, v0);
-            v.write(1, 0, v1);
-            v.write(2, 0, v2);
+            v.write(0, v0);
+            v.write(1, v1);
+            v.write(2, v2);
         }
     }
 }
@@ -709,19 +708,19 @@ fn schur_swap<E: RealField>(
 
         // Apply transformation from the left
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
             rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
+            let col1 = unsafe { q.rb().col(j0).const_cast() };
+            let col2 = unsafe { q.rb().col(j1).const_cast() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -743,13 +742,13 @@ fn schur_swap<E: RealField>(
         b.write(2, 1, a.read(j2, j2).faer_sub(a.read(j0, j0)));
 
         // Make B upper triangular
-        let mut v1 = b.rb_mut().col_mut(0).as_2d_mut();
-        let head = v1.read(0, 0);
+        let mut v1 = b.rb_mut().col_mut(0);
+        let head = v1.read(0);
         let tail = v1.rb_mut().subrows_mut(1, 2);
-        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let tail_norm = hypot(tail.read(0), tail.read(1));
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
-        v1.write(0, 0, beta1);
+        v1.write(0, beta1);
         let v11 = b.read(1, 0);
         let v12 = b.read(2, 0);
 
@@ -770,14 +769,14 @@ fn schur_swap<E: RealField>(
             b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
         );
 
-        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2).as_2d_mut();
-        let head = v2.read(0, 0);
+        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
+        let head = v2.read(0);
         let tail = v2.rb_mut().subrows_mut(1, 1);
-        let tail_norm = tail.read(0, 0).faer_abs();
+        let tail_norm = tail.read(0).faer_abs();
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
-        v2.write(0, 0, beta2);
-        let v21 = v2.read(1, 0);
+        v2.write(0, beta2);
+        let v21 = v2.read(1);
 
         //
         // Apply reflections to A and Q
@@ -887,15 +886,15 @@ fn schur_swap<E: RealField>(
         b.write(2, 1, a.read(j0, j0).faer_sub(a.read(j2, j2)));
 
         // Make B upper triangular
-        let mut v1 = b.rb_mut().col_mut(0).as_2d_mut();
-        let head = v1.read(0, 0);
+        let mut v1 = b.rb_mut().col_mut(0);
+        let head = v1.read(0);
         let tail = v1.rb_mut().subrows_mut(1, 2);
-        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let tail_norm = hypot(tail.read(0), tail.read(1));
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
-        v1.write(0, 0, beta1);
-        let v11 = v1.read(1, 0);
-        let v12 = v1.read(2, 0);
+        v1.write(0, beta1);
+        let v11 = v1.read(1);
+        let v12 = v1.read(2);
 
         let sum = b
             .read(0, 1)
@@ -914,14 +913,14 @@ fn schur_swap<E: RealField>(
             b.read(2, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v12)),
         );
 
-        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2).as_2d_mut();
-        let head = v2.read(0, 0);
+        let mut v2 = b.rb_mut().col_mut(1).subrows_mut(1, 2);
+        let head = v2.read(0);
         let tail = v2.rb_mut().subrows_mut(1, 1);
-        let tail_norm = tail.read(0, 0).faer_abs();
+        let tail_norm = tail.read(0).faer_abs();
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
-        v2.write(0, 0, beta2);
-        let v21 = v2.read(1, 0);
+        v2.write(0, beta2);
+        let v21 = v2.read(1);
 
         //
         // Apply reflections to A and Q
@@ -1051,16 +1050,16 @@ fn schur_swap<E: RealField>(
         v.write(3, 1, scale.faer_neg());
 
         // Make V upper triangular
-        let mut v1 = v.rb_mut().col_mut(0).as_2d_mut();
-        let head = v1.read(0, 0);
+        let mut v1 = v.rb_mut().col_mut(0);
+        let head = v1.read(0);
         let tail = v1.rb_mut().subrows_mut(1, 3);
-        let tail_norm = hypot(hypot(tail.read(0, 0), tail.read(1, 0)), tail.read(2, 0));
+        let tail_norm = hypot(hypot(tail.read(0), tail.read(1)), tail.read(2));
         let (tau1, beta1) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau1 = tau1.faer_inv();
-        v1.write(0, 0, beta1);
-        let v11 = v1.read(1, 0);
-        let v12 = v1.read(2, 0);
-        let v13 = v1.read(3, 0);
+        v1.write(0, beta1);
+        let v11 = v1.read(1);
+        let v12 = v1.read(2);
+        let v13 = v1.read(3);
 
         let sum = v
             .read(0, 1)
@@ -1085,16 +1084,16 @@ fn schur_swap<E: RealField>(
             v.read(3, 1).faer_sub(sum.faer_mul(tau1).faer_mul(v13)),
         );
 
-        let mut v2 = v.rb_mut().col_mut(1).subrows_mut(1, 3).as_2d_mut();
-        let head = v2.read(0, 0);
+        let mut v2 = v.rb_mut().col_mut(1).subrows_mut(1, 3);
+        let head = v2.read(0);
         let tail = v2.rb_mut().subrows_mut(1, 2);
-        let tail_norm = hypot(tail.read(0, 0), tail.read(1, 0));
+        let tail_norm = hypot(tail.read(0), tail.read(1));
         let (tau2, beta2) = make_householder_in_place(Some(tail), head, tail_norm);
         let tau2 = tau2.faer_inv();
-        v2.write(0, 0, beta2);
+        v2.write(0, beta2);
 
-        let v21 = v2.read(1, 0);
-        let v22 = v2.read(2, 0);
+        let v21 = v2.read(1);
+        let v22 = v2.read(2);
 
         // Apply reflections to D to check error
         for j in 0..4 {
@@ -1333,20 +1332,20 @@ fn schur_swap<E: RealField>(
         a.write(j1, j1, a11);
 
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
 
             rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
+            let col1 = unsafe { q.rb().col(j0).const_cast() };
+            let col2 = unsafe { q.rb().col(j1).const_cast() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -1371,20 +1370,20 @@ fn schur_swap<E: RealField>(
         a.write(j1, j1, a11);
 
         if j2 < n {
-            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast().as_2d_mut() };
-            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast().as_2d_mut() };
+            let row1 = unsafe { a.rb().row(j0).subcols(j2, n - j2).const_cast() };
+            let row2 = unsafe { a.rb().row(j1).subcols(j2, n - j2).const_cast() };
 
             rot(row1.transpose_mut(), row2.transpose_mut(), cs, sn);
         }
         // Apply transformation from the right
         if j0 > 0 {
-            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast().as_2d_mut() };
+            let col1 = unsafe { a.rb().col(j0).subrows(0, j0).const_cast() };
+            let col2 = unsafe { a.rb().col(j1).subrows(0, j0).const_cast() };
             rot(col1, col2, cs, sn);
         }
         if let Some(q) = q.rb_mut() {
-            let col1 = unsafe { q.rb().col(j0).const_cast().as_2d_mut() };
-            let col2 = unsafe { q.rb().col(j1).const_cast().as_2d_mut() };
+            let col1 = unsafe { q.rb().col(j0).const_cast() };
+            let col2 = unsafe { q.rb().col(j1).const_cast() };
             rot(col1, col2, cs, sn);
         }
     }
@@ -1396,8 +1395,8 @@ fn aggressive_early_deflation<E: RealField>(
     want_t: bool,
     mut a: MatMut<'_, E>,
     mut z: Option<MatMut<'_, E>>,
-    mut s_re: MatMut<'_, E>,
-    mut s_im: MatMut<'_, E>,
+    mut s_re: ColMut<'_, E>,
+    mut s_im: ColMut<'_, E>,
     ilo: usize,
     ihi: usize,
     nw: usize,
@@ -1432,8 +1431,8 @@ fn aggressive_early_deflation<E: RealField>(
 
     if kwtop + 1 == ihi {
         // 1x1 deflation window, not much to do
-        s_re.write(kwtop, 0, a.read(kwtop, kwtop));
-        s_im.write(kwtop, 0, E::faer_zero());
+        s_re.write(kwtop, a.read(kwtop, kwtop));
+        s_im.write(kwtop, E::faer_zero());
         let mut ns = 1;
         let mut nd = 0;
         if s_spike.faer_abs() <= max(small_num, eps.faer_mul(a.read(kwtop, kwtop).faer_abs())) {
@@ -1696,8 +1695,8 @@ fn aggressive_early_deflation<E: RealField>(
         }
 
         if n1 == 1 {
-            s_re.write(kwtop + i, 0, tw.read(i, i));
-            s_im.write(kwtop + i, 0, E::faer_zero());
+            s_re.write(kwtop + i, tw.read(i, i));
+            s_im.write(kwtop + i, E::faer_zero());
         } else {
             let ((s1_re, s1_im), (s2_re, s2_im)) = lahqr_eig22(
                 tw.read(i, i),
@@ -1706,10 +1705,10 @@ fn aggressive_early_deflation<E: RealField>(
                 tw.read(i + 1, i + 1),
             );
 
-            s_re.write(kwtop + i, 0, s1_re);
-            s_im.write(kwtop + i, 0, s1_im);
-            s_re.write(kwtop + i + 1, 0, s2_re);
-            s_im.write(kwtop + i + 1, 0, s2_im);
+            s_re.write(kwtop + i, s1_re);
+            s_im.write(kwtop + i, s1_im);
+            s_re.write(kwtop + i + 1, s2_re);
+            s_im.write(kwtop + i + 1, s2_im);
         }
         i += n1;
     }
@@ -1718,15 +1717,15 @@ fn aggressive_early_deflation<E: RealField>(
     if s_spike != E::faer_zero() {
         // Reflect spike back
         {
-            let mut vv = wv.rb_mut().col_mut(0).subrows_mut(0, ns).as_2d_mut();
+            let mut vv = wv.rb_mut().col_mut(0).subrows_mut(0, ns);
             for i in 0..ns {
-                vv.write(i, 0, v.read(0, i).faer_conj());
+                vv.write(i, v.read(0, i).faer_conj());
             }
-            let head = vv.read(0, 0);
+            let head = vv.read(0);
             let tail = vv.rb_mut().subrows_mut(1, ns - 1);
             let tail_norm = tail.rb().norm_l2();
             let (tau, beta) = make_householder_in_place(Some(tail), head, tail_norm);
-            vv.write(0, 0, E::faer_one());
+            vv.write(0, E::faer_one());
             let tau = tau.faer_inv();
 
             {
@@ -1734,8 +1733,8 @@ fn aggressive_early_deflation<E: RealField>(
                 let tmp = vv.rb().adjoint() * tw_slice.rb();
                 matmul(
                     tw_slice.rb_mut(),
-                    vv.rb(),
-                    tmp.as_ref(),
+                    vv.rb().as_2d(),
+                    tmp.as_ref().as_2d(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,
@@ -1747,8 +1746,8 @@ fn aggressive_early_deflation<E: RealField>(
                 let tmp = tw_slice2.rb() * vv.rb();
                 matmul(
                     tw_slice2.rb_mut(),
-                    tmp.as_ref(),
-                    vv.rb().adjoint(),
+                    tmp.as_ref().as_2d(),
+                    vv.rb().adjoint().as_2d(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,
@@ -1760,28 +1759,28 @@ fn aggressive_early_deflation<E: RealField>(
                 let tmp = v_slice.rb() * vv.rb();
                 matmul(
                     v_slice.rb_mut(),
-                    tmp.as_ref(),
-                    vv.rb().adjoint(),
+                    tmp.as_ref().as_2d(),
+                    vv.rb().adjoint().as_2d(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,
                 );
             }
-            vv.write(0, 0, beta);
+            vv.write(0, beta);
         }
 
         // Hessenberg reduction
         {
-            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1).as_2d_mut();
+            let mut householder = wv.rb_mut().col_mut(0).subrows_mut(0, ns - 1);
             make_hessenberg_in_place(
                 tw.rb_mut().submatrix_mut(0, 0, ns, ns),
-                householder.rb_mut(),
+                householder.rb_mut().as_2d_mut(),
                 parallelism,
                 stack.rb_mut(),
             );
             apply_block_householder_sequence_transpose_on_the_left_in_place_with_conj(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
-                householder.rb().transpose(),
+                householder.rb().transpose().as_2d(),
                 Conj::Yes,
                 unsafe { tw.rb().submatrix(1, ns, ns - 1, jw - ns).const_cast() },
                 parallelism,
@@ -1789,7 +1788,7 @@ fn aggressive_early_deflation<E: RealField>(
             );
             apply_block_householder_sequence_on_the_right_in_place_with_conj(
                 tw.rb().submatrix(1, 0, ns - 1, ns - 1),
-                householder.rb().transpose(),
+                householder.rb().transpose().as_2d(),
                 Conj::No,
                 v.rb_mut().submatrix_mut(0, 1, jw, ns - 1),
                 parallelism,
@@ -1894,16 +1893,16 @@ fn aggressive_early_deflation<E: RealField>(
 
 fn move_bulge<E: RealField>(
     mut h: MatMut<'_, E>,
-    mut v: MatMut<'_, E>,
+    mut v: ColMut<'_, E>,
     s1: (E, E),
     s2: (E, E),
     epsilon: E::Real,
 ) {
     // Perform delayed update of row below the bulge
     // Assumes the first two elements of the row are zero
-    let v0 = v.read(0, 0).faer_real();
-    let v1 = v.read(1, 0);
-    let v2 = v.read(2, 0);
+    let v0 = v.read(0).faer_real();
+    let v1 = v.read(1);
+    let v2 = v.read(2);
     let refsum = v2.faer_scale_real(v0).faer_mul(h.read(3, 2));
 
     h.write(3, 0, refsum.faer_neg());
@@ -1911,15 +1910,15 @@ fn move_bulge<E: RealField>(
     h.write(3, 2, h.read(3, 2).faer_sub(refsum.faer_mul(v2.faer_conj())));
 
     // Generate reflector to move bulge down
-    v.write(0, 0, h.read(1, 0));
-    v.write(1, 0, h.read(2, 0));
-    v.write(2, 0, h.read(3, 0));
+    v.write(0, h.read(1, 0));
+    v.write(1, h.read(2, 0));
+    v.write(2, h.read(3, 0));
 
-    let head = v.read(0, 0);
+    let head = v.read(0);
     let tail = v.rb_mut().subrows_mut(1, 2);
     let tail_norm = tail.rb().norm_l2();
     let (tau, beta) = make_householder_in_place(Some(tail), head, tail_norm);
-    v.write(0, 0, tau.faer_inv());
+    v.write(0, tau.faer_inv());
 
     // Check for bulge collapse
     if h.read(3, 0) != E::faer_zero()
@@ -1937,19 +1936,19 @@ fn move_bulge<E: RealField>(
             [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
-        let mut vt = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1, 1, 3) };
+        let mut vt = unsafe { crate::col::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
 
-        let head = vt.read(0, 0);
+        let head = vt.read(0);
         let tail = vt.rb_mut().subrows_mut(1, 2);
         let tail_norm = tail.rb().norm_l2();
         let (tau, _) = make_householder_in_place(Some(tail), head, tail_norm);
-        vt.write(0, 0, tau.faer_inv());
-        let vt0 = vt.read(0, 0);
-        let vt1 = vt.read(1, 0);
-        let vt2 = vt.read(2, 0);
+        vt.write(0, tau.faer_inv());
+        let vt0 = vt.read(0);
+        let vt1 = vt.read(1);
+        let vt2 = vt.read(2);
 
         let refsum = (vt0.faer_conj().faer_mul(h.read(1, 0)))
             .faer_add(vt1.faer_conj().faer_mul(h.read(2, 0)));
@@ -1971,9 +1970,9 @@ fn move_bulge<E: RealField>(
             h.write(1, 0, h.read(1, 0).faer_sub(refsum));
             h.write(2, 0, E::faer_zero());
             h.write(3, 0, E::faer_zero());
-            v.write(0, 0, vt.read(0, 0));
-            v.write(1, 0, vt.read(1, 0));
-            v.write(2, 0, vt.read(2, 0));
+            v.write(0, vt.read(0));
+            v.write(1, vt.read(1));
+            v.write(2, vt.read(2));
         }
     }
 }
@@ -1982,8 +1981,8 @@ fn multishift_qr_sweep<E: RealField>(
     want_t: bool,
     a: MatMut<E>,
     mut z: Option<MatMut<E>>,
-    s_re: MatMut<E>,
-    s_im: MatMut<E>,
+    s_re: ColMut<E>,
+    s_im: ColMut<E>,
     ilo: usize,
     ihi: usize,
     epsilon: E::Real,
@@ -2074,30 +2073,30 @@ fn multishift_qr_sweep<E: RealField>(
 
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let mut v = v.rb_mut().col_mut(i_bulge);
                 if i_pos == ilo {
                     // Introduce bulge
                     let h = a.rb().submatrix(ilo, ilo, 3, 3);
 
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1, 0);
+                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
                     lahqr_shiftcolumn(h, v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
 
                     debug_assert!(v.nrows() == 3);
-                    let head = v.read(0, 0);
+                    let head = v.read(0);
                     let tail = v.rb_mut().subrows_mut(1, 2);
                     let tail_norm = tail.rb().norm_l2();
                     let (tau, _) = make_householder_in_place(Some(tail), head, tail_norm);
-                    v.write(0, 0, tau.faer_inv());
+                    v.write(0, tau.faer_inv());
                 } else {
                     // Chase bulge down
                     let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1, 0);
+                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
                     move_bulge(
                         h.rb_mut(),
                         v.rb_mut(),
@@ -2111,9 +2110,9 @@ fn multishift_qr_sweep<E: RealField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 for j in istart_m..i_pos + 3 {
                     let sum = a
@@ -2213,11 +2212,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
@@ -2243,11 +2242,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_active_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 let i1 = 0;
                 let i2 = Ord::min(u2.nrows(), (i_pos_last - ilo) + (i_pos_last - ilo) + 3);
@@ -2382,14 +2381,14 @@ fn multishift_qr_sweep<E: RealField>(
         for i_pos_last in i_pos_block + n_shifts - 2..i_pos_block + n_shifts - 2 + n_pos {
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let mut v = v.rb_mut().col_mut(i_bulge);
 
                 // Chase bulge down
                 let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
-                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
-                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
-                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1, 0);
+                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
                 move_bulge(
                     h.rb_mut(),
                     v.rb_mut(),
@@ -2402,9 +2401,9 @@ fn multishift_qr_sweep<E: RealField>(
                 // We leave the last row for later (it interferes with the
                 // optimally packed bulges)
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 for j in istart_m..i_pos + 3 {
                     let sum = a
@@ -2504,11 +2503,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
@@ -2534,11 +2533,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 let i1 = (i_pos - i_pos_block) - (i_pos_last + 2 - i_pos_block - n_shifts);
                 let i2 = Ord::min(
@@ -2683,23 +2682,19 @@ fn multishift_qr_sweep<E: RealField>(
                 if i_pos == ihi - 2 {
                     // Special case, the bulge is at the bottom, needs a smaller
                     // reflector (order 2)
-                    let mut v = v.rb_mut().subrows_mut(0, 2).col_mut(i_bulge).as_2d_mut();
-                    let mut h = a
-                        .rb_mut()
-                        .subrows_mut(i_pos, 2)
-                        .col_mut(i_pos - 1)
-                        .as_2d_mut();
-                    let head = h.read(0, 0);
+                    let mut v = v.rb_mut().subrows_mut(0, 2).col_mut(i_bulge);
+                    let mut h = a.rb_mut().subrows_mut(i_pos, 2).col_mut(i_pos - 1);
+                    let head = h.read(0);
                     let tail = h.rb_mut().subrows_mut(1, 1);
                     let tail_norm = tail.rb().norm_l2();
                     let (tau, beta) = make_householder_in_place(Some(tail), head, tail_norm);
-                    v.write(0, 0, tau.faer_inv());
-                    v.write(1, 0, h.read(1, 0));
-                    h.write(0, 0, beta);
-                    h.write(1, 0, E::faer_zero());
+                    v.write(0, tau.faer_inv());
+                    v.write(1, h.read(1));
+                    h.write(0, beta);
+                    h.write(1, E::faer_zero());
 
-                    let t0 = v.read(0, 0).faer_conj();
-                    let v1 = v.read(1, 0);
+                    let t0 = v.read(0).faer_conj();
+                    let v1 = v.read(1);
                     let t1 = t0.faer_mul(v1);
                     // Apply the reflector we just calculated from the right
                     for j in istart_m..i_pos + 2 {
@@ -2748,12 +2743,12 @@ fn multishift_qr_sweep<E: RealField>(
                         );
                     }
                 } else {
-                    let mut v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                    let mut v = v.rb_mut().col_mut(i_bulge);
                     let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge, 0);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge, 0);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1, 0);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1, 0);
+                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
                     move_bulge(
                         h.rb_mut(),
                         v.rb_mut(),
@@ -2763,10 +2758,10 @@ fn multishift_qr_sweep<E: RealField>(
                     );
 
                     {
-                        let t0 = v.read(0, 0).faer_conj();
-                        let v1 = v.read(1, 0);
+                        let t0 = v.read(0).faer_conj();
+                        let v1 = v.read(1);
                         let t1 = t0.faer_mul(v1);
-                        let v2 = v.read(2, 0);
+                        let v2 = v.read(2);
                         let t2 = t0.faer_mul(v2);
                         // Apply the reflector we just calculated from the right
                         // (but leave the last row for later)
@@ -2793,9 +2788,9 @@ fn multishift_qr_sweep<E: RealField>(
                         }
                     }
 
-                    let v0 = v.read(0, 0).faer_real();
-                    let v1 = v.read(1, 0);
-                    let v2 = v.read(2, 0);
+                    let v0 = v.read(0).faer_real();
+                    let v1 = v.read(1);
+                    let v2 = v.read(2);
                     // Apply the reflector we just calculated from the left
                     // We only update a single column, the rest is updated later
                     let sum = a
@@ -2881,11 +2876,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Delayed update from the left
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 for j in i_pos + 1..istop_m {
                     let sum = a
@@ -2911,11 +2906,11 @@ fn multishift_qr_sweep<E: RealField>(
             // Accumulate the reflectors into U
             for i_bulge in i_bulge_start..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge).as_2d_mut();
+                let v = v.rb_mut().col_mut(i_bulge);
 
-                let v0 = v.read(0, 0).faer_real();
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v0 = v.read(0).faer_real();
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 let i1 = (i_pos - i_pos_block) - (i_pos_last + 2 - i_pos_block - n_shifts);
                 let i2 = Ord::min(
@@ -3054,8 +3049,8 @@ pub fn multishift_qr<E: RealField>(
     want_t: bool,
     a: MatMut<'_, E>,
     z: Option<MatMut<'_, E>>,
-    w_re: MatMut<'_, E>,
-    w_im: MatMut<'_, E>,
+    w_re: ColMut<'_, E>,
+    w_im: ColMut<'_, E>,
     ilo: usize,
     ihi: usize,
     epsilon: E::Real,
@@ -3071,9 +3066,7 @@ pub fn multishift_qr<E: RealField>(
     let nh = ihi - ilo;
 
     assert!(w_re.nrows() == n);
-    assert!(w_re.ncols() == 1);
     assert!(w_im.nrows() == n);
-    assert!(w_im.ncols() == 1);
 
     if let Some(z) = z.rb() {
         assert!(z.nrows() == n);
@@ -3157,8 +3150,8 @@ pub fn multishift_qr<E: RealField>(
 
         if ilo + 1 >= istop {
             if ilo + 1 == istop {
-                w_re.write(ilo, 0, a.read(ilo, ilo));
-                w_im.write(ilo, 0, E::faer_zero());
+                w_re.write(ilo, a.read(ilo, ilo));
+                w_im.write(ilo, E::faer_zero());
             }
             // All eigenvalues have been found, exit and return 0.
             break;
@@ -3251,15 +3244,15 @@ pub fn multishift_qr<E: RealField>(
                     let cc = E::faer_from_real(dat2.faer_mul(ss));
                     let dd = aa;
                     let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
-                    w_re.write(i - 1, 0, s1.0);
-                    w_im.write(i - 1, 0, s1.1);
-                    w_re.write(i, 0, s2.0);
-                    w_im.write(i, 0, s2.1);
+                    w_re.write(i - 1, s1.0);
+                    w_im.write(i - 1, s1.1);
+                    w_re.write(i, s2.0);
+                    w_im.write(i, s2.1);
                 } else {
-                    w_re.write(i, 0, a.read(i, i));
-                    w_re.write(i - 1, 0, a.read(i, i));
-                    w_im.write(i, 0, E::faer_zero());
-                    w_im.write(i - 1, 0, E::faer_zero());
+                    w_re.write(i, a.read(i, i));
+                    w_re.write(i - 1, a.read(i, i));
+                    w_im.write(i, E::faer_zero());
+                    w_im.write(i - 1, E::faer_zero());
                 }
             }
         } else {
@@ -3291,10 +3284,10 @@ pub fn multishift_qr<E: RealField>(
                     let cc = a.read(istop - 1, istop - 2);
                     let dd = a.read(istop - 1, istop - 1);
                     let (s1, s2) = lahqr_eig22(aa, bb, cc, dd);
-                    w_re.write(istop - 2, 0, s1.0);
-                    w_im.write(istop - 2, 0, s1.1);
-                    w_re.write(istop - 1, 0, s2.0);
-                    w_im.write(istop - 1, 0, s2.1);
+                    w_re.write(istop - 2, s1.0);
+                    w_im.write(istop - 2, s1.1);
+                    w_re.write(istop - 1, s2.0);
+                    w_im.write(istop - 1, s2.1);
                     ns = 2;
                 }
 
@@ -3308,22 +3301,19 @@ pub fn multishift_qr<E: RealField>(
             while !sorted && k > i_shifts {
                 sorted = true;
                 for i in i_shifts..k - 1 {
-                    if w_re
-                        .read(i, 0)
-                        .faer_abs()
-                        .faer_add(w_im.read(i, 0).faer_abs())
+                    if w_re.read(i).faer_abs().faer_add(w_im.read(i).faer_abs())
                         < w_re
-                            .read(i + 1, 0)
+                            .read(i + 1)
                             .faer_abs()
-                            .faer_add(w_im.read(i + 1, 0).faer_abs())
+                            .faer_add(w_im.read(i + 1).faer_abs())
                     {
                         sorted = false;
-                        let wi = (w_re.read(i, 0), w_im.read(i, 0));
-                        let wip1 = (w_re.read(i + 1, 0), w_im.read(i + 1, 0));
-                        w_re.write(i, 0, wip1.0);
-                        w_im.write(i, 0, wip1.1);
-                        w_re.write(i + 1, 0, wi.0);
-                        w_im.write(i + 1, 0, wi.1);
+                        let wi = (w_re.read(i), w_im.read(i));
+                        let wip1 = (w_re.read(i + 1), w_im.read(i + 1));
+                        w_re.write(i, wip1.0);
+                        w_im.write(i, wip1.1);
+                        w_re.write(i + 1, wi.0);
+                        w_im.write(i + 1, wi.1);
                     }
                 }
                 k -= 1;
@@ -3335,14 +3325,14 @@ pub fn multishift_qr<E: RealField>(
             // already adjacent to one another. (Yes,
             // they are.)
             for i in (i_shifts + 2..istop).rev().step_by(2) {
-                if w_im.read(i, 0) != w_im.read(i - 1, 0).faer_neg() {
-                    let tmp = (w_re.read(i, 0), w_im.read(i, 0));
-                    w_re.write(i, 0, w_re.read(i - 1, 0));
-                    w_im.write(i, 0, w_im.read(i - 1, 0));
-                    w_re.write(i - 1, 0, w_re.read(i - 2, 0));
-                    w_im.write(i - 1, 0, w_im.read(i - 2, 0));
-                    w_re.write(i - 2, 0, tmp.0);
-                    w_im.write(i - 2, 0, tmp.1);
+                if w_im.read(i) != w_im.read(i - 1).faer_neg() {
+                    let tmp = (w_re.read(i), w_im.read(i));
+                    w_re.write(i, w_re.read(i - 1));
+                    w_im.write(i, w_im.read(i - 1));
+                    w_re.write(i - 1, w_re.read(i - 2));
+                    w_im.write(i - 1, w_im.read(i - 2));
+                    w_re.write(i - 2, tmp.0);
+                    w_im.write(i - 2, tmp.1);
                 }
             }
 
@@ -3356,21 +3346,18 @@ pub fn multishift_qr<E: RealField>(
 
         // If there are only two shifts and both are real
         // then use only one (helps avoid interference)
-        if ns == 2 && w_im.read(i_shifts, 0) == E::faer_zero() {
-            if (w_re
-                .read(i_shifts, 0)
-                .faer_sub(a.read(istop - 1, istop - 1)))
-            .faer_abs()
+        if ns == 2 && w_im.read(i_shifts) == E::faer_zero() {
+            if (w_re.read(i_shifts).faer_sub(a.read(istop - 1, istop - 1))).faer_abs()
                 < (w_re
-                    .read(i_shifts + 1, 0)
+                    .read(i_shifts + 1)
                     .faer_sub(a.read(istop - 1, istop - 1)))
                 .faer_abs()
             {
-                w_re.write(i_shifts + 1, 0, w_re.read(i_shifts, 0));
-                w_im.write(i_shifts + 1, 0, w_im.read(i_shifts, 0));
+                w_re.write(i_shifts + 1, w_re.read(i_shifts));
+                w_im.write(i_shifts + 1, w_im.read(i_shifts));
             } else {
-                w_re.write(i_shifts, 0, w_re.read(i_shifts + 1, 0));
-                w_im.write(i_shifts, 0, w_im.read(i_shifts + 1, 0));
+                w_re.write(i_shifts, w_re.read(i_shifts + 1));
+                w_im.write(i_shifts, w_im.read(i_shifts + 1));
             }
         }
 
@@ -3400,8 +3387,8 @@ pub fn lahqr<E: RealField>(
     want_t: bool,
     a: MatMut<'_, E>,
     z: Option<MatMut<'_, E>>,
-    w_re: MatMut<'_, E>,
-    w_im: MatMut<'_, E>,
+    w_re: ColMut<'_, E>,
+    w_im: ColMut<'_, E>,
     ilo: usize,
     ihi: usize,
     epsilon: E,
@@ -3441,8 +3428,8 @@ pub fn lahqr<E: RealField>(
     }
 
     if nh == 1 {
-        w_re.write(ilo, 0, a.read(ilo, ilo));
-        w_im.write(ilo, 0, E::faer_zero());
+        w_re.write(ilo, a.read(ilo, ilo));
+        w_im.write(ilo, E::faer_zero());
     }
 
     // itmax is the total number of QR iterations allowed.
@@ -3467,7 +3454,7 @@ pub fn lahqr<E: RealField>(
         [zero_unit, zero_unit, zero_unit]
     });
     let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
-    let mut v = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(v_ptr, 3, 1, 1, 3) };
+    let mut v = unsafe { crate::col::from_raw_parts_mut::<'_, E>(v_ptr, 3, 1) };
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
@@ -3475,8 +3462,8 @@ pub fn lahqr<E: RealField>(
 
         if istart + 1 >= istop {
             if istart + 1 == istop {
-                w_re.write(istart, 0, a.read(istart, istart));
-                w_im.write(istart, 0, E::faer_zero());
+                w_re.write(istart, a.read(istart, istart));
+                w_im.write(istart, E::faer_zero());
             }
             // All eigenvalues have been found, exit and return 0.
             break;
@@ -3554,8 +3541,8 @@ pub fn lahqr<E: RealField>(
             if istart + 1 == istop {
                 // 1x1 block
                 k_defl = 0;
-                w_re.write(istart, 0, a.read(istart, istart));
-                w_im.write(istart, 0, zero);
+                w_re.write(istart, a.read(istart, istart));
+                w_im.write(istart, zero);
                 istop = istart;
                 istart = ilo;
                 continue;
@@ -3579,10 +3566,10 @@ pub fn lahqr<E: RealField>(
                 a.write(istart + 1, istart, a10);
                 a.write(istart + 1, istart + 1, a11);
 
-                w_re.write(istart, 0, s1_re);
-                w_im.write(istart, 0, s1_im);
-                w_re.write(istart + 1, 0, s2_re);
-                w_im.write(istart + 1, 0, s2_im);
+                w_re.write(istart, s1_re);
+                w_im.write(istart, s1_im);
+                w_re.write(istart + 1, s2_re);
+                w_im.write(istart + 1, s2_im);
 
                 // Apply the rotations from the normalization to the rest of the
                 // matrix.
@@ -3594,7 +3581,6 @@ pub fn lahqr<E: RealField>(
                                 .subcols(istart + 2, istop_m - (istart + 2))
                                 .const_cast()
                                 .transpose_mut()
-                                .as_2d_mut()
                         };
                         let y = unsafe {
                             a.rb()
@@ -3602,10 +3588,9 @@ pub fn lahqr<E: RealField>(
                                 .subcols(istart + 2, istop_m - (istart + 2))
                                 .const_cast()
                                 .transpose_mut()
-                                .as_2d_mut()
                         };
 
-                        rot(x.transpose_mut(), y.transpose_mut(), cs, sn);
+                        rot(x, y, cs, sn);
                     }
 
                     let x = unsafe {
@@ -3613,21 +3598,19 @@ pub fn lahqr<E: RealField>(
                             .col(istart)
                             .subrows(istart_m, istart - istart_m)
                             .const_cast()
-                            .as_2d_mut()
                     };
                     let y = unsafe {
                         a.rb()
                             .col(istart + 1)
                             .subrows(istart_m, istart - istart_m)
                             .const_cast()
-                            .as_2d_mut()
                     };
 
                     rot(x, y, cs, sn);
                 }
                 if let Some(z) = z.rb_mut() {
-                    let x = unsafe { z.rb().col(istart).const_cast().as_2d_mut() };
-                    let y = unsafe { z.rb().col(istart + 1).const_cast().as_2d_mut() };
+                    let x = unsafe { z.rb().col(istart).const_cast() };
+                    let y = unsafe { z.rb().col(istart + 1).const_cast() };
 
                     rot(x, y, cs, sn);
                 }
@@ -3683,15 +3666,15 @@ pub fn lahqr<E: RealField>(
             for i in (istart + 1..istop - 2).rev() {
                 let h = a.rb().submatrix(i, i, 3, 3);
                 lahqr_shiftcolumn(h, v.rb_mut(), s1, s2);
-                let head = v.read(0, 0);
-                let tail_norm = hypot(v.read(1, 0), v.read(2, 0)).faer_abs();
+                let head = v.read(0);
+                let tail_norm = hypot(v.read(1), v.read(2)).faer_abs();
                 let (tau, _) =
                     make_householder_in_place(Some(v.rb_mut().subrows_mut(1, 2)), head, tail_norm);
                 let tau = tau.faer_inv();
 
                 let v0 = tau;
-                let v1 = v.read(1, 0);
-                let v2 = v.read(2, 0);
+                let v1 = v.read(1);
+                let v2 = v.read(2);
 
                 let refsum =
                     (v0.faer_mul(a.read(i, i - 1))).faer_add(v1.faer_mul(a.read(i + 1, i - 1)));
@@ -3718,29 +3701,29 @@ pub fn lahqr<E: RealField>(
                 let h = a.rb().submatrix(i, i, nr, nr);
                 let mut x = v.rb_mut().subrows_mut(0, nr);
                 lahqr_shiftcolumn(h, x.rb_mut(), s1, s2);
-                let head = x.read(0, 0);
+                let head = x.read(0);
                 let tail = x.rb_mut().subrows_mut(1, nr - 1);
                 let tail_norm = tail.rb().norm_l2();
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_norm);
-                v.write(0, 0, beta);
+                v.write(0, beta);
                 t1 = t1.faer_inv();
                 if i > istart {
                     a.write(i, i - 1, a.read(i, i - 1).faer_mul(one.faer_sub(t1)));
                 }
             } else {
-                v.write(0, 0, a.read(i, i - 1));
-                v.write(1, 0, a.read(i + 1, i - 1));
+                v.write(0, a.read(i, i - 1));
+                v.write(1, a.read(i + 1, i - 1));
                 if nr == 3 {
-                    v.write(2, 0, a.read(i + 2, i - 1));
+                    v.write(2, a.read(i + 2, i - 1));
                 }
-                let head = v.read(0, 0);
+                let head = v.read(0);
                 let tail = v.rb_mut().subrows_mut(1, nr - 1);
                 let tail_norm = tail.rb().norm_l2();
                 let beta;
                 (t1, beta) = make_householder_in_place(Some(tail), head, tail_norm);
                 t1 = t1.faer_inv();
-                v.write(0, 0, beta);
+                v.write(0, beta);
                 a.write(i, i - 1, beta);
                 a.write(i + 1, i - 1, E::faer_zero());
                 if nr == 3 {
@@ -3751,12 +3734,12 @@ pub fn lahqr<E: RealField>(
             // The following code applies the reflector we have just calculated.
             // We write this out instead of using larf because a direct loop is
             // more efficient for small reflectors.
-            let v2 = v.read(1, 0);
+            let v2 = v.read(1);
             let t2 = t1.faer_mul(v2);
 
             if nr == 3 {
-                let v3 = v.read(2, 0);
-                let t3 = t1.faer_mul(v.read(2, 0));
+                let v3 = v.read(2);
+                let t3 = t1.faer_mul(v.read(2));
 
                 // Apply G from the left to A
                 for j in i..istop_m {
@@ -3821,7 +3804,7 @@ pub fn lahqr<E: RealField>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert, mat, Mat};
+    use crate::{assert, mat, Col, Mat};
     use assert_approx_eq::assert_approx_eq;
 
     macro_rules! make_stack {
@@ -3847,8 +3830,8 @@ mod tests {
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ];
 
-        let mut w_re = Mat::zeros(5, 1);
-        let mut w_im = Mat::zeros(5, 1);
+        let mut w_re = Col::zeros(5);
+        let mut w_im = Col::zeros(5);
 
         let mut t = h.clone();
         lahqr(
@@ -3889,8 +3872,8 @@ mod tests {
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ];
 
-        let mut w_re = Mat::zeros(5, 1);
-        let mut w_im = Mat::zeros(5, 1);
+        let mut w_re = Col::zeros(5);
+        let mut w_im = Col::zeros(5);
 
         let mut t = h.clone();
         lahqr(
@@ -3928,8 +3911,8 @@ mod tests {
                 }
                 let mut q = Mat::from_fn(n, n, |i, j| if i == j { 1.0 } else { 0.0 });
 
-                let mut w_re = Mat::zeros(n, 1);
-                let mut w_im = Mat::zeros(n, 1);
+                let mut w_re = Col::zeros(n);
+                let mut w_im = Col::zeros(n);
 
                 let mut t = h.clone();
                 lahqr(
@@ -3979,8 +3962,8 @@ mod tests {
                     }
                 });
 
-                let mut w_re = Mat::zeros(n, 1);
-                let mut w_im = Mat::zeros(n, 1);
+                let mut w_re = Col::zeros(n);
+                let mut w_im = Col::zeros(n);
 
                 let mut t = h.clone();
                 let params = EvdParams {
@@ -4108,8 +4091,8 @@ mod tests {
             }
         });
 
-        let mut w_re = Mat::zeros(n, 1);
-        let mut w_im = Mat::zeros(n, 1);
+        let mut w_re = Col::zeros(n);
+        let mut w_im = Col::zeros(n);
 
         let mut t = h.clone();
         let params = EvdParams {
@@ -4455,8 +4438,8 @@ mod tests {
             }
         });
 
-        let mut w_re = Mat::zeros(n, 1);
-        let mut w_im = Mat::zeros(n, 1);
+        let mut w_re = Col::zeros(n);
+        let mut w_im = Col::zeros(n);
 
         let mut t = h.clone();
         let params = EvdParams {
@@ -4708,8 +4691,8 @@ mod tests {
             }
         });
 
-        let mut w_re = Mat::zeros(n, 1);
-        let mut w_im = Mat::zeros(n, 1);
+        let mut w_re = Col::zeros(n);
+        let mut w_im = Col::zeros(n);
 
         let mut t = h.clone();
         let params = EvdParams {
@@ -5396,8 +5379,8 @@ mod tests {
             }
         });
 
-        let mut w_re = Mat::zeros(n, 1);
-        let mut w_im = Mat::zeros(n, 1);
+        let mut w_re = Col::zeros(n);
+        let mut w_im = Col::zeros(n);
 
         let mut t = h.clone();
         let params = EvdParams {

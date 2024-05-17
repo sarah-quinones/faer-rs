@@ -18,7 +18,7 @@ use crate::{
     linalg::{temp_mat_req, temp_mat_uninit, temp_mat_zeroed},
     unzipped,
     utils::{simd::SimdFor, thread::join_raw},
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, ColRef, MatMut, Parallelism,
 };
 use coe::Coerce;
 use core::{iter::zip, mem::swap};
@@ -38,10 +38,6 @@ fn bidiag_to_mat<E: RealField>(diag: &[E], subdiag: &[E]) -> crate::Mat<E> {
     }
 
     mat
-}
-
-fn norm<E: RealField>(v: MatRef<'_, E>) -> E {
-    crate::linalg::matmul::inner_prod::inner_prod_with_conj(v, Conj::No, v, Conj::No).faer_sqrt()
 }
 
 fn compute_svd_of_m<E: RealField>(
@@ -90,9 +86,9 @@ fn compute_svd_of_m<E: RealField>(
     let mut zhat = zhat.col_mut(0);
 
     compute_singular_values(
-        shifts.rb_mut().as_2d_mut(),
-        mus.rb_mut().as_2d_mut(),
-        s.rb_mut().as_2d_mut(),
+        shifts.rb_mut(),
+        mus.rb_mut(),
+        s.rb_mut(),
         diag,
         diag_perm,
         col0,
@@ -100,13 +96,13 @@ fn compute_svd_of_m<E: RealField>(
         epsilon,
     );
     perturb_col0(
-        zhat.rb_mut().as_2d_mut(),
+        zhat.rb_mut(),
         col0,
         diag,
         perm,
-        s.rb().as_2d(),
-        shifts.rb().as_2d(),
-        mus.rb().as_2d(),
+        s.rb(),
+        shifts.rb(),
+        mus.rb(),
     );
 
     let (col_perm, stack) = stack.make_with(actual_n, |i| i);
@@ -129,14 +125,14 @@ fn compute_svd_of_m<E: RealField>(
     compute_singular_vectors(
         um.rb_mut(),
         vm.rb_mut(),
-        zhat.rb().as_2d(),
+        zhat.rb(),
         diag,
         perm,
         outer_perm,
         col_perm_inv,
         actual_n,
-        shifts.rb().as_2d(),
-        mus.rb().as_2d(),
+        shifts.rb(),
+        mus.rb(),
     );
 
     for (idx, diag) in diag[..actual_n].iter_mut().enumerate() {
@@ -152,14 +148,14 @@ fn compute_svd_of_m<E: RealField>(
 fn compute_singular_vectors<E: RealField>(
     mut um: Option<MatMut<E>>,
     mut vm: Option<MatMut<E>>,
-    zhat: MatRef<E>,
+    zhat: ColRef<E>,
     diag: &[E],
     perm: &[usize],
     outer_perm: &[usize],
     col_perm_inv: &[usize],
     actual_n: usize,
-    shifts: MatRef<E>,
-    mus: MatRef<E>,
+    shifts: ColRef<E>,
+    mus: ColRef<E>,
 ) {
     let n = diag.len();
 
@@ -172,7 +168,7 @@ fn compute_singular_vectors<E: RealField>(
         let mut u = um.rb_mut().map(|u| u.col_mut(actual_k));
         let mut v = vm.rb_mut().map(|v| v.col_mut(actual_k));
 
-        if zhat.read(k, 0) == E::faer_zero() {
+        if zhat.read(k) == E::faer_zero() {
             if let Some(mut u) = u.rb_mut() {
                 u.write(outer_perm[k], E::faer_one());
             }
@@ -182,8 +178,8 @@ fn compute_singular_vectors<E: RealField>(
             continue;
         }
 
-        let mu = mus.read(k, 0);
-        let shift = shifts.read(k, 0);
+        let mu = mus.read(k);
+        let shift = shifts.read(k);
 
         assert_eq!(zhat.row_stride(), 1);
 
@@ -192,15 +188,14 @@ fn compute_singular_vectors<E: RealField>(
             for &i in perm {
                 u.write(
                     outer_perm[i],
-                    zhat.read(i, 0)
+                    zhat.read(i)
                         .faer_div(diag[i].faer_sub(shift).faer_sub(mu))
                         .faer_div(diag[i].faer_add(shift.faer_add(mu))),
                 );
             }
             u.write(n, E::faer_zero());
-            let norm_inv = norm(u.rb().as_2d()).faer_inv();
-            zipped!(u.rb_mut().as_2d_mut())
-                .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
+            let norm_inv = u.norm_l2().faer_inv();
+            zipped!(u.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
         }
 
         if let Some(mut v) = v {
@@ -209,15 +204,14 @@ fn compute_singular_vectors<E: RealField>(
                 v.write(
                     outer_perm[i],
                     diag[i]
-                        .faer_mul(zhat.read(i, 0))
+                        .faer_mul(zhat.read(i))
                         .faer_div(diag[i].faer_sub(shift).faer_sub(mu))
                         .faer_div(diag[i].faer_add(shift.faer_add(mu))),
                 );
             }
             v.write(outer_perm[0], E::faer_one().faer_neg());
-            let norm_inv = norm(v.rb().as_2d()).faer_inv();
-            zipped!(v.rb_mut().as_2d_mut())
-                .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
+            let norm_inv = v.norm_l2().faer_inv();
+            zipped!(v.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(norm_inv)));
         }
     }
     if let Some(mut um) = um {
@@ -226,13 +220,13 @@ fn compute_singular_vectors<E: RealField>(
 }
 
 fn perturb_col0<E: RealField>(
-    mut zhat: MatMut<E>,
+    mut zhat: ColMut<E>,
     col0: &[E],
     diag: &[E],
     perm: &[usize],
-    s: MatRef<E>,
-    shifts: MatRef<E>,
-    mus: MatRef<E>,
+    s: ColRef<E>,
+    shifts: ColRef<E>,
+    mus: ColRef<E>,
 ) {
     let n = diag.len();
     let m = perm.len();
@@ -244,14 +238,14 @@ fn perturb_col0<E: RealField>(
     let last_idx = perm[m - 1];
     for k in 0..n {
         if col0[k] == E::faer_zero() {
-            zhat.write(k, 0, E::faer_zero());
+            zhat.write(k, E::faer_zero());
             continue;
         }
 
         let dk = diag[k];
-        let mut prod = (s.read(last_idx, 0).faer_add(dk)).faer_mul(
-            mus.read(last_idx, 0)
-                .faer_add(shifts.read(last_idx, 0).faer_sub(dk)),
+        let mut prod = (s.read(last_idx).faer_add(dk)).faer_mul(
+            mus.read(last_idx)
+                .faer_add(shifts.read(last_idx).faer_sub(dk)),
         );
 
         for l in 0..m {
@@ -271,26 +265,25 @@ fn perturb_col0<E: RealField>(
                 i
             };
 
-            let term = ((s.read(j, 0).faer_add(dk)).faer_div(diag[i].faer_add(dk))).faer_mul(
-                (mus.read(j, 0).faer_add(shifts.read(j, 0).faer_sub(dk)))
-                    .faer_div(diag[i].faer_sub(dk)),
+            let term = ((s.read(j).faer_add(dk)).faer_div(diag[i].faer_add(dk))).faer_mul(
+                (mus.read(j).faer_add(shifts.read(j).faer_sub(dk))).faer_div(diag[i].faer_sub(dk)),
             );
             prod = prod.faer_mul(term);
         }
 
         let tmp = prod.faer_sqrt();
         if col0[k] > E::faer_zero() {
-            zhat.write(k, 0, tmp);
+            zhat.write(k, tmp);
         } else {
-            zhat.write(k, 0, tmp.faer_neg());
+            zhat.write(k, tmp.faer_neg());
         }
     }
 }
 
 fn compute_singular_values<E: RealField>(
-    shifts: MatMut<E>,
-    mus: MatMut<E>,
-    s: MatMut<E>,
+    shifts: ColMut<E>,
+    mus: ColMut<E>,
+    s: ColMut<E>,
     diag: &[E],
     diag_perm: &[E],
     col0: &[E],
@@ -299,9 +292,9 @@ fn compute_singular_values<E: RealField>(
 ) {
     if coe::is_same::<f64, E>() {
         struct ImplF64<'a> {
-            shifts: MatMut<'a, f64>,
-            mus: MatMut<'a, f64>,
-            s: MatMut<'a, f64>,
+            shifts: ColMut<'a, f64>,
+            mus: ColMut<'a, f64>,
+            s: ColMut<'a, f64>,
             diag: &'a [f64],
             diag_perm: &'a [f64],
             col0: &'a [f64],
@@ -341,9 +334,9 @@ fn compute_singular_values<E: RealField>(
         });
     } else if coe::is_same::<f32, E>() {
         struct ImplF32<'a> {
-            shifts: MatMut<'a, f32>,
-            mus: MatMut<'a, f32>,
-            s: MatMut<'a, f32>,
+            shifts: ColMut<'a, f32>,
+            mus: ColMut<'a, f32>,
+            s: ColMut<'a, f32>,
             diag: &'a [f32],
             diag_perm: &'a [f32],
             col0: &'a [f32],
@@ -399,9 +392,9 @@ fn compute_singular_values<E: RealField>(
 #[inline(always)]
 fn compute_singular_values_generic<E: RealField>(
     simd: impl pulp::Simd,
-    mut shifts: MatMut<E>,
-    mut mus: MatMut<E>,
-    mut s: MatMut<E>,
+    mut shifts: ColMut<E>,
+    mut mus: ColMut<E>,
+    mut s: ColMut<E>,
     diag: &[E],
     diag_perm: &[E],
     col0: &[E],
@@ -425,14 +418,14 @@ fn compute_singular_values_generic<E: RealField>(
             let one_half = two.faer_inv();
 
             'kth_value: for k in 0..n {
-                s.write(k, 0, E::faer_zero());
-                shifts.write(k, 0, E::faer_zero());
-                mus.write(k, 0, E::faer_zero());
+                s.write(k, E::faer_zero());
+                shifts.write(k, E::faer_zero());
+                mus.write(k, E::faer_zero());
 
                 if col0[k] == E::faer_zero() || actual_n == 1 {
-                    s.write(k, 0, if k == 0 { col0[0] } else { diag[k] });
-                    shifts.write(k, 0, s.read(k, 0));
-                    mus.write(k, 0, E::faer_zero());
+                    s.write(k, if k == 0 { col0[0] } else { diag[k] });
+                    shifts.write(k, s.read(k));
+                    mus.write(k, E::faer_zero());
                     continue 'kth_value;
                 }
 
@@ -719,9 +712,9 @@ fn compute_singular_values_generic<E: RealField>(
                     let f_mid = secular_eq(mid_shifted, col0_perm, diag_perm, shift);
 
                     if f_mid == E::faer_zero() {
-                        s.write(k, 0, shift.faer_add(mid_shifted));
-                        shifts.write(k, 0, shift);
-                        mus.write(k, 0, mid_shifted);
+                        s.write(k, shift.faer_add(mid_shifted));
+                        shifts.write(k, shift);
+                        mus.write(k, mid_shifted);
                         continue 'kth_value;
                     } else if f_mid > E::faer_zero() {
                         right_shifted = mid_shifted;
@@ -801,9 +794,9 @@ fn compute_singular_values_generic<E: RealField>(
                     mu_cur = (left_shifted.faer_add(right_shifted)).faer_mul(one_half);
                 }
 
-                s.write(k, 0, shift.faer_add(mu_cur));
-                shifts.write(k, 0, shift);
-                mus.write(k, 0, mu_cur);
+                s.write(k, shift.faer_add(mu_cur));
+                shifts.write(k, shift);
+                mus.write(k, mu_cur);
             }
         },
     );
@@ -1291,8 +1284,8 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
                                 unsafe {
                                     rot.apply_on_the_right_in_place_arch(
                                         arch,
-                                        v.rb().col(i).as_2d().const_cast(),
-                                        v.rb().col(j).as_2d().const_cast(),
+                                        v.rb().col(i).const_cast(),
+                                        v.rb().col(j).const_cast(),
                                     );
                                 }
                             }
@@ -1403,8 +1396,8 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
                             rot.apply_on_the_right_in_place_with_simd_and_offset(
                                 simd,
                                 u_offset,
-                                u.rb().col(k).as_2d().const_cast(),
-                                u.rb().col(k + 1).as_2d().const_cast(),
+                                u.rb().col(k).const_cast(),
+                                u.rb().col(k + 1).const_cast(),
                             );
                         }
                     }
@@ -1439,8 +1432,8 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
                             rot.apply_on_the_right_in_place_with_simd_and_offset(
                                 simd,
                                 v_offset,
-                                v.rb().col(k).as_2d().const_cast(),
-                                v.rb().col(k + 1).as_2d().const_cast(),
+                                v.rb().col(k).const_cast(),
+                                v.rb().col(k + 1).const_cast(),
                             );
                         }
                     }
@@ -1535,10 +1528,8 @@ pub fn compute_bidiag_real_svd<E: RealField>(
             *diag = s.read(i, i);
         }
         if let Some(mut u) = u {
-            zipped!(u.rb_mut().row_mut(n).as_2d_mut())
-                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
-            zipped!(u.rb_mut().col_mut(n).as_2d_mut())
-                .for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+            zipped!(u.rb_mut().row_mut(n)).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
+            zipped!(u.rb_mut().col_mut(n)).for_each(|unzipped!(mut x)| x.write(E::faer_zero()));
             u.write(n, n, E::faer_one());
         }
     } else if n <= bidiag_qr_fallback_threshold {
@@ -1725,12 +1716,10 @@ fn bidiag_svd_impl<E: RealField>(
 
         if cfg!(debug_assertions) {
             if let Some(v1) = v1 {
-                zipped!(v1.col_mut(k).as_2d_mut())
-                    .for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
+                zipped!(v1.col_mut(k)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
             }
             if let Some(v2) = v2 {
-                zipped!(v2.col_mut(0).as_2d_mut())
-                    .for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
+                zipped!(v2.col_mut(0)).for_each(|unzipped!(mut x)| x.write(E::faer_nan()));
             }
         }
 
@@ -1748,15 +1737,15 @@ fn bidiag_svd_impl<E: RealField>(
             // compact_u == 1
             for (row, row1, row2) in [(0, 0, 0), (1, k, rem)] {
                 zipped!(
-                    u.rb_mut().row_mut(row).subcols_mut(1, k).as_2d_mut(),
-                    u1_alloc.rb().row(row1).subcols(0, k).as_2d(),
+                    u.rb_mut().row_mut(row).subcols_mut(1, k),
+                    u1_alloc.rb().row(row1).subcols(0, k),
                 )
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                 u.write(row, 0, u1_alloc.read(row1, k));
 
                 zipped!(
-                    u.rb_mut().row_mut(row).subcols_mut(k + 1, rem).as_2d_mut(),
-                    u2_alloc.rb().row(row2).subcols(1, rem).as_2d(),
+                    u.rb_mut().row_mut(row).subcols_mut(k + 1, rem),
+                    u2_alloc.rb().row(row2).subcols(1, rem),
                 )
                 .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
                 u.write(row, n, u2_alloc.read(row2, 0));
@@ -1773,15 +1762,13 @@ fn bidiag_svd_impl<E: RealField>(
             let (left, right) = u2.split_at_col_mut(k + 1);
             let left = left.col_mut(k);
             let right = right.col_mut(rem);
-            zipped!(right.as_2d_mut(), left.as_2d_mut()).for_each(
-                |unzipped!(mut right, mut left)| {
-                    right.write(left.read());
+            zipped!(right, left).for_each(|unzipped!(mut right, mut left)| {
+                right.write(left.read());
 
-                    if cfg!(debug_assertions) {
-                        left.write(E::faer_nan());
-                    }
-                },
-            );
+                if cfg!(debug_assertions) {
+                    left.write(E::faer_nan());
+                }
+            });
         }
     } else {
         let (mut u1, mut u2) = if compact_u == 0 {
@@ -1907,9 +1894,9 @@ fn bidiag_svd_impl<E: RealField>(
         }
 
         zipped!(
-            u0_top.rb_mut().col_mut(0).as_2d_mut(),
-            un_top.rb_mut().col_mut(0).as_2d_mut(),
-            u1.col_mut(k).as_2d_mut(),
+            u0_top.rb_mut().col_mut(0),
+            un_top.rb_mut().col_mut(0),
+            u1.col_mut(k),
         )
         .for_each(|unzipped!(mut dst0, mut dstn, mut src)| {
             let src_ = src.read();
@@ -1920,15 +1907,13 @@ fn bidiag_svd_impl<E: RealField>(
             }
         });
 
-        zipped!(
-            u0_bot.rb_mut().col_mut(0).as_2d_mut(),
-            un_bot.rb_mut().col_mut(0).as_2d_mut(),
-        )
-        .for_each(|unzipped!(mut dst0, mut dstn)| {
-            let src_ = dstn.read();
-            dst0.write(s0.faer_mul(src_));
-            dstn.write(c0.faer_mul(src_));
-        });
+        zipped!(u0_bot.rb_mut().col_mut(0), un_bot.rb_mut().col_mut(0),).for_each(
+            |unzipped!(mut dst0, mut dstn)| {
+                let src_ = dstn.read();
+                dst0.write(s0.faer_mul(src_));
+                dstn.write(c0.faer_mul(src_));
+            },
+        );
     } else {
         for j in 0..k {
             col0[j + 1] = alpha.faer_mul(u.read(1, j + 1));
@@ -1998,10 +1983,7 @@ fn bidiag_svd_impl<E: RealField>(
             .rev()
         {
             let (um_top, um_bot) = um.rb_mut().split_at_row_mut(i);
-            rot.apply_on_the_left_in_place(
-                um_top.row_mut(0).as_2d_mut(),
-                um_bot.row_mut(0).as_2d_mut(),
-            );
+            rot.apply_on_the_left_in_place(um_top.row_mut(0), um_bot.row_mut(0));
         }
     }
 
@@ -2030,7 +2012,7 @@ fn bidiag_svd_impl<E: RealField>(
                 let (um_top, um_bot) = um.rb_mut().split_at_row_mut(actual_i);
                 (um_top.row_mut(actual_j), um_bot.row_mut(0))
             };
-            rot.apply_on_the_left_in_place(row_i.as_2d_mut(), row_j.as_2d_mut());
+            rot.apply_on_the_left_in_place(row_i, row_j);
         }
 
         if v.is_some() {
@@ -2041,13 +2023,13 @@ fn bidiag_svd_impl<E: RealField>(
                 let (vm_top, vm_bot) = vm.rb_mut().split_at_row_mut(actual_i);
                 (vm_top.row_mut(actual_j), vm_bot.row_mut(0))
             };
-            rot.apply_on_the_left_in_place(row_i.as_2d_mut(), row_j.as_2d_mut());
+            rot.apply_on_the_left_in_place(row_i, row_j);
         }
     }
 
     let _v_is_none = v.is_none();
 
-    let mut update_v = |parallelism, stack: PodStack<'_>| {
+    let mut update_v = |parallelism: Parallelism<'_>, stack: PodStack<'_>| {
         let (mut combined_v, _) = temp_mat_uninit::<E>(n, allocate_vm * n, stack);
         let mut combined_v = combined_v.as_mut();
         let v_rhs = vm.rb();
@@ -2100,7 +2082,7 @@ fn bidiag_svd_impl<E: RealField>(
         }
     };
 
-    let mut update_u = |parallelism, stack: PodStack<'_>| {
+    let mut update_u = |parallelism: Parallelism<'_>, stack: PodStack<'_>| {
         let (mut combined_u, _) = temp_mat_uninit::<E>(n + 1, allocate_um * (n + 1), stack);
         let mut combined_u = combined_u.as_mut();
 
@@ -2188,8 +2170,8 @@ fn bidiag_svd_impl<E: RealField>(
                     stack.make_aligned_raw::<u8>(req_v.size_bytes(), req_v.align_bytes());
                 let stack_v = PodStack::new(mem_v);
                 crate::utils::thread::join_raw(
-                    |parallelism| update_v(parallelism, stack_v),
-                    |parallelism| update_u(parallelism, stack_u),
+                    move |parallelism| update_v(parallelism, stack_v),
+                    move |parallelism| update_u(parallelism, stack_u),
                     parallelism,
                 );
             }

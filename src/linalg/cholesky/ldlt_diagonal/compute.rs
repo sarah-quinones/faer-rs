@@ -6,16 +6,16 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, Conj, MatMut, MatRef, Parallelism, RowRef,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
 use reborrow::*;
 
 pub(crate) struct RankUpdate<'a, E: ComplexField> {
-    pub a21: MatMut<'a, E>,
+    pub a21: ColMut<'a, E>,
     pub l20: MatRef<'a, E>,
-    pub l10: MatRef<'a, E>,
+    pub l10: RowRef<'a, E>,
 }
 
 impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
@@ -29,8 +29,6 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
         debug_assert_eq!(l20.row_stride(), 1);
         debug_assert_eq!(l20.nrows(), a21.nrows());
         debug_assert_eq!(l20.ncols(), l10.ncols());
-        debug_assert_eq!(a21.ncols(), 1);
-        debug_assert_eq!(l10.nrows(), 1);
 
         let m = l20.nrows();
         let n = l20.ncols();
@@ -40,13 +38,13 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
         }
 
         let simd = SimdFor::<E, S>::new(simd);
-        let acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut(0));
+        let acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut());
         let offset = simd.align_offset(acc.rb());
 
         let (mut acc_head, mut acc_body, mut acc_tail) = simd.as_aligned_simd_mut(acc, offset);
 
         for j in 0..n {
-            let l10 = simd.splat(l10.read(0, j).faer_neg().faer_conj());
+            let l10 = simd.splat(l10.read(j).faer_neg().faer_conj());
             let l20 = SliceGroup::<'_, E>::new(l20.try_get_contiguous_col(j));
 
             let (l20_head, l20_body, l20_tail) = simd.as_aligned_simd(l20, offset);
@@ -104,8 +102,6 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     let has_eps = delta > E::Real::faer_zero();
     let mut dynamic_regularization_count = 0usize;
     loop {
-        let block_size = 1;
-
         // we split L/D rows/cols into 3 sections each
         //     ┌             ┐
         //     | L00         |
@@ -124,15 +120,18 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             matrix.rb_mut().split_at_mut(idx, idx);
         let l00 = top_left.into_const();
         let d0 = l00.diagonal().column_vector();
-        let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
-        let (mut a11, _, a21, _) = bottom_right.split_at_mut(block_size, block_size);
+        let (_, l10, _, l20) = bottom_left.into_const().split_at(1, 0);
+        let l10 = l10.row(0);
+
+        let (mut a11, _, a21, _) = bottom_right.split_at_mut(1, 1);
 
         // reserve space for L10×D0
         let mut l10xd0 = top_right
-            .submatrix_mut(0, 0, idx, block_size)
-            .transpose_mut();
+            .submatrix_mut(0, 0, idx, 1)
+            .transpose_mut()
+            .row_mut(0);
 
-        zipped!(l10xd0.rb_mut(), l10, d0.transpose().as_2d()).for_each(
+        zipped!(l10xd0.rb_mut(), l10, d0.transpose()).for_each(
             |unzipped!(mut dst, src, factor)| {
                 dst.write(
                     src.read()
@@ -148,9 +147,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             .faer_sub(
                 crate::linalg::matmul::inner_prod::inner_prod_with_conj_arch(
                     arch,
-                    l10xd0.row(0).transpose().as_2d(),
+                    l10xd0.transpose(),
                     Conj::Yes,
-                    l10.row(0).transpose().as_2d(),
+                    l10.transpose(),
                     Conj::No,
                 ),
             )
@@ -179,7 +178,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         let d = d.faer_inv();
         a11.write(0, 0, E::faer_from_real(d));
 
-        if idx + block_size == n {
+        if idx + 1 == n {
             break;
         }
 
@@ -188,14 +187,14 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A21 -= L20 × L10^H
         if a21.row_stride() == 1 {
             arch.dispatch(RankUpdate {
-                a21: a21.rb_mut().as_2d_mut(),
+                a21: a21.rb_mut(),
                 l20,
                 l10: l10xd0,
             });
         } else {
             for j in 0..idx {
                 let l20_col = l20.col(j);
-                let l10_conj = l10xd0.read(0, j).faer_conj();
+                let l10_conj = l10xd0.read(j).faer_conj();
 
                 zipped!(a21.rb_mut().as_2d_mut(), l20_col.as_2d()).for_each(
                     |unzipped!(mut dst, src)| {
@@ -208,7 +207,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         zipped!(a21.rb_mut().as_2d_mut())
             .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d)));
 
-        idx += block_size;
+        idx += 1;
     }
     dynamic_regularization_count
 }

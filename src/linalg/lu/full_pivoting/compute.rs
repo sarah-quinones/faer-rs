@@ -5,7 +5,7 @@ use crate::{
     linalg::matmul::matmul,
     perm::{swap_cols_idx as swap_cols, swap_rows_idx as swap_rows, PermRef},
     utils::{simd::*, slice::*},
-    Index, MatMut, MatRef, Parallelism, SignedIndex,
+    ColRef, Index, MatMut, MatRef, Parallelism, RowMut, SignedIndex,
 };
 use bytemuck::cast;
 use coe::Coerce;
@@ -809,18 +809,18 @@ fn best_in_matrix_simd<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize,
 
 fn update_and_best_in_matrix_simd<E: ComplexField>(
     mut matrix: MatMut<'_, E>,
-    lhs: MatRef<'_, E>,
-    mut rhs: MatMut<'_, E>,
+    lhs: ColRef<'_, E>,
+    mut rhs: RowMut<'_, E>,
     max_row: usize,
 ) -> (usize, usize, E::Real) {
     struct UpdateAndBestInMatSwap<'a, E: ComplexField>(
         MatMut<'a, E>,
-        MatRef<'a, E>,
-        MatMut<'a, E>,
+        ColRef<'a, E>,
+        RowMut<'a, E>,
         usize,
     );
 
-    struct UpdateAndBestInMat<'a, E: ComplexField>(MatMut<'a, E>, MatRef<'a, E>, MatMut<'a, E>);
+    struct UpdateAndBestInMat<'a, E: ComplexField>(MatMut<'a, E>, ColRef<'a, E>, RowMut<'a, E>);
     impl<E: ComplexField> pulp::WithSimd for UpdateAndBestInMat<'_, E> {
         type Output = (usize, usize, E::Real);
 
@@ -844,10 +844,10 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
                 matrix.rb().try_get_contiguous_col(0),
             ));
 
-            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col(0));
+            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col());
 
             for j in 0..n {
-                let rhs = rhs.read(0, j).faer_neg();
+                let rhs = rhs.read(j).faer_neg();
 
                 let dst =
                     SliceGroupMut::<'_, E>::new(matrix.rb_mut().try_get_contiguous_col_mut(j));
@@ -911,15 +911,15 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
                 matrix.rb().try_get_contiguous_col(0),
             ));
 
-            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col(0));
+            let lhs = SliceGroup::<'_, E>::new(lhs.try_get_contiguous_col());
 
             for j in 0..n {
-                let a = rhs.read(0, j);
+                let a = rhs.read(j);
                 let b = matrix.read(max_row, j);
-                rhs.write(0, j, b);
+                rhs.write(j, b);
                 matrix.write(max_row, j, a);
 
-                let rhs = rhs.read(0, j).faer_neg();
+                let rhs = rhs.read(j).faer_neg();
 
                 let dst =
                     SliceGroupMut::<'_, E>::new(matrix.rb_mut().try_get_contiguous_col_mut(j));
@@ -971,9 +971,9 @@ fn update_and_best_in_matrix_simd<E: ComplexField>(
             aarch64_nodispatch::<E, _>(UpdateAndBestInMatSwap(matrix, lhs, rhs, max_row))
         } else {
             for j in 0..n {
-                let a = rhs.read(0, j);
+                let a = rhs.read(j);
                 let b = matrix.read(max_row, j);
-                rhs.write(0, j, b);
+                rhs.write(j, b);
                 matrix.write(max_row, j, a);
             }
             aarch64_nodispatch::<E, _>(UpdateAndBestInMat(matrix, lhs, rhs))
@@ -1026,11 +1026,11 @@ fn best_in_matrix_c64(matrix: MatRef<'_, c64>) -> (usize, usize, f64) {
 
 fn update_and_best_in_matrix_c64(
     matrix: MatMut<'_, c64>,
-    lhs: MatRef<'_, c64>,
-    rhs: MatMut<'_, c64>,
+    lhs: ColRef<'_, c64>,
+    rhs: RowMut<'_, c64>,
     max_row: usize,
 ) -> (usize, usize, f64) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, MatRef<'a, c64>, MatMut<'a, c64>, usize);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c64>, ColRef<'a, c64>, RowMut<'a, c64>, usize);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f64);
 
@@ -1050,13 +1050,13 @@ fn update_and_best_in_matrix_c64(
 
             for j in 0..n {
                 if max_row > 0 {
-                    let a = rhs.read(0, j);
+                    let a = rhs.read(j);
                     let b = matrix.read(max_row - 1, j);
-                    rhs.write(0, j, b);
+                    rhs.write(j, b);
                     matrix.write(max_row - 1, j, a);
                 }
 
-                let rhs = -rhs.read(0, j);
+                let rhs = -rhs.read(j);
 
                 let ptr = matrix.rb_mut().col_mut(j).as_ptr_mut();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -1131,11 +1131,11 @@ fn best_in_matrix_c32(matrix: MatRef<'_, c32>) -> (usize, usize, f32) {
 
 fn update_and_best_in_matrix_c32(
     matrix: MatMut<'_, c32>,
-    lhs: MatRef<'_, c32>,
-    rhs: MatMut<'_, c32>,
+    lhs: ColRef<'_, c32>,
+    rhs: RowMut<'_, c32>,
     max_row: usize,
 ) -> (usize, usize, f32) {
-    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, MatRef<'a, c32>, MatMut<'a, c32>, usize);
+    struct UpdateAndBestInMat<'a>(MatMut<'a, c32>, ColRef<'a, c32>, RowMut<'a, c32>, usize);
     impl pulp::WithSimd for UpdateAndBestInMat<'_> {
         type Output = (usize, usize, f32);
 
@@ -1155,13 +1155,13 @@ fn update_and_best_in_matrix_c32(
 
             for j in 0..n {
                 if max_row > 0 {
-                    let a = rhs.read(0, j);
+                    let a = rhs.read(j);
                     let b = matrix.read(max_row - 1, j);
-                    rhs.write(0, j, b);
+                    rhs.write(j, b);
                     matrix.write(max_row - 1, j, a);
                 }
 
-                let rhs = -rhs.read(0, j);
+                let rhs = -rhs.read(j);
 
                 let ptr = matrix.rb_mut().col_mut(j).as_ptr_mut();
                 let dst = unsafe { slice::from_raw_parts_mut(ptr, m) };
@@ -1230,8 +1230,8 @@ fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::R
 #[inline]
 fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     mut dst: MatMut<'_, E>,
-    lhs: MatRef<'_, E>,
-    rhs: MatMut<'_, E>,
+    lhs: ColRef<'_, E>,
+    rhs: RowMut<'_, E>,
     max_row: usize,
 ) -> (usize, usize, E::Real) {
     let is_c64 = coe::is_same::<c64, E>();
@@ -1257,8 +1257,8 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     } else {
         matmul(
             dst.rb_mut(),
-            lhs,
-            rhs.rb(),
+            lhs.as_2d(),
+            rhs.rb().as_2d(),
             Some(E::faer_one()),
             E::faer_one().faer_neg(),
             Parallelism::None,
@@ -1385,8 +1385,8 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
             Parallelism::None => {
                 (max_row, max_col, biggest) = rank_one_update_and_best_in_matrix(
                     bottom_right,
-                    bottom_left.rb().col(k).as_2d(),
-                    top_right.row_mut(k).as_2d_mut(),
+                    bottom_left.rb().col(k),
+                    top_right.row_mut(k),
                     max_row - k,
                 );
             }
@@ -1416,12 +1416,8 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
                             let rhs =
                                 unsafe { rhs.subcols(col_start, matrix.ncols()).const_cast() };
                             let biggest = unsafe { &mut *{ biggest }.0.add(idx) };
-                            *biggest = rank_one_update_and_best_in_matrix(
-                                matrix,
-                                lhs.as_2d(),
-                                rhs.as_2d_mut(),
-                                max_row - k,
-                            );
+                            *biggest =
+                                rank_one_update_and_best_in_matrix(matrix, lhs, rhs, max_row - k);
                             biggest.1 += col_start;
                         },
                         parallelism,

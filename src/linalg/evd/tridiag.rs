@@ -3,7 +3,7 @@ use crate::{
     linalg::{matmul::inner_prod::inner_prod_with_conj, temp_mat_req, temp_mat_zeroed},
     unzipped,
     utils::thread::parallelism_degree,
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, ColRef, Conj, MatMut, MatRef, Parallelism,
 };
 use core::iter::zip;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -24,20 +24,20 @@ pub fn tridiagonalize_in_place_req<E: Entity>(
 }
 
 struct SymMatVecWithLhsUpdate<'a, E: Entity> {
-    acc: MatMut<'a, E>,
-    acct: MatMut<'a, E>,
+    acc: ColMut<'a, E>,
+    acct: ColMut<'a, E>,
     lhs: MatMut<'a, E>,
-    rhs: MatRef<'a, E>,
-    u: MatRef<'a, E>,
-    y: MatRef<'a, E>,
+    rhs: ColRef<'a, E>,
+    u: ColRef<'a, E>,
+    y: ColRef<'a, E>,
     first_col: usize,
     last_col: usize,
 }
 
 struct SymMatVec<'a, E: Entity> {
-    acc: MatMut<'a, E>,
+    acc: ColMut<'a, E>,
     lhs: MatRef<'a, E>,
-    rhs: MatRef<'a, E>,
+    rhs: ColRef<'a, E>,
     first_col: usize,
     last_col: usize,
 }
@@ -988,21 +988,22 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         return;
     }
 
-    let (mut u, stack) = temp_mat_zeroed::<E>(n, 1, stack);
-    let (mut y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+    let (u, stack) = temp_mat_zeroed::<E>(n, 1, stack);
+    let (y, stack) = temp_mat_zeroed::<E>(n, 1, stack);
 
     let (mut v, stack) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
     let (mut w, _) = temp_mat_zeroed::<E>(n, parallelism_degree(parallelism), stack);
 
-    let mut u = u.as_mut();
-    let mut y = y.as_mut();
+    let mut u = u.col_mut(0);
+    let mut y = y.col_mut(0);
     let mut v = v.as_mut();
     let mut w = w.as_mut();
 
     let arch = E::Simd::default();
     for k in 0..n - 1 {
         let a_cur = a.rb_mut().submatrix_mut(k, k, n - k, n - k);
-        let (mut a11, _, mut a21, a22) = a_cur.split_at_mut(1, 1);
+        let (mut a11, _, a21, a22) = a_cur.split_at_mut(1, 1);
+        let mut a21 = a21.col_mut(0);
 
         let parallelism = if n - k <= 256 {
             Parallelism::None
@@ -1010,10 +1011,10 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             parallelism
         };
 
-        let (_, u) = u.rb_mut().split_at_row_mut(k);
-        let (nu, mut u21) = u.split_at_row_mut(1);
-        let (_, y) = y.rb_mut().split_at_row_mut(k);
-        let (psi, mut y21) = y.split_at_row_mut(1);
+        let (_, u) = u.rb_mut().split_at_mut(k);
+        let (nu, mut u21) = u.split_at_mut(1);
+        let (_, y) = y.rb_mut().split_at_mut(k);
+        let (psi, mut y21) = y.split_at_mut(1);
 
         let (_, v) = v.rb_mut().split_at_row_mut(k);
         let (_, v21) = v.split_at_row_mut(1);
@@ -1024,8 +1025,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         let w21 = w21.subcols_mut(0, parallelism_degree(parallelism));
 
         if k > 0 {
-            let nu = nu.read(0, 0);
-            let psi = psi.read(0, 0);
+            let nu = nu.read(0);
+            let psi = psi.read(0);
             a11.write(
                 0,
                 0,
@@ -1048,11 +1049,11 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         }
 
         let (tau, new_head) = {
-            let (head, tail) = a21.rb_mut().split_at_row_mut(1);
+            let (head, tail) = a21.rb_mut().split_at_mut(1);
             let norm = tail.rb().norm_l2();
-            crate::linalg::householder::make_householder_in_place(Some(tail), head.read(0, 0), norm)
+            crate::linalg::householder::make_householder_in_place(Some(tail), head.read(0), norm)
         };
-        a21.write(0, 0, E::faer_one());
+        a21.write(0, E::faer_one());
         let tau_inv = tau.faer_inv();
         householder.write(k, 0, tau);
 
@@ -1076,8 +1077,8 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                     let first_col = idx_to_col_start(idx);
                     let last_col = idx_to_col_start(idx + 1);
 
-                    let mut v21 = unsafe { v21.rb().col(idx).const_cast().as_2d_mut() };
-                    let mut w21 = unsafe { w21.rb().col(idx).const_cast().as_2d_mut() };
+                    let mut v21 = unsafe { v21.rb().col(idx).const_cast() };
+                    let mut w21 = unsafe { w21.rb().col(idx).const_cast() };
 
                     zipped!(v21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
                     zipped!(w21.rb_mut()).for_each(|unzipped!(mut z)| z.write(E::faer_zero()));
@@ -1104,24 +1105,17 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
                 parallelism,
             );
 
-            zipped!(
-                y21.rb_mut(),
-                v21.rb().col(0).as_2d(),
-                w21.rb().col(0).as_2d()
-            )
-            .for_each(|unzipped!(mut y, v, w)| y.write(v.read().faer_add(w.read())));
+            zipped!(y21.rb_mut(), v21.rb().col(0), w21.rb().col(0))
+                .for_each(|unzipped!(mut y, v, w)| y.write(v.read().faer_add(w.read())));
             for i in 1..n_threads as usize {
-                zipped!(
-                    y21.rb_mut(),
-                    v21.rb().col(i).as_2d(),
-                    w21.rb().col(i).as_2d()
-                )
-                .for_each(|unzipped!(mut y, v, w)| {
-                    y.write(y.read().faer_add(v.read().faer_add(w.read())))
-                });
+                zipped!(y21.rb_mut(), v21.rb().col(i), w21.rb().col(i)).for_each(
+                    |unzipped!(mut y, v, w)| {
+                        y.write(y.read().faer_add(v.read().faer_add(w.read())))
+                    },
+                );
             }
         } else {
-            let mut acc = v21.rb_mut().col_mut(0).as_2d_mut();
+            let mut acc = v21.rb_mut().col_mut(0);
             let lhs = a22.rb();
             let rhs = a21.rb();
 
@@ -1139,7 +1133,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
             zipped!(
                 y21.rb_mut(),
                 acc.rb(),
-                a22.rb().diagonal().column_vector().as_2d(),
+                a22.rb().diagonal().column_vector(),
                 a21.rb(),
             )
             .for_each(|unzipped!(mut y, v, a, u)| {
@@ -1148,7 +1142,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
         }
 
         zipped!(u21.rb_mut(), a21.rb()).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
-        a21.write(0, 0, new_head);
+        a21.write(0, new_head);
 
         let beta = inner_prod_with_conj(u21.rb(), Conj::Yes, y21.rb(), Conj::No)
             .faer_scale_power_of_two(E::Real::faer_from_f64(0.5));

@@ -39,7 +39,7 @@ use crate::{
     },
     unzipped,
     utils::{simd::*, slice::*, thread::join_raw, DivCeil},
-    zipped, Conj, MatMut, MatRef, Parallelism,
+    zipped, ColMut, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
@@ -54,7 +54,7 @@ use reborrow::*;
 /// The vector $v$ is such that $v_0 = 1$ and $v_{1\dots}$ is stored in `essential` (when provided).
 #[inline]
 pub fn make_householder_in_place<E: ComplexField>(
-    essential: Option<MatMut<'_, E>>,
+    essential: Option<ColMut<'_, E>>,
     head: E,
     tail_norm: E::Real,
 ) -> (E, E) {
@@ -83,7 +83,6 @@ pub fn make_householder_in_place<E: ComplexField>(
 
     if head_with_beta != E::faer_zero() {
         if let Some(essential) = essential {
-            assert!(essential.ncols() == 1);
             zipped!(essential)
                 .for_each(|unzipped!(mut e)| e.write(e.read().faer_mul(head_with_beta_inv)));
         }
@@ -475,6 +474,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
                     Parallelism::None
                 }
             }
+            Parallelism::__Private(_) => panic!(),
         };
 
         crate::utils::thread::for_each_raw(

@@ -197,6 +197,8 @@ pub mod col;
 /// Diagonal matrix type.
 pub mod diag;
 /// Matrix-free linear operator traits and algorithms.
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 pub mod linop;
 /// Matrix type.
 pub mod mat;
@@ -784,7 +786,8 @@ pub fn scale<E>(val: E) -> Scale<E> {
 
 /// Parallelism strategy that can be passed to most of the routines in the library.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Parallelism {
+#[non_exhaustive]
+pub enum Parallelism<'a> {
     /// No parallelism.
     ///
     /// The code is executed sequentially on the same thread that calls a function
@@ -802,6 +805,9 @@ pub enum Parallelism {
     #[cfg(feature = "rayon")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     Rayon(usize),
+
+    #[doc(hidden)]
+    __Private(&'a ()),
 }
 
 /// 0: Disable
@@ -831,6 +837,7 @@ pub fn set_global_parallelism(parallelism: Parallelism) {
         Parallelism::None => 1,
         #[cfg(feature = "rayon")]
         Parallelism::Rayon(n) => n.saturating_add(2),
+        Parallelism::__Private(_) => panic!(),
     };
     GLOBAL_PARALLELISM.store(value, core::sync::atomic::Ordering::Relaxed);
 }
@@ -840,7 +847,7 @@ pub fn set_global_parallelism(parallelism: Parallelism) {
 /// # Panics
 /// Panics if global parallelism is disabled.
 #[track_caller]
-pub fn get_global_parallelism() -> Parallelism {
+pub fn get_global_parallelism() -> Parallelism<'static> {
     let value = GLOBAL_PARALLELISM.load(core::sync::atomic::Ordering::Relaxed);
     match value {
         0 => panic!("Global parallelism is disabled."),

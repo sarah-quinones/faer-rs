@@ -101,9 +101,9 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
         // A21 -= L20 × L10^H
         if a21.row_stride() == 1 {
             arch.dispatch(RankUpdate {
-                a21: a21.rb_mut().as_2d_mut(),
+                a21: a21.rb_mut(),
                 l20,
-                l10: l10.as_2d(),
+                l10,
             });
         } else {
             for j in 0..idx {

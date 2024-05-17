@@ -93,7 +93,7 @@ impl<E: Entity> Row<E> {
     where
         E: ComplexField,
     {
-        Self::from_fn(ncols, |_| E::faer_one())
+        Self::full(ncols, E::faer_one())
     }
 
     /// Returns a new matrix with number of columns `ncols`, filled with a constant value.
@@ -404,7 +404,7 @@ impl<E: Entity> Row<E> {
     #[inline]
     pub fn truncate(&mut self, new_ncols: usize) {
         assert!(new_ncols <= self.ncols());
-        self.resize_with(new_ncols, |_| unreachable!());
+        self.erase_last_cols(new_ncols);
     }
 
     /// Returns a reference to a slice over the row.

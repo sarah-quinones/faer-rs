@@ -4,14 +4,10 @@ use crate::{
         matmul::{inner_prod::inner_prod_with_conj, matmul},
         temp_mat_req, temp_mat_uninit,
     },
-    unzipped, zipped, ComplexField, Conj, Entity, MatMut, MatRef, Parallelism, RealField,
+    unzipped, zipped, ColMut, ColRef, Conj, Entity, MatMut, Parallelism, RealField,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
-
-pub fn norm2<E: ComplexField>(v: MatRef<'_, E>) -> E::Real {
-    inner_prod_with_conj(v, Conj::Yes, v, Conj::No).faer_real()
-}
 
 fn max<T: PartialOrd>(x: T, y: T) -> T {
     if x > y {
@@ -24,8 +20,8 @@ fn max<T: PartialOrd>(x: T, y: T) -> T {
 /// the argument of the secular eq is mu + shift
 #[inline(always)]
 fn secular_eq<E: RealField>(
-    d: MatRef<'_, E>,
-    z: MatRef<'_, E>,
+    d: ColRef<'_, E>,
+    z: ColRef<'_, E>,
     rho: E,
     mu: E,
     shift: E,
@@ -50,22 +46,22 @@ fn secular_eq<E: RealField>(
         let mut i = 0;
 
         while i < n / 8 * 8 {
-            let z0 = z.read_unchecked(i, 0);
-            let d0 = d.read_unchecked(i, 0);
-            let z1 = z.read_unchecked(i + 1, 0);
-            let d1 = d.read_unchecked(i + 1, 0);
-            let z2 = z.read_unchecked(i + 2, 0);
-            let d2 = d.read_unchecked(i + 2, 0);
-            let z3 = z.read_unchecked(i + 3, 0);
-            let d3 = d.read_unchecked(i + 3, 0);
-            let z4 = z.read_unchecked(i + 4, 0);
-            let d4 = d.read_unchecked(i + 4, 0);
-            let z5 = z.read_unchecked(i + 5, 0);
-            let d5 = d.read_unchecked(i + 5, 0);
-            let z6 = z.read_unchecked(i + 6, 0);
-            let d6 = d.read_unchecked(i + 6, 0);
-            let z7 = z.read_unchecked(i + 7, 0);
-            let d7 = d.read_unchecked(i + 7, 0);
+            let z0 = z.read_unchecked(i);
+            let d0 = d.read_unchecked(i);
+            let z1 = z.read_unchecked(i + 1);
+            let d1 = d.read_unchecked(i + 1);
+            let z2 = z.read_unchecked(i + 2);
+            let d2 = d.read_unchecked(i + 2);
+            let z3 = z.read_unchecked(i + 3);
+            let d3 = d.read_unchecked(i + 3);
+            let z4 = z.read_unchecked(i + 4);
+            let d4 = d.read_unchecked(i + 4);
+            let z5 = z.read_unchecked(i + 5);
+            let d5 = d.read_unchecked(i + 5);
+            let z6 = z.read_unchecked(i + 6);
+            let d6 = d.read_unchecked(i + 6);
+            let z7 = z.read_unchecked(i + 7);
+            let d7 = d.read_unchecked(i + 7);
 
             // res = res + z * (z / (d - arg))
             res0 = res0.faer_add(z0.faer_mul(z0.faer_div(d0.faer_sub(shift).faer_sub(mu))));
@@ -81,8 +77,8 @@ fn secular_eq<E: RealField>(
         }
 
         while i < n {
-            let z0 = z.read_unchecked(i, 0);
-            let d0 = d.read_unchecked(i, 0);
+            let z0 = z.read_unchecked(i);
+            let d0 = d.read_unchecked(i);
 
             // res = res + z * (z / (d - arg))
             res0 = res0.faer_add(z0.faer_mul(z0.faer_div(d0.faer_sub(shift).faer_sub(mu))));
@@ -98,10 +94,10 @@ fn secular_eq<E: RealField>(
 }
 
 fn compute_eigenvalues<E: RealField>(
-    mut mus: MatMut<'_, E>,
-    mut shifts: MatMut<'_, E>,
-    d: MatRef<'_, E>,
-    z: MatRef<'_, E>,
+    mut mus: ColMut<'_, E>,
+    mut shifts: ColMut<'_, E>,
+    d: ColRef<'_, E>,
+    z: ColRef<'_, E>,
     rho: E,
     epsilon: E,
     non_deflated: usize,
@@ -120,16 +116,16 @@ fn compute_eigenvalues<E: RealField>(
 
     'kth_iter: for i in 0..n {
         // left = d_i
-        let left = d.read(i, 0);
+        let left = d.read(i);
 
         let last_i = i == n - 1;
 
         let right = if last_i {
             // right = d_i + rho z.T z
-            d.read(i, 0).faer_add(rho.faer_mul(norm2(z)))
+            d.read(i).faer_add(rho.faer_mul(z.squared_norm_l2()))
         } else {
             // right = d_{i+1}
-            d.read(i + 1, 0)
+            d.read(i + 1)
         };
 
         // find the root between left and right
@@ -380,8 +376,8 @@ fn compute_eigenvalues<E: RealField>(
             let f_mid = secular_eq(d, z, rho, mid_shifted, shift, n);
 
             if f_mid == E::faer_zero() {
-                shifts.write(i, 0, shift);
-                mus.write(i, 0, mid_shifted);
+                shifts.write(i, shift);
+                mus.write(i, mid_shifted);
                 continue 'kth_iter;
             } else if f_mid > E::faer_zero() {
                 right_shifted = mid_shifted;
@@ -463,12 +459,12 @@ fn compute_eigenvalues<E: RealField>(
             }
         }
 
-        mus.write(i, 0, mu_cur);
-        shifts.write(i, 0, shift);
+        mus.write(i, mu_cur);
+        shifts.write(i, shift);
     }
     for i in n..full_n {
-        mus.write(i, 0, E::faer_zero());
-        shifts.write(i, 0, d.read(i, 0));
+        mus.write(i, E::faer_zero());
+        shifts.write(i, d.read(i));
     }
 }
 
@@ -506,12 +502,12 @@ pub fn compute_tridiag_real_evd<E: RealField>(
         pl_after,
         pr,
         run_info,
-        z,
-        permuted_diag,
-        permuted_z,
-        householder,
-        mus,
-        shifts,
+        z.col_mut(0),
+        permuted_diag.col_mut(0),
+        permuted_z.col_mut(0),
+        householder.col_mut(0),
+        mus.col_mut(0),
+        shifts.col_mut(0),
         repaired_u,
         tmp,
     );
@@ -528,12 +524,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     pl_after: &mut [usize],
     pr: &mut [usize],
     run_info: &mut [usize],
-    mut z: MatMut<'_, E>,
-    mut permuted_diag: MatMut<'_, E>,
-    mut permuted_z: MatMut<'_, E>,
-    mut householder: MatMut<'_, E>,
-    mut mus: MatMut<'_, E>,
-    mut shifts: MatMut<'_, E>,
+    mut z: ColMut<'_, E>,
+    mut permuted_diag: ColMut<'_, E>,
+    mut permuted_z: ColMut<'_, E>,
+    mut householder: ColMut<'_, E>,
+    mut mus: ColMut<'_, E>,
+    mut shifts: ColMut<'_, E>,
     mut repaired_u: MatMut<'_, E>,
     mut tmp: MatMut<'_, E>,
 ) {
@@ -646,12 +642,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         let (pl_after0, pl_after1) = pl_after.split_at_mut(n1);
         let (pr0, pr1) = pr.split_at_mut(n1);
         let (run_info0, run_info1) = run_info.split_at_mut(n1);
-        let (z0, z1) = z.rb_mut().split_at_row_mut(n1);
-        let (permuted_diag0, permuted_diag1) = permuted_diag.rb_mut().split_at_row_mut(n1);
-        let (permuted_z0, permuted_z1) = permuted_z.rb_mut().split_at_row_mut(n1);
-        let (householder0, householder1) = householder.rb_mut().split_at_row_mut(n1);
-        let (mus0, mus1) = mus.rb_mut().split_at_row_mut(n1);
-        let (shift0, shift1) = shifts.rb_mut().split_at_row_mut(n1);
+        let (z0, z1) = z.rb_mut().split_at_mut(n1);
+        let (permuted_diag0, permuted_diag1) = permuted_diag.rb_mut().split_at_mut(n1);
+        let (permuted_z0, permuted_z1) = permuted_z.rb_mut().split_at_mut(n1);
+        let (householder0, householder1) = householder.rb_mut().split_at_mut(n1);
+        let (mus0, mus1) = mus.rb_mut().split_at_mut(n1);
+        let (shift0, shift1) = shifts.rb_mut().split_at_mut(n1);
         let (repaired_u0, repaired_u1) = repaired_u.rb_mut().split_at_col_mut(n1);
         let (tmp0, tmp1) = tmp.rb_mut().split_at_col_mut(n1);
 
@@ -723,14 +719,13 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     //
     // diag([D0 D1]) + rho×z×z.T = Pl_before^-1×H^-1×Pl_after^-1×Q×Pr × E × ...
 
-    let (mut z0, mut z1) = z.rb_mut().split_at_row_mut(n1);
-    z0.rb_mut()
-        .copy_from(u0.rb().row(n1 - 1).transpose().as_2d());
+    let (mut z0, mut z1) = z.rb_mut().split_at_mut(n1);
+    z0.rb_mut().copy_from(u0.rb().row(n1 - 1).transpose());
     if rho < E::faer_zero() {
-        zipped!(z1.rb_mut(), u1.rb().row(0).transpose().as_2d())
+        zipped!(z1.rb_mut(), u1.rb().row(0).transpose())
             .for_each(|unzipped!(mut z, u)| z.write(u.read().faer_neg()));
     } else {
-        z1.rb_mut().copy_from(u1.rb().row(0).transpose().as_2d());
+        z1.rb_mut().copy_from(u1.rb().row(0).transpose());
     }
 
     let inv_sqrt2 = E::faer_from_f64(2.0).faer_sqrt().faer_inv();
@@ -761,10 +756,10 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     // permuted_diag = Pl * diag * Pl.T
     // permuted_z = Pl * diag
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        permuted_diag.write(i, 0, diag[pl_before]);
+        permuted_diag.write(i, diag[pl_before]);
     }
     for (i, &pl_before) in pl_before.iter().enumerate() {
-        permuted_z.write(i, 0, z.read(pl_before, 0));
+        permuted_z.write(i, z.read(pl_before));
     }
 
     let mut dmax = E::faer_zero();
@@ -804,16 +799,16 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         }
 
         for (j, diag) in diag.iter_mut().enumerate() {
-            *diag = permuted_diag.read(j, 0);
+            *diag = permuted_diag.read(j);
         }
 
         return;
     }
 
     for i in 0..n {
-        let zi = permuted_z.read(i, 0);
+        let zi = permuted_z.read(i);
         if rho.faer_mul(zi).faer_abs() <= tol {
-            permuted_z.write(i, 0, E::faer_zero());
+            permuted_z.write(i, E::faer_zero());
         }
     }
 
@@ -823,12 +818,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     while idx < n {
         let mut run_len = 1;
 
-        let d_prev = permuted_diag.read(idx, 0);
+        let d_prev = permuted_diag.read(idx);
 
         while idx + run_len < n {
-            let d_next = permuted_diag.read(idx + run_len, 0);
+            let d_next = permuted_diag.read(idx + run_len);
             if d_next.faer_sub(d_prev) < tol {
-                permuted_diag.write(idx + run_len, 0, d_prev);
+                permuted_diag.write(idx + run_len, d_prev);
                 run_len += 1;
             } else {
                 break;
@@ -845,7 +840,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
             householder.rb_mut().copy_from(permuted_z.rb());
 
-            let head = householder.read(run_len - 1, 0);
+            let head = householder.read(run_len - 1);
             let tail_norm = householder.rb().subrows(0, run_len - 1).norm_l2();
 
             let (tau, beta) = crate::linalg::householder::make_householder_in_place(
@@ -859,9 +854,9 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                 tail_norm,
             );
 
-            householder.write(run_len - 1, 0, tau);
+            householder.write(run_len - 1, tau);
             permuted_z.fill_zero();
-            permuted_z.write(run_len - 1, 0, beta);
+            permuted_z.write(run_len - 1, beta);
         }
 
         idx += run_len;
@@ -871,8 +866,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let mut writer_deflated = 0;
     let mut writer_non_deflated = 0;
     for reader in 0..n {
-        let z = permuted_z.read(reader, 0);
-        let d = permuted_diag.read(reader, 0);
+        let z = permuted_z.read(reader);
+        let d = permuted_diag.read(reader);
 
         if z == E::faer_zero() {
             // deflated value, store in diag
@@ -880,8 +875,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             pr[writer_deflated] = reader;
             writer_deflated += 1;
         } else {
-            permuted_z.write(writer_non_deflated, 0, z);
-            permuted_diag.write(writer_non_deflated, 0, d);
+            permuted_z.write(writer_non_deflated, z);
+            permuted_diag.write(writer_non_deflated, d);
             pl_after[writer_non_deflated] = reader;
             writer_non_deflated += 1;
         }
@@ -891,7 +886,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     let deflated = writer_deflated;
 
     for i in 0..deflated {
-        permuted_diag.write(non_deflated + i, 0, diag[i]);
+        permuted_diag.write(non_deflated + i, diag[i]);
         pl_after[non_deflated + i] = pr[i];
     }
 
@@ -915,15 +910,15 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
     // new_zi^2 = prod(wk - di) / prod_{k != i} (dk - di)
     for i in 0..non_deflated {
-        let di = permuted_diag.read(i, 0);
-        let mu_i = mus.read(i, 0);
-        let shift_i = shifts.read(i, 0);
+        let di = permuted_diag.read(i);
+        let mu_i = mus.read(i);
+        let shift_i = shifts.read(i);
         let mut prod = mu_i.faer_add(shift_i.faer_sub(di));
 
         (0..i).chain(i + 1..non_deflated).for_each(|k| {
-            let dk = permuted_diag.read(k, 0);
-            let mu_k = mus.read(k, 0);
-            let shift_k = shifts.read(k, 0);
+            let dk = permuted_diag.read(k);
+            let mu_k = mus.read(k);
+            let shift_k = shifts.read(k);
 
             let numerator = mu_k.faer_add(shift_k.faer_sub(di));
             let denominator = dk.faer_sub(di);
@@ -931,20 +926,20 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
         });
 
         let prod = prod.faer_abs().faer_sqrt();
-        let old_zi = permuted_z.read(i, 0);
+        let old_zi = permuted_z.read(i);
         let new_zi = if old_zi < E::faer_zero() {
             prod.faer_neg()
         } else {
             prod
         };
 
-        permuted_z.write(i, 0, new_zi);
+        permuted_z.write(i, new_zi);
     }
 
     // reuse z to store computed eigenvalues, since it's not used anymore
     let mut eigenvals = z;
     for i in 0..n {
-        eigenvals.write(i, 0, mus.read(i, 0).faer_add(shifts.read(i, 0)));
+        eigenvals.write(i, mus.read(i).faer_add(shifts.read(i)));
     }
 
     for (i, p) in pr.iter_mut().enumerate() {
@@ -952,7 +947,7 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
     }
 
     pr.sort_unstable_by(
-        |&i, &j| match eigenvals.read(i, 0).partial_cmp(&eigenvals.read(j, 0)) {
+        |&i, &j| match eigenvals.read(i).partial_cmp(&eigenvals.read(j)) {
             Some(ord) => ord,
             None => core::cmp::Ordering::Equal,
         },
@@ -970,12 +965,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
             repaired_u.rb_mut().col_mut(j).fill_zero();
             repaired_u.write(pl_after[pj], j, E::faer_one());
         } else {
-            let mu_j = mus.read(pj, 0);
-            let shift_j = shifts.read(pj, 0);
+            let mu_j = mus.read(pj);
+            let shift_j = shifts.read(pj);
 
             for (i, &pl_after) in pl_after[..non_deflated].iter().enumerate() {
-                let zi = permuted_z.read(i, 0);
-                let di = permuted_diag.read(i, 0);
+                let zi = permuted_z.read(i);
+                let di = permuted_diag.read(i);
 
                 repaired_u.write(
                     pl_after,
@@ -987,8 +982,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                 repaired_u.write(pl_after, j, E::faer_zero());
             }
 
-            let inv_norm = norm2(repaired_u.rb().col(j).as_2d()).faer_sqrt().faer_inv();
-            zipped!(repaired_u.rb_mut().col_mut(j).as_2d_mut())
+            let inv_norm = repaired_u.rb().col(j).norm_l2().faer_inv();
+            zipped!(repaired_u.rb_mut().col_mut(j))
                 .for_each(|unzipped!(mut x)| x.write(x.read().faer_mul(inv_norm)));
         }
     }
@@ -1000,8 +995,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
             if run_len > 1 {
                 let mut householder = householder.rb_mut().subrows_mut(idx, run_len);
-                let tau = householder.read(run_len - 1, 0);
-                householder.write(run_len - 1, 0, E::faer_one());
+                let tau = householder.read(run_len - 1);
+                householder.write(run_len - 1, E::faer_one());
                 let householder = householder.rb();
 
                 let mut repaired_u = repaired_u.rb_mut().subrows_mut(idx, run_len);
@@ -1013,12 +1008,12 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
                     let dot = tau_inv.faer_mul(inner_prod_with_conj(
                         householder,
                         Conj::No,
-                        col.rb().as_2d(),
+                        col.rb(),
                         Conj::No,
                     ));
-                    zipped!(col.rb_mut().as_2d_mut(), householder).for_each(
-                        |unzipped!(mut u, h)| u.write(u.read().faer_sub(dot.faer_mul(h.read()))),
-                    );
+                    zipped!(col.rb_mut(), householder).for_each(|unzipped!(mut u, h)| {
+                        u.write(u.read().faer_sub(dot.faer_mul(h.read())))
+                    });
                 }
             }
             idx += run_len;
@@ -1075,8 +1070,8 @@ fn compute_tridiag_real_evd_impl<E: RealField>(
 
     u.copy_from(tmp.rb());
     for i in 0..n {
-        let mu_i = mus.read(pr[i], 0);
-        let shift_i = shifts.read(pr[i], 0);
+        let mu_i = mus.read(pr[i]);
+        let shift_i = shifts.read(pr[i]);
         diag[i] = mu_i.faer_add(shift_i);
     }
 }
