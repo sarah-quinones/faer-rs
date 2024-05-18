@@ -923,18 +923,23 @@ impl BlockStructure {
 #[track_caller]
 #[inline]
 pub fn matmul_with_conj<E: ComplexField>(
-    acc: MatMut<'_, E>,
+    acc: impl As2DMut<E>,
     acc_structure: BlockStructure,
-    lhs: MatRef<'_, E>,
+    lhs: impl As2D<E>,
     lhs_structure: BlockStructure,
     conj_lhs: Conj,
-    rhs: MatRef<'_, E>,
+    rhs: impl As2D<E>,
     rhs_structure: BlockStructure,
     conj_rhs: Conj,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let lhs = lhs.as_2d_ref();
+    let rhs = rhs.as_2d_ref();
+
     assert!(all(
         acc.nrows() == lhs.nrows(),
         acc.ncols() == rhs.ncols(),
@@ -1038,16 +1043,21 @@ pub fn matmul_with_conj<E: ComplexField>(
 #[track_caller]
 #[inline]
 pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
-    acc: MatMut<'_, E>,
+    acc: impl As2DMut<E>,
     acc_structure: BlockStructure,
-    lhs: MatRef<'_, LhsE>,
+    lhs: impl As2D<LhsE>,
     lhs_structure: BlockStructure,
-    rhs: MatRef<'_, RhsE>,
+    rhs: impl As2D<RhsE>,
     rhs_structure: BlockStructure,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let lhs = lhs.as_2d_ref();
+    let rhs = rhs.as_2d_ref();
+
     let (lhs, conj_lhs) = lhs.canonicalize();
     let (rhs, conj_rhs) = rhs.canonicalize();
     matmul_with_conj(

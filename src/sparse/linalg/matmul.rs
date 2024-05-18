@@ -5,6 +5,7 @@
 use super::*;
 use crate::{
     assert,
+    mat::{As2D, As2DMut},
     utils::constrained::{self, Size},
 };
 use core::cell::UnsafeCell;
@@ -257,13 +258,17 @@ pub fn sparse_dense_matmul<
     LhsE: Conjugate<Canonical = E>,
     RhsE: Conjugate<Canonical = E>,
 >(
-    acc: MatMut<'_, E>,
+    acc: impl As2DMut<E>,
     lhs: SparseColMatRef<'_, I, LhsE>,
-    rhs: MatRef<'_, RhsE>,
+    rhs: impl As2D<RhsE>,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let rhs = rhs.as_2d_ref();
+
     assert!(all(
         acc.nrows() == lhs.nrows(),
         acc.ncols() == rhs.ncols(),
@@ -325,13 +330,17 @@ pub fn dense_sparse_matmul<
     LhsE: Conjugate<Canonical = E>,
     RhsE: Conjugate<Canonical = E>,
 >(
-    acc: MatMut<'_, E>,
-    lhs: MatRef<'_, LhsE>,
+    acc: impl As2DMut<E>,
+    lhs: impl As2D<LhsE>,
     rhs: SparseColMatRef<'_, I, RhsE>,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let lhs = lhs.as_2d_ref();
+
     assert!(all(
         acc.nrows() == lhs.nrows(),
         acc.ncols() == rhs.ncols(),

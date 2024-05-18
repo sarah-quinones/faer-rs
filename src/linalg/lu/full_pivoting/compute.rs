@@ -1257,8 +1257,8 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     } else {
         matmul(
             dst.rb_mut(),
-            lhs.as_2d(),
-            rhs.rb().as_2d(),
+            lhs,
+            rhs.rb(),
             Some(E::faer_one()),
             E::faer_one().faer_neg(),
             Parallelism::None,

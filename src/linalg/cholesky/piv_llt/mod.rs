@@ -163,9 +163,9 @@ pub mod compute {
                         a.write(j, j, E::faer_from_real(ajj));
                         unsafe {
                             crate::linalg::matmul::matmul(
-                                a.rb().get(j + 1.., j).as_2d().const_cast(),
+                                a.rb().get(j + 1.., j).const_cast(),
                                 a.rb().get(j + 1.., k..j),
-                                a.rb().get(j, k..j).adjoint().as_2d(),
+                                a.rb().get(j, k..j).adjoint(),
                                 Some(E::faer_one()),
                                 E::faer_one().faer_neg(),
                                 parallelism,

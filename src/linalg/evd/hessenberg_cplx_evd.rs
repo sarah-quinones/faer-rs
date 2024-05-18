@@ -947,8 +947,8 @@ fn aggressive_early_deflation<E: ComplexField>(
                 let tmp = vv.rb().adjoint() * tw_slice.rb();
                 matmul(
                     tw_slice.rb_mut(),
-                    vv.rb().as_2d(),
-                    tmp.as_ref().as_2d(),
+                    vv.rb(),
+                    tmp.as_ref(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,
@@ -960,8 +960,8 @@ fn aggressive_early_deflation<E: ComplexField>(
                 let tmp = tw_slice2.rb() * vv.rb();
                 matmul(
                     tw_slice2.rb_mut(),
-                    tmp.as_ref().as_2d(),
-                    vv.rb().adjoint().as_2d(),
+                    tmp.as_ref(),
+                    vv.rb().adjoint(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,
@@ -973,8 +973,8 @@ fn aggressive_early_deflation<E: ComplexField>(
                 let tmp = v_slice.rb() * vv.rb();
                 matmul(
                     v_slice.rb_mut(),
-                    tmp.as_ref().as_2d(),
-                    vv.rb().adjoint().as_2d(),
+                    tmp.as_ref(),
+                    vv.rb().adjoint(),
                     Some(E::faer_one()),
                     tau.faer_neg(),
                     parallelism,

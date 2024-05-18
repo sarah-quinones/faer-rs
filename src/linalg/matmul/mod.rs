@@ -3,7 +3,7 @@
 use crate::{
     assert,
     complex_native::*,
-    mat::{MatMut, MatRef},
+    mat::{As2D, As2DMut, MatMut, MatRef},
     unzipped,
     utils::{simd::*, slice::*, DivCeil},
     zipped, ColRef, ComplexField, Conj, Conjugate, Parallelism,
@@ -1832,15 +1832,20 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
 #[inline]
 #[track_caller]
 pub fn matmul_with_conj<E: ComplexField>(
-    acc: MatMut<'_, E>,
-    lhs: MatRef<'_, E>,
+    acc: impl As2DMut<E>,
+    lhs: impl As2D<E>,
     conj_lhs: Conj,
-    rhs: MatRef<'_, E>,
+    rhs: impl As2D<E>,
     conj_rhs: Conj,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let lhs = lhs.as_2d_ref();
+    let rhs = rhs.as_2d_ref();
+
     assert!(all(
         acc.nrows() == lhs.nrows(),
         acc.ncols() == rhs.ncols(),
@@ -1909,13 +1914,17 @@ pub fn matmul_with_conj<E: ComplexField>(
 /// ```
 #[track_caller]
 pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>(
-    acc: MatMut<'_, E>,
-    lhs: MatRef<'_, LhsE>,
-    rhs: MatRef<'_, RhsE>,
+    acc: impl As2DMut<E>,
+    lhs: impl As2D<LhsE>,
+    rhs: impl As2D<RhsE>,
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
 ) {
+    let mut acc = acc;
+    let acc = acc.as_2d_mut();
+    let lhs = lhs.as_2d_ref();
+    let rhs = rhs.as_2d_ref();
     let (lhs, conj_lhs) = lhs.canonicalize();
     let (rhs, conj_rhs) = rhs.canonicalize();
     matmul_with_conj::<E>(acc, lhs, conj_lhs, rhs, conj_rhs, alpha, beta, parallelism);

@@ -997,9 +997,9 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
         assert!(lhs.ncols() == rhs.nrows());
         let mut out = Col::zeros(lhs.nrows());
         crate::linalg::matmul::matmul(
-            out.as_mut().as_2d_mut(),
+            out.as_mut(),
             lhs,
-            rhs.as_2d(),
+            rhs,
             None,
             E::faer_one(),
             get_global_parallelism(),
@@ -1020,8 +1020,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
         assert!(lhs.ncols() == rhs.nrows());
         let mut out = Row::zeros(rhs.ncols());
         crate::linalg::matmul::matmul(
-            out.as_mut().as_2d_mut(),
-            lhs.as_2d(),
+            out.as_mut(),
+            lhs,
             rhs,
             None,
             E::faer_one(),
@@ -1060,8 +1060,8 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
         let mut out = Mat::zeros(lhs.nrows(), rhs.ncols());
         crate::linalg::matmul::matmul(
             out.as_mut(),
-            lhs.as_2d(),
-            rhs.as_2d(),
+            lhs,
+            rhs,
             None,
             E::faer_one(),
             get_global_parallelism(),
@@ -2010,9 +2010,9 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
         let lhs = self;
         let mut out = Col::zeros(lhs.nrows());
         crate::sparse::linalg::matmul::sparse_dense_matmul(
-            out.as_mut().as_2d_mut(),
+            out.as_mut(),
             lhs,
-            rhs.as_2d(),
+            rhs,
             None,
             E::faer_one(),
             get_global_parallelism(),
@@ -2052,8 +2052,8 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
         let lhs = self;
         let mut out = Row::zeros(rhs.ncols());
         crate::sparse::linalg::matmul::dense_sparse_matmul(
-            out.as_mut().as_2d_mut(),
-            lhs.as_2d(),
+            out.as_mut(),
+            lhs,
             rhs,
             None,
             E::faer_one(),
@@ -2094,8 +2094,8 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
         let lhs = self;
         let mut out = Col::zeros(lhs.nrows());
         crate::sparse::linalg::matmul::dense_sparse_matmul(
-            out.as_mut().transpose_mut().as_2d_mut(),
-            rhs.transpose().as_2d(),
+            out.as_mut().transpose_mut(),
+            rhs.transpose(),
             lhs.transpose(),
             None,
             E::faer_one(),
@@ -2136,9 +2136,9 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
         let lhs = self;
         let mut out = Row::zeros(rhs.ncols());
         crate::sparse::linalg::matmul::sparse_dense_matmul(
-            out.as_mut().transpose_mut().as_2d_mut(),
+            out.as_mut().transpose_mut(),
             rhs.transpose(),
-            lhs.transpose().as_2d(),
+            lhs.transpose(),
             None,
             E::faer_one(),
             get_global_parallelism(),

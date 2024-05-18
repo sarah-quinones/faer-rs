@@ -196,16 +196,13 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
                 let l20_col = l20.col(j);
                 let l10_conj = l10xd0.read(j).faer_conj();
 
-                zipped!(a21.rb_mut().as_2d_mut(), l20_col.as_2d()).for_each(
-                    |unzipped!(mut dst, src)| {
-                        dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
-                    },
-                );
+                zipped!(a21.rb_mut(), l20_col).for_each(|unzipped!(mut dst, src)| {
+                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
+                });
             }
         }
 
-        zipped!(a21.rb_mut().as_2d_mut())
-            .for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d)));
+        zipped!(a21.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d)));
 
         idx += 1;
     }
@@ -279,7 +276,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
                 let a10_col = a10.rb_mut().col_mut(j);
                 let d0_elem = d0.read(j);
 
-                zipped!(l10xd0_col.as_2d_mut(), a10_col.as_2d_mut()).for_each(
+                zipped!(l10xd0_col, a10_col).for_each(
                     |unzipped!(mut l10xd0_elem, mut a10_elem)| {
                         let a10_elem_read = a10_elem.read();
                         a10_elem.write(a10_elem_read.faer_mul(d0_elem));

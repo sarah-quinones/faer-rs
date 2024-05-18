@@ -74,30 +74,25 @@ pub mod compute {
         }
     }
 
-    fn best_score_idx<E: ComplexField>(a: MatRef<'_, E>) -> Option<(usize, usize, E::Real)> {
+    fn best_score_idx<E: ComplexField>(a: ColRef<'_, E>) -> Option<(usize, E::Real)> {
         let m = a.nrows();
-        let n = a.ncols();
 
-        if m == 0 || n == 0 {
+        if m == 0 {
             return None;
         }
 
         let mut best_row = 0usize;
-        let mut best_col = 0usize;
         let mut best_score = E::Real::faer_zero();
 
-        for j in 0..n {
-            for i in 0..m {
-                let score = a.read(i, j).faer_abs();
-                if score > best_score {
-                    best_row = i;
-                    best_col = j;
-                    best_score = score;
-                }
+        for i in 0..m {
+            let score = a.read(i).faer_abs();
+            if score > best_score {
+                best_row = i;
+                best_score = score;
             }
         }
 
-        Some((best_row, best_col, best_score))
+        Some((best_row, best_score))
     }
 
     fn assign_col<E: ComplexField>(a: MatMut<'_, E>, i: usize, j: usize) {
@@ -110,18 +105,15 @@ pub mod compute {
         }
     }
 
-    fn best_score<E: ComplexField>(a: MatRef<'_, E>) -> E::Real {
+    fn best_score<E: ComplexField>(a: ColRef<'_, E>) -> E::Real {
         let m = a.nrows();
-        let n = a.ncols();
 
         let mut best_score = E::Real::faer_zero();
 
-        for j in 0..n {
-            for i in 0..m {
-                let score = a.read(i, j).faer_abs();
-                if score > best_score {
-                    best_score = score;
-                }
+        for i in 0..m {
+            let score = a.read(i).faer_abs();
+            if score > best_score {
+                best_score = score;
             }
         }
 
@@ -199,9 +191,9 @@ pub mod compute {
             let w_row = w_left.rb().row(0);
             let w_col = w_right.col_mut(0);
             crate::linalg::matmul::matmul(
-                w_col.as_2d_mut(),
+                w_col,
                 a.rb().submatrix(k, 0, n - k, k),
-                w_row.rb().transpose().as_2d(),
+                w_row.rb().transpose(),
                 Some(E::faer_one()),
                 E::faer_one().faer_neg(),
                 parallelism,
@@ -215,8 +207,7 @@ pub mod compute {
             let colmax;
 
             if k + 1 < n {
-                (imax, _, colmax) =
-                    best_score_idx(w.rb().col(k).as_2d().subrows(k + 1, n - k - 1)).unwrap();
+                (imax, colmax) = best_score_idx(w.rb().col(k).subrows(k + 1, n - k - 1)).unwrap();
             } else {
                 imax = 0;
                 colmax = E::Real::faer_zero();
@@ -263,9 +254,9 @@ pub mod compute {
                     let w_col = w_right.col_mut(0);
 
                     crate::linalg::matmul::matmul(
-                        w_col.as_2d_mut(),
+                        w_col,
                         a.rb().submatrix(k, 0, n - k, k),
-                        w_row.rb().transpose().as_2d(),
+                        w_row.rb().transpose(),
                         Some(E::faer_one()),
                         E::faer_one().faer_neg(),
                         parallelism,
@@ -273,8 +264,8 @@ pub mod compute {
                     make_real(w.rb_mut(), imax, k + 1);
 
                     let rowmax = max(
-                        best_score(w.rb().subrows(k, imax - k).col(k + 1).as_2d()),
-                        best_score(w.rb().subrows(imax + 1, n - imax - 1).col(k + 1).as_2d()),
+                        best_score(w.rb().subrows(k, imax - k).col(k + 1)),
+                        best_score(w.rb().subrows(imax + 1, n - imax - 1).col(k + 1)),
                     );
 
                     if abs_akk >= alpha.faer_mul(colmax).faer_mul(colmax.faer_div(rowmax)) {
@@ -503,8 +494,7 @@ pub mod compute {
             let colmax;
 
             if k + 1 < n {
-                (imax, _, colmax) =
-                    best_score_idx(a.rb().col(k).subrows(k + 1, n - k - 1).as_2d()).unwrap();
+                (imax, colmax) = best_score_idx(a.rb().col(k).subrows(k + 1, n - k - 1)).unwrap();
             } else {
                 imax = 0;
                 colmax = E::Real::faer_zero();
@@ -533,8 +523,8 @@ pub mod compute {
                     kp = k;
                 } else {
                     let rowmax = max(
-                        best_score(a.rb().row(imax).subcols(k, imax - k).as_2d()),
-                        best_score(a.rb().subrows(imax + 1, n - imax - 1).col(imax).as_2d()),
+                        best_score(a.rb().row(imax).subcols(k, imax - k).transpose()),
+                        best_score(a.rb().subrows(imax + 1, n - imax - 1).col(imax)),
                     );
 
                     if abs_akk >= alpha.faer_mul(colmax).faer_mul(colmax.faer_div(rowmax)) {

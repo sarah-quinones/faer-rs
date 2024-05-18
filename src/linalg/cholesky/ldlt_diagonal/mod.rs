@@ -16,16 +16,15 @@ pub mod update;
 
 #[cfg(test)]
 mod tests {
-    use crate::{complex_native::c64, mat, Conj};
-    use assert_approx_eq::assert_approx_eq;
-    use dyn_stack::{GlobalPodBuffer, PodStack};
-
     use super::*;
     use crate::{
+        complex_native::c64,
         linalg::{matmul as mul, matmul::triangular::BlockStructure},
-        ComplexField, Mat, MatRef, Parallelism,
+        mat, Col, ComplexField, Conj, Mat, MatRef, Parallelism,
     };
+    use assert_approx_eq::assert_approx_eq;
     use compute::*;
+    use dyn_stack::{GlobalPodBuffer, PodStack};
     use solve::*;
     use update::*;
 
@@ -180,13 +179,13 @@ mod tests {
             let mut a = random_positive_definite(n);
             let mut a_updated = a.clone();
             let mut w = Mat::from_fn(n, k, |_, _| random());
-            let mut alpha = Mat::from_fn(k, 1, |_, _| E::faer_from_real(rand::random()));
-            let alpha = alpha.as_mut().col_mut(0).as_2d_mut();
+            let mut alpha = Col::from_fn(k, |_| E::faer_from_real(rand::random()));
+            let alpha = alpha.as_mut();
 
             let mut w_alpha = Mat::zeros(n, k);
             for j in 0..k {
                 for i in 0..n {
-                    w_alpha.write(i, j, alpha.read(j, 0).faer_mul(w.read(i, j)));
+                    w_alpha.write(i, j, alpha.read(j).faer_mul(w.read(i, j)));
                 }
             }
 
@@ -212,7 +211,7 @@ mod tests {
                 )),
                 Default::default(),
             );
-            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha.col_mut(0));
+            rank_r_update_clobber(a.as_mut(), w.as_mut(), alpha);
 
             let a_reconstructed = reconstruct_matrix(a.as_ref());
 
