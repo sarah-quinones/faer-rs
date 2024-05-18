@@ -1,5 +1,12 @@
 # [Unreleased]
-- Add `full` and `zeros` constructors to owned Col, Row, and Matrix ([issue-125](https://github.com/sarah-ek/faer-rs/issues/125)).
+- Implemented conjugate gradient, BiCGSTAB, and LSMR iterative solvers (currently gated by the `unstable` feature).
+- Implemented Hermitian matrix pseudoinverse implementation. Thanks @lishen_ for the contribution.
+- Implemented column and row mean and variance in `faer::stats`.
+- Added `full` and `zeros` constructors to owned Col, Row, and Matrix ([issue-125](https://github.com/sarah-ek/faer-rs/issues/125)).
+- Added `shape` function to return both the row and the column count of a matrix.
+- Added several missing associated functions from the mut and owning variants of matrices.
+- Simplified matrix constructors, adding a variant with a `_generic` prefix for the old behavior.
+- Bunch-Kaufman decomposition now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.
 
 # 0.18
 - Refactored the project so that `faer` contains all the core and decomposition implementations. `faer-{core,cholesky,lu,qr,svd,evd,sparse}` are now deprecated and will no longer be updated.
