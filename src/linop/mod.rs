@@ -5,12 +5,11 @@ use crate::{
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use reborrow::*;
 
-// TODO: document this later
-#[allow(missing_docs)]
+/// Biconjugate gradient stabilized method.
 pub mod bicgstab;
-#[allow(missing_docs)]
+/// Conjugate gradient method.
 pub mod conjugate_gradient;
-#[allow(missing_docs)]
+/// Least squares minimal residual.
 pub mod lsmr;
 
 mod linop_impl;

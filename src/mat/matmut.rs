@@ -1844,7 +1844,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
 /// assert_eq!(expected, view);
 /// ```
 #[track_caller]
-pub fn from_column_major_slice_mut<E: Entity>(
+pub fn from_column_major_slice_mut_generic<E: Entity>(
     slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
@@ -1890,19 +1890,19 @@ pub fn from_column_major_slice_mut<E: Entity>(
 /// ```
 #[inline(always)]
 #[track_caller]
-pub fn from_row_major_slice_mut<E: Entity>(
+pub fn from_row_major_slice_mut_generic<E: Entity>(
     slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
 ) -> MatMut<'_, E> {
-    from_column_major_slice_mut(slice, ncols, nrows).transpose_mut()
+    from_column_major_slice_mut_generic(slice, ncols, nrows).transpose_mut()
 }
 
 /// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride_mut<E: Entity>(
+pub fn from_column_major_slice_with_stride_mut_generic<E: Entity>(
     slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
@@ -1933,13 +1933,97 @@ pub fn from_column_major_slice_with_stride_mut<E: Entity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride_mut<E: Entity>(
+pub fn from_row_major_slice_with_stride_mut_generic<E: Entity>(
     slice: GroupFor<E, &mut [E::Unit]>,
     nrows: usize,
     ncols: usize,
     row_stride: usize,
 ) -> MatMut<'_, E> {
-    from_column_major_slice_with_stride_mut::<E>(slice, ncols, nrows, row_stride).transpose_mut()
+    from_column_major_slice_with_stride_mut_generic::<E>(slice, ncols, nrows, row_stride)
+        .transpose_mut()
+}
+
+/// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, so that the first chunk of `nrows`
+/// values from the slices goes in the first column of the matrix, the second chunk of `nrows`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_column_major_slice_mut::<f64>(&mut slice, 3, 2);
+///
+/// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[track_caller]
+pub fn from_column_major_slice_mut<E: SimpleEntity>(
+    slice: &mut [E],
+    nrows: usize,
+    ncols: usize,
+) -> MatMut<'_, E> {
+    from_column_major_slice_mut_generic(slice, nrows, ncols)
+}
+
+/// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, so that the first chunk of `ncols`
+/// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_row_major_slice_mut::<f64>(&mut slice, 3, 2);
+///
+/// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[inline(always)]
+#[track_caller]
+pub fn from_row_major_slice_mut<E: SimpleEntity>(
+    slice: &mut [E],
+    nrows: usize,
+    ncols: usize,
+) -> MatMut<'_, E> {
+    from_row_major_slice_mut_generic(slice, nrows, ncols)
+}
+
+/// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, where the beginnings of two consecutive
+/// columns are separated by `col_stride` elements.
+#[track_caller]
+pub fn from_column_major_slice_with_stride_mut<E: SimpleEntity>(
+    slice: &mut [E],
+    nrows: usize,
+    ncols: usize,
+    col_stride: usize,
+) -> MatMut<'_, E> {
+    from_column_major_slice_with_stride_mut_generic(slice, nrows, ncols, col_stride)
+}
+
+/// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, where the beginnings of two consecutive
+/// rows are separated by `row_stride` elements.
+#[track_caller]
+pub fn from_row_major_slice_with_stride_mut<E: SimpleEntity>(
+    slice: &mut [E],
+    nrows: usize,
+    ncols: usize,
+    row_stride: usize,
+) -> MatMut<'_, E> {
+    from_row_major_slice_with_stride_mut_generic(slice, nrows, ncols, row_stride)
 }
 
 impl<'a, E: Entity> core::fmt::Debug for MatMut<'a, E> {
@@ -2039,6 +2123,11 @@ impl<E: Conjugate> RowBatch<E> for MatMut<'_, E> {
 impl<E: Conjugate> RowBatchMut<E> for MatMut<'_, E> {}
 
 /// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
-pub fn from_mut<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> MatMut<'_, E> {
+pub fn from_mut<E: SimpleEntity>(value: &mut E) -> MatMut<'_, E> {
+    from_mut_generic(value)
+}
+
+/// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
+pub fn from_mut_generic<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> MatMut<'_, E> {
     unsafe { from_raw_parts_mut(E::faer_map(value, |ptr| ptr as *mut E::Unit), 1, 1, 0, 0) }
 }

@@ -5,17 +5,25 @@ use crate::{
     utils::DivCeil,
     ComplexField, Conj, Parallelism, RealField,
 };
+use core::marker::PhantomData;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use equator::{assert, debug_assert};
 use reborrow::*;
 
+/// Algorithm parameters.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct LsmrParams<E: ComplexField> {
+    /// Whether the initial guess is implicitly zero or not.
     pub initial_guess: InitialGuessStatus,
+    /// Absolute tolerance for convergence testing.
     pub abs_tolerance: E::Real,
+    /// Relative tolerance for convergence testing.
     pub rel_tolerance: E::Real,
+    /// Maximum number of iterations.
     pub max_iters: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
 impl<E: ComplexField> Default for LsmrParams<E> {
@@ -26,22 +34,33 @@ impl<E: ComplexField> Default for LsmrParams<E> {
             abs_tolerance: E::Real::faer_zero(),
             rel_tolerance: E::Real::faer_epsilon().faer_mul(E::Real::faer_from_f64(128.0)),
             max_iters: usize::MAX,
+            __private: PhantomData,
         }
     }
 }
 
+/// Algorithm result.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct LsmrInfo<E: ComplexField> {
+    /// Absolute residual at the final step.
     pub abs_residual: E::Real,
+    /// Relative residual at the final step.
     pub rel_residual: E::Real,
+    /// Number of iterations executed by the algorithm.
     pub iter_count: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
+/// Algorithm error.
 #[derive(Copy, Clone, Debug)]
 pub enum LsmrError<E: ComplexField> {
+    /// Convergence failure.
     NoConvergence {
+        /// Absolute residual at the final step.
         abs_residual: E::Real,
+        /// Relative residual at the final step.
         rel_residual: E::Real,
     },
 }
@@ -198,6 +217,8 @@ fn lsmr_prototype_v3<E: ComplexField>(
     }
 }
 
+/// Computes the size and alignment of required workspace for executing the LSMR
+/// algorithm.
 pub fn lsmr_req<E: ComplexField>(
     right_precond: impl BiPrecond<E>,
     mat: impl BiLinOp<E>,
@@ -314,6 +335,10 @@ pub fn lsmr_req<E: ComplexField>(
     implementation(&right_precond, &mat, rhs_ncols, parallelism)
 }
 
+/// Executes LSMR using the provided preconditioner.
+///
+/// # Note
+/// This function is also optimized for a RHS with multiple columns.
 #[track_caller]
 pub fn lsmr<E: ComplexField>(
     out: MatMut<'_, E>,
@@ -321,6 +346,7 @@ pub fn lsmr<E: ComplexField>(
     mat: impl BiLinOp<E>,
     rhs: MatRef<'_, E>,
     params: LsmrParams<E>,
+    callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) -> Result<LsmrInfo<E>, LsmrError<E>> {
@@ -331,6 +357,7 @@ pub fn lsmr<E: ComplexField>(
         A: &impl BiLinOp<E>,
         b: MatRef<'_, E>,
         params: LsmrParams<E>,
+        callback: &mut dyn FnMut(MatRef<'_, E>),
         par: Parallelism,
         stack: PodStack<'_>,
     ) -> Result<LsmrInfo<E>, LsmrError<E>> {
@@ -394,6 +421,7 @@ pub fn lsmr<E: ComplexField>(
                 abs_residual: E::Real::faer_zero(),
                 rel_residual: E::Real::faer_zero(),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -532,6 +560,7 @@ pub fn lsmr<E: ComplexField>(
                 abs_residual: E::Real::faer_zero(),
                 rel_residual: E::Real::faer_zero(),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -540,6 +569,7 @@ pub fn lsmr<E: ComplexField>(
                 abs_residual: E::Real::faer_zero(),
                 rel_residual: E::Real::faer_zero(),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -750,18 +780,24 @@ pub fn lsmr<E: ComplexField>(
                     x.rb_mut(),
                     wbar.rb(),
                     zeta.rb().get(.., ..actual_s),
-                    Some(one),
+                    if iter == 0 && params.initial_guess == InitialGuessStatus::Zero {
+                        None
+                    } else {
+                        Some(E::faer_one())
+                    },
                     one,
                     par,
                 );
                 start = end;
             }
             norm = zetabar.norm_l2();
+            callback(x.rb());
             if norm <= threshold {
                 return Ok(LsmrInfo {
                     abs_residual: norm,
                     rel_residual: norm.faer_div(norm_ref),
                     iter_count: iter + 1,
+                    __private: PhantomData,
                 });
             }
         }
@@ -771,7 +807,16 @@ pub fn lsmr<E: ComplexField>(
             rel_residual: norm.faer_div(norm_ref),
         })
     }
-    implementation(out, &right_precond, &mat, rhs, params, parallelism, stack)
+    implementation(
+        out,
+        &right_precond,
+        &mat,
+        rhs,
+        params,
+        &mut { callback },
+        parallelism,
+        stack,
+    )
 }
 
 #[cfg(test)]
@@ -810,6 +855,7 @@ mod tests {
                 A.as_ref(),
                 b.as_ref(),
                 params,
+                |_| {},
                 Parallelism::None,
                 PodStack::new(&mut GlobalPodBuffer::new(
                     lsmr_req(diag.as_ref(), A.as_ref(), k, Parallelism::None).unwrap(),
@@ -850,6 +896,7 @@ mod tests {
                 A.as_ref(),
                 b.as_ref(),
                 params,
+                |_| {},
                 Parallelism::None,
                 PodStack::new(&mut GlobalPodBuffer::new(
                     lsmr_req(diag.as_ref(), A.as_ref(), k, Parallelism::None).unwrap(),

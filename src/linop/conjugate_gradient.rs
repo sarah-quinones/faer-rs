@@ -7,33 +7,53 @@ use crate::{
     prelude::*,
     ComplexField, Parallelism, RealField,
 };
+use core::marker::PhantomData;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use equator::assert;
 use reborrow::*;
 
+/// Algorithm parameters.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct CgParams<E: ComplexField> {
+    /// Whether the initial guess is implicitly zero or not.
     pub initial_guess: InitialGuessStatus,
+    /// Absolute tolerance for convergence testing.
     pub abs_tolerance: E::Real,
+    /// Relative tolerance for convergence testing.
     pub rel_tolerance: E::Real,
+    /// Maximum number of iterations.
     pub max_iters: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
+/// Algorithm result.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct CgInfo<E: ComplexField> {
+    /// Absolute residual at the final step.
     pub abs_residual: E::Real,
+    /// Relative residual at the final step.
     pub rel_residual: E::Real,
+    /// Number of iterations executed by the algorithm.
     pub iter_count: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
+/// Algorithm error.
 #[derive(Copy, Clone, Debug)]
 pub enum CgError<E: ComplexField> {
+    /// Operator was detected to not be positive definite.
     NonPositiveDefiniteOperator,
+    /// Preconditioner was detected to not be positive definite.
     NonPositiveDefinitePreconditioner,
+    /// Convergence failure.
     NoConvergence {
+        /// Absolute residual at the final step.
         abs_residual: E::Real,
+        /// Relative residual at the final step.
         rel_residual: E::Real,
     },
 }
@@ -46,10 +66,13 @@ impl<E: ComplexField> Default for CgParams<E> {
             abs_tolerance: E::Real::faer_zero(),
             rel_tolerance: E::Real::faer_epsilon().faer_mul(E::Real::faer_from_f64(128.0)),
             max_iters: usize::MAX,
+            __private: PhantomData,
         }
     }
 }
 
+/// Computes the size and alignment of required workspace for executing the conjugate gradient
+/// algorithm.
 pub fn conjugate_gradient_req<E: ComplexField>(
     precond: impl Precond<E>,
     mat: impl LinOp<E>,
@@ -96,6 +119,10 @@ pub fn conjugate_gradient_req<E: ComplexField>(
     implementation(&precond, &mat, rhs_ncols, parallelism)
 }
 
+/// Executes the conjugate gradient using the provided preconditioner.
+///
+/// # Note
+/// This function is also optimized for a RHS with multiple columns.
 #[inline]
 #[track_caller]
 pub fn conjugate_gradient<E: ComplexField>(
@@ -104,6 +131,7 @@ pub fn conjugate_gradient<E: ComplexField>(
     mat: impl LinOp<E>,
     rhs: MatRef<'_, E>,
     params: CgParams<E>,
+    callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) -> Result<CgInfo<E>, CgError<E>> {
@@ -115,6 +143,7 @@ pub fn conjugate_gradient<E: ComplexField>(
         b: MatRef<'_, E>,
 
         params: CgParams<E>,
+        callback: &mut dyn FnMut(MatRef<'_, E>),
         parallelism: Parallelism,
         mut stack: PodStack<'_>,
     ) -> Result<CgInfo<E>, CgError<E>> {
@@ -129,6 +158,7 @@ pub fn conjugate_gradient<E: ComplexField>(
                 abs_residual: E::Real::faer_zero(),
                 rel_residual: E::Real::faer_zero(),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -163,6 +193,7 @@ pub fn conjugate_gradient<E: ComplexField>(
                 abs_residual,
                 rel_residual: abs_residual.faer_div(b_norm),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -183,7 +214,7 @@ pub fn conjugate_gradient<E: ComplexField>(
                 parallelism,
             );
         }
-        for i in 0..params.max_iters {
+        for iter in 0..params.max_iters {
             {
                 let (mut Ap, mut stack) = temp_mat_uninit::<E>(n, k, stack.rb_mut());
                 let (mut ptAp, mut stack) = temp_mat_uninit::<E>(k, k, stack.rb_mut());
@@ -239,7 +270,11 @@ pub fn conjugate_gradient<E: ComplexField>(
                     x.rb_mut(),
                     p.rb(),
                     alpha.rb(),
-                    Some(E::faer_one()),
+                    if iter == 0 && params.initial_guess == InitialGuessStatus::Zero {
+                        None
+                    } else {
+                        Some(E::faer_one())
+                    },
                     E::faer_one(),
                     parallelism,
                 );
@@ -251,6 +286,7 @@ pub fn conjugate_gradient<E: ComplexField>(
                     E::faer_one().faer_neg(),
                     parallelism,
                 );
+                callback(x.rb());
             }
 
             let abs_residual = r.norm_l2();
@@ -258,7 +294,8 @@ pub fn conjugate_gradient<E: ComplexField>(
                 return Ok(CgInfo {
                     abs_residual,
                     rel_residual: abs_residual.faer_div(b_norm),
-                    iter_count: i + 1,
+                    iter_count: iter + 1,
+                    __private: PhantomData,
                 });
             }
 
@@ -330,7 +367,16 @@ pub fn conjugate_gradient<E: ComplexField>(
         })
     }
 
-    implementation(out, &precond, &mat, rhs, params, parallelism, stack)
+    implementation(
+        out,
+        &precond,
+        &mat,
+        rhs,
+        params,
+        &mut { callback },
+        parallelism,
+        stack,
+    )
 }
 
 #[cfg(test)]
@@ -358,6 +404,7 @@ mod tests {
             A.as_ref(),
             rhs.as_ref(),
             params,
+            |_| {},
             Parallelism::None,
             PodStack::new(&mut GlobalPodBuffer::new(
                 conjugate_gradient_req(precond, A.as_ref(), 2, Parallelism::None).unwrap(),
@@ -418,6 +465,7 @@ mod tests {
             A.as_ref(),
             rhs.as_ref(),
             params,
+            |_| {},
             Parallelism::None,
             PodStack::new(&mut GlobalPodBuffer::new(
                 conjugate_gradient_req::<c64>(diag.as_ref(), A.as_ref(), k, Parallelism::None)

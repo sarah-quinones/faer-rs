@@ -450,7 +450,7 @@ mod bench_svd {
         bencher.bench(|| {
             faer::linalg::svd::compute_svd(
                 A.as_ref(),
-                S.as_mut().as_2d_mut(),
+                S.as_mut(),
                 Some(U.as_mut()),
                 Some(V.as_mut()),
                 par,
@@ -523,7 +523,7 @@ mod bench_thin_svd {
         bencher.bench(|| {
             faer::linalg::svd::compute_svd(
                 A.as_ref(),
-                S.as_mut().as_2d_mut(),
+                S.as_mut(),
                 Some(U.as_mut()),
                 Some(V.as_mut()),
                 par,
@@ -591,8 +591,8 @@ mod bench_evd {
             if coe::is_same::<E, E::Real>() {
                 faer::linalg::evd::compute_evd_real::<E::Real>(
                     A.as_ref().coerce(),
-                    S_re.as_mut().as_2d_mut().coerce(),
-                    S_im.as_mut().as_2d_mut().coerce(),
+                    S_re.as_mut().coerce(),
+                    S_im.as_mut().coerce(),
                     Some(U.as_mut().coerce()),
                     par,
                     PodStack::new(&mut mem),
@@ -601,7 +601,7 @@ mod bench_evd {
             } else {
                 faer::linalg::evd::compute_evd_complex(
                     A.as_ref(),
-                    S_re.as_mut().as_2d_mut(),
+                    S_re.as_mut(),
                     Some(U.as_mut()),
                     par,
                     PodStack::new(&mut mem),
@@ -664,7 +664,7 @@ mod bench_selfadjoint_evd {
         bencher.bench(|| {
             faer::linalg::evd::compute_hermitian_evd(
                 H.as_ref(),
-                S.as_mut().as_2d_mut(),
+                S.as_mut(),
                 Some(U.as_mut()),
                 par,
                 PodStack::new(&mut mem),

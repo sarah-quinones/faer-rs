@@ -74,10 +74,15 @@ impl<E: Entity, T: AsColMut<E>> AsColMut<E> for &mut T {
 mod col_index;
 
 mod colref;
-pub use colref::{from_raw_parts, from_ref, from_repeated_ref, from_slice, ColRef};
+pub use colref::{
+    from_raw_parts, from_ref, from_ref_generic, from_repeated_ref, from_repeated_ref_generic,
+    from_slice, from_slice_generic, ColRef,
+};
 
 mod colmut;
-pub use colmut::{from_mut, from_raw_parts_mut, from_slice_mut, ColMut};
+pub use colmut::{
+    from_mut, from_mut_generic, from_raw_parts_mut, from_slice_mut, from_slice_mut_generic, ColMut,
+};
 
 mod colown;
 pub use colown::Col;

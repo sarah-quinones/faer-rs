@@ -1169,7 +1169,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_column_major_slice<E: Entity>(
+pub fn from_column_major_slice_generic<E: Entity>(
     slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
@@ -1196,6 +1196,35 @@ pub fn from_column_major_slice<E: Entity>(
 }
 
 /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, so that the first chunk of `nrows`
+/// values from the slices goes in the first column of the matrix, the second chunk of `nrows`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_column_major_slice::<f64>(&slice, 3, 2);
+///
+/// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[track_caller]
+#[inline(always)]
+pub fn from_column_major_slice<E: Entity>(
+    slice: GroupFor<E, &[E::Unit]>,
+    nrows: usize,
+    ncols: usize,
+) -> MatRef<'_, E> {
+    from_column_major_slice_generic(slice, nrows, ncols)
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
 /// The data is interpreted in a row-major format, so that the first chunk of `ncols`
 /// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
 /// values goes in the second column, and so on.
@@ -1216,19 +1245,48 @@ pub fn from_column_major_slice<E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_row_major_slice<E: Entity>(
+pub fn from_row_major_slice_generic<E: Entity>(
     slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
 ) -> MatRef<'_, E> {
-    from_column_major_slice(slice, ncols, nrows).transpose()
+    from_column_major_slice_generic(slice, ncols, nrows).transpose()
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, so that the first chunk of `ncols`
+/// values from the slices goes in the first column of the matrix, the second chunk of `ncols`
+/// values goes in the second column, and so on.
+///
+/// # Panics
+/// The function panics if any of the following conditions are violated:
+/// * `nrows * ncols == slice.len()`
+///
+/// # Example
+/// ```
+/// use faer::mat;
+///
+/// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
+/// let view = mat::from_row_major_slice::<f64>(&slice, 3, 2);
+///
+/// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+/// assert_eq!(expected, view);
+/// ```
+#[track_caller]
+#[inline(always)]
+pub fn from_row_major_slice<E: SimpleEntity>(
+    slice: &[E],
+    nrows: usize,
+    ncols: usize,
+) -> MatRef<'_, E> {
+    from_column_major_slice_generic(slice, ncols, nrows).transpose()
 }
 
 /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride<E: Entity>(
+pub fn from_column_major_slice_with_stride_generic<E: Entity>(
     slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
@@ -1260,13 +1318,39 @@ pub fn from_column_major_slice_with_stride<E: Entity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride<E: Entity>(
+pub fn from_row_major_slice_with_stride_generic<E: Entity>(
     slice: GroupFor<E, &[E::Unit]>,
     nrows: usize,
     ncols: usize,
     row_stride: usize,
 ) -> MatRef<'_, E> {
-    from_column_major_slice_with_stride::<E>(slice, ncols, nrows, row_stride).transpose()
+    from_column_major_slice_with_stride_generic::<E>(slice, ncols, nrows, row_stride).transpose()
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a column-major format, where the beginnings of two consecutive
+/// columns are separated by `col_stride` elements.
+#[track_caller]
+pub fn from_column_major_slice_with_stride<E: SimpleEntity>(
+    slice: &[E],
+    nrows: usize,
+    ncols: usize,
+    col_stride: usize,
+) -> MatRef<'_, E> {
+    from_column_major_slice_with_stride_generic(slice, nrows, ncols, col_stride)
+}
+
+/// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
+/// The data is interpreted in a row-major format, where the beginnings of two consecutive
+/// rows are separated by `row_stride` elements.
+#[track_caller]
+pub fn from_row_major_slice_with_stride<E: SimpleEntity>(
+    slice: &[E],
+    nrows: usize,
+    ncols: usize,
+    row_stride: usize,
+) -> MatRef<'_, E> {
+    from_row_major_slice_with_stride_generic(slice, nrows, ncols, row_stride)
 }
 
 impl<'a, E: Entity> core::fmt::Debug for MatRef<'a, E> {
@@ -1380,7 +1464,7 @@ impl<E: Conjugate> RowBatch<E> for MatRef<'_, E> {
 
 /// Returns a view over an `nrows×ncols` matrix containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref<E: Entity>(
+pub fn from_repeated_ref_generic<E: Entity>(
     value: GroupFor<E, &E::Unit>,
     nrows: usize,
     ncols: usize,
@@ -1396,6 +1480,12 @@ pub fn from_repeated_ref<E: Entity>(
     }
 }
 
+/// Returns a view over an `nrows×ncols` matrix containing `value` repeated for all elements.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_ref<E: SimpleEntity>(value: &E, nrows: usize, ncols: usize) -> MatRef<'_, E> {
+    from_repeated_ref_generic(value, nrows, ncols)
+}
+
 /// Returns a view over a matrix containing `col` repeated `ncols` times.
 #[doc(alias = "broadcast")]
 pub fn from_repeated_col<E: Entity>(col: ColRef<'_, E>, ncols: usize) -> MatRef<'_, E> {
@@ -1409,6 +1499,11 @@ pub fn from_repeated_row<E: Entity>(row: RowRef<'_, E>, nrows: usize) -> MatRef<
 }
 
 /// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
-pub fn from_ref<E: Entity>(value: GroupFor<E, &E::Unit>) -> MatRef<'_, E> {
-    from_repeated_ref(value, 1, 1)
+pub fn from_ref<E: SimpleEntity>(value: &E) -> MatRef<'_, E> {
+    from_ref_generic(value)
+}
+
+/// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
+pub fn from_ref_generic<E: Entity>(value: GroupFor<E, &E::Unit>) -> MatRef<'_, E> {
+    from_repeated_ref_generic(value, 1, 1)
 }

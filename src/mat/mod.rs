@@ -140,15 +140,20 @@ mod mat_index;
 
 mod matref;
 pub use matref::{
-    from_column_major_slice, from_column_major_slice_with_stride, from_raw_parts, from_ref,
-    from_repeated_col, from_repeated_ref, from_repeated_row, from_row_major_slice,
-    from_row_major_slice_with_stride, MatRef,
+    from_column_major_slice, from_column_major_slice_generic, from_column_major_slice_with_stride,
+    from_column_major_slice_with_stride_generic, from_raw_parts, from_ref, from_ref_generic,
+    from_repeated_col, from_repeated_ref, from_repeated_ref_generic, from_repeated_row,
+    from_row_major_slice, from_row_major_slice_generic, from_row_major_slice_with_stride,
+    from_row_major_slice_with_stride_generic, MatRef,
 };
 
 mod matmut;
 pub use matmut::{
-    from_column_major_slice_mut, from_column_major_slice_with_stride_mut, from_mut,
-    from_raw_parts_mut, from_row_major_slice_mut, from_row_major_slice_with_stride_mut, MatMut,
+    from_column_major_slice_mut, from_column_major_slice_mut_generic,
+    from_column_major_slice_with_stride_mut, from_column_major_slice_with_stride_mut_generic,
+    from_mut, from_mut_generic, from_raw_parts_mut, from_row_major_slice_mut,
+    from_row_major_slice_mut_generic, from_row_major_slice_with_stride_mut,
+    from_row_major_slice_with_stride_mut_generic, MatMut,
 };
 
 mod matown;

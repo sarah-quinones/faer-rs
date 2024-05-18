@@ -1497,15 +1497,15 @@ mod tests {
         let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
 
         let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
-        let view = mat::from_column_major_slice::<'_, f64>(&slice, 3, 2);
+        let view = mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
         assert_eq!(expected, view);
-        let view = mat::from_column_major_slice::<'_, f64>(&mut slice, 3, 2);
+        let view = mat::from_column_major_slice_generic::<'_, f64>(&mut slice, 3, 2);
         assert_eq!(expected, view);
 
         let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
-        let view = mat::from_row_major_slice::<'_, f64>(&slice, 3, 2);
+        let view = mat::from_row_major_slice_generic::<'_, f64>(&slice, 3, 2);
         assert_eq!(expected, view);
-        let view = mat::from_row_major_slice::<'_, f64>(&mut slice, 3, 2);
+        let view = mat::from_row_major_slice_generic::<'_, f64>(&mut slice, 3, 2);
         assert_eq!(expected, view);
     }
 
@@ -1513,14 +1513,14 @@ mod tests {
     #[should_panic]
     fn from_slice_too_big() {
         let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0_f64];
-        mat::from_column_major_slice::<'_, f64>(&slice, 3, 2);
+        mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
     }
 
     #[test]
     #[should_panic]
     fn from_slice_too_small() {
         let slice = [1.0, 2.0, 3.0, 4.0, 5.0_f64];
-        mat::from_column_major_slice::<'_, f64>(&slice, 3, 2);
+        mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
     }
 
     #[test]

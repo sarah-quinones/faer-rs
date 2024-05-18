@@ -1696,7 +1696,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = crate::mat::from_column_major_slice::<'_, E>(
+            let Ls = crate::mat::from_column_major_slice_generic::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -1894,7 +1894,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = crate::mat::from_column_major_slice::<'_, E>(
+            let Ls = crate::mat::from_column_major_slice_generic::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -2055,7 +2055,7 @@ pub mod supernodal {
             let s_ncols = s_end - s_start;
             let s_nrows = s_pattern.len() + s_ncols;
 
-            let Ls = crate::mat::from_column_major_slice::<'_, E>(
+            let Ls = crate::mat::from_column_major_slice_generic::<'_, E>(
                 L_values
                     .subslice(
                         symbolic.col_ptrs_for_values()[s].zx()
@@ -3291,7 +3291,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = crate::mat::from_column_major_slice_mut::<'_, E>(
+            let mut Ls = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -3329,7 +3329,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = crate::mat::from_column_major_slice::<'_, E>(
+                let Ld = crate::mat::from_column_major_slice_generic::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -3509,7 +3509,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = crate::mat::from_column_major_slice_with_stride_mut::<'_, E>(
+            let mut Ls = crate::mat::from_column_major_slice_with_stride_mut_generic::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -3552,7 +3552,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = crate::mat::from_column_major_slice_with_stride::<'_, E>(
+                let Ld = crate::mat::from_column_major_slice_with_stride_generic::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -3761,7 +3761,7 @@ pub mod supernodal {
 
             let (head, tail) = L_values.rb_mut().split_at(col_ptr_val[s].zx());
             let head = head.rb();
-            let mut Ls = crate::mat::from_column_major_slice_mut::<'_, E>(
+            let mut Ls = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
                 tail.subslice(0..(col_ptr_val[s + 1] - col_ptr_val[s]).zx())
                     .into_inner(),
                 s_nrows,
@@ -3799,7 +3799,7 @@ pub mod supernodal {
                 let d_ncols = d_end - d_start;
                 let d_nrows = d_pattern.len() + d_ncols;
 
-                let Ld = crate::mat::from_column_major_slice::<'_, E>(
+                let Ld = crate::mat::from_column_major_slice_generic::<'_, E>(
                     head.subslice(col_ptr_val[d].zx()..col_ptr_val[d + 1].zx())
                         .into_inner(),
                     d_nrows,
@@ -3928,7 +3928,7 @@ pub mod supernodal {
             let params = Default::default();
             let (info, perm) = crate::linalg::cholesky::bunch_kaufman::compute::cholesky_in_place(
                 Ls_top.rb_mut(),
-                crate::col::from_slice_mut::<'_, E>(s_subdiag.rb_mut().into_inner()),
+                crate::col::from_slice_mut_generic::<'_, E>(s_subdiag.rb_mut().into_inner()),
                 BunchKaufmanRegularization {
                     dynamic_regularization_signs: regularization
                         .dynamic_regularization_signs

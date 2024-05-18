@@ -4,10 +4,12 @@ use crate::{
     prelude::*,
     ComplexField, Parallelism, RealField,
 };
+use core::marker::PhantomData;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use equator::assert;
 use reborrow::*;
 
+/// Computes the size and alignment of required workspace for executing the BiCGSTAB algorithm.
 pub fn bicgstab_req<E: ComplexField>(
     left_precond: impl Precond<E>,
     right_precond: impl Precond<E>,
@@ -67,13 +69,20 @@ pub fn bicgstab_req<E: ComplexField>(
     implementation(&left_precond, &right_precond, &mat, rhs_ncols, parallelism)
 }
 
+/// Algorithm parameters.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct BicgParams<E: ComplexField> {
+    /// Whether the initial guess is implicitly zero or not.
     pub initial_guess: InitialGuessStatus,
+    /// Absolute tolerance for convergence testing.
     pub abs_tolerance: E::Real,
+    /// Relative tolerance for convergence testing.
     pub rel_tolerance: E::Real,
+    /// Maximum number of iterations.
     pub max_iters: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
 impl<E: ComplexField> Default for BicgParams<E> {
@@ -84,26 +93,41 @@ impl<E: ComplexField> Default for BicgParams<E> {
             abs_tolerance: E::Real::faer_zero(),
             rel_tolerance: E::Real::faer_epsilon().faer_mul(E::Real::faer_from_f64(128.0)),
             max_iters: usize::MAX,
+            __private: PhantomData,
         }
     }
 }
 
+/// Algorithm result.
 #[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
 pub struct BicgInfo<E: ComplexField> {
+    /// Absolute residual at the final step.
     pub abs_residual: E::Real,
+    /// Relative residual at the final step.
     pub rel_residual: E::Real,
+    /// Number of iterations executed by the algorithm.
     pub iter_count: usize,
+
+    #[doc(hidden)]
+    pub __private: PhantomData<()>,
 }
 
+/// Algorithm error.
 #[derive(Copy, Clone, Debug)]
 pub enum BicgError<E: ComplexField> {
+    /// Convergence failure.
     NoConvergence {
+        /// Absolute residual at the final step.
         abs_residual: E::Real,
+        /// Relative residual at the final step.
         rel_residual: E::Real,
     },
 }
 
+/// Executes BiCGSTAB using the provided preconditioners.
+///
+/// # Note
+/// This function is also optimized for a RHS with multiple columns.
 #[track_caller]
 pub fn bicgstab<E: ComplexField>(
     out: MatMut<'_, E>,
@@ -112,6 +136,7 @@ pub fn bicgstab<E: ComplexField>(
     mat: impl LinOp<E>,
     rhs: MatRef<'_, E>,
     params: BicgParams<E>,
+    callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
     stack: PodStack<'_>,
 ) -> Result<BicgInfo<E>, BicgError<E>> {
@@ -123,6 +148,7 @@ pub fn bicgstab<E: ComplexField>(
         mat: &dyn LinOp<E>,
         rhs: MatRef<'_, E>,
         params: BicgParams<E>,
+        callback: &mut dyn FnMut(MatRef<'_, E>),
         parallelism: Parallelism,
         stack: PodStack<'_>,
     ) -> Result<BicgInfo<E>, BicgError<E>> {
@@ -143,6 +169,7 @@ pub fn bicgstab<E: ComplexField>(
                 abs_residual: E::Real::faer_zero(),
                 rel_residual: E::Real::faer_zero(),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -179,6 +206,7 @@ pub fn bicgstab<E: ComplexField>(
                 abs_residual,
                 rel_residual: abs_residual.faer_div(b_norm),
                 iter_count: 0,
+                __private: PhantomData,
             });
         }
 
@@ -264,7 +292,11 @@ pub fn bicgstab<E: ComplexField>(
                     x.rb_mut(),
                     y.rb(),
                     alpha.rb(),
-                    Some(E::faer_one()),
+                    if iter == 0 && params.initial_guess == InitialGuessStatus::Zero {
+                        None
+                    } else {
+                        Some(E::faer_one())
+                    },
                     E::faer_one(),
                     parallelism,
                 );
@@ -275,6 +307,7 @@ pub fn bicgstab<E: ComplexField>(
                     abs_residual: norm,
                     rel_residual: norm.faer_div(b_norm),
                     iter_count: iter + 1,
+                    __private: PhantomData,
                 });
             }
 
@@ -315,12 +348,15 @@ pub fn bicgstab<E: ComplexField>(
             zipped!(&mut p, &v)
                 .for_each(|unzipped!(mut p, v)| p.write(p.read().faer_sub(w.faer_mul(v.read()))));
 
+            callback(x.rb());
+
             let norm = r.norm_l2();
             if norm < threshold {
                 return Ok(BicgInfo {
                     abs_residual: norm,
                     rel_residual: norm.faer_div(b_norm),
                     iter_count: iter + 1,
+                    __private: PhantomData,
                 });
             }
 
@@ -375,6 +411,7 @@ pub fn bicgstab<E: ComplexField>(
         &mat,
         rhs,
         params,
+        &mut { callback },
         parallelism,
         stack,
     )
@@ -411,6 +448,7 @@ mod tests {
             A.as_ref(),
             rhs.as_ref(),
             params,
+            |_| {},
             Parallelism::None,
             PodStack::new(&mut GlobalPodBuffer::new(
                 bicgstab_req(

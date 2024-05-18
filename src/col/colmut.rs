@@ -788,7 +788,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
 /// Creates a `ColMut` from slice views over the column vector data, The result has the same
 /// number of rows as the length of the input slice.
 #[inline(always)]
-pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> ColMut<'_, E> {
+pub fn from_slice_mut_generic<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> ColMut<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len();
 
     unsafe {
@@ -802,6 +802,13 @@ pub fn from_slice_mut<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> ColMut<'
             1,
         )
     }
+}
+
+/// Creates a `ColMut` from slice views over the column vector data, The result has the same
+/// number of rows as the length of the input slice.
+#[inline(always)]
+pub fn from_slice_mut<E: SimpleEntity>(slice: &mut [E]) -> ColMut<'_, E> {
+    from_slice_mut_generic(slice)
 }
 
 impl<E: Entity> As2D<E> for ColMut<'_, E> {
@@ -880,6 +887,12 @@ impl<E: Conjugate> ColBatchMut<E> for ColMut<'_, E> {}
 
 /// Returns a view over a column with 1 row containing value as its only element, pointing to
 /// `value`.
-pub fn from_mut<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> ColMut<'_, E> {
+pub fn from_mut<E: SimpleEntity>(value: &mut E) -> ColMut<'_, E> {
+    from_mut_generic(value)
+}
+
+/// Returns a view over a column with 1 row containing value as its only element, pointing to
+/// `value`.
+pub fn from_mut_generic<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> ColMut<'_, E> {
     unsafe { from_raw_parts_mut(E::faer_map(value, |ptr| ptr as *mut E::Unit), 1, 1) }
 }

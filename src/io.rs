@@ -159,13 +159,13 @@ impl<'a> Npy<'a> {
         assert!(self.dtype == E::DTYPE);
 
         if self.fortran_order {
-            crate::mat::from_column_major_slice(
+            crate::mat::from_column_major_slice_generic(
                 bytemuck::cast_slice(&self.aligned_bytes[self.prefix_len..]),
                 self.nrows,
                 self.ncols,
             )
         } else {
-            crate::mat::from_row_major_slice(
+            crate::mat::from_row_major_slice_generic(
                 bytemuck::cast_slice(&self.aligned_bytes[self.prefix_len..]),
                 self.nrows,
                 self.ncols,

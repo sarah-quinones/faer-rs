@@ -8,8 +8,8 @@ on:
 name: Run Tests
 
 jobs:
-  verify:
-    name: testing-${{ matrix.toolchain }}-${{ matrix.os }}
+  msrv:
+    name: msrv-${{ matrix.toolchain }}-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,11 +32,40 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Verify 1.67.0
+      - name: MSRV 1.67.0
         run:
           cargo check &&
           cd ./faer-entity &&
           cargo check
+
+  nostd:
+    name: nostd-${{ matrix.toolchain }}-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain:
+          - 1.67.0
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@master
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: nostd 1.67.0
+        run:
+          cd ./faer-no-std-test &&
+          cargo run
 
   testing:
     name: testing-${{ matrix.toolchain }}-${{ matrix.os }}

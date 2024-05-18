@@ -1390,6 +1390,7 @@ fn lu_in_place_unblocked<I: Index, E: ComplexField>(
                     max_row - k,
                 );
             }
+            Parallelism::__Private(_) => panic!(),
             #[cfg(feature = "rayon")]
             _ => {
                 use crate::utils::thread::{

@@ -547,7 +547,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity>(
 /// Creates a `ColRef` from slice views over the column vector data, The result has the same
 /// number of rows as the length of the input slice.
 #[inline(always)]
-pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
+pub fn from_slice_generic<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len();
 
     unsafe {
@@ -562,6 +562,14 @@ pub fn from_slice<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
         )
     }
 }
+
+/// Creates a `ColRef` from slice views over the column vector data, The result has the same
+/// number of rows as the length of the input slice.
+#[inline(always)]
+pub fn from_slice<E: SimpleEntity>(slice: &[E]) -> ColRef<'_, E> {
+    from_slice_generic(slice)
+}
+
 impl<E: Entity> As2D<E> for ColRef<'_, E> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
@@ -616,12 +624,27 @@ impl<E: Conjugate> ColBatch<E> for ColRef<'_, E> {
 
 /// Returns a view over a column with `nrows` rows containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref<E: Entity>(value: GroupFor<E, &E::Unit>, nrows: usize) -> ColRef<'_, E> {
+pub fn from_repeated_ref_generic<E: Entity>(
+    value: GroupFor<E, &E::Unit>,
+    nrows: usize,
+) -> ColRef<'_, E> {
     unsafe { from_raw_parts(E::faer_map(value, |ptr| ptr as *const E::Unit), nrows, 0) }
 }
 
 /// Returns a view over a column with 1 row containing value as its only element, pointing to
 /// `value`.
-pub fn from_ref<E: Entity>(value: GroupFor<E, &E::Unit>) -> ColRef<'_, E> {
-    from_repeated_ref(value, 1)
+pub fn from_ref_generic<E: Entity>(value: GroupFor<E, &E::Unit>) -> ColRef<'_, E> {
+    from_repeated_ref_generic(value, 1)
+}
+
+/// Returns a view over a column with `nrows` rows containing `value` repeated for all elements.
+#[doc(alias = "broadcast")]
+pub fn from_repeated_ref<E: SimpleEntity>(value: &E, nrows: usize) -> ColRef<'_, E> {
+    from_repeated_ref_generic(value, nrows)
+}
+
+/// Returns a view over a column with 1 row containing value as its only element, pointing to
+/// `value`.
+pub fn from_ref<E: SimpleEntity>(value: &E) -> ColRef<'_, E> {
+    from_ref_generic(value)
 }
