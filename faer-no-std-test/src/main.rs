@@ -53,6 +53,5 @@ pub extern "C" fn main(argc: i32, argv: *const *const u8) -> i32 {
     let m = faer::mat![[2.0, 1.0]];
     libc_print::libc_println!("{m:?}");
     libc_print::libc_println!("{:?}", m.transpose() * &m);
-    libc_print::libc_println!("{:?}", &m * &m);
     0
 }
