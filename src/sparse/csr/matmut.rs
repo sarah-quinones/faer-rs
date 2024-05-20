@@ -473,3 +473,9 @@ impl<I: Index, E: ComplexField> SparseRowMatMut<'_, I, E> {
             .fill_from_order_and_values(order, values, mode);
     }
 }
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMatMut<'_, I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}

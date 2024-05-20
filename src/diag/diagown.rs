@@ -2,6 +2,7 @@ use super::*;
 use crate::col::{Col, ColMut, ColRef};
 
 /// Diagonal matrix.
+#[derive(Debug)]
 pub struct Diag<E: Entity> {
     pub(crate) inner: Col<E>,
 }

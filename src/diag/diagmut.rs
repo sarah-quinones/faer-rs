@@ -2,6 +2,7 @@ use super::*;
 use crate::col::{ColMut, ColRef};
 
 /// Diagonal mutable matrix view.
+#[derive(Debug)]
 pub struct DiagMut<'a, E: Entity> {
     pub(crate) inner: ColMut<'a, E>,
 }

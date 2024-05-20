@@ -521,3 +521,9 @@ impl<I: Index, E: ComplexField> SparseRowMat<I, E> {
         .into_transpose())
     }
 }
+
+impl<I: Index, E: Entity> core::fmt::Debug for SparseRowMat<I, E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}

@@ -40,11 +40,13 @@ impl<E: ComplexField, Dec: ?Sized + SolverLstsqCore<E>> SolverLstsq<E> for Dec {
 impl<E: ComplexField, Dec: ?Sized + SolverCore<E>> Solver<E> for Dec {}
 
 /// Cholesky decomposition.
+#[derive(Debug)]
 pub struct Cholesky<E: Entity> {
     factors: Mat<E>,
 }
 
 /// Bunch-Kaufman decomposition.
+#[derive(Debug)]
 pub struct Lblt<E: Entity> {
     factors: Mat<E>,
     subdiag: Col<E>,
@@ -53,6 +55,7 @@ pub struct Lblt<E: Entity> {
 }
 
 /// LU decomposition with partial pivoting.
+#[derive(Debug)]
 pub struct PartialPivLu<E: Entity> {
     pub(crate) factors: Mat<E>,
     row_perm: alloc::vec::Vec<usize>,
@@ -60,6 +63,7 @@ pub struct PartialPivLu<E: Entity> {
     n_transpositions: usize,
 }
 /// LU decomposition with full pivoting.
+#[derive(Debug)]
 pub struct FullPivLu<E: Entity> {
     factors: Mat<E>,
     row_perm: alloc::vec::Vec<usize>,
@@ -70,11 +74,13 @@ pub struct FullPivLu<E: Entity> {
 }
 
 /// QR decomposition.
+#[derive(Debug)]
 pub struct Qr<E: Entity> {
     pub(crate) factors: Mat<E>,
     householder: Mat<E>,
 }
 /// QR decomposition with column pivoting.
+#[derive(Debug)]
 pub struct ColPivQr<E: Entity> {
     factors: Mat<E>,
     householder: Mat<E>,
@@ -83,23 +89,27 @@ pub struct ColPivQr<E: Entity> {
 }
 
 /// Singular value decomposition.
+#[derive(Debug)]
 pub struct Svd<E: Entity> {
     s: Col<E>,
     u: Mat<E>,
     v: Mat<E>,
 }
 /// Thin singular value decomposition.
+#[derive(Debug)]
 pub struct ThinSvd<E: Entity> {
     inner: Svd<E>,
 }
 
 /// Self-adjoint eigendecomposition.
+#[derive(Debug)]
 pub struct SelfAdjointEigendecomposition<E: Entity> {
     s: Col<E>,
     u: Mat<E>,
 }
 
 /// Complex eigendecomposition.
+#[derive(Debug)]
 pub struct Eigendecomposition<E: Entity> {
     s: Col<E>,
     u: Mat<E>,
