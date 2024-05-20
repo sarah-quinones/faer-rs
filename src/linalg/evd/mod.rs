@@ -1589,14 +1589,18 @@ mod herm_tests {
             let reconstructed = &mat * &pinv * &mat;
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-9);
                 }
             }
 
             let reconstructed_pinv = &pinv * &mat * &pinv;
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(reconstructed_pinv.read(i, j), pinv.read(i, j), 1e-5);
+                    assert_approx_eq!(
+                        reconstructed_pinv.read(i, j),
+                        pinv.read(i, j),
+                        f64::max(1e-9, 1e-9 * pinv.read(i, j).abs())
+                    );
                 }
             }
         }
@@ -1682,14 +1686,18 @@ mod herm_tests {
             let reconstructed = &mat * &pinv * &mat;
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-5);
+                    assert_approx_eq!(reconstructed.read(i, j), mat.read(i, j), 1e-9);
                 }
             }
 
             let reconstructed_pinv = &pinv * &mat * &pinv;
             for j in 0..n {
                 for i in j..n {
-                    assert_approx_eq!(reconstructed_pinv.read(i, j), pinv.read(i, j), 1e-5);
+                    assert_approx_eq!(
+                        reconstructed_pinv.read(i, j),
+                        pinv.read(i, j),
+                        f64::max(1e-9, 1e-9 * pinv.read(i, j).abs())
+                    );
                 }
             }
         }
