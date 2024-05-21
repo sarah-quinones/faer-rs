@@ -524,13 +524,14 @@
 // implementation inspired by https://gitlab.com/hodge_star/catamari
 
 use super::{
-    amd::{self, Control},
+    amd::{self, Control, FlopCount},
     ghost::{self, Array, Idx, MaybeIdx},
     ghost_permute_hermitian_unsorted, ghost_permute_hermitian_unsorted_symbolic, make_raw_req, mem,
     mem::NONE,
-    nomem, triangular_solve, try_collect, try_zeroed, windows2, FaerError, Index, PermRef, Side,
-    SliceGroup, SliceGroupMut, SparseColMatRef, SupernodalThreshold, SymbolicSparseColMatRef,
-    SymbolicSupernodalParams,
+    nomem, triangular_solve, try_collect, try_zeroed,
+    utils::ghost_adjoint,
+    windows2, FaerError, Index, PermRef, Side, SliceGroup, SliceGroupMut, SparseColMatRef,
+    SupernodalThreshold, SymbolicSparseColMatRef, SymbolicSupernodalParams,
 };
 pub use crate::linalg::cholesky::{
     bunch_kaufman::compute::BunchKaufmanRegularization,
@@ -547,17 +548,20 @@ use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::GroupFor;
 use reborrow::*;
 
-#[derive(Copy, Clone)]
-#[allow(dead_code)]
-enum Ordering<'a, I: Index> {
+/// Fill reducing ordering to use for the Cholesky factorization.
+#[derive(Copy, Clone, Default)]
+pub enum SymmetricOrdering<'a, I: Index> {
+    /// Approximate minimum degree ordering. Default option.
+    #[default]
+    Amd,
+    /// No reordering.
     Identity,
-    Custom(&'a [I]),
+    /// Custom reordering.
     Algorithm(
         &'a dyn Fn(
             &mut [I],                       // perm
             &mut [I],                       // perm_inv
             SymbolicSparseColMatRef<'_, I>, // A
-            PodStack<'_>,
         ) -> Result<(), FaerError>,
     ),
 }
@@ -4160,8 +4164,8 @@ pub enum SymbolicCholeskyRaw<I: Index> {
 #[derive(Debug)]
 pub struct SymbolicCholesky<I: Index> {
     raw: SymbolicCholeskyRaw<I>,
-    perm_fwd: alloc::vec::Vec<I>,
-    perm_inv: alloc::vec::Vec<I>,
+    perm_fwd: Option<alloc::vec::Vec<I>>,
+    perm_inv: Option<alloc::vec::Vec<I>>,
     A_nnz: usize,
 }
 
@@ -4189,8 +4193,13 @@ impl<I: Index> SymbolicCholesky<I> {
 
     /// Returns the permutation that was computed during symbolic analysis.
     #[inline]
-    pub fn perm(&self) -> PermRef<'_, I> {
-        unsafe { PermRef::new_unchecked(&self.perm_fwd, &self.perm_inv) }
+    pub fn perm(&self) -> Option<PermRef<'_, I>> {
+        match (&self.perm_fwd, &self.perm_inv) {
+            (Some(perm_fwd), Some(perm_inv)) => unsafe {
+                Some(PermRef::new_unchecked(perm_fwd, perm_inv))
+            },
+            _ => None,
+        }
     }
 
     /// Returns the length of the slice needed to store the numerical values of the Cholesky
@@ -4336,8 +4345,6 @@ impl<I: Index> SymbolicCholesky<I> {
             let A_nnz = self.A_nnz;
             let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let perm = ghost::PermRef::new(self.perm(), N);
-
             let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
             let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
             let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
@@ -4347,18 +4354,38 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = unsafe {
-                ghost_permute_hermitian_unsorted(
-                    new_values.rb_mut(),
-                    new_col_ptr,
-                    new_row_ind,
-                    A,
-                    perm,
-                    side,
-                    out_side,
-                    false,
-                    stack.rb_mut(),
-                )
+            let A = match self.perm() {
+                Some(perm) => {
+                    let perm = ghost::PermRef::new(perm, N);
+                    unsafe {
+                        ghost_permute_hermitian_unsorted(
+                            new_values.rb_mut(),
+                            new_col_ptr,
+                            new_row_ind,
+                            A,
+                            perm,
+                            side,
+                            out_side,
+                            false,
+                            stack.rb_mut(),
+                        )
+                        .into_const()
+                    }
+                }
+                None => {
+                    if side == out_side {
+                        A
+                    } else {
+                        ghost_adjoint(
+                            new_col_ptr,
+                            new_row_ind,
+                            new_values.rb_mut(),
+                            A,
+                            stack.rb_mut(),
+                        )
+                        .into_const()
+                    }
+                }
             };
 
             match &self.raw {
@@ -4382,7 +4409,6 @@ impl<I: Index> SymbolicCholesky<I> {
                     )?;
                 }
             }
-
             Ok(LltRef::<'out, I, E>::new(
                 self,
                 E::faer_into_const(L_values),
@@ -4409,29 +4435,13 @@ impl<I: Index> SymbolicCholesky<I> {
             let A_nnz = self.A_nnz;
             let A = ghost::SparseColMatRef::new(A, N, N);
 
-            let (new_signs, stack) =
-                stack.make_raw::<i8>(if regularization.dynamic_regularization_signs.is_some() {
+            let (new_signs, stack) = stack.make_raw::<i8>(
+                if regularization.dynamic_regularization_signs.is_some() && self.perm().is_some() {
                     n
                 } else {
                     0
-                });
-
-            let perm = ghost::PermRef::new(self.perm(), N);
-            let fwd = perm.arrays().0;
-            let signs = regularization.dynamic_regularization_signs.map(|signs| {
-                {
-                    let new_signs = Array::from_mut(new_signs, N);
-                    let signs = Array::from_ref(signs, N);
-                    for i in N.indices() {
-                        new_signs[i] = signs[fwd[i].zx()];
-                    }
-                }
-                &*new_signs
-            });
-            let regularization = LdltRegularization {
-                dynamic_regularization_signs: signs,
-                ..regularization
-            };
+                },
+            );
 
             let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
             let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
@@ -4442,18 +4452,59 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = unsafe {
-                ghost_permute_hermitian_unsorted(
-                    new_values.rb_mut(),
-                    new_col_ptr,
-                    new_row_ind,
-                    A,
-                    perm,
-                    side,
-                    out_side,
-                    false,
-                    stack.rb_mut(),
-                )
+            let (A, signs) = match self.perm() {
+                Some(perm) => {
+                    let perm = ghost::PermRef::new(perm, N);
+                    let A = unsafe {
+                        ghost_permute_hermitian_unsorted(
+                            new_values.rb_mut(),
+                            new_col_ptr,
+                            new_row_ind,
+                            A,
+                            perm,
+                            side,
+                            out_side,
+                            false,
+                            stack.rb_mut(),
+                        )
+                        .into_const()
+                    };
+                    let fwd = perm.arrays().0;
+                    let signs = regularization.dynamic_regularization_signs.map(|signs| {
+                        {
+                            let new_signs = Array::from_mut(new_signs, N);
+                            let signs = Array::from_ref(signs, N);
+                            for i in N.indices() {
+                                new_signs[i] = signs[fwd[i].zx()];
+                            }
+                        }
+                        &*new_signs
+                    });
+
+                    (A, signs)
+                }
+                None => {
+                    if side == out_side {
+                        (A, regularization.dynamic_regularization_signs)
+                    } else {
+                        (
+                            ghost_adjoint(
+                                new_col_ptr,
+                                new_row_ind,
+                                new_values.rb_mut(),
+                                A,
+                                stack.rb_mut(),
+                            )
+                            .into_const(),
+                            regularization.dynamic_regularization_signs,
+                        )
+                    }
+                }
+            };
+
+            let regularization = LdltRegularization {
+                dynamic_regularization_signs: signs,
+                ..regularization
             };
 
             match &self.raw {
@@ -4492,7 +4543,7 @@ impl<I: Index> SymbolicCholesky<I> {
         perm_inverse: &'out mut [I],
         A: SparseColMatRef<'_, I, E>,
         side: Side,
-        regularization: LdltRegularization<'_, E>,
+        regularization: BunchKaufmanRegularization<'_, E>,
         parallelism: Parallelism,
         stack: PodStack<'_>,
     ) -> IntranodeBunchKaufmanRef<'out, I, E> {
@@ -4512,19 +4563,6 @@ impl<I: Index> SymbolicCholesky<I> {
                     0
                 });
 
-            let static_perm = ghost::PermRef::new(self.perm(), N);
-            let signs = regularization.dynamic_regularization_signs.map(|signs| {
-                {
-                    let fwd = static_perm.arrays().0;
-                    let new_signs = Array::from_mut(new_signs, N);
-                    let signs = Array::from_ref(signs, N);
-                    for i in N.indices() {
-                        new_signs[i] = signs[fwd[i].zx()];
-                    }
-                }
-                &mut *new_signs
-            });
-
             let (mut new_values, stack) = crate::sparse::linalg::make_raw::<E>(A_nnz, stack);
             let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
             let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
@@ -4534,18 +4572,55 @@ impl<I: Index> SymbolicCholesky<I> {
                 SymbolicCholeskyRaw::Supernodal(_) => Side::Lower,
             };
 
-            let A = unsafe {
-                ghost_permute_hermitian_unsorted(
-                    new_values.rb_mut(),
-                    new_col_ptr,
-                    new_row_ind,
-                    A,
-                    static_perm,
-                    side,
-                    out_side,
-                    false,
-                    stack.rb_mut(),
-                )
+            let (A, signs) = match self.perm() {
+                Some(perm) => {
+                    let perm = ghost::PermRef::new(perm, N);
+                    let fwd = perm.arrays().0;
+                    let signs = regularization.dynamic_regularization_signs.map(|signs| {
+                        {
+                            let new_signs = Array::from_mut(new_signs, N);
+                            let signs = Array::from_ref(signs, N);
+                            for i in N.indices() {
+                                new_signs[i] = signs[fwd[i].zx()];
+                            }
+                        }
+                        &mut *new_signs
+                    });
+
+                    let A = unsafe {
+                        ghost_permute_hermitian_unsorted(
+                            new_values.rb_mut(),
+                            new_col_ptr,
+                            new_row_ind,
+                            A,
+                            perm,
+                            side,
+                            out_side,
+                            false,
+                            stack.rb_mut(),
+                        )
+                        .into_const()
+                    };
+
+                    (A, signs)
+                }
+                None => {
+                    if side == out_side {
+                        (A, regularization.dynamic_regularization_signs)
+                    } else {
+                        (
+                            ghost_adjoint(
+                                new_col_ptr,
+                                new_row_ind,
+                                new_values.rb_mut(),
+                                A,
+                                stack.rb_mut(),
+                            )
+                            .into_const(),
+                            regularization.dynamic_regularization_signs,
+                        )
+                    }
+                }
             };
 
             match &self.raw {
@@ -4729,29 +4804,48 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
         let mut rhs = rhs;
 
         let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
-        let (fwd, inv) = self.symbolic.perm().arrays();
 
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLdltRef::new(symbolic, self.values.into_inner());
 
-                for j in 0..k {
-                    for (i, fwd) in fwd.iter().enumerate() {
-                        x.write(i, j, rhs.read(fwd.zx().zx(), j));
+                if let Some(perm) = self.symbolic.perm() {
+                    for j in 0..k {
+                        for (i, fwd) in perm.arrays().0.iter().enumerate() {
+                            x.write(i, j, rhs.read(fwd.zx(), j));
+                        }
                     }
                 }
                 this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
-                for j in 0..k {
-                    for (i, inv) in inv.iter().enumerate() {
-                        rhs.write(i, j, x.read(inv.zx().zx(), j));
+                if let Some(perm) = self.symbolic.perm() {
+                    for j in 0..k {
+                        for (i, inv) in perm.arrays().1.iter().enumerate() {
+                            rhs.write(i, j, x.read(inv.zx(), j));
+                        }
                     }
                 }
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
                 let (dyn_fwd, dyn_inv) = self.perm.arrays();
-                for j in 0..k {
-                    for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
-                        x.write(i, j, rhs.read(fwd[dyn_fwd.zx()].zx(), j));
+                let (fwd, inv) = match self.symbolic.perm() {
+                    Some(perm) => {
+                        let (fwd, inv) = perm.arrays();
+                        (Some(fwd), Some(inv))
+                    }
+                    None => (None, None),
+                };
+
+                if let Some(fwd) = fwd {
+                    for j in 0..k {
+                        for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
+                            x.write(i, j, rhs.read(fwd[dyn_fwd.zx()].zx(), j));
+                        }
+                    }
+                } else {
+                    for j in 0..k {
+                        for (i, dyn_fwd) in dyn_fwd.iter().enumerate() {
+                            x.write(i, j, rhs.read(dyn_fwd.zx(), j));
+                        }
                     }
                 }
 
@@ -4768,9 +4862,17 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
                     stack,
                 );
 
-                for j in 0..k {
-                    for (i, inv) in inv.iter().enumerate() {
-                        rhs.write(i, j, x.read(dyn_inv[inv.zx()].zx(), j));
+                if let Some(inv) = inv {
+                    for j in 0..k {
+                        for (i, inv) in inv.iter().enumerate() {
+                            rhs.write(i, j, x.read(dyn_inv[inv.zx()].zx(), j));
+                        }
+                    }
+                } else {
+                    for j in 0..k {
+                        for (i, dyn_inv) in dyn_inv.iter().enumerate() {
+                            rhs.write(i, j, x.read(dyn_inv.zx(), j));
+                        }
                     }
                 }
             }
@@ -4818,10 +4920,11 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
 
         let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
 
-        let (fwd, inv) = self.symbolic.perm().arrays();
-        for j in 0..k {
-            for (i, fwd) in fwd.iter().enumerate() {
-                x.write(i, j, rhs.read(fwd.zx(), j));
+        if let Some(perm) = self.symbolic.perm() {
+            for j in 0..k {
+                for (i, fwd) in perm.arrays().0.iter().enumerate() {
+                    x.write(i, j, rhs.read(fwd.zx(), j));
+                }
             }
         }
 
@@ -4836,9 +4939,11 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
             }
         }
 
-        for j in 0..k {
-            for (i, inv) in inv.iter().enumerate() {
-                rhs.write(i, j, x.read(inv.zx(), j));
+        if let Some(perm) = self.symbolic.perm() {
+            for j in 0..k {
+                for (i, inv) in perm.arrays().1.iter().enumerate() {
+                    rhs.write(i, j, x.read(inv.zx(), j));
+                }
             }
         }
     }
@@ -4884,10 +4989,11 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
 
         let (mut x, stack) = temp_mat_uninit::<E>(n, k, stack);
 
-        let (fwd, inv) = self.symbolic.perm().arrays();
-        for j in 0..k {
-            for (i, fwd) in fwd.iter().enumerate() {
-                x.write(i, j, rhs.read(fwd.zx(), j));
+        if let Some(perm) = self.symbolic.perm() {
+            for j in 0..k {
+                for (i, fwd) in perm.arrays().0.iter().enumerate() {
+                    x.write(i, j, rhs.read(fwd.zx(), j));
+                }
             }
         }
 
@@ -4902,9 +5008,11 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
             }
         }
 
-        for j in 0..k {
-            for (i, inv) in inv.iter().enumerate() {
-                rhs.write(i, j, x.read(inv.zx(), j));
+        if let Some(perm) = self.symbolic.perm() {
+            for j in 0..k {
+                for (i, inv) in perm.arrays().1.iter().enumerate() {
+                    rhs.write(i, j, x.read(inv.zx(), j));
+                }
             }
         }
     }
@@ -5000,6 +5108,7 @@ pub struct CholeskySymbolicParams<'a> {
 pub fn factorize_symbolic_cholesky<I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     side: Side,
+    ord: SymmetricOrdering<'_, I>,
     params: CholeskySymbolicParams<'_>,
 ) -> Result<SymbolicCholesky<I>, FaerError> {
     let n = A.nrows();
@@ -5019,7 +5128,10 @@ pub fn factorize_symbolic_cholesky<I: Index>(
             )?;
 
             StackReq::try_or(
-                amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
+                match ord {
+                    SymmetricOrdering::Amd => amd::order_maybe_unsorted_req::<I>(n, A_nnz)?,
+                    _ => StackReq::empty(),
+                },
                 StackReq::try_all_of([
                     A_req,
                     // permute_symmetric | etree
@@ -5041,30 +5153,54 @@ pub fn factorize_symbolic_cholesky<I: Index>(
         let mut mem = dyn_stack::GlobalPodBuffer::try_new(req).map_err(nomem)?;
         let mut stack = PodStack::new(&mut mem);
 
-        let mut perm_fwd = try_zeroed(n)?;
-        let mut perm_inv = try_zeroed(n)?;
-        let flops = amd::order_maybe_unsorted(
-            &mut perm_fwd,
-            &mut perm_inv,
-            A.into_inner(),
-            params.amd_params,
-            stack.rb_mut(),
-        )?;
-        let flops = flops.n_div + flops.n_mult_subs_ldl;
-        let perm_ = ghost::PermRef::new(PermRef::new_checked(&perm_fwd, &perm_inv), N);
+        let mut perm_fwd = match ord {
+            SymmetricOrdering::Identity => None,
+            _ => Some(try_zeroed(n)?),
+        };
+        let mut perm_inv = match ord {
+            SymmetricOrdering::Identity => None,
+            _ => Some(try_zeroed(n)?),
+        };
+        let flops = match ord {
+            SymmetricOrdering::Amd => Some(amd::order_maybe_unsorted(
+                perm_fwd.as_mut().unwrap(),
+                perm_inv.as_mut().unwrap(),
+                A.into_inner(),
+                params.amd_params,
+                stack.rb_mut(),
+            )?),
+            SymmetricOrdering::Identity => None,
+            SymmetricOrdering::Algorithm(algo) => {
+                algo(
+                    perm_fwd.as_mut().unwrap(),
+                    perm_inv.as_mut().unwrap(),
+                    A.into_inner(),
+                )?;
+                None
+            }
+        };
 
         let (new_col_ptr, stack) = stack.make_raw::<I>(n + 1);
         let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
-        let A = unsafe {
-            ghost_permute_hermitian_unsorted_symbolic(
-                new_col_ptr,
-                new_row_ind,
-                A,
-                perm_,
-                side,
-                Side::Upper,
-                stack.rb_mut(),
-            )
+        let A = match ord {
+            SymmetricOrdering::Identity => A,
+            _ => unsafe {
+                ghost_permute_hermitian_unsorted_symbolic(
+                    new_col_ptr,
+                    new_row_ind,
+                    A,
+                    ghost::PermRef::new(
+                        PermRef::new_checked(
+                            perm_fwd.as_ref().unwrap(),
+                            perm_inv.as_ref().unwrap(),
+                        ),
+                        N,
+                    ),
+                    side,
+                    Side::Upper,
+                    stack.rb_mut(),
+                )
+            },
         };
 
         let (etree, stack) = stack.make_raw::<I::Signed>(n);
@@ -5075,6 +5211,25 @@ pub fn factorize_symbolic_cholesky<I: Index>(
             &*ghost_prefactorize_symbolic_cholesky::<I>(etree, col_counts, A, stack.rb_mut());
         let L_nnz = I::sum_nonnegative(col_counts.as_ref()).ok_or(FaerError::IndexOverflow)?;
 
+        let flops = match flops {
+            Some(flops) => flops,
+            None => {
+                let mut n_div = 0u128;
+                let mut n_mult_subs_ldl = 0u128;
+                for i in N.indices() {
+                    let c = col_counts[i].zx();
+                    n_div += c as u128;
+                    n_mult_subs_ldl += (c as u128 * (c as u128 + 1)) / 2;
+                }
+                FlopCount {
+                    n_div: n_div as f64,
+                    n_mult_subs_ldl: n_mult_subs_ldl as f64,
+                    n_mult_subs_lu: 0.0,
+                }
+            }
+        };
+
+        let flops = flops.n_div + flops.n_mult_subs_ldl;
         let raw = if (flops / L_nnz.zx() as f64)
             > params.supernodal_flop_ratio_threshold.0
                 * crate::sparse::linalg::CHOLESKY_SUPERNODAL_RATIO_FACTOR
@@ -6049,6 +6204,7 @@ pub(crate) mod tests {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
+                    SymmetricOrdering::Amd,
                     CholeskySymbolicParams {
                         supernodal_flop_ratio_threshold,
                         ..Default::default()
@@ -6083,7 +6239,7 @@ pub(crate) mod tests {
                     }
                 };
 
-                let (perm_fwd, _) = symbolic.perm().arrays();
+                let (perm_fwd, _) = symbolic.perm().unwrap().arrays();
 
                 let mut max = <E as ComplexField>::Real::faer_zero();
                 for j in 0..n {
@@ -6212,6 +6368,7 @@ pub(crate) mod tests {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
+                    SymmetricOrdering::Amd,
                     CholeskySymbolicParams {
                         supernodal_flop_ratio_threshold,
                         ..Default::default()
@@ -6243,7 +6400,7 @@ pub(crate) mod tests {
                     }
                 };
 
-                let (perm_fwd, _) = symbolic.perm().arrays();
+                let (perm_fwd, _) = symbolic.perm().unwrap().arrays();
 
                 let mut max = <E as ComplexField>::Real::faer_zero();
                 for j in 0..n {
@@ -6373,6 +6530,7 @@ pub(crate) mod tests {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
+                    SymmetricOrdering::Amd,
                     CholeskySymbolicParams {
                         supernodal_flop_ratio_threshold,
                         ..Default::default()
@@ -6511,6 +6669,7 @@ pub(crate) mod tests {
                 let symbolic = factorize_symbolic_cholesky(
                     A.symbolic(),
                     side,
+                    SymmetricOrdering::Amd,
                     CholeskySymbolicParams {
                         supernodal_flop_ratio_threshold,
                         ..Default::default()
@@ -6548,7 +6707,7 @@ pub(crate) mod tests {
                     }
                 };
 
-                let (perm_fwd, _) = symbolic.perm().arrays();
+                let (perm_fwd, _) = symbolic.perm().unwrap().arrays();
                 let mut max = <E as ComplexField>::Real::faer_zero();
                 for j in 0..n {
                     for i in 0..n {

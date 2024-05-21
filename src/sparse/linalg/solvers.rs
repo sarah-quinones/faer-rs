@@ -268,6 +268,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 mat,
                 side,
                 Default::default(),
+                Default::default(),
             )?),
         })
     }
