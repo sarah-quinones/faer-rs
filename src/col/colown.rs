@@ -974,6 +974,10 @@ impl<E: Entity> Col<E> {
 
     /// Returns an iterator that provides successive chunks of the elements of this column, with
     /// each having at most `chunk_size` elements.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_chunks(
@@ -985,6 +989,10 @@ impl<E: Entity> Col<E> {
 
     /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
     /// column.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_partition(
@@ -1012,6 +1020,10 @@ impl<E: Entity> Col<E> {
 
     /// Returns an iterator that provides successive chunks of the elements of this column, with
     /// each having at most `chunk_size` elements.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_chunks_mut(
@@ -1023,6 +1035,10 @@ impl<E: Entity> Col<E> {
 
     /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
     /// column.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_partition_mut(

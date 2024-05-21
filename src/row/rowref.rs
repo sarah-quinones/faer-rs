@@ -1,5 +1,5 @@
 use super::*;
-use crate::{assert, col::ColRef, debug_assert, iter, iter::chunks::ChunkPolicy, utils::DivCeil};
+use crate::{assert, col::ColRef, debug_assert, iter, iter::chunks::ChunkPolicy};
 
 /// Immutable view over a row vector, similar to an immutable reference to a strided [prim@slice].
 ///
@@ -568,12 +568,17 @@ impl<'a, E: Entity> RowRef<'a, E> {
 
     /// Returns an iterator that provides successive chunks of the elements of this row, with
     /// each having at most `chunk_size` elements.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_chunks(
         self,
         chunk_size: usize,
     ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, E>> {
+        use crate::utils::DivCeil;
         use rayon::prelude::*;
 
         assert!(chunk_size > 0);
@@ -586,6 +591,10 @@ impl<'a, E: Entity> RowRef<'a, E> {
 
     /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
     /// row.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
     pub fn par_partition(

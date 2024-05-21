@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
-    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, utils::DivCeil,
-    zipped,
+    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, zipped,
 };
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
@@ -1151,6 +1150,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         self,
         chunk_size: usize,
     ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+        use crate::utils::DivCeil;
         use rayon::prelude::*;
 
         assert!(chunk_size > 0);
