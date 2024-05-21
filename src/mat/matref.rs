@@ -1,5 +1,8 @@
 use super::*;
-use crate::{assert, debug_assert, diag::DiagRef, unzipped, utils::DivCeil, zipped};
+use crate::{
+    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, utils::DivCeil,
+    zipped,
+};
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
 ///
@@ -24,6 +27,13 @@ impl<E: Entity> Clone for MatRef<'_, E> {
 }
 
 impl<E: Entity> Copy for MatRef<'_, E> {}
+
+impl<E: Entity> Default for MatRef<'_, E> {
+    #[inline]
+    fn default() -> Self {
+        from_column_major_slice_generic::<E>(E::faer_map(E::UNIT, |()| &[] as &[E::Unit]), 0, 0)
+    }
+}
 
 impl<'short, E: Entity> Reborrow<'short> for MatRef<'_, E> {
     type Target = MatRef<'short, E>;
@@ -949,7 +959,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         crate::linalg::reductions::sum::sum((*self).rb())
     }
 
-    /// Kroneckor product of `self` and `rhs`.
+    /// Kronecker product of `self` and `rhs`.
     ///
     /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
@@ -977,6 +987,76 @@ impl<'a, E: Entity> MatRef<'a, E> {
         *self
     }
 
+    /// Returns a reference to the first column and a view over the remaining ones if the matrix has
+    /// at least one column, otherwise `None`.
+    #[inline]
+    pub fn split_first_col(self) -> Option<(ColRef<'a, E>, MatRef<'a, E>)> {
+        if self.ncols() == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_col_unchecked(1) };
+                Some((head.get_unchecked(.., 0), tail))
+            }
+        }
+    }
+
+    /// Returns a reference to the last column and a view over the remaining ones if the matrix has
+    /// at least one column,  otherwise `None`.
+    #[inline]
+    pub fn split_last_col(self) -> Option<(ColRef<'a, E>, MatRef<'a, E>)> {
+        let ncols = self.ncols();
+        if ncols == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_col_unchecked(ncols - 1) };
+                Some((tail.get_unchecked(.., 0), head))
+            }
+        }
+    }
+
+    /// Returns a reference to the first row and a view over the remaining ones if the matrix has
+    /// at least one row, otherwise `None`.
+    #[inline]
+    pub fn split_first_row(self) -> Option<(RowRef<'a, E>, MatRef<'a, E>)> {
+        if self.nrows() == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_row_unchecked(1) };
+                Some((head.get_unchecked(0, ..), tail))
+            }
+        }
+    }
+
+    /// Returns a reference to the last row and a view over the remaining ones if the matrix has
+    /// at least one row,  otherwise `None`.
+    #[inline]
+    pub fn split_last_row(self) -> Option<(RowRef<'a, E>, MatRef<'a, E>)> {
+        let nrows = self.nrows();
+        if nrows == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_row_unchecked(nrows - 1) };
+                Some((tail.get_unchecked(0, ..), head))
+            }
+        }
+    }
+
+    /// Returns an iterator over the columns of the matrix.
+    #[inline]
+    pub fn col_iter(self) -> iter::ColIter<'a, E> {
+        iter::ColIter { inner: self }
+    }
+
+    /// Returns an iterator over the rows of the matrix.
+    #[inline]
+    pub fn row_iter(self) -> iter::RowIter<'a, E> {
+        iter::RowIter { inner: self }
+    }
+
     #[doc(hidden)]
     #[inline(always)]
     pub unsafe fn const_cast(self) -> MatMut<'a, E> {
@@ -993,16 +1073,32 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// `chunk_size` columns.
     #[inline]
     #[track_caller]
-    pub fn col_chunks(
-        self,
-        chunk_size: usize,
-    ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
+    pub fn col_chunks(self, chunk_size: usize) -> iter::ColChunks<'a, E> {
         assert!(chunk_size > 0);
-        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
-        (0..chunk_count).map(move |chunk_idx| {
-            let pos = chunk_size * chunk_idx;
-            self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
-        })
+        let ncols = self.ncols();
+        iter::ColChunks {
+            inner: self,
+            policy: iter::chunks::ChunkSizePolicy::new(ncols, iter::chunks::ChunkSize(chunk_size)),
+        }
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the columns of this
+    /// matrix.
+    ///
+    /// # Panics
+    /// Panics if `count == 0`.
+    #[inline]
+    #[track_caller]
+    pub fn col_partition(self, count: usize) -> iter::ColPartition<'a, E> {
+        assert!(count > 0);
+        let ncols = self.ncols();
+        iter::ColPartition {
+            inner: self,
+            policy: iter::chunks::PartitionCountPolicy::new(
+                ncols,
+                iter::chunks::PartitionCount(count),
+            ),
+        }
     }
 
     /// Returns an iterator that provides successive chunks of the rows of this matrix, with
@@ -1012,13 +1108,32 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// rows.
     #[inline]
     #[track_caller]
-    pub fn row_chunks(
-        self,
-        chunk_size: usize,
-    ) -> impl 'a + DoubleEndedIterator<Item = MatRef<'a, E>> {
-        self.transpose()
-            .col_chunks(chunk_size)
-            .map(|chunk| chunk.transpose())
+    pub fn row_chunks(self, chunk_size: usize) -> iter::RowChunks<'a, E> {
+        assert!(chunk_size > 0);
+        let nrows = self.nrows();
+        iter::RowChunks {
+            inner: self,
+            policy: iter::chunks::ChunkSizePolicy::new(nrows, iter::chunks::ChunkSize(chunk_size)),
+        }
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the rows of this
+    /// matrix.
+    ///
+    /// # Panics
+    /// Panics if `count == 0`.
+    #[inline]
+    #[track_caller]
+    pub fn row_partition(self, count: usize) -> iter::RowPartition<'a, E> {
+        assert!(count > 0);
+        let nrows = self.nrows();
+        iter::RowPartition {
+            inner: self,
+            policy: iter::chunks::PartitionCountPolicy::new(
+                nrows,
+                iter::chunks::PartitionCount(count),
+            ),
+        }
     }
 
     /// Returns a parallel iterator that provides successive chunks of the columns of this
@@ -1046,6 +1161,28 @@ impl<'a, E: Entity> MatRef<'a, E> {
         })
     }
 
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the columns
+    /// of this matrix.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+    #[inline]
+    #[track_caller]
+    pub fn par_col_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+        use rayon::prelude::*;
+
+        assert!(count > 0);
+        (0..count).into_par_iter().map(move |chunk_idx| {
+            let (start, len) =
+                crate::utils::thread::par_split_indices(self.ncols(), chunk_idx, count);
+            self.subcols(start, len)
+        })
+    }
+
     /// Returns a parallel iterator that provides successive chunks of the rows of this matrix,
     /// with each having at most `chunk_size` rows.
     ///
@@ -1066,6 +1203,28 @@ impl<'a, E: Entity> MatRef<'a, E> {
         self.transpose()
             .par_col_chunks(chunk_size)
             .map(|chunk| chunk.transpose())
+    }
+
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the rows
+    /// of this matrix.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+    #[inline]
+    #[track_caller]
+    pub fn par_row_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+        use rayon::prelude::*;
+
+        assert!(count > 0);
+        (0..count).into_par_iter().map(move |chunk_idx| {
+            let (start, len) =
+                crate::utils::thread::par_split_indices(self.nrows(), chunk_idx, count);
+            self.subrows(start, len)
+        })
     }
 }
 

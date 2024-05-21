@@ -2,7 +2,9 @@ use super::*;
 use crate::{
     assert,
     col::{ColMut, ColRef},
-    debug_assert, mat, unzipped, zipped,
+    debug_assert, iter,
+    iter::chunks::ChunkPolicy,
+    mat, unzipped, zipped,
 };
 use core::mem::MaybeUninit;
 
@@ -22,6 +24,13 @@ use core::mem::MaybeUninit;
 pub struct RowMut<'a, E: Entity> {
     pub(super) inner: VecImpl<E>,
     pub(super) __marker: PhantomData<&'a E>,
+}
+
+impl<E: Entity> Default for RowMut<'_, E> {
+    #[inline]
+    fn default() -> Self {
+        from_slice_mut_generic::<E>(E::faer_map(E::UNIT, |()| &mut [] as &mut [E::Unit]))
+    }
 }
 
 impl<'short, E: Entity> Reborrow<'short> for RowMut<'_, E> {
@@ -247,7 +256,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at(self, col: usize) -> (RowRef<'a, E>, RowRef<'a, E>) {
+    pub fn split_at(self, col: usize) -> (RowRef<'a, E>, RowRef<'a, E>) {
         self.into_const().split_at(col)
     }
 
@@ -651,7 +660,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
         self.rb().as_2d().sum()
     }
 
-    /// Kroneckor product of `self` and `rhs`.
+    /// Kronecker product of `self` and `rhs`.
     ///
     /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
@@ -723,6 +732,160 @@ impl<'a, E: Entity> RowMut<'a, E> {
     #[inline]
     pub fn as_mut(&mut self) -> RowMut<'_, E> {
         (*self).rb_mut()
+    }
+
+    /// Returns a reference to the first element and a view over the remaining ones if the row is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+        self.into_const().split_first()
+    }
+
+    /// Returns a reference to the last element and a view over the remaining ones if the row is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+        self.into_const().split_last()
+    }
+
+    /// Returns a reference to the first element and a view over the remaining ones if the row is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_first_mut(self) -> Option<(GroupFor<E, &'a mut E::Unit>, RowMut<'a, E>)> {
+        if self.ncols() == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_mut_unchecked(1) };
+                Some((head.get_mut_unchecked(0), tail))
+            }
+        }
+    }
+
+    /// Returns a reference to the last element and a view over the remaining ones if the row is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_last_mut(self) -> Option<(GroupFor<E, &'a mut E::Unit>, RowMut<'a, E>)> {
+        if self.ncols() == 0 {
+            None
+        } else {
+            let ncols = self.ncols();
+            unsafe {
+                let (head, tail) = { self.split_at_mut_unchecked(ncols - 1) };
+                Some((tail.get_mut_unchecked(0), head))
+            }
+        }
+    }
+
+    /// Returns an iterator over the elements of the row.
+    #[inline]
+    pub fn iter(self) -> iter::ElemIter<'a, E> {
+        iter::ElemIter {
+            inner: self.into_const().transpose(),
+        }
+    }
+
+    /// Returns an iterator over the elements of the row.
+    #[inline]
+    pub fn iter_mut(self) -> iter::ElemIterMut<'a, E> {
+        iter::ElemIterMut {
+            inner: self.transpose_mut(),
+        }
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this row, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn chunks(self, chunk_size: usize) -> iter::RowElemChunks<'a, E> {
+        self.into_const().chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// row.
+    #[inline]
+    #[track_caller]
+    pub fn partition(self, count: usize) -> iter::RowElemPartition<'a, E> {
+        self.into_const().partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this row, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn par_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, E>> {
+        self.into_const().par_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// row.
+    #[inline]
+    #[track_caller]
+    pub fn par_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowRef<'a, E>> {
+        self.into_const().par_partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this row, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn chunks_mut(self, chunk_size: usize) -> iter::RowElemChunksMut<'a, E> {
+        assert!(chunk_size > 0);
+        let ncols = self.ncols();
+        iter::RowElemChunksMut {
+            inner: self,
+            policy: iter::chunks::ChunkSizePolicy::new(ncols, iter::chunks::ChunkSize(chunk_size)),
+        }
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// row.
+    #[inline]
+    #[track_caller]
+    pub fn partition_mut(self, count: usize) -> iter::RowElemPartitionMut<'a, E> {
+        assert!(count > 0);
+        let ncols = self.ncols();
+        iter::RowElemPartitionMut {
+            inner: self,
+            policy: iter::chunks::PartitionCountPolicy::new(
+                ncols,
+                iter::chunks::PartitionCount(count),
+            ),
+        }
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this row, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn par_chunks_mut(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, E>> {
+        use rayon::prelude::*;
+        self.into_const()
+            .par_chunks(chunk_size)
+            .map(|x| unsafe { x.const_cast() })
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// row.
+    #[inline]
+    #[track_caller]
+    pub fn par_partition_mut(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = RowMut<'a, E>> {
+        use rayon::prelude::*;
+        self.into_const()
+            .par_partition(count)
+            .map(|x| unsafe { x.const_cast() })
     }
 
     #[doc(hidden)]

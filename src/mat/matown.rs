@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     assert, debug_assert,
     diag::{DiagMut, DiagRef},
+    iter,
     mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     utils::DivCeil,
 };
@@ -533,6 +534,86 @@ impl<E: Entity> Mat<E> {
                 self.col_stride(),
             )
         }
+    }
+
+    /// Returns a reference to the first column and a view over the remaining ones if the matrix has
+    /// at least one column, otherwise `None`.
+    #[inline]
+    pub fn split_first_col(&self) -> Option<(ColRef<'_, E>, MatRef<'_, E>)> {
+        self.as_ref().split_first_col()
+    }
+
+    /// Returns a reference to the last column and a view over the remaining ones if the matrix has
+    /// at least one column,  otherwise `None`.
+    #[inline]
+    pub fn split_last_col(&self) -> Option<(ColRef<'_, E>, MatRef<'_, E>)> {
+        self.as_ref().split_last_col()
+    }
+
+    /// Returns a reference to the first row and a view over the remaining ones if the matrix has
+    /// at least one row, otherwise `None`.
+    #[inline]
+    pub fn split_first_row(&self) -> Option<(RowRef<'_, E>, MatRef<'_, E>)> {
+        self.as_ref().split_first_row()
+    }
+
+    /// Returns a reference to the last row and a view over the remaining ones if the matrix has
+    /// at least one row,  otherwise `None`.
+    #[inline]
+    pub fn split_last_row(&self) -> Option<(RowRef<'_, E>, MatRef<'_, E>)> {
+        self.as_ref().split_last_row()
+    }
+
+    /// Returns a reference to the first column and a view over the remaining ones if the matrix has
+    /// at least one column, otherwise `None`.
+    #[inline]
+    pub fn split_first_col_mut(&mut self) -> Option<(ColMut<'_, E>, MatMut<'_, E>)> {
+        self.as_mut().split_first_col_mut()
+    }
+
+    /// Returns a reference to the last column and a view over the remaining ones if the matrix has
+    /// at least one column,  otherwise `None`.
+    #[inline]
+    pub fn split_last_col_mut(&mut self) -> Option<(ColMut<'_, E>, MatMut<'_, E>)> {
+        self.as_mut().split_last_col_mut()
+    }
+
+    /// Returns a reference to the first row and a view over the remaining ones if the matrix has
+    /// at least one row, otherwise `None`.
+    #[inline]
+    pub fn split_first_row_mut(&mut self) -> Option<(RowMut<'_, E>, MatMut<'_, E>)> {
+        self.as_mut().split_first_row_mut()
+    }
+
+    /// Returns a reference to the last row and a view over the remaining ones if the matrix has
+    /// at least one row,  otherwise `None`.
+    #[inline]
+    pub fn split_last_row_mut(&mut self) -> Option<(RowMut<'_, E>, MatMut<'_, E>)> {
+        self.as_mut().split_last_row_mut()
+    }
+
+    /// Returns an iterator over the columns of the matrix.
+    #[inline]
+    pub fn col_iter(&self) -> iter::ColIter<'_, E> {
+        self.as_ref().col_iter()
+    }
+
+    /// Returns an iterator over the rows of the matrix.
+    #[inline]
+    pub fn row_iter(&self) -> iter::RowIter<'_, E> {
+        self.as_ref().row_iter()
+    }
+
+    /// Returns an iterator over the columns of the matrix.
+    #[inline]
+    pub fn col_iter_mut(&mut self) -> iter::ColIterMut<'_, E> {
+        self.as_mut().col_iter_mut()
+    }
+
+    /// Returns an iterator over the rows of the matrix.
+    #[inline]
+    pub fn row_iter_mut(&mut self) -> iter::RowIterMut<'_, E> {
+        self.as_mut().row_iter_mut()
     }
 
     #[doc(hidden)]
@@ -1711,7 +1792,7 @@ impl<E: Entity> Mat<E> {
         crate::linalg::reductions::sum::sum((*self).as_ref())
     }
 
-    /// Kroneckor product of `self` and `rhs`.
+    /// Kronecker product of `self` and `rhs`.
     ///
     /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
@@ -1724,32 +1805,92 @@ impl<E: Entity> Mat<E> {
         self.as_2d_ref().kron(rhs)
     }
 
-    /// Returns an iterator that provides successive chunks of the columns of a view over this
-    /// matrix, with each having at most `chunk_size` columns.
+    /// Returns an iterator that provides successive chunks of the columns of this matrix, with
+    /// each having at most `chunk_size` columns.
     ///
-    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
-    /// columns.
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have
+    /// `chunk_size` columns.
     #[inline]
     #[track_caller]
-    pub fn col_chunks(
-        &self,
-        chunk_size: usize,
-    ) -> impl '_ + DoubleEndedIterator<Item = MatRef<'_, E>> {
+    pub fn col_chunks(&self, chunk_size: usize) -> iter::ColChunks<'_, E> {
         self.as_ref().col_chunks(chunk_size)
     }
 
-    /// Returns an iterator that provides successive chunks of the columns of a mutable view over
-    /// this matrix, with each having at most `chunk_size` columns.
+    /// Returns an iterator that provides exactly `count` successive chunks of the columns of this
+    /// matrix.
     ///
-    /// If the number of columns is a multiple of `chunk_size`, then all chunks have `chunk_size`
-    /// columns.
+    /// # Panics
+    /// Panics if `count == 0`.
     #[inline]
     #[track_caller]
-    pub fn col_chunks_mut(
-        &mut self,
-        chunk_size: usize,
-    ) -> impl '_ + DoubleEndedIterator<Item = MatMut<'_, E>> {
+    pub fn col_partition(&self, count: usize) -> iter::ColPartition<'_, E> {
+        self.as_ref().col_partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of this matrix, with
+    /// each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn row_chunks(&self, chunk_size: usize) -> iter::RowChunks<'_, E> {
+        self.as_ref().row_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the rows of this
+    /// matrix.
+    ///
+    /// # Panics
+    /// Panics if `count == 0`.
+    #[inline]
+    #[track_caller]
+    pub fn row_partition(&self, count: usize) -> iter::RowPartition<'_, E> {
+        self.as_ref().row_partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the columns of this matrix, with
+    /// each having at most `chunk_size` columns.
+    ///
+    /// If the number of columns is a multiple of `chunk_size`, then all chunks have
+    /// `chunk_size` columns.
+    #[inline]
+    #[track_caller]
+    pub fn col_chunks_mut(&mut self, chunk_size: usize) -> iter::ColChunksMut<'_, E> {
         self.as_mut().col_chunks_mut(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the columns of this
+    /// matrix.
+    ///
+    /// # Panics
+    /// Panics if `count == 0`.
+    #[inline]
+    #[track_caller]
+    pub fn col_partition_mut(&mut self, count: usize) -> iter::ColPartitionMut<'_, E> {
+        self.as_mut().col_partition_mut(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the rows of this matrix, with
+    /// each having at most `chunk_size` rows.
+    ///
+    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
+    /// rows.
+    #[inline]
+    #[track_caller]
+    pub fn row_chunks_mut(&mut self, chunk_size: usize) -> iter::RowChunksMut<'_, E> {
+        self.as_mut().row_chunks_mut(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the rows of this
+    /// matrix.
+    ///
+    /// # Panics
+    /// Panics if `count == 0`.
+    #[inline]
+    #[track_caller]
+    pub fn row_partition_mut(&mut self, count: usize) -> iter::RowPartitionMut<'_, E> {
+        self.as_mut().row_partition_mut(count)
     }
 
     /// Returns a parallel iterator that provides successive chunks of the columns of a view over
@@ -1770,6 +1911,21 @@ impl<E: Entity> Mat<E> {
         self.as_ref().par_col_chunks(chunk_size)
     }
 
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the columns
+    /// of this matrix.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+    #[inline]
+    #[track_caller]
+    pub fn par_col_partition(
+        &self,
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, E>> {
+        self.as_ref().par_col_partition(count)
+    }
+
     /// Returns a parallel iterator that provides successive chunks of the columns of a mutable view
     /// over this matrix, with each having at most `chunk_size` columns.
     ///
@@ -1788,32 +1944,19 @@ impl<E: Entity> Mat<E> {
         self.as_mut().par_col_chunks_mut(chunk_size)
     }
 
-    /// Returns an iterator that provides successive chunks of the rows of a view over this
-    /// matrix, with each having at most `chunk_size` rows.
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the columns
+    /// of this matrix.
     ///
-    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
-    /// rows.
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
     #[inline]
     #[track_caller]
-    pub fn row_chunks(
-        &self,
-        chunk_size: usize,
-    ) -> impl '_ + DoubleEndedIterator<Item = MatRef<'_, E>> {
-        self.as_ref().row_chunks(chunk_size)
-    }
-
-    /// Returns an iterator that provides successive chunks of the rows of a mutable view over
-    /// this matrix, with each having at most `chunk_size` rows.
-    ///
-    /// If the number of rows is a multiple of `chunk_size`, then all chunks have `chunk_size`
-    /// rows.
-    #[inline]
-    #[track_caller]
-    pub fn row_chunks_mut(
+    pub fn par_col_partition_mut(
         &mut self,
-        chunk_size: usize,
-    ) -> impl '_ + DoubleEndedIterator<Item = MatMut<'_, E>> {
-        self.as_mut().row_chunks_mut(chunk_size)
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
+        self.as_mut().par_col_partition_mut(count)
     }
 
     /// Returns a parallel iterator that provides successive chunks of the rows of a view over this
@@ -1834,6 +1977,21 @@ impl<E: Entity> Mat<E> {
         self.as_ref().par_row_chunks(chunk_size)
     }
 
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the rows
+    /// of this matrix.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+    #[inline]
+    #[track_caller]
+    pub fn par_row_partition(
+        &self,
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatRef<'_, E>> {
+        self.as_ref().par_row_partition(count)
+    }
+
     /// Returns a parallel iterator that provides successive chunks of the rows of a mutable view
     /// over this matrix, with each having at most `chunk_size` rows.
     ///
@@ -1850,6 +2008,21 @@ impl<E: Entity> Mat<E> {
         chunk_size: usize,
     ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
         self.as_mut().par_row_chunks_mut(chunk_size)
+    }
+
+    /// Returns a parallel iterator that provides exactly `count` successive chunks of the rows
+    /// of this matrix.
+    ///
+    /// Only available with the `rayon` feature.
+    #[cfg(feature = "rayon")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rayon")))]
+    #[inline]
+    #[track_caller]
+    pub fn par_row_partition_mut(
+        &mut self,
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = MatMut<'_, E>> {
+        self.as_mut().par_row_partition_mut(count)
     }
 
     #[track_caller]

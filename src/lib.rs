@@ -192,6 +192,9 @@ pub use reborrow;
 /// Various utilities for low level implementations in generic code.
 pub mod utils;
 
+/// Iterators and related utilities.
+pub mod iter;
+
 /// Column vector type.
 pub mod col;
 /// Diagonal matrix type.

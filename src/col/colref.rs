@@ -1,5 +1,8 @@
 use super::*;
-use crate::{assert, debug_assert, diag::DiagRef, row::RowRef};
+use crate::{
+    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, row::RowRef,
+    utils::DivCeil,
+};
 
 /// Immutable view over a column vector, similar to an immutable reference to a strided
 /// [prim@slice].
@@ -26,6 +29,12 @@ impl<E: Entity> Clone for ColRef<'_, E> {
 
 impl<E: Entity> Copy for ColRef<'_, E> {}
 
+impl<E: Entity> Default for ColRef<'_, E> {
+    #[inline]
+    fn default() -> Self {
+        from_slice_generic::<E>(E::faer_map(E::UNIT, |()| &[] as &[E::Unit]))
+    }
+}
 impl<'short, E: Entity> Reborrow<'short> for ColRef<'_, E> {
     type Target = ColRef<'short, E>;
 
@@ -482,7 +491,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
         self.as_2d().sum()
     }
 
-    /// Kroneckor product of `self` and `rhs`.
+    /// Kronecker product of `self` and `rhs`.
     ///
     /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
@@ -518,6 +527,106 @@ impl<'a, E: Entity> ColRef<'a, E> {
     #[inline]
     pub fn as_ref(&self) -> ColRef<'_, E> {
         *self
+    }
+
+    /// Returns a reference to the first element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
+        if self.nrows() == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_unchecked(1) };
+                Some((head.get_unchecked(0), tail))
+            }
+        }
+    }
+
+    /// Returns a reference to the last element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
+        if self.nrows() == 0 {
+            None
+        } else {
+            unsafe {
+                let (head, tail) = { self.split_at_unchecked(self.nrows() - 1) };
+                Some((tail.get_unchecked(0), head))
+            }
+        }
+    }
+
+    /// Returns an iterator over the elements of the column.
+    #[inline]
+    pub fn iter(self) -> iter::ElemIter<'a, E> {
+        iter::ElemIter { inner: self }
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn chunks(self, chunk_size: usize) -> iter::ColElemChunks<'a, E> {
+        assert!(chunk_size > 0);
+        iter::ColElemChunks {
+            inner: self,
+            policy: iter::chunks::ChunkSizePolicy::new(
+                self.nrows(),
+                iter::chunks::ChunkSize(chunk_size),
+            ),
+        }
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn partition(self, count: usize) -> iter::ColElemPartition<'a, E> {
+        assert!(count > 0);
+        iter::ColElemPartition {
+            inner: self,
+            policy: iter::chunks::PartitionCountPolicy::new(
+                self.nrows(),
+                iter::chunks::PartitionCount(count),
+            ),
+        }
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn par_chunks(
+        self,
+        chunk_size: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, E>> {
+        use rayon::prelude::*;
+
+        assert!(chunk_size > 0);
+        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
+        (0..chunk_count).into_par_iter().map(move |chunk_idx| {
+            let pos = chunk_size * chunk_idx;
+            self.subrows(pos, Ord::min(chunk_size, self.nrows() - pos))
+        })
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn par_partition(
+        self,
+        count: usize,
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, E>> {
+        use rayon::prelude::*;
+
+        assert!(count > 0);
+        (0..count).into_par_iter().map(move |chunk_idx| {
+            let (start, len) =
+                crate::utils::thread::par_split_indices(self.nrows(), chunk_idx, count);
+            self.subrows(start, len)
+        })
     }
 
     #[doc(hidden)]

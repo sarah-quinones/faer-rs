@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     debug_assert,
     diag::{Diag, DiagMut, DiagRef},
+    iter,
     mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     row::{RowMut, RowRef},
     utils::DivCeil,
@@ -902,7 +903,7 @@ impl<E: Entity> Col<E> {
         self.as_mut().try_as_uninit_slice_mut()
     }
 
-    /// Kroneckor product of `self` and `rhs`.
+    /// Kronecker product of `self` and `rhs`.
     ///
     /// This is an allocating operation; see [`faer::linalg::kron`](crate::linalg::kron) for the
     /// allocation-free version or more info in general.
@@ -913,6 +914,122 @@ impl<E: Entity> Col<E> {
         E: ComplexField,
     {
         self.as_2d_ref().kron(rhs)
+    }
+
+    /// Returns a reference to the first element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_first(&self) -> Option<(GroupFor<E, &'_ E::Unit>, ColRef<'_, E>)> {
+        self.as_ref().split_first()
+    }
+
+    /// Returns a reference to the last element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_last(&self) -> Option<(GroupFor<E, &'_ E::Unit>, ColRef<'_, E>)> {
+        self.as_ref().split_last()
+    }
+
+    /// Returns a reference to the first element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_first_mut(&mut self) -> Option<(GroupFor<E, &'_ mut E::Unit>, ColMut<'_, E>)> {
+        self.as_mut().split_first_mut()
+    }
+
+    /// Returns a reference to the last element and a view over the remaining ones if the column is
+    /// non-empty, otherwise `None`.
+    #[inline]
+    pub fn split_last_mut(&mut self) -> Option<(GroupFor<E, &'_ mut E::Unit>, ColMut<'_, E>)> {
+        self.as_mut().split_last_mut()
+    }
+
+    /// Returns an iterator over the elements of the column.
+    #[inline]
+    pub fn iter(&self) -> iter::ElemIter<'_, E> {
+        self.as_ref().iter()
+    }
+
+    /// Returns an iterator over the elements of the column.
+    #[inline]
+    pub fn iter_mut(&mut self) -> iter::ElemIterMut<'_, E> {
+        self.as_mut().iter_mut()
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn chunks(&self, chunk_size: usize) -> iter::ColElemChunks<'_, E> {
+        self.as_ref().chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn partition(&self, count: usize) -> iter::ColElemPartition<'_, E> {
+        self.as_ref().partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn par_chunks(
+        &self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColRef<'_, E>> {
+        self.as_ref().par_chunks(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn par_partition(
+        &self,
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColRef<'_, E>> {
+        self.as_ref().par_partition(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn chunks_mut(&mut self, chunk_size: usize) -> iter::ColElemChunksMut<'_, E> {
+        self.as_mut().chunks_mut(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn partition_mut(&mut self, count: usize) -> iter::ColElemPartitionMut<'_, E> {
+        self.as_mut().partition_mut(count)
+    }
+
+    /// Returns an iterator that provides successive chunks of the elements of this column, with
+    /// each having at most `chunk_size` elements.
+    #[inline]
+    #[track_caller]
+    pub fn par_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColMut<'_, E>> {
+        self.as_mut().par_chunks_mut(chunk_size)
+    }
+
+    /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
+    /// column.
+    #[inline]
+    #[track_caller]
+    pub fn par_partition_mut(
+        &mut self,
+        count: usize,
+    ) -> impl '_ + rayon::iter::IndexedParallelIterator<Item = ColMut<'_, E>> {
+        self.as_mut().par_partition_mut(count)
     }
 
     #[doc(hidden)]
