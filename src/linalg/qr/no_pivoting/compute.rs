@@ -9,7 +9,10 @@ use crate::{
         temp_mat_req,
     },
     unzipped,
-    utils::{simd::*, slice::*},
+    utils::{
+        simd::{SimdFor, YesConj},
+        slice::*,
+    },
     zipped, Conj, MatMut, MatRef, Parallelism,
 };
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
@@ -103,8 +106,8 @@ fn qr_in_place_unblocked<E: ComplexField>(
                         #[inline(always)]
                         fn process<E: ComplexField, S: pulp::Simd>(
                             simd: SimdFor<E, S>,
-                            mut a: impl Write<Output = SimdGroupFor<E, S>>,
-                            b: impl Read<Output = SimdGroupFor<E, S>>,
+                            mut a: impl pulp::Write<Output = SimdGroupFor<E, S>>,
+                            b: impl pulp::Read<Output = SimdGroupFor<E, S>>,
                             k: SimdGroupFor<E, S>,
                         ) {
                             let zero = simd.splat(E::faer_zero());
@@ -216,28 +219,57 @@ fn qr_in_place_blocked<E: ComplexField>(
     stack: PodStack<'_>,
     params: QrComputeParams,
 ) {
-    if blocksize == 1 {
-        return qr_in_place_unblocked(
-            matrix,
-            householder_factor
-                .diagonal_mut()
-                .column_vector_mut()
-                .as_2d_mut(),
-            stack,
-        );
-    }
-
     let mut matrix = matrix;
     let mut householder_factor = householder_factor;
     let mut stack = stack;
     let mut parallelism = parallelism;
+
     let m = matrix.nrows();
     let n = matrix.ncols();
     let size = Ord::min(m, n);
 
     let (disable_blocking, disable_parallelism) = params.normalize();
-
     let householder_is_full_matrix = householder_factor.nrows() == householder_factor.ncols();
+
+    if !householder_is_full_matrix {
+        if blocksize == 1 || disable_blocking(m, n) {
+            qr_in_place_unblocked(
+                matrix.rb_mut(),
+                householder_factor.rb_mut().transpose_mut(),
+                stack,
+            );
+
+            let mut j = 0;
+            while j < size {
+                let bs = Ord::min(blocksize, size - j);
+                let mut householder_factor =
+                    householder_factor.rb_mut().submatrix_mut(0, j, bs, bs);
+                let matrix = matrix.rb().submatrix(j, j, m - j, bs);
+
+                upgrade_householder_factor(
+                    householder_factor.rb_mut(),
+                    matrix.rb(),
+                    blocksize,
+                    1,
+                    parallelism,
+                );
+                j += bs;
+            }
+            return;
+        }
+    }
+    if blocksize == 1 && householder_is_full_matrix {
+        qr_in_place_unblocked(
+            matrix.rb_mut(),
+            householder_factor
+                .rb_mut()
+                .diagonal_mut()
+                .column_vector_mut()
+                .as_2d_mut(),
+            stack,
+        );
+        return;
+    }
 
     let mut j = 0;
     while j < size {

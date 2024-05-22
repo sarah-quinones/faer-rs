@@ -35,9 +35,9 @@ fn main() -> io::Result<()> {
     };
 
     if let (Ok(mkl_mt), Ok(openblas_mt), Ok(faer_mt)) = (
-        open("./diol_mkl_mt.json"),
-        open("./diol_openblas_mt.json"),
-        open("./diol_faer_mt.json"),
+        open("./target/diol_mkl_mt.json"),
+        open("./target/diol_openblas_mt.json"),
+        open("./target/diol_faer_mt.json"),
     ) {
         let merged = faer_mt.merge(mkl_mt).merge(openblas_mt);
 
@@ -71,14 +71,17 @@ fn main() -> io::Result<()> {
             }
         }
 
-        serde_json::ser::to_writer(BufWriter::new(File::create("./diol_mt.json")?), &merged)?;
+        serde_json::ser::to_writer(
+            BufWriter::new(File::create("./target/diol_mt.json")?),
+            &merged,
+        )?;
     }
 
     if let (Ok(mkl_st), Ok(openblas_st), Ok(faer_st), Ok(nalgebra_st)) = (
-        open("./diol_mkl_st.json"),
-        open("./diol_openblas_st.json"),
-        open("./diol_faer_st.json"),
-        open("./diol_nalgebra_st.json"),
+        open("./target/diol_mkl_st.json"),
+        open("./target/diol_openblas_st.json"),
+        open("./target/diol_faer_st.json"),
+        open("./target/diol_nalgebra_st.json"),
     ) {
         let merged = faer_st.merge(mkl_st).merge(openblas_st).merge(nalgebra_st);
 
@@ -112,7 +115,10 @@ fn main() -> io::Result<()> {
             }
         }
 
-        serde_json::ser::to_writer(BufWriter::new(File::create("./diol_st.json")?), &merged)?;
+        serde_json::ser::to_writer(
+            BufWriter::new(File::create("./target/diol_st.json")?),
+            &merged,
+        )?;
     }
 
     Ok(())

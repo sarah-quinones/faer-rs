@@ -22,6 +22,7 @@ equator = "0.1.10"
 faer-entity = { version ="0.18.0", default-features = false, path = "./faer-entity" }
 
 gemm = { version = "0.17.1", default-features = false }
+nano-gemm = { version = "0.1.0", default-features = false }
 num-complex = { version = "0.4.5", default-features = false }
 num-traits = { version = "0.2.18", default-features = false }
 
@@ -42,6 +43,7 @@ unstable = []
 std = [
   "faer-entity/std",
   "gemm/std",
+  "nano-gemm/std",
   "matrixcompare-core",
   "matrixcompare",
   "num-traits/std",
@@ -75,6 +77,10 @@ opt-level = 3
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
+
+[[bench]]
+name = "qr"
+harness = false
 
 [[bench]]
 name = "meanvar"

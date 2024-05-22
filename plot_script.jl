@@ -28,7 +28,7 @@ for ty in ["f32", "f64", "c32", "c64"]
             title="$(name) ($(ty))",
             label=["faer" "mkl" "openblas"],
             xlabel="Matrix dimension (n)",
-            ylabel="n³ / time (seconds)",
+            ylabel="1/time (normalized)",
             ylims=(0.1, 10.0),
             yticks=([0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0], ["0.1", "0.2", "0.5", "1.0", "2.0", "5.0", "10.0"])
         )
@@ -50,16 +50,23 @@ for ty in ["f32", "f64", "c32", "c64"]
     ]
         data = CSV.File("./target/st_$(algo)_$(ty).csv", types=Float64)
         norm = data["faer"]
+        if all(isnan.(data["nalgebra"]))
+            funcs = [data["faer"]./norm data["mkl"]./norm data["openblas"]./norm]
+            label = ["faer" "mkl" "openblas"]
+        else
+            funcs = [data["faer"]./norm data["mkl"]./norm data["openblas"]./norm data["nalgebra"]./norm]
+            label = ["faer" "mkl" "openblas" "nalgebra"]
+        end
         p = plot(
             data["n"],
-            [data["faer"]./norm data["mkl"]./norm data["openblas"]./norm data["nalgebra"]./norm],
+            funcs,
             size=SIZE,
             xaxis=:log,
             yaxis=:log,
             title="$(name) ($(ty))",
-            label=["faer" "mkl" "openblas" "nalgebra"],
+            label=label,
             xlabel="Matrix dimension (n)",
-            ylabel="n³ / time (seconds)",
+            ylabel="1/time (normalized)",
             ylims=(0.1, 10.0),
             yticks=([0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0], ["0.1", "0.2", "0.5", "1.0", "2.0", "5.0", "10.0"])
         )

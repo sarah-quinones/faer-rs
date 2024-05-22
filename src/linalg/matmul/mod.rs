@@ -1581,29 +1581,56 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let b: MatRef<'_, f32> = coe::coerce(rhs);
             let alpha: Option<f32> = coe::coerce_static(alpha);
             let beta: f32 = coe::coerce_static(beta);
-            unsafe {
-                gemm::gemm(
-                    m,
-                    n,
-                    k,
-                    acc.rb_mut().as_ptr_mut(),
-                    acc.col_stride(),
-                    acc.row_stride(),
-                    alpha.is_some(),
-                    a.as_ptr(),
-                    a.col_stride(),
-                    a.row_stride(),
-                    b.as_ptr(),
-                    b.col_stride(),
-                    b.row_stride(),
-                    alpha.unwrap_or(0.0),
-                    beta,
-                    false,
-                    conj_lhs == Conj::Yes,
-                    conj_rhs == Conj::Yes,
-                    gemm_parallelism,
-                )
-            };
+
+            if m.checked_mul(n)
+                .and_then(|mn| mn.checked_mul(k))
+                .is_some_and(|mnk| mnk < 16 * 16 * 16)
+            {
+                unsafe {
+                    nano_gemm::planless::execute_f32(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut(),
+                        acc.row_stride(),
+                        acc.col_stride(),
+                        a.as_ptr(),
+                        a.row_stride(),
+                        a.col_stride(),
+                        b.as_ptr(),
+                        b.row_stride(),
+                        b.col_stride(),
+                        alpha.unwrap_or(0.0),
+                        beta,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                    );
+                }
+            } else {
+                unsafe {
+                    gemm::gemm(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut(),
+                        acc.col_stride(),
+                        acc.row_stride(),
+                        alpha.is_some(),
+                        a.as_ptr(),
+                        a.col_stride(),
+                        a.row_stride(),
+                        b.as_ptr(),
+                        b.col_stride(),
+                        b.row_stride(),
+                        alpha.unwrap_or(0.0),
+                        beta,
+                        false,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                        gemm_parallelism,
+                    )
+                };
+            }
             return;
         }
         if coe::is_same::<f64, E>() {
@@ -1612,29 +1639,56 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let b: MatRef<'_, f64> = coe::coerce(rhs);
             let alpha: Option<f64> = coe::coerce_static(alpha);
             let beta: f64 = coe::coerce_static(beta);
-            unsafe {
-                gemm::gemm(
-                    m,
-                    n,
-                    k,
-                    acc.rb_mut().as_ptr_mut(),
-                    acc.col_stride(),
-                    acc.row_stride(),
-                    alpha.is_some(),
-                    a.as_ptr(),
-                    a.col_stride(),
-                    a.row_stride(),
-                    b.as_ptr(),
-                    b.col_stride(),
-                    b.row_stride(),
-                    alpha.unwrap_or(0.0),
-                    beta,
-                    false,
-                    conj_lhs == Conj::Yes,
-                    conj_rhs == Conj::Yes,
-                    gemm_parallelism,
-                )
-            };
+
+            if m.checked_mul(n)
+                .and_then(|mn| mn.checked_mul(k))
+                .is_some_and(|mnk| mnk < 16 * 16 * 16)
+            {
+                unsafe {
+                    nano_gemm::planless::execute_f64(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut(),
+                        acc.row_stride(),
+                        acc.col_stride(),
+                        a.as_ptr(),
+                        a.row_stride(),
+                        a.col_stride(),
+                        b.as_ptr(),
+                        b.row_stride(),
+                        b.col_stride(),
+                        alpha.unwrap_or(0.0),
+                        beta,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                    );
+                }
+            } else {
+                unsafe {
+                    gemm::gemm(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut(),
+                        acc.col_stride(),
+                        acc.row_stride(),
+                        alpha.is_some(),
+                        a.as_ptr(),
+                        a.col_stride(),
+                        a.row_stride(),
+                        b.as_ptr(),
+                        b.col_stride(),
+                        b.row_stride(),
+                        alpha.unwrap_or(0.0),
+                        beta,
+                        false,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                        gemm_parallelism,
+                    )
+                };
+            }
             return;
         }
         if coe::is_same::<c32, E>() {
@@ -1643,29 +1697,56 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let b: MatRef<'_, c32> = coe::coerce(rhs);
             let alpha: Option<c32> = coe::coerce_static(alpha);
             let beta: c32 = coe::coerce_static(beta);
-            unsafe {
-                gemm::gemm(
-                    m,
-                    n,
-                    k,
-                    acc.rb_mut().as_ptr_mut() as *mut gemm::c32,
-                    acc.col_stride(),
-                    acc.row_stride(),
-                    alpha.is_some(),
-                    a.as_ptr() as *const gemm::c32,
-                    a.col_stride(),
-                    a.row_stride(),
-                    b.as_ptr() as *const gemm::c32,
-                    b.col_stride(),
-                    b.row_stride(),
-                    alpha.unwrap_or(c32 { re: 0.0, im: 0.0 }).into(),
-                    beta.into(),
-                    false,
-                    conj_lhs == Conj::Yes,
-                    conj_rhs == Conj::Yes,
-                    gemm_parallelism,
-                )
-            };
+
+            if m.checked_mul(n)
+                .and_then(|mn| mn.checked_mul(k))
+                .is_some_and(|mnk| mnk < 16 * 16 * 16)
+            {
+                unsafe {
+                    nano_gemm::planless::execute_c32(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut() as *mut nano_gemm::c32,
+                        acc.row_stride(),
+                        acc.col_stride(),
+                        a.as_ptr() as *const nano_gemm::c32,
+                        a.row_stride(),
+                        a.col_stride(),
+                        b.as_ptr() as *const nano_gemm::c32,
+                        b.row_stride(),
+                        b.col_stride(),
+                        alpha.unwrap_or(c32::new(0.0, 0.0)).into(),
+                        beta.into(),
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                    );
+                }
+            } else {
+                unsafe {
+                    gemm::gemm(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut() as *mut gemm::c32,
+                        acc.col_stride(),
+                        acc.row_stride(),
+                        alpha.is_some(),
+                        a.as_ptr() as *const gemm::c32,
+                        a.col_stride(),
+                        a.row_stride(),
+                        b.as_ptr() as *const gemm::c32,
+                        b.col_stride(),
+                        b.row_stride(),
+                        alpha.unwrap_or(c32::new(0.0, 0.0)).into(),
+                        beta.into(),
+                        false,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                        gemm_parallelism,
+                    )
+                };
+            }
             return;
         }
         if coe::is_same::<c64, E>() {
@@ -1674,29 +1755,55 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let b: MatRef<'_, c64> = coe::coerce(rhs);
             let alpha: Option<c64> = coe::coerce_static(alpha);
             let beta: c64 = coe::coerce_static(beta);
-            unsafe {
-                gemm::gemm(
-                    m,
-                    n,
-                    k,
-                    acc.rb_mut().as_ptr_mut() as *mut gemm::c64,
-                    acc.col_stride(),
-                    acc.row_stride(),
-                    alpha.is_some(),
-                    a.as_ptr() as *const gemm::c64,
-                    a.col_stride(),
-                    a.row_stride(),
-                    b.as_ptr() as *const gemm::c64,
-                    b.col_stride(),
-                    b.row_stride(),
-                    alpha.unwrap_or(c64 { re: 0.0, im: 0.0 }).into(),
-                    beta.into(),
-                    false,
-                    conj_lhs == Conj::Yes,
-                    conj_rhs == Conj::Yes,
-                    gemm_parallelism,
-                )
-            };
+            if m.checked_mul(n)
+                .and_then(|mn| mn.checked_mul(k))
+                .is_some_and(|mnk| mnk < 16 * 16 * 16)
+            {
+                unsafe {
+                    nano_gemm::planless::execute_c64(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut() as *mut nano_gemm::c64,
+                        acc.row_stride(),
+                        acc.col_stride(),
+                        a.as_ptr() as *const nano_gemm::c64,
+                        a.row_stride(),
+                        a.col_stride(),
+                        b.as_ptr() as *const nano_gemm::c64,
+                        b.row_stride(),
+                        b.col_stride(),
+                        alpha.unwrap_or(c64::new(0.0, 0.0)).into(),
+                        beta.into(),
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                    );
+                }
+            } else {
+                unsafe {
+                    gemm::gemm(
+                        m,
+                        n,
+                        k,
+                        acc.rb_mut().as_ptr_mut() as *mut gemm::c64,
+                        acc.col_stride(),
+                        acc.row_stride(),
+                        alpha.is_some(),
+                        a.as_ptr() as *const gemm::c64,
+                        a.col_stride(),
+                        a.row_stride(),
+                        b.as_ptr() as *const gemm::c64,
+                        b.col_stride(),
+                        b.row_stride(),
+                        alpha.unwrap_or(c64::new(0.0, 0.0)).into(),
+                        beta.into(),
+                        false,
+                        conj_lhs == Conj::Yes,
+                        conj_rhs == Conj::Yes,
+                        gemm_parallelism,
+                    )
+                };
+            }
             return;
         }
     }

@@ -20,28 +20,19 @@ unsafe fn copy_lower<E: ComplexField>(
     debug_assert!(n == src.nrows());
     debug_assert!(n == src.ncols());
 
-    let strict = match src_diag {
-        DiagonalKind::Zero => {
-            for j in 0..n {
-                dst.write_unchecked(j, j, E::faer_zero());
-            }
-            true
+    for j in 0..n {
+        for i in 0..j {
+            dst.write_unchecked(i, j, E::faer_zero());
         }
-        DiagonalKind::Unit => {
-            for j in 0..n {
-                dst.write_unchecked(j, j, E::faer_one());
-            }
-            true
+        match src_diag {
+            DiagonalKind::Zero => dst.write_unchecked(j, j, E::faer_zero()),
+            DiagonalKind::Unit => dst.write_unchecked(j, j, E::faer_one()),
+            DiagonalKind::Generic => dst.write_unchecked(j, j, src.read(j, j)),
+        };
+        for i in j + 1..n {
+            dst.write_unchecked(i, j, src.read_unchecked(i, j));
         }
-        DiagonalKind::Generic => false,
-    };
-
-    zipped!(dst.rb_mut())
-        .for_each_triangular_upper(Diag::Skip, |unzipped!(mut dst)| dst.write(E::faer_zero()));
-    zipped!(dst, src).for_each_triangular_lower(
-        if strict { Diag::Skip } else { Diag::Include },
-        |unzipped!(mut dst, src)| dst.write(src.read()),
-    );
+    }
 }
 
 unsafe fn accum_lower<E: ComplexField>(
