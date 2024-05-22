@@ -1755,6 +1755,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let b: MatRef<'_, c64> = coe::coerce(rhs);
             let alpha: Option<c64> = coe::coerce_static(alpha);
             let beta: c64 = coe::coerce_static(beta);
+
             if m.checked_mul(n)
                 .and_then(|mn| mn.checked_mul(k))
                 .is_some_and(|mnk| mnk < 16 * 16 * 16)

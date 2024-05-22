@@ -156,11 +156,7 @@ pub fn upgrade_householder_factor<E: ComplexField>(
         // pretend that prev_blocksize == 1, recompute whole top half of matrix
 
         let (basis_top, basis_bot) = essentials.split_at_row(essentials.ncols());
-        let acc_structure = if blocksize <= 16 {
-            BlockStructure::Rectangular
-        } else {
-            BlockStructure::UnitTriangularUpper
-        };
+        let acc_structure = BlockStructure::UnitTriangularUpper;
 
         triangular::matmul(
             householder_factor.rb_mut(),

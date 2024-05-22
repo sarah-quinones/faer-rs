@@ -244,6 +244,9 @@ fn qr_in_place_blocked<E: ComplexField>(
                 let bs = Ord::min(blocksize, size - j);
                 let mut householder_factor =
                     householder_factor.rb_mut().submatrix_mut(0, j, bs, bs);
+                for k in 0..bs {
+                    householder_factor.write(k, k, householder_factor.read(0, k));
+                }
                 let matrix = matrix.rb().submatrix(j, j, m - j, bs);
 
                 upgrade_householder_factor(
