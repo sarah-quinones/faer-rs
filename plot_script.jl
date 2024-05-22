@@ -18,9 +18,10 @@ for ty in ["f32", "f64", "c32", "c64"]
         ("eig", "General eigenvalue decomposition"),
     ]
         data = CSV.File("./target/mt_$(algo)_$(ty).csv", types=Float64)
+        norm = data["faer"]
         p = plot(
             data["n"],
-            [data["faer"] data["mkl"] data["openblas"]],
+            [data["faer"]./norm data["mkl"]./norm data["openblas"]./norm],
             size=SIZE,
             xaxis=:log,
             yaxis=:log,
@@ -28,6 +29,8 @@ for ty in ["f32", "f64", "c32", "c64"]
             label=["faer" "mkl" "openblas"],
             xlabel="Matrix dimension (n)",
             ylabel="n³ / time (seconds)",
+            ylims=(0.1, 10.0),
+            yticks=([0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0], ["0.1", "0.2", "0.5", "1.0", "2.0", "5.0", "10.0"])
         )
         savefig(p, "./target/mt_$(algo)_$(ty)_plot.png")
     end
@@ -46,9 +49,10 @@ for ty in ["f32", "f64", "c32", "c64"]
         ("eig", "General eigenvalue decomposition"),
     ]
         data = CSV.File("./target/st_$(algo)_$(ty).csv", types=Float64)
+        norm = data["faer"]
         p = plot(
             data["n"],
-            [data["faer"] data["mkl"] data["openblas"] data["nalgebra"]],
+            [data["faer"]./norm data["mkl"]./norm data["openblas"]./norm data["nalgebra"]./norm],
             size=SIZE,
             xaxis=:log,
             yaxis=:log,
@@ -56,6 +60,8 @@ for ty in ["f32", "f64", "c32", "c64"]
             label=["faer" "mkl" "openblas" "nalgebra"],
             xlabel="Matrix dimension (n)",
             ylabel="n³ / time (seconds)",
+            ylims=(0.1, 10.0),
+            yticks=([0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0], ["0.1", "0.2", "0.5", "1.0", "2.0", "5.0", "10.0"])
         )
         savefig(p, "./target/st_$(algo)_$(ty)_plot.png")
     end
