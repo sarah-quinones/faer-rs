@@ -557,13 +557,7 @@ pub enum SymmetricOrdering<'a, I: Index> {
     /// No reordering.
     Identity,
     /// Custom reordering.
-    Algorithm(
-        &'a dyn Fn(
-            &mut [I],                       // perm
-            &mut [I],                       // perm_inv
-            SymbolicSparseColMatRef<'_, I>, // A
-        ) -> Result<(), FaerError>,
-    ),
+    Custom(PermRef<'a, I>),
 }
 
 /// Simplicial factorization module.
@@ -5170,12 +5164,10 @@ pub fn factorize_symbolic_cholesky<I: Index>(
                 stack.rb_mut(),
             )?),
             SymmetricOrdering::Identity => None,
-            SymmetricOrdering::Algorithm(algo) => {
-                algo(
-                    perm_fwd.as_mut().unwrap(),
-                    perm_inv.as_mut().unwrap(),
-                    A.into_inner(),
-                )?;
+            SymmetricOrdering::Custom(perm) => {
+                let (fwd, inv) = perm.arrays();
+                perm_fwd.as_mut().unwrap().copy_from_slice(fwd);
+                perm_inv.as_mut().unwrap().copy_from_slice(inv);
                 None
             }
         };

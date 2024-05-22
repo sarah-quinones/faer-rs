@@ -1,3 +1,4 @@
+use csv::Writer;
 use diol::result::*;
 use equator::assert;
 use std::{
@@ -38,10 +39,39 @@ fn main() -> io::Result<()> {
         open("./diol_openblas_mt.json"),
         open("./diol_faer_mt.json"),
     ) {
-        serde_json::ser::to_writer(
-            BufWriter::new(File::create("./diol_mt.json")?),
-            &faer_mt.merge(mkl_mt).merge(openblas_mt),
-        )?;
+        let merged = faer_mt.merge(mkl_mt).merge(openblas_mt);
+
+        let mut idx = 0;
+        for ty in ["f32", "f64", "c32", "c64"] {
+            for algo in [
+                "cholesky", "qr", "piv_qr", "lu", "piv_lu", "svd", "thin_svd", "eigh", "eig",
+            ] {
+                let mut writer =
+                    Writer::from_writer(File::create(format!("./target/mt_{algo}_{ty}.csv"))?);
+                let group = &merged.groups[idx];
+
+                writer.write_record(&["n", "faer", "mkl", "openblas"])?;
+
+                for arg in 0..group.args.len() {
+                    let mut data = vec![];
+                    match group.arg(arg) {
+                        BenchArg::Plot(n) => data.push(format!("{}", n.0)),
+                        _ => panic!(),
+                    };
+                    for func in 0..group.function.len() {
+                        data.push(format!(
+                            "{}",
+                            group.at(Func(func), Arg(arg)).1.unwrap().mean_stddev().0
+                        ));
+                    }
+
+                    writer.write_record(data)?;
+                }
+                idx += 1;
+            }
+        }
+
+        serde_json::ser::to_writer(BufWriter::new(File::create("./diol_mt.json")?), &merged)?;
     }
 
     if let (Ok(mkl_st), Ok(openblas_st), Ok(faer_st), Ok(nalgebra_st)) = (
@@ -50,10 +80,39 @@ fn main() -> io::Result<()> {
         open("./diol_faer_st.json"),
         open("./diol_nalgebra_st.json"),
     ) {
-        serde_json::ser::to_writer(
-            BufWriter::new(File::create("./diol_st.json")?),
-            &faer_st.merge(mkl_st).merge(openblas_st).merge(nalgebra_st),
-        )?;
+        let merged = faer_st.merge(mkl_st).merge(openblas_st).merge(nalgebra_st);
+
+        let mut idx = 0;
+        for ty in ["f32", "f64", "c32", "c64"] {
+            for algo in [
+                "cholesky", "qr", "piv_qr", "lu", "piv_lu", "svd", "thin_svd", "eigh", "eig",
+            ] {
+                let mut writer =
+                    Writer::from_writer(File::create(format!("./target/st_{algo}_{ty}.csv"))?);
+                let group = &merged.groups[idx];
+
+                writer.write_record(&["n", "faer", "mkl", "openblas", "nalgebra"])?;
+
+                for arg in 0..group.args.len() {
+                    let mut data = vec![];
+                    match group.arg(arg) {
+                        BenchArg::Plot(n) => data.push(format!("{}", n.0)),
+                        _ => panic!(),
+                    };
+                    for func in 0..group.function.len() {
+                        data.push(format!(
+                            "{}",
+                            group.at(Func(func), Arg(arg)).1.unwrap().mean_stddev().0
+                        ));
+                    }
+
+                    writer.write_record(data)?;
+                }
+                idx += 1;
+            }
+        }
+
+        serde_json::ser::to_writer(BufWriter::new(File::create("./diol_st.json")?), &merged)?;
     }
 
     Ok(())
