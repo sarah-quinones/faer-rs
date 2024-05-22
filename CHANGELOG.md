@@ -6,6 +6,7 @@
 - Added `full` and `zeros` constructors to owned Col, Row, and Matrix ([issue-125](https://github.com/sarah-ek/faer-rs/issues/125)).
 - Added `shape` function to return both the row and the column count of a matrix.
 - Added several missing associated functions from the mut and owning variants of matrices.
+- Implemented `core::iter::{Sum, Product}` for `c32` and `c64`.
 - Sparse Cholesky can now be used with user-provided permutations.
 - Simplified matrix constructors, adding a variant with a `_generic` prefix for the old behavior.
 - Bunch-Kaufman decomposition now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.

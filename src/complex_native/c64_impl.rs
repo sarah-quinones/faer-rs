@@ -1075,3 +1075,14 @@ impl Distribution<c64> for StandardNormal {
         }
     }
 }
+
+impl core::iter::Sum for c64 {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(c64::new(0.0, 0.0), |acc, e| acc + e)
+    }
+}
+impl core::iter::Product for c64 {
+    fn product<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(c64::new(0.0, 0.0), |acc, e| acc * e)
+    }
+}
