@@ -4810,7 +4810,16 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
                         }
                     }
                 }
-                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
+                this.solve_in_place_with_conj(
+                    conj,
+                    if self.symbolic.perm().is_some() {
+                        x.rb_mut()
+                    } else {
+                        rhs.rb_mut()
+                    },
+                    parallelism,
+                    stack,
+                );
                 if let Some(perm) = self.symbolic.perm() {
                     for j in 0..k {
                         for (i, inv) in perm.arrays().1.iter().enumerate() {
@@ -4925,11 +4934,29 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLltRef::new(symbolic, self.values.into_inner());
-                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
+                this.solve_in_place_with_conj(
+                    conj,
+                    if self.symbolic.perm().is_some() {
+                        x.rb_mut()
+                    } else {
+                        rhs.rb_mut()
+                    },
+                    parallelism,
+                    stack,
+                );
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
                 let this = supernodal::SupernodalLltRef::new(symbolic, self.values.into_inner());
-                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
+                this.solve_in_place_with_conj(
+                    conj,
+                    if self.symbolic.perm().is_some() {
+                        x.rb_mut()
+                    } else {
+                        rhs.rb_mut()
+                    },
+                    parallelism,
+                    stack,
+                );
             }
         }
 
@@ -4994,11 +5021,29 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         match self.symbolic.raw() {
             SymbolicCholeskyRaw::Simplicial(symbolic) => {
                 let this = simplicial::SimplicialLdltRef::new(symbolic, self.values.into_inner());
-                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
+                this.solve_in_place_with_conj(
+                    conj,
+                    if self.symbolic.perm().is_some() {
+                        x.rb_mut()
+                    } else {
+                        rhs.rb_mut()
+                    },
+                    parallelism,
+                    stack,
+                );
             }
             SymbolicCholeskyRaw::Supernodal(symbolic) => {
                 let this = supernodal::SupernodalLdltRef::new(symbolic, self.values.into_inner());
-                this.solve_in_place_with_conj(conj, x.rb_mut(), parallelism, stack);
+                this.solve_in_place_with_conj(
+                    conj,
+                    if self.symbolic.perm().is_some() {
+                        x.rb_mut()
+                    } else {
+                        rhs.rb_mut()
+                    },
+                    parallelism,
+                    stack,
+                );
             }
         }
 
