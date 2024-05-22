@@ -24,4 +24,4 @@ The current MSRV is Rust 1.67.0.
 
 # Benchmarks
 
-See [the benchmark page](https://faer-rs.github.io/bench.html) on the main website.
+See [the benchmark page](https://faer-rs.github.io/bench-st.html) on the main website.
