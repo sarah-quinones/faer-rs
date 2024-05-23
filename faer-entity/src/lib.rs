@@ -389,6 +389,13 @@ impl SimdCtx for pulp::Arch {
     }
 }
 
+impl SimdCtx for pulp::ScalarArch {
+    #[inline(always)]
+    fn dispatch<Op: pulp::WithSimd>(self, f: Op) -> Op::Output {
+        self.dispatch(f)
+    }
+}
+
 impl SimdCtx for NoSimd {
     #[inline(always)]
     fn dispatch<Op: pulp::WithSimd>(self, f: Op) -> Op::Output {
@@ -747,7 +754,7 @@ pub trait RealField:
 impl ComplexField for f32 {
     type Real = Self;
     type Simd = pulp::Arch;
-    type ScalarSimd = NoSimd;
+    type ScalarSimd = pulp::ScalarArch;
     type PortableSimd = pulp::Arch;
 
     #[inline(always)]
@@ -1076,7 +1083,7 @@ impl ComplexField for f32 {
 impl ComplexField for f64 {
     type Real = Self;
     type Simd = pulp::Arch;
-    type ScalarSimd = NoSimd;
+    type ScalarSimd = pulp::ScalarArch;
     type PortableSimd = pulp::Arch;
 
     #[inline(always)]
@@ -3126,7 +3133,7 @@ impl ComplexField for Symbolic {
         _ptr: *const UnitFor<Self>,
         len: usize,
     ) -> pulp::Offset<SimdMaskFor<Self, S>> {
-        pulp::Offset::unaligned(len)
+        pulp::Scalar::new().i32s_align_offset(core::ptr::null(), len)
     }
 
     #[inline(always)]

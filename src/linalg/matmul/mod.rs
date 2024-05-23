@@ -20,7 +20,7 @@ fn msrv_is_some_and<T>(o: Option<T>, f: impl FnOnce(T) -> bool) -> bool {
     }
 }
 
-const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
+const NANO_GEMM_THRESHOLD: usize = 32 * 32 * 32;
 
 #[doc(hidden)]
 pub mod inner_prod {
@@ -202,7 +202,7 @@ pub mod inner_prod {
     #[inline(always)]
     #[track_caller]
     pub fn inner_prod_with_conj_arch<E: ComplexField>(
-        arch: E::Simd,
+        arch: impl SimdCtx,
         lhs: ColRef<'_, E>,
         conj_lhs: Conj,
         rhs: ColRef<'_, E>,

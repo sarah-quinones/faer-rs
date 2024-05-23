@@ -25,10 +25,10 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
     fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
         let Self { a21, l20, l10 } = self;
 
-        debug_assert_eq!(a21.row_stride(), 1);
-        debug_assert_eq!(l20.row_stride(), 1);
-        debug_assert_eq!(l20.nrows(), a21.nrows());
-        debug_assert_eq!(l20.ncols(), l10.ncols());
+        assert_eq!(a21.row_stride(), 1);
+        assert_eq!(l20.row_stride(), 1);
+        assert_eq!(l20.nrows(), a21.nrows());
+        assert_eq!(l20.ncols(), l10.ncols());
 
         let m = l20.nrows();
         let n = l20.ncols();
@@ -38,37 +38,28 @@ impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
         }
 
         let simd = SimdFor::<E, S>::new(simd);
-        let acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut());
-        let offset = simd.align_offset(acc.rb());
-
-        let (mut acc_head, mut acc_body, mut acc_tail) = simd.as_aligned_simd_mut(acc, offset);
+        let mut acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut());
 
         for j in 0..n {
-            let l10 = simd.splat(l10.read(j).faer_neg().faer_conj());
+            let l10 = l10.read(j).faer_neg().faer_conj();
             let l20 = SliceGroup::<'_, E>::new(l20.try_get_contiguous_col(j));
 
-            let (l20_head, l20_body, l20_tail) = simd.as_aligned_simd(l20, offset);
-
             #[inline(always)]
-            fn process<E: ComplexField, S: pulp::Simd>(
+            fn inner_loop<E: ComplexField, S: pulp::Simd>(
+                acc: GroupFor<E, &mut [<E as Entity>::Unit]>,
+                l20: GroupFor<E, &[<E as Entity>::Unit]>,
                 simd: SimdFor<E, S>,
-                mut acc: impl Write<Output = SimdGroupFor<E, S>>,
-                l20: impl Read<Output = SimdGroupFor<E, S>>,
-                l10: SimdGroupFor<E, S>,
+                l10: E,
             ) {
-                let zero = simd.splat(E::faer_zero());
-                acc.write(simd.mul_add_e(l10, l20.read_or(zero), acc.read_or(zero)));
+                let mut acc = SliceGroupMut::<'_, E>::new(acc);
+                let l20 = SliceGroup::<'_, E>::new(l20);
+
+                for (mut acc, l20) in acc.rb_mut().into_mut_iter().zip(l20.into_ref_iter()) {
+                    acc.write(simd.scalar_mul_add_e(l10, l20.read(), acc.read()));
+                }
             }
 
-            process(simd, acc_head.rb_mut(), l20_head, l10);
-            for (acc, l20) in acc_body
-                .rb_mut()
-                .into_mut_iter()
-                .zip(l20_body.into_ref_iter())
-            {
-                process(simd, acc, l20, l10)
-            }
-            process(simd, acc_tail.rb_mut(), l20_tail, l10);
+            inner_loop::<E, S>(acc.rb_mut().into_inner(), l20.into_inner(), simd, l10);
         }
     }
 }
@@ -95,7 +86,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     }
 
     let mut idx = 0;
-    let arch = E::Simd::default();
+    let arch = E::ScalarSimd::default();
 
     let eps = regularization.dynamic_regularization_epsilon.faer_abs();
     let delta = regularization.dynamic_regularization_delta.faer_abs();

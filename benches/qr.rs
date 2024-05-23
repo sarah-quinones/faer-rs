@@ -51,14 +51,9 @@ where
 
 fn main() -> std::io::Result<()> {
     let mut bench = Bench::new(BenchConfig::from_args()?);
-    bench.register_many(
-        list![faer::<f32>, nalgebra::<f32>],
-        [1, 2, 4, 8, 16, 32, 64, 128].map(PlotArg),
-    );
-    bench.register_many(
-        list![faer::<f64>, nalgebra::<f64>],
-        [1, 2, 4, 8, 16, 32, 64, 128].map(PlotArg),
-    );
+    let args = [1, 2, 4, 8, 16, 24, 32, 48, 64, 128].map(PlotArg);
+    bench.register_many(list![faer::<f32>, nalgebra::<f32>], args);
+    bench.register_many(list![faer::<f64>, nalgebra::<f64>], args);
     bench.run()?;
 
     Ok(())
