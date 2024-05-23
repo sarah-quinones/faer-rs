@@ -10,6 +10,7 @@
 - Sparse Cholesky can now be used with user-provided permutations.
 - Simplified matrix constructors, adding a variant with a `_generic` prefix for the old behavior.
 - Bunch-Kaufman decomposition now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.
+- Integrated `nano-gemm` as a backend for small matrix multiplication.
 
 # 0.18
 - Refactored the project so that `faer` contains all the core and decomposition implementations. `faer-{core,cholesky,lu,qr,svd,evd,sparse}` are now deprecated and will no longer be updated.
