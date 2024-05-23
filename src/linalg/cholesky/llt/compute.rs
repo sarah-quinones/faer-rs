@@ -81,7 +81,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
             dot2 += l10.read(j + 2).faer_abs2();
             dot3 += l10.read(j + 3).faer_abs2();
         }
-        for j in idx / 4 * 4..idx / 4 {
+        for j in idx / 4 * 4..idx {
             dot0 += l10.read(j + 0).faer_abs2();
         }
 

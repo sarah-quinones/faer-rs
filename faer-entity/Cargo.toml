@@ -14,7 +14,7 @@ rust-version = "1.67.0"
 [dependencies]
 coe-rs = "0.1"
 reborrow = "0.5"
-pulp = { version = "0.18.17", default-features = false }
+pulp = { version = "0.18.18", default-features = false }
 
 num-traits = { version = "0.2", default-features = false }
 num-complex = { version = "0.4", default-features = false }
