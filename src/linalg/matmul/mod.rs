@@ -13,6 +13,15 @@ use faer_entity::*;
 use pulp::{Read, Simd, Write};
 use reborrow::*;
 
+fn msrv_is_some_and<T>(o: Option<T>, f: impl FnOnce(T) -> bool) -> bool {
+    match o {
+        Some(x) => f(x),
+        None => false,
+    }
+}
+
+const NANO_GEMM_THRESHOLD: usize = 16 * 16 * 16;
+
 #[doc(hidden)]
 pub mod inner_prod {
     use super::*;
@@ -1582,10 +1591,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let alpha: Option<f32> = coe::coerce_static(alpha);
             let beta: f32 = coe::coerce_static(beta);
 
-            if m.checked_mul(n)
-                .and_then(|mn| mn.checked_mul(k))
-                .is_some_and(|mnk| mnk < 16 * 16 * 16)
-            {
+            if msrv_is_some_and(m.checked_mul(n).and_then(|mn| mn.checked_mul(k)), |mnk| {
+                mnk < NANO_GEMM_THRESHOLD
+            }) {
                 unsafe {
                     nano_gemm::planless::execute_f32(
                         m,
@@ -1640,10 +1648,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let alpha: Option<f64> = coe::coerce_static(alpha);
             let beta: f64 = coe::coerce_static(beta);
 
-            if m.checked_mul(n)
-                .and_then(|mn| mn.checked_mul(k))
-                .is_some_and(|mnk| mnk < 16 * 16 * 16)
-            {
+            if msrv_is_some_and(m.checked_mul(n).and_then(|mn| mn.checked_mul(k)), |mnk| {
+                mnk < NANO_GEMM_THRESHOLD
+            }) {
                 unsafe {
                     nano_gemm::planless::execute_f64(
                         m,
@@ -1698,10 +1705,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let alpha: Option<c32> = coe::coerce_static(alpha);
             let beta: c32 = coe::coerce_static(beta);
 
-            if m.checked_mul(n)
-                .and_then(|mn| mn.checked_mul(k))
-                .is_some_and(|mnk| mnk < 16 * 16 * 16)
-            {
+            if msrv_is_some_and(m.checked_mul(n).and_then(|mn| mn.checked_mul(k)), |mnk| {
+                mnk < NANO_GEMM_THRESHOLD
+            }) {
                 unsafe {
                     nano_gemm::planless::execute_c32(
                         m,
@@ -1756,10 +1762,9 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             let alpha: Option<c64> = coe::coerce_static(alpha);
             let beta: c64 = coe::coerce_static(beta);
 
-            if m.checked_mul(n)
-                .and_then(|mn| mn.checked_mul(k))
-                .is_some_and(|mnk| mnk < 16 * 16 * 16)
-            {
+            if msrv_is_some_and(m.checked_mul(n).and_then(|mn| mn.checked_mul(k)), |mnk| {
+                mnk < NANO_GEMM_THRESHOLD
+            }) {
                 unsafe {
                     nano_gemm::planless::execute_c64(
                         m,
