@@ -1,6 +1,7 @@
 use super::*;
 use crate::assert;
 
+#[derive(Clone)]
 /// Sparse matrix in column-major format, either compressed or uncompressed.
 pub struct SparseColMat<I: Index, E: Entity> {
     pub(crate) symbolic: SymbolicSparseColMat<I>,
