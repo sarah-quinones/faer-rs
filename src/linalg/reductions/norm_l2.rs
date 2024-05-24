@@ -49,16 +49,20 @@ fn norm_l2_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
         acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, x1), acc_big1);
     }
 
-    for x0 in body1.into_ref_iter() {
-        let x0 = x0.get();
+    if body1.len() == 1 {
+        let x0 = body1.get(0).get();
         acc0 = simd.abs2_add_e(x0, acc0);
         acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, x0), acc_small0);
         acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, x0), acc_big0);
-    }
 
-    acc0 = simd.abs2_add_e(tail.read_or(zero), acc0);
-    acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small0);
-    acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big0);
+        acc1 = simd.abs2_add_e(tail.read_or(zero), acc1);
+        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small1);
+        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big1);
+    } else {
+        acc0 = simd.abs2_add_e(tail.read_or(zero), acc0);
+        acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small0);
+        acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big0);
+    }
 
     acc0 = simd_real.add(acc0, acc1);
     acc_small0 = simd_real.add(acc_small0, acc_small1);
@@ -224,9 +228,9 @@ fn norm_l2_contiguous<E: ComplexField>(data: MatRef<'_, E>) -> (E::Real, E::Real
 
             let simd = SimdFor::<E::Real, S>::new(simd);
             (
-                simd.reduce_add(simd.rotate_left(acc_small, offset.rotate_left_amount())),
-                simd.reduce_add(simd.rotate_left(acc, offset.rotate_left_amount())),
-                simd.reduce_add(simd.rotate_left(acc_big, offset.rotate_left_amount())),
+                simd.reduce_add(acc_small),
+                simd.reduce_add(acc),
+                simd.reduce_add(acc_big),
             )
         }
     }

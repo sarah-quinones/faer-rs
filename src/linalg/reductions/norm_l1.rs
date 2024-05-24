@@ -36,16 +36,31 @@ fn norm_l1_with_simd_and_offset_prologue<E: RealField, S: pulp::Simd>(
         acc3 = simd.add(x3, acc3);
     }
 
-    for x0 in body1.into_ref_iter() {
-        let x0 = simd.abs(x0.get());
-        acc0 = simd.add(x0, acc0);
+    match body1.len() {
+        0 => {
+            acc0 = simd.add(simd.abs(tail.read_or(zero)), acc0);
+        }
+        1 => {
+            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
+            acc1 = simd.add(simd.abs(tail.read_or(zero)), acc1);
+        }
+        2 => {
+            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
+            acc1 = simd.add(simd.abs(body1.get(1).get()), acc1);
+            acc2 = simd.add(simd.abs(tail.read_or(zero)), acc2);
+        }
+        3 => {
+            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
+            acc1 = simd.add(simd.abs(body1.get(1).get()), acc1);
+            acc2 = simd.add(simd.abs(body1.get(2).get()), acc2);
+            acc3 = simd.add(simd.abs(tail.read_or(zero)), acc3);
+        }
+        _ => unreachable!(),
     }
 
-    acc0 = simd.add(simd.abs(tail.read_or(zero)), acc0);
-
-    acc0 = simd.add(acc0, acc1);
-    acc2 = simd.add(acc2, acc3);
     acc0 = simd.add(acc0, acc2);
+    acc1 = simd.add(acc1, acc3);
+    acc0 = simd.add(acc0, acc1);
 
     acc0
 }
@@ -182,7 +197,7 @@ fn norm_l1_contiguous<E: RealField>(data: MatRef<'_, E>) -> E {
             let acc = norm_l1_with_simd_and_offset_pairwise_cols(simd, data, offset, last_offset);
             let simd = SimdFor::<E, S>::new(simd);
 
-            simd.reduce_add(simd.rotate_left(acc, offset.rotate_left_amount()))
+            simd.reduce_add(acc)
         }
     }
 

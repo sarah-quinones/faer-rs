@@ -36,17 +36,31 @@ fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
         acc3 = simd.add(acc3, x3);
     }
 
-    for x0 in body1.into_ref_iter() {
-        let x0 = x0.get();
-        acc0 = simd.add(acc0, x0);
+    match body1.len() {
+        0 => {
+            acc0 = simd.add(acc0, tail.read_or(zero));
+        }
+        1 => {
+            acc0 = simd.add(acc0, body1.get(0).get());
+            acc1 = simd.add(acc1, tail.read_or(zero));
+        }
+        2 => {
+            acc0 = simd.add(acc0, body1.get(0).get());
+            acc1 = simd.add(acc1, body1.get(1).get());
+            acc2 = simd.add(acc2, tail.read_or(zero));
+        }
+        3 => {
+            acc0 = simd.add(acc0, body1.get(0).get());
+            acc1 = simd.add(acc1, body1.get(1).get());
+            acc2 = simd.add(acc2, body1.get(2).get());
+            acc3 = simd.add(acc3, tail.read_or(zero));
+        }
+        _ => unreachable!(),
     }
 
-    let tail = tail.read_or(zero);
-    acc3 = simd.add(acc3, tail);
-
-    acc0 = simd.add(acc0, acc1);
-    acc2 = simd.add(acc2, acc3);
-    simd.add(acc0, acc2)
+    acc0 = simd.add(acc0, acc2);
+    acc1 = simd.add(acc1, acc3);
+    simd.add(acc0, acc1)
 }
 
 #[inline(always)]
@@ -174,7 +188,7 @@ fn sum_contiguous<E: ComplexField>(data: MatRef<'_, E>) -> E {
             let acc = sum_with_simd_and_offset_pairwise_cols(simd, data, offset, last_offset);
 
             let simd = SimdFor::<E, S>::new(simd);
-            simd.reduce_add(simd.rotate_left(acc, offset.rotate_left_amount()))
+            simd.reduce_add(acc)
         }
     }
 

@@ -61,7 +61,7 @@ fn norm_max_contiguous<E: RealField>(data: MatRef<'_, E>) -> E {
             acc2 = simd.select(simd.greater_than(acc2, acc3), acc2, acc3);
             acc0 = simd.select(simd.greater_than(acc0, acc2), acc0, acc2);
 
-            let acc0 = from_copy::<E, _>(simd.rotate_left(acc0, offset.rotate_left_amount()));
+            let acc0 = from_copy::<E, _>(acc0);
             let acc = SliceGroup::<'_, E>::new(E::faer_map(
                 E::faer_as_ref(&acc0),
                 #[inline(always)]
