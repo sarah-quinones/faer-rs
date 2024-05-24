@@ -7,6 +7,7 @@ use crate::{
         matmul::triangular::BlockStructure,
         triangular_solve,
     },
+    utils::DivCeil,
     ComplexField, Entity, MatMut, Parallelism,
 };
 use core::marker::PhantomData;
@@ -101,7 +102,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     let lanes = E::Simd::default().dispatch(Lanes {
         __marker: PhantomData::<E>,
     });
-    let stride = matrix.nrows().div_ceil(lanes);
+    let stride = matrix.nrows().msrv_div_ceil(lanes);
 
     let n = matrix.nrows();
     if stride <= 4 && n <= 64 {

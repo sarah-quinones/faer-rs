@@ -9,7 +9,7 @@ use crate::{
     solvers::CholeskyError,
     sparse::linalg::cholesky::LltRegularization,
     unzipped,
-    utils::{simd::*, slice::*},
+    utils::{simd::*, slice::*, DivCeil},
     zipped, ComplexField, MatMut, Parallelism,
 };
 use core::{convert::Infallible, marker::PhantomData};
@@ -31,8 +31,6 @@ fn first_elem<E: ComplexField, S: Simd>(values: SimdGroupFor<E, S>) -> E {
 fn as_simd<E: ComplexField, S: Simd>(
     slice: GroupFor<E, &[E::Unit]>,
 ) -> (GroupFor<E, &[SimdUnitFor<E, S>]>, GroupFor<E, &[E::Unit]>) {
-    use crate::linalg::entity;
-
     let slice = SliceGroup::<E>::new(slice);
 
     let lanes = core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
@@ -55,8 +53,6 @@ fn as_simd_mut<E: ComplexField, S: Simd>(
     GroupFor<E, &mut [SimdUnitFor<E, S>]>,
     GroupFor<E, &mut [E::Unit]>,
 ) {
-    use crate::linalg::entity;
-
     let slice = SliceGroupMut::<E>::new(slice);
 
     let lanes = core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
@@ -184,8 +180,6 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
     process: &P,
     stack: PodStack<'_>,
 ) -> Result<usize, P::Error> {
-    use crate::linalg::{entity, entity::SimdCtx};
-
     struct Impl<'a, E: ComplexField, P> {
         A: MatMut<'a, E>,
         stack: PodStack<'a>,
@@ -203,7 +197,7 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
             let lanes =
                 core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
 
-            let stride = n.div_ceil(lanes);
+            let stride = n.msrv_div_ceil(lanes);
             assert!(stride <= 4);
 
             unsafe {
@@ -700,7 +694,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     let lanes = E::Simd::default().dispatch(Lanes {
         __marker: PhantomData::<E>,
     });
-    let stride = matrix.nrows().div_ceil(lanes);
+    let stride = matrix.nrows().msrv_div_ceil(lanes);
 
     let n = matrix.nrows();
     if stride <= 4 {
