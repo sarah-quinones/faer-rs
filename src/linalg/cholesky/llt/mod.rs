@@ -93,7 +93,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -157,7 +160,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -237,7 +243,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -267,7 +276,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -296,7 +308,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -325,7 +340,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();
@@ -365,7 +383,10 @@ mod tests {
                 a.as_mut(),
                 Default::default(),
                 Parallelism::Rayon(8),
-                PodStack::new(&mut []),
+                PodStack::new(&mut GlobalPodBuffer::new(
+                    cholesky_in_place_req::<E>(n, Parallelism::Rayon(8), Default::default())
+                        .unwrap(),
+                )),
                 Default::default(),
             )
             .unwrap();

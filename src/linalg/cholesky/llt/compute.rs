@@ -2,12 +2,16 @@ use super::CholeskyError;
 use crate::{
     assert, debug_assert,
     linalg::{
-        cholesky::ldlt_diagonal::compute::RankUpdate, entity::SimdCtx,
-        matmul::triangular::BlockStructure, triangular_solve,
+        cholesky::ldlt_diagonal::compute::new_cholesky,
+        entity::{self, *},
+        matmul::triangular::BlockStructure,
+        triangular_solve,
     },
-    unzipped, zipped, ComplexField, Entity, MatMut, Parallelism,
+    ComplexField, Entity, MatMut, Parallelism,
 };
+use core::marker::PhantomData;
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
+use pulp::Simd;
 use reborrow::*;
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
@@ -15,129 +19,18 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
     parallelism: Parallelism,
+    stack: PodStack<'_>,
     params: LltParams,
 ) -> Result<usize, CholeskyError> {
-    let mut matrix = matrix;
-    let _ = params;
-    let _ = parallelism;
-    assert!(matrix.ncols() == matrix.nrows());
-    assert!(matrix.row_stride() == 1);
-
-    let n = matrix.nrows();
-
-    if n == 0 {
-        return Ok(0);
+    _ = params;
+    _ = parallelism;
+    match new_cholesky(matrix, &regularization, stack) {
+        Ok(dyn_reg_count) => Ok(dyn_reg_count),
+        Err(mut e) => {
+            e.non_positive_definite_minor += offset;
+            Err(e)
+        }
     }
-
-    let mut idx = 0;
-    let arch = E::ScalarSimd::default();
-    let eps = regularization
-        .dynamic_regularization_epsilon
-        .faer_real()
-        .faer_abs();
-    let delta = regularization
-        .dynamic_regularization_delta
-        .faer_real()
-        .faer_abs();
-    let has_eps = delta > E::Real::faer_zero();
-    let mut dynamic_regularization_count = 0usize;
-
-    loop {
-        let block_size = 1;
-
-        let (_, _, bottom_left, bottom_right) = matrix.rb_mut().split_at_mut(idx, idx);
-        let (_, l10, _, l20) = bottom_left.into_const().split_at(block_size, 0);
-        let (mut a11, _, a21, _) = bottom_right.split_at_mut(block_size, block_size);
-
-        let l10 = l10.row(0);
-        let mut a21 = a21.col_mut(0);
-
-        //
-        //      L00
-        // A =  L10  A11
-        //      L20  A21  A22
-        //
-        // the first column block is already computed
-        // we now compute A11 and A21
-        //
-        // L00           L00^H L10^H L20^H
-        // L10 L11             L11^H L21^H
-        // L20 L21 L22 ×             L22^H
-        //
-        //
-        // L00×L00^H
-        // L10×L00^H  L10×L10^H + L11×L11^H
-        // L20×L00^H  L20×L10^H + L21×L11^H  L20×L20^H + L21×L21^H + L22×L22^H
-
-        // A11 -= L10 × L10^H
-        let mut dot0 = E::Real::faer_zero();
-        let mut dot1 = E::Real::faer_zero();
-        let mut dot2 = E::Real::faer_zero();
-        let mut dot3 = E::Real::faer_zero();
-        for j in 0..idx / 4 {
-            let j = j * 4;
-            dot0 += l10.read(j + 0).faer_abs2();
-            dot1 += l10.read(j + 1).faer_abs2();
-            dot2 += l10.read(j + 2).faer_abs2();
-            dot3 += l10.read(j + 3).faer_abs2();
-        }
-        for j in idx / 4 * 4..idx {
-            dot0 += l10.read(j + 0).faer_abs2();
-        }
-
-        let dot = (dot0 + dot1) + (dot2 + dot3);
-        a11.write(0, 0, E::faer_from_real(a11.read(0, 0).faer_real() - dot));
-
-        let mut real = a11.read(0, 0).faer_real();
-        if has_eps && real >= E::Real::faer_zero() && real <= eps {
-            real = delta;
-            dynamic_regularization_count += 1;
-        }
-
-        if real > E::Real::faer_zero() {
-            a11.write(0, 0, E::faer_from_real(real.faer_sqrt()));
-        } else {
-            return Err(CholeskyError {
-                non_positive_definite_minor: offset + idx + 1,
-            });
-        };
-
-        if idx + block_size == n {
-            break;
-        }
-
-        let l11 = a11.read(0, 0);
-
-        // A21 -= L20 × L10^H
-        if a21.row_stride() == 1 {
-            arch.dispatch(RankUpdate {
-                a21: a21.rb_mut(),
-                l20,
-                l10,
-            });
-        } else {
-            for j in 0..idx {
-                let l20_col = l20.col(j);
-                let l10_conj = l10.read(j).faer_conj();
-
-                zipped!(a21.rb_mut(), l20_col).for_each(|unzipped!(mut dst, src)| {
-                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
-                });
-            }
-        }
-
-        // A21 is now L21×L11^H
-        // find L21
-        //
-        // conj(L11) L21^T = A21^T
-
-        let r = l11.faer_real().faer_inv();
-        zipped!(a21.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(r)));
-
-        idx += block_size;
-    }
-
-    Ok(dynamic_regularization_count)
 }
 
 /// LLT factorization tuning parameters.
@@ -172,10 +65,11 @@ pub fn cholesky_in_place_req<E: Entity>(
     parallelism: Parallelism,
     params: LltParams,
 ) -> Result<StackReq, SizeOverflow> {
-    let _ = dim;
     let _ = parallelism;
     let _ = params;
-    Ok(StackReq::default())
+    // only the left looking impl allocates
+    let dim = Ord::min(dim, 64);
+    crate::linalg::temp_mat_req::<E>(dim, dim)?.try_and(StackReq::try_new::<E>(dim)?)
 }
 
 // uses an out parameter for tail recursion
@@ -194,13 +88,29 @@ fn cholesky_in_place_impl<E: ComplexField>(
     let mut matrix = matrix;
     let mut stack = stack;
 
+    struct Lanes<E> {
+        __marker: PhantomData<E>,
+    }
+    impl<E: ComplexField> pulp::WithSimd for Lanes<E> {
+        type Output = usize;
+        fn with_simd<S: Simd>(self, _: S) -> Self::Output {
+            core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>()
+        }
+    }
+
+    let lanes = E::Simd::default().dispatch(Lanes {
+        __marker: PhantomData::<E>,
+    });
+    let stride = matrix.nrows().div_ceil(lanes);
+
     let n = matrix.nrows();
-    if n < 32 {
+    if stride <= 4 && n <= 64 {
         *count += cholesky_in_place_left_looking_impl(
             offset,
             matrix,
             regularization,
             parallelism,
+            stack,
             params,
         )?;
         Ok(())
@@ -257,14 +167,15 @@ pub struct LltInfo {
     pub dynamic_regularization_count: usize,
 }
 
-/// Computes the Cholesky factor $L$ of a hermitian positive definite input matrix $A$ such that
+/// Computes the Cholesky factor $L$ of a Hermitian positive definite input matrix $A$ such that
 /// $L$ is lower triangular, and
 /// $$LL^H == A.$$
 ///
 /// The result is stored back in the lower half of the same matrix, or an error is returned if the
 /// matrix is not positive definite.
 ///
-/// The input matrix is interpreted as symmetric and only the lower triangular part is read.
+/// The input matrix is interpreted as Hermitian with the values being extracted from the lower
+/// part, but the entire matrix is required to be initialized.
 ///
 /// The strictly upper triangular part of the matrix is clobbered and may be filled with garbage
 /// values.

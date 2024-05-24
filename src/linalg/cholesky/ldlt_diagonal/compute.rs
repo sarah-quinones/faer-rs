@@ -1,67 +1,628 @@
 use crate::{
     assert, debug_assert,
     linalg::{
-        matmul::triangular::BlockStructure, temp_mat_req, temp_mat_uninit,
-        triangular_solve as solve,
+        entity,
+        entity::{from_copy, GroupFor, SimdCtx, SimdGroupFor, SimdUnitFor},
+        matmul::triangular::BlockStructure,
+        temp_mat_req, temp_mat_uninit, triangular_solve as solve,
     },
+    solvers::CholeskyError,
+    sparse::linalg::cholesky::LltRegularization,
     unzipped,
     utils::{simd::*, slice::*},
-    zipped, ColMut, Conj, MatMut, MatRef, Parallelism, RowRef,
+    zipped, ComplexField, MatMut, Parallelism,
 };
+use core::{convert::Infallible, marker::PhantomData};
 use dyn_stack::{PodStack, SizeOverflow, StackReq};
 use faer_entity::*;
+use pulp::Simd;
 use reborrow::*;
 
-pub(crate) struct RankUpdate<'a, E: ComplexField> {
-    pub a21: ColMut<'a, E>,
-    pub l20: MatRef<'a, E>,
-    pub l10: RowRef<'a, E>,
+#[inline(always)]
+fn first_elem<E: ComplexField, S: Simd>(values: SimdGroupFor<E, S>) -> E {
+    E::faer_from_units(E::faer_map(
+        from_copy::<E, _>(values),
+        #[inline(always)]
+        |x| pulp::cast_lossy::<SimdUnitFor<E, S>, E::Unit>(x),
+    ))
 }
 
-impl<E: ComplexField> pulp::WithSimd for RankUpdate<'_, E> {
-    type Output = ();
+#[inline(always)]
+fn as_simd<E: ComplexField, S: Simd>(
+    slice: GroupFor<E, &[E::Unit]>,
+) -> (GroupFor<E, &[SimdUnitFor<E, S>]>, GroupFor<E, &[E::Unit]>) {
+    use crate::linalg::entity;
 
-    #[inline(always)]
-    fn with_simd<S: pulp::Simd>(self, simd: S) -> Self::Output {
-        let Self { a21, l20, l10 } = self;
+    let slice = SliceGroup::<E>::new(slice);
 
-        assert_eq!(a21.row_stride(), 1);
-        assert_eq!(l20.row_stride(), 1);
-        assert_eq!(l20.nrows(), a21.nrows());
-        assert_eq!(l20.ncols(), l10.ncols());
+    let lanes = core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
+    let len = slice.len();
 
-        let m = l20.nrows();
-        let n = l20.ncols();
+    let mut prefix = len / lanes * lanes;
+    if len % lanes == 0 {
+        prefix -= lanes;
+    }
 
-        if m == 0 {
-            return;
-        }
+    let (head, tail) = slice.split_at(prefix);
+    let head = entity::slice_as_simd::<E, S>(head.into_inner()).0;
+    (head, tail.into_inner())
+}
 
-        let simd = SimdFor::<E, S>::new(simd);
-        let mut acc = SliceGroupMut::<'_, E>::new(a21.try_get_contiguous_col_mut());
+#[inline(always)]
+fn as_simd_mut<E: ComplexField, S: Simd>(
+    slice: GroupFor<E, &mut [E::Unit]>,
+) -> (
+    GroupFor<E, &mut [SimdUnitFor<E, S>]>,
+    GroupFor<E, &mut [E::Unit]>,
+) {
+    use crate::linalg::entity;
 
-        for j in 0..n {
-            let l10 = l10.read(j).faer_neg().faer_conj();
-            let l20 = SliceGroup::<'_, E>::new(l20.try_get_contiguous_col(j));
+    let slice = SliceGroupMut::<E>::new(slice);
 
-            #[inline(always)]
-            fn inner_loop<E: ComplexField, S: pulp::Simd>(
-                acc: GroupFor<E, &mut [<E as Entity>::Unit]>,
-                l20: GroupFor<E, &[<E as Entity>::Unit]>,
-                simd: SimdFor<E, S>,
-                l10: E,
-            ) {
-                let mut acc = SliceGroupMut::<'_, E>::new(acc);
-                let l20 = SliceGroup::<'_, E>::new(l20);
+    let lanes = core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
+    let len = slice.len();
 
-                for (mut acc, l20) in acc.rb_mut().into_mut_iter().zip(l20.into_ref_iter()) {
-                    acc.write(simd.scalar_mul_add_e(l10, l20.read(), acc.read()));
-                }
+    let mut prefix = len / lanes * lanes;
+    if len % lanes == 0 {
+        prefix -= lanes;
+    }
+
+    let (head, tail) = slice.split_at(prefix);
+    let head = entity::slice_as_mut_simd::<E, S>(head.into_inner()).0;
+    (head, tail.into_inner())
+}
+
+pub(crate) trait ProcessDiag<E: ComplexField> {
+    type Error;
+    type This;
+
+    fn new(&self) -> (Self::This, bool);
+    fn process(
+        this: (&Self::This, bool),
+        diag: E::Real,
+        idx: usize,
+        count: &mut usize,
+    ) -> Result<E::Real, Self::Error>;
+    fn mul_diag(diag: E::Real, factor: E) -> E;
+}
+
+impl<E: ComplexField> ProcessDiag<E> for LltRegularization<E> {
+    type Error = CholeskyError;
+    type This = (E::Real, E::Real);
+
+    #[inline]
+    fn process(
+        (&(eps, delta), enable): (&Self::This, bool),
+        mut diag: E::Real,
+        idx: usize,
+        count: &mut usize,
+    ) -> Result<E::Real, Self::Error> {
+        if enable {
+            if diag < eps {
+                diag = delta;
+                *count += 1;
             }
-
-            inner_loop::<E, S>(acc.rb_mut().into_inner(), l20.into_inner(), simd, l10);
+        }
+        if diag > E::Real::faer_zero() {
+            Ok(diag.faer_sqrt())
+        } else {
+            Err(CholeskyError {
+                non_positive_definite_minor: idx,
+            })
         }
     }
+
+    #[inline]
+    fn new(&self) -> (Self::This, bool) {
+        (
+            (
+                self.dynamic_regularization_epsilon,
+                self.dynamic_regularization_delta,
+            ),
+            self.dynamic_regularization_epsilon != E::Real::faer_zero(),
+        )
+    }
+
+    #[inline]
+    fn mul_diag(_: E::Real, factor: E) -> E {
+        factor
+    }
+}
+
+impl<'a, E: ComplexField> ProcessDiag<E> for LdltRegularization<'a, E> {
+    type Error = Infallible;
+    type This = (Option<&'a [i8]>, E::Real, E::Real);
+
+    #[inline]
+    fn process(
+        (&(signs, eps, delta), enable): (&Self::This, bool),
+        mut diag: E::Real,
+        idx: usize,
+        count: &mut usize,
+    ) -> Result<E::Real, Self::Error> {
+        if enable {
+            if let Some(signs) = signs {
+                if signs[idx] > 0 && diag <= eps {
+                    diag = delta;
+                    *count += 1;
+                } else if signs[idx] < 0 && diag >= eps.faer_neg() {
+                    diag = -delta;
+                    *count += 1;
+                }
+            } else if diag.faer_abs() <= eps {
+                if diag < E::Real::faer_zero() {
+                    diag = -delta;
+                } else {
+                    diag = delta;
+                }
+                *count += 1;
+            }
+        }
+        Ok(diag)
+    }
+
+    #[inline]
+    fn new(&self) -> (Self::This, bool) {
+        (
+            (
+                self.dynamic_regularization_signs,
+                self.dynamic_regularization_epsilon,
+                self.dynamic_regularization_delta,
+            ),
+            self.dynamic_regularization_epsilon != E::Real::faer_zero(),
+        )
+    }
+
+    #[inline]
+    fn mul_diag(diag: E::Real, factor: E) -> E {
+        factor.faer_scale_real(diag)
+    }
+}
+
+pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
+    A: MatMut<'_, E>,
+    process: &P,
+    stack: PodStack<'_>,
+) -> Result<usize, P::Error> {
+    use crate::linalg::{entity, entity::SimdCtx};
+
+    struct Impl<'a, E: ComplexField, P> {
+        A: MatMut<'a, E>,
+        stack: PodStack<'a>,
+        process: &'a P,
+    }
+    impl<E: ComplexField, P: ProcessDiag<E>> pulp::WithSimd for Impl<'_, E, P> {
+        type Output = Result<usize, P::Error>;
+
+        #[inline(always)]
+        fn with_simd<S: Simd>(self, simd: S) -> Self::Output {
+            let Self { A, stack, process } = self;
+
+            let n = A.nrows();
+
+            let lanes =
+                core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>();
+
+            let stride = n.div_ceil(lanes);
+            assert!(stride <= 4);
+
+            unsafe {
+                let mut A = A;
+                let (stack, slice) = E::faer_map_with_context(stack, E::UNIT, &mut |stack, ()| {
+                    let (slice, stack) = stack.make_aligned_raw::<entity::SimdUnitFor<E, S>>(
+                        stride * n,
+                        crate::mat::matalloc::CACHELINE_ALIGN,
+                    );
+                    (stack, slice)
+                });
+                let (diag_slice, _) = stack.make_raw::<E::Real>(n);
+
+                let mut slice = SliceGroupMut::<E, entity::SimdUnitFor<E, S>>::new(slice);
+
+                #[inline(always)]
+                unsafe fn in_place_cholesky<E: ComplexField, S: Simd, P: ProcessDiag<E>>(
+                    simd: S,
+                    n: usize,
+                    stride: usize,
+                    mut slice: SliceGroupMut<E, entity::SimdUnitFor<E, S>>,
+                    diag_slice: &mut [E::Real],
+                    process: (&P::This, bool),
+                ) -> Result<usize, P::Error> {
+                    let simd_real = SimdFor::<E::Real, _>::new(simd);
+                    let simd = SimdFor::<E, _>::new(simd);
+
+                    let lanes = core::mem::size_of::<entity::SimdUnitFor<E, S>>()
+                        / core::mem::size_of::<E::Unit>();
+                    let mut length = lanes * stride;
+                    let mut j = 0usize;
+
+                    let mut count = 0;
+
+                    if length > lanes {
+                        while length > 3 * lanes {
+                            let mut slice =
+                                slice.rb_mut().subslice_unchecked(stride - 4..stride * n);
+
+                            let mut Aj0 = slice.rb().get_unchecked(stride * j + 0).get();
+                            let mut Aj1 = slice.rb().get_unchecked(stride * j + 1).get();
+                            let mut Aj2 = slice.rb().get_unchecked(stride * j + 2).get();
+                            let mut Aj3 = slice.rb().get_unchecked(stride * j + 3).get();
+
+                            for k in 0..j {
+                                let Ak0 = slice.rb().get_unchecked(stride * k + 0).get();
+                                let Ak1 = slice.rb().get_unchecked(stride * k + 1).get();
+                                let Ak2 = slice.rb().get_unchecked(stride * k + 2).get();
+                                let Ak3 = slice.rb().get_unchecked(stride * k + 3).get();
+
+                                let factor = simd.rotate_left(Ak0, j);
+                                let factor = simd.splat(-P::mul_diag(
+                                    *diag_slice.get_unchecked(k),
+                                    first_elem::<E, S>(factor).faer_conj(),
+                                ));
+
+                                Aj0 = simd.mul_add_e(factor, Ak0, Aj0);
+                                Aj1 = simd.mul_add_e(factor, Ak1, Aj1);
+                                Aj2 = simd.mul_add_e(factor, Ak2, Aj2);
+                                Aj3 = simd.mul_add_e(factor, Ak3, Aj3);
+                            }
+
+                            let diag = simd.rotate_left(Aj0, j);
+                            let diag = first_elem::<E, S>(diag);
+                            let diag = P::process(process, diag.faer_real(), j, &mut count)?;
+                            *diag_slice.get_unchecked_mut(j) = diag;
+
+                            let inv = simd_real.splat(diag.faer_inv());
+
+                            Aj0 = simd.scale_real(inv, Aj0);
+                            Aj1 = simd.scale_real(inv, Aj1);
+                            Aj2 = simd.scale_real(inv, Aj2);
+                            Aj3 = simd.scale_real(inv, Aj3);
+
+                            slice.rb_mut().get_unchecked_mut(stride * j + 0).set(Aj0);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 1).set(Aj1);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 2).set(Aj2);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 3).set(Aj3);
+
+                            length -= 1;
+                            j += 1;
+                        }
+
+                        while length > 2 * lanes {
+                            let mut slice =
+                                slice.rb_mut().subslice_unchecked(stride - 3..stride * n);
+
+                            let mut Aj0 = slice.rb().get_unchecked(stride * j + 0).get();
+                            let mut Aj1 = slice.rb().get_unchecked(stride * j + 1).get();
+                            let mut Aj2 = slice.rb().get_unchecked(stride * j + 2).get();
+
+                            for k in 0..j {
+                                let Ak0 = slice.rb().get_unchecked(stride * k + 0).get();
+                                let Ak1 = slice.rb().get_unchecked(stride * k + 1).get();
+                                let Ak2 = slice.rb().get_unchecked(stride * k + 2).get();
+
+                                let factor = simd.rotate_left(Ak0, j);
+                                let factor = simd.splat(-P::mul_diag(
+                                    *diag_slice.get_unchecked(k),
+                                    first_elem::<E, S>(factor).faer_conj(),
+                                ));
+
+                                Aj0 = simd.mul_add_e(factor, Ak0, Aj0);
+                                Aj1 = simd.mul_add_e(factor, Ak1, Aj1);
+                                Aj2 = simd.mul_add_e(factor, Ak2, Aj2);
+                            }
+
+                            let diag = simd.rotate_left(Aj0, j);
+                            let diag = first_elem::<E, S>(diag);
+                            let diag = P::process(process, diag.faer_real(), j, &mut count)?;
+                            *diag_slice.get_unchecked_mut(j) = diag;
+
+                            let inv = simd_real.splat(diag.faer_inv());
+
+                            Aj0 = simd.scale_real(inv, Aj0);
+                            Aj1 = simd.scale_real(inv, Aj1);
+                            Aj2 = simd.scale_real(inv, Aj2);
+
+                            slice.rb_mut().get_unchecked_mut(stride * j + 0).set(Aj0);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 1).set(Aj1);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 2).set(Aj2);
+
+                            length -= 1;
+                            j += 1;
+                        }
+
+                        while length > 1 * lanes {
+                            let mut slice =
+                                slice.rb_mut().subslice_unchecked(stride - 2..stride * n);
+
+                            let mut Aj0 = slice.rb().get_unchecked(stride * j + 0).get();
+                            let mut Aj1 = slice.rb().get_unchecked(stride * j + 1).get();
+
+                            for k in 0..j {
+                                let Ak0 = slice.rb().get_unchecked(stride * k + 0).get();
+                                let Ak1 = slice.rb().get_unchecked(stride * k + 1).get();
+
+                                let factor = simd.rotate_left(Ak0, j);
+                                let factor = simd.splat(-P::mul_diag(
+                                    *diag_slice.get_unchecked(k),
+                                    first_elem::<E, S>(factor).faer_conj(),
+                                ));
+
+                                Aj0 = simd.mul_add_e(factor, Ak0, Aj0);
+                                Aj1 = simd.mul_add_e(factor, Ak1, Aj1);
+                            }
+
+                            let diag = simd.rotate_left(Aj0, j);
+                            let diag = first_elem::<E, S>(diag);
+                            let diag = P::process(process, diag.faer_real(), j, &mut count)?;
+                            *diag_slice.get_unchecked_mut(j) = diag;
+
+                            let inv = simd_real.splat(diag.faer_inv());
+
+                            Aj0 = simd.scale_real(inv, Aj0);
+                            Aj1 = simd.scale_real(inv, Aj1);
+
+                            slice.rb_mut().get_unchecked_mut(stride * j + 0).set(Aj0);
+                            slice.rb_mut().get_unchecked_mut(stride * j + 1).set(Aj1);
+
+                            length -= 1;
+                            j += 1;
+                        }
+                    }
+
+                    while j < n {
+                        let mut slice = slice.rb_mut().subslice_unchecked(stride - 1..stride * n);
+
+                        let mut Aj0 = slice.rb().get_unchecked(stride * j + 0).get();
+                        for k in 0..j {
+                            let Ak0 = slice.rb().get_unchecked(stride * k + 0).get();
+
+                            let factor = simd.rotate_left(Ak0, j);
+                            let factor = simd.splat(-P::mul_diag(
+                                *diag_slice.get_unchecked(k),
+                                first_elem::<E, S>(factor).faer_conj(),
+                            ));
+
+                            Aj0 = simd.mul_add_e(factor, Ak0, Aj0);
+                        }
+
+                        let diag = simd.rotate_left(Aj0, j);
+                        let diag = first_elem::<E, S>(diag);
+                        let diag = P::process(process, diag.faer_real(), j, &mut count)?;
+                        *diag_slice.get_unchecked_mut(j) = diag;
+
+                        let inv = simd_real.splat(diag.faer_inv());
+
+                        Aj0 = simd.scale_real(inv, Aj0);
+
+                        slice.rb_mut().get_unchecked_mut(stride * j + 0).set(Aj0);
+
+                        j += 1;
+                    }
+
+                    Ok(count)
+                }
+
+                if A.row_stride() == 1 {
+                    let mut length = lanes * stride;
+                    let mut j = 0usize;
+
+                    if length > lanes {
+                        while length > 3 * lanes {
+                            let (head, tail) =
+                                as_simd::<E, S>(A.rb().col(j).try_as_slice().unwrap());
+                            let head = SliceGroup::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 4..stride - 1);
+                            let tail = E::faer_partial_load(simd, tail);
+
+                            let mut dst = slice
+                                .rb_mut()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 4..stride);
+
+                            dst.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(head.get_unchecked(0).get());
+                            dst.rb_mut()
+                                .get_unchecked_mut(1)
+                                .set(head.get_unchecked(1).get());
+                            dst.rb_mut()
+                                .get_unchecked_mut(2)
+                                .set(head.get_unchecked(2).get());
+                            dst.rb_mut().get_unchecked_mut(3).set(tail);
+
+                            length -= 1;
+                            j += 1;
+                        }
+                        while length > 2 * lanes {
+                            let (head, tail) =
+                                as_simd::<E, S>(A.rb().col(j).try_as_slice().unwrap());
+                            let head = SliceGroup::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 3..stride - 1);
+                            let tail = E::faer_partial_load(simd, tail);
+
+                            let mut dst = slice
+                                .rb_mut()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 3..stride);
+
+                            dst.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(head.get_unchecked(0).get());
+                            dst.rb_mut()
+                                .get_unchecked_mut(1)
+                                .set(head.get_unchecked(1).get());
+                            dst.rb_mut().get_unchecked_mut(2).set(tail);
+
+                            length -= 1;
+                            j += 1;
+                        }
+                        while length > 1 * lanes {
+                            let (head, tail) =
+                                as_simd::<E, S>(A.rb().col(j).try_as_slice().unwrap());
+                            let head = SliceGroup::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 2..stride - 1);
+                            let tail = E::faer_partial_load(simd, tail);
+
+                            let mut dst = slice
+                                .rb_mut()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 2..stride);
+
+                            dst.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(head.get_unchecked(0).get());
+                            dst.rb_mut().get_unchecked_mut(1).set(tail);
+
+                            length -= 1;
+                            j += 1;
+                        }
+                    }
+                    while j < n {
+                        let (head, tail) = as_simd::<E, S>(A.rb().col(j).try_as_slice().unwrap());
+                        let _ = SliceGroup::<'_, E, _>::new(head)
+                            .subslice_unchecked(stride - 1..stride - 1);
+                        let tail = E::faer_partial_load(simd, tail);
+
+                        let mut dst = slice
+                            .rb_mut()
+                            .subslice_unchecked(j * stride..(j + 1) * stride)
+                            .subslice_unchecked(stride - 1..stride);
+
+                        dst.rb_mut().get_unchecked_mut(0).set(tail);
+
+                        j += 1;
+                    }
+                } else {
+                    panic!();
+                }
+
+                let (process, enable) = process.new();
+                let result;
+                if enable {
+                    result = in_place_cholesky::<_, _, P>(
+                        simd,
+                        n,
+                        stride,
+                        slice.rb_mut(),
+                        diag_slice,
+                        (&process, enable),
+                    );
+                } else {
+                    result = in_place_cholesky::<_, _, P>(
+                        simd,
+                        n,
+                        stride,
+                        slice.rb_mut(),
+                        diag_slice,
+                        (&process, enable),
+                    );
+                }
+                if A.row_stride() == 1 {
+                    let mut length = lanes * stride;
+                    let mut j = 0usize;
+
+                    if length > lanes {
+                        while length > 3 * lanes {
+                            let (head, tail) = as_simd_mut::<E, S>(
+                                A.rb_mut().col_mut(j).try_as_slice_mut().unwrap(),
+                            );
+                            let mut head = SliceGroupMut::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 4..stride - 1);
+
+                            let src = slice
+                                .rb()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 4..stride);
+
+                            head.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(src.get_unchecked(0).get());
+                            head.rb_mut()
+                                .get_unchecked_mut(1)
+                                .set(src.get_unchecked(1).get());
+                            head.rb_mut()
+                                .get_unchecked_mut(2)
+                                .set(src.get_unchecked(2).get());
+                            E::faer_partial_store(simd, tail, src.get_unchecked(3).get());
+
+                            length -= 1;
+                            j += 1;
+                        }
+                        while length > 2 * lanes {
+                            let (head, tail) = as_simd_mut::<E, S>(
+                                A.rb_mut().col_mut(j).try_as_slice_mut().unwrap(),
+                            );
+                            let mut head = SliceGroupMut::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 3..stride - 1);
+
+                            let src = slice
+                                .rb()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 3..stride);
+
+                            head.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(src.get_unchecked(0).get());
+                            head.rb_mut()
+                                .get_unchecked_mut(1)
+                                .set(src.get_unchecked(1).get());
+                            E::faer_partial_store(simd, tail, src.get_unchecked(2).get());
+
+                            length -= 1;
+                            j += 1;
+                        }
+                        while length > 1 * lanes {
+                            let (head, tail) = as_simd_mut::<E, S>(
+                                A.rb_mut().col_mut(j).try_as_slice_mut().unwrap(),
+                            );
+                            let mut head = SliceGroupMut::<'_, E, _>::new(head)
+                                .subslice_unchecked(stride - 2..stride - 1);
+
+                            let src = slice
+                                .rb()
+                                .subslice_unchecked(j * stride..(j + 1) * stride)
+                                .subslice_unchecked(stride - 2..stride);
+
+                            head.rb_mut()
+                                .get_unchecked_mut(0)
+                                .set(src.get_unchecked(0).get());
+                            E::faer_partial_store(simd, tail, src.get_unchecked(1).get());
+
+                            length -= 1;
+                            j += 1;
+                        }
+                    }
+                    while j < n {
+                        let (head, tail) =
+                            as_simd_mut::<E, S>(A.rb_mut().col_mut(j).try_as_slice_mut().unwrap());
+                        let _ = SliceGroupMut::<'_, E, _>::new(head)
+                            .subslice_unchecked(stride - 1..stride - 1);
+
+                        let src = slice
+                            .rb()
+                            .subslice_unchecked(j * stride..(j + 1) * stride)
+                            .subslice_unchecked(stride - 1..stride);
+
+                        E::faer_partial_store(simd, tail, src.get_unchecked(0).get());
+
+                        j += 1;
+                    }
+                } else {
+                    panic!();
+                }
+                for (dst, src) in core::iter::zip(
+                    A.rb_mut().diagonal_mut().column_vector_mut().iter_mut(),
+                    &*diag_slice,
+                ) {
+                    RefGroupMut::<E>::new(dst).set_(E::faer_from_real(*src).faer_into_units());
+                }
+
+                result
+            }
+        }
+    }
+
+    E::Simd::default().dispatch(Impl { A, stack, process })
 }
 
 fn cholesky_in_place_left_looking_impl<E: ComplexField>(
@@ -69,135 +630,11 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
     params: LdltDiagParams,
+    stack: PodStack<'_>,
 ) -> usize {
-    let mut matrix = matrix;
-    let _ = parallelism;
-    let _ = params;
-
-    debug_assert!(
-        matrix.ncols() == matrix.nrows(),
-        "only square matrices can be decomposed into cholesky factors",
-    );
-
-    let n = matrix.nrows();
-
-    if n == 0 {
-        return 0;
-    }
-
-    let mut idx = 0;
-    let arch = E::ScalarSimd::default();
-
-    let eps = regularization.dynamic_regularization_epsilon.faer_abs();
-    let delta = regularization.dynamic_regularization_delta.faer_abs();
-    let has_eps = delta > E::Real::faer_zero();
-    let mut dynamic_regularization_count = 0usize;
-    loop {
-        // we split L/D rows/cols into 3 sections each
-        //     ┌             ┐
-        //     | L00         |
-        // L = | L10 A11     |
-        //     | L20 A21 A22 |
-        //     └             ┘
-        //     ┌          ┐
-        //     | D0       |
-        // D = |    D1    |
-        //     |       D2 |
-        //     └          ┘
-        //
-        // we already computed L00, L10, L20, and D0. we now compute L11, L21, and D1
-
-        let (top_left, top_right, bottom_left, bottom_right) =
-            matrix.rb_mut().split_at_mut(idx, idx);
-        let l00 = top_left.into_const();
-        let d0 = l00.diagonal().column_vector();
-        let (_, l10, _, l20) = bottom_left.into_const().split_at(1, 0);
-        let l10 = l10.row(0);
-
-        let (mut a11, _, a21, _) = bottom_right.split_at_mut(1, 1);
-
-        // reserve space for L10×D0
-        let mut l10xd0 = top_right
-            .submatrix_mut(0, 0, idx, 1)
-            .transpose_mut()
-            .row_mut(0);
-
-        zipped!(l10xd0.rb_mut(), l10, d0.transpose()).for_each(
-            |unzipped!(mut dst, src, factor)| {
-                dst.write(
-                    src.read()
-                        .faer_scale_real(factor.read().faer_real().faer_inv()),
-                )
-            },
-        );
-
-        let l10xd0 = l10xd0.into_const();
-
-        let mut d = a11
-            .read(0, 0)
-            .faer_sub(
-                crate::linalg::matmul::inner_prod::inner_prod_with_conj_arch(
-                    arch,
-                    l10xd0.transpose(),
-                    Conj::Yes,
-                    l10.transpose(),
-                    Conj::No,
-                ),
-            )
-            .faer_real();
-
-        // dynamic regularization code taken from clarabel.rs with modifications
-        if has_eps {
-            if let Some(signs) = regularization.dynamic_regularization_signs {
-                if signs[idx] > 0 && d <= eps {
-                    d = delta;
-                    dynamic_regularization_count += 1;
-                } else if signs[idx] < 0 && d >= eps.faer_neg() {
-                    d = delta.faer_neg();
-                    dynamic_regularization_count += 1;
-                }
-            } else if d.faer_abs() <= eps {
-                if d < E::Real::faer_zero() {
-                    d = delta.faer_neg();
-                } else {
-                    d = delta;
-                }
-                dynamic_regularization_count += 1;
-            }
-        }
-
-        let d = d.faer_inv();
-        a11.write(0, 0, E::faer_from_real(d));
-
-        if idx + 1 == n {
-            break;
-        }
-
-        let mut a21 = a21.col_mut(0);
-
-        // A21 -= L20 × L10^H
-        if a21.row_stride() == 1 {
-            arch.dispatch(RankUpdate {
-                a21: a21.rb_mut(),
-                l20,
-                l10: l10xd0,
-            });
-        } else {
-            for j in 0..idx {
-                let l20_col = l20.col(j);
-                let l10_conj = l10xd0.read(j).faer_conj();
-
-                zipped!(a21.rb_mut(), l20_col).for_each(|unzipped!(mut dst, src)| {
-                    dst.write(dst.read().faer_sub(src.read().faer_mul(l10_conj)))
-                });
-            }
-        }
-
-        zipped!(a21.rb_mut()).for_each(|unzipped!(mut x)| x.write(x.read().faer_scale_real(d)));
-
-        idx += 1;
-    }
-    dynamic_regularization_count
+    _ = params;
+    _ = parallelism;
+    new_cholesky(matrix, &regularization, stack).unwrap()
 }
 
 /// LDLT factorization tuning parameters.
@@ -213,7 +650,7 @@ pub fn raw_cholesky_in_place_req<E: Entity>(
 ) -> Result<StackReq, SizeOverflow> {
     let _ = parallelism;
     let _ = params;
-    temp_mat_req::<E>(dim, dim)
+    temp_mat_req::<E>(dim, dim)?.try_and(StackReq::try_new::<E>(dim)?)
 }
 
 // uses an out parameter for tail recursion
@@ -231,9 +668,25 @@ fn cholesky_in_place_impl<E: ComplexField>(
     let mut matrix = matrix;
     let mut stack = stack;
 
+    struct Lanes<E> {
+        __marker: PhantomData<E>,
+    }
+    impl<E: ComplexField> pulp::WithSimd for Lanes<E> {
+        type Output = usize;
+        fn with_simd<S: Simd>(self, _: S) -> Self::Output {
+            core::mem::size_of::<entity::SimdUnitFor<E, S>>() / core::mem::size_of::<E::Unit>()
+        }
+    }
+
+    let lanes = E::Simd::default().dispatch(Lanes {
+        __marker: PhantomData::<E>,
+    });
+    let stride = matrix.nrows().div_ceil(lanes);
+
     let n = matrix.nrows();
-    if n < 32 {
-        *count += cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params)
+    if stride <= 4 {
+        *count +=
+            cholesky_in_place_left_looking_impl(matrix, regularization, parallelism, params, stack)
     } else {
         let block_size = Ord::min(n / 2, 128);
         let rem = n - block_size;
@@ -265,12 +718,12 @@ fn cholesky_in_place_impl<E: ComplexField>(
             for j in 0..block_size {
                 let l10xd0_col = l10xd0.rb_mut().col_mut(j);
                 let a10_col = a10.rb_mut().col_mut(j);
-                let d0_elem = d0.read(j);
+                let d0_elem = d0.read(j).faer_real().faer_inv();
 
                 zipped!(l10xd0_col, a10_col).for_each(
                     |unzipped!(mut l10xd0_elem, mut a10_elem)| {
                         let a10_elem_read = a10_elem.read();
-                        a10_elem.write(a10_elem_read.faer_mul(d0_elem));
+                        a10_elem.write(a10_elem_read.faer_scale_real(d0_elem));
                         l10xd0_elem.write(a10_elem_read);
                     },
                 );
@@ -342,10 +795,11 @@ impl<E: ComplexField> Default for LdltRegularization<'_, E> {
 ///
 /// The result is stored back in the same matrix.
 ///
-/// The input matrix is interpreted as symmetric and only the lower triangular part is read.
+/// The input matrix is interpreted as Hermitian with the values being extracted from the lower
+/// part, but the entire matrix is required to be initialized.
 ///
 /// The matrix $L$ is stored in the strictly lower triangular part of the input matrix, and the
-/// inverses of the diagonal elements of $D$ are stored on the diagonal.
+/// diagonal elements of $D$ are stored on the diagonal.
 ///
 /// The strictly upper triangular part of the matrix is clobbered and may be filled with garbage
 /// values.

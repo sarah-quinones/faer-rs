@@ -2043,61 +2043,6 @@ pub fn matmul<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<C
     matmul_with_conj::<E>(acc, lhs, conj_lhs, rhs, conj_rhs, alpha, beta, parallelism);
 }
 
-macro_rules! stack_mat_16x16_begin {
-    ($name: ident, $nrows: expr, $ncols: expr, $rs: expr, $cs: expr, $ty: ty) => {
-        let __nrows: usize = $nrows;
-        let __ncols: usize = $ncols;
-        let __rs: isize = $rs;
-        let __cs: isize = $cs;
-        let mut __data = <$ty as $crate::Entity>::faer_map(
-            <$ty as $crate::Entity>::UNIT,
-            #[inline(always)]
-            |()| unsafe {
-                $crate::linalg::entity::transmute_unchecked::<
-                    ::core::mem::MaybeUninit<[<$ty as $crate::Entity>::Unit; 16 * 16]>,
-                    [::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; 16 * 16],
-                >(::core::mem::MaybeUninit::<
-                    [<$ty as $crate::Entity>::Unit; 16 * 16],
-                >::uninit())
-            },
-        );
-
-        <$ty as $crate::Entity>::faer_map(
-            <$ty as $crate::Entity>::faer_zip(
-                <$ty as $crate::Entity>::faer_as_mut(&mut __data),
-                <$ty as $crate::Entity>::faer_into_units(<$ty as $crate::ComplexField>::faer_zero()),
-            ),
-            #[inline(always)]
-            |(__data, zero)| {
-                let __data: &mut _ = __data;
-                for __data in __data {
-                    let __data : &mut _ = __data;
-                    *__data = ::core::mem::MaybeUninit::new(::core::clone::Clone::clone(&zero));
-                }
-            },
-        );
-        let mut __data =
-            <$ty as $crate::Entity>::faer_map(<$ty as $crate::Entity>::faer_as_mut(&mut __data), |__data: &mut _| {
-                (__data as *mut [::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; 16 * 16]
-                    as *mut <$ty as $crate::Entity>::Unit)
-            });
-
-        let mut $name = unsafe {
-            $crate::mat::from_raw_parts_mut::<'_, $ty>(__data, __nrows, __ncols, 1isize, 16isize)
-        };
-
-        if __cs.unsigned_abs() < __rs.unsigned_abs() {
-            $name = $name.transpose_mut();
-        }
-        if __rs == -1 {
-            $name = $name.reverse_rows_mut();
-        }
-        if __cs == -1 {
-            $name = $name.reverse_cols_mut();
-        }
-    };
-}
-
 /// Triangular matrix multiplication module, where some of the operands are treated as triangular
 /// matrices.
 pub mod triangular;
@@ -2114,7 +2059,7 @@ mod tests {
 
     #[test]
     fn test_stack_mat() {
-        stack_mat_16x16_begin!(m, 3, 3, 1, 3, f64);
+        stack_mat!([16, 16], m, 3, 3, 1, 3, f64);
         {
             let _ = &mut m;
             dbg!(&m);

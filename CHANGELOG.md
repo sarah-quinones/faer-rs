@@ -9,7 +9,7 @@
 - Implemented `core::iter::{Sum, Product}` for `c32` and `c64`.
 - Sparse Cholesky can now be used with user-provided permutations.
 - Simplified matrix constructors, adding a variant with a `_generic` prefix for the old behavior.
-- Bunch-Kaufman decomposition now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.
+- LDLT and Bunch-Kaufman decompositions now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.
 - Integrated `nano-gemm` as a backend for small matrix multiplication.
 
 # 0.18

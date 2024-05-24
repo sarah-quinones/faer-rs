@@ -112,8 +112,24 @@ unsafe fn mat_x_lower_into_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
-                stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_dst,
+                    n,
+                    n,
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_rhs,
+                    n,
+                    n,
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    E
+                );
 
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
                 mul(
@@ -234,7 +250,15 @@ unsafe fn mat_x_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_rhs,
+                    n,
+                    n,
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    E
+                );
 
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
 
@@ -328,9 +352,33 @@ unsafe fn lower_x_lower_into_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
-                stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
-                stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_dst,
+                    n,
+                    n,
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_lhs,
+                    n,
+                    n,
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_rhs,
+                    n,
+                    n,
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    E
+                );
 
                 copy_lower(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -436,8 +484,24 @@ unsafe fn upper_x_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
-                stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_lhs,
+                    n,
+                    n,
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_rhs,
+                    n,
+                    n,
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    E
+                );
 
                 copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -569,9 +633,33 @@ unsafe fn upper_x_lower_into_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
-                stack_mat_16x16_begin!(temp_lhs, n, n, lhs.row_stride(), lhs.col_stride(), E);
-                stack_mat_16x16_begin!(temp_rhs, n, n, rhs.row_stride(), rhs.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_dst,
+                    n,
+                    n,
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_lhs,
+                    n,
+                    n,
+                    lhs.row_stride(),
+                    lhs.col_stride(),
+                    E
+                );
+                stack_mat!(
+                    [16, 16],
+                    temp_rhs,
+                    n,
+                    n,
+                    rhs.row_stride(),
+                    rhs.col_stride(),
+                    E
+                );
 
                 copy_upper(temp_lhs.rb_mut(), lhs, lhs_diag);
                 copy_lower(temp_rhs.rb_mut(), rhs, rhs_diag);
@@ -691,7 +779,15 @@ unsafe fn mat_x_mat_into_lower_impl_unchecked<E: ComplexField>(
         let op = {
             #[inline(never)]
             || {
-                stack_mat_16x16_begin!(temp_dst, n, n, dst.row_stride(), dst.col_stride(), E);
+                stack_mat!(
+                    [16, 16],
+                    temp_dst,
+                    n,
+                    n,
+                    dst.row_stride(),
+                    dst.col_stride(),
+                    E
+                );
 
                 mul(
                     temp_dst.rb_mut(),

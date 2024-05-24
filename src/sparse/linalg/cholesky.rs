@@ -1971,7 +1971,7 @@ pub mod supernodal {
                 let Ds = s.matrix.diagonal().column_vector();
                 for j in 0..k {
                     for idx in 0..size {
-                        let d_inv = Ds.read(idx).faer_real();
+                        let d_inv = Ds.read(idx).faer_real().faer_inv();
                         let i = idx + s.start();
                         x.write(i, j, x.read(i, j).faer_scale_real(d_inv))
                     }
@@ -3580,9 +3580,7 @@ pub mod supernodal {
                         Ld_mid_x_D.write(
                             i,
                             j,
-                            Ld_mid
-                                .read(i, j)
-                                .faer_scale_real(D.read(j).faer_real().faer_inv()),
+                            Ld_mid.read(i, j).faer_scale_real(D.read(j).faer_real()),
                         );
                     }
                 }
@@ -3679,7 +3677,7 @@ pub mod supernodal {
                 parallelism,
             );
             for j in 0..s_ncols {
-                let d = Ls_top.read(j, j).faer_real();
+                let d = Ls_top.read(j, j).faer_real().faer_inv();
                 for i in 0..s_pattern.len() {
                     Ls_bot.write(i, j, Ls_bot.read(i, j).faer_scale_real(d));
                 }
@@ -5441,7 +5439,7 @@ pub(crate) mod tests {
             dense
                 .as_mut()
                 .submatrix_mut(s.start(), s.start(), size, size)
-                .copy_from(Ls_top);
+                .copy_from_triangular_lower(Ls_top);
 
             for col in 0..size {
                 for (i, row) in s.pattern().iter().enumerate() {
@@ -5472,7 +5470,7 @@ pub(crate) mod tests {
             dense
                 .as_mut()
                 .submatrix_mut(s.start(), s.start(), size, size)
-                .copy_from(Ls_top);
+                .copy_from_triangular_lower(Ls_top);
 
             for col in 0..size {
                 for (i, row) in s.pattern().iter().enumerate() {
@@ -5483,10 +5481,10 @@ pub(crate) mod tests {
 
         let mut D = Mat::<E>::zeros(n, n);
         zipped!(
-            D.as_mut().diagonal_mut().column_vector_mut().as_2d_mut(),
-            dense.as_ref().diagonal().column_vector().as_2d()
+            D.as_mut().diagonal_mut().column_vector_mut(),
+            dense.as_ref().diagonal().column_vector()
         )
-        .for_each(|unzipped!(mut dst, src)| dst.write(src.read().faer_inv()));
+        .for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
         dense
             .as_mut()
             .diagonal_mut()

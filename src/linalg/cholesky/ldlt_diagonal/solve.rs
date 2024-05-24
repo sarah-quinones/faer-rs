@@ -102,7 +102,7 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
 
     for j in 0..k {
         for i in 0..n {
-            let d = unsafe { cholesky_factors.read_unchecked(i, i) };
+            let d = unsafe { cholesky_factors.read_unchecked(i, i).faer_inv() };
             let rhs_elem = unsafe { rhs.read_unchecked(i, j) };
             unsafe {
                 rhs.write_unchecked(i, j, rhs_elem.faer_mul(d));

@@ -177,6 +177,67 @@ use equator::{assert, debug_assert};
 
 extern crate alloc;
 
+macro_rules! stack_mat {
+    ([$max_nrows: expr, $max_ncols: expr$(,)?], $name: ident, $nrows: expr, $ncols: expr, $rs: expr, $cs: expr, $ty: ty) => {
+        let __nrows: usize = $nrows;
+        let __ncols: usize = $ncols;
+        $crate::assert!(all(__nrows <= $max_nrows, __ncols <= $max_ncols));
+        let __rs: isize = $rs;
+        let __cs: isize = $cs;
+        let mut __data = {
+            #[repr(align(128))]
+            struct Wrapper<E: $crate::Entity>(faer_entity::GroupFor<E, [[::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; $max_nrows]; $max_ncols]>);
+
+            Wrapper::<$ty>(<$ty as $crate::Entity>::faer_map(
+                <$ty as $crate::Entity>::UNIT,
+                #[inline(always)]
+                |()| unsafe {
+                    $crate::linalg::entity::transmute_unchecked::<
+                        ::core::mem::MaybeUninit<[[<$ty as $crate::Entity>::Unit; $max_nrows]; $max_ncols]>,
+                        [[::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; $max_nrows]; $max_ncols],
+                    >(::core::mem::MaybeUninit::<
+                        [[<$ty as $crate::Entity>::Unit; $max_nrows]; $max_ncols],
+                    >::uninit())
+                },
+            ))
+        };
+
+        <$ty as $crate::Entity>::faer_map(
+            <$ty as $crate::Entity>::faer_zip(
+                <$ty as $crate::Entity>::faer_as_mut(&mut __data.0),
+                <$ty as $crate::Entity>::faer_into_units(<$ty as $crate::ComplexField>::faer_zero()),
+            ),
+            #[inline(always)]
+            |(__data, zero)| {
+                let __data: &mut _ = __data;
+                for j in 0..__ncols {
+                    __data[j].fill(::core::mem::MaybeUninit::new(zero));
+                }
+            },
+        );
+        let mut __data =
+            <$ty as $crate::Entity>::faer_map(<$ty as $crate::Entity>::faer_as_mut(&mut __data.0), |__data: &mut _| {
+                (__data as *mut [[::core::mem::MaybeUninit<<$ty as $crate::Entity>::Unit>; $max_nrows]; $max_ncols]
+                    as *mut <$ty as $crate::Entity>::Unit)
+            });
+
+        let mut $name = unsafe {
+            $crate::mat::from_raw_parts_mut::<'_, $ty>(__data, __nrows, __ncols, 1isize, $max_nrows as isize)
+        };
+
+        if __cs.unsigned_abs() < __rs.unsigned_abs() {
+            $crate::assert!(__nrows == __ncols);
+            $name = $name.transpose_mut();
+        }
+        if __rs == -1 {
+            $name = $name.reverse_rows_mut();
+        }
+        if __cs == -1 {
+            $name = $name.reverse_cols_mut();
+        }
+    };
+}
+
 pub mod linalg;
 
 pub mod complex_native;

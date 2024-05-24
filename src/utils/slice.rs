@@ -192,6 +192,16 @@ impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
             |(r, value)| *r = value,
         );
     }
+
+    /// Writes `value` to the location pointed to by the references.
+    #[inline(always)]
+    pub fn set_(&mut self, value: GroupFor<E, T>) {
+        E::faer_map(
+            E::faer_zip(self.rb_mut().into_inner(), value),
+            #[inline(always)]
+            |(r, value)| *r = value,
+        );
+    }
 }
 
 impl<'a, E: Entity, T> IntoConst for SliceGroup<'a, E, T> {

@@ -35,7 +35,7 @@ mod tests {
 
         let mut lxd = Mat::zeros(n, n);
         for j in 0..n {
-            let dj = cholesky_factors.read(j, j).faer_real().faer_inv();
+            let dj = cholesky_factors.read(j, j).faer_real();
             lxd.write(j, j, E::faer_from_real(dj));
             for i in j + 1..n {
                 lxd.write(i, j, cholesky_factors.read(i, j).faer_scale_real(dj));
@@ -454,7 +454,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
+                    insert_rows_and_cols_clobber_req::<E>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 
@@ -525,7 +525,7 @@ mod tests {
                 w.as_mut(),
                 Parallelism::Rayon(8),
                 PodStack::new(&mut GlobalPodBuffer::new(
-                    insert_rows_and_cols_clobber_req::<c64>(r, Parallelism::Rayon(8)).unwrap(),
+                    insert_rows_and_cols_clobber_req::<E>(r, Parallelism::Rayon(8)).unwrap(),
                 )),
             );
 

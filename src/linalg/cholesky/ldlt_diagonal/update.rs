@@ -626,7 +626,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     E::faer_zero(),
                 ];
 
-                let mut dj = ld.rb().read(j, j).faer_inv();
+                let mut dj = ld.rb().read(j, j);
                 for k in 0..r_chunk {
                     let p = &mut p_array[k];
                     let beta = &mut beta_array[k];
@@ -644,7 +644,7 @@ impl<'a, E: ComplexField> RankRUpdate<'a, E> {
                     dj = new_dj;
                     *p = (*p).faer_neg();
                 }
-                ld.write(j, j, dj.faer_inv());
+                ld.write(j, j, dj);
 
                 let rem = n - j - 1;
 
@@ -834,7 +834,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
         for k in 0..r {
             let j = indices[k];
             unsafe {
-                alpha.write_unchecked(k, cholesky_factors.read_unchecked(j, j).faer_inv());
+                alpha.write_unchecked(k, cholesky_factors.read_unchecked(j, j));
             }
 
             for chunk_i in k..r {
@@ -953,7 +953,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     let a01 = a01.rb();
 
     for j in 0..insertion_index {
-        let d0_inv = unsafe { d0.read_unchecked(j) };
+        let d0_inv = unsafe { d0.read_unchecked(j).faer_inv() };
         for i in 0..r {
             unsafe {
                 l10.write_unchecked(i, j, a01.read_unchecked(j, i).faer_conj().faer_mul(d0_inv));
@@ -1017,7 +1017,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
 
     for j in 0..r {
         unsafe {
-            let d1_inv = d1.read_unchecked(j);
+            let d1_inv = d1.read_unchecked(j).faer_inv();
             for i in 0..rem {
                 let value = l21.rb_mut().read_unchecked(i, j).faer_mul(d1_inv);
                 l21.write_unchecked(i, j, value);
@@ -1032,7 +1032,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
         unsafe {
             alpha
                 .rb_mut()
-                .write_unchecked(j, ld11.read_unchecked(j, j).faer_inv().faer_neg());
+                .write_unchecked(j, ld11.read_unchecked(j, j).faer_neg());
 
             for i in 0..rem {
                 w.rb_mut()

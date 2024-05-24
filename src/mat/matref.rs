@@ -829,7 +829,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         debug_assert!(col_idx < self.ncols());
         unsafe {
             crate::col::from_raw_parts(
-                self.overflowing_ptr_at(0, col_idx),
+                self.ptr_at_unchecked(0, col_idx),
                 self.nrows(),
                 self.row_stride(),
             )
