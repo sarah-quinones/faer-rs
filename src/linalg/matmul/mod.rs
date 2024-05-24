@@ -411,7 +411,6 @@ pub mod inner_prod {
                 a_x_b_accumulate1(simd, conj, a, b, offset)
             };
 
-            E::faer_map(from_copy::<E, _>(prologue), |x| dbg!(x));
             simd.reduce_add(prologue)
         }
     }
