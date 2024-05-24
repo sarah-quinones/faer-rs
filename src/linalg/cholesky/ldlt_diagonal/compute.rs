@@ -493,7 +493,16 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
                         j += 1;
                     }
                 } else {
-                    panic!();
+                    let slice = E::faer_map(slice.rb_mut().into_inner(), |slice| {
+                        bytemuck::cast_slice_mut::<SimdUnitFor<E, S>, E::Unit>(slice)
+                    });
+                    crate::mat::from_column_major_slice_with_stride_mut_generic::<E>(
+                        slice,
+                        n,
+                        n,
+                        stride * lanes,
+                    )
+                    .copy_from(&A);
                 }
 
                 let (process, enable) = process.new();
@@ -608,7 +617,17 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
                         j += 1;
                     }
                 } else {
-                    panic!();
+                    let slice = E::faer_map(slice.rb_mut().into_inner(), |slice| {
+                        bytemuck::cast_slice_mut::<SimdUnitFor<E, S>, E::Unit>(slice)
+                    });
+                    A.copy_from(
+                        crate::mat::from_column_major_slice_with_stride_mut_generic::<E>(
+                            slice,
+                            n,
+                            n,
+                            stride * lanes,
+                        ),
+                    );
                 }
                 for (dst, src) in core::iter::zip(
                     A.rb_mut().diagonal_mut().column_vector_mut().iter_mut(),
