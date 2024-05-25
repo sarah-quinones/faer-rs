@@ -1,5 +1,3 @@
-// FIXME: support duplicate entries
-
 use crate::{assert, sparse::SparseColMatRef, utils::slice::*, Conj, Index, MatMut, Parallelism};
 use core::iter::zip;
 use faer_entity::ComplexField;
@@ -45,12 +43,17 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj0 = x.read(j, k0).faer_mul(d);
                             x.write(j, k0, xj0);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -73,12 +76,17 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj1 = x.read(j, k1).faer_mul(d);
                             x.write(j, k1, xj1);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -105,12 +113,17 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj2 = x.read(j, k2).faer_mul(d);
                             x.write(j, k2, xj2);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -141,12 +154,17 @@ pub fn solve_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj3 = x.read(j, k3).faer_mul(d);
                             x.write(j, k3, xj3);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -204,72 +222,31 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
 
                         for j in N.indices().rev() {
                             let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc0c = E::faer_zero();
-                            let mut acc0d = E::faer_zero();
 
-                            let a = 0;
-                            let b = 1;
-                            let c = 2;
-                            let d = 3;
-
-                            let nrows = l.row_indices_of_col_raw(j).len();
-                            let rows_head = l.row_indices_of_col_raw(j)[1..].chunks_exact(4);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(l.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(4);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lijc = lij.read(c);
-                                let lijd = lij.read(d);
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
                                 } else {
-                                    lija
+                                    lij
                                 };
-                                let lijb = if conj == Conj::Yes {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                let lijc = if conj == Conj::Yes {
-                                    lijc.faer_conj()
-                                } else {
-                                    lijc
-                                };
-                                let lijd = if conj == Conj::Yes {
-                                    lijd.faer_conj()
-                                } else {
-                                    lijd
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), k0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k0)));
-                                acc0c = acc0c.faer_add(lijc.faer_mul(x.read(i[c].zx(), k0)));
-                                acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), k0)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), k0)));
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
                             }
 
                             let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
                             let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                            x.write(
-                                j,
-                                k0,
-                                x.read(j, k0)
-                                    .faer_sub(acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)))
-                                    .faer_mul(d),
-                            );
+                            x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
                         }
                     }
                     2 => {
@@ -278,62 +255,34 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
 
                         for j in N.indices().rev() {
                             let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
                             let mut acc1a = E::faer_zero();
-                            let mut acc1b = E::faer_zero();
 
-                            let a = 0;
-                            let b = 1;
-
-                            let nrows = l.row_indices_of_col_raw(j).len();
-                            let rows_head = l.row_indices_of_col_raw(j)[1..].chunks_exact(2);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(l.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(2);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
                                 } else {
-                                    lija
+                                    lij
                                 };
-                                let lijb = if conj == Conj::Yes {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), k0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i[a].zx(), k1)));
-                                acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k1)));
-                            }
-
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), k0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i.zx(), k1)));
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
                             }
 
                             let d = slice_group(l.values_of_col(j)).read(0).faer_inv();
                             let d = if conj == Conj::Yes { d.faer_conj() } else { d };
-                            x.write(
-                                j,
-                                k0,
-                                x.read(j, k0).faer_sub(acc0a.faer_add(acc0b)).faer_mul(d),
-                            );
-                            x.write(
-                                j,
-                                k1,
-                                x.read(j, k1).faer_sub(acc1a.faer_add(acc1b)).faer_mul(d),
-                            );
+                            x.write(j, k0, x.read(j, k0).faer_sub(acc0a).faer_mul(d));
+                            x.write(j, k1, x.read(j, k1).faer_sub(acc1a).faer_mul(d));
                         }
                     }
                     3 => {
@@ -346,12 +295,18 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
                             let mut acc1a = E::faer_zero();
                             let mut acc2a = E::faer_zero();
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -382,12 +337,18 @@ pub fn solve_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
                             let mut acc2a = E::faer_zero();
                             let mut acc3a = E::faer_zero();
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -453,12 +414,18 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
                         for j in N.indices() {
                             let xj0 = x.read(j, k0);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -476,12 +443,18 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj0 = x.read(j, k0);
                             let xj1 = x.read(j, k1);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -502,12 +475,18 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj1 = x.read(j, k1);
                             let xj2 = x.read(j, k2);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -531,12 +510,18 @@ pub fn solve_unit_lower_triangular_in_place<I: Index, E: ComplexField>(
                             let xj2 = x.read(j, k2);
                             let xj3 = x.read(j, k3);
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -595,70 +580,29 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
 
                         for j in N.indices().rev() {
                             let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
-                            let mut acc0c = E::faer_zero();
-                            let mut acc0d = E::faer_zero();
 
-                            let a = 0;
-                            let b = 1;
-                            let c = 2;
-                            let d = 3;
-
-                            let nrows = l.row_indices_of_col_raw(j).len();
-                            let rows_head = l.row_indices_of_col_raw(j)[1..].chunks_exact(4);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(l.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(4);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lijc = lij.read(c);
-                                let lijd = lij.read(d);
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
                                 } else {
-                                    lija
+                                    lij
                                 };
-                                let lijb = if conj == Conj::Yes {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                let lijc = if conj == Conj::Yes {
-                                    lijc.faer_conj()
-                                } else {
-                                    lijc
-                                };
-                                let lijd = if conj == Conj::Yes {
-                                    lijd.faer_conj()
-                                } else {
-                                    lijd
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), k0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k0)));
-                                acc0c = acc0c.faer_add(lijc.faer_mul(x.read(i[c].zx(), k0)));
-                                acc0d = acc0d.faer_add(lijd.faer_mul(x.read(i[d].zx(), k0)));
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
                             }
 
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), k0)));
-                            }
-
-                            x.write(
-                                j,
-                                k0,
-                                x.read(j, k0).faer_sub(
-                                    acc0a.faer_add(acc0b).faer_add(acc0c.faer_add(acc0d)),
-                                ),
-                            );
+                            x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
                         }
                     }
                     2 => {
@@ -667,52 +611,32 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
 
                         for j in N.indices().rev() {
                             let mut acc0a = E::faer_zero();
-                            let mut acc0b = E::faer_zero();
                             let mut acc1a = E::faer_zero();
-                            let mut acc1b = E::faer_zero();
 
-                            let a = 0;
-                            let b = 1;
-
-                            let nrows = l.row_indices_of_col_raw(j).len();
-                            let rows_head = l.row_indices_of_col_raw(j)[1..].chunks_exact(2);
-                            let rows_tail = rows_head.remainder();
-                            let (values_head, values_tail) = slice_group(l.values_of_col(j))
-                                .subslice(1..nrows)
-                                .into_chunks_exact(2);
-
-                            for (i, lij) in zip(rows_head, values_head) {
-                                let lija = lij.read(a);
-                                let lijb = lij.read(b);
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
                                 } else {
-                                    lija
+                                    lij
                                 };
-                                let lijb = if conj == Conj::Yes {
-                                    lijb.faer_conj()
-                                } else {
-                                    lijb
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i[a].zx(), k0)));
-                                acc0b = acc0b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i[a].zx(), k1)));
-                                acc1b = acc1b.faer_add(lijb.faer_mul(x.read(i[b].zx(), k1)));
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
                             }
 
-                            for (i, lij) in zip(rows_tail, values_tail.into_ref_iter()) {
-                                let lija = lij.read();
-                                let lija = if conj == Conj::Yes {
-                                    lija.faer_conj()
-                                } else {
-                                    lija
-                                };
-                                acc0a = acc0a.faer_add(lija.faer_mul(x.read(i.zx(), k0)));
-                                acc1a = acc1a.faer_add(lija.faer_mul(x.read(i.zx(), k1)));
-                            }
-
-                            x.write(j, k0, x.read(j, k0).faer_sub(acc0a.faer_add(acc0b)));
-                            x.write(j, k1, x.read(j, k1).faer_sub(acc1a.faer_add(acc1b)));
+                            x.write(j, k0, x.read(j, k0).faer_sub(acc0a));
+                            x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
                         }
                     }
                     3 => {
@@ -725,12 +649,18 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
                             let mut acc1a = E::faer_zero();
                             let mut acc2a = E::faer_zero();
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -759,12 +689,18 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
                             let mut acc2a = E::faer_zero();
                             let mut acc3a = E::faer_zero();
 
-                            for (i, lij) in zip(
-                                l.row_indices_of_col(j),
-                                slice_group(l.values_of_col(j)).into_ref_iter(),
-                            )
-                            .skip(1)
-                            {
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
                                 let lij = lij.read();
                                 let lij = if conj == Conj::Yes {
                                     lij.faer_conj()
@@ -781,6 +717,203 @@ pub fn solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>
                             x.write(j, k1, x.read(j, k1).faer_sub(acc1a));
                             x.write(j, k2, x.read(j, k2).faer_sub(acc2a));
                             x.write(j, k3, x.read(j, k3).faer_sub(acc3a));
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                k += bs;
+            }
+        },
+    );
+}
+
+#[doc(hidden)]
+pub fn ldlt_scale_solve_unit_lower_triangular_transpose_in_place<I: Index, E: ComplexField>(
+    l: SparseColMatRef<'_, I, E>,
+    conj: Conj,
+    rhs: MatMut<'_, E>,
+    parallelism: Parallelism,
+) {
+    let _ = parallelism;
+    assert!(l.nrows() == l.ncols());
+    assert!(rhs.nrows() == l.nrows());
+
+    let slice_group = SliceGroup::<'_, E>::new;
+
+    crate::utils::constrained::Size::with2(
+        rhs.nrows(),
+        rhs.ncols(),
+        #[inline(always)]
+        |N, K| {
+            let mut x = crate::utils::constrained::mat::MatMut::new(rhs, N, K);
+            let l = crate::utils::constrained::sparse::SparseColMatRef::new(l, N, N);
+
+            let mut k = 0usize;
+            while k < *K {
+                let bs = Ord::min(*K - k, 4);
+                match bs {
+                    1 => {
+                        let k0 = K.check(k);
+
+                        for j in N.indices().rev() {
+                            let d = slice_group(l.values_of_col(j))
+                                .read(0)
+                                .faer_real()
+                                .faer_inv();
+
+                            let mut acc0a = E::faer_zero();
+
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                            }
+
+                            x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
+                        }
+                    }
+                    2 => {
+                        let k0 = K.check(k);
+                        let k1 = K.check(k + 1);
+
+                        for j in N.indices().rev() {
+                            let d = slice_group(l.values_of_col(j))
+                                .read(0)
+                                .faer_real()
+                                .faer_inv();
+
+                            let mut acc0a = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
+                            }
+
+                            x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
+                            x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
+                        }
+                    }
+                    3 => {
+                        let k0 = K.check(k);
+                        let k1 = K.check(k + 1);
+                        let k2 = K.check(k + 2);
+
+                        for j in N.indices().rev() {
+                            let d = slice_group(l.values_of_col(j))
+                                .read(0)
+                                .faer_real()
+                                .faer_inv();
+
+                            let mut acc0a = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+                            let mut acc2a = E::faer_zero();
+
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
+                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
+                            }
+
+                            x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
+                            x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
+                            x.write(j, k2, x.read(j, k2).faer_scale_real(d).faer_sub(acc2a));
+                        }
+                    }
+                    4 => {
+                        let k0 = K.check(k);
+                        let k1 = K.check(k + 1);
+                        let k2 = K.check(k + 2);
+                        let k3 = K.check(k + 3);
+
+                        for j in N.indices().rev() {
+                            let d = slice_group(l.values_of_col(j))
+                                .read(0)
+                                .faer_real()
+                                .faer_inv();
+
+                            let mut acc0a = E::faer_zero();
+                            let mut acc1a = E::faer_zero();
+                            let mut acc2a = E::faer_zero();
+                            let mut acc3a = E::faer_zero();
+
+                            let row_ind = l.row_indices_of_col_raw(j);
+                            let len = row_ind.len();
+                            assert!(len >= 1);
+                            for (i, lij) in unsafe {
+                                zip(
+                                    row_ind.get_unchecked(1..),
+                                    slice_group(l.values_of_col(j))
+                                        .subslice_unchecked(1..len)
+                                        .into_ref_iter(),
+                                )
+                            } {
+                                let i = i.zx();
+                                let lij = lij.read();
+                                let lij = if conj == Conj::Yes {
+                                    lij.faer_conj()
+                                } else {
+                                    lij
+                                };
+                                acc0a = acc0a.faer_add(lij.faer_mul(x.read(i, k0)));
+                                acc1a = acc1a.faer_add(lij.faer_mul(x.read(i, k1)));
+                                acc2a = acc2a.faer_add(lij.faer_mul(x.read(i, k2)));
+                                acc3a = acc3a.faer_add(lij.faer_mul(x.read(i, k3)));
+                            }
+
+                            x.write(j, k0, x.read(j, k0).faer_scale_real(d).faer_sub(acc0a));
+                            x.write(j, k1, x.read(j, k1).faer_scale_real(d).faer_sub(acc1a));
+                            x.write(j, k2, x.read(j, k2).faer_scale_real(d).faer_sub(acc2a));
+                            x.write(j, k3, x.read(j, k3).faer_scale_real(d).faer_sub(acc3a));
                         }
                     }
                     _ => unreachable!(),

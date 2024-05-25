@@ -1352,8 +1352,6 @@ pub mod simplicial {
             let ld = SparseColMatRef::<'_, I, E>::new(self.symbolic().factor(), self.values());
             assert!(rhs.nrows() == n);
 
-            let slice_group = SliceGroup::<'_, E>::new;
-
             let mut x = rhs;
             triangular_solve::solve_unit_lower_triangular_in_place(
                 ld,
@@ -1361,16 +1359,7 @@ pub mod simplicial {
                 x.rb_mut(),
                 parallelism,
             );
-            for mut x in x.rb_mut().col_chunks_mut(1) {
-                for j in 0..n {
-                    let d_inv = slice_group(ld.values_of_col(j))
-                        .read(0)
-                        .faer_real()
-                        .faer_inv();
-                    x.write(j, 0, x.read(j, 0).faer_scale_real(d_inv));
-                }
-            }
-            triangular_solve::solve_unit_lower_triangular_transpose_in_place(
+            triangular_solve::ldlt_scale_solve_unit_lower_triangular_transpose_in_place(
                 ld,
                 conj.compose(Conj::Yes),
                 x.rb_mut(),

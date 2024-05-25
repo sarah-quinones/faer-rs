@@ -96,6 +96,10 @@ name = "meanvar"
 harness = false
 
 [[bench]]
+name = "sparse_solve"
+harness = false
+
+[[bench]]
 name = "bench"
 harness = false
 

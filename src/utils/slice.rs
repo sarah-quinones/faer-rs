@@ -466,7 +466,7 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     /// Returns the length of the slice.
     #[inline]
     pub fn len(&self) -> usize {
-        let mut len = usize::MAX;
+        let mut len = E::faer_first(self.into_inner()).len();
         E::faer_map(
             self.into_inner(),
             #[inline(always)]

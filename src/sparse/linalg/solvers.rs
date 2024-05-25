@@ -645,7 +645,7 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
     pub fn sp_solve_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
-        crate::sparse::linalg::triangular_solve::solve_upper_triangular_in_place(
+        crate::sparse::linalg::triangular_solve::solve_upper_triangular_transpose_in_place(
             self.transpose(),
             Conj::No,
             rhs.as_2d_mut(),
@@ -660,7 +660,7 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
     pub fn sp_solve_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
-        crate::sparse::linalg::triangular_solve::solve_lower_triangular_in_place(
+        crate::sparse::linalg::triangular_solve::solve_lower_triangular_transpose_in_place(
             self.transpose(),
             Conj::No,
             rhs.as_2d_mut(),
@@ -675,7 +675,7 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// the diagonal element is assumed to be the last stored element in each row.
     #[track_caller]
     pub fn sp_solve_unit_lower_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
-        crate::sparse::linalg::triangular_solve::solve_unit_upper_triangular_in_place(
+        crate::sparse::linalg::triangular_solve::solve_unit_upper_triangular_transpose_in_place(
             self.transpose(),
             Conj::No,
             rhs.as_2d_mut(),
@@ -690,7 +690,7 @@ impl<I: Index, E: ComplexField> SparseRowMatRef<'_, I, E> {
     /// the diagonal element is assumed to be the first stored element in each row.
     #[track_caller]
     pub fn sp_solve_unit_upper_triangular_in_place(&self, mut rhs: impl ColBatchMut<E>) {
-        crate::sparse::linalg::triangular_solve::solve_unit_lower_triangular_in_place(
+        crate::sparse::linalg::triangular_solve::solve_unit_lower_triangular_transpose_in_place(
             self.transpose(),
             Conj::No,
             rhs.as_2d_mut(),
