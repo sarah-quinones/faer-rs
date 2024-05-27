@@ -169,9 +169,9 @@ pub fn recommended_blocksize<E: Entity>(nrows: usize, ncols: usize) -> usize {
     } else if prod > 128 * 128 {
         32
     } else if prod > 32 * 32 {
-        16
-    } else if prod > 16 * 16 {
         8
+    } else if prod > 16 * 16 {
+        4
     } else {
         1
     })
