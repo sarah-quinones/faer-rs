@@ -14,6 +14,8 @@ use num_complex::Complex;
 use pulp::{Read, Write};
 use reborrow::*;
 
+// FIXME: reduce_add determinism
+
 /// Specifies how missing values should be handled in mean and variance computations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum NanHandling {

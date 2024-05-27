@@ -30,30 +30,30 @@ fn sum_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
         let x1 = x1.get();
         let x2 = x2.get();
         let x3 = x3.get();
-        acc0 = simd.add(acc0, x0);
-        acc1 = simd.add(acc1, x1);
-        acc2 = simd.add(acc2, x2);
-        acc3 = simd.add(acc3, x3);
+        acc1 = simd.add(acc1, x0);
+        acc2 = simd.add(acc2, x1);
+        acc3 = simd.add(acc3, x2);
+        acc0 = simd.add(acc0, x3);
     }
 
     match body1.len() {
         0 => {
-            acc0 = simd.add(acc0, tail.read_or(zero));
-        }
-        1 => {
-            acc0 = simd.add(acc0, body1.get(0).get());
             acc1 = simd.add(acc1, tail.read_or(zero));
         }
-        2 => {
-            acc0 = simd.add(acc0, body1.get(0).get());
-            acc1 = simd.add(acc1, body1.get(1).get());
+        1 => {
+            acc1 = simd.add(acc1, body1.get(0).get());
             acc2 = simd.add(acc2, tail.read_or(zero));
         }
-        3 => {
-            acc0 = simd.add(acc0, body1.get(0).get());
-            acc1 = simd.add(acc1, body1.get(1).get());
-            acc2 = simd.add(acc2, body1.get(2).get());
+        2 => {
+            acc1 = simd.add(acc1, body1.get(0).get());
+            acc2 = simd.add(acc2, body1.get(1).get());
             acc3 = simd.add(acc3, tail.read_or(zero));
+        }
+        3 => {
+            acc1 = simd.add(acc1, body1.get(0).get());
+            acc2 = simd.add(acc2, body1.get(1).get());
+            acc3 = simd.add(acc3, body1.get(2).get());
+            acc0 = simd.add(acc0, tail.read_or(zero));
         }
         _ => unreachable!(),
     }

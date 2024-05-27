@@ -1,4 +1,4 @@
-# [Unreleased]
+# 0.19
 - Implemented conjugate gradient, BiCGSTAB, and LSMR iterative solvers (currently gated by the `unstable` feature).
 - Implemented Hermitian matrix pseudoinverse implementation. Thanks @lishen_ for the contribution.
 - Implemented column and row mean and variance in `faer::stats`.
@@ -11,6 +11,7 @@
 - Simplified matrix constructors, adding a variant with a `_generic` prefix for the old behavior.
 - LDLT and Bunch-Kaufman decompositions now stores the diagonal blocks instead of their inverses. This helps avoid infinities and NaNs when dealing with singular matrices.
 - Integrated `nano-gemm` as a backend for small matrix multiplication.
+- Significant performance improvements for small LLT and LDLT decompositions.
 
 # 0.18
 - Refactored the project so that `faer` contains all the core and decomposition implementations. `faer-{core,cholesky,lu,qr,svd,evd,sparse}` are now deprecated and will no longer be updated.

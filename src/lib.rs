@@ -172,6 +172,31 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+macro_rules! __dbg {
+    ($E: ty, $(,)?) => {{
+            extern crate std as __std;
+            __std::eprintln!("[{}:{}:{}]", __std::file!(), __std::line!(), __std::column!())
+    }};
+    ($E: ty, $val:expr $(,)?) => {
+        match $val {
+            tmp => {{
+                extern crate std as __std;
+                E::faer_map(E::faer_as_ref(&tmp), |tmp| __std::eprintln!(
+                    __std::concat!("[{}:{}:{}] {} = {:#?}"),
+                    __std::file!(),
+                    __std::line!(),
+                    __std::column!(),
+                    __std::stringify!($val),
+                    &tmp,
+                ));
+                tmp
+            }}
+        }
+    };
+    ($E: ty, $($val:expr),+ $(,)?) => {
+        ($(__dbg!($E, $val)),+,)
+    };
+}
 use core::sync::atomic::AtomicUsize;
 use equator::{assert, debug_assert};
 

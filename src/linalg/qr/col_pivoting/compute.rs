@@ -80,67 +80,67 @@ fn update_and_norm2_simd_impl<'a, E: ComplexField, S: Simd>(
         .map(RefGroupMut::unzip)
         .zip(b_body8.into_ref_iter().map(RefGroup::unzip))
     {
-        acc0 = process(simd, a0, b0, k, acc0);
-        acc1 = process(simd, a1, b1, k, acc1);
-        acc2 = process(simd, a2, b2, k, acc2);
-        acc3 = process(simd, a3, b3, k, acc3);
-        acc4 = process(simd, a4, b4, k, acc4);
-        acc5 = process(simd, a5, b5, k, acc5);
-        acc6 = process(simd, a6, b6, k, acc6);
-        acc7 = process(simd, a7, b7, k, acc7);
+        acc1 = process(simd, a0, b0, k, acc1);
+        acc2 = process(simd, a1, b1, k, acc2);
+        acc3 = process(simd, a2, b2, k, acc3);
+        acc4 = process(simd, a3, b3, k, acc4);
+        acc5 = process(simd, a4, b4, k, acc5);
+        acc6 = process(simd, a5, b5, k, acc6);
+        acc7 = process(simd, a6, b6, k, acc7);
+        acc0 = process(simd, a7, b7, k, acc0);
     }
     match a_body1.len() {
         0 => {
-            acc0 = process(simd, a_tail, b_tail, k, acc0);
-        }
-        1 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
             acc1 = process(simd, a_tail, b_tail, k, acc1);
         }
-        2 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
+        1 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
             acc2 = process(simd, a_tail, b_tail, k, acc2);
         }
-        3 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
+        2 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
             acc3 = process(simd, a_tail, b_tail, k, acc3);
         }
-        4 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
+        3 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
             acc4 = process(simd, a_tail, b_tail, k, acc4);
         }
-        5 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
+        4 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
             acc5 = process(simd, a_tail, b_tail, k, acc5);
         }
-        6 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
+        5 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
             acc6 = process(simd, a_tail, b_tail, k, acc6);
         }
-        7 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
-            acc6 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc6);
+        6 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
             acc7 = process(simd, a_tail, b_tail, k, acc7);
+        }
+        7 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
+            acc7 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc7);
+            acc0 = process(simd, a_tail, b_tail, k, acc0);
         }
         _ => {
             unreachable!()
@@ -243,67 +243,67 @@ fn update_and_norm2_simd_impl_c32<'a, S: Simd>(
         .map(RefGroupMut::unzip)
         .zip(b_body8.into_ref_iter().map(RefGroup::unzip))
     {
-        acc0 = process(simd, a0, b0, k, acc0);
-        acc1 = process(simd, a1, b1, k, acc1);
-        acc2 = process(simd, a2, b2, k, acc2);
-        acc3 = process(simd, a3, b3, k, acc3);
-        acc4 = process(simd, a4, b4, k, acc4);
-        acc5 = process(simd, a5, b5, k, acc5);
-        acc6 = process(simd, a6, b6, k, acc6);
-        acc7 = process(simd, a7, b7, k, acc7);
+        acc1 = process(simd, a0, b0, k, acc1);
+        acc2 = process(simd, a1, b1, k, acc2);
+        acc3 = process(simd, a2, b2, k, acc3);
+        acc4 = process(simd, a3, b3, k, acc4);
+        acc5 = process(simd, a4, b4, k, acc5);
+        acc6 = process(simd, a5, b5, k, acc6);
+        acc7 = process(simd, a6, b6, k, acc7);
+        acc0 = process(simd, a7, b7, k, acc0);
     }
     match a_body1.len() {
         0 => {
-            acc0 = process(simd, a_tail, b_tail, k, acc0);
-        }
-        1 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
             acc1 = process(simd, a_tail, b_tail, k, acc1);
         }
-        2 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
+        1 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
             acc2 = process(simd, a_tail, b_tail, k, acc2);
         }
-        3 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
+        2 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
             acc3 = process(simd, a_tail, b_tail, k, acc3);
         }
-        4 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
+        3 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
             acc4 = process(simd, a_tail, b_tail, k, acc4);
         }
-        5 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
+        4 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
             acc5 = process(simd, a_tail, b_tail, k, acc5);
         }
-        6 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
+        5 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
             acc6 = process(simd, a_tail, b_tail, k, acc6);
         }
-        7 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
-            acc6 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc6);
+        6 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
             acc7 = process(simd, a_tail, b_tail, k, acc7);
+        }
+        7 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
+            acc7 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc7);
+            acc0 = process(simd, a_tail, b_tail, k, acc0);
         }
         _ => {
             unreachable!()
@@ -406,67 +406,67 @@ fn update_and_norm2_simd_impl_c64<'a, S: Simd>(
         .map(RefGroupMut::unzip)
         .zip(b_body8.into_ref_iter().map(RefGroup::unzip))
     {
-        acc0 = process(simd, a0, b0, k, acc0);
-        acc1 = process(simd, a1, b1, k, acc1);
-        acc2 = process(simd, a2, b2, k, acc2);
-        acc3 = process(simd, a3, b3, k, acc3);
-        acc4 = process(simd, a4, b4, k, acc4);
-        acc5 = process(simd, a5, b5, k, acc5);
-        acc6 = process(simd, a6, b6, k, acc6);
-        acc7 = process(simd, a7, b7, k, acc7);
+        acc1 = process(simd, a0, b0, k, acc1);
+        acc2 = process(simd, a1, b1, k, acc2);
+        acc3 = process(simd, a2, b2, k, acc3);
+        acc4 = process(simd, a3, b3, k, acc4);
+        acc5 = process(simd, a4, b4, k, acc5);
+        acc6 = process(simd, a5, b5, k, acc6);
+        acc7 = process(simd, a6, b6, k, acc7);
+        acc0 = process(simd, a7, b7, k, acc0);
     }
     match a_body1.len() {
         0 => {
-            acc0 = process(simd, a_tail, b_tail, k, acc0);
-        }
-        1 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
             acc1 = process(simd, a_tail, b_tail, k, acc1);
         }
-        2 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
+        1 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
             acc2 = process(simd, a_tail, b_tail, k, acc2);
         }
-        3 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
+        2 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
             acc3 = process(simd, a_tail, b_tail, k, acc3);
         }
-        4 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
+        3 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
             acc4 = process(simd, a_tail, b_tail, k, acc4);
         }
-        5 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
+        4 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
             acc5 = process(simd, a_tail, b_tail, k, acc5);
         }
-        6 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
+        5 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
             acc6 = process(simd, a_tail, b_tail, k, acc6);
         }
-        7 => {
-            acc0 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc0);
-            acc1 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc1);
-            acc2 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc2);
-            acc3 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc3);
-            acc4 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc4);
-            acc5 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc5);
-            acc6 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc6);
+        6 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
             acc7 = process(simd, a_tail, b_tail, k, acc7);
+        }
+        7 => {
+            acc1 = process(simd, a_body1.rb_mut().get_mut(0), b_body1.get(0), k, acc1);
+            acc2 = process(simd, a_body1.rb_mut().get_mut(1), b_body1.get(1), k, acc2);
+            acc3 = process(simd, a_body1.rb_mut().get_mut(2), b_body1.get(2), k, acc3);
+            acc4 = process(simd, a_body1.rb_mut().get_mut(3), b_body1.get(3), k, acc4);
+            acc5 = process(simd, a_body1.rb_mut().get_mut(4), b_body1.get(4), k, acc5);
+            acc6 = process(simd, a_body1.rb_mut().get_mut(5), b_body1.get(5), k, acc6);
+            acc7 = process(simd, a_body1.rb_mut().get_mut(6), b_body1.get(6), k, acc7);
+            acc0 = process(simd, a_tail, b_tail, k, acc0);
         }
         _ => {
             unreachable!()

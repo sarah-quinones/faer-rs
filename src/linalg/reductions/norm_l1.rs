@@ -30,30 +30,30 @@ fn norm_l1_with_simd_and_offset_prologue<E: RealField, S: pulp::Simd>(
         let x1 = simd.abs(x1.get());
         let x2 = simd.abs(x2.get());
         let x3 = simd.abs(x3.get());
-        acc0 = simd.add(x0, acc0);
-        acc1 = simd.add(x1, acc1);
-        acc2 = simd.add(x2, acc2);
-        acc3 = simd.add(x3, acc3);
+        acc1 = simd.add(x0, acc1);
+        acc2 = simd.add(x1, acc2);
+        acc3 = simd.add(x2, acc3);
+        acc0 = simd.add(x3, acc0);
     }
 
     match body1.len() {
         0 => {
-            acc0 = simd.add(simd.abs(tail.read_or(zero)), acc0);
-        }
-        1 => {
-            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
             acc1 = simd.add(simd.abs(tail.read_or(zero)), acc1);
         }
-        2 => {
-            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
-            acc1 = simd.add(simd.abs(body1.get(1).get()), acc1);
+        1 => {
+            acc1 = simd.add(simd.abs(body1.get(0).get()), acc1);
             acc2 = simd.add(simd.abs(tail.read_or(zero)), acc2);
         }
-        3 => {
-            acc0 = simd.add(simd.abs(body1.get(0).get()), acc0);
-            acc1 = simd.add(simd.abs(body1.get(1).get()), acc1);
-            acc2 = simd.add(simd.abs(body1.get(2).get()), acc2);
+        2 => {
+            acc1 = simd.add(simd.abs(body1.get(0).get()), acc1);
+            acc2 = simd.add(simd.abs(body1.get(1).get()), acc2);
             acc3 = simd.add(simd.abs(tail.read_or(zero)), acc3);
+        }
+        3 => {
+            acc1 = simd.add(simd.abs(body1.get(0).get()), acc1);
+            acc2 = simd.add(simd.abs(body1.get(1).get()), acc2);
+            acc3 = simd.add(simd.abs(body1.get(2).get()), acc3);
+            acc0 = simd.add(simd.abs(tail.read_or(zero)), acc0);
         }
         _ => unreachable!(),
     }

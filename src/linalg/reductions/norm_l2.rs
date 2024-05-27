@@ -39,29 +39,29 @@ fn norm_l2_with_simd_and_offset_prologue<E: ComplexField, S: pulp::Simd>(
     for [x0, x1] in body2.into_ref_iter().map(RefGroup::unzip) {
         let x0 = x0.get();
         let x1 = x1.get();
-        acc0 = simd.abs2_add_e(x0, acc0);
-        acc1 = simd.abs2_add_e(x1, acc1);
+        acc1 = simd.abs2_add_e(x0, acc1);
+        acc0 = simd.abs2_add_e(x1, acc0);
 
-        acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, x0), acc_small0);
-        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, x1), acc_small1);
+        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, x0), acc_small1);
+        acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, x1), acc_small0);
 
-        acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, x0), acc_big0);
-        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, x1), acc_big1);
+        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, x0), acc_big1);
+        acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, x1), acc_big0);
     }
 
     if body1.len() == 1 {
         let x0 = body1.get(0).get();
-        acc0 = simd.abs2_add_e(x0, acc0);
-        acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, x0), acc_small0);
-        acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, x0), acc_big0);
+        acc1 = simd.abs2_add_e(x0, acc1);
+        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, x0), acc_small1);
+        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, x0), acc_big1);
 
-        acc1 = simd.abs2_add_e(tail.read_or(zero), acc1);
-        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small1);
-        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big1);
-    } else {
         acc0 = simd.abs2_add_e(tail.read_or(zero), acc0);
         acc_small0 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small0);
         acc_big0 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big0);
+    } else {
+        acc1 = simd.abs2_add_e(tail.read_or(zero), acc1);
+        acc_small1 = simd.abs2_add_e(simd.scale_real(half_small, tail.read_or(zero)), acc_small1);
+        acc_big1 = simd.abs2_add_e(simd.scale_real(half_big, tail.read_or(zero)), acc_big1);
     }
 
     acc0 = simd_real.add(acc0, acc1);

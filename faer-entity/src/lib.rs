@@ -754,7 +754,7 @@ pub trait RealField:
 impl ComplexField for f32 {
     type Real = Self;
     type Simd = pulp::Arch;
-    type ScalarSimd = pulp::ScalarArch;
+    type ScalarSimd = NoSimd;
     type PortableSimd = pulp::Arch;
 
     #[inline(always)]
@@ -1083,7 +1083,7 @@ impl ComplexField for f32 {
 impl ComplexField for f64 {
     type Real = Self;
     type Simd = pulp::Arch;
-    type ScalarSimd = pulp::ScalarArch;
+    type ScalarSimd = NoSimd;
     type PortableSimd = pulp::Arch;
 
     #[inline(always)]

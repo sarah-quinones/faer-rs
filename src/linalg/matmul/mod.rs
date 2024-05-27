@@ -68,14 +68,34 @@ pub mod inner_prod {
             a_body2.into_ref_iter().map(RefGroup::unzip),
             b_body2.into_ref_iter().map(RefGroup::unzip),
         ) {
-            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
             acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
+            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
         }
-        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
-            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
+        match a_body1.len() {
+            0 => {
+                acc1 = simd.conditional_conj_mul_add_e(
+                    conj,
+                    a_tail.read_or(zero),
+                    b_tail.read_or(zero),
+                    acc1,
+                );
+            }
+            1 => {
+                acc1 = simd.conditional_conj_mul_add_e(
+                    conj,
+                    a_body1.get_unchecked(0).get(),
+                    b_body1.get_unchecked(0).get(),
+                    acc1,
+                );
+                acc0 = simd.conditional_conj_mul_add_e(
+                    conj,
+                    a_tail.read_or(zero),
+                    b_tail.read_or(zero),
+                    acc0,
+                );
+            }
+            _ => unreachable!(),
         }
-        acc0 =
-            simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0);
         simd.add(acc0, acc1)
     }
 
@@ -101,17 +121,86 @@ pub mod inner_prod {
             a_body4.into_ref_iter().map(RefGroup::unzip),
             b_body4.into_ref_iter().map(RefGroup::unzip),
         ) {
-            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
-            acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
-            acc2 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc2);
-            acc3 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc3);
+            acc1 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc1);
+            acc2 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc2);
+            acc3 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc3);
+            acc0 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc0);
         }
-        for (a, b) in zip(a_body1.into_ref_iter(), b_body1.into_ref_iter()) {
-            acc0 = simd.conditional_conj_mul_add_e(conj, a.read_or(zero), b.read_or(zero), acc0);
+        unsafe {
+            match a_body1.len() {
+                0 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc1,
+                    );
+                }
+                1 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(0).get(),
+                        b_body1.get_unchecked(0).get(),
+                        acc1,
+                    );
+                    acc2 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc2,
+                    );
+                }
+                2 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(0).get(),
+                        b_body1.get_unchecked(0).get(),
+                        acc1,
+                    );
+                    acc2 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
+                        acc2,
+                    );
+                    acc3 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc3,
+                    );
+                }
+                3 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(0).get(),
+                        b_body1.get_unchecked(0).get(),
+                        acc1,
+                    );
+                    acc2 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
+                        acc2,
+                    );
+                    acc3 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
+                        acc3,
+                    );
+                    acc0 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc0,
+                    );
+                }
+
+                _ => unreachable!(),
+            }
         }
-        acc0 =
-            simd.conditional_conj_mul_add_e(conj, a_tail.read_or(zero), b_tail.read_or(zero), acc0);
-        simd.add(simd.add(acc0, acc1), simd.add(acc2, acc3))
+        simd.add(simd.add(acc0, acc2), simd.add(acc1, acc3))
     }
 
     #[inline(always)]
@@ -140,50 +229,30 @@ pub mod inner_prod {
             a_body8.into_ref_iter().map(RefGroup::unzip),
             b_body8.into_ref_iter().map(RefGroup::unzip),
         ) {
-            acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
-            acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
-            acc2 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc2);
-            acc3 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc3);
-            acc4 = simd.conditional_conj_mul_add_e(conj, a4.read_or(zero), b4.read_or(zero), acc4);
-            acc5 = simd.conditional_conj_mul_add_e(conj, a5.read_or(zero), b5.read_or(zero), acc5);
-            acc6 = simd.conditional_conj_mul_add_e(conj, a6.read_or(zero), b6.read_or(zero), acc6);
-            acc7 = simd.conditional_conj_mul_add_e(conj, a7.read_or(zero), b7.read_or(zero), acc7);
+            acc1 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc1);
+            acc2 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc2);
+            acc3 = simd.conditional_conj_mul_add_e(conj, a2.read_or(zero), b2.read_or(zero), acc3);
+            acc4 = simd.conditional_conj_mul_add_e(conj, a3.read_or(zero), b3.read_or(zero), acc4);
+            acc5 = simd.conditional_conj_mul_add_e(conj, a4.read_or(zero), b4.read_or(zero), acc5);
+            acc6 = simd.conditional_conj_mul_add_e(conj, a5.read_or(zero), b5.read_or(zero), acc6);
+            acc7 = simd.conditional_conj_mul_add_e(conj, a6.read_or(zero), b6.read_or(zero), acc7);
+            acc0 = simd.conditional_conj_mul_add_e(conj, a7.read_or(zero), b7.read_or(zero), acc0);
         }
         unsafe {
             match a_body1.len() {
                 0 => {
-                    acc7 = simd.conditional_conj_mul_add_e(
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_tail.read_or(zero),
                         b_tail.read_or(zero),
-                        acc7,
+                        acc1,
                     );
                 }
                 1 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_tail.read_or(zero),
-                        b_tail.read_or(zero),
-                        acc1,
-                    );
-                }
-                2 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(0).get(),
-                        b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
@@ -193,23 +262,17 @@ pub mod inner_prod {
                         acc2,
                     );
                 }
-                3 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                2 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(2).get(),
-                        b_body1.get_unchecked(2).get(),
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
                         acc2,
                     );
                     acc3 = simd.conditional_conj_mul_add_e(
@@ -219,29 +282,23 @@ pub mod inner_prod {
                         acc3,
                     );
                 }
-                4 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                3 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(2).get(),
-                        b_body1.get_unchecked(2).get(),
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
                         acc2,
                     );
                     acc3 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(3).get(),
-                        b_body1.get_unchecked(3).get(),
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
                         acc3,
                     );
                     acc4 = simd.conditional_conj_mul_add_e(
@@ -251,35 +308,29 @@ pub mod inner_prod {
                         acc4,
                     );
                 }
-                5 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                4 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(2).get(),
-                        b_body1.get_unchecked(2).get(),
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
                         acc2,
                     );
                     acc3 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(3).get(),
-                        b_body1.get_unchecked(3).get(),
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
                         acc3,
                     );
                     acc4 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(4).get(),
-                        b_body1.get_unchecked(4).get(),
+                        a_body1.get_unchecked(3).get(),
+                        b_body1.get_unchecked(3).get(),
                         acc4,
                     );
                     acc5 = simd.conditional_conj_mul_add_e(
@@ -289,41 +340,35 @@ pub mod inner_prod {
                         acc5,
                     );
                 }
-                6 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                5 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(2).get(),
-                        b_body1.get_unchecked(2).get(),
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
                         acc2,
                     );
                     acc3 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(3).get(),
-                        b_body1.get_unchecked(3).get(),
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
                         acc3,
                     );
                     acc4 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(4).get(),
-                        b_body1.get_unchecked(4).get(),
+                        a_body1.get_unchecked(3).get(),
+                        b_body1.get_unchecked(3).get(),
                         acc4,
                     );
                     acc5 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(5).get(),
-                        b_body1.get_unchecked(5).get(),
+                        a_body1.get_unchecked(4).get(),
+                        b_body1.get_unchecked(4).get(),
                         acc5,
                     );
                     acc6 = simd.conditional_conj_mul_add_e(
@@ -333,47 +378,41 @@ pub mod inner_prod {
                         acc6,
                     );
                 }
-                7 => {
-                    acc0 = simd.conditional_conj_mul_add_e(
+                6 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
                         conj,
                         a_body1.get_unchecked(0).get(),
                         b_body1.get_unchecked(0).get(),
-                        acc0,
-                    );
-                    acc1 = simd.conditional_conj_mul_add_e(
-                        conj,
-                        a_body1.get_unchecked(1).get(),
-                        b_body1.get_unchecked(1).get(),
                         acc1,
                     );
                     acc2 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(2).get(),
-                        b_body1.get_unchecked(2).get(),
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
                         acc2,
                     );
                     acc3 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(3).get(),
-                        b_body1.get_unchecked(3).get(),
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
                         acc3,
                     );
                     acc4 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(4).get(),
-                        b_body1.get_unchecked(4).get(),
+                        a_body1.get_unchecked(3).get(),
+                        b_body1.get_unchecked(3).get(),
                         acc4,
                     );
                     acc5 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(5).get(),
-                        b_body1.get_unchecked(5).get(),
+                        a_body1.get_unchecked(4).get(),
+                        b_body1.get_unchecked(4).get(),
                         acc5,
                     );
                     acc6 = simd.conditional_conj_mul_add_e(
                         conj,
-                        a_body1.get_unchecked(6).get(),
-                        b_body1.get_unchecked(6).get(),
+                        a_body1.get_unchecked(5).get(),
+                        b_body1.get_unchecked(5).get(),
                         acc6,
                     );
                     acc7 = simd.conditional_conj_mul_add_e(
@@ -381,11 +420,72 @@ pub mod inner_prod {
                         a_tail.read_or(zero),
                         b_tail.read_or(zero),
                         acc7,
+                    );
+                }
+                7 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(0).get(),
+                        b_body1.get_unchecked(0).get(),
+                        acc1,
+                    );
+                    acc2 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(1).get(),
+                        b_body1.get_unchecked(1).get(),
+                        acc2,
+                    );
+                    acc3 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(2).get(),
+                        b_body1.get_unchecked(2).get(),
+                        acc3,
+                    );
+                    acc4 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(3).get(),
+                        b_body1.get_unchecked(3).get(),
+                        acc4,
+                    );
+                    acc5 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(4).get(),
+                        b_body1.get_unchecked(4).get(),
+                        acc5,
+                    );
+                    acc6 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(5).get(),
+                        b_body1.get_unchecked(5).get(),
+                        acc6,
+                    );
+                    acc7 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(6).get(),
+                        b_body1.get_unchecked(6).get(),
+                        acc7,
+                    );
+                    acc0 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc0,
                     );
                 }
                 _ => unreachable!(),
             }
         }
+
+        __dbg!(
+            E,
+            from_copy::<E, _>(simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6))),
+            from_copy::<E, _>(simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7))),
+            from_copy::<E, _>(simd.add(
+                simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6)),
+                simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7)),
+            ))
+        );
+
         simd.add(
             simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6)),
             simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7)),
@@ -2741,6 +2841,35 @@ mod tests {
 
                         run_test_problem(m, n, k, dst, lhs, rhs);
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_dot_determinism() {
+        use rand::prelude::*;
+        for n in 0..1000 {
+            for seed in 0..100 {
+                let rng = &mut StdRng::seed_from_u64(seed);
+                let mut vector_1 = aligned_vec::avec![];
+                let mut vector_2 = aligned_vec::avec![];
+                for _ in 0..n {
+                    vector_1.push(rng.gen());
+                    vector_2.push(rng.gen());
+                }
+
+                let dot = crate::col::from_slice(&vector_1).transpose()
+                    * crate::col::from_slice(&vector_2);
+
+                for i in 0..16 {
+                    dbg!(seed, n, i);
+                    vector_1.insert(0, 0.0);
+                    vector_2.insert(0, 0.0);
+
+                    let dot_offset = crate::col::from_slice(&vector_1[i..]).transpose()
+                        * crate::col::from_slice(&vector_2[i..]);
+                    equator::assert!(dot == dot_offset);
                 }
             }
         }
