@@ -478,16 +478,6 @@ pub mod inner_prod {
             }
         }
 
-        __dbg!(
-            E,
-            from_copy::<E, _>(simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6))),
-            from_copy::<E, _>(simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7))),
-            from_copy::<E, _>(simd.add(
-                simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6)),
-                simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7)),
-            ))
-        );
-
         simd.add(
             simd.add(simd.add(acc0, acc4), simd.add(acc2, acc6)),
             simd.add(simd.add(acc1, acc5), simd.add(acc3, acc7)),
