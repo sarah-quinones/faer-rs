@@ -71,30 +71,32 @@ pub mod inner_prod {
             acc1 = simd.conditional_conj_mul_add_e(conj, a1.read_or(zero), b1.read_or(zero), acc1);
             acc0 = simd.conditional_conj_mul_add_e(conj, a0.read_or(zero), b0.read_or(zero), acc0);
         }
-        match a_body1.len() {
-            0 => {
-                acc1 = simd.conditional_conj_mul_add_e(
-                    conj,
-                    a_tail.read_or(zero),
-                    b_tail.read_or(zero),
-                    acc1,
-                );
+        unsafe {
+            match a_body1.len() {
+                0 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc1,
+                    );
+                }
+                1 => {
+                    acc1 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_body1.get_unchecked(0).get(),
+                        b_body1.get_unchecked(0).get(),
+                        acc1,
+                    );
+                    acc0 = simd.conditional_conj_mul_add_e(
+                        conj,
+                        a_tail.read_or(zero),
+                        b_tail.read_or(zero),
+                        acc0,
+                    );
+                }
+                _ => unreachable!(),
             }
-            1 => {
-                acc1 = simd.conditional_conj_mul_add_e(
-                    conj,
-                    a_body1.get_unchecked(0).get(),
-                    b_body1.get_unchecked(0).get(),
-                    acc1,
-                );
-                acc0 = simd.conditional_conj_mul_add_e(
-                    conj,
-                    a_tail.read_or(zero),
-                    b_tail.read_or(zero),
-                    acc0,
-                );
-            }
-            _ => unreachable!(),
         }
         simd.add(acc0, acc1)
     }
