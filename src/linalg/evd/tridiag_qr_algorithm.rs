@@ -49,7 +49,7 @@ pub fn compute_tridiag_real_evd_qr_algorithm<E: RealField>(
             if (offdiag[i].faer_abs() < consider_zero_threshold)
                 || (offdiag[i].faer_abs()
                     <= epsilon.faer_mul(
-                        E::faer_add(diag[i].faer_abs(), diag[i + 1].faer_abs()).faer_sqrt(),
+                        E::faer_mul(diag[i].faer_abs(), diag[i + 1].faer_abs()).faer_sqrt(),
                     ))
             {
                 offdiag[i] = E::faer_zero();
