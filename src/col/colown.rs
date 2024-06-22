@@ -7,10 +7,7 @@ use crate::{
     row::{RowMut, RowRef},
     utils::DivCeil,
 };
-use core::{
-    mem::{ManuallyDrop, MaybeUninit},
-    ops::{IndexMut, Mul},
-};
+use core::mem::{ManuallyDrop, MaybeUninit};
 
 /// Heap allocated resizable column vector.
 ///
@@ -1151,55 +1148,3 @@ impl<E: Conjugate> ColBatch<E> for Col<E> {
 }
 
 impl<E: Conjugate> ColBatchMut<E> for Col<E> {}
-
-impl Mul<f32> for Col<f32> {
-    type Output = Self;
-
-    #[inline]
-    fn mul(mut self, scalar: f32) -> Self {
-        for i in 0..self.inner.len {
-            (*self.index_mut(i)) *= scalar;
-        }
-
-        self
-    }
-}
-
-impl Mul<Col<f32>> for f32 {
-    type Output = Col<f32>;
-
-    #[inline]
-    fn mul(self, mut vector: Col<f32>) -> Col<f32> {
-        for i in 0..vector.inner.len {
-            (*vector.index_mut(i)) *= self;
-        }
-
-        vector
-    }
-}
-
-impl Mul<f64> for Col<f64> {
-    type Output = Self;
-
-    #[inline]
-    fn mul(mut self, scalar: f64) -> Self {
-        for i in 0..self.inner.len {
-            (*self.index_mut(i)) *= scalar;
-        }
-
-        self
-    }
-}
-
-impl Mul<Col<f64>> for f64 {
-    type Output = Col<f64>;
-
-    #[inline]
-    fn mul(self, mut vector: Col<f64>) -> Col<f64> {
-        for i in 0..vector.inner.len {
-            (*vector.index_mut(i)) *= self;
-        }
-
-        vector
-    }
-}
