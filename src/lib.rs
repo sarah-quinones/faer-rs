@@ -295,8 +295,8 @@ pub mod mat;
 pub mod perm;
 /// Row vector type.
 pub mod row;
-/// Scalar multiplication impls.
-pub mod scalar_mul;
+/// Scalar operations impls.
+pub mod scalar_ops;
 /// Sparse data structures and algorithms.
 pub mod sparse;
 
