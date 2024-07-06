@@ -41,9 +41,7 @@ unsafe impl GlobalAlloc for Allocator {
 
 #[panic_handler]
 fn panic(panic_info: &core::panic::PanicInfo) -> ! {
-    if let Some(message) = panic_info.message() {
-        libc_print::libc_eprintln!("{message}");
-    }
+    libc_print::libc_eprintln!("{}", panic_info);
 
     unsafe { libc::exit(1) };
 }
