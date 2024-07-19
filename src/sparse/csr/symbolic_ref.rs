@@ -90,7 +90,7 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
         for &[c, c_next] in windows2(row_ptrs) {
             assert!(c <= c_next);
         }
-        assert!(row_ptrs[ncols].zx() <= col_indices.len());
+        assert!(row_ptrs[nrows].zx() <= col_indices.len());
 
         if let Some(nnz_per_row) = nnz_per_row {
             for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
@@ -153,7 +153,7 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
         for &[c, c_next] in windows2(row_ptrs) {
             assert!(c <= c_next);
         }
-        assert!(row_ptrs[ncols].zx() <= col_indices.len());
+        assert!(row_ptrs[nrows].zx() <= col_indices.len());
 
         if let Some(nnz_per_row) = nnz_per_row {
             for (&nnz_i, &[c, c_next]) in zip(nnz_per_row, windows2(row_ptrs)) {
@@ -164,7 +164,7 @@ impl<'a, I: Index> SymbolicSparseRowMatRef<'a, I> {
             }
         } else {
             let c0 = row_ptrs[0].zx();
-            let cn = row_ptrs[ncols].zx();
+            let cn = row_ptrs[nrows].zx();
             for &j in &col_indices[c0..cn] {
                 assert!(j < I::truncate(ncols));
             }

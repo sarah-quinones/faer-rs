@@ -343,3 +343,30 @@ impl<I: Index> SymbolicSparseRowMat<I> {
         .map(|(m, o)| (m.into_transpose(), o))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_symbolic_sparse_row_mat_new_checked() {
+        let nrows = 4;
+        let ncols = 10;
+        let row_ptrs = vec![0_u32, 4, 6, 6, 8];
+        let col_indices = vec![0_u32, 1, 3, 5, 0, 3, 4, 5];
+        let new_checked =
+            SymbolicSparseRowMat::new_checked(nrows, ncols, row_ptrs, None, col_indices);
+        assert_eq!(new_checked.nrows, 4);
+    }
+
+    #[test]
+    fn test_symbolic_sparse_row_mat_new_unsorted_checked() {
+        let nrows = 4;
+        let ncols = 10;
+        let row_ptrs = vec![0_u32, 4, 6, 6, 8];
+        let col_indices = vec![0_u32, 1, 3, 5, 0, 3, 4, 5];
+        let new_checked =
+            SymbolicSparseRowMat::new_unsorted_checked(nrows, ncols, row_ptrs, None, col_indices);
+        assert_eq!(new_checked.nrows, 4);
+    }
+}
