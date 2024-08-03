@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(alloc_error_handler)]
-#![feature(panic_info_message)]
 #![feature(lang_items)]
 
 use core::alloc::{GlobalAlloc, Layout};
@@ -41,10 +40,8 @@ unsafe impl GlobalAlloc for Allocator {
 
 #[panic_handler]
 fn panic(panic_info: &core::panic::PanicInfo) -> ! {
-    if let Some(message) = panic_info.message() {
-        libc_print::libc_eprintln!("{message}");
-    }
-
+    let message = panic_info.message();
+    libc_print::libc_eprintln!("{message}");
     unsafe { libc::exit(1) };
 }
 
