@@ -18,7 +18,7 @@ paste = "1.0.14"
 reborrow = "0.5.5"
 
 dyn-stack = { version = "0.10.0", default-features = false }
-equator = "0.2.2"
+equator = "0.3.2"
 faer-entity = { version ="0.19.0", default-features = false, path = "./faer-entity" }
 
 gemm = { version = "0.18.0", default-features = false }
