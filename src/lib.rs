@@ -295,8 +295,6 @@ pub mod mat;
 pub mod perm;
 /// Row vector type.
 pub mod row;
-/// Scalar operations impls.
-pub mod scalar_ops;
 /// Sparse data structures and algorithms.
 pub mod sparse;
 
@@ -1154,6 +1152,9 @@ pub mod modules {
 }
 
 #[cfg(test)]
+pub(crate) use tests::ApproxEq;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::assert;
@@ -1572,15 +1573,15 @@ mod tests {
     fn test_col_slice() {
         let mut matrix = mat![[1.0, 5.0, 9.0], [2.0, 6.0, 10.0], [3.0, 7.0, 11.0f64]];
 
-        assert_eq!(matrix.col_as_slice(1), &[5.0, 6.0, 7.0]);
-        assert_eq!(matrix.col_as_slice_mut(0), &[1.0, 2.0, 3.0]);
+        assert!(matrix.col_as_slice(1) == &[5.0, 6.0, 7.0]);
+        assert!(matrix.col_as_slice_mut(0) == &[1.0, 2.0, 3.0]);
 
         matrix
             .col_as_slice_mut(0)
             .copy_from_slice(&[-1.0, -2.0, -3.0]);
 
         let expected = mat![[-1.0, 5.0, 9.0], [-2.0, 6.0, 10.0], [-3.0, 7.0, 11.0f64]];
-        assert_eq!(matrix, expected);
+        assert!(matrix == expected);
     }
 
     #[test]
@@ -1671,25 +1672,118 @@ mod tests {
     fn test_col_index() {
         let mut col_32: Col<f32> = Col::from_fn(3, |i| i as f32);
         col_32.as_mut()[1] = 10f32;
-        let tval: f32 = (10f32 - col_32[1]).abs();
-        assert!(tval < 1e-14);
+        assert!(col_32[1] == 10f32);
 
         let mut col_64: Col<f64> = Col::from_fn(3, |i| i as f64);
         col_64.as_mut()[1] = 10f64;
-        let tval: f64 = (10f64 - col_64[1]).abs();
-        assert!(tval < 1e-14);
+        assert!(col_64[1] == 10f64);
     }
 
     #[test]
     fn test_row_index() {
         let mut row_32: Row<f32> = Row::from_fn(3, |i| i as f32);
         row_32.as_mut()[1] = 10f32;
-        let tval: f32 = (10f32 - row_32[1]).abs();
-        assert!(tval < 1e-14);
+        assert!(row_32[1] == 10f32);
 
         let mut row_64: Row<f64> = Row::from_fn(3, |i| i as f64);
         row_64.as_mut()[1] = 10f64;
-        let tval: f64 = (10f64 - row_64[1]).abs();
-        assert!(tval < 1e-14);
+        assert!(row_64[1] == 10f64);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_approx_eq() {
+        let approx_eq = ApproxEq {
+            abs_tol: 1e-6,
+            rel_tol: 1e-6,
+        };
+
+        assert!(1.0 ~ 2.0);
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct ApproxEq<E> {
+        pub abs_tol: E,
+        pub rel_tol: E,
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub struct ApproxEqError;
+
+    impl<E: RealField> ApproxEq<E> {
+        pub fn eps() -> Self {
+            Self {
+                abs_tol: E::faer_epsilon() * E::faer_from_f64(128.0),
+                rel_tol: E::faer_epsilon() * E::faer_from_f64(128.0),
+            }
+        }
+    }
+
+    impl<R: RealField, E: ComplexField<Real = R>> equator::CmpDisplay<ApproxEq<R>, E, E>
+        for ApproxEqError
+    {
+        fn fmt(
+            &self,
+            cmp: &ApproxEq<R>,
+            lhs: &E,
+            lhs_source: &str,
+            _: &dyn core::fmt::Debug,
+            rhs: &E,
+            rhs_source: &str,
+            _: &dyn core::fmt::Debug,
+            f: &mut core::fmt::Formatter,
+        ) -> core::fmt::Result {
+            use coe::Coerce;
+            if coe::is_same::<E, f64>() {
+                let ApproxEq { abs_tol, rel_tol }: ApproxEq<f64> = *cmp.coerce();
+                writeln!(
+                    f,
+                    "Assertion failed: {lhs_source} ~ {rhs_source}\nwith absolute tolerance = {abs_tol:.1e}\nwith relative tolerance = {rel_tol:.1e}"
+                )?;
+            } else if coe::is_same::<E, f32>() {
+                let ApproxEq { abs_tol, rel_tol }: ApproxEq<f32> = *cmp.coerce();
+                writeln!(
+                    f,
+                    "Assertion failed: {lhs_source} ~ {rhs_source}\nwith absolute tolerance = {abs_tol:.1e}\nwith relative tolerance = {rel_tol:.1e}"
+                )?;
+            } else {
+                let ApproxEq { abs_tol, rel_tol } = *cmp;
+                writeln!(
+                    f,
+                    "Assertion failed: {lhs_source} ~ {rhs_source}\nwith absolute tolerance = {abs_tol:?}\nwith relative tolerance = {rel_tol:?}"
+                )?;
+            }
+
+            let distance = (*lhs - *rhs).faer_abs();
+
+            write!(f, "- {lhs_source} = {lhs:?}\n")?;
+            write!(f, "- {rhs_source} = {rhs:?}\n")?;
+            write!(f, "- distance = {distance:?}")
+        }
+    }
+
+    impl<R: RealField, E: ComplexField<Real = R>> equator::CmpError<ApproxEq<R>, E, E> for ApproxEq<R> {
+        type Error = ApproxEqError;
+    }
+
+    impl<R: RealField, E: ComplexField<Real = R>> equator::Cmp<E, E> for ApproxEq<R> {
+        fn test(&self, &lhs: &E, &rhs: &E) -> Result<(), ApproxEqError> {
+            let Self { abs_tol, rel_tol } = *self;
+            assert!(abs_tol >= R::faer_zero());
+            assert!(rel_tol >= R::faer_zero());
+
+            let diff = (lhs - rhs).faer_abs();
+            let lhs = lhs.faer_abs();
+            let rhs = lhs.faer_abs();
+            let max = if lhs > rhs { lhs } else { rhs };
+
+            if (max == R::faer_zero() && diff <= abs_tol)
+                || (diff <= abs_tol || diff <= rel_tol * max)
+            {
+                Ok(())
+            } else {
+                Err(ApproxEqError)
+            }
+        }
     }
 }

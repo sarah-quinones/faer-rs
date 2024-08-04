@@ -2847,8 +2847,8 @@ mod tests {
                 let mut vector_1 = aligned_vec::avec![];
                 let mut vector_2 = aligned_vec::avec![];
                 for _ in 0..n {
-                    vector_1.push(rng.gen());
-                    vector_2.push(rng.gen());
+                    vector_1.push(rng.gen::<f64>());
+                    vector_2.push(rng.gen::<f64>());
                 }
 
                 let dot = crate::col::from_slice(&vector_1).transpose()

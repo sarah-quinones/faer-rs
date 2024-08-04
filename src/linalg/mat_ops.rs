@@ -1,7 +1,7 @@
 use crate::{assert, col::*, diag::*, mat::*, perm::*, row::*, sparse::*, *};
 use faer_entity::*;
 
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 macro_rules! impl_partial_eq {
     ($lhs: ty, $rhs: ty) => {
@@ -141,12 +141,192 @@ macro_rules! impl_mul_scalar {
     };
 }
 
+macro_rules! impl_div_scalar {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
+            Div<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(Scale(other.0.canonicalize().faer_inv()))
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_primitive {
+    ($rhs: ty, $out: ty) => {
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f64 {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                Scale(E::faer_from_f64(self)).mul(other)
+            }
+        }
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f32 {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                Scale(E::faer_from_f64(self as f64)).mul(other)
+            }
+        }
+
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f64> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: f64) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other)))
+            }
+        }
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f32> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: f32) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other as f64)))
+            }
+        }
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f64> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: f64) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other.recip())))
+            }
+        }
+        impl<E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f32> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: f32) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other.recip() as f64)))
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_assign_primitive {
+    ($lhs: ty) => {
+        impl<LhsE: ComplexField> MulAssign<f64> for $lhs {
+            #[track_caller]
+            fn mul_assign(&mut self, other: f64) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other)))
+            }
+        }
+        impl<LhsE: ComplexField> MulAssign<f32> for $lhs {
+            #[track_caller]
+            fn mul_assign(&mut self, other: f32) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other as f64)))
+            }
+        }
+        impl<LhsE: ComplexField> DivAssign<f64> for $lhs {
+            #[track_caller]
+            fn div_assign(&mut self, other: f64) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other.recip())))
+            }
+        }
+        impl<LhsE: ComplexField> DivAssign<f32> for $lhs {
+            #[track_caller]
+            fn div_assign(&mut self, other: f32) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other.recip() as f64)))
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_primitive_sparse {
+    ($rhs: ty, $out: ty) => {
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f64 {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                Scale(E::faer_from_f64(self)).mul(other)
+            }
+        }
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<$rhs> for f32 {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: $rhs) -> Self::Output {
+                Scale(E::faer_from_f64(self as f64)).mul(other)
+            }
+        }
+
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f64> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: f64) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other)))
+            }
+        }
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Mul<f32> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn mul(self, other: f32) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other as f64)))
+            }
+        }
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f64> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: f64) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other.recip())))
+            }
+        }
+        impl<I: Index, E: ComplexField, RhsE: Conjugate<Canonical = E>> Div<f32> for $rhs {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: f32) -> Self::Output {
+                self.mul(Scale(E::faer_from_f64(other.recip() as f64)))
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_assign_primitive_sparse {
+    ($lhs: ty) => {
+        impl<I: Index, LhsE: ComplexField> MulAssign<f64> for $lhs {
+            #[track_caller]
+            fn mul_assign(&mut self, other: f64) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other)))
+            }
+        }
+        impl<I: Index, LhsE: ComplexField> MulAssign<f32> for $lhs {
+            #[track_caller]
+            fn mul_assign(&mut self, other: f32) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other as f64)))
+            }
+        }
+        impl<I: Index, LhsE: ComplexField> DivAssign<f64> for $lhs {
+            #[track_caller]
+            fn div_assign(&mut self, other: f64) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other.recip())))
+            }
+        }
+        impl<I: Index, LhsE: ComplexField> DivAssign<f32> for $lhs {
+            #[track_caller]
+            fn div_assign(&mut self, other: f32) {
+                self.mul_assign(Scale(LhsE::faer_from_f64(other.recip() as f64)))
+            }
+        }
+    };
+}
+
 macro_rules! impl_mul_assign_scalar {
     ($lhs: ty, $rhs: ty) => {
         impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<$rhs> for $lhs {
             #[track_caller]
             fn mul_assign(&mut self, other: $rhs) {
                 self.as_mut().mul_assign(other)
+            }
+        }
+    };
+}
+
+macro_rules! impl_div_assign_scalar {
+    ($lhs: ty, $rhs: ty) => {
+        impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> DivAssign<$rhs> for $lhs {
+            #[track_caller]
+            fn div_assign(&mut self, other: $rhs) {
+                self.as_mut()
+                    .mul_assign(Scale(other.0.canonicalize().faer_inv()))
             }
         }
     };
@@ -284,6 +464,51 @@ macro_rules! impl_mul_scalar_sparse {
             #[track_caller]
             fn mul(self, other: $rhs) -> Self::Output {
                 self.as_ref().mul(other)
+            }
+        }
+    };
+}
+
+macro_rules! impl_mul_assign_scalar_sparse {
+    ($lhs: ty, $rhs: ty) => {
+        impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<$rhs>
+            for $lhs
+        {
+            #[track_caller]
+            fn mul_assign(&mut self, other: $rhs) {
+                self.as_mut().mul_assign(other)
+            }
+        }
+    };
+}
+
+macro_rules! impl_div_scalar_sparse {
+    ($lhs: ty, $rhs: ty, $out: ty) => {
+        impl<
+                I: Index,
+                E: ComplexField,
+                LhsE: Conjugate<Canonical = E>,
+                RhsE: Conjugate<Canonical = E>,
+            > Div<$rhs> for $lhs
+        {
+            type Output = $out;
+            #[track_caller]
+            fn div(self, other: $rhs) -> Self::Output {
+                self.as_ref().mul(Scale(other.0.canonicalize().faer_inv()))
+            }
+        }
+    };
+}
+
+macro_rules! impl_div_assign_scalar_sparse {
+    ($lhs: ty, $rhs: ty) => {
+        impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> DivAssign<$rhs>
+            for $lhs
+        {
+            #[track_caller]
+            fn div_assign(&mut self, other: $rhs) {
+                self.as_mut()
+                    .mul_assign(Scale(other.0.canonicalize().faer_inv()))
             }
         }
     };
@@ -1807,9 +2032,11 @@ impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical 
     type Output = Mat<E>;
 
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
-        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs.0.canonicalize()))
+        let rhs = rhs.0.canonicalize();
+        zipped!(self).map(|unzipped!(x)| x.read().canonicalize().faer_mul(rhs))
     }
 }
+
 impl<E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
     Mul<MatRef<'_, RhsE>> for Scale<LhsE>
 {
@@ -1888,12 +2115,26 @@ impl_mul_scalar!(&MatRef<'_, LhsE>, Scale<RhsE>, Mat<E>);
 impl_mul_scalar!(&MatMut<'_, LhsE>, Scale<RhsE>, Mat<E>);
 impl_mul_scalar!(&Mat<LhsE>, Scale<RhsE>, Mat<E>);
 
+impl_div_scalar!(MatRef<'_, LhsE>, Scale<RhsE>, Mat<E>);
+impl_div_scalar!(MatMut<'_, LhsE>, Scale<RhsE>, Mat<E>);
+impl_div_scalar!(Mat<LhsE>, Scale<RhsE>, Mat<E>);
+impl_div_scalar!(&MatRef<'_, LhsE>, Scale<RhsE>, Mat<E>);
+impl_div_scalar!(&MatMut<'_, LhsE>, Scale<RhsE>, Mat<E>);
+impl_div_scalar!(&Mat<LhsE>, Scale<RhsE>, Mat<E>);
+
 // impl_scalar_mul!(Scale<LhsE>, MatRef<'_, RhsE>, Mat<E>);
 impl_scalar_mul!(Scale<LhsE>, MatMut<'_, RhsE>, Mat<E>);
 impl_scalar_mul!(Scale<LhsE>, Mat<RhsE>, Mat<E>);
 impl_scalar_mul!(Scale<LhsE>, &MatRef<'_, RhsE>, Mat<E>);
 impl_scalar_mul!(Scale<LhsE>, &MatMut<'_, RhsE>, Mat<E>);
 impl_scalar_mul!(Scale<LhsE>, &Mat<RhsE>, Mat<E>);
+
+impl_mul_primitive!(MatRef<'_, RhsE>, Mat<E>);
+impl_mul_primitive!(MatMut<'_, RhsE>, Mat<E>);
+impl_mul_primitive!(Mat<RhsE>, Mat<E>);
+impl_mul_primitive!(&MatRef<'_, RhsE>, Mat<E>);
+impl_mul_primitive!(&MatMut<'_, RhsE>, Mat<E>);
+impl_mul_primitive!(&Mat<RhsE>, Mat<E>);
 
 // impl_mul_scalar!(ColRef<'_, LhsE>, Scale<RhsE>, Col<E>);
 impl_mul_scalar!(ColMut<'_, LhsE>, Scale<RhsE>, Col<E>);
@@ -1902,12 +2143,26 @@ impl_mul_scalar!(&ColRef<'_, LhsE>, Scale<RhsE>, Col<E>);
 impl_mul_scalar!(&ColMut<'_, LhsE>, Scale<RhsE>, Col<E>);
 impl_mul_scalar!(&Col<LhsE>, Scale<RhsE>, Col<E>);
 
+impl_div_scalar!(ColRef<'_, LhsE>, Scale<RhsE>, Col<E>);
+impl_div_scalar!(ColMut<'_, LhsE>, Scale<RhsE>, Col<E>);
+impl_div_scalar!(Col<LhsE>, Scale<RhsE>, Col<E>);
+impl_div_scalar!(&ColRef<'_, LhsE>, Scale<RhsE>, Col<E>);
+impl_div_scalar!(&ColMut<'_, LhsE>, Scale<RhsE>, Col<E>);
+impl_div_scalar!(&Col<LhsE>, Scale<RhsE>, Col<E>);
+
 // impl_scalar_mul!(Scale<LhsE>, ColRef<'_, RhsE>, Col<E>);
 impl_scalar_mul!(Scale<LhsE>, ColMut<'_, RhsE>, Col<E>);
 impl_scalar_mul!(Scale<LhsE>, Col<RhsE>, Col<E>);
 impl_scalar_mul!(Scale<LhsE>, &ColRef<'_, RhsE>, Col<E>);
 impl_scalar_mul!(Scale<LhsE>, &ColMut<'_, RhsE>, Col<E>);
 impl_scalar_mul!(Scale<LhsE>, &Col<RhsE>, Col<E>);
+
+impl_mul_primitive!(ColRef<'_, RhsE>, Col<E>);
+impl_mul_primitive!(ColMut<'_, RhsE>, Col<E>);
+impl_mul_primitive!(Col<RhsE>, Col<E>);
+impl_mul_primitive!(&ColRef<'_, RhsE>, Col<E>);
+impl_mul_primitive!(&ColMut<'_, RhsE>, Col<E>);
+impl_mul_primitive!(&Col<RhsE>, Col<E>);
 
 // impl_mul_scalar!(RowRef<'_, LhsE>, Scale<RhsE>, Row<E>);
 impl_mul_scalar!(RowMut<'_, LhsE>, Scale<RhsE>, Row<E>);
@@ -1916,12 +2171,26 @@ impl_mul_scalar!(&RowRef<'_, LhsE>, Scale<RhsE>, Row<E>);
 impl_mul_scalar!(&RowMut<'_, LhsE>, Scale<RhsE>, Row<E>);
 impl_mul_scalar!(&Row<LhsE>, Scale<RhsE>, Row<E>);
 
+impl_div_scalar!(RowRef<'_, LhsE>, Scale<RhsE>, Row<E>);
+impl_div_scalar!(RowMut<'_, LhsE>, Scale<RhsE>, Row<E>);
+impl_div_scalar!(Row<LhsE>, Scale<RhsE>, Row<E>);
+impl_div_scalar!(&RowRef<'_, LhsE>, Scale<RhsE>, Row<E>);
+impl_div_scalar!(&RowMut<'_, LhsE>, Scale<RhsE>, Row<E>);
+impl_div_scalar!(&Row<LhsE>, Scale<RhsE>, Row<E>);
+
 // impl_scalar_mul!(Scale<LhsE>, RowRef<'_, RhsE>, Row<E>);
 impl_scalar_mul!(Scale<LhsE>, RowMut<'_, RhsE>, Row<E>);
 impl_scalar_mul!(Scale<LhsE>, Row<RhsE>, Row<E>);
 impl_scalar_mul!(Scale<LhsE>, &RowRef<'_, RhsE>, Row<E>);
 impl_scalar_mul!(Scale<LhsE>, &RowMut<'_, RhsE>, Row<E>);
 impl_scalar_mul!(Scale<LhsE>, &Row<RhsE>, Row<E>);
+
+impl_mul_primitive!(RowRef<'_, RhsE>, Row<E>);
+impl_mul_primitive!(RowMut<'_, RhsE>, Row<E>);
+impl_mul_primitive!(Row<RhsE>, Row<E>);
+impl_mul_primitive!(&RowRef<'_, RhsE>, Row<E>);
+impl_mul_primitive!(&RowMut<'_, RhsE>, Row<E>);
+impl_mul_primitive!(&Row<RhsE>, Row<E>);
 
 // impl_mul_scalar!(DiagRef<'_, LhsE>, Scale<RhsE>, Diag<E>);
 impl_mul_scalar!(DiagMut<'_, LhsE>, Scale<RhsE>, Diag<E>);
@@ -1930,12 +2199,26 @@ impl_mul_scalar!(&DiagRef<'_, LhsE>, Scale<RhsE>, Diag<E>);
 impl_mul_scalar!(&DiagMut<'_, LhsE>, Scale<RhsE>, Diag<E>);
 impl_mul_scalar!(&Diag<LhsE>, Scale<RhsE>, Diag<E>);
 
+impl_div_scalar!(DiagRef<'_, LhsE>, Scale<RhsE>, Diag<E>);
+impl_div_scalar!(DiagMut<'_, LhsE>, Scale<RhsE>, Diag<E>);
+impl_div_scalar!(Diag<LhsE>, Scale<RhsE>, Diag<E>);
+impl_div_scalar!(&DiagRef<'_, LhsE>, Scale<RhsE>, Diag<E>);
+impl_div_scalar!(&DiagMut<'_, LhsE>, Scale<RhsE>, Diag<E>);
+impl_div_scalar!(&Diag<LhsE>, Scale<RhsE>, Diag<E>);
+
 // impl_scalar_mul!(Scale<LhsE>, DiagRef<'_, RhsE>, Diag<E>);
 impl_scalar_mul!(Scale<LhsE>, DiagMut<'_, RhsE>, Diag<E>);
 impl_scalar_mul!(Scale<LhsE>, Diag<RhsE>, Diag<E>);
 impl_scalar_mul!(Scale<LhsE>, &DiagRef<'_, RhsE>, Diag<E>);
 impl_scalar_mul!(Scale<LhsE>, &DiagMut<'_, RhsE>, Diag<E>);
 impl_scalar_mul!(Scale<LhsE>, &Diag<RhsE>, Diag<E>);
+
+impl_mul_primitive!(DiagRef<'_, RhsE>, Diag<E>);
+impl_mul_primitive!(DiagMut<'_, RhsE>, Diag<E>);
+impl_mul_primitive!(Diag<RhsE>, Diag<E>);
+impl_mul_primitive!(&DiagRef<'_, RhsE>, Diag<E>);
+impl_mul_primitive!(&DiagMut<'_, RhsE>, Diag<E>);
+impl_mul_primitive!(&Diag<RhsE>, Diag<E>);
 
 impl<LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE>>
     for MatMut<'_, LhsE>
@@ -1978,6 +2261,24 @@ impl_mul_assign_scalar!(Col<LhsE>, Scale<RhsE>);
 impl_mul_assign_scalar!(Row<LhsE>, Scale<RhsE>);
 // impl_mul_assign_scalar!(DiagMut<'_, LhsE>, Scale<RhsE>);
 impl_mul_assign_scalar!(Diag<LhsE>, Scale<RhsE>);
+
+impl_div_assign_scalar!(MatMut<'_, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(Mat<LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(ColMut<'_, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(Col<LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(RowMut<'_, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(Row<LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(DiagMut<'_, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar!(Diag<LhsE>, Scale<RhsE>);
+
+impl_mul_assign_primitive!(MatMut<'_, LhsE>);
+impl_mul_assign_primitive!(Mat<LhsE>);
+impl_mul_assign_primitive!(ColMut<'_, LhsE>);
+impl_mul_assign_primitive!(Col<LhsE>);
+impl_mul_assign_primitive!(RowMut<'_, LhsE>);
+impl_mul_assign_primitive!(Row<LhsE>);
+impl_mul_assign_primitive!(DiagMut<'_, LhsE>);
+impl_mul_assign_primitive!(Diag<LhsE>);
 
 impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
     Mul<MatRef<'_, RhsE>> for SparseColMatRef<'_, I, LhsE>
@@ -2649,10 +2950,11 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
     #[track_caller]
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
         let mut out = self.to_owned().unwrap();
+        let rhs = rhs.0.canonicalize();
         for mut x in
             crate::utils::slice::SliceGroupMut::<'_, E>::new(out.values_mut()).into_mut_iter()
         {
-            x.write(x.read().faer_mul(rhs.0.canonicalize()))
+            x.write(x.read().faer_mul(rhs));
         }
         out
     }
@@ -2675,6 +2977,31 @@ impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<
     #[track_caller]
     fn mul(self, rhs: Scale<RhsE>) -> Self::Output {
         self.transpose().mul(rhs).into_transpose()
+    }
+}
+
+impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE>>
+    for SparseColMatMut<'_, I, LhsE>
+{
+    #[track_caller]
+    fn mul_assign(&mut self, rhs: Scale<RhsE>) {
+        let rhs = rhs.0.canonicalize();
+        for mut x in crate::utils::slice::SliceGroupMut::<'_, LhsE>::new(self.as_mut().values_mut())
+            .into_mut_iter()
+        {
+            x.write(x.read().faer_mul(rhs))
+        }
+    }
+}
+
+impl<I: Index, LhsE: ComplexField, RhsE: Conjugate<Canonical = LhsE>> MulAssign<Scale<RhsE>>
+    for SparseRowMatMut<'_, I, LhsE>
+{
+    #[track_caller]
+    fn mul_assign(&mut self, rhs: Scale<RhsE>) {
+        self.as_mut()
+            .transpose_mut()
+            .mul_assign(Scale(rhs.0.canonicalize()));
     }
 }
 
@@ -2798,12 +3125,26 @@ impl_scalar_mul_sparse!(Scale<LhsE>, &SparseColMatRef<'_, I, RhsE>, SparseColMat
 impl_scalar_mul_sparse!(Scale<LhsE>, &SparseColMatMut<'_, I, RhsE>, SparseColMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, &SparseColMat<I, RhsE>, SparseColMat<I, E>);
 
+impl_mul_primitive_sparse!(SparseColMatRef<'_, I, RhsE>, SparseColMat<I, E>);
+impl_mul_primitive_sparse!(SparseColMatMut<'_, I, RhsE>, SparseColMat<I, E>);
+impl_mul_primitive_sparse!(SparseColMat<I, RhsE>, SparseColMat<I, E>);
+impl_mul_primitive_sparse!(&SparseColMatRef<'_, I, RhsE>, SparseColMat<I, E>);
+impl_mul_primitive_sparse!(&SparseColMatMut<'_, I, RhsE>, SparseColMat<I, E>);
+impl_mul_primitive_sparse!(&SparseColMat<I, RhsE>, SparseColMat<I, E>);
+
 // impl_scalar_mul_sparse!(Scale<LhsE>, SparseRowMatRef<'_, I, RhsE>, SparseRowMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, SparseRowMatMut<'_, I, RhsE>, SparseRowMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, SparseRowMat<I, RhsE>, SparseRowMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, &SparseRowMatRef<'_, I, RhsE>, SparseRowMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, &SparseRowMatMut<'_, I, RhsE>, SparseRowMat<I, E>);
 impl_scalar_mul_sparse!(Scale<LhsE>, &SparseRowMat<I, RhsE>, SparseRowMat<I, E>);
+
+impl_mul_primitive_sparse!(SparseRowMatRef<'_, I, RhsE>, SparseRowMat<I, E>);
+impl_mul_primitive_sparse!(SparseRowMatMut<'_, I, RhsE>, SparseRowMat<I, E>);
+impl_mul_primitive_sparse!(SparseRowMat<I, RhsE>, SparseRowMat<I, E>);
+impl_mul_primitive_sparse!(&SparseRowMatRef<'_, I, RhsE>, SparseRowMat<I, E>);
+impl_mul_primitive_sparse!(&SparseRowMatMut<'_, I, RhsE>, SparseRowMat<I, E>);
+impl_mul_primitive_sparse!(&SparseRowMat<I, RhsE>, SparseRowMat<I, E>);
 
 // impl_mul_scalar_sparse!(SparseColMatRef<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
 impl_mul_scalar_sparse!(SparseColMatMut<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
@@ -2812,12 +3153,44 @@ impl_mul_scalar_sparse!(&SparseColMatRef<'_, I, LhsE>, Scale<RhsE>, SparseColMat
 impl_mul_scalar_sparse!(&SparseColMatMut<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
 impl_mul_scalar_sparse!(&SparseColMat<I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
 
+impl_div_scalar_sparse!(SparseColMatRef<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+impl_div_scalar_sparse!(SparseColMatMut<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+impl_div_scalar_sparse!(SparseColMat<I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+impl_div_scalar_sparse!(&SparseColMatRef<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+impl_div_scalar_sparse!(&SparseColMatMut<'_, I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+impl_div_scalar_sparse!(&SparseColMat<I, LhsE>, Scale<RhsE>, SparseColMat<I, E>);
+
+// impl_mul_assign_scalar_sparse!(SparseColMatMut<'_, I, LhsE>, Scale<RhsE>);
+impl_mul_assign_scalar_sparse!(SparseColMat<I, LhsE>, Scale<RhsE>);
+
+impl_div_assign_scalar_sparse!(SparseColMatMut<'_, I, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar_sparse!(SparseColMat<I, LhsE>, Scale<RhsE>);
+
+impl_mul_assign_primitive_sparse!(SparseColMatMut<'_, I, LhsE>);
+impl_mul_assign_primitive_sparse!(SparseColMat<I, LhsE>);
+
 // impl_mul_scalar_sparse!(SparseRowMatRef<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
 impl_mul_scalar_sparse!(SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
 impl_mul_scalar_sparse!(SparseRowMat<I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
 impl_mul_scalar_sparse!(&SparseRowMatRef<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
 impl_mul_scalar_sparse!(&SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
 impl_mul_scalar_sparse!(&SparseRowMat<I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+
+impl_div_scalar_sparse!(SparseRowMatRef<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+impl_div_scalar_sparse!(SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+impl_div_scalar_sparse!(SparseRowMat<I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+impl_div_scalar_sparse!(&SparseRowMatRef<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+impl_div_scalar_sparse!(&SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+impl_div_scalar_sparse!(&SparseRowMat<I, LhsE>, Scale<RhsE>, SparseRowMat<I, E>);
+
+// impl_mul_assign_scalar_sparse!(SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>);
+impl_mul_assign_scalar_sparse!(SparseRowMat<I, LhsE>, Scale<RhsE>);
+
+impl_div_assign_scalar_sparse!(SparseRowMatMut<'_, I, LhsE>, Scale<RhsE>);
+impl_div_assign_scalar_sparse!(SparseRowMat<I, LhsE>, Scale<RhsE>);
+
+impl_mul_assign_primitive_sparse!(SparseRowMatMut<'_, I, LhsE>);
+impl_mul_assign_primitive_sparse!(SparseRowMat<I, LhsE>);
 
 impl<I: Index, E: ComplexField, LhsE: Conjugate<Canonical = E>, RhsE: Conjugate<Canonical = E>>
     Mul<SparseColMatRef<'_, I, RhsE>> for SparseColMatRef<'_, I, LhsE>

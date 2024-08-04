@@ -28,7 +28,6 @@ nightly = ["pulp/nightly"]
 
 [dev-dependencies]
 rand = "0.8.5"
-assert_approx_eq = "1.1.0"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]

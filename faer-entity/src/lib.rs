@@ -3358,7 +3358,6 @@ impl ComplexField for Symbolic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_approx_eq::assert_approx_eq;
 
     #[test]
     fn test_sqrt() {
@@ -3369,8 +3368,8 @@ mod tests {
                 im: target_im,
             } = a.faer_sqrt();
             let (sqrt_re, sqrt_im) = sqrt_impl(a.re, a.im);
-            assert_approx_eq!(target_re, sqrt_re);
-            assert_approx_eq!(target_im, sqrt_im);
+            assert!((target_re - sqrt_re).abs() < 1e-12);
+            assert!((target_im - sqrt_im).abs() < 1e-12);
         }
     }
 }

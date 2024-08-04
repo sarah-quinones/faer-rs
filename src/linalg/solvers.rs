@@ -2606,10 +2606,10 @@ mod tests {
     use complex_native::*;
 
     #[track_caller]
-    fn assert_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
+    fn check_mat_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
+        let approx_eq = crate::ApproxEq::<E::Real>::eps();
         let a = a.as_mat_ref();
         let b = b.as_mat_ref();
-        let eps = E::Real::faer_epsilon().faer_sqrt();
 
         assert!(a.nrows() == b.nrows());
         assert!(a.ncols() == b.ncols());
@@ -2619,7 +2619,7 @@ mod tests {
 
         for j in 0..n {
             for i in 0..m {
-                assert!((a.read(i, j).faer_sub(b.read(i, j))).faer_abs() < eps);
+                assert!(a.read(i, j) ~ b.read(i, j), "mismatch at (row = {i}, col = {j})");
             }
         }
     }
@@ -2641,19 +2641,19 @@ mod tests {
         });
 
         let sol = decomp.solve(&rhs);
-        assert_approx_eq(H * &sol, &rhs);
+        check_mat_approx_eq(H * &sol, &rhs);
 
         let sol = decomp.solve_conj(&rhs);
-        assert_approx_eq(H.conjugate() * &sol, &rhs);
+        check_mat_approx_eq(H.conjugate() * &sol, &rhs);
 
         let sol = decomp.solve_transpose(&rhs);
-        assert_approx_eq(H.transpose() * &sol, &rhs);
+        check_mat_approx_eq(H.transpose() * &sol, &rhs);
 
         let sol = decomp.solve_conj_transpose(&rhs);
-        assert_approx_eq(H.adjoint() * &sol, &rhs);
+        check_mat_approx_eq(H.adjoint() * &sol, &rhs);
 
-        assert_approx_eq(decomp.reconstruct(), H);
-        assert_approx_eq(H * decomp.inverse(), I);
+        check_mat_approx_eq(decomp.reconstruct(), H);
+        check_mat_approx_eq(H * decomp.inverse(), I);
     }
 
     fn test_solver(H: impl AsMatRef<c64>, decomp: &dyn SolverCore<c64>) {
@@ -2673,19 +2673,19 @@ mod tests {
         });
 
         let sol = decomp.solve(&rhs);
-        assert_approx_eq(H * &sol, &rhs);
+        check_mat_approx_eq(H * &sol, &rhs);
 
         let sol = decomp.solve_conj(&rhs);
-        assert_approx_eq(H.conjugate() * &sol, &rhs);
+        check_mat_approx_eq(H.conjugate() * &sol, &rhs);
 
         let sol = decomp.solve_transpose(&rhs);
-        assert_approx_eq(H.transpose() * &sol, &rhs);
+        check_mat_approx_eq(H.transpose() * &sol, &rhs);
 
         let sol = decomp.solve_conj_transpose(&rhs);
-        assert_approx_eq(H.adjoint() * &sol, &rhs);
+        check_mat_approx_eq(H.adjoint() * &sol, &rhs);
 
-        assert_approx_eq(decomp.reconstruct(), H);
-        assert_approx_eq(H * decomp.inverse(), I);
+        check_mat_approx_eq(decomp.reconstruct(), H);
+        check_mat_approx_eq(H * decomp.inverse(), I);
     }
 
     fn test_solver_lstsq(H: impl AsMatRef<c64>, decomp: &dyn SolverLstsqCore<c64>) {
@@ -2698,10 +2698,10 @@ mod tests {
         let rhs = Mat::from_fn(m, k, random);
 
         let sol = decomp.solve_lstsq(&rhs);
-        assert_approx_eq(H.adjoint() * H * &sol, H.adjoint() * &rhs);
+        check_mat_approx_eq(H.adjoint() * H * &sol, H.adjoint() * &rhs);
 
         let sol = decomp.solve_lstsq_conj(&rhs);
-        assert_approx_eq(H.transpose() * H.conjugate() * &sol, H.transpose() * &rhs);
+        check_mat_approx_eq(H.transpose() * H.conjugate() * &sol, H.transpose() * &rhs);
     }
 
     #[test]
@@ -2773,8 +2773,8 @@ mod tests {
         for (m, n) in [(7, 5), (5, 7), (7, 7)] {
             let H = Mat::from_fn(m, n, random);
             let qr = H.qr();
-            assert_approx_eq(qr.compute_q() * qr.compute_r(), &H);
-            assert_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
+            check_mat_approx_eq(qr.compute_q() * qr.compute_r(), &H);
+            check_mat_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
         }
     }
 
@@ -2791,8 +2791,8 @@ mod tests {
         for (m, n) in [(7, 5), (5, 7), (7, 7)] {
             let H = Mat::from_fn(m, n, random);
             let qr = H.qr();
-            assert_approx_eq(qr.compute_q() * qr.compute_r(), &H);
-            assert_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
+            check_mat_approx_eq(qr.compute_q() * qr.compute_r(), &H);
+            check_mat_approx_eq(qr.compute_thin_q() * qr.compute_thin_r(), &H);
             if m >= n {
                 test_solver_lstsq(H, &qr)
             }
@@ -2811,11 +2811,11 @@ mod tests {
         for (m, n) in [(7, 5), (5, 7), (7, 7)] {
             let H = Mat::from_fn(m, n, random);
             let qr = H.col_piv_qr();
-            assert_approx_eq(
+            check_mat_approx_eq(
                 qr.compute_q() * qr.compute_r(),
                 &H * qr.col_permutation().inverse(),
             );
-            assert_approx_eq(
+            check_mat_approx_eq(
                 qr.compute_thin_q() * qr.compute_thin_r(),
                 &H * qr.col_permutation().inverse(),
             );
@@ -2959,14 +2959,14 @@ mod tests {
             let eigen = H.eigendecomposition::<c64>();
             let s = eigen.s();
             let u = eigen.u();
-            assert_approx_eq(u * s, &H * u);
+            check_mat_approx_eq(u * s, &H * u);
         }
 
         {
             let eigen = H.complex_eigendecomposition();
             let s = eigen.s();
             let u = eigen.u();
-            assert_approx_eq(u * &s, &H * u);
+            check_mat_approx_eq(u * &s, &H * u);
         }
 
         let det = H.determinant();
@@ -2989,7 +2989,7 @@ mod tests {
         let eigen = H_real.eigendecomposition::<c64>();
         let s = eigen.s();
         let u = eigen.u();
-        assert_approx_eq(u * &s, &H * u);
+        check_mat_approx_eq(u * &s, &H * u);
     }
 
     #[test]
@@ -3067,7 +3067,7 @@ mod tests {
         let a = mat![
             [0.75026225, 0.35005635, -0.55833477],
             [0.57985423, -0.75391293, 0.30216142],
-            [0.31665369, 0.54900739, 0.76136962],
+            [0.31665369, 0.54900739, 0.76136962_f64],
         ];
         let plu = a.partial_piv_lu();
         let p = plu.row_permutation();
@@ -3083,7 +3083,7 @@ mod tests {
         let a = mat![
             [0.75026225, 0.35005635, -0.55833477],
             [0.57985423, -0.75391293, 0.30216142],
-            [0.31665369, 0.54900739, 0.76136962],
+            [0.31665369, 0.54900739, 0.76136962_f64],
         ];
         let plu = a.full_piv_lu();
         let p = plu.row_permutation();
