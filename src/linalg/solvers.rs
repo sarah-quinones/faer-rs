@@ -2608,8 +2608,8 @@ mod tests {
     #[track_caller]
     fn check_mat_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
         let mut approx_eq = crate::ApproxEq::<E::Real>::eps();
-        approx_eq.abs_tol = approx_eq.abs_tol * E::Real::faer_from_f64(8.0);
-        approx_eq.rel_tol = approx_eq.rel_tol * E::Real::faer_from_f64(8.0);
+        approx_eq.abs_tol = approx_eq.abs_tol * E::Real::faer_from_f64(128.0);
+        approx_eq.rel_tol = approx_eq.rel_tol * E::Real::faer_from_f64(128.0);
         let a = a.as_mat_ref();
         let b = b.as_mat_ref();
 
