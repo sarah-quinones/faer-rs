@@ -2393,6 +2393,11 @@ mod tests {
     #[test]
     #[ignore = "takes too long in CI"]
     fn test_matmul() {
+        if option_env!("CI") == Some("true") {
+            // too big for CI
+            return;
+        }
+
         let random = |_, _| c32 {
             re: rand::random(),
             im: rand::random(),

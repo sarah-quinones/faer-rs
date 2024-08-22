@@ -1631,7 +1631,6 @@ mod herm_tests {
             );
 
             let reconstructed = &u * &s * u.adjoint();
-            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
 
             for j in 0..n {
                 for i in j..n {
@@ -1770,7 +1769,6 @@ mod herm_tests {
             );
 
             let reconstructed = &u * &s * u.adjoint();
-            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
 
             for j in 0..n {
                 for i in j..n {
@@ -1835,7 +1833,6 @@ mod herm_tests {
             );
 
             let reconstructed = &u * &s * u.adjoint();
-            dbgf::dbgf!("6.2?", &u, &reconstructed, &mat);
 
             for j in 0..n {
                 for i in j..n {
@@ -1932,7 +1929,6 @@ mod tests {
         for n in [3, 2, 4, 5, 6, 7, 10, 15, 25, 600] {
             for _ in 0..10 {
                 let mat = Mat::from_fn(n, n, |_, _| rand::random::<f64>());
-                dbg!(&mat);
 
                 let n = mat.nrows();
 
@@ -2146,8 +2142,6 @@ mod tests {
 
             let left = &mat * &u;
             let right = &u * &s;
-
-            dbgf::dbgf!("6.2?", &mat, &left, &right);
 
             for j in 0..n {
                 for i in 0..n {

@@ -131,11 +131,20 @@ fn compute_eigenvalues<E: RealField>(
         // find the root between left and right
         let mid_left_shift = right.faer_sub(left).faer_scale_power_of_two(one_half);
         let f_mid_left_shift = secular_eq(d, z, rho, mid_left_shift, left, n);
-        let shift = if last_i || f_mid_left_shift > E::faer_zero() {
-            left
+        let mid_right_shift = mid_left_shift.faer_neg();
+        let f_mid_right_shift = secular_eq(d, z, rho, mid_right_shift, right, n);
+
+        let (shift, mu) = if last_i || f_mid_left_shift > E::faer_zero() {
+            (left, mid_left_shift)
         } else {
-            right
+            (right, mid_right_shift)
         };
+
+        if f_mid_left_shift <= E::faer_zero() && f_mid_right_shift >= E::faer_zero() {
+            shifts.write(i, shift);
+            mus.write(i, mu);
+            continue 'kth_iter;
+        }
 
         enum SecantError {
             OutOfBounds,
@@ -316,11 +325,11 @@ fn compute_eigenvalues<E: RealField>(
 
         if shift == left {
             let mut i = 0;
-            for (mu, f) in core::iter::zip(mu_values, f_values) {
+            for (idx, (mu, f)) in core::iter::zip(mu_values, f_values).enumerate() {
                 if f < E::faer_zero() {
                     left_shifted = mu;
                     f_left = f;
-                    i += 1;
+                    i = idx + 1;
                 }
             }
             if i < f_values.len() {
@@ -329,11 +338,11 @@ fn compute_eigenvalues<E: RealField>(
             }
         } else {
             let mut i = 0;
-            for (mu, f) in core::iter::zip(mu_values, f_values) {
+            for (idx, (mu, f)) in core::iter::zip(mu_values, f_values).enumerate() {
                 if f > E::faer_zero() {
                     right_shifted = mu;
                     f_right = f;
-                    i += 1;
+                    i = idx + 1;
                 }
             }
             if i < f_values.len() {
