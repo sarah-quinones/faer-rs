@@ -1734,13 +1734,13 @@ mod tests {
             f: &mut core::fmt::Formatter,
         ) -> core::fmt::Result {
             use coe::Coerce;
-            if coe::is_same::<E, f64>() {
+            if E::IS_F64 {
                 let ApproxEq { abs_tol, rel_tol }: ApproxEq<f64> = *cmp.coerce();
                 writeln!(
                     f,
                     "Assertion failed: {lhs_source} ~ {rhs_source}\nwith absolute tolerance = {abs_tol:.1e}\nwith relative tolerance = {rel_tol:.1e}"
                 )?;
-            } else if coe::is_same::<E, f32>() {
+            } else if E::IS_F32 {
                 let ApproxEq { abs_tol, rel_tol }: ApproxEq<f32> = *cmp.coerce();
                 writeln!(
                     f,

@@ -290,7 +290,7 @@ fn compute_singular_values<E: RealField>(
     col0_perm: &[E],
     epsilon: E,
 ) {
-    if coe::is_same::<f64, E>() {
+    if E::IS_F64 {
         struct ImplF64<'a> {
             shifts: ColMut<'a, f64>,
             mus: ColMut<'a, f64>,
@@ -332,7 +332,7 @@ fn compute_singular_values<E: RealField>(
             col0_perm: col0_perm.coerce(),
             epsilon: coe::coerce_static(epsilon),
         });
-    } else if coe::is_same::<f32, E>() {
+    } else if E::IS_F32 {
         struct ImplF32<'a> {
             shifts: ColMut<'a, f32>,
             mus: ColMut<'a, f32>,

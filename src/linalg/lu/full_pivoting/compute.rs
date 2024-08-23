@@ -1193,14 +1193,11 @@ fn update_and_best_in_matrix_c32(
 
 #[inline]
 fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::Real) {
-    let is_c64 = coe::is_same::<c64, E>();
-    let is_c32 = coe::is_same::<c32, E>();
-
     let is_col_major = matrix.row_stride() == 1;
 
-    if is_col_major && is_c64 {
+    if E::IS_C64 && is_col_major {
         coe::coerce_static(best_in_matrix_c64(matrix.coerce()))
-    } else if is_col_major && is_c32 {
+    } else if E::IS_C32 && is_col_major {
         coe::coerce_static(best_in_matrix_c32(matrix.coerce()))
     } else if is_col_major {
         best_in_matrix_simd(matrix)
@@ -1234,18 +1231,15 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     rhs: RowMut<'_, E>,
     max_row: usize,
 ) -> (usize, usize, E::Real) {
-    let is_c64 = coe::is_same::<c64, E>();
-    let is_c32 = coe::is_same::<c32, E>();
-
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
-    if is_c64 && is_col_major {
+    if E::IS_C64 && is_col_major {
         coe::coerce_static(update_and_best_in_matrix_c64(
             dst.coerce(),
             lhs.coerce(),
             rhs.coerce(),
             max_row,
         ))
-    } else if is_c32 && is_col_major {
+    } else if E::IS_C32 && is_col_major {
         coe::coerce_static(update_and_best_in_matrix_c32(
             dst.coerce(),
             lhs.coerce(),

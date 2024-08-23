@@ -1351,7 +1351,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
 ) {
     use coe::Coerce;
     use num_complex::Complex;
-    if coe::is_same::<E, Complex<E::Real>>() {
+    if E::IS_NUM_COMPLEX {
         let acc: MatMut<'_, Complex<E::Real>> = acc.coerce();
         let a: MatRef<'_, Complex<E::Real>> = a.coerce();
         let b: MatRef<'_, Complex<E::Real>> = b.coerce();
@@ -1908,7 +1908,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             Parallelism::Rayon(n_threads) => gemm::Parallelism::Rayon(n_threads),
             Parallelism::__Private(_) => panic!(),
         };
-        if coe::is_same::<f32, E>() {
+        if E::IS_F32 {
             let mut acc: MatMut<'_, f32> = coe::coerce(acc);
             let a: MatRef<'_, f32> = coe::coerce(lhs);
             let b: MatRef<'_, f32> = coe::coerce(rhs);
@@ -1965,7 +1965,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             }
             return;
         }
-        if coe::is_same::<f64, E>() {
+        if E::IS_F64 {
             let mut acc: MatMut<'_, f64> = coe::coerce(acc);
             let a: MatRef<'_, f64> = coe::coerce(lhs);
             let b: MatRef<'_, f64> = coe::coerce(rhs);
@@ -2022,7 +2022,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             }
             return;
         }
-        if coe::is_same::<c32, E>() {
+        if E::IS_C32 {
             let mut acc: MatMut<'_, c32> = coe::coerce(acc);
             let a: MatRef<'_, c32> = coe::coerce(lhs);
             let b: MatRef<'_, c32> = coe::coerce(rhs);
@@ -2079,7 +2079,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             }
             return;
         }
-        if coe::is_same::<c64, E>() {
+        if E::IS_C64 {
             let mut acc: MatMut<'_, c64> = coe::coerce(acc);
             let a: MatRef<'_, c64> = coe::coerce(lhs);
             let b: MatRef<'_, c64> = coe::coerce(rhs);

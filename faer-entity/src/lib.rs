@@ -204,6 +204,17 @@ impl<T> UniversalReborrowMut for T where for<'a> T: ReborrowMut<'a> {}
 /// # Safety
 /// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static {
+    #[doc(hidden)]
+    const IS_F64: bool = false;
+    #[doc(hidden)]
+    const IS_F32: bool = false;
+    #[doc(hidden)]
+    const IS_C64: bool = false;
+    #[doc(hidden)]
+    const IS_C32: bool = false;
+    #[doc(hidden)]
+    const IS_NUM_COMPLEX: bool = false;
+
     type Group: ForType + ForCopyType + ForDebugType;
 
     type Unit: Copy + Pod + PartialEq + Send + Sync + Debug + 'static;
@@ -1706,6 +1717,8 @@ const _: () = {
 };
 
 unsafe impl Entity for f32 {
+    const IS_F32: bool = true;
+
     type Unit = Self;
     type Index = u32;
     type SimdUnit<S: Simd> = S::f32s;
@@ -1787,6 +1800,8 @@ unsafe impl Entity for f32 {
 }
 
 unsafe impl Entity for f64 {
+    const IS_F64: bool = true;
+
     type Unit = Self;
     type Index = u64;
     type SimdUnit<S: Simd> = S::f64s;
@@ -1868,6 +1883,8 @@ unsafe impl Entity for f64 {
 }
 
 unsafe impl<E: Entity> Entity for Complex<E> {
+    const IS_NUM_COMPLEX: bool = true;
+
     type Unit = UnitFor<E>;
     type Index = IndexFor<E>;
     type SimdUnit<S: Simd> = SimdUnitFor<E, S>;

@@ -603,7 +603,7 @@ pub fn compute_svd_req<E: ComplexField>(
     };
 
     let _ = params;
-    let squareish_svd = if coe::is_same::<E, E::Real>() {
+    let squareish_svd = if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
         if size <= JACOBI_FALLBACK_THRESHOLD {
             compute_real_svd_small_req::<E>(svd_nrows, svd_ncols, compute_u, compute_v, parallelism)
         } else {
@@ -888,7 +888,7 @@ fn squareish_svd<E: ComplexField>(
     stack: PodStack,
 ) {
     let size = matrix.ncols();
-    if coe::is_same::<E, E::Real>() {
+    if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
         if size <= JACOBI_FALLBACK_THRESHOLD {
             compute_real_svd_small::<E::Real>(
                 matrix.coerce(),

@@ -500,7 +500,7 @@ impl<E: ComplexField> UpdateAndNorm2<'_, E> {
         offset: pulp::Offset<SimdMaskFor<E, S>>,
     ) -> E::Real {
         let Self { a, b, k } = self;
-        if coe::is_same::<c32, E>() {
+        if E::IS_C32 {
             return coe::coerce_static(unsafe {
                 update_and_norm2_simd_impl_c32(
                     simd,
@@ -511,7 +511,7 @@ impl<E: ComplexField> UpdateAndNorm2<'_, E> {
                 )
             });
         }
-        if coe::is_same::<c64, E>() {
+        if E::IS_C64 {
             return coe::coerce_static(unsafe {
                 update_and_norm2_simd_impl_c64(
                     simd,

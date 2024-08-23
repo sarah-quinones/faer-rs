@@ -260,7 +260,7 @@ pub fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
         let mut acc_big = E::Real::faer_zero();
 
         if mat.row_stride() == 1 {
-            if coe::is_same::<E, c32>() {
+            if E::IS_C32 {
                 let mat: MatRef<'_, c32> = coe::coerce(mat);
                 let mat = unsafe {
                     crate::mat::from_raw_parts(
@@ -275,7 +275,7 @@ pub fn norm_l2<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
                 acc_small = coe::coerce_static(acc_small_);
                 acc = coe::coerce_static(acc_);
                 acc_big = coe::coerce_static(acc_big_);
-            } else if coe::is_same::<E, c64>() {
+            } else if E::IS_C64 {
                 let mat: MatRef<'_, c64> = coe::coerce(mat);
                 let mat = unsafe {
                     crate::mat::from_raw_parts(

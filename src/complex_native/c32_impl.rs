@@ -960,6 +960,8 @@ impl ComplexField for c32 {
 }
 
 unsafe impl Entity for c32 {
+    const IS_C32: bool = true;
+
     type Unit = Self;
     type Index = u32;
     type SimdUnit<S: Simd> = S::c32s;

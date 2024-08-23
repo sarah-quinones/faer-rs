@@ -961,6 +961,8 @@ impl ComplexField for c64 {
 }
 
 unsafe impl Entity for c64 {
+    const IS_C64: bool = true;
+
     type Unit = Self;
     type Index = u64;
     type SimdUnit<S: Simd> = S::c64s;

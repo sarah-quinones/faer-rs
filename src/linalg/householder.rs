@@ -431,7 +431,7 @@ fn apply_block_householder_on_the_left_in_place_generic<E: ComplexField>(
             }
         }
 
-        if coe::is_same::<E, E::Real>() || matches!(conj_lhs, Conj::No) {
+        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() || matches!(conj_lhs, Conj::No) {
             arch.dispatch(ApplyOnLeft {
                 tau_inv: E::faer_from_real(householder_factor.read(0, 0).faer_real().faer_inv()),
                 essential: householder_basis.split_at_row(1).1,

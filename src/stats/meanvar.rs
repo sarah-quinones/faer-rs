@@ -1394,7 +1394,7 @@ fn col_varm_propagate<E: ComplexField>(
                         val: impl Read<Output = SimdGroupFor<E, S>>,
                     ) -> SimdGroupFor<E::Real, S> {
                         let diff = simd.sub(val.read_or(mean), mean);
-                        if coe::is_same::<E, c32>() {
+                        if E::IS_C32 {
                             let diff = coe::coerce_static::<SimdGroupFor<E, S>, SimdGroupFor<c32, S>>(
                                 diff,
                             );
@@ -1417,7 +1417,7 @@ fn col_varm_propagate<E: ComplexField>(
                                     simd.simd.f32s_mul_add_e(diff, diff, bytemuck::cast(acc)),
                                 )
                             }
-                        } else if coe::is_same::<E, c64>() {
+                        } else if E::IS_C64 {
                             let diff = coe::coerce_static::<SimdGroupFor<E, S>, SimdGroupFor<c64, S>>(
                                 diff,
                             );
@@ -1671,11 +1671,11 @@ fn col_varm_propagate<E: ComplexField>(
     if mat.col_stride() == 1 {
         col_varm_row_major(out, mat, col_mean)
     } else if mat.row_stride() == 1 && out.row_stride() == 1 && col_mean.row_stride() == 1 {
-        if coe::is_same::<E, E::Real>() {
+        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
             col_varm_col_major_real::<E::Real>(out, mat.coerce(), col_mean.coerce())
-        } else if coe::is_same::<E, Complex<E::Real>>() {
+        } else if E::IS_NUM_COMPLEX {
             col_varm_col_major_cplx::<E::Real>(out, mat.coerce(), col_mean.coerce())
-        } else if coe::is_same::<E, c32>() {
+        } else if E::IS_C32 {
             let m = mat.nrows();
 
             let mut tmp = Col::<f32>::zeros(2 * m);
@@ -1699,7 +1699,7 @@ fn col_varm_propagate<E: ComplexField>(
             for i in 0..m {
                 out.write(i, tmp.read(2 * i) + tmp.read(2 * i + 1));
             }
-        } else if coe::is_same::<E, c64>() {
+        } else if E::IS_C64 {
             let m = mat.nrows();
 
             let mut tmp = Col::<f64>::zeros(2 * m);
@@ -1772,13 +1772,13 @@ fn col_mean_ignore<E: ComplexField>(out: ColMut<'_, E>, mat: MatRef<'_, E>) {
     };
 
     if mat.col_stride() == 1 {
-        if coe::is_same::<E, c32>() {
+        if E::IS_C32 {
             col_mean_row_major_ignore_nan_c32(out.coerce(), mat.coerce())
-        } else if coe::is_same::<E, c64>() {
+        } else if E::IS_C64 {
             col_mean_row_major_ignore_nan_c64(out.coerce(), mat.coerce())
-        } else if coe::is_same::<E, E::Real>() {
+        } else if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
             col_mean_row_major_ignore_nan_real::<E::Real>(out.coerce(), mat.coerce())
-        } else if coe::is_same::<E, Complex<E::Real>>() {
+        } else if E::IS_NUM_COMPLEX {
             col_mean_row_major_ignore_nan_cplx::<E::Real>(out.coerce(), mat.coerce())
         } else {
             panic!()
@@ -1890,17 +1890,17 @@ fn col_varm_ignore<E: ComplexField>(
     };
 
     if mat.col_stride() == 1 {
-        if coe::is_same::<E, c32>() {
+        if E::IS_C32 {
             col_varm_row_major_ignore_nan_c32(out.coerce(), mat.coerce(), col_mean.coerce())
-        } else if coe::is_same::<E, c64>() {
+        } else if E::IS_C64 {
             col_varm_row_major_ignore_nan_c64(out.coerce(), mat.coerce(), col_mean.coerce())
-        } else if coe::is_same::<E, E::Real>() {
+        } else if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
             col_varm_row_major_ignore_nan_real::<E::Real>(
                 out.coerce(),
                 mat.coerce(),
                 col_mean.coerce(),
             )
-        } else if coe::is_same::<E, Complex<E::Real>>() {
+        } else if E::IS_NUM_COMPLEX {
             col_varm_row_major_ignore_nan_cplx::<E::Real>(
                 out.coerce(),
                 mat.coerce(),
