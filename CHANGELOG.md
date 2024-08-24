@@ -1,4 +1,5 @@
 # 0.19
+- Support matrix-scalar multiplication/division without the `Scale` wrapper for `f32`/`f64`.
 - Implemented conjugate gradient, BiCGSTAB, and LSMR iterative solvers (currently gated by the `unstable` feature).
 - Implemented Hermitian matrix pseudoinverse implementation. Thanks @lishen_ for the contribution.
 - Implemented column and row mean and variance in `faer::stats`.
