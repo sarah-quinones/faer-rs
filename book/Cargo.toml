@@ -1,0 +1,17 @@
+[package]
+name = "faer-book"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+faer          = "0.15.0"
+faer-core     = "0.15.0"
+faer-cholesky = "0.15.0"
+faer-qr       = "0.15.0"
+faer-lu       = "0.15.0"
+faer-svd      = "0.15.0"
+faer-evd      = "0.15.0"
+
+[[bin]]
+name = "intro"
+path = "src/intro.rs"
