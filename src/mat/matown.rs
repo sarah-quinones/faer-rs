@@ -2073,7 +2073,7 @@ impl<E: Entity> Clone for Mat<E> {
         let (rows,cols)=other.shape();
         self.resize_with(0,0,|_,_|E::zeroed());
         unsafe{
-            self.resize_with(rows,cols,|r,c|E::faer_deref(rhs.get_unchecked(r,c)))
+            self.resize_with(rows,cols,|r,c|E::faer_deref(other.get_unchecked(r,c)))
         }
     }
 }
