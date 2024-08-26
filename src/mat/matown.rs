@@ -2069,6 +2069,12 @@ impl<E: Entity> Clone for Mat<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(i, j)))
             })
         }
+    }fn clone_from(&mut self,other:&Self){
+        let (rows,cols)=other.shape();
+        self.resize_with(0,0,|_,_|E::zeroed());
+        unsafe{
+            self.resize_with(rows,cols,|r,c|E::faer_deref(rhs.get_unchecked(r,c)))
+        }
     }
 }
 
