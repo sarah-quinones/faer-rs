@@ -1072,7 +1072,7 @@ impl<E: Entity> Clone for Col<E> {
         }
     }fn clone_from(&mut self,other:&Self){
         let rows=other.nrows();
-        self.resize_with(0,|_,_|E::zeroed());
+        self.resize_with(0,|_|E::zeroed());
         unsafe{
             self.resize_with(rows,|r|other.read_unchecked(r))
         }
