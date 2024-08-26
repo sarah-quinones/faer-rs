@@ -1030,6 +1030,12 @@ impl<E: Entity> Clone for Row<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(j)))
             })
         }
+    }fn clone_from(&mut self,other:&Self){
+        let cols=other.ncols();
+        self.resize_with(0,|_|E::zeroed());
+        unsafe{
+            self.resize_with(cols,|c|other.read_unchecked(c))
+        }
     }
 }
 
