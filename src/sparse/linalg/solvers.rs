@@ -25,24 +25,24 @@ pub trait SpSolverLstsqCore<E: Entity>: SpSolverCore<E> {
 
 /// Solver that can compute solution of a linear system.
 pub trait SpSolver<E: ComplexField>: SpSolverCore<E> {
-    /// Solves the equation `self * X = rhs`, and stores the result in `rhs`.
+    /// Solves the equation `self * X = rhs` when self is square, and stores the result in `rhs`.
     fn solve_in_place(&self, rhs: impl ColBatchMut<E>);
-    /// Solves the equation `conjugate(self) * X = rhs`, and stores the result in `rhs`.
+    /// Solves the equation `conjugate(self) * X = rhs` when self is square, and stores the result in `rhs`.
     fn solve_conj_in_place(&self, rhs: impl ColBatchMut<E>);
-    /// Solves the equation `transpose(self) * X = rhs`, and stores the result in `rhs`.
+    /// Solves the equation `transpose(self) * X = rhs` when self is square, and stores the result in `rhs`.
     fn solve_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
-    /// Solves the equation `adjoint(self) * X = rhs`, and stores the result in `rhs`.
+    /// Solves the equation `adjoint(self) * X = rhs` when self is square, and stores the result in `rhs`.
     fn solve_conj_transpose_in_place(&self, rhs: impl ColBatchMut<E>);
-    /// Solves the equation `self * X = rhs`, and returns the result.
+    /// Solves the equation `self * X = rhs` when self is square, and returns the result.
     fn solve<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
-    /// Solves the equation `conjugate(self) * X = rhs`, and returns the result.
+    /// Solves the equation `conjugate(self) * X = rhs` when self is square, and returns the result.
     fn solve_conj<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(&self, rhs: B) -> B::Owned;
-    /// Solves the equation `transpose(self) * X = rhs`, and returns the result.
+    /// Solves the equation `transpose(self) * X = rhs` when self is square, and returns the result.
     fn solve_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
         rhs: B,
     ) -> B::Owned;
-    /// Solves the equation `adjoint(self) * X = rhs`, and returns the result.
+    /// Solves the equation `adjoint(self) * X = rhs` when self is square, and returns the result.
     fn solve_conj_transpose<ViewE: Conjugate<Canonical = E>, B: ColBatch<ViewE>>(
         &self,
         rhs: B,
