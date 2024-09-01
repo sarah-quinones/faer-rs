@@ -688,7 +688,6 @@ impl<E: Entity> Row<E> {
                 #[inline(always)]
                 |row| unsafe { other.read_unchecked(row).canonicalize() },
             );
-            *this = mat;
         }
         implementation(self, other.as_row_ref());
     }
