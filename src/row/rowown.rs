@@ -682,8 +682,8 @@ impl<E: Entity> Row<E> {
             this: &mut Row<E>,
             other: RowRef<'_, ViewE>,
         ) {
-            let mut mat = Row::<E>::new();
-            mat.resize_with(
+            this.resize_with(0, |_| E::zeroed());
+            this.resize_with(
                 other.nrows(),
                 #[inline(always)]
                 |row| unsafe { other.read_unchecked(row).canonicalize() },
@@ -1030,12 +1030,15 @@ impl<E: Entity> Clone for Row<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(j)))
             })
         }
-    }fn clone_from(&mut self,other:&Self){
-        let cols=other.ncols();
-        self.resize_with(0,|_|E::zeroed());
-        unsafe{
-            self.resize_with(cols,|c|other.read_unchecked(c))
-        }
+    }
+    
+    fn clone_from(&mut self, other: &Self){
+        self.resize_with(0, |_| E::zeroed());
+        self.resize_with(
+            other.nrows(),
+            #[inline(always)]
+            |row| unsafe { other.read_unchecked(row) },
+        );
     }
 }
 
