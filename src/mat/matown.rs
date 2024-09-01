@@ -2072,7 +2072,14 @@ impl<E: Entity> Clone for Mat<E> {
     }
     
     fn clone_from(&mut self, other: &Self) {
-        self.copy_from(other);
+        let (rows, cols)=other.shape();
+        self.resize_with(0, 0, |_, _| E::zeroed());
+        self.resize_with(
+            rows,
+            cols,
+            #[inline(always)]
+            |row, col| unsafe { other.read_unchecked(row, col) },
+        );
     }
 }
 
