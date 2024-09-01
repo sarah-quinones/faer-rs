@@ -611,13 +611,12 @@ impl<E: Entity> Col<E> {
             this: &mut Col<E>,
             other: ColRef<'_, ViewE>,
         ) {
-            let mut mat = Col::<E>::new();
-            mat.resize_with(
+            this.resize_with(0, |_| E::zeroed());
+            this.resize_with(
                 other.nrows(),
                 #[inline(always)]
                 |row| unsafe { other.read_unchecked(row).canonicalize() },
             );
-            *this = mat;
         }
         implementation(self, other.as_col_ref());
     }
@@ -1071,11 +1070,12 @@ impl<E: Entity> Clone for Col<E> {
             })
         }
     }fn clone_from(&mut self,other:&Self){
-        let rows=other.nrows();
-        self.resize_with(0,|_|E::zeroed());
-        unsafe{
-            self.resize_with(rows,|r|other.read_unchecked(r))
-        }
+        self.resize_with(0, |_| E::zeroed());
+        self.resize_with(
+            other.nrows(),
+            #[inline(always)]
+            |row| unsafe { other.read_unchecked(row) },
+        );
     }
 }
 
