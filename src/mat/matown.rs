@@ -1044,14 +1044,14 @@ impl<E: Entity> Mat<E> {
             this: &mut Mat<E>,
             other: MatRef<'_, ViewE>,
         ) {
-            let mut mat = Mat::<E>::new();
-            mat.resize_with(
-                other.nrows(),
-                other.ncols(),
+            let (rows, cols)=other.shape();
+            this.resize_with(0, 0, |_, _| E::zeroed());
+            this.resize_with(
+                rows,
+                cols,
                 #[inline(always)]
                 |row, col| unsafe { other.read_unchecked(row, col).canonicalize() },
             );
-            *this = mat;
         }
         implementation(self, other.as_mat_ref());
     }
@@ -2069,12 +2069,10 @@ impl<E: Entity> Clone for Mat<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(i, j)))
             })
         }
-    }fn clone_from(&mut self,other:&Self){
-        let (rows,cols)=other.shape();
-        self.resize_with(0,0,|_,_|E::zeroed());
-        unsafe{
-            self.resize_with(rows,cols,|r,c|other.read_unchecked(r,c))
-        }
+    }
+    
+    fn clone_from(&mut self, other: &Self) {
+        self.copy_from(other);
     }
 }
 
