@@ -960,10 +960,13 @@ pub mod supernodal {
     ///
     /// - `householder_row_indices` must have length
     /// `symbolic.householder().len_householder_row_indices()`
-    /// - `tau_blocksize` must have length `A.ncols()`.
-    /// - `householder_nrows` must have length `A.ncols()`.
-    /// - `householder_ncols` must have length `A.ncols()`.
-    /// - `r_values` must have length `symbolic.r_adjoint().len_values`.
+    /// - `tau_blocksize` must have length `symbolic.householder().len_householder_row_indices() +
+    ///   symbolic.householder().n_supernodes()`.
+    /// - `householder_nrows` must have length `symbolic.householder().len_householder_row_indices()
+    ///   + symbolic.householder().n_supernodes()`.
+    /// - `householder_ncols` must have length `symbolic.householder().len_householder_row_indices()
+    ///   + symbolic.householder().n_supernodes()`.
+    /// - `r_values` must have length `symbolic.r_adjoint().len_values()`.
     /// - `householder_values` must have length
     ///   `symbolic.householder().length_householder_values()`.
     /// - `tau_values` must have length `symbolic.householder().len_tau_values()`.
@@ -992,13 +995,22 @@ pub mod supernodal {
             let householder_values =
                 SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&householder_values)));
             let tau_values = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&tau_values)));
-            assert!(
+            assert!(all(
                 householder_row_indices.len()
+                    == symbolic.householder().len_householder_row_indices(),
+                L_values.len() == symbolic.r_adjoint().len_values(),
+                householder_values.len() == symbolic.householder().len_householder_values(),
+                tau_values.len() == symbolic.householder().len_tau_values(),
+                tau_blocksize.len()
                     == symbolic.householder().len_householder_row_indices()
-            );
-            assert!(L_values.len() == symbolic.r_adjoint().len_values());
-            assert!(householder_values.len() == symbolic.householder().len_householder_values());
-            assert!(tau_values.len() == symbolic.householder().len_tau_values());
+                        + symbolic.householder().n_supernodes(),
+                householder_nrows.len()
+                    == symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                householder_ncols.len()
+                    == symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+            ));
         }
         let mut r_values = r_values;
         let mut tau_values = tau_values;
@@ -1712,7 +1724,7 @@ pub mod simplicial {
         }
         for j in 0..n {
             let parent = etree.inner[j];
-            if parent < I::Signed::truncate(0) {
+            if parent < I::Signed::truncate(0) || h_non_zero_count[j] == I::truncate(0) {
                 continue;
             }
             h_non_zero_count[parent.zx()] += h_non_zero_count[j] - I::truncate(1);
@@ -1763,10 +1775,10 @@ pub mod simplicial {
 
     /// Computes the numerical QR factorization of $A$.
     ///
-    /// - `r_col_ptrs` has length `A.ncols()`.
+    /// - `r_col_ptrs` has length `A.ncols() + 1`.
     /// - `r_row_indices` has length `symbolic.len_r()`.
     /// - `r_values` has length `symbolic.len_r()`.
-    /// - `householder_col_ptrs` has length `A.ncols()`.
+    /// - `householder_col_ptrs` has length `A.ncols() + 1`.
     /// - `householder_row_indices` has length `symbolic.len_householder()`.
     /// - `householder_values` has length `symbolic.len_householder()`.
     /// - `tau_values` has length `A.ncols()`.
@@ -2091,9 +2103,18 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
             SymbolicQrRaw::Supernodal(symbolic) => {
                 let (householder_row_indices, indices) =
                     indices.split_at(symbolic.householder().len_householder_row_indices());
-                let (tau_blocksize, indices) = indices.split_at(n);
-                let (householder_nrows, indices) = indices.split_at(n);
-                let (householder_ncols, _) = indices.split_at(n);
+                let (tau_blocksize, indices) = indices.split_at(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
+                let (householder_nrows, indices) = indices.split_at(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
+                let (householder_ncols, _) = indices.split_at(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
 
                 let (r_values, values) = values.rb().split_at(symbolic.r_adjoint().len_values());
                 let (householder_values, values) =
@@ -2158,7 +2179,8 @@ impl<I: Index> SymbolicQr<I> {
                 symbolic.len_r() + symbolic.len_householder() + 2 * self.ncols() + 2
             }
             SymbolicQrRaw::Supernodal(symbolic) => {
-                symbolic.householder().len_householder_row_indices() + 3 * self.ncols()
+                4 * symbolic.householder().len_householder_row_indices()
+                    + 3 * symbolic.householder().n_supernodes()
             }
         }
     }
@@ -2266,9 +2288,18 @@ impl<I: Index> SymbolicQr<I> {
             SymbolicQrRaw::Supernodal(symbolic) => {
                 let (householder_row_indices, indices) =
                     indices.split_at_mut(symbolic.householder().len_householder_row_indices());
-                let (tau_blocksize, indices) = indices.split_at_mut(n);
-                let (householder_nrows, indices) = indices.split_at_mut(n);
-                let (householder_ncols, _) = indices.split_at_mut(n);
+                let (tau_blocksize, indices) = indices.split_at_mut(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
+                let (householder_nrows, indices) = indices.split_at_mut(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
+                let (householder_ncols, _) = indices.split_at_mut(
+                    symbolic.householder().len_householder_row_indices()
+                        + symbolic.householder().n_supernodes(),
+                );
 
                 let (r_values, values) =
                     values.rb_mut().split_at(symbolic.r_adjoint().len_values());
@@ -2416,7 +2447,7 @@ pub fn factorize_symbolic_qr<I: Index>(
             }
             for j in 0..n {
                 let parent = etree[j];
-                if parent < I::Signed::truncate(0) {
+                if parent < I::Signed::truncate(0) || h_col_counts[j] == I::truncate(0) {
                     continue;
                 }
                 h_col_counts[parent.zx()] += h_col_counts[j] - I::truncate(1);
@@ -2741,9 +2772,21 @@ mod tests {
             let mut householder_values = vec![0.0; symbolic.householder().len_householder_values()];
             let mut tau_values = vec![0.0; symbolic.householder().len_tau_values()];
 
-            let mut tau_blocksize = vec![I(0); n];
-            let mut householder_nrows = vec![I(0); n];
-            let mut householder_ncols = vec![I(0); n];
+            let mut tau_blocksize = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
+            let mut householder_nrows = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
+            let mut householder_ncols = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
 
             factorize_supernodal_numeric_qr::<I, f64>(
                 &mut householder_row_indices,
@@ -2867,9 +2910,21 @@ mod tests {
                 vec![E::faer_zero(); symbolic.householder().len_householder_values()];
             let mut tau_values = vec![E::faer_zero(); symbolic.householder().len_tau_values()];
 
-            let mut tau_blocksize = vec![I(0); n];
-            let mut householder_nrows = vec![I(0); n];
-            let mut householder_ncols = vec![I(0); n];
+            let mut tau_blocksize = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
+            let mut householder_nrows = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
+            let mut householder_ncols = vec![
+                I(0);
+                symbolic.householder().len_householder_row_indices()
+                    + symbolic.householder().n_supernodes()
+            ];
 
             let qr = factorize_supernodal_numeric_qr::<I, E>(
                 &mut householder_row_indices,
