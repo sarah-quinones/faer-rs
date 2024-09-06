@@ -6,7 +6,9 @@
 // usize
 
 use super::*;
+use crate::assert;
 use core::ops::RangeFull;
+
 type Range = core::ops::Range<usize>;
 type RangeInclusive = core::ops::RangeInclusive<usize>;
 type RangeFrom = core::ops::RangeFrom<usize>;

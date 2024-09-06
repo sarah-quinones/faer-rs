@@ -6,6 +6,7 @@
 // usize
 
 use super::*;
+use crate::assert;
 use core::ops::RangeFull;
 
 type Range = core::ops::Range<usize>;

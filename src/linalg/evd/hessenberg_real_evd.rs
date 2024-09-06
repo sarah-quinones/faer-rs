@@ -660,7 +660,7 @@ fn schur_move<E: RealField>(
     0
 }
 
-fn schur_swap<E: RealField>(
+pub fn schur_swap<E: RealField>(
     mut a: MatMut<E>,
     mut q: Option<MatMut<E>>,
     j0: usize,
