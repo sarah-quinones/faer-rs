@@ -61,7 +61,7 @@ fn abs1<E: RealField>(a: E) -> E::Real {
     a.faer_abs()
 }
 
-fn rot<E: RealField>(x: ColMut<'_, E>, y: ColMut<'_, E>, c: E, s: E) {
+pub fn rot<E: RealField>(x: ColMut<'_, E>, y: ColMut<'_, E>, c: E, s: E) {
     zipped!(x, y).for_each(|unzipped!(mut x, mut y)| {
         let mut x_ = x.read();
         let mut y_ = y.read();
@@ -333,7 +333,7 @@ fn lahqr_shiftcolumn<E: RealField>(h: MatRef<'_, E>, mut v: ColMut<'_, E>, s1: (
     }
 }
 
-fn rotg<E: RealField>(a: E, b: E, zero_threshold: E::Real) -> (E::Real, E, E) {
+pub fn rotg<E: RealField>(a: E, b: E, zero_threshold: E::Real) -> (E::Real, E, E) {
     let safmin = zero_threshold;
     let safmax = zero_threshold.faer_inv();
 
