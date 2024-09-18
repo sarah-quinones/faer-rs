@@ -1030,8 +1030,8 @@ impl<E: Entity> Clone for Row<E> {
             })
         }
     }
-    
-    fn clone_from(&mut self, other: &Self){
+
+    fn clone_from(&mut self, other: &Self) {
         self.resize_with(0, |_| E::zeroed());
         self.resize_with(
             other.nrows(),

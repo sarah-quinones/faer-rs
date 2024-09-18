@@ -1044,7 +1044,7 @@ impl<E: Entity> Mat<E> {
             this: &mut Mat<E>,
             other: MatRef<'_, ViewE>,
         ) {
-            let (rows, cols)=other.shape();
+            let (rows, cols) = other.shape();
             this.resize_with(0, 0, |_, _| E::zeroed());
             this.resize_with(
                 rows,
@@ -2070,9 +2070,9 @@ impl<E: Entity> Clone for Mat<E> {
             })
         }
     }
-    
+
     fn clone_from(&mut self, other: &Self) {
-        let (rows, cols)=other.shape();
+        let (rows, cols) = other.shape();
         self.resize_with(0, 0, |_, _| E::zeroed());
         self.resize_with(
             rows,

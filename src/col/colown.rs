@@ -1069,7 +1069,8 @@ impl<E: Entity> Clone for Col<E> {
                 E::faer_from_units(E::faer_deref(this.get_unchecked(i)))
             })
         }
-    }fn clone_from(&mut self,other:&Self){
+    }
+    fn clone_from(&mut self, other: &Self) {
         self.resize_with(0, |_| E::zeroed());
         self.resize_with(
             other.nrows(),
