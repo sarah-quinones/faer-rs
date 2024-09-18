@@ -88,6 +88,97 @@ where
         }
         const FIELDS: &'static [&'static str] = &["nrows", "ncols", "data"];
         struct MatVisitor<E: Entity>(PhantomData<E>);
+        enum MatrixOrVec<E: Entity> {
+            Matrix(Mat<E>),
+            Vec(Vec<E>),
+        }
+        impl<E: Entity> MatrixOrVec<E> {
+            fn into_mat(self, nrows: usize, ncols: usize) -> Mat<E> {
+                match self {
+                    MatrixOrVec::Matrix(m) => m,
+                    MatrixOrVec::Vec(v) => Mat::from_fn(nrows, ncols, |i, j| v[i * ncols + j]),
+                }
+            }
+        }
+        struct MatrixOrVecDeserializer<'a, E: Entity + Deserialize<'a>> {
+            marker: PhantomData<&'a E>,
+            nrows: Option<usize>,
+            ncols: Option<usize>,
+        }
+        impl<'a, E: Entity + Deserialize<'a>> MatrixOrVecDeserializer<'a, E> {
+            fn new(nrows: Option<usize>, ncols: Option<usize>) -> Self {
+                Self {
+                    marker: PhantomData,
+                    nrows,
+                    ncols,
+                }
+            }
+        }
+        impl<'a, E: Entity> DeserializeSeed<'a> for MatrixOrVecDeserializer<'a, E>
+        where
+            E: Deserialize<'a>,
+        {
+            type Value = MatrixOrVec<E>;
+
+            fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: serde::Deserializer<'a>,
+            {
+                deserializer.deserialize_seq(self)
+            }
+        }
+        impl<'a, E: Entity> Visitor<'a> for MatrixOrVecDeserializer<'a, E>
+        where
+            E: Deserialize<'a>,
+        {
+            type Value = MatrixOrVec<E>;
+
+            fn expecting(&self, formatter: &mut alloc::fmt::Formatter) -> alloc::fmt::Result {
+                formatter.write_str("a sequence")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'a>,
+            {
+                match (self.ncols, self.nrows) {
+                    (Some(ncols), Some(nrows)) => {
+                        let mut data = Mat::<E>::with_capacity(nrows, ncols);
+                        unsafe {
+                            data.set_dims(nrows, ncols);
+                        }
+                        let expected_length = nrows * ncols;
+                        for i in 0..expected_length {
+                            let el = seq.next_element::<E>()?.ok_or_else(|| {
+                                serde::de::Error::invalid_length(
+                                    i,
+                                    &format!("{} elements", expected_length).as_str(),
+                                )
+                            })?;
+                            data.write(i / ncols, i % ncols, el);
+                        }
+                        let mut additional = 0usize;
+                        while let Some(_) = seq.next_element::<E>()? {
+                            additional += 1;
+                        }
+                        if additional > 0 {
+                            return Err(serde::de::Error::invalid_length(
+                                additional + expected_length,
+                                &format!("{} elements", expected_length).as_str(),
+                            ));
+                        }
+                        Ok(MatrixOrVec::Matrix(data))
+                    }
+                    _ => {
+                        let mut data = Vec::new();
+                        while let Some(el) = seq.next_element::<E>()? {
+                            data.push(el);
+                        }
+                        Ok(MatrixOrVec::Vec(data))
+                    }
+                }
+            }
+        }
         impl<'a, E: Entity + Deserialize<'a>> Visitor<'a> for MatVisitor<E> {
             type Value = Mat<E>;
 
@@ -95,106 +186,30 @@ where
                 formatter.write_str("a faer matrix")
             }
 
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'a>,
+            {
+                let nrows = seq
+                    .next_element::<usize>()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(0, &"nrows"))?;
+                let ncols = seq
+                    .next_element::<usize>()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(1, &"ncols"))?;
+                let data = seq.next_element_seed(MatrixOrVecDeserializer::<E>::new(
+                    Some(nrows),
+                    Some(ncols),
+                ))?;
+                let mat = data
+                    .ok_or_else(|| serde::de::Error::missing_field("data"))?
+                    .into_mat(nrows, ncols);
+                Ok(mat)
+            }
+
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
             where
                 A: serde::de::MapAccess<'a>,
             {
-                enum MatrixOrVec<E: Entity> {
-                    Matrix(Mat<E>),
-                    Vec(Vec<E>),
-                }
-                impl<E: Entity> MatrixOrVec<E> {
-                    fn into_mat(self, nrows: usize, ncols: usize) -> Mat<E> {
-                        match self {
-                            MatrixOrVec::Matrix(m) => m,
-                            MatrixOrVec::Vec(v) => {
-                                Mat::from_fn(nrows, ncols, |i, j| v[i * ncols + j])
-                            }
-                        }
-                    }
-                }
-                struct MatrixOrVecDeserializer<'a, E: Entity + Deserialize<'a>> {
-                    marker: PhantomData<&'a E>,
-                    nrows: Option<usize>,
-                    ncols: Option<usize>,
-                }
-                impl<'a, E: Entity + Deserialize<'a>> MatrixOrVecDeserializer<'a, E> {
-                    fn new(nrows: Option<usize>, ncols: Option<usize>) -> Self {
-                        Self {
-                            marker: PhantomData,
-                            nrows,
-                            ncols,
-                        }
-                    }
-                }
-                impl<'a, E: Entity> DeserializeSeed<'a> for MatrixOrVecDeserializer<'a, E>
-                where
-                    E: Deserialize<'a>,
-                {
-                    type Value = MatrixOrVec<E>;
-
-                    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-                    where
-                        D: serde::Deserializer<'a>,
-                    {
-                        deserializer.deserialize_seq(self)
-                    }
-                }
-                impl<'a, E: Entity> Visitor<'a> for MatrixOrVecDeserializer<'a, E>
-                where
-                    E: Deserialize<'a>,
-                {
-                    type Value = MatrixOrVec<E>;
-
-                    fn expecting(
-                        &self,
-                        formatter: &mut alloc::fmt::Formatter,
-                    ) -> alloc::fmt::Result {
-                        formatter.write_str("a sequence")
-                    }
-
-                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-                    where
-                        A: SeqAccess<'a>,
-                    {
-                        match (self.ncols, self.nrows) {
-                            (Some(ncols), Some(nrows)) => {
-                                let mut data = Mat::<E>::with_capacity(nrows, ncols);
-                                unsafe {
-                                    data.set_dims(nrows, ncols);
-                                }
-                                let expected_length = nrows * ncols;
-                                for i in 0..expected_length {
-                                    let el = seq.next_element::<E>()?.ok_or_else(|| {
-                                        serde::de::Error::invalid_length(
-                                            i,
-                                            &format!("{} elements", expected_length).as_str(),
-                                        )
-                                    })?;
-                                    data.write(i / ncols, i % ncols, el);
-                                }
-                                let mut additional = 0usize;
-                                while let Some(_) = seq.next_element::<E>()? {
-                                    additional += 1;
-                                }
-                                if additional > 0 {
-                                    return Err(serde::de::Error::invalid_length(
-                                        additional + expected_length,
-                                        &format!("{} elements", expected_length).as_str(),
-                                    ));
-                                }
-                                Ok(MatrixOrVec::Matrix(data))
-                            }
-                            _ => {
-                                let mut data = Vec::new();
-                                while let Some(el) = seq.next_element::<E>()? {
-                                    data.push(el);
-                                }
-                                Ok(MatrixOrVec::Vec(data))
-                            }
-                        }
-                    }
-                }
                 let mut nrows = None;
                 let mut ncols = None;
                 let mut data: Option<MatrixOrVec<E>> = None;
