@@ -307,8 +307,8 @@ impl<E: Entity> Row<E> {
                     row_capacity: old_col_capacity,
                     col_capacity: 1,
                 },
-                ncols,
-                nrows: 1,
+                nrows: ncols,
+                ncols: 1,
             });
 
             E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
@@ -1030,8 +1030,8 @@ impl<E: Entity> Clone for Row<E> {
             })
         }
     }
-    
-    fn clone_from(&mut self, other: &Self){
+
+    fn clone_from(&mut self, other: &Self) {
         self.resize_with(0, |_| E::zeroed());
         self.resize_with(
             other.nrows(),

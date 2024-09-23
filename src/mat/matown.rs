@@ -309,6 +309,8 @@ impl<E: Entity> Mat<E> {
                 .msrv_checked_next_multiple_of(align_factor)
                 .unwrap();
         }
+        let new_row_capacity = Ord::max(new_row_capacity, self.inner.nrows);
+        let new_col_capacity = Ord::max(new_col_capacity, self.inner.ncols);
 
         let nrows = self.inner.nrows;
         let ncols = self.inner.ncols;
@@ -1044,7 +1046,7 @@ impl<E: Entity> Mat<E> {
             this: &mut Mat<E>,
             other: MatRef<'_, ViewE>,
         ) {
-            let (rows, cols)=other.shape();
+            let (rows, cols) = other.shape();
             this.resize_with(0, 0, |_, _| E::zeroed());
             this.resize_with(
                 rows,
@@ -2070,9 +2072,9 @@ impl<E: Entity> Clone for Mat<E> {
             })
         }
     }
-    
+
     fn clone_from(&mut self, other: &Self) {
-        let (rows, cols)=other.shape();
+        let (rows, cols) = other.shape();
         self.resize_with(0, 0, |_, _| E::zeroed());
         self.resize_with(
             rows,

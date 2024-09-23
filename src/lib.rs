@@ -1788,5 +1788,5 @@ mod tests {
     }
 }
 
-#[path = "krylov_schur.rs"]
-mod krylov_schur_prototype;
+// #[path = "krylov_schur.rs"]
+// mod krylov_schur_prototype;

@@ -1187,8 +1187,6 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
         }
     }
 
-    let max_val = E::faer_one();
-
     if max_val == E::faer_zero() {
         return;
     }

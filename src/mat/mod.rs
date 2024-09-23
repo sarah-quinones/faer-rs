@@ -232,4 +232,12 @@ mod tests {
         from_mut::<f64>(&mut c).fill(3.0);
         assert!(c == 3.0);
     }
+
+    #[test]
+    fn test_alloc() {
+        let mut a = crate::Mat::<f64>::zeros(2, 2);
+
+        a.reserve_exact(128, 0);
+        a.reserve_exact(129, 1);
+    }
 }
