@@ -1224,13 +1224,15 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
             } = self;
             let n = diag.len();
             let arch = E::Simd::default();
+            let epsilon2 = E::faer_mul(epsilon, epsilon);
 
             for iter in 0..max_iter {
                 let _ = iter;
                 for i in 0..n - 1 {
-                    if subdiag[i].faer_abs()
-                        <= epsilon.faer_mul(diag[i].faer_abs().faer_add(diag[i + 1].faer_abs()))
-                        || subdiag[i].faer_abs() <= epsilon
+                    if subdiag[i].faer_abs2()
+                        <= epsilon2
+                            .faer_mul(E::faer_mul(diag[i].faer_abs(), diag[i + 1].faer_abs()))
+                            + consider_zero_threshold
                     {
                         subdiag[i] = E::faer_zero();
                     }
@@ -1242,8 +1244,7 @@ fn bidiag_svd_qr_algorithm_impl<E: RealField>(
                 }
 
                 let mut end = n;
-                while end > 1 && subdiag[end - 2].faer_abs() <= consider_zero_threshold.faer_sqrt()
-                {
+                while end > 1 && subdiag[end - 2].faer_abs2() <= consider_zero_threshold {
                     end -= 1;
                 }
 
