@@ -138,7 +138,7 @@ pub fn bicgstab<E: ComplexField>(
     params: BicgParams<E>,
     callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<BicgInfo<E>, BicgError<E>> {
     #[track_caller]
     fn implementation<E: ComplexField>(
@@ -150,7 +150,7 @@ pub fn bicgstab<E: ComplexField>(
         params: BicgParams<E>,
         callback: &mut dyn FnMut(MatRef<'_, E>),
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<BicgInfo<E>, BicgError<E>> {
         let mut x = out;
         let A = mat;

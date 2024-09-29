@@ -33,7 +33,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> LinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.as_ref().apply(out, rhs, parallelism, stack)
     }
@@ -45,7 +45,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> LinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.as_ref().conj_apply(out, rhs, parallelism, stack)
     }
@@ -70,7 +70,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> BiLinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.as_ref().transpose_apply(out, rhs, parallelism, stack)
     }
@@ -82,7 +82,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> BiLinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.as_ref().adjoint_apply(out, rhs, parallelism, stack)
     }

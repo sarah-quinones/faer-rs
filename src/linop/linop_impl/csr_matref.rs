@@ -34,7 +34,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> LinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         crate::sparse::linalg::matmul::dense_sparse_matmul(
@@ -54,7 +54,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> LinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.conjugate();
@@ -89,7 +89,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> BiLinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.transpose();
@@ -110,7 +110,7 @@ impl<E: ComplexField, I: Index, ViewE: Conjugate<Canonical = E>> BiLinOp<E>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.adjoint();

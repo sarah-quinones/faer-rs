@@ -348,7 +348,7 @@ pub fn lsmr<E: ComplexField>(
     params: LsmrParams<E>,
     callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<LsmrInfo<E>, LsmrError<E>> {
     #[track_caller]
     fn implementation<E: ComplexField>(
@@ -359,14 +359,14 @@ pub fn lsmr<E: ComplexField>(
         params: LsmrParams<E>,
         callback: &mut dyn FnMut(MatRef<'_, E>),
         par: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<LsmrInfo<E>, LsmrError<E>> {
         fn thin_qr<E: ComplexField>(
             mut Q: MatMut<'_, E>,
             mut R: MatMut<'_, E>,
             mut mat: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) {
             let k = R.nrows();
             let bs = qr::no_pivoting::compute::recommended_blocksize::<E>(mat.nrows(), mat.ncols());

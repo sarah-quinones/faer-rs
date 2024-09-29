@@ -33,7 +33,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for DiagRef<'_, 
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let k = rhs.ncols();
         _ = parallelism;
@@ -51,7 +51,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for DiagRef<'_, 
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.column_vector()
             .conjugate()
@@ -75,7 +75,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for DiagRef<'_
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.apply(out, rhs, parallelism, stack);
     }
@@ -85,7 +85,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for DiagRef<'_
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.conj_apply(out, rhs, parallelism, stack);
     }
@@ -102,7 +102,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> Precond<E> for DiagRef<'_
         Ok(StackReq::empty())
     }
 
-    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: PodStack<'_>) {
+    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: &mut PodStack) {
         _ = parallelism;
         _ = stack;
         let mut rhs = rhs;
@@ -118,7 +118,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> Precond<E> for DiagRef<'_
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.column_vector()
             .conjugate()
@@ -139,7 +139,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiPrecond<E> for DiagRef<
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.apply_in_place(rhs, parallelism, stack)
     }
@@ -148,7 +148,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiPrecond<E> for DiagRef<
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         self.conj_apply_in_place(rhs, parallelism, stack)
     }

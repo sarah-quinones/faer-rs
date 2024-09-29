@@ -58,7 +58,7 @@ impl<E: ComplexField> LinOp<E> for IdentityPrecond {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
         { out }.copy_from(rhs);
     }
@@ -69,7 +69,7 @@ impl<E: ComplexField> LinOp<E> for IdentityPrecond {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
         { out }.copy_from(rhs);
     }
@@ -91,7 +91,7 @@ impl<E: ComplexField> BiLinOp<E> for IdentityPrecond {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
         { out }.copy_from(rhs);
     }
@@ -102,7 +102,7 @@ impl<E: ComplexField> BiLinOp<E> for IdentityPrecond {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
         { out }.copy_from(rhs);
     }
@@ -116,14 +116,19 @@ impl<E: ComplexField> Precond<E> for IdentityPrecond {
         Ok(StackReq::empty())
     }
 
-    fn apply_in_place(&self, _rhs: MatMut<'_, E>, _parallelism: Parallelism, _stack: PodStack<'_>) {
+    fn apply_in_place(
+        &self,
+        _rhs: MatMut<'_, E>,
+        _parallelism: Parallelism,
+        _stack: &mut PodStack,
+    ) {
     }
 
     fn conj_apply_in_place(
         &self,
         _rhs: MatMut<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
     }
 }
@@ -140,7 +145,7 @@ impl<E: ComplexField> BiPrecond<E> for IdentityPrecond {
         &self,
         _rhs: MatMut<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
     }
 
@@ -148,7 +153,7 @@ impl<E: ComplexField> BiPrecond<E> for IdentityPrecond {
         &self,
         _rhs: MatMut<'_, E>,
         _parallelism: Parallelism,
-        _stack: PodStack<'_>,
+        _stack: &mut PodStack,
     ) {
     }
 }
@@ -174,7 +179,7 @@ pub trait LinOp<E: ComplexField>: Sync + core::fmt::Debug {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     );
 
     /// Applies the conjugate of `self` to `rhs`, and stores the result in `out`.
@@ -183,7 +188,7 @@ pub trait LinOp<E: ComplexField>: Sync + core::fmt::Debug {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     );
 }
 
@@ -203,7 +208,7 @@ pub trait BiLinOp<E: ComplexField>: LinOp<E> {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     );
 
     /// Applies the adjoint of `self` to `rhs`, and stores the result in `out`.
@@ -212,7 +217,7 @@ pub trait BiLinOp<E: ComplexField>: LinOp<E> {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     );
 }
 
@@ -232,7 +237,7 @@ pub trait Precond<E: ComplexField>: LinOp<E> {
 
     /// Applies `self` to `rhs`, and stores the result in `rhs`.
     #[track_caller]
-    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: PodStack<'_>) {
+    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: &mut PodStack) {
         let (mut tmp, stack) = temp_mat_uninit::<E>(self.nrows(), rhs.ncols(), stack);
         self.apply(tmp.rb_mut(), rhs.rb(), parallelism, stack);
         { rhs }.copy_from(&tmp);
@@ -244,7 +249,7 @@ pub trait Precond<E: ComplexField>: LinOp<E> {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let (mut tmp, stack) = temp_mat_uninit::<E>(self.nrows(), rhs.ncols(), stack);
         self.conj_apply(tmp.rb_mut(), rhs.rb(), parallelism, stack);
@@ -273,7 +278,7 @@ pub trait BiPrecond<E: ComplexField>: Precond<E> + BiLinOp<E> {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let (mut tmp, stack) = temp_mat_uninit::<E>(self.nrows(), rhs.ncols(), stack);
         self.transpose_apply(tmp.rb_mut(), rhs.rb(), parallelism, stack);
@@ -286,7 +291,7 @@ pub trait BiPrecond<E: ComplexField>: Precond<E> + BiLinOp<E> {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let (mut tmp, stack) = temp_mat_uninit::<E>(self.nrows(), rhs.ncols(), stack);
         self.adjoint_apply(tmp.rb_mut(), rhs.rb(), parallelism, stack);
@@ -321,7 +326,7 @@ impl<E: ComplexField, T: ?Sized + LinOp<E>> LinOp<E> for &T {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).apply(out, rhs, parallelism, stack)
     }
@@ -333,7 +338,7 @@ impl<E: ComplexField, T: ?Sized + LinOp<E>> LinOp<E> for &T {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).conj_apply(out, rhs, parallelism, stack)
     }
@@ -357,7 +362,7 @@ impl<E: ComplexField, T: ?Sized + BiLinOp<E>> BiLinOp<E> for &T {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).transpose_apply(out, rhs, parallelism, stack)
     }
@@ -369,7 +374,7 @@ impl<E: ComplexField, T: ?Sized + BiLinOp<E>> BiLinOp<E> for &T {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).adjoint_apply(out, rhs, parallelism, stack)
     }
@@ -384,7 +389,7 @@ impl<E: ComplexField, T: ?Sized + Precond<E>> Precond<E> for &T {
         (**self).apply_in_place_req(rhs_ncols, parallelism)
     }
 
-    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: PodStack<'_>) {
+    fn apply_in_place(&self, rhs: MatMut<'_, E>, parallelism: Parallelism, stack: &mut PodStack) {
         (**self).apply_in_place(rhs, parallelism, stack);
     }
 
@@ -392,7 +397,7 @@ impl<E: ComplexField, T: ?Sized + Precond<E>> Precond<E> for &T {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).conj_apply_in_place(rhs, parallelism, stack);
     }
@@ -411,7 +416,7 @@ impl<E: ComplexField, T: ?Sized + BiPrecond<E>> BiPrecond<E> for &T {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).transpose_apply_in_place(rhs, parallelism, stack);
     }
@@ -420,7 +425,7 @@ impl<E: ComplexField, T: ?Sized + BiPrecond<E>> BiPrecond<E> for &T {
         &self,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         (**self).adjoint_apply_in_place(rhs, parallelism, stack);
     }

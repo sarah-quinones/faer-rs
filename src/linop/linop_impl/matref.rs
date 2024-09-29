@@ -31,7 +31,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for MatRef<'_, V
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         crate::linalg::matmul::matmul(out, *self, rhs, None, E::faer_one(), parallelism);
@@ -44,7 +44,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for MatRef<'_, V
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.conjugate();
@@ -70,7 +70,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for MatRef<'_,
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.transpose();
@@ -84,7 +84,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for MatRef<'_,
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.adjoint();

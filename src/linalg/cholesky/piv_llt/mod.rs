@@ -48,7 +48,7 @@ pub mod compute {
         perm: &'out mut [I],
         perm_inv: &'out mut [I],
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: PivLltParams,
     ) -> Result<(PivLltInfo, PermRef<'out, I>), CholeskyError> {
         assert!(a.nrows() == a.ncols());

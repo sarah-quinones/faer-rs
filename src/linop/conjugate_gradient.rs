@@ -133,7 +133,7 @@ pub fn conjugate_gradient<E: ComplexField>(
     params: CgParams<E>,
     callback: impl FnMut(MatRef<'_, E>),
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<CgInfo<E>, CgError<E>> {
     #[track_caller]
     fn implementation<E: ComplexField>(
@@ -145,7 +145,7 @@ pub fn conjugate_gradient<E: ComplexField>(
         params: CgParams<E>,
         callback: &mut dyn FnMut(MatRef<'_, E>),
         parallelism: Parallelism,
-        mut stack: PodStack<'_>,
+        mut stack: &mut PodStack,
     ) -> Result<CgInfo<E>, CgError<E>> {
         assert!(A.nrows() == A.ncols());
 

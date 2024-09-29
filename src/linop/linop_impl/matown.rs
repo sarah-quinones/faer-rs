@@ -31,7 +31,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for Mat<ViewE> {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.as_ref();
@@ -45,7 +45,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> LinOp<E> for Mat<ViewE> {
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.as_ref().conjugate();
@@ -71,7 +71,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for Mat<ViewE>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.as_ref().transpose();
@@ -85,7 +85,7 @@ impl<E: ComplexField, ViewE: Conjugate<Canonical = E>> BiLinOp<E> for Mat<ViewE>
         out: MatMut<'_, E>,
         rhs: MatRef<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         _ = stack;
         let this = self.as_ref().adjoint();
