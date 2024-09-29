@@ -573,7 +573,7 @@ pub mod supernodal {
         min_col: &[I],
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalLu<I>, FaerError> {
         let m = A.nrows();
@@ -693,7 +693,7 @@ pub mod supernodal {
         symbolic: &SymbolicSupernodalLu<I>,
 
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<(), LuError> {
         use crate::sparse::linalg::cholesky::supernodal::partition_fn;
         let SymbolicSupernodalLu {
@@ -1696,7 +1696,7 @@ pub mod simplicial {
 
         A: SparseColMatRef<'_, I, E>,
         col_perm: PermRef<'_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<(), LuError> {
         let I = I::truncate;
 
@@ -1956,7 +1956,7 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -1997,7 +1997,7 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -2107,7 +2107,7 @@ impl<I: Index> SymbolicLu<I> {
         numeric: &'out mut NumericLu<I, E>,
         A: SparseColMatRef<'_, I, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<LuRef<'out, I, E>, LuError> {
         if matches!(self.raw, SymbolicLuRaw::Simplicial { .. })
             && !matches!(numeric.raw, NumericLuRaw::Simplicial(_))

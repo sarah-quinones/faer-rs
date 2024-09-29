@@ -420,7 +420,7 @@ pub fn make_hessenberg_in_place<E: ComplexField>(
     a: MatMut<'_, E>,
     householder: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);
@@ -441,7 +441,7 @@ fn make_hessenberg_in_place_basic<E: ComplexField>(
     a: MatMut<'_, E>,
     householder: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);
@@ -671,7 +671,7 @@ fn make_hessenberg_in_place_qgvdg_unblocked<E: ComplexField>(
     t: MatMut<'_, E>,
     bs: usize,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);
@@ -854,7 +854,7 @@ fn make_hessenberg_in_place_qgvdg_blocked<E: ComplexField>(
     z: MatMut<'_, E>,
     t: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut z = z;
     let mut a = a;

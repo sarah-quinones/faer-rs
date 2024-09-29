@@ -134,7 +134,7 @@ pub fn order<I: Index>(
     perm_inv: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
     control: Control,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<(), FaerError> {
     let m = A.nrows();
     let n = A.ncols();

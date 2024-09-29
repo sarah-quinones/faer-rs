@@ -1519,7 +1519,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     col_perm: &'out mut [I],
     col_perm_inv: &'out mut [I],
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: FullPivLuComputeParams,
 ) -> (FullPivLuInfo, PermRef<'out, I>, PermRef<'out, I>) {
     let disable_parallelism = params

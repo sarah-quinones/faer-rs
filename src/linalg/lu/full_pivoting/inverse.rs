@@ -15,7 +15,7 @@ fn invert_impl<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let lu_factors = match lu_factors {
         Some(lu_factors) => lu_factors,
@@ -113,7 +113,7 @@ pub fn invert<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = lu_factors.nrows();
     assert!(all(
@@ -148,7 +148,7 @@ pub fn invert_in_place<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = lu_factors.nrows();
     assert!(all(

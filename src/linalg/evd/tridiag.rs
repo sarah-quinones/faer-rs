@@ -978,7 +978,7 @@ pub fn tridiagonalize_in_place<E: ComplexField>(
     mut a: MatMut<'_, E>,
     mut householder: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(a.nrows() == a.ncols());
     assert!(a.row_stride() == 1);

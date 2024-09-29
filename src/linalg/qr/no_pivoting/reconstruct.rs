@@ -25,7 +25,7 @@ pub fn reconstruct<E: ComplexField>(
     qr_factors: MatRef<'_, E>,
     householder_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!((dst.nrows(), dst.ncols()) == (qr_factors.nrows(), qr_factors.ncols()));
     assert!(householder_factor.ncols() == Ord::min(qr_factors.nrows(), qr_factors.ncols()));
@@ -69,7 +69,7 @@ pub fn reconstruct_in_place<E: ComplexField>(
     qr_factors: MatMut<'_, E>,
     householder_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let (mut dst, stack) = temp_mat_uninit::<E>(qr_factors.nrows(), qr_factors.ncols(), stack);
     let mut dst = dst.as_mut();

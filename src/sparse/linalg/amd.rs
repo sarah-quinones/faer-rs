@@ -101,7 +101,7 @@ fn postorder<'n, 'out, I: Index>(
     etree: &Array<'n, MaybeIdx<'n, I>>,
     nv: &Array<'n, I::Signed>,
     f_size: &Array<'n, I::Signed>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let N = order.len();
     let n = *N;
@@ -211,7 +211,7 @@ fn amd_2<I: Index>(
     next: &mut [I::Signed],
     last: &mut [I::Signed],
     control: Control,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> FlopCount {
     let n = pe.len();
     assert!(n < I::Signed::MAX.zx());
@@ -769,7 +769,7 @@ fn amd_1<I: Index>(
     len: &mut [I::Signed],
     iwlen: usize,
     control: Control,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> FlopCount {
     let n = perm.len();
     let I = I::Signed::truncate;
@@ -894,7 +894,7 @@ fn preprocess<'out, I: Index>(
     new_col_ptrs: &'out mut [I],
     new_row_indices: &'out mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> SymbolicSparseColMatRef<'out, I> {
     let n = A.nrows();
 
@@ -962,7 +962,7 @@ fn preprocess<'out, I: Index>(
 fn aat<I: Index>(
     len: &mut [I::Signed],
     A: SymbolicSparseColMatRef<'_, I>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<usize, FaerError> {
     ghost::with_size(A.nrows(), |N| {
         let I = I::Signed::truncate;
@@ -1095,7 +1095,7 @@ pub fn order<I: Index>(
     perm_inv: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
     control: Control,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<FlopCount, FaerError> {
     let n = perm.len();
 
@@ -1134,7 +1134,7 @@ pub fn order_maybe_unsorted<I: Index>(
     perm_inv: &mut [I],
     A: SymbolicSparseColMatRef<'_, I>,
     control: Control,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<FlopCount, FaerError> {
     let n = perm.len();
 

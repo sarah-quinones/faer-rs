@@ -767,7 +767,7 @@ pub mod compute {
         perm: &'out mut [I],
         perm_inv: &'out mut [I],
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: BunchKaufmanParams,
     ) -> (BunchKaufmanInfo, PermRef<'out, I>) {
         let truncate = <I::Signed as SignedIndex>::truncate;
@@ -926,7 +926,7 @@ pub mod solve {
         perm: PermRef<'_, I>,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let n = lb_factors.nrows();
         let k = rhs.ncols();

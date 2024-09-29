@@ -716,7 +716,7 @@ fn aggressive_early_deflation<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    mut stack: PodStack<'_>,
+    mut stack: &mut PodStack,
     params: EvdParams,
 ) -> (usize, usize) {
     let n = a.nrows();
@@ -1237,7 +1237,7 @@ pub fn multishift_qr<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: EvdParams,
 ) -> (isize, usize, usize) {
     assert!(a.nrows() == a.ncols());
@@ -1618,7 +1618,7 @@ fn multishift_qr_sweep<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = a.nrows();
 

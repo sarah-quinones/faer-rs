@@ -101,7 +101,7 @@ pub fn sparse_sparse_matmul_numeric<
     k: E,
     info: &SparseMatmulInfo,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let (c_symbolic, c_values) = dst.parts_mut();
     {

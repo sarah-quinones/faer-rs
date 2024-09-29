@@ -877,7 +877,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
     col_perm: &'out mut [I],
     col_perm_inv: &'out mut [I],
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: ColPivQrComputeParams,
 ) -> (ColPivQrInfo, PermRef<'out, I>) {
     fn implementation<'out, I: Index, E: ComplexField>(
@@ -886,7 +886,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
         col_perm: &'out mut [I],
         col_perm_inv: &'out mut [I],
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: ColPivQrComputeParams,
     ) -> (usize, PermRef<'out, I>) {
         {

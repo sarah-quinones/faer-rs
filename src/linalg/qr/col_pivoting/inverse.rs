@@ -29,7 +29,7 @@ pub fn invert<I: Index, E: ComplexField>(
     householder_factor: MatRef<'_, E>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(all(
         qr_factors.nrows() == qr_factors.ncols(),
@@ -81,7 +81,7 @@ pub fn invert_in_place<I: Index, E: ComplexField>(
     householder_factor: MatRef<'_, E>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let (mut dst, stack) = temp_mat_uninit::<E>(qr_factors.nrows(), qr_factors.ncols(), stack);
     let mut dst = dst.as_mut();

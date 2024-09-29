@@ -484,7 +484,7 @@ pub fn compute_tridiag_real_evd<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = diag.len();
     let (pl_before, stack) = stack.make_with(n, |_| 0usize);

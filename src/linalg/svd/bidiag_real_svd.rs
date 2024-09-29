@@ -48,7 +48,7 @@ fn compute_svd_of_m<E: RealField>(
     outer_perm: &[usize],
     epsilon: E,
     _consider_zero_threshold: E,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = diag.len();
 
@@ -936,7 +936,7 @@ fn deflate<E: RealField>(
     k: usize,
     epsilon: E,
     consider_zero_threshold: E,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> (usize, usize) {
     let n = diag.len();
     let mut jacobi_0i = 0;
@@ -1498,7 +1498,7 @@ pub fn compute_bidiag_real_svd<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = diag.len();
 
@@ -1577,7 +1577,7 @@ fn bidiag_svd_impl<E: RealField>(
     epsilon: E,
     consider_zero_threshold: E,
     parallelism: Parallelism,
-    mut stack: PodStack<'_>,
+    mut stack: &mut PodStack,
 ) {
     let n = diag.len();
 
@@ -2005,7 +2005,7 @@ fn bidiag_svd_impl<E: RealField>(
 
     let _v_is_none = v.is_none();
 
-    let mut update_v = |parallelism: Parallelism<'_>, stack: PodStack<'_>| {
+    let mut update_v = |parallelism: Parallelism<'_>, stack: &mut PodStack| {
         let (mut combined_v, _) = temp_mat_uninit::<E>(n, allocate_vm * n, stack);
         let mut combined_v = combined_v.as_mut();
         let v_rhs = vm.rb();
@@ -2058,7 +2058,7 @@ fn bidiag_svd_impl<E: RealField>(
         }
     };
 
-    let mut update_u = |parallelism: Parallelism<'_>, stack: PodStack<'_>| {
+    let mut update_u = |parallelism: Parallelism<'_>, stack: &mut PodStack| {
         let (mut combined_u, _) = temp_mat_uninit::<E>(n + 1, allocate_um * (n + 1), stack);
         let mut combined_u = combined_u.as_mut();
 

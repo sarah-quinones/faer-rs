@@ -22,7 +22,7 @@ use reborrow::*;
 fn qr_in_place_unblocked<E: ComplexField>(
     mut matrix: MatMut<'_, E>,
     mut householder_factor: MatMut<'_, E>,
-    _stack: PodStack<'_>,
+    _stack: &mut PodStack,
 ) {
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -216,7 +216,7 @@ fn qr_in_place_blocked<E: ComplexField>(
     householder_factor: MatMut<'_, E>,
     blocksize: usize,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: QrComputeParams,
 ) {
     let mut matrix = matrix;
@@ -351,7 +351,7 @@ pub fn qr_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     householder_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: QrComputeParams,
 ) {
     let blocksize = householder_factor.nrows();

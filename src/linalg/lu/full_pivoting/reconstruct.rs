@@ -15,7 +15,7 @@ fn reconstruct_impl<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let lu_factors = match lu_factors {
         Some(lu_factors) => lu_factors,
@@ -111,7 +111,7 @@ pub fn reconstruct<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!((dst.nrows(), dst.ncols()) == (lu_factors.nrows(), lu_factors.ncols()));
     assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
@@ -141,7 +141,7 @@ pub fn reconstruct_in_place<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     col_perm: PermRef<'_, I>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!((row_perm.len(), col_perm.len()) == (lu_factors.nrows(), lu_factors.ncols()));
     reconstruct_impl(lu_factors, None, row_perm, col_perm, parallelism, stack)

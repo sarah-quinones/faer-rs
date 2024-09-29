@@ -129,7 +129,7 @@ pub fn compute_hermitian_evd<E: ComplexField>(
     s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: HermitianEvdParams,
 ) {
     compute_hermitian_evd_custom_epsilon(
@@ -159,7 +159,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: HermitianEvdParams,
 ) {
     let _ = params;
@@ -359,7 +359,7 @@ pub fn compute_hermitian_pseudoinverse<E: ComplexField>(
     s: ColRef<'_, E>,
     u: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     compute_hermitian_pseudoinverse_custom_epsilon(pinv, s, u, None, None, parallelism, stack);
 }
@@ -380,7 +380,7 @@ pub fn compute_hermitian_pseudoinverse_custom_epsilon<E: ComplexField>(
     atol: Option<E::Real>,
     rtol: Option<E::Real>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut pinv = pinv;
     let n = u.ncols();
@@ -468,7 +468,7 @@ pub fn compute_evd_real<E: RealField>(
     s_im: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: EvdParams,
 ) {
     compute_evd_real_custom_epsilon(
@@ -1001,7 +1001,7 @@ pub fn compute_evd_real_custom_epsilon<E: RealField>(
     epsilon: E,
     zero_threshold: E,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: EvdParams,
 ) {
     let n = matrix.nrows();
@@ -1316,7 +1316,7 @@ pub fn compute_evd_complex<E: ComplexField>(
     s: ColMut<'_, E>,
     u: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: EvdParams,
 ) {
     compute_evd_complex_custom_epsilon(
@@ -1346,7 +1346,7 @@ pub fn compute_evd_complex_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: EvdParams,
 ) {
     assert!(!coe::is_same::<E, E::Real>());

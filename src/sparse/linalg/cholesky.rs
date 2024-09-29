@@ -588,7 +588,7 @@ pub mod simplicial {
         etree: &'out mut [I::Signed],
         col_counts: &mut [I],
         A: SymbolicSparseColMatRef<'_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> EliminationTreeRef<'out, I> {
         let n = A.nrows();
         assert!(A.nrows() == A.ncols());
@@ -675,7 +675,7 @@ pub mod simplicial {
         A: SymbolicSparseColMatRef<'_, I>,
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<SymbolicSimplicialCholesky<I>, FaerError> {
         let n = A.nrows();
         assert!(A.nrows() == A.ncols());
@@ -696,7 +696,7 @@ pub mod simplicial {
         A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
         etree: &Array<'n, MaybeIdx<'n, I>>,
         col_counts: &Array<'n, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<SymbolicSimplicialCholesky<I>, FaerError> {
         let N = A.ncols();
         let n = *N;
@@ -784,7 +784,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LdltRegularization<'_, E>,
 
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<usize, CholeskyError> {
         let n = A.ncols();
         {
@@ -947,7 +947,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LdltRegularization<'_, E>,
         symbolic: &SymbolicSimplicialCholesky<I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<usize, CholeskyError> {
         let n = A.ncols();
         let L_row_indices = &*symbolic.row_indices;
@@ -1130,7 +1130,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LltRegularization<E>,
         symbolic: &SymbolicSimplicialCholesky<I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<usize, CholeskyError> {
         factorize_simplicial_numeric(
             L_values,
@@ -1166,7 +1166,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LltRegularization<E>,
 
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<usize, CholeskyError> {
         factorize_simplicial_numeric_with_row_indices(
             L_values,
@@ -1199,7 +1199,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LdltRegularization<'_, E>,
         symbolic: &SymbolicSimplicialCholesky<I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> usize {
         factorize_simplicial_numeric(
             L_values,
@@ -1232,7 +1232,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         regularization: LdltRegularization<'_, E>,
 
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> usize {
         factorize_simplicial_numeric_with_row_indices(
             L_values,
@@ -1284,7 +1284,7 @@ pub mod simplicial {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -1342,7 +1342,7 @@ pub mod simplicial {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -1717,7 +1717,7 @@ pub mod supernodal {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -1911,7 +1911,7 @@ pub mod supernodal {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -2073,7 +2073,7 @@ pub mod supernodal {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -2130,7 +2130,7 @@ pub mod supernodal {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -2185,7 +2185,7 @@ pub mod supernodal {
             conj: Conj,
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -2371,7 +2371,7 @@ pub mod supernodal {
             &mut self,
             A: SymbolicSparseColMatRef<'_, I>,
             etree: &[I::Signed],
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) {
             ghost::Size::with2(self.nrows(), self.n_supernodes(), |N, N_SUPERNODES| {
                 let A = ghost::SymbolicSparseColMatRef::new(A, N, N);
@@ -2476,7 +2476,7 @@ pub mod supernodal {
         A: SymbolicSparseColMatRef<'_, I>,
         etree: simplicial::EliminationTreeRef<'_, I>,
         col_counts: &[I],
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
         let n = A.nrows();
@@ -2509,7 +2509,7 @@ pub mod supernodal {
         input: CholeskyInput,
         etree: &Array<'n, MaybeIdx<'n, I>>,
         col_counts: &Array<'n, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalCholesky<I>, FaerError> {
         let to_wide = |i: I| i.zx() as u128;
@@ -3236,7 +3236,7 @@ pub mod supernodal {
         regularization: LltRegularization<E>,
         symbolic: &SymbolicSupernodalCholesky<I>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<usize, CholeskyError> {
         let n_supernodes = symbolic.n_supernodes();
         let n = symbolic.nrows();
@@ -3450,7 +3450,7 @@ pub mod supernodal {
         regularization: LdltRegularization<'_, E>,
         symbolic: &SymbolicSupernodalCholesky<I>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> usize {
         let n_supernodes = symbolic.n_supernodes();
         let n = symbolic.nrows();
@@ -3699,7 +3699,7 @@ pub mod supernodal {
         regularization: BunchKaufmanRegularization<'_, E>,
         symbolic: &SymbolicSupernodalCholesky<I>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> usize {
         let mut regularization = regularization;
         let n_supernodes = symbolic.n_supernodes();
@@ -4028,7 +4028,7 @@ fn ghost_prefactorize_symbolic_cholesky<'n, 'out, I: Index>(
     etree: &'out mut Array<'n, I::Signed>,
     col_counts: &mut Array<'n, I>,
     A: ghost::SymbolicSparseColMatRef<'n, 'n, '_, I>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> &'out mut Array<'n, MaybeIdx<'n, I>> {
     let N = A.ncols();
     let (visited, _) = stack.make_raw::<I>(*N);
@@ -4316,7 +4316,7 @@ impl<I: Index> SymbolicCholesky<I> {
         side: Side,
         regularization: LltRegularization<E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<LltRef<'out, I, E>, CholeskyError> {
         assert!(A.nrows() == A.ncols());
         let n = A.nrows();
@@ -4406,7 +4406,7 @@ impl<I: Index> SymbolicCholesky<I> {
         side: Side,
         regularization: LdltRegularization<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> LdltRef<'out, I, E> {
         assert!(A.nrows() == A.ncols());
         let n = A.nrows();
@@ -4526,7 +4526,7 @@ impl<I: Index> SymbolicCholesky<I> {
         side: Side,
         regularization: BunchKaufmanRegularization<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> IntranodeBunchKaufmanRef<'out, I, E> {
         assert!(A.nrows() == A.ncols());
         let n = A.nrows();
@@ -4775,7 +4775,7 @@ impl<'a, I: Index, E: Entity> IntranodeBunchKaufmanRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -4899,7 +4899,7 @@ impl<'a, I: Index, E: Entity> LltRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -4986,7 +4986,7 @@ impl<'a, I: Index, E: Entity> LdltRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -5077,7 +5077,7 @@ fn postorder_depth_first_search<'n, I: Index>(
 pub(crate) fn ghost_postorder<'n, I: Index>(
     post: &mut Array<'n, I>,
     etree: &Array<'n, MaybeIdx<'n, I>>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let N = post.len();
     let n = *N;

@@ -136,7 +136,7 @@ fn make_raw_req<E: Entity>(size: usize) -> Result<StackReq, SizeOverflow> {
     req
 }
 
-fn make_raw<E: Entity>(size: usize, stack: PodStack<'_>) -> (SliceGroupMut<'_, E>, PodStack<'_>) {
+fn make_raw<E: Entity>(size: usize, stack: &mut PodStack) -> (SliceGroupMut<'_, E>, &mut PodStack) {
     let (stack, array) = E::faer_map_with_context(stack, E::UNIT, &mut {
         #[inline(always)]
         |stack, ()| {

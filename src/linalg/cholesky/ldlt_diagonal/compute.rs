@@ -178,11 +178,11 @@ impl<'a, E: ComplexField> ProcessDiag<E> for LdltRegularization<'a, E> {
 pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
     A: MatMut<'_, E>,
     process: &P,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> Result<usize, P::Error> {
     struct Impl<'a, E: ComplexField, P> {
         A: MatMut<'a, E>,
-        stack: PodStack<'a>,
+        stack: &'a mut PodStack,
         process: &'a P,
     }
     impl<E: ComplexField, P: ProcessDiag<E>> pulp::WithSimd for Impl<'_, E, P> {
@@ -643,7 +643,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
     params: LdltDiagParams,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> usize {
     _ = params;
     _ = parallelism;
@@ -672,7 +672,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: LdltDiagParams,
 ) {
     // right looking cholesky
@@ -725,7 +725,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
 
         {
             // reserve space for L10×D0
-            let (mut l10xd0, _) = temp_mat_uninit::<E>(rem, block_size, stack.rb_mut());
+            let (mut l10xd0, _) = temp_mat_uninit::<E>(rem, block_size, stack);
             let mut l10xd0 = l10xd0.as_mut();
 
             for j in 0..block_size {
@@ -836,7 +836,7 @@ pub fn raw_cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LdltRegularization<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: LdltDiagParams,
 ) -> LdltInfo {
     assert!(matrix.ncols() == matrix.nrows());

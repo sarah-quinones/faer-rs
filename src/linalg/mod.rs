@@ -121,8 +121,8 @@ pub fn temp_mat_constant<E: ComplexField>(
     nrows: usize,
     ncols: usize,
     value: E,
-    stack: PodStack<'_>,
-) -> (MatMut<'_, E>, PodStack<'_>) {
+    stack: &mut PodStack,
+) -> (MatMut<'_, E>, &mut PodStack) {
     let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
     mat.as_mut().fill(value);
     (mat, stack)
@@ -132,8 +132,8 @@ pub fn temp_mat_constant<E: ComplexField>(
 pub fn temp_mat_zeroed<E: ComplexField>(
     nrows: usize,
     ncols: usize,
-    stack: PodStack<'_>,
-) -> (MatMut<'_, E>, PodStack<'_>) {
+    stack: &mut PodStack,
+) -> (MatMut<'_, E>, &mut PodStack) {
     let (mut mat, stack) = temp_mat_uninit::<E>(nrows, ncols, stack);
     mat.as_mut().fill_zero();
     (mat, stack)
@@ -143,8 +143,8 @@ pub fn temp_mat_zeroed<E: ComplexField>(
 pub fn temp_mat_uninit<E: ComplexField>(
     nrows: usize,
     ncols: usize,
-    stack: PodStack<'_>,
-) -> (MatMut<'_, E>, PodStack<'_>) {
+    stack: &mut PodStack,
+) -> (MatMut<'_, E>, &mut PodStack) {
     let col_stride = col_stride::<E::Unit>(nrows);
     let alloc_size = ncols.checked_mul(col_stride).unwrap();
 

@@ -40,7 +40,7 @@ pub fn reconstruct_lower<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     assert!((dst.nrows(), dst.ncols()) == (cholesky_factor.nrows(), cholesky_factor.ncols()));
@@ -72,7 +72,7 @@ pub fn reconstruct_lower<E: ComplexField>(
 pub fn reconstruct_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = cholesky_factor.nrows();
     let (mut tmp, stack) = temp_mat_uninit::<E>(n, n, stack);

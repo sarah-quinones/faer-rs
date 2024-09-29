@@ -14,7 +14,7 @@ fn invert_lower_impl<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack,
+    stack: &mut PodStack,
 ) {
     // (L L.*).inv() = L.inv().* L.inv()
     //
@@ -75,7 +75,7 @@ pub fn invert_lower_in_place_req<E: Entity>(
 pub fn invert_lower_in_place<E: ComplexField>(
     cholesky_factor: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack,
+    stack: &mut PodStack,
 ) {
     assert!(cholesky_factor.nrows() == cholesky_factor.ncols());
     invert_lower_impl(cholesky_factor, None, parallelism, stack);
@@ -96,7 +96,7 @@ pub fn invert_lower<E: ComplexField>(
     dst: MatMut<'_, E>,
     cholesky_factor: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack,
+    stack: &mut PodStack,
 ) {
     assert!(all(
         cholesky_factor.nrows() == cholesky_factor.ncols(),

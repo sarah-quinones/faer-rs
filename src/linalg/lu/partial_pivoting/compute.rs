@@ -379,7 +379,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
     perm: &'out mut [I],
     perm_inv: &'out mut [I],
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: PartialPivLuComputeParams,
 ) -> (PartialPivLuInfo, PermRef<'out, I>) {
     let _ = &params;

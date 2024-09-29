@@ -804,7 +804,7 @@ pub fn delete_rows_and_cols_clobber<E: ComplexField>(
     cholesky_factors: MatMut<'_, E>,
     indices: &mut [usize],
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let _ = parallelism;
     let n = cholesky_factors.nrows();
@@ -898,7 +898,7 @@ pub fn insert_rows_and_cols_clobber<E: ComplexField>(
     insertion_index: usize,
     inserted_matrix: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let new_n = cholesky_factors_extended.nrows();
     let r = inserted_matrix.ncols();

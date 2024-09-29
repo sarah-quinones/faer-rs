@@ -310,7 +310,7 @@ pub mod utils {
         in_side: Side,
         out_side: Side,
         sort: bool,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> ghost::SparseColMatMut<'n, 'n, 'out, I, E> {
         let N = A.ncols();
         let n = *A.ncols();
@@ -580,7 +580,7 @@ pub mod utils {
         perm: ghost::PermRef<'n, '_, I>,
         in_side: Side,
         out_side: Side,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> ghost::SymbolicSparseColMatRef<'n, 'n, 'out, I> {
         let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
         let new_values = Symbolic::materialize(new_row_indices.len());
@@ -614,7 +614,7 @@ pub mod utils {
         perm: crate::perm::PermRef<'_, I>,
         in_side: Side,
         out_side: Side,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SparseColMatMut<'out, I, E> {
         ghost::Size::with(A.nrows(), |N| {
             assert!(A.nrows() == A.ncols());
@@ -655,7 +655,7 @@ pub mod utils {
         perm: crate::perm::PermRef<'_, I>,
         in_side: Side,
         out_side: Side,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SparseColMatMut<'out, I, E> {
         ghost::Size::with(A.nrows(), |N| {
             assert!(A.nrows() == A.ncols());
@@ -681,7 +681,7 @@ pub mod utils {
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         A: ghost::SymbolicSparseColMatRef<'m, 'n, '_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> ghost::SymbolicSparseColMatRef<'n, 'm, 'a, I> {
         let old_values = &*Symbolic::materialize(A.into_inner().row_indices().len());
         let new_values = Symbolic::materialize(new_row_indices.len());
@@ -704,7 +704,7 @@ pub mod utils {
         new_row_indices: &'a mut [I],
         new_values: SliceGroupMut<'a, E>,
         A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
         let M = A.nrows();
         let N = A.ncols();
@@ -786,7 +786,7 @@ pub mod utils {
         new_row_indices: &'a mut [I],
         new_values: SliceGroupMut<'a, E>,
         A: ghost::SparseColMatRef<'m, 'n, '_, I, E>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> ghost::SparseColMatMut<'n, 'm, 'a, I, E> {
         let M = A.nrows();
         let N = A.ncols();
@@ -873,7 +873,7 @@ pub mod utils {
         new_row_indices: &'a mut [I],
         new_values: GroupFor<E, &'a mut [E::Unit]>,
         A: SparseColMatRef<'_, I, E>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SparseColMatMut<'a, I, E> {
         ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
             ghost_transpose(
@@ -898,7 +898,7 @@ pub mod utils {
         new_row_indices: &'a mut [I],
         new_values: GroupFor<E, &'a mut [E::Unit]>,
         A: SparseColMatRef<'_, I, E>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SparseColMatMut<'a, I, E> {
         ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
             ghost_adjoint(
@@ -922,7 +922,7 @@ pub mod utils {
         new_col_ptrs: &'a mut [I],
         new_row_indices: &'a mut [I],
         A: SymbolicSparseColMatRef<'_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SymbolicSparseColMatRef<'a, I> {
         ghost::Size::with2(A.nrows(), A.ncols(), |M, N| {
             ghost_adjoint_symbolic(

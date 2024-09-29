@@ -28,7 +28,7 @@ pub fn bidiagonalize_in_place<E: ComplexField>(
     mut householder_left: ColMut<'_, E>,
     mut householder_right: ColMut<'_, E>,
     parallelism: Parallelism,
-    mut stack: PodStack<'_>,
+    mut stack: &mut PodStack,
 ) {
     let m = a.nrows();
     let n = a.ncols();

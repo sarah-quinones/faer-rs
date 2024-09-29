@@ -80,7 +80,7 @@ pub fn solve_in_place_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let _ = &stack;
     let n = cholesky_factor.nrows();
@@ -132,7 +132,7 @@ pub fn solve_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));
@@ -162,7 +162,7 @@ pub fn solve_transpose_in_place_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     // (L L.*).T = conj(L L.*)
     solve_in_place_with_conj(
@@ -199,7 +199,7 @@ pub fn solve_transpose_with_conj<E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut dst = dst;
     zipped!(dst.rb_mut(), rhs).for_each(|unzipped!(mut dst, src)| dst.write(src.read()));

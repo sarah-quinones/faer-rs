@@ -271,14 +271,14 @@ pub fn permute_cols_in_place_req<I: Index, E: Entity>(
 pub fn permute_rows_in_place<I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermRef<'_, I>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     #[inline]
     #[track_caller]
     fn implementation<E: ComplexField, I: Index>(
         matrix: MatMut<'_, E>,
         perm_indices: PermRef<'_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let mut matrix = matrix;
         let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);
@@ -300,14 +300,14 @@ pub fn permute_rows_in_place<I: Index, E: ComplexField>(
 pub fn permute_cols_in_place<I: Index, E: ComplexField>(
     matrix: MatMut<'_, E>,
     perm_indices: PermRef<'_, I>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     #[inline]
     #[track_caller]
     fn implementation<I: Index, E: ComplexField>(
         matrix: MatMut<'_, E>,
         perm_indices: PermRef<'_, I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let mut matrix = matrix;
         let (mut tmp, _) = temp_mat_uninit::<E>(matrix.nrows(), matrix.ncols(), stack);

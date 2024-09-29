@@ -87,7 +87,7 @@ pub fn solve_in_place<I: Index, E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut rhs = rhs;
     let mut stack = stack;
@@ -129,7 +129,7 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut rhs = rhs;
     let mut stack = stack;
@@ -171,7 +171,7 @@ pub fn solve<I: Index, E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut dst = dst;
     let mut stack = stack;
@@ -214,7 +214,7 @@ pub fn solve_transpose<I: Index, E: ComplexField>(
     conj_lhs: Conj,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut dst = dst;
     let mut stack = stack;

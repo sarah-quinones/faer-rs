@@ -182,7 +182,7 @@ fn compute_real_svd_small<E: RealField>(
     epsilon: E,
     zero_threshold: E,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut u = u;
     let mut v = v;
@@ -290,7 +290,7 @@ fn compute_bidiag_cplx_svd<E: ComplexField>(
     epsilon: E::Real,
     consider_zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = diag.len();
     let (mut u_real, stack) =
@@ -418,12 +418,12 @@ fn compute_svd_big<E: ComplexField>(
         epsilon: E::Real,
         consider_zero_threshold: E::Real,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ),
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let mut stack = stack;
 
@@ -685,7 +685,7 @@ pub fn compute_svd<E: ComplexField>(
     u: Option<MatMut<'_, E>>,
     v: Option<MatMut<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: SvdParams,
 ) {
     compute_svd_custom_epsilon(
@@ -718,7 +718,7 @@ pub fn compute_svd_custom_epsilon<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: SvdParams,
 ) {
     let size = Ord::min(matrix.nrows(), matrix.ncols());
@@ -885,11 +885,11 @@ fn squareish_svd<E: ComplexField>(
     epsilon: E::Real,
     zero_threshold: E::Real,
     parallelism: Parallelism,
-    stack: PodStack,
+    stack: &mut PodStack,
 ) {
     let size = matrix.ncols();
     if const { E::IS_REAL } {
-        if size <= JACOBI_FALLBACK_THRESHOLD {
+        if size < JACOBI_FALLBACK_THRESHOLD {
             compute_real_svd_small::<E::Real>(
                 matrix.coerce(),
                 s.coerce(),

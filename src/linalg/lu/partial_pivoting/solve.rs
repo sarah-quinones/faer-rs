@@ -13,7 +13,7 @@ fn solve_impl<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     // LU = P(row_fwd) × A
 
@@ -55,7 +55,7 @@ fn solve_transpose_impl<I: Index, E: ComplexField>(
     dst: MatMut<'_, E>,
     rhs: Option<MatRef<'_, E>>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     // LU = P(row_fwd) × A × P(col_inv)
 
@@ -170,7 +170,7 @@ pub fn solve<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     solve_impl(
         lu_factors,
@@ -203,7 +203,7 @@ pub fn solve_in_place<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     solve_impl(
         lu_factors,
@@ -238,7 +238,7 @@ pub fn solve_transpose<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     rhs: MatRef<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     solve_transpose_impl(
         lu_factors,
@@ -271,7 +271,7 @@ pub fn solve_transpose_in_place<I: Index, E: ComplexField>(
     row_perm: PermRef<'_, I>,
     rhs: MatMut<'_, E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     solve_transpose_impl(
         lu_factors,

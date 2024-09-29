@@ -39,7 +39,7 @@ pub(crate) fn ghost_col_etree<'n, I: Index>(
     A: ghost::SymbolicSparseColMatRef<'_, 'n, '_, I>,
     col_perm: Option<ghost::PermRef<'n, '_, I>>,
     etree: &mut Array<'n, I::Signed>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let I = I::truncate;
 
@@ -93,7 +93,7 @@ pub fn col_etree<'out, I: Index>(
     A: SymbolicSparseColMatRef<'_, I>,
     col_perm: Option<PermRef<'_, I>>,
     etree: &'out mut [I],
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> EliminationTreeRef<'out, I> {
     Size::with2(A.nrows(), A.ncols(), |M, N| {
         ghost_col_etree(
@@ -149,7 +149,7 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
     row_perm: Option<ghost::PermRef<'m, '_, I>>,
     etree: &Array<'m, MaybeIdx<'m, I>>,
     post: &Array<'m, Idx<'m, I>>,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let M: Size<'m> = A.nrows();
     let N: Size<'n> = A.ncols();
@@ -309,7 +309,7 @@ pub fn column_counts_ata<'m, 'n, I: Index>(
     col_perm: Option<PermRef<'_, I>>,
     etree: EliminationTreeRef<'_, I>,
     post: &[I],
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     Size::with2(AT.nrows(), AT.ncols(), |M, N| {
         let A = ghost::SymbolicSparseColMatRef::new(AT, M, N);
@@ -334,7 +334,7 @@ pub fn postorder_req<I: Index>(n: usize) -> Result<StackReq, SizeOverflow> {
 
 /// Computes a postordering of the elimination tree of size `n`.
 #[inline]
-pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, stack: PodStack<'_>) {
+pub fn postorder<I: Index>(post: &mut [I], etree: EliminationTreeRef<'_, I>, stack: &mut PodStack) {
     Size::with(etree.inner.len(), |N| {
         ghost_postorder(Array::from_mut(post, N), etree.ghost_inner(N), stack)
     })
@@ -485,7 +485,7 @@ pub mod supernodal {
         min_col: alloc::vec::Vec<I>,
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
         params: SymbolicSupernodalParams<'_>,
     ) -> Result<SymbolicSupernodalQr<I>, FaerError> {
         let m = A.nrows();
@@ -562,7 +562,7 @@ pub mod supernodal {
         N: Size<'n>,
         min_col: &Array<'m, MaybeIdx<'n, I>>,
         etree: &Array<'n, MaybeIdx<'n, I>>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<SymbolicSupernodalHouseholder<I>, FaerError> {
         let n_supernodes = L_symbolic.n_supernodes();
         ghost::with_size(n_supernodes, |N_SUPERNODES| {
@@ -761,7 +761,7 @@ pub mod supernodal {
             rhs: MatMut<'_, E>,
             parallelism: Parallelism,
             work: MatMut<'_, E>,
-            stack: PodStack<'_>,
+            stack: &mut PodStack,
         ) where
             E: ComplexField,
         {
@@ -988,7 +988,7 @@ pub mod supernodal {
         col_perm: Option<PermRef<'_, I>>,
         symbolic: &'a SymbolicSupernodalQr<I>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SupernodalQrRef<'a, I, E> {
         {
             let L_values = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&r_values)));
@@ -1074,7 +1074,7 @@ pub mod supernodal {
         child_next: &[I::Signed],
 
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> usize {
         let n_supernodes = L_symbolic.n_supernodes();
         let m = AT.ncols();
@@ -1705,7 +1705,7 @@ pub mod simplicial {
         min_col: &[I],
         etree: EliminationTreeRef<'_, I>,
         col_counts: &[I],
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> Result<SymbolicSimplicialQr<I>, FaerError> {
         let m = min_col.len();
         let n = col_counts.len();
@@ -1794,7 +1794,7 @@ pub mod simplicial {
         A: SparseColMatRef<'_, I, E>,
         col_perm: Option<PermRef<'_, I>>,
         symbolic: &'a SymbolicSimplicialQr<I>,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> SimplicialQrRef<'a, I, E> {
         assert!(all(
             A.nrows() == symbolic.nrows,
@@ -2034,7 +2034,7 @@ impl<'a, I: Index, E: Entity> QrRef<'a, I, E> {
         conj: Conj,
         rhs: MatMut<'_, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) where
         E: ComplexField,
     {
@@ -2248,7 +2248,7 @@ impl<I: Index> SymbolicQr<I> {
         values: GroupFor<E, &'out mut [E::Unit]>,
         A: SparseColMatRef<'_, I, E>,
         parallelism: Parallelism,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> QrRef<'out, I, E> {
         let mut values = SliceGroupMut::<'_, E>::new(values);
         assert!(all(

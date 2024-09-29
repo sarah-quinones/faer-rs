@@ -20,7 +20,7 @@ fn cholesky_in_place_left_looking_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: LltParams,
 ) -> Result<usize, CholeskyError> {
     _ = params;
@@ -80,7 +80,7 @@ fn cholesky_in_place_impl<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: LltParams,
 ) -> Result<(), CholeskyError> {
     // right looking cholesky
@@ -193,7 +193,7 @@ pub fn cholesky_in_place<E: ComplexField>(
     matrix: MatMut<'_, E>,
     regularization: LltRegularization<E>,
     parallelism: Parallelism,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
     params: LltParams,
 ) -> Result<LltInfo, CholeskyError> {
     let _ = params;
