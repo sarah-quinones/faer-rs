@@ -26,9 +26,10 @@ pub trait ViewMut {
 }
 
 impl<E: Entity> ViewMut for Row<E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -36,9 +37,10 @@ impl<E: Entity> ViewMut for Row<E> {
     }
 }
 impl<E: Entity> ViewMut for &Row<E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -46,9 +48,10 @@ impl<E: Entity> ViewMut for &Row<E> {
     }
 }
 impl<E: Entity> ViewMut for &mut Row<E> {
-    type Target<'a> = RowMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -57,9 +60,10 @@ impl<E: Entity> ViewMut for &mut Row<E> {
 }
 
 impl<E: Entity> ViewMut for RowRef<'_, E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -67,9 +71,10 @@ impl<E: Entity> ViewMut for RowRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for RowMut<'_, E> {
-    type Target<'a> = RowMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -77,9 +82,10 @@ impl<E: Entity> ViewMut for RowMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut RowRef<'_, E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -87,9 +93,10 @@ impl<E: Entity> ViewMut for &mut RowRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut RowMut<'_, E> {
-    type Target<'a> = RowMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -97,9 +104,10 @@ impl<E: Entity> ViewMut for &mut RowMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &RowRef<'_, E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -107,9 +115,10 @@ impl<E: Entity> ViewMut for &RowRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &RowMut<'_, E> {
-    type Target<'a> = RowRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = RowRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -118,9 +127,10 @@ impl<E: Entity> ViewMut for &RowMut<'_, E> {
 }
 
 impl<E: Entity> ViewMut for Col<E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -128,9 +138,10 @@ impl<E: Entity> ViewMut for Col<E> {
     }
 }
 impl<E: Entity> ViewMut for &Col<E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -138,9 +149,10 @@ impl<E: Entity> ViewMut for &Col<E> {
     }
 }
 impl<E: Entity> ViewMut for &mut Col<E> {
-    type Target<'a> = ColMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -149,9 +161,10 @@ impl<E: Entity> ViewMut for &mut Col<E> {
 }
 
 impl<E: Entity> ViewMut for ColRef<'_, E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -159,9 +172,10 @@ impl<E: Entity> ViewMut for ColRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for ColMut<'_, E> {
-    type Target<'a> = ColMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -169,9 +183,10 @@ impl<E: Entity> ViewMut for ColMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut ColRef<'_, E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -179,9 +194,10 @@ impl<E: Entity> ViewMut for &mut ColRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut ColMut<'_, E> {
-    type Target<'a> = ColMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -189,9 +205,10 @@ impl<E: Entity> ViewMut for &mut ColMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &ColRef<'_, E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -199,9 +216,10 @@ impl<E: Entity> ViewMut for &ColRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &ColMut<'_, E> {
-    type Target<'a> = ColRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = ColRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -210,9 +228,10 @@ impl<E: Entity> ViewMut for &ColMut<'_, E> {
 }
 
 impl<E: Entity> ViewMut for Mat<E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -220,9 +239,10 @@ impl<E: Entity> ViewMut for Mat<E> {
     }
 }
 impl<E: Entity> ViewMut for &Mat<E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -230,9 +250,10 @@ impl<E: Entity> ViewMut for &Mat<E> {
     }
 }
 impl<E: Entity> ViewMut for &mut Mat<E> {
-    type Target<'a> = MatMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -241,9 +262,10 @@ impl<E: Entity> ViewMut for &mut Mat<E> {
 }
 
 impl<E: Entity> ViewMut for MatRef<'_, E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -251,9 +273,10 @@ impl<E: Entity> ViewMut for MatRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for MatMut<'_, E> {
-    type Target<'a> = MatMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -261,9 +284,10 @@ impl<E: Entity> ViewMut for MatMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut MatRef<'_, E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -271,9 +295,10 @@ impl<E: Entity> ViewMut for &mut MatRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &mut MatMut<'_, E> {
-    type Target<'a> = MatMut<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatMut<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -281,9 +306,10 @@ impl<E: Entity> ViewMut for &mut MatMut<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &MatRef<'_, E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {
@@ -291,9 +317,10 @@ impl<E: Entity> ViewMut for &MatRef<'_, E> {
     }
 }
 impl<E: Entity> ViewMut for &MatMut<'_, E> {
-    type Target<'a> = MatRef<'a, E>
-        where
-            Self: 'a;
+    type Target<'a>
+        = MatRef<'a, E>
+    where
+        Self: 'a;
 
     #[inline]
     fn view_mut(&mut self) -> Self::Target<'_> {

@@ -1661,7 +1661,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
     #[track_caller]
     pub(crate) fn __values_from_real(matrix: MatRef<'_, E::Real>) -> alloc::vec::Vec<E> {
         assert!(matrix.nrows() == matrix.ncols());
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
+        if const { E::IS_REAL } {
             panic!(
                 "The type E ({}) must not be real-valued.",
                 core::any::type_name::<E>(),
@@ -1707,7 +1707,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
         (matrix, conj): (MatRef<'_, E>, Conj),
     ) -> alloc::vec::Vec<E> {
         assert!(matrix.nrows() == matrix.ncols());
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
+        if const { E::IS_REAL } {
             panic!(
                 "The type E ({}) must not be real-valued.",
                 core::any::type_name::<E>(),
@@ -1752,7 +1752,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
     #[track_caller]
     pub fn new_from_real(matrix: MatRef<'_, E::Real>) -> Self {
         assert!(matrix.nrows() == matrix.ncols());
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
+        if const { E::IS_REAL } {
             panic!(
                 "The type E ({}) must not be real-valued.",
                 core::any::type_name::<E>(),
@@ -1827,7 +1827,7 @@ impl<E: ComplexField> Eigendecomposition<E> {
     #[track_caller]
     pub(crate) fn __new_from_complex_impl((matrix, conj): (MatRef<'_, E>, Conj)) -> Self {
         assert!(matrix.nrows() == matrix.ncols());
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
+        if const { E::IS_REAL } {
             panic!(
                 "The type E ({}) must not be real-valued.",
                 core::any::type_name::<E>(),
@@ -2067,7 +2067,7 @@ where
     >(
         &self,
     ) -> Eigendecomposition<ComplexE> {
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, <E::Canonical as ComplexField>::Real>() {
+        if const { E::Canonical::IS_REAL } {
             let matrix: MatRef<'_, <E::Canonical as ComplexField>::Real> =
                 coe::coerce(self.as_ref());
             Eigendecomposition::<ComplexE>::new_from_real(matrix)
@@ -2181,7 +2181,7 @@ where
     pub fn eigenvalues<ComplexE: ComplexField<Real = <E::Canonical as ComplexField>::Real>>(
         &self,
     ) -> alloc::vec::Vec<ComplexE> {
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E, <E::Canonical as ComplexField>::Real>() {
+        if const { E::Canonical::IS_REAL } {
             let matrix: MatRef<'_, <E::Canonical as ComplexField>::Real> =
                 coe::coerce(self.as_ref());
             Eigendecomposition::<ComplexE>::__values_from_real(matrix)

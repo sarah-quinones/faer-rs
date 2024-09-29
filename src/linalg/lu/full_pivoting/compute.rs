@@ -1195,12 +1195,14 @@ fn update_and_best_in_matrix_c32(
 fn best_in_matrix<E: ComplexField>(matrix: MatRef<'_, E>) -> (usize, usize, E::Real) {
     let is_col_major = matrix.row_stride() == 1;
 
-    if E::IS_C64 && is_col_major {
-        coe::coerce_static(best_in_matrix_c64(matrix.coerce()))
-    } else if E::IS_C32 && is_col_major {
-        coe::coerce_static(best_in_matrix_c32(matrix.coerce()))
-    } else if is_col_major {
-        best_in_matrix_simd(matrix)
+    if is_col_major {
+        if const { E::IS_C64 } {
+            coe::coerce_static(best_in_matrix_c64(matrix.coerce()))
+        } else if const { E::IS_C32 } {
+            coe::coerce_static(best_in_matrix_c32(matrix.coerce()))
+        } else {
+            best_in_matrix_simd(matrix)
+        }
     } else {
         let m = matrix.nrows();
         let n = matrix.ncols();
@@ -1232,22 +1234,24 @@ fn rank_one_update_and_best_in_matrix<E: ComplexField>(
     max_row: usize,
 ) -> (usize, usize, E::Real) {
     let is_col_major = dst.row_stride() == 1 && lhs.row_stride() == 1;
-    if E::IS_C64 && is_col_major {
-        coe::coerce_static(update_and_best_in_matrix_c64(
-            dst.coerce(),
-            lhs.coerce(),
-            rhs.coerce(),
-            max_row,
-        ))
-    } else if E::IS_C32 && is_col_major {
-        coe::coerce_static(update_and_best_in_matrix_c32(
-            dst.coerce(),
-            lhs.coerce(),
-            rhs.coerce(),
-            max_row,
-        ))
-    } else if is_col_major {
-        update_and_best_in_matrix_simd(dst, lhs, rhs, max_row)
+    if is_col_major {
+        if const { E::IS_C64 } {
+            coe::coerce_static(update_and_best_in_matrix_c64(
+                dst.coerce(),
+                lhs.coerce(),
+                rhs.coerce(),
+                max_row,
+            ))
+        } else if const { E::IS_C32 } {
+            coe::coerce_static(update_and_best_in_matrix_c32(
+                dst.coerce(),
+                lhs.coerce(),
+                rhs.coerce(),
+                max_row,
+            ))
+        } else {
+            update_and_best_in_matrix_simd(dst, lhs, rhs, max_row)
+        }
     } else {
         matmul(
             dst.rb_mut(),

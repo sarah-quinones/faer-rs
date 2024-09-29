@@ -82,7 +82,7 @@ pub fn compute_hermitian_evd_req<E: ComplexField>(
     let householder_blocksize =
         crate::linalg::qr::no_pivoting::compute::recommended_blocksize::<E>(n, n);
 
-    let cplx_storage = if E::IS_F32 || E::IS_F64 || coe::is_same::<E::Real, E>() {
+    let cplx_storage = if const { E::IS_REAL } {
         StackReq::empty()
     } else {
         StackReq::try_all_of([
@@ -258,7 +258,7 @@ pub fn compute_hermitian_evd_custom_epsilon<E: ComplexField>(
     {
         let (diag, stack) = stack.rb_mut().make_with(n, |i| trid.read(i, i).faer_real());
 
-        if E::IS_F32 || E::IS_F64 || coe::is_same::<E::Real, E>() {
+        if const { E::IS_REAL } {
             let (offdiag, stack) = stack.make_with(n - 1, |i| trid.read(i + 1, i).faer_real());
 
             tridiag_real_evd::compute_tridiag_real_evd::<E::Real>(

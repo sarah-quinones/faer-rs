@@ -962,6 +962,7 @@ impl ComplexField for c64 {
 
 unsafe impl Entity for c64 {
     const IS_C64: bool = true;
+    const IS_REAL: bool = false;
 
     type Unit = Self;
     type Index = u64;

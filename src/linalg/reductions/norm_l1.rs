@@ -219,7 +219,7 @@ pub fn norm_l1<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
         let n = mat.ncols();
 
         if mat.row_stride() == 1 {
-            if E::IS_C32 {
+            if const { E::IS_C32 } {
                 let mat: MatRef<'_, c32> = coe::coerce(mat);
                 let mat = unsafe {
                     crate::mat::from_raw_parts(
@@ -231,8 +231,7 @@ pub fn norm_l1<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
                     )
                 };
                 return coe::coerce_static(norm_l1_contiguous::<f32>(mat));
-            }
-            if E::IS_C64 {
+            } else if const { E::IS_C64 } {
                 let mat: MatRef<'_, c64> = coe::coerce(mat);
                 let mat = unsafe {
                     crate::mat::from_raw_parts(
@@ -244,13 +243,11 @@ pub fn norm_l1<E: ComplexField>(mut mat: MatRef<'_, E>) -> E::Real {
                     )
                 };
                 return coe::coerce_static(norm_l1_contiguous::<f64>(mat));
-            }
-            if E::IS_NUM_COMPLEX {
+            } else if const { E::IS_NUM_COMPLEX } {
                 let mat: MatRef<num_complex::Complex<E::Real>> = mat.coerce();
                 let num_complex::Complex { re, im } = mat.real_imag();
                 return norm_l1_contiguous(re).faer_add(norm_l1_contiguous(im));
-            }
-            if E::IS_F32 || E::IS_F64 || coe::is_same::<E, E::Real>() {
+            } else if const { E::IS_REAL } {
                 return norm_l1_contiguous::<E::Real>(mat.coerce());
             }
         }

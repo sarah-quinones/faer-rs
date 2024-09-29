@@ -21,7 +21,7 @@ use crate::{
         matmul::matmul,
         zip::Diag,
     },
-    unzipped, zipped, ColMut, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
+    unzipped, zipped, ColMut, ColRef, ComplexField, Conj, MatMut, MatRef, Parallelism, RealField,
 };
 use dyn_stack::PodStack;
 use reborrow::*;
@@ -2046,321 +2046,423 @@ fn multishift_qr_sweep<E: RealField>(
     let mut a = unsafe { a.rb().const_cast() };
 
     // i_pos_block points to the start of the block of bulges
-    let mut i_pos_block;
+    let mut i_pos_block = 0;
 
-    //
-    // The following code block introduces the bulges into the matrix
-    //
-    {
-        // Near-the-diagonal bulge introduction
-        // The calculations are initially limited to the window:
-        // A(ilo:ilo+n_block,ilo:ilo+n_block) The rest is updated later via
-        // level 3 BLAS
+    introduce_bulges(
+        ilo,
+        ihi,
+        n_block_desired,
+        n_bulges,
+        n_shifts,
+        want_t,
+        a.rb_mut(),
+        z.rb_mut(),
+        u.rb_mut(),
+        v.rb_mut(),
+        wh.rb_mut(),
+        wv.rb_mut(),
+        s_re.rb(),
+        s_im.rb(),
+        &mut i_pos_block,
+        eps,
+        small_num,
+        parallelism,
+    );
 
-        let n_block = Ord::min(n_block_desired, ihi - ilo);
-        let mut istart_m = ilo;
-        let mut istop_m = ilo + n_block;
-        let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
-        u2.fill_zero();
-        u2.rb_mut()
-            .diagonal_mut()
-            .column_vector_mut()
-            .fill(E::faer_one());
+    move_bulges_down(
+        ilo,
+        ihi,
+        n_block_desired,
+        n_bulges,
+        n_shifts,
+        want_t,
+        a.rb_mut(),
+        z.rb_mut(),
+        u.rb_mut(),
+        v.rb_mut(),
+        wh.rb_mut(),
+        wv.rb_mut(),
+        s_re.rb(),
+        s_im.rb(),
+        &mut i_pos_block,
+        eps,
+        small_num,
+        parallelism,
+    );
 
-        for i_pos_last in ilo..ilo + n_block - 2 {
-            // The number of bulges that are in the pencil
-            let n_active_bulges = Ord::min(n_bulges, ((i_pos_last - ilo) / 2) + 1);
+    remove_bulges(
+        ilo,
+        ihi,
+        n_bulges,
+        n_shifts,
+        want_t,
+        a.rb_mut(),
+        z.rb_mut(),
+        u.rb_mut(),
+        v.rb_mut(),
+        wh.rb_mut(),
+        wv.rb_mut(),
+        s_re.rb(),
+        s_im.rb(),
+        &mut i_pos_block,
+        eps,
+        small_num,
+        parallelism,
+    );
+}
 
-            for i_bulge in 0..n_active_bulges {
-                let i_pos = i_pos_last - 2 * i_bulge;
-                let mut v = v.rb_mut().col_mut(i_bulge);
-                if i_pos == ilo {
-                    // Introduce bulge
-                    let h = a.rb().submatrix(ilo, ilo, 3, 3);
+#[inline(never)]
+fn introduce_bulges<E: RealField>(
+    ilo: usize,
+    ihi: usize,
+    n_block_desired: usize,
+    n_bulges: usize,
+    n_shifts: usize,
+    want_t: bool,
+    mut a: MatMut<'_, E>,
+    mut z: Option<MatMut<'_, E>>,
 
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
-                    lahqr_shiftcolumn(h, v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
+    mut u: MatMut<'_, E>,
+    mut v: MatMut<'_, E>,
+    mut wh: MatMut<'_, E>,
+    mut wv: MatMut<'_, E>,
+    s_re: ColRef<'_, E>,
+    s_im: ColRef<'_, E>,
 
-                    debug_assert!(v.nrows() == 3);
-                    let head = v.read(0);
-                    let tail = v.rb_mut().subrows_mut(1, 2);
-                    let tail_norm = tail.rb().norm_l2();
-                    let (tau, _) = make_householder_in_place(Some(tail), head, tail_norm);
-                    v.write(0, tau.faer_inv());
-                } else {
-                    // Chase bulge down
-                    let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
-                    let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
-                    let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
-                    let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
-                    let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
-                    move_bulge(
-                        h.rb_mut(),
-                        v.rb_mut(),
-                        (s1_re, s1_im),
-                        (s2_re, s2_im),
-                        epsilon,
-                    );
-                }
+    i_pos_block: &mut usize,
+    eps: E::Real,
+    small_num: E::Real,
+    parallelism: Parallelism<'_>,
+) {
+    let n = a.nrows();
 
-                // Apply the reflector we just calculated from the right
-                // We leave the last row for later (it interferes with the
-                // optimally packed bulges)
+    // Near-the-diagonal bulge introduction
+    // The calculations are initially limited to the window:
+    // A(ilo:ilo+n_block,ilo:ilo+n_block) The rest is updated later via
+    // level 3 BLAS
 
-                let v0 = v.read(0).faer_real();
-                let v1 = v.read(1);
-                let v2 = v.read(2);
+    let n_block = Ord::min(n_block_desired, ihi - ilo);
+    let mut istart_m = ilo;
+    let mut istop_m = ilo + n_block;
+    let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
+    u2.fill_zero();
+    u2.rb_mut()
+        .diagonal_mut()
+        .column_vector_mut()
+        .fill(E::faer_one());
 
-                for j in istart_m..i_pos + 3 {
-                    let sum = a
-                        .read(j, i_pos)
-                        .faer_add(v1.faer_mul(a.read(j, i_pos + 1)))
-                        .faer_add(v2.faer_mul(a.read(j, i_pos + 2)));
-                    a.write(j, i_pos, a.read(j, i_pos).faer_sub(sum.faer_scale_real(v0)));
-                    a.write(
-                        j,
-                        i_pos + 1,
-                        a.read(j, i_pos + 1)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
-                    );
-                    a.write(
-                        j,
-                        i_pos + 2,
-                        a.read(j, i_pos + 2)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
-                    );
-                }
+    for i_pos_last in ilo..ilo + n_block - 2 {
+        // The number of bulges that are in the pencil
+        let n_active_bulges = Ord::min(n_bulges, ((i_pos_last - ilo) / 2) + 1);
 
-                // Apply the reflector we just calculated from the left
-                // We only update a single column, the rest is updated later
+        for i_bulge in 0..n_active_bulges {
+            let i_pos = i_pos_last - 2 * i_bulge;
+            let mut v = v.rb_mut().col_mut(i_bulge);
+            if i_pos == ilo {
+                // Introduce bulge
+                let h = a.rb().submatrix(ilo, ilo, 3, 3);
+
+                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                lahqr_shiftcolumn(h, v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im));
+
+                debug_assert!(v.nrows() == 3);
+                let head = v.read(0);
+                let tail = v.rb_mut().subrows_mut(1, 2);
+                let tail_norm = tail.rb().norm_l2();
+                let (tau, _) = make_householder_in_place(Some(tail), head, tail_norm);
+                v.write(0, tau.faer_inv());
+            } else {
+                // Chase bulge down
+                let mut h = a.rb_mut().submatrix_mut(i_pos - 1, i_pos - 1, 4, 4);
+                let s1_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge);
+                let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
+                let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
+                let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
+                move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im), eps);
+            }
+
+            // Apply the reflector we just calculated from the right
+            // We leave the last row for later (it interferes with the
+            // optimally packed bulges)
+
+            let v0 = v.read(0).faer_real();
+            let v1 = v.read(1);
+            let v2 = v.read(2);
+
+            for j in istart_m..i_pos + 3 {
                 let sum = a
-                    .read(i_pos, i_pos)
-                    .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, i_pos)))
-                    .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, i_pos)));
+                    .read(j, i_pos)
+                    .faer_add(v1.faer_mul(a.read(j, i_pos + 1)))
+                    .faer_add(v2.faer_mul(a.read(j, i_pos + 2)));
+                a.write(j, i_pos, a.read(j, i_pos).faer_sub(sum.faer_scale_real(v0)));
                 a.write(
-                    i_pos,
-                    i_pos,
-                    a.read(i_pos, i_pos).faer_sub(sum.faer_scale_real(v0)),
+                    j,
+                    i_pos + 1,
+                    a.read(j, i_pos + 1)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                 );
                 a.write(
+                    j,
+                    i_pos + 2,
+                    a.read(j, i_pos + 2)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
+                );
+            }
+
+            // Apply the reflector we just calculated from the left
+            // We only update a single column, the rest is updated later
+            let sum = a
+                .read(i_pos, i_pos)
+                .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, i_pos)))
+                .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, i_pos)));
+            a.write(
+                i_pos,
+                i_pos,
+                a.read(i_pos, i_pos).faer_sub(sum.faer_scale_real(v0)),
+            );
+            a.write(
+                i_pos + 1,
+                i_pos,
+                a.read(i_pos + 1, i_pos)
+                    .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
+            );
+            a.write(
+                i_pos + 2,
+                i_pos,
+                a.read(i_pos + 2, i_pos)
+                    .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
+            );
+
+            // Test for deflation.
+            if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::faer_zero() {
+                let mut tst1 =
+                    abs1(a.read(i_pos - 1, i_pos - 1)).faer_add(abs1(a.read(i_pos, i_pos)));
+                if tst1 == E::Real::faer_zero() {
+                    if i_pos > ilo + 1 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 2)));
+                    }
+                    if i_pos > ilo + 2 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 3)));
+                    }
+                    if i_pos > ilo + 3 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 4)));
+                    }
+                    if i_pos < ihi - 1 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos + 1, i_pos)));
+                    }
+                    if i_pos < ihi - 2 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos + 2, i_pos)));
+                    }
+                    if i_pos < ihi - 3 {
+                        tst1 = tst1.faer_add(abs1(a.read(i_pos + 3, i_pos)));
+                    }
+                }
+                if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.faer_mul(tst1)) {
+                    let ab = max(
+                        abs1(a.read(i_pos, i_pos - 1)),
+                        abs1(a.read(i_pos - 1, i_pos)),
+                    );
+                    let ba = min(
+                        abs1(a.read(i_pos, i_pos - 1)),
+                        abs1(a.read(i_pos - 1, i_pos)),
+                    );
+                    let aa = max(
+                        abs1(a.read(i_pos, i_pos)),
+                        abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
+                    );
+                    let bb = min(
+                        abs1(a.read(i_pos, i_pos)),
+                        abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
+                    );
+                    let s = aa.faer_add(ab);
+                    if ba.faer_mul(ab.faer_div(s))
+                        <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
+                    {
+                        a.write(i_pos, i_pos - 1, E::faer_zero());
+                    }
+                }
+            }
+        }
+
+        // Delayed update from the left
+        for i_bulge in 0..n_active_bulges {
+            let i_pos = i_pos_last - 2 * i_bulge;
+            let v = v.rb_mut().col_mut(i_bulge);
+
+            let v0 = v.read(0).faer_real();
+            let v1 = v.read(1);
+            let v2 = v.read(2);
+
+            for j in i_pos + 1..istop_m {
+                let sum = a
+                    .read(i_pos, j)
+                    .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)))
+                    .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, j)));
+                a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_scale_real(v0)));
+                a.write(
                     i_pos + 1,
-                    i_pos,
-                    a.read(i_pos + 1, i_pos)
+                    j,
+                    a.read(i_pos + 1, j)
                         .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
                 );
                 a.write(
                     i_pos + 2,
-                    i_pos,
-                    a.read(i_pos + 2, i_pos)
+                    j,
+                    a.read(i_pos + 2, j)
                         .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
                 );
-
-                // Test for deflation.
-                if i_pos > ilo && a.read(i_pos, i_pos - 1) != E::faer_zero() {
-                    let mut tst1 =
-                        abs1(a.read(i_pos - 1, i_pos - 1)).faer_add(abs1(a.read(i_pos, i_pos)));
-                    if tst1 == E::Real::faer_zero() {
-                        if i_pos > ilo + 1 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 2)));
-                        }
-                        if i_pos > ilo + 2 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 3)));
-                        }
-                        if i_pos > ilo + 3 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos - 1, i_pos - 4)));
-                        }
-                        if i_pos < ihi - 1 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 1, i_pos)));
-                        }
-                        if i_pos < ihi - 2 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 2, i_pos)));
-                        }
-                        if i_pos < ihi - 3 {
-                            tst1 = tst1.faer_add(abs1(a.read(i_pos + 3, i_pos)));
-                        }
-                    }
-                    if abs1(a.read(i_pos, i_pos - 1)) < max(small_num, eps.faer_mul(tst1)) {
-                        let ab = max(
-                            abs1(a.read(i_pos, i_pos - 1)),
-                            abs1(a.read(i_pos - 1, i_pos)),
-                        );
-                        let ba = min(
-                            abs1(a.read(i_pos, i_pos - 1)),
-                            abs1(a.read(i_pos - 1, i_pos)),
-                        );
-                        let aa = max(
-                            abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
-                        );
-                        let bb = min(
-                            abs1(a.read(i_pos, i_pos)),
-                            abs1(a.read(i_pos, i_pos).faer_sub(a.read(i_pos - 1, i_pos - 1))),
-                        );
-                        let s = aa.faer_add(ab);
-                        if ba.faer_mul(ab.faer_div(s))
-                            <= max(small_num, eps.faer_mul(bb.faer_mul(aa.faer_div(s))))
-                        {
-                            a.write(i_pos, i_pos - 1, E::faer_zero());
-                        }
-                    }
-                }
-            }
-
-            // Delayed update from the left
-            for i_bulge in 0..n_active_bulges {
-                let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge);
-
-                let v0 = v.read(0).faer_real();
-                let v1 = v.read(1);
-                let v2 = v.read(2);
-
-                for j in i_pos + 1..istop_m {
-                    let sum = a
-                        .read(i_pos, j)
-                        .faer_add(v1.faer_conj().faer_mul(a.read(i_pos + 1, j)))
-                        .faer_add(v2.faer_conj().faer_mul(a.read(i_pos + 2, j)));
-                    a.write(i_pos, j, a.read(i_pos, j).faer_sub(sum.faer_scale_real(v0)));
-                    a.write(
-                        i_pos + 1,
-                        j,
-                        a.read(i_pos + 1, j)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1)),
-                    );
-                    a.write(
-                        i_pos + 2,
-                        j,
-                        a.read(i_pos + 2, j)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2)),
-                    );
-                }
-            }
-
-            // Accumulate the reflectors into U
-            for i_bulge in 0..n_active_bulges {
-                let i_pos = i_pos_last - 2 * i_bulge;
-                let v = v.rb_mut().col_mut(i_bulge);
-
-                let v0 = v.read(0).faer_real();
-                let v1 = v.read(1);
-                let v2 = v.read(2);
-
-                let i1 = 0;
-                let i2 = Ord::min(u2.nrows(), (i_pos_last - ilo) + (i_pos_last - ilo) + 3);
-
-                for j in i1..i2 {
-                    let sum = u2
-                        .read(j, i_pos - ilo)
-                        .faer_add(v1.faer_mul(u2.read(j, i_pos - ilo + 1)))
-                        .faer_add(v2.faer_mul(u2.read(j, i_pos - ilo + 2)));
-
-                    u2.write(
-                        j,
-                        i_pos - ilo,
-                        u2.read(j, i_pos - ilo).faer_sub(sum.faer_scale_real(v0)),
-                    );
-                    u2.write(
-                        j,
-                        i_pos - ilo + 1,
-                        u2.read(j, i_pos - ilo + 1)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
-                    );
-                    u2.write(
-                        j,
-                        i_pos - ilo + 2,
-                        u2.read(j, i_pos - ilo + 2)
-                            .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
-                    );
-                }
             }
         }
 
-        // Update rest of the matrix
-        if want_t {
-            istart_m = 0;
-            istop_m = n;
-        } else {
-            istart_m = ilo;
-            istop_m = ihi;
-        }
+        // Accumulate the reflectors into U
+        for i_bulge in 0..n_active_bulges {
+            let i_pos = i_pos_last - 2 * i_bulge;
+            let v = v.rb_mut().col_mut(i_bulge);
 
-        // Horizontal multiply
-        if ilo + n_shifts + 1 < istop_m {
-            let mut i = ilo + n_block;
-            while i < istop_m {
-                let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix_mut(ilo, i, n_block, iblock);
-                let mut wh_slice =
-                    wh.rb_mut()
-                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
-                matmul(
-                    wh_slice.rb_mut(),
-                    u2.rb().adjoint(),
-                    a_slice.rb(),
-                    None,
-                    E::faer_one(),
-                    parallelism,
+            let v0 = v.read(0).faer_real();
+            let v1 = v.read(1);
+            let v2 = v.read(2);
+
+            let i1 = 0;
+            let i2 = Ord::min(u2.nrows(), (i_pos_last - ilo) + (i_pos_last - ilo) + 3);
+
+            for j in i1..i2 {
+                let sum = u2
+                    .read(j, i_pos - ilo)
+                    .faer_add(v1.faer_mul(u2.read(j, i_pos - ilo + 1)))
+                    .faer_add(v2.faer_mul(u2.read(j, i_pos - ilo + 2)));
+
+                u2.write(
+                    j,
+                    i_pos - ilo,
+                    u2.read(j, i_pos - ilo).faer_sub(sum.faer_scale_real(v0)),
                 );
-                a_slice.copy_from(wh_slice.rb());
-                i += iblock;
-            }
-        }
-        // Vertical multiply
-        if istart_m < ilo {
-            let mut i = istart_m;
-            while i < ilo {
-                let iblock = Ord::min(ilo - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
-                let mut wv_slice =
-                    wv.rb_mut()
-                        .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
-                matmul(
-                    wv_slice.rb_mut(),
-                    a_slice.rb(),
-                    u2.rb(),
-                    None,
-                    E::faer_one(),
-                    parallelism,
+                u2.write(
+                    j,
+                    i_pos - ilo + 1,
+                    u2.read(j, i_pos - ilo + 1)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                 );
-                a_slice.copy_from(wv_slice.rb());
-                i += iblock;
-            }
-        }
-        // Update Z (also a vertical multiplication)
-        if let Some(mut z) = z.rb_mut() {
-            let mut i = 0;
-            while i < n {
-                let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
-                let mut wv_slice =
-                    wv.rb_mut()
-                        .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
-                matmul(
-                    wv_slice.rb_mut(),
-                    z_slice.rb(),
-                    u2.rb(),
-                    None,
-                    E::faer_one(),
-                    parallelism,
+                u2.write(
+                    j,
+                    i_pos - ilo + 2,
+                    u2.read(j, i_pos - ilo + 2)
+                        .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                 );
-                z_slice.copy_from(wv_slice.rb());
-                i += iblock;
             }
         }
-
-        i_pos_block = ilo + n_block - n_shifts;
     }
 
-    //
-    // The following code block moves the bulges down until they are low enough
-    // to be removed
-    //
-    while i_pos_block + n_block_desired < ihi {
+    // Update rest of the matrix
+    if want_t {
+        istart_m = 0;
+        istop_m = n;
+    } else {
+        istart_m = ilo;
+        istop_m = ihi;
+    }
+
+    // Horizontal multiply
+    if ilo + n_shifts + 1 < istop_m {
+        let mut i = ilo + n_block;
+        while i < istop_m {
+            let iblock = Ord::min(istop_m - i, wh.ncols());
+            let mut a_slice = a.rb_mut().submatrix_mut(ilo, i, n_block, iblock);
+            let mut wh_slice = wh
+                .rb_mut()
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
+            matmul(
+                wh_slice.rb_mut(),
+                u2.rb().adjoint(),
+                a_slice.rb(),
+                None,
+                E::faer_one(),
+                parallelism,
+            );
+            a_slice.copy_from(wh_slice.rb());
+            i += iblock;
+        }
+    }
+    // Vertical multiply
+    if istart_m < ilo {
+        let mut i = istart_m;
+        while i < ilo {
+            let iblock = Ord::min(ilo - i, wv.nrows());
+            let mut a_slice = a.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+            let mut wv_slice = wv
+                .rb_mut()
+                .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
+            matmul(
+                wv_slice.rb_mut(),
+                a_slice.rb(),
+                u2.rb(),
+                None,
+                E::faer_one(),
+                parallelism,
+            );
+            a_slice.copy_from(wv_slice.rb());
+            i += iblock;
+        }
+    }
+    // Update Z (also a vertical multiplication)
+    if let Some(mut z) = z.rb_mut() {
+        let mut i = 0;
+        while i < n {
+            let iblock = Ord::min(n - i, wv.nrows());
+            let mut z_slice = z.rb_mut().submatrix_mut(i, ilo, iblock, n_block);
+            let mut wv_slice = wv
+                .rb_mut()
+                .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
+            matmul(
+                wv_slice.rb_mut(),
+                z_slice.rb(),
+                u2.rb(),
+                None,
+                E::faer_one(),
+                parallelism,
+            );
+            z_slice.copy_from(wv_slice.rb());
+            i += iblock;
+        }
+    }
+
+    *i_pos_block = ilo + n_block - n_shifts;
+}
+
+#[inline(never)]
+fn move_bulges_down<E: RealField>(
+    ilo: usize,
+    ihi: usize,
+    n_block_desired: usize,
+    n_bulges: usize,
+    n_shifts: usize,
+    want_t: bool,
+    mut a: MatMut<'_, E>,
+    mut z: Option<MatMut<'_, E>>,
+
+    mut u: MatMut<'_, E>,
+    mut v: MatMut<'_, E>,
+    mut wh: MatMut<'_, E>,
+    mut wv: MatMut<'_, E>,
+    s_re: ColRef<'_, E>,
+    s_im: ColRef<'_, E>,
+
+    i_pos_block: &mut usize,
+    eps: E::Real,
+    small_num: E::Real,
+    parallelism: Parallelism<'_>,
+) {
+    let n = a.nrows();
+
+    while *i_pos_block + n_block_desired < ihi {
         // Number of positions each bulge will be moved down
-        let n_pos = Ord::min(n_block_desired - n_shifts, ihi - n_shifts - 1 - i_pos_block);
+        let n_pos = Ord::min(
+            n_block_desired - n_shifts,
+            ihi - n_shifts - 1 - *i_pos_block,
+        );
         // Actual blocksize
         let n_block = n_shifts + n_pos;
 
@@ -2375,10 +2477,10 @@ fn multishift_qr_sweep<E: RealField>(
         // The calculations are initially limited to the window:
         // A(i_pos_block-1:i_pos_block+n_block,i_pos_block:i_pos_block+n_block)
         // The rest is updated later via level 3 BLAS
-        let mut istart_m = i_pos_block;
-        let mut istop_m = i_pos_block + n_block;
+        let mut istart_m = *i_pos_block;
+        let mut istop_m = *i_pos_block + n_block;
 
-        for i_pos_last in i_pos_block + n_shifts - 2..i_pos_block + n_shifts - 2 + n_pos {
+        for i_pos_last in *i_pos_block + n_shifts - 2..*i_pos_block + n_shifts - 2 + n_pos {
             for i_bulge in 0..n_bulges {
                 let i_pos = i_pos_last - 2 * i_bulge;
                 let mut v = v.rb_mut().col_mut(i_bulge);
@@ -2389,13 +2491,7 @@ fn multishift_qr_sweep<E: RealField>(
                 let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
                 let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
                 let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
-                move_bulge(
-                    h.rb_mut(),
-                    v.rb_mut(),
-                    (s1_re, s1_im),
-                    (s2_re, s2_im),
-                    epsilon,
-                );
+                move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im), eps);
 
                 // Apply the reflector we just calculated from the right
                 // We leave the last row for later (it interferes with the
@@ -2539,34 +2635,34 @@ fn multishift_qr_sweep<E: RealField>(
                 let v1 = v.read(1);
                 let v2 = v.read(2);
 
-                let i1 = (i_pos - i_pos_block) - (i_pos_last + 2 - i_pos_block - n_shifts);
+                let i1 = (i_pos - *i_pos_block) - (i_pos_last + 2 - *i_pos_block - n_shifts);
                 let i2 = Ord::min(
                     u2.nrows(),
-                    (i_pos_last - i_pos_block) + (i_pos_last + 2 - i_pos_block - n_shifts) + 3,
+                    (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
                 );
 
                 for j in i1..i2 {
                     let sum = u2
-                        .read(j, i_pos - i_pos_block)
-                        .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)))
-                        .faer_add(v2.faer_mul(u2.read(j, i_pos - i_pos_block + 2)));
+                        .read(j, i_pos - *i_pos_block)
+                        .faer_add(v1.faer_mul(u2.read(j, i_pos - *i_pos_block + 1)))
+                        .faer_add(v2.faer_mul(u2.read(j, i_pos - *i_pos_block + 2)));
 
                     u2.write(
                         j,
-                        i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block)
+                        i_pos - *i_pos_block,
+                        u2.read(j, i_pos - *i_pos_block)
                             .faer_sub(sum.faer_scale_real(v0)),
                     );
                     u2.write(
                         j,
-                        i_pos - i_pos_block + 1,
-                        u2.read(j, i_pos - i_pos_block + 1)
+                        i_pos - *i_pos_block + 1,
+                        u2.read(j, i_pos - *i_pos_block + 1)
                             .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     u2.write(
                         j,
-                        i_pos - i_pos_block + 2,
-                        u2.read(j, i_pos - i_pos_block + 2)
+                        i_pos - *i_pos_block + 2,
+                        u2.read(j, i_pos - *i_pos_block + 2)
                             .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
@@ -2583,11 +2679,11 @@ fn multishift_qr_sweep<E: RealField>(
         }
 
         // Horizontal multiply
-        if i_pos_block + n_block < istop_m {
-            let mut i = i_pos_block + n_block;
+        if *i_pos_block + n_block < istop_m {
+            let mut i = *i_pos_block + n_block;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut a_slice = a.rb_mut().submatrix_mut(*i_pos_block, i, n_block, iblock);
                 let mut wh_slice =
                     wh.rb_mut()
                         .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
@@ -2605,11 +2701,11 @@ fn multishift_qr_sweep<E: RealField>(
         }
 
         // Vertical multiply
-        if istart_m < i_pos_block {
+        if istart_m < *i_pos_block {
             let mut i = istart_m;
-            while i < i_pos_block {
-                let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+            while i < *i_pos_block {
+                let iblock = Ord::min(*i_pos_block - i, wv.nrows());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, *i_pos_block, iblock, n_block);
                 let mut wv_slice =
                     wv.rb_mut()
                         .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
@@ -2630,7 +2726,7 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut z_slice = z.rb_mut().submatrix_mut(i, *i_pos_block, iblock, n_block);
                 let mut wv_slice =
                     wv.rb_mut()
                         .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
@@ -2647,14 +2743,36 @@ fn multishift_qr_sweep<E: RealField>(
             }
         }
 
-        i_pos_block += n_pos;
+        *i_pos_block += n_pos;
     }
+}
 
-    //
-    // The following code removes the bulges from the matrix
-    //
+#[inline(never)]
+fn remove_bulges<E: RealField>(
+    ilo: usize,
+    ihi: usize,
+    n_bulges: usize,
+    n_shifts: usize,
+    want_t: bool,
+    mut a: MatMut<'_, E>,
+    mut z: Option<MatMut<'_, E>>,
+
+    mut u: MatMut<'_, E>,
+    mut v: MatMut<'_, E>,
+    mut wh: MatMut<'_, E>,
+    mut wv: MatMut<'_, E>,
+    s_re: ColRef<'_, E>,
+    s_im: ColRef<'_, E>,
+
+    i_pos_block: &mut usize,
+    eps: E::Real,
+    small_num: E::Real,
+    parallelism: Parallelism<'_>,
+) {
+    let n = a.nrows();
+
     {
-        let n_block = ihi - i_pos_block;
+        let n_block = ihi - *i_pos_block;
 
         let mut u2 = u.rb_mut().submatrix_mut(0, 0, n_block, n_block);
         u2.fill_zero();
@@ -2667,10 +2785,10 @@ fn multishift_qr_sweep<E: RealField>(
         // The calculations are initially limited to the window:
         // A(i_pos_block-1:ihi,i_pos_block:ihi) The rest is updated later via
         // level 3 BLAS
-        let mut istart_m = i_pos_block;
+        let mut istart_m = *i_pos_block;
         let mut istop_m = ihi;
 
-        for i_pos_last in i_pos_block + n_shifts - 2..ihi + n_shifts - 1 {
+        for i_pos_last in *i_pos_block + n_shifts - 2..ihi + n_shifts - 1 {
             let mut i_bulge_start = if i_pos_last + 3 > ihi {
                 (i_pos_last + 3 - ihi) / 2
             } else {
@@ -2727,18 +2845,18 @@ fn multishift_qr_sweep<E: RealField>(
                     // that U2 starts off as diagonal
                     for j in 0..u2.nrows() {
                         let sum = u2
-                            .read(j, i_pos - i_pos_block)
-                            .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)));
+                            .read(j, i_pos - *i_pos_block)
+                            .faer_add(v1.faer_mul(u2.read(j, i_pos - *i_pos_block + 1)));
                         u2.write(
                             j,
-                            i_pos - i_pos_block,
-                            u2.read(j, i_pos - i_pos_block)
+                            i_pos - *i_pos_block,
+                            u2.read(j, i_pos - *i_pos_block)
                                 .faer_sub(sum.faer_mul(t0.faer_conj())),
                         );
                         u2.write(
                             j,
-                            i_pos - i_pos_block + 1,
-                            u2.read(j, i_pos - i_pos_block + 1)
+                            i_pos - *i_pos_block + 1,
+                            u2.read(j, i_pos - *i_pos_block + 1)
                                 .faer_sub(sum.faer_mul(t1.faer_conj())),
                         );
                     }
@@ -2749,13 +2867,7 @@ fn multishift_qr_sweep<E: RealField>(
                     let s1_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge);
                     let s2_re = s_re.read(s_re.nrows() - 1 - 2 * i_bulge - 1);
                     let s2_im = s_im.read(s_im.nrows() - 1 - 2 * i_bulge - 1);
-                    move_bulge(
-                        h.rb_mut(),
-                        v.rb_mut(),
-                        (s1_re, s1_im),
-                        (s2_re, s2_im),
-                        epsilon,
-                    );
+                    move_bulge(h.rb_mut(), v.rb_mut(), (s1_re, s1_im), (s2_re, s2_im), eps);
 
                     {
                         let t0 = v.read(0).faer_conj();
@@ -2912,34 +3024,34 @@ fn multishift_qr_sweep<E: RealField>(
                 let v1 = v.read(1);
                 let v2 = v.read(2);
 
-                let i1 = (i_pos - i_pos_block) - (i_pos_last + 2 - i_pos_block - n_shifts);
+                let i1 = (i_pos - *i_pos_block) - (i_pos_last + 2 - *i_pos_block - n_shifts);
                 let i2 = Ord::min(
                     u2.nrows(),
-                    (i_pos_last - i_pos_block) + (i_pos_last + 2 - i_pos_block - n_shifts) + 3,
+                    (i_pos_last - *i_pos_block) + (i_pos_last + 2 - *i_pos_block - n_shifts) + 3,
                 );
 
                 for j in i1..i2 {
                     let sum = u2
-                        .read(j, i_pos - i_pos_block)
-                        .faer_add(v1.faer_mul(u2.read(j, i_pos - i_pos_block + 1)))
-                        .faer_add(v2.faer_mul(u2.read(j, i_pos - i_pos_block + 2)));
+                        .read(j, i_pos - *i_pos_block)
+                        .faer_add(v1.faer_mul(u2.read(j, i_pos - *i_pos_block + 1)))
+                        .faer_add(v2.faer_mul(u2.read(j, i_pos - *i_pos_block + 2)));
 
                     u2.write(
                         j,
-                        i_pos - i_pos_block,
-                        u2.read(j, i_pos - i_pos_block)
+                        i_pos - *i_pos_block,
+                        u2.read(j, i_pos - *i_pos_block)
                             .faer_sub(sum.faer_scale_real(v0)),
                     );
                     u2.write(
                         j,
-                        i_pos - i_pos_block + 1,
-                        u2.read(j, i_pos - i_pos_block + 1)
+                        i_pos - *i_pos_block + 1,
+                        u2.read(j, i_pos - *i_pos_block + 1)
                             .faer_sub(sum.faer_scale_real(v0).faer_mul(v1.faer_conj())),
                     );
                     u2.write(
                         j,
-                        i_pos - i_pos_block + 2,
-                        u2.read(j, i_pos - i_pos_block + 2)
+                        i_pos - *i_pos_block + 2,
+                        u2.read(j, i_pos - *i_pos_block + 2)
                             .faer_sub(sum.faer_scale_real(v0).faer_mul(v2.faer_conj())),
                     );
                 }
@@ -2955,14 +3067,14 @@ fn multishift_qr_sweep<E: RealField>(
             istop_m = ihi;
         }
 
-        debug_assert!(i_pos_block + n_block == ihi);
+        debug_assert!(*i_pos_block + n_block == ihi);
 
         // Horizontal multiply
         if ihi < istop_m {
             let mut i = ihi;
             while i < istop_m {
                 let iblock = Ord::min(istop_m - i, wh.ncols());
-                let mut a_slice = a.rb_mut().submatrix_mut(i_pos_block, i, n_block, iblock);
+                let mut a_slice = a.rb_mut().submatrix_mut(*i_pos_block, i, n_block, iblock);
                 let mut wh_slice =
                     wh.rb_mut()
                         .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
@@ -2980,11 +3092,11 @@ fn multishift_qr_sweep<E: RealField>(
         }
 
         // Vertical multiply
-        if istart_m < i_pos_block {
+        if istart_m < *i_pos_block {
             let mut i = istart_m;
-            while i < i_pos_block {
-                let iblock = Ord::min(i_pos_block - i, wv.nrows());
-                let mut a_slice = a.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+            while i < *i_pos_block {
+                let iblock = Ord::min(*i_pos_block - i, wv.nrows());
+                let mut a_slice = a.rb_mut().submatrix_mut(i, *i_pos_block, iblock, n_block);
                 let mut wv_slice =
                     wv.rb_mut()
                         .submatrix_mut(0, 0, a_slice.nrows(), a_slice.ncols());
@@ -3005,7 +3117,7 @@ fn multishift_qr_sweep<E: RealField>(
             let mut i = 0;
             while i < n {
                 let iblock = Ord::min(n - i, wv.nrows());
-                let mut z_slice = z.rb_mut().submatrix_mut(i, i_pos_block, iblock, n_block);
+                let mut z_slice = z.rb_mut().submatrix_mut(i, *i_pos_block, iblock, n_block);
                 let mut wv_slice =
                     wv.rb_mut()
                         .submatrix_mut(0, 0, z_slice.nrows(), z_slice.ncols());
@@ -3023,7 +3135,6 @@ fn multishift_qr_sweep<E: RealField>(
         }
     }
 }
-
 pub fn default_recommended_shift_count(dim: usize, _active_block_dim: usize) -> usize {
     let n = dim;
     if n < 30 {

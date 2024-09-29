@@ -215,6 +215,8 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
     #[doc(hidden)]
     const IS_NUM_COMPLEX: bool = false;
 
+    const IS_REAL: bool = true;
+
     type Group: ForType + ForCopyType + ForDebugType;
 
     type Unit: Copy + Pod + PartialEq + Send + Sync + Debug + 'static;
@@ -1884,6 +1886,7 @@ unsafe impl Entity for f64 {
 
 unsafe impl<E: Entity> Entity for Complex<E> {
     const IS_NUM_COMPLEX: bool = true;
+    const IS_REAL: bool = false;
 
     type Unit = UnitFor<E>;
     type Index = IndexFor<E>;

@@ -60,7 +60,7 @@ impl<E: Entity> Mat<E> {
     pub fn new() -> Self {
         Self {
             inner: MatOwnImpl {
-                ptr: into_copy::<E, _>(E::faer_map(E::UNIT, |()| NonNull::<E::Unit>::dangling())),
+                ptr: into_copy::<E, _>(map!(E, E::UNIT, |(())| NonNull::<E::Unit>::dangling())),
                 nrows: 0,
                 ncols: 0,
             },
@@ -189,7 +189,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a pointer to the data of the matrix.
     #[inline]
     pub fn as_ptr(&self) -> GroupFor<E, *const E::Unit> {
-        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| {
+        map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| {
             ptr.as_ptr() as *const E::Unit
         })
     }
@@ -197,7 +197,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
     pub fn as_ptr_mut(&mut self) -> GroupFor<E, *mut E::Unit> {
-        E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| ptr.as_ptr())
+        map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr())
     }
 
     /// Returns the row capacity, that is, the number of rows that the matrix is able to hold
@@ -319,7 +319,7 @@ impl<E: Entity> Mat<E> {
 
         let mut this = ManuallyDrop::new(core::mem::take(self));
         {
-            let mut this_group = E::faer_map(from_copy::<E, _>(this.inner.ptr), |ptr| MatUnit {
+            let mut this_group = map!(E, from_copy::<E, _>(this.inner.ptr), |(ptr)| MatUnit {
                 raw: RawMatUnit {
                     ptr,
                     row_capacity: old_row_capacity,
@@ -329,13 +329,12 @@ impl<E: Entity> Mat<E> {
                 ncols,
             });
 
-            E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
+            map!(E, E::faer_as_mut(&mut this_group), |(mat_unit)| {
                 mat_unit.do_reserve_exact(new_row_capacity, new_col_capacity);
             });
 
-            let this_group = E::faer_map(this_group, ManuallyDrop::new);
-            this.inner.ptr =
-                into_copy::<E, _>(E::faer_map(this_group, |mat_unit| mat_unit.raw.ptr));
+            let this_group = map!(E, this_group, |(x)| ManuallyDrop::new(x));
+            this.inner.ptr = into_copy::<E, _>(map!(E, this_group, |(mat_unit)| mat_unit.raw.ptr));
             this.row_capacity = new_row_capacity;
             this.col_capacity = new_col_capacity;
         }
@@ -372,7 +371,7 @@ impl<E: Entity> Mat<E> {
         let ptr = self.as_ptr_mut();
 
         for j in col_start..col_end {
-            let ptr_j = E::faer_map(E::faer_copy(&ptr), |ptr| {
+            let ptr_j = map!(E, E::faer_copy(&ptr), |(ptr)| {
                 ptr.wrapping_offset(j as isize * self.col_stride())
             });
 
@@ -382,10 +381,10 @@ impl<E: Entity> Mat<E> {
                 // allocation since we reserved enough space
                 // * writing to this memory region is sound since it is properly
                 // aligned and valid for writes
-                let ptr_ij = E::faer_map(E::faer_copy(&ptr_j), |ptr_j| ptr_j.add(i));
+                let ptr_ij = map!(E, E::faer_copy(&ptr_j), |(ptr_j)| ptr_j.add(i));
                 let value = E::faer_into_units(f(i, j));
 
-                E::faer_map(E::faer_zip(ptr_ij, value), |(ptr_ij, value)| {
+                map!(E, E::faer_zip(ptr_ij, value), |((ptr_ij, value))| {
                     core::ptr::write(ptr_ij, value)
                 });
             }
@@ -489,11 +488,9 @@ impl<E: Entity> Mat<E> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_ref().ptr_at(0, col);
-        E::faer_map(
-            ptr,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts(ptr, nrows) },
-        )
+        map!(E, ptr, |(ptr)| unsafe {
+            core::slice::from_raw_parts(ptr, nrows)
+        },)
     }
 
     /// Returns a mutable reference to a slice over the column at the given index.
@@ -503,11 +500,9 @@ impl<E: Entity> Mat<E> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_mut().ptr_at_mut(0, col);
-        E::faer_map(
-            ptr,
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, nrows) },
-        )
+        map!(E, ptr, |(ptr)| unsafe {
+            core::slice::from_raw_parts_mut(ptr, nrows)
+        },)
     }
 
     /// Returns a view over the matrix.

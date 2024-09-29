@@ -62,7 +62,7 @@ impl<E: Entity> Default for MatMut<'_, E> {
     #[inline]
     fn default() -> Self {
         from_column_major_slice_mut_generic::<E>(
-            E::faer_map(E::UNIT, |()| &mut [] as &mut [E::Unit]),
+            map!(E, E::UNIT, |(())| &mut [] as &mut [E::Unit]),
             0,
             0,
         )
@@ -116,11 +116,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     ) -> Self {
         Self {
             inner: MatImpl {
-                ptr: into_copy::<E, _>(E::faer_map(
-                    ptr,
-                    #[inline]
-                    |ptr| NonNull::new_unchecked(ptr),
-                )),
+                ptr: into_copy::<E, _>(map!(E, ptr, |(ptr)| NonNull::new_unchecked(ptr),)),
                 nrows,
                 ncols,
                 row_stride,
@@ -144,18 +140,12 @@ impl<'a, E: Entity> MatMut<'a, E> {
         assert!(self.row_stride() == 1);
         let col = self.col_mut(j);
         if col.nrows() == 0 {
-            E::faer_map(
-                E::UNIT,
-                #[inline(always)]
-                |()| &mut [] as &mut [E::Unit],
-            )
+            map!(E, E::UNIT, |(())| &mut [] as &mut [E::Unit],)
         } else {
             let m = col.nrows();
-            E::faer_map(
-                col.as_ptr_mut(),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-            )
+            map!(E, col.as_ptr_mut(), |(ptr)| unsafe {
+                core::slice::from_raw_parts_mut(ptr, m)
+            },)
         }
     }
 
@@ -185,11 +175,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// Returns pointers to the matrix data.
     #[inline(always)]
     pub fn as_ptr_mut(self) -> GroupFor<E, *mut E::Unit> {
-        E::faer_map(
-            from_copy::<E, _>(self.inner.ptr),
-            #[inline(always)]
-            |ptr| ptr.as_ptr(),
-        )
+        map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr(),)
     }
 
     /// Returns the row stride of the matrix, specified in number of elements, not in bytes.
@@ -215,11 +201,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     pub fn ptr_at_mut(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
         let offset = ((row as isize).wrapping_mul(self.inner.row_stride))
             .wrapping_add((col as isize).wrapping_mul(self.inner.col_stride));
-        E::faer_map(
-            self.as_ptr_mut(),
-            #[inline(always)]
-            |ptr| ptr.wrapping_offset(offset),
-        )
+        map!(E, self.as_ptr_mut(), |(ptr)| ptr.wrapping_offset(offset),)
     }
 
     #[inline(always)]
@@ -235,11 +217,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
             crate::utils::unchecked_mul(row, self.inner.row_stride),
             crate::utils::unchecked_mul(col, self.inner.col_stride),
         );
-        E::faer_map(
-            self.as_ptr_mut(),
-            #[inline(always)]
-            |ptr| ptr.offset(offset),
-        )
+        map!(E, self.as_ptr_mut(), |(ptr)| ptr.offset(offset),)
     }
 
     #[inline(always)]
@@ -262,11 +240,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
                     (row as isize).wrapping_mul(self.inner.row_stride),
                     (col as isize).wrapping_mul(self.inner.col_stride),
                 ));
-            E::faer_map(
-                self.as_ptr_mut(),
-                #[inline(always)]
-                |ptr| ptr.offset(offset),
-            )
+            map!(E, self.as_ptr_mut(), |(ptr)| ptr.offset(offset),)
         }
     }
 
@@ -635,11 +609,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     pub unsafe fn write_unchecked(&mut self, row: usize, col: usize, value: E) {
         let units = value.faer_into_units();
         let zipped = E::faer_zip(units, (*self).rb_mut().ptr_inbounds_at_mut(row, col));
-        E::faer_map(
-            zipped,
-            #[inline(always)]
-            |(unit, ptr)| *ptr = unit,
-        );
+        map!(E, zipped, |((unit, ptr))| *ptr = unit,);
     }
 
     /// Writes the value to the element at the given indices, with bound checks.
@@ -829,11 +799,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     pub fn transpose_mut(self) -> Self {
         unsafe {
             super::from_raw_parts_mut(
-                E::faer_map(
-                    from_copy::<E, _>(self.inner.ptr),
-                    #[inline(always)]
-                    |ptr| ptr.as_ptr(),
-                ),
+                map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr(),),
                 self.ncols(),
                 self.nrows(),
                 self.col_stride(),
@@ -2099,11 +2065,7 @@ pub fn from_column_major_slice_mut_generic<E: Entity>(
     );
     unsafe {
         from_raw_parts_mut(
-            E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.as_mut_ptr(),
-            ),
+            map!(E, slice, |(slice)| slice.as_mut_ptr(),),
             nrows,
             ncols,
             1,
@@ -2159,11 +2121,7 @@ pub fn from_column_major_slice_with_stride_mut_generic<E: Entity>(
     );
     unsafe {
         from_raw_parts_mut(
-            E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.as_mut_ptr(),
-            ),
+            map!(E, slice, |(slice)| slice.as_mut_ptr(),),
             nrows,
             ncols,
             1,
@@ -2372,5 +2330,5 @@ pub fn from_mut<E: SimpleEntity>(value: &mut E) -> MatMut<'_, E> {
 
 /// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
 pub fn from_mut_generic<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> MatMut<'_, E> {
-    unsafe { from_raw_parts_mut(E::faer_map(value, |ptr| ptr as *mut E::Unit), 1, 1, 0, 0) }
+    unsafe { from_raw_parts_mut(map!(E, value, |(ptr)| ptr as *mut E::Unit), 1, 1, 0, 0) }
 }

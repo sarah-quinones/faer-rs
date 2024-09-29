@@ -172,6 +172,16 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+macro_rules! map {
+    ($ty: ty, $input: expr, |($x: pat)| $f: expr $(,)?) => {
+        <$ty as ::faer_entity::Entity>::faer_map(
+            $input,
+            #[inline(always)]
+            |$x| $f,
+        )
+    };
+}
+
 macro_rules! __dbg {
     ($E: ty, $(,)?) => {{
             extern crate std as __std;

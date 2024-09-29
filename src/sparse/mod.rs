@@ -411,7 +411,7 @@ pub mod utils {
                 let new_row_indices = ghost::Array::from_mut(new_row_indices, NNZ);
 
                 let conj_if = |cond: bool, x: E| {
-                    if !coe::is_same::<E, E::Real>() && cond {
+                    if !E::IS_REAL && cond {
                         x.faer_conj()
                     } else {
                         x

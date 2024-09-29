@@ -493,11 +493,11 @@ pub mod inner_prod {
         offset: pulp::Offset<E::SimdMask<S>>,
     ) -> E {
         {
-            let prologue = if E::N_COMPONENTS == 1 {
+            let prologue = if const { E::N_COMPONENTS == 1 } {
                 a_x_b_accumulate8(simd, conj, a, b, offset)
-            } else if E::N_COMPONENTS == 2 {
+            } else if const { E::N_COMPONENTS == 2 } {
                 a_x_b_accumulate4(simd, conj, a, b, offset)
-            } else if E::N_COMPONENTS == 4 {
+            } else if const { E::N_COMPONENTS == 4 } {
                 a_x_b_accumulate2(simd, conj, a, b, offset)
             } else {
                 a_x_b_accumulate1(simd, conj, a, b, offset)
@@ -1351,7 +1351,7 @@ fn matmul_with_conj_impl<E: ComplexField>(
 ) {
     use coe::Coerce;
     use num_complex::Complex;
-    if E::IS_NUM_COMPLEX {
+    if const { E::IS_NUM_COMPLEX } {
         let acc: MatMut<'_, Complex<E::Real>> = acc.coerce();
         let a: MatRef<'_, Complex<E::Real>> = a.coerce();
         let b: MatRef<'_, Complex<E::Real>> = b.coerce();
@@ -1395,166 +1395,166 @@ fn matmul_with_conj_impl<E: ComplexField>(
         }
 
         return;
-    }
+    } else {
+        let m = acc.nrows();
+        let n = acc.ncols();
+        let k = a.ncols();
 
-    let m = acc.nrows();
-    let n = acc.ncols();
-    let k = a.ncols();
+        let arch = E::Simd::default();
+        let lane_count = arch.dispatch(SimdLaneCount::<E> {
+            __marker: PhantomData,
+        });
 
-    let arch = E::Simd::default();
-    let lane_count = arch.dispatch(SimdLaneCount::<E> {
-        __marker: PhantomData,
-    });
+        let nr = MicroKernelShape::<E>::MAX_NR;
+        let mr_div_n = MicroKernelShape::<E>::MAX_MR_DIV_N;
+        let mr = mr_div_n * lane_count;
 
-    let nr = MicroKernelShape::<E>::MAX_NR;
-    let mr_div_n = MicroKernelShape::<E>::MAX_MR_DIV_N;
-    let mr = mr_div_n * lane_count;
+        assert!(all(
+            acc.row_stride() == 1,
+            a.row_stride() == 1,
+            b.row_stride() == 1,
+            m % lane_count == 0,
+        ));
 
-    assert!(all(
-        acc.row_stride() == 1,
-        a.row_stride() == 1,
-        b.row_stride() == 1,
-        m % lane_count == 0,
-    ));
+        let mut acc = acc;
 
-    let mut acc = acc;
+        let mut col_outer = 0usize;
+        while col_outer < n {
+            let n_chunk = min(NC, n - col_outer);
 
-    let mut col_outer = 0usize;
-    while col_outer < n {
-        let n_chunk = min(NC, n - col_outer);
+            let b_panel = b.submatrix(0, col_outer, k, n_chunk);
+            let acc = acc.rb_mut().submatrix_mut(0, col_outer, m, n_chunk);
 
-        let b_panel = b.submatrix(0, col_outer, k, n_chunk);
-        let acc = acc.rb_mut().submatrix_mut(0, col_outer, m, n_chunk);
+            let mut depth_outer = 0usize;
+            while depth_outer < k {
+                let k_chunk = min(KC, k - depth_outer);
 
-        let mut depth_outer = 0usize;
-        while depth_outer < k {
-            let k_chunk = min(KC, k - depth_outer);
+                let a_panel = a.submatrix(0, depth_outer, m, k_chunk);
+                let b_block = b_panel.submatrix(depth_outer, 0, k_chunk, n_chunk);
 
-            let a_panel = a.submatrix(0, depth_outer, m, k_chunk);
-            let b_block = b_panel.submatrix(depth_outer, 0, k_chunk, n_chunk);
+                let n_job_count = n_chunk.msrv_div_ceil(nr);
+                let chunk_count = m.msrv_div_ceil(MC);
 
-            let n_job_count = n_chunk.msrv_div_ceil(nr);
-            let chunk_count = m.msrv_div_ceil(MC);
+                let job_count = n_job_count * chunk_count;
 
-            let job_count = n_job_count * chunk_count;
+                let job = |idx: usize| {
+                    assert!(all(
+                        acc.row_stride() == 1,
+                        a.row_stride() == 1,
+                        b.row_stride() == 1,
+                    ));
 
-            let job = |idx: usize| {
-                assert!(all(
-                    acc.row_stride() == 1,
-                    a.row_stride() == 1,
-                    b.row_stride() == 1,
-                ));
+                    let col_inner = (idx % n_job_count) * nr;
+                    let row_outer = (idx / n_job_count) * MC;
+                    let m_chunk = min(MC, m - row_outer);
 
-                let col_inner = (idx % n_job_count) * nr;
-                let row_outer = (idx / n_job_count) * MC;
-                let m_chunk = min(MC, m - row_outer);
+                    let mut row_inner = 0;
+                    let ncols = min(nr, n_chunk - col_inner);
+                    let ukr_j = ncols;
 
-                let mut row_inner = 0;
-                let ncols = min(nr, n_chunk - col_inner);
-                let ukr_j = ncols;
+                    while row_inner < m_chunk {
+                        let nrows = min(mr, m_chunk - row_inner);
 
-                while row_inner < m_chunk {
-                    let nrows = min(mr, m_chunk - row_inner);
+                        let ukr_i = nrows / lane_count;
 
-                    let ukr_i = nrows / lane_count;
+                        let a = a_panel.submatrix(row_outer + row_inner, 0, nrows, k_chunk);
+                        let b = b_block.submatrix(0, col_inner, k_chunk, ncols);
+                        let acc =
+                            acc.rb()
+                                .submatrix(row_outer + row_inner, col_inner, nrows, ncols);
+                        let acc = unsafe { acc.const_cast() };
 
-                    let a = a_panel.submatrix(row_outer + row_inner, 0, nrows, k_chunk);
-                    let b = b_block.submatrix(0, col_inner, k_chunk, ncols);
-                    let acc = acc
-                        .rb()
-                        .submatrix(row_outer + row_inner, col_inner, nrows, ncols);
-                    let acc = unsafe { acc.const_cast() };
-
-                    match conj_b {
-                        Conj::Yes => {
-                            let conj_b = YesConj;
-                            if MicroKernelShape::<E>::IS_2X2 {
-                                match (ukr_i, ukr_j) {
-                                    (2, 2) => {
-                                        arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
+                        match conj_b {
+                            Conj::Yes => {
+                                let conj_b = YesConj;
+                                if MicroKernelShape::<E>::IS_2X2 {
+                                    match (ukr_i, ukr_j) {
+                                        (2, 2) => {
+                                            arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (2, 1) => {
+                                            arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 2) => {
+                                            arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    (2, 1) => {
-                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                } else if MicroKernelShape::<E>::IS_2X1 {
+                                    match (ukr_i, ukr_j) {
+                                        (2, 1) => {
+                                            arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    (1, 2) => {
-                                        arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
+                                } else if MicroKernelShape::<E>::IS_1X1 {
+                                    match (ukr_i, ukr_j) {
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    _ => unreachable!(),
+                                } else {
+                                    unreachable!()
                                 }
-                            } else if MicroKernelShape::<E>::IS_2X1 {
-                                match (ukr_i, ukr_j) {
-                                    (2, 1) => {
-                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                            }
+                            Conj::No => {
+                                let conj_b = NoConj;
+                                if MicroKernelShape::<E>::IS_2X2 {
+                                    match (ukr_i, ukr_j) {
+                                        (2, 2) => {
+                                            arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (2, 1) => {
+                                            arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 2) => {
+                                            arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                } else if MicroKernelShape::<E>::IS_2X1 {
+                                    match (ukr_i, ukr_j) {
+                                        (2, 1) => {
+                                            arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
                                     }
-                                    _ => unreachable!(),
+                                } else if MicroKernelShape::<E>::IS_1X1 {
+                                    match (ukr_i, ukr_j) {
+                                        (1, 1) => {
+                                            arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                } else {
+                                    unreachable!()
                                 }
-                            } else if MicroKernelShape::<E>::IS_1X1 {
-                                match (ukr_i, ukr_j) {
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            } else {
-                                unreachable!()
                             }
                         }
-                        Conj::No => {
-                            let conj_b = NoConj;
-                            if MicroKernelShape::<E>::IS_2X2 {
-                                match (ukr_i, ukr_j) {
-                                    (2, 2) => {
-                                        arch.dispatch(Ukr::<2, 2, _, E> { conj_b, acc, a, b })
-                                    }
-                                    (2, 1) => {
-                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    (1, 2) => {
-                                        arch.dispatch(Ukr::<1, 2, _, E> { conj_b, acc, a, b })
-                                    }
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            } else if MicroKernelShape::<E>::IS_2X1 {
-                                match (ukr_i, ukr_j) {
-                                    (2, 1) => {
-                                        arch.dispatch(Ukr::<2, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            } else if MicroKernelShape::<E>::IS_1X1 {
-                                match (ukr_i, ukr_j) {
-                                    (1, 1) => {
-                                        arch.dispatch(Ukr::<1, 1, _, E> { conj_b, acc, a, b })
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            } else {
-                                unreachable!()
-                            }
-                        }
+                        row_inner += nrows;
                     }
-                    row_inner += nrows;
-                }
-            };
+                };
 
-            crate::utils::thread::for_each_raw(job_count, job, parallelism);
+                crate::utils::thread::for_each_raw(job_count, job, parallelism);
 
-            depth_outer += k_chunk;
+                depth_outer += k_chunk;
+            }
+
+            col_outer += n_chunk;
         }
-
-        col_outer += n_chunk;
     }
 }
 
@@ -1568,7 +1568,6 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
     alpha: Option<E>,
     beta: E,
     parallelism: Parallelism,
-    _use_gemm: bool,
 ) {
     assert!(all(
         acc.nrows() == lhs.nrows(),
@@ -1636,270 +1635,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
         return;
     }
 
-    unsafe {
-        if m + n < 32 && k <= 6 {
-            macro_rules! small_gemm {
-                ($term: expr) => {
-                    let term = $term;
-                    match k {
-                        0 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            acc.read_unchecked(i, j).faer_mul(alpha),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        acc.write_unchecked(i, j, E::faer_zero())
-                                    }
-                                }
-                            }
-                        },
-                        1 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0);
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0);
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        2 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0).faer_add(term(i, j, 1));
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0).faer_add(term(i, j, 1));
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        3 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0)
-                                            .faer_add(term(i, j, 1))
-                                            .faer_add(term(i, j, 2));
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = term(i, j, 0)
-                                            .faer_add(term(i, j, 1))
-                                            .faer_add(term(i, j, 2));
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        4 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1)),
-                                            E::faer_add(term(i, j, 2), term(i, j, 3)),
-                                        );
-
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1)),
-                                            E::faer_add(term(i, j, 2), term(i, j, 3)),
-                                        );
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        5 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1))
-                                                .faer_add(term(i, j, 2)),
-                                            E::faer_add(term(i, j, 3), term(i, j, 4)),
-                                        );
-
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1))
-                                                .faer_add(term(i, j, 2)),
-                                            E::faer_add(term(i, j, 3), term(i, j, 4)),
-                                        );
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        6 => match alpha {
-                            Some(alpha) => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1))
-                                                .faer_add(term(i, j, 2)),
-                                            E::faer_add(term(i, j, 3), term(i, j, 4))
-                                                .faer_add(term(i, j, 5)),
-                                        );
-
-                                        acc.write_unchecked(
-                                            i,
-                                            j,
-                                            E::faer_add(
-                                                acc.read_unchecked(i, j).faer_mul(alpha),
-                                                dot.faer_mul(beta),
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            None => {
-                                for i in 0..m {
-                                    for j in 0..n {
-                                        let dot = E::faer_add(
-                                            E::faer_add(term(i, j, 0), term(i, j, 1))
-                                                .faer_add(term(i, j, 2)),
-                                            E::faer_add(term(i, j, 3), term(i, j, 4))
-                                                .faer_add(term(i, j, 5)),
-                                        );
-                                        acc.write_unchecked(i, j, dot.faer_mul(beta))
-                                    }
-                                }
-                            }
-                        },
-                        _ => unreachable!(),
-                    }
-                };
-            }
-
-            match (conj_lhs, conj_rhs) {
-                (Conj::Yes, Conj::Yes) => {
-                    let term = {
-                        #[inline(always)]
-                        |i, j, depth| {
-                            (lhs.read_unchecked(i, depth)
-                                .faer_mul(rhs.read_unchecked(depth, j)))
-                            .faer_conj()
-                        }
-                    };
-                    small_gemm!(term);
-                }
-                (Conj::Yes, Conj::No) => {
-                    let term = {
-                        #[inline(always)]
-                        |i, j, depth| {
-                            lhs.read_unchecked(i, depth)
-                                .faer_conj()
-                                .faer_mul(rhs.read_unchecked(depth, j))
-                        }
-                    };
-                    small_gemm!(term);
-                }
-                (Conj::No, Conj::Yes) => {
-                    let term = {
-                        #[inline(always)]
-                        |i, j, depth| {
-                            lhs.read_unchecked(i, depth)
-                                .faer_mul(rhs.read_unchecked(depth, j).faer_conj())
-                        }
-                    };
-                    small_gemm!(term);
-                }
-                (Conj::No, Conj::No) => {
-                    let term = {
-                        #[inline(always)]
-                        |i, j, depth| {
-                            lhs.read_unchecked(i, depth)
-                                .faer_mul(rhs.read_unchecked(depth, j))
-                        }
-                    };
-                    small_gemm!(term);
-                }
-            }
-            return;
-        }
-    }
-
-    #[cfg(not(test))]
-    let _use_gemm = true;
-
-    if _use_gemm {
+    if const { E::IS_F64 || E::IS_F32 || E::IS_C32 || E::IS_C64 } {
         let gemm_parallelism = match parallelism {
             Parallelism::None => gemm::Parallelism::None,
             #[cfg(feature = "rayon")]
@@ -1908,7 +1644,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             Parallelism::Rayon(n_threads) => gemm::Parallelism::Rayon(n_threads),
             Parallelism::__Private(_) => panic!(),
         };
-        if E::IS_F32 {
+        if const { E::IS_F32 } {
             let mut acc: MatMut<'_, f32> = coe::coerce(acc);
             let a: MatRef<'_, f32> = coe::coerce(lhs);
             let b: MatRef<'_, f32> = coe::coerce(rhs);
@@ -1964,8 +1700,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                 };
             }
             return;
-        }
-        if E::IS_F64 {
+        } else if const { E::IS_F64 } {
             let mut acc: MatMut<'_, f64> = coe::coerce(acc);
             let a: MatRef<'_, f64> = coe::coerce(lhs);
             let b: MatRef<'_, f64> = coe::coerce(rhs);
@@ -2021,8 +1756,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                 };
             }
             return;
-        }
-        if E::IS_C32 {
+        } else if const { E::IS_C32 } {
             let mut acc: MatMut<'_, c32> = coe::coerce(acc);
             let a: MatRef<'_, c32> = coe::coerce(lhs);
             let b: MatRef<'_, c32> = coe::coerce(rhs);
@@ -2078,8 +1812,7 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
                 };
             }
             return;
-        }
-        if E::IS_C64 {
+        } else if const { E::IS_C64 } {
             let mut acc: MatMut<'_, c64> = coe::coerce(acc);
             let a: MatRef<'_, c64> = coe::coerce(lhs);
             let b: MatRef<'_, c64> = coe::coerce(rhs);
@@ -2136,77 +1869,77 @@ pub fn matmul_with_conj_gemm_dispatch<E: ComplexField>(
             }
             return;
         }
-    }
-
-    let arch = E::Simd::default();
-    let lane_count = arch.dispatch(SimdLaneCount::<E> {
-        __marker: PhantomData,
-    });
-
-    let mut a = lhs;
-    let mut b = rhs;
-    let mut conj_a = conj_lhs;
-    let mut conj_b = conj_rhs;
-
-    if n < m {
-        (a, b) = (b.transpose(), a.transpose());
-        core::mem::swap(&mut conj_a, &mut conj_b);
-        acc = acc.transpose_mut();
-    }
-
-    if b.row_stride() < 0 {
-        a = a.reverse_cols();
-        b = b.reverse_rows();
-    }
-
-    let m = acc.nrows();
-    let n = acc.ncols();
-
-    let padded_m = m.msrv_checked_next_multiple_of(lane_count).unwrap();
-
-    let mut a_copy = a.to_owned();
-    a_copy.resize_with(padded_m, k, |_, _| E::faer_zero());
-    let a_copy = a_copy.as_ref();
-    let mut tmp = crate::mat::Mat::<E>::zeros(padded_m, n);
-    let tmp_conj_b = match (conj_a, conj_b) {
-        (Conj::Yes, Conj::Yes) | (Conj::No, Conj::No) => Conj::No,
-        (Conj::Yes, Conj::No) | (Conj::No, Conj::Yes) => Conj::Yes,
-    };
-    if b.row_stride() == 1 {
-        matmul_with_conj_impl(tmp.as_mut(), a_copy, b, tmp_conj_b, parallelism);
     } else {
-        let b = b.to_owned();
-        matmul_with_conj_impl(tmp.as_mut(), a_copy, b.as_ref(), tmp_conj_b, parallelism);
-    }
+        let arch = E::Simd::default();
+        let lane_count = arch.dispatch(SimdLaneCount::<E> {
+            __marker: PhantomData,
+        });
 
-    let tmp = tmp.as_ref().subrows(0, m);
+        let mut a = lhs;
+        let mut b = rhs;
+        let mut conj_a = conj_lhs;
+        let mut conj_b = conj_rhs;
 
-    match alpha {
-        Some(alpha) => match conj_a {
-            Conj::Yes => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
-                acc.write(E::faer_add(
-                    acc.read().faer_mul(alpha),
-                    tmp.read().faer_conj().faer_mul(beta),
-                ))
-            }),
-            Conj::No => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
-                acc.write(E::faer_add(
-                    acc.read().faer_mul(alpha),
-                    tmp.read().faer_mul(beta),
-                ))
-            }),
-        },
-        None => match conj_a {
-            Conj::Yes => {
-                zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
-                    acc.write(tmp.read().faer_conj().faer_mul(beta))
-                });
-            }
-            Conj::No => {
-                zipped!(acc, tmp)
-                    .for_each(|unzipped!(mut acc, tmp)| acc.write(tmp.read().faer_mul(beta)));
-            }
-        },
+        if n < m {
+            (a, b) = (b.transpose(), a.transpose());
+            core::mem::swap(&mut conj_a, &mut conj_b);
+            acc = acc.transpose_mut();
+        }
+
+        if b.row_stride() < 0 {
+            a = a.reverse_cols();
+            b = b.reverse_rows();
+        }
+
+        let m = acc.nrows();
+        let n = acc.ncols();
+
+        let padded_m = m.msrv_checked_next_multiple_of(lane_count).unwrap();
+
+        let mut a_copy = a.to_owned();
+        a_copy.resize_with(padded_m, k, |_, _| E::faer_zero());
+        let a_copy = a_copy.as_ref();
+        let mut tmp = crate::mat::Mat::<E>::zeros(padded_m, n);
+        let tmp_conj_b = match (conj_a, conj_b) {
+            (Conj::Yes, Conj::Yes) | (Conj::No, Conj::No) => Conj::No,
+            (Conj::Yes, Conj::No) | (Conj::No, Conj::Yes) => Conj::Yes,
+        };
+        if b.row_stride() == 1 {
+            matmul_with_conj_impl(tmp.as_mut(), a_copy, b, tmp_conj_b, parallelism);
+        } else {
+            let b = b.to_owned();
+            matmul_with_conj_impl(tmp.as_mut(), a_copy, b.as_ref(), tmp_conj_b, parallelism);
+        }
+
+        let tmp = tmp.as_ref().subrows(0, m);
+
+        match alpha {
+            Some(alpha) => match conj_a {
+                Conj::Yes => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                    acc.write(E::faer_add(
+                        acc.read().faer_mul(alpha),
+                        tmp.read().faer_conj().faer_mul(beta),
+                    ))
+                }),
+                Conj::No => zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                    acc.write(E::faer_add(
+                        acc.read().faer_mul(alpha),
+                        tmp.read().faer_mul(beta),
+                    ))
+                }),
+            },
+            None => match conj_a {
+                Conj::Yes => {
+                    zipped!(acc, tmp).for_each(|unzipped!(mut acc, tmp)| {
+                        acc.write(tmp.read().faer_conj().faer_mul(beta))
+                    });
+                }
+                Conj::No => {
+                    zipped!(acc, tmp)
+                        .for_each(|unzipped!(mut acc, tmp)| acc.write(tmp.read().faer_mul(beta)));
+                }
+            },
+        }
     }
 }
 
@@ -2288,17 +2021,7 @@ pub fn matmul_with_conj<E: ComplexField>(
         acc.ncols() == rhs.ncols(),
         lhs.ncols() == rhs.nrows(),
     ));
-    matmul_with_conj_gemm_dispatch(
-        acc,
-        lhs,
-        conj_lhs,
-        rhs,
-        conj_rhs,
-        alpha,
-        beta,
-        parallelism,
-        true,
-    );
+    matmul_with_conj_gemm_dispatch(acc, lhs, conj_lhs, rhs, conj_rhs, alpha, beta, parallelism);
 }
 
 /// Computes the matrix product `[alpha * acc] + beta * lhs * rhs` and
@@ -2508,24 +2231,21 @@ mod tests {
                                                         for parallelism in par {
                                                             for alpha in alphas {
                                                                 for beta in betas {
-                                                                    for use_gemm in [true, false] {
-                                                                        test_matmul_impl(
-                                                                            reverse_acc_cols,
-                                                                            reverse_acc_rows,
-                                                                            acc_colmajor,
-                                                                            m,
-                                                                            n,
-                                                                            conj_a,
-                                                                            conj_b,
-                                                                            parallelism,
-                                                                            alpha,
-                                                                            beta,
-                                                                            use_gemm,
-                                                                            &acc_init,
-                                                                            a,
-                                                                            b,
-                                                                        );
-                                                                    }
+                                                                    test_matmul_impl(
+                                                                        reverse_acc_cols,
+                                                                        reverse_acc_rows,
+                                                                        acc_colmajor,
+                                                                        m,
+                                                                        n,
+                                                                        conj_a,
+                                                                        conj_b,
+                                                                        parallelism,
+                                                                        alpha,
+                                                                        beta,
+                                                                        &acc_init,
+                                                                        a,
+                                                                        b,
+                                                                    );
                                                                 }
                                                             }
                                                         }
@@ -2602,7 +2322,6 @@ mod tests {
         parallelism: Parallelism,
         alpha: Option<c32>,
         beta: c32,
-        use_gemm: bool,
         acc_init: &Mat<c32>,
         a: MatRef<c32>,
         b: MatRef<c32>,
@@ -2635,7 +2354,6 @@ mod tests {
             alpha,
             beta,
             parallelism,
-            use_gemm,
         );
         matmul_with_conj_fallback(
             target.as_mut(),

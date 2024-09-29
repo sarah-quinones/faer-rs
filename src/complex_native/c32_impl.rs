@@ -961,6 +961,7 @@ impl ComplexField for c32 {
 
 unsafe impl Entity for c32 {
     const IS_C32: bool = true;
+    const IS_REAL: bool = false;
 
     type Unit = Self;
     type Index = u32;

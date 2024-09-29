@@ -30,7 +30,7 @@ impl<E: Entity> Copy for MatRef<'_, E> {}
 impl<E: Entity> Default for MatRef<'_, E> {
     #[inline]
     fn default() -> Self {
-        from_column_major_slice_generic::<E>(E::faer_map(E::UNIT, |()| &[] as &[E::Unit]), 0, 0)
+        from_column_major_slice_generic::<E>(map!(E, E::UNIT, |(())| { &[] as &[E::Unit] }), 0, 0)
     }
 }
 
@@ -72,11 +72,9 @@ impl<'a, E: Entity> MatRef<'a, E> {
     ) -> Self {
         Self {
             inner: MatImpl {
-                ptr: into_copy::<E, _>(E::faer_map(
-                    ptr,
-                    #[inline]
-                    |ptr| NonNull::new_unchecked(ptr as *mut E::Unit),
-                )),
+                ptr: into_copy::<E, _>(map!(E, ptr, |(ptr)| {
+                    NonNull::new_unchecked(ptr as *mut E::Unit)
+                },)),
                 nrows,
                 ncols,
                 row_stride,
@@ -93,29 +91,21 @@ impl<'a, E: Entity> MatRef<'a, E> {
         assert!(self.row_stride() == 1);
         let col = self.col(j);
         if col.nrows() == 0 {
-            E::faer_map(
-                E::UNIT,
-                #[inline(always)]
-                |()| &[] as &[E::Unit],
-            )
+            map!(E, E::UNIT, |(())| { &[] as &[E::Unit] },)
         } else {
             let m = col.nrows();
-            E::faer_map(
-                col.as_ptr(),
-                #[inline(always)]
-                |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-            )
+            map!(E, col.as_ptr(), |(ptr)| {
+                unsafe { core::slice::from_raw_parts(ptr, m) }
+            },)
         }
     }
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
     pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
-        E::faer_map(
-            from_copy::<E, _>(self.inner.ptr),
-            #[inline]
-            |ptr| ptr.as_ptr() as *const E::Unit,
-        )
+        map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| {
+            ptr.as_ptr() as *const E::Unit
+        },)
     }
 
     /// Returns the number of rows of the matrix.
@@ -154,11 +144,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let offset = ((row as isize).wrapping_mul(self.inner.row_stride))
             .wrapping_add((col as isize).wrapping_mul(self.inner.col_stride));
 
-        E::faer_map(
-            self.as_ptr(),
-            #[inline(always)]
-            |ptr| ptr.wrapping_offset(offset),
-        )
+        map!(E, self.as_ptr(), |(ptr)| { ptr.wrapping_offset(offset) },)
     }
 
     #[inline(always)]
@@ -168,11 +154,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
             crate::utils::unchecked_mul(row, self.inner.row_stride),
             crate::utils::unchecked_mul(col, self.inner.col_stride),
         );
-        E::faer_map(
-            self.as_ptr(),
-            #[inline(always)]
-            |ptr| ptr.offset(offset),
-        )
+        map!(E, self.as_ptr(), |(ptr)| { ptr.offset(offset) },)
     }
 
     #[inline(always)]
@@ -185,11 +167,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
                     (row as isize).wrapping_mul(self.inner.row_stride),
                     (col as isize).wrapping_mul(self.inner.col_stride),
                 ));
-            E::faer_map(
-                self.as_ptr(),
-                #[inline(always)]
-                |ptr| ptr.offset(offset),
-            )
+            map!(E, self.as_ptr(), |(ptr)| { ptr.offset(offset) },)
         }
     }
 
@@ -409,11 +387,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E {
-        E::faer_from_units(E::faer_map(
-            self.get_unchecked(row, col),
-            #[inline(always)]
-            |ptr| *ptr,
-        ))
+        E::faer_from_units(map!(E, self.get_unchecked(row, col), |(ptr)| { *ptr },))
     }
 
     /// Reads the value of the element at the given indices, with bound checks.
@@ -425,11 +399,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[inline(always)]
     #[track_caller]
     pub fn read(&self, row: usize, col: usize) -> E {
-        E::faer_from_units(E::faer_map(
-            self.get(row, col),
-            #[inline(always)]
-            |ptr| *ptr,
-        ))
+        E::faer_from_units(map!(E, self.get(row, col), |(ptr)| { *ptr },))
     }
 
     /// Returns a view over the transpose of `self`.
@@ -1341,11 +1311,7 @@ pub fn from_column_major_slice_generic<E: Entity>(
 
     unsafe {
         from_raw_parts(
-            E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.as_ptr(),
-            ),
+            map!(E, slice, |(slice)| { slice.as_ptr() },),
             nrows,
             ncols,
             1,
@@ -1460,11 +1426,7 @@ pub fn from_column_major_slice_with_stride_generic<E: Entity>(
 
     unsafe {
         from_raw_parts(
-            E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.as_ptr(),
-            ),
+            map!(E, slice, |(slice)| { slice.as_ptr() },),
             nrows,
             ncols,
             1,
@@ -1630,7 +1592,7 @@ pub fn from_repeated_ref_generic<E: Entity>(
 ) -> MatRef<'_, E> {
     unsafe {
         from_raw_parts(
-            E::faer_map(value, |ptr| ptr as *const E::Unit),
+            map!(E, value, |(ptr)| { ptr as *const E::Unit }),
             nrows,
             ncols,
             0,

@@ -75,11 +75,7 @@ impl<'a, E: Entity, T> RefGroup<'a, E, T> {
     #[inline(always)]
     pub fn new(reference: GroupFor<E, &'a T>) -> Self {
         Self(
-            into_copy::<E, _>(E::faer_map(
-                reference,
-                #[inline(always)]
-                |reference| reference as *const T,
-            )),
+            into_copy::<E, _>(map!(E, reference, |(reference)| { reference as *const T })),
             PhantomData,
         )
     }
@@ -87,11 +83,7 @@ impl<'a, E: Entity, T> RefGroup<'a, E, T> {
     /// Consume `self` to return the internally stored group of references.
     #[inline(always)]
     pub fn into_inner(self) -> GroupFor<E, &'a T> {
-        E::faer_map(
-            from_copy::<E, _>(self.0),
-            #[inline(always)]
-            |ptr| unsafe { &*ptr },
-        )
+        map!(E, from_copy::<E, _>(self.0), |(ptr)| { unsafe { &*ptr } })
     }
 
     /// Copies and returns the value pointed to by the references.
@@ -152,11 +144,7 @@ impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
     #[inline(always)]
     pub fn new(reference: GroupFor<E, &'a mut T>) -> Self {
         Self(
-            E::faer_map(
-                reference,
-                #[inline(always)]
-                |reference| reference as *mut T,
-            ),
+            map!(E, reference, |(reference)| { reference as *mut T }),
             PhantomData,
         )
     }
@@ -164,11 +152,7 @@ impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
     /// Consume `self` to return the internally stored group of references.
     #[inline(always)]
     pub fn into_inner(self) -> GroupFor<E, &'a mut T> {
-        E::faer_map(
-            self.0,
-            #[inline(always)]
-            |ptr| unsafe { &mut *ptr },
-        )
+        map!(E, self.0, |(ptr)| { unsafe { &mut *ptr } })
     }
 
     /// Copies and returns the value pointed to by the references.
@@ -186,20 +170,20 @@ impl<'a, E: Entity, T> RefGroupMut<'a, E, T> {
     where
         T: Copy,
     {
-        E::faer_map(
+        map!(
+            E,
             E::faer_zip(self.rb_mut().into_inner(), from_copy::<E, _>(value)),
-            #[inline(always)]
-            |(r, value)| *r = value,
+            |((r, value))| { *r = value },
         );
     }
 
     /// Writes `value` to the location pointed to by the references.
     #[inline(always)]
     pub fn set_(&mut self, value: GroupFor<E, T>) {
-        E::faer_map(
+        map!(
+            E,
             E::faer_zip(self.rb_mut().into_inner(), value),
-            #[inline(always)]
-            |(r, value)| *r = value,
+            |((r, value))| { *r = value },
         );
     }
 }
@@ -217,11 +201,7 @@ impl<'a, E: Entity, T> IntoConst for SliceGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn into_const(self) -> Self::Target {
-        SliceGroup::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| &*slice,
-        ))
+        SliceGroup::new(map!(E, self.into_inner(), |(slice)| { &*slice }))
     }
 }
 
@@ -238,11 +218,7 @@ impl<'a, E: Entity, T> IntoConst for RefGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn into_const(self) -> Self::Target {
-        RefGroup::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| &*slice,
-        ))
+        RefGroup::new(map!(E, self.into_inner(), |(slice)| { &*slice }))
     }
 }
 
@@ -269,11 +245,9 @@ impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for RefGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
-        RefGroupMut::new(E::faer_map(
-            E::faer_as_mut(&mut self.0),
-            #[inline(always)]
-            |this| unsafe { &mut **this },
-        ))
+        RefGroupMut::new(map!(E, E::faer_as_mut(&mut self.0), |(this)| {
+            unsafe { &mut **this }
+        }))
     }
 }
 
@@ -282,11 +256,9 @@ impl<'short, 'a, E: Entity, T> Reborrow<'short> for RefGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
-        RefGroup::new(E::faer_map(
-            E::faer_as_ref(&self.0),
-            #[inline(always)]
-            |this| unsafe { &**this },
-        ))
+        RefGroup::new(map!(E, E::faer_as_ref(&self.0), |(this)| {
+            unsafe { &**this }
+        },))
     }
 }
 
@@ -295,7 +267,7 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     #[inline(always)]
     pub fn new(slice: GroupFor<E, &'a [T]>) -> Self {
         Self(
-            into_copy::<E, _>(E::faer_map(slice, |slice| slice as *const [T])),
+            into_copy::<E, _>(map!(E, slice, |(slice)| { slice as *const [T] })),
             PhantomData,
         )
     }
@@ -303,7 +275,7 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     /// Consume `self` to return the internally stored group of slice references.
     #[inline(always)]
     pub fn into_inner(self) -> GroupFor<E, &'a [T]> {
-        unsafe { E::faer_map(from_copy::<E, _>(self.0), |ptr| &*ptr) }
+        unsafe { map!(E, from_copy::<E, _>(self.0), |(ptr)| { &*ptr }) }
     }
 
     /// Decompose `self` into a slice of arrays of size `N`, and a remainder part with length
@@ -319,13 +291,13 @@ impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
     /// Create a new [`SliceGroup`] from a group of mutable slice references.
     #[inline(always)]
     pub fn new(slice: GroupFor<E, &'a mut [T]>) -> Self {
-        Self(E::faer_map(slice, |slice| slice as *mut [T]), PhantomData)
+        Self(map!(E, slice, |(slice)| { slice as *mut [T] }), PhantomData)
     }
 
     /// Consume `self` to return the internally stored group of mutable slice references.
     #[inline(always)]
     pub fn into_inner(self) -> GroupFor<E, &'a mut [T]> {
-        unsafe { E::faer_map(self.0, |ptr| &mut *ptr) }
+        unsafe { map!(E, self.0, |(ptr)| { &mut *ptr }) }
     }
 
     /// Decompose `self` into a mutable slice of arrays of size `N`, and a remainder part with
@@ -362,11 +334,9 @@ impl<'short, 'a, E: Entity, T> ReborrowMut<'short> for SliceGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn rb_mut(&'short mut self) -> Self::Target {
-        SliceGroupMut::new(E::faer_map(
-            E::faer_as_mut(&mut self.0),
-            #[inline(always)]
-            |this| unsafe { &mut **this },
-        ))
+        SliceGroupMut::new(map!(E, E::faer_as_mut(&mut self.0), |(this)| {
+            unsafe { &mut **this }
+        },))
     }
 }
 
@@ -375,11 +345,9 @@ impl<'short, 'a, E: Entity, T> Reborrow<'short> for SliceGroupMut<'a, E, T> {
 
     #[inline(always)]
     fn rb(&'short self) -> Self::Target {
-        SliceGroup::new(E::faer_map(
-            E::faer_as_ref(&self.0),
-            #[inline(always)]
-            |this| unsafe { &**this },
-        ))
+        SliceGroup::new(map!(E, E::faer_as_ref(&self.0), |(this)| {
+            unsafe { &**this }
+        },))
     }
 }
 
@@ -401,10 +369,10 @@ impl<'a, E: Entity> RefGroupMut<'a, E> {
     /// Write `value` to the location pointed to by the references.
     #[inline(always)]
     pub fn write(&mut self, value: E) {
-        E::faer_map(
+        map!(
+            E,
             E::faer_zip(self.rb_mut().into_inner(), value.faer_into_units()),
-            #[inline(always)]
-            |(r, value)| *r = value,
+            |((r, value))| { *r = value },
         );
     }
 }
@@ -426,11 +394,9 @@ impl<'a, E: Entity> SliceGroup<'a, E> {
     #[track_caller]
     pub unsafe fn read_unchecked(&self, idx: usize) -> E {
         debug_assert!(idx < self.len());
-        E::faer_from_units(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| *slice.get_unchecked(idx),
-        ))
+        E::faer_from_units(map!(E, self.into_inner(), |(slice)| {
+            *slice.get_unchecked(idx)
+        }))
     }
 }
 impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
@@ -450,11 +416,9 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     #[track_caller]
     pub unsafe fn get_unchecked(self, idx: usize) -> RefGroup<'a, E, T> {
         debug_assert!(idx < self.len());
-        RefGroup::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.get_unchecked(idx),
-        ))
+        RefGroup::new(map!(E, self.into_inner(), |(slice)| {
+            slice.get_unchecked(idx)
+        }))
     }
 
     /// Checks whether the slice is empty.
@@ -467,11 +431,9 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     #[inline]
     pub fn len(&self) -> usize {
         let mut len = E::faer_first(self.into_inner()).len();
-        E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| len = Ord::min(len, slice.len()),
-        );
+        map!(E, self.into_inner(), |(slice)| {
+            len = Ord::min(len, slice.len())
+        });
         len
     }
 
@@ -488,11 +450,9 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     #[track_caller]
     pub fn split_at(self, idx: usize) -> (Self, Self) {
         assert!(idx <= self.len());
-        let (head, tail) = E::faer_unzip(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.split_at(idx),
-        ));
+        let (head, tail) = E::faer_unzip(map!(E, self.into_inner(), |(slice)| {
+            slice.split_at(idx)
+        }));
         (Self::new(head), Self::new(tail))
     }
 
@@ -505,11 +465,9 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     #[track_caller]
     pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
         debug_assert!(all(range.start <= range.end, range.end <= self.len()));
-        Self::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.get_unchecked(range.start..range.end),
-        ))
+        Self::new(map!(E, self.into_inner(), |(slice)| {
+            slice.get_unchecked(range.start..range.end)
+        }))
     }
 
     /// Returns an iterator of [`RefGroup`] over the elements of the slice.
@@ -527,16 +485,10 @@ impl<'a, E: Entity, T> SliceGroup<'a, E, T> {
     ) -> (impl Iterator<Item = SliceGroup<'a, E, T>>, Self) {
         let len = self.len();
         let mid = len / chunk_size * chunk_size;
-        let (head, tail) = E::faer_unzip(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.split_at(mid),
-        ));
-        let head = E::faer_map(
-            head,
-            #[inline(always)]
-            |head| head.chunks_exact(chunk_size),
-        );
+        let (head, tail) = E::faer_unzip(map!(E, self.into_inner(), |(slice)| {
+            slice.split_at(mid)
+        }));
+        let head = map!(E, head, |(head)| { head.chunks_exact(chunk_size) });
         (
             E::faer_into_iter(head).map(SliceGroup::new),
             SliceGroup::new(tail),
@@ -578,19 +530,21 @@ impl<'a, E: Entity> SliceGroupMut<'a, E> {
     #[track_caller]
     pub unsafe fn write_unchecked(&mut self, idx: usize, value: E) {
         debug_assert!(idx < self.len());
-        E::faer_map(
+        map!(
+            E,
             E::faer_zip(self.rb_mut().into_inner(), value.faer_into_units()),
-            #[inline(always)]
-            |(slice, value)| *slice.get_unchecked_mut(idx) = value,
+            |((slice, value))| { *slice.get_unchecked_mut(idx) = value },
         );
     }
 
     /// Fill the slice with zeros.
     #[inline]
     pub fn fill_zero(&mut self) {
-        E::faer_map(self.rb_mut().into_inner(), |slice| unsafe {
-            let len = slice.len();
-            core::ptr::write_bytes(slice.as_mut_ptr(), 0u8, len);
+        map!(E, self.rb_mut().into_inner(), |(slice)| {
+            unsafe {
+                let len = slice.len();
+                core::ptr::write_bytes(slice.as_mut_ptr(), 0u8, len);
+            }
         });
     }
 }
@@ -612,11 +566,9 @@ impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
     #[track_caller]
     pub unsafe fn get_unchecked_mut(self, idx: usize) -> RefGroupMut<'a, E, T> {
         debug_assert!(idx < self.len());
-        RefGroupMut::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.get_unchecked_mut(idx),
-        ))
+        RefGroupMut::new(map!(E, self.into_inner(), |(slice)| {
+            slice.get_unchecked_mut(idx)
+        },))
     }
 
     /// Get a [`RefGroup`] pointing to the element at position `idx`.
@@ -665,11 +617,9 @@ impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
     #[track_caller]
     pub unsafe fn subslice_unchecked(self, range: Range<usize>) -> Self {
         debug_assert!(all(range.start <= range.end, range.end <= self.len()));
-        Self::new(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.get_unchecked_mut(range.start..range.end),
-        ))
+        Self::new(map!(E, self.into_inner(), |(slice)| {
+            slice.get_unchecked_mut(range.start..range.end)
+        },))
     }
 
     /// Returns an iterator of [`RefGroupMut`] over the elements of the slice.
@@ -683,11 +633,9 @@ impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
     #[track_caller]
     pub fn split_at(self, idx: usize) -> (Self, Self) {
         assert!(idx <= self.len());
-        let (head, tail) = E::faer_unzip(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.split_at_mut(idx),
-        ));
+        let (head, tail) = E::faer_unzip(map!(E, self.into_inner(), |(slice)| {
+            slice.split_at_mut(idx)
+        },));
         (Self::new(head), Self::new(tail))
     }
 
@@ -700,16 +648,10 @@ impl<'a, E: Entity, T> SliceGroupMut<'a, E, T> {
     ) -> (impl Iterator<Item = SliceGroupMut<'a, E, T>>, Self) {
         let len = self.len();
         let mid = len % chunk_size * chunk_size;
-        let (head, tail) = E::faer_unzip(E::faer_map(
-            self.into_inner(),
-            #[inline(always)]
-            |slice| slice.split_at_mut(mid),
-        ));
-        let head = E::faer_map(
-            head,
-            #[inline(always)]
-            |head| head.chunks_exact_mut(chunk_size),
-        );
+        let (head, tail) = E::faer_unzip(map!(E, self.into_inner(), |(slice)| {
+            slice.split_at_mut(mid)
+        },));
+        let head = map!(E, head, |(head)| { head.chunks_exact_mut(chunk_size) },);
         (
             E::faer_into_iter(head).map(SliceGroupMut::new),
             SliceGroupMut::new(tail),
