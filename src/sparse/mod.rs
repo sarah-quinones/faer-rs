@@ -134,9 +134,7 @@ impl core::fmt::Display for FaerError {
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-impl std::error::Error for FaerError {}
+impl core::error::Error for FaerError {}
 
 /// Errors that can occur in sparse algorithms.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -165,9 +163,7 @@ impl core::fmt::Display for CreationError {
     }
 }
 
-#[cfg(feature = "std")]
-#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-impl std::error::Error for CreationError {}
+impl core::error::Error for CreationError {}
 
 #[inline]
 #[track_caller]
