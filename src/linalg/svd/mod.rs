@@ -889,7 +889,7 @@ fn squareish_svd<E: ComplexField>(
 ) {
     let size = matrix.ncols();
     if const { E::IS_REAL } {
-        if size < JACOBI_FALLBACK_THRESHOLD {
+        if size <= JACOBI_FALLBACK_THRESHOLD {
             compute_real_svd_small::<E::Real>(
                 matrix.coerce(),
                 s.coerce(),
