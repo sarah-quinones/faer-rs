@@ -9,7 +9,7 @@ repository = "https://github.com/sarah-ek/faer-rs/"
 license = "MIT"
 keywords = ["math", "matrix", "linear-algebra"]
 
-rust-version = "1.67.0"
+rust-version = "1.81.0"
 
 [dependencies]
 coe-rs = "0.1"

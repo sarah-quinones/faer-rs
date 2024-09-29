@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - 1.67.0
+          - 1.81.0
         os:
           - ubuntu-latest
           - windows-latest
@@ -32,7 +32,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: MSRV 1.67.0
+      - name: MSRV 1.81.0
         run:
           cargo check &&
           cd ./faer-entity &&
@@ -62,7 +62,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: nostd 1.67.0
+      - name: nostd
         run:
           cd ./faer-no-std-test &&
           cargo run

@@ -20,7 +20,7 @@ is unclear!
 
 # Minimum supported Rust version
 
-The current MSRV is Rust 1.67.0.
+The current MSRV is Rust 1.81.0.
 
 # Benchmarks
 
