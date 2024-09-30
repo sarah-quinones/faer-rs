@@ -107,7 +107,7 @@ impl<'n> PartialOrd<Dim<'n>> for IdxInc<'n> {
 
 impl<'n> Dim<'n> {
     #[inline(always)]
-    pub unsafe fn new_unbound(dim: usize) -> Self {
+    pub const unsafe fn new_unbound(dim: usize) -> Self {
         Self {
             unbound: dim,
             __marker: PhantomData,
@@ -144,7 +144,7 @@ impl<'n> Dim<'n> {
 
 impl<'n> Idx<'n> {
     #[inline(always)]
-    pub unsafe fn new_unbound(idx: usize) -> Self {
+    pub const unsafe fn new_unbound(idx: usize) -> Self {
         Self {
             unbound: idx,
             __marker: PhantomData,
@@ -179,7 +179,7 @@ impl<'n> Idx<'n> {
 
 impl<'n> IdxInc<'n> {
     #[inline(always)]
-    pub unsafe fn new_unbound(idx: usize) -> Self {
+    pub const unsafe fn new_unbound(idx: usize) -> Self {
         Self {
             unbound: idx,
             __marker: PhantomData,
@@ -260,3 +260,6 @@ impl<'n> From<Idx<'n>> for IdxInc<'n> {
         }
     }
 }
+
+// pub type One = Dim<'static>;
+// pub const ZERO: Idx<'static> = unsafe { Idx::new_unbound(0) };

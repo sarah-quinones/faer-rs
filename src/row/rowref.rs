@@ -178,6 +178,15 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
         let col_stride = self.col_stride();
         unsafe { from_raw_parts(self.as_ptr(), ncols, col_stride) }
     }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(self) -> RowMut<'a, E, C> {
+        RowMut {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
+    }
 }
 
 impl<'a, E: Entity> RowRef<'a, E> {
@@ -312,7 +321,7 @@ impl<'a, E: Entity> RowRef<'a, E> {
         unsafe {
             // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
             // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
-            super::from_raw_parts::<'_, E::Conj>(
+            super::from_raw_parts(
                 transmute_unchecked::<
                     GroupFor<E, *const UnitFor<E>>,
                     GroupFor<E::Conj, *const UnitFor<E::Conj>>,
@@ -342,7 +351,7 @@ impl<'a, E: Entity> RowRef<'a, E> {
         (
             unsafe {
                 // SAFETY: see Self::conjugate
-                super::from_raw_parts::<'_, E::Canonical>(
+                super::from_raw_parts(
                     transmute_unchecked::<
                         GroupFor<E, *const E::Unit>,
                         GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
@@ -626,15 +635,6 @@ impl<'a, E: Entity> RowRef<'a, E> {
             self.subcols(start, len)
         })
     }
-
-    #[doc(hidden)]
-    #[inline(always)]
-    pub unsafe fn const_cast(self) -> RowMut<'a, E> {
-        RowMut {
-            inner: self.inner,
-            __marker: PhantomData,
-        }
-    }
 }
 
 /// Creates a `RowRef` from pointers to the row vector data, number of columns, and column
@@ -644,11 +644,11 @@ impl<'a, E: Entity> RowRef<'a, E> {
 /// This function has the same safety requirements as
 /// [`mat::from_raw_parts(ptr, 1, ncols, 0, col_stride)`]
 #[inline(always)]
-pub unsafe fn from_raw_parts<'a, E: Entity>(
+pub unsafe fn from_raw_parts<'a, E: Entity, C: Shape>(
     ptr: GroupFor<E, *const E::Unit>,
-    ncols: usize,
+    ncols: C,
     col_stride: isize,
-) -> RowRef<'a, E> {
+) -> RowRef<'a, E, C> {
     RowRef::__from_raw_parts(ptr, ncols, col_stride)
 }
 

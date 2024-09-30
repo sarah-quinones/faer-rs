@@ -976,7 +976,7 @@ impl<E: Entity> Mat<E> {
     #[track_caller]
     pub fn copy_from_triangular_lower<ViewE: Conjugate<Canonical = E>>(
         &mut self,
-        other: impl AsMatRef<ViewE>,
+        other: impl AsMatRef<ViewE, R = usize, C = usize>,
     ) {
         self.as_mut().copy_from_triangular_lower(other)
     }
@@ -992,7 +992,7 @@ impl<E: Entity> Mat<E> {
     #[track_caller]
     pub fn copy_from_strict_triangular_lower<ViewE: Conjugate<Canonical = E>>(
         &mut self,
-        other: impl AsMatRef<ViewE>,
+        other: impl AsMatRef<ViewE, R = usize, C = usize>,
     ) {
         self.as_mut().copy_from_strict_triangular_lower(other)
     }
@@ -1009,7 +1009,7 @@ impl<E: Entity> Mat<E> {
     #[inline(always)]
     pub fn copy_from_triangular_upper<ViewE: Conjugate<Canonical = E>>(
         &mut self,
-        other: impl AsMatRef<ViewE>,
+        other: impl AsMatRef<ViewE, R = usize, C = usize>,
     ) {
         self.as_mut().copy_from_triangular_upper(other)
     }
@@ -1026,7 +1026,7 @@ impl<E: Entity> Mat<E> {
     #[inline(always)]
     pub fn copy_from_strict_triangular_upper<ViewE: Conjugate<Canonical = E>>(
         &mut self,
-        other: impl AsMatRef<ViewE>,
+        other: impl AsMatRef<ViewE, R = usize, C = usize>,
     ) {
         self.as_mut().copy_from_strict_triangular_upper(other)
     }
@@ -1034,7 +1034,10 @@ impl<E: Entity> Mat<E> {
     /// Copies the values from `other` into `self`.
     #[inline(always)]
     #[track_caller]
-    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsMatRef<ViewE>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsMatRef<ViewE, R = usize, C = usize>,
+    ) {
         #[track_caller]
         #[inline(always)]
         fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
@@ -2081,6 +2084,9 @@ impl<E: Entity> Clone for Mat<E> {
 }
 
 impl<E: Entity> AsMatRef<E> for Mat<E> {
+    type R = usize;
+    type C = usize;
+
     #[inline]
     fn as_mat_ref(&self) -> MatRef<'_, E> {
         (*self).as_ref()

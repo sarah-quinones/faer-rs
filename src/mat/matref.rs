@@ -1372,9 +1372,12 @@ impl<'a, E: RealField, R: Shape, C: Shape> MatRef<'a, num_complex::Complex<E>, R
     }
 }
 
-impl<E: Entity> AsMatRef<E> for MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> AsMatRef<E> for MatRef<'_, E, R, C> {
+    type R = R;
+    type C = C;
+
     #[inline]
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
+    fn as_mat_ref(&self) -> MatRef<'_, E, R, C> {
         *self
     }
 }

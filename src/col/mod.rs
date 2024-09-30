@@ -45,28 +45,34 @@ pub trait ColIndex<RowRange>: crate::seal::Seal + Sized {
 
 /// Trait for types that can be converted to a column view.
 pub trait AsColRef<E: Entity> {
+    type R: Shape;
+
     /// Convert to a column view.
-    fn as_col_ref(&self) -> ColRef<'_, E>;
+    fn as_col_ref(&self) -> ColRef<'_, E, Self::R>;
 }
 /// Trait for types that can be converted to a mutable column view.
 pub trait AsColMut<E: Entity>: AsColRef<E> {
     /// Convert to a mutable column view.
-    fn as_col_mut(&mut self) -> ColMut<'_, E>;
+    fn as_col_mut(&mut self) -> ColMut<'_, E, Self::R>;
 }
 
 impl<E: Entity, T: AsColRef<E>> AsColRef<E> for &T {
-    fn as_col_ref(&self) -> ColRef<'_, E> {
+    type R = T::R;
+
+    fn as_col_ref(&self) -> ColRef<'_, E, Self::R> {
         (**self).as_col_ref()
     }
 }
 impl<E: Entity, T: AsColRef<E>> AsColRef<E> for &mut T {
-    fn as_col_ref(&self) -> ColRef<'_, E> {
+    type R = T::R;
+
+    fn as_col_ref(&self) -> ColRef<'_, E, Self::R> {
         (**self).as_col_ref()
     }
 }
 
 impl<E: Entity, T: AsColMut<E>> AsColMut<E> for &mut T {
-    fn as_col_mut(&mut self) -> ColMut<'_, E> {
+    fn as_col_mut(&mut self) -> ColMut<'_, E, Self::R> {
         (**self).as_col_mut()
     }
 }

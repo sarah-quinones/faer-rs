@@ -1693,7 +1693,7 @@ fn col_varm_propagate<E: ComplexField>(
                 )
             };
             let col_mean =
-                unsafe { col::from_raw_parts::<f32>(col_mean.as_ptr() as *const f32, 2 * m, 1) };
+                unsafe { col::from_raw_parts::<f32, _>(col_mean.as_ptr() as *const f32, 2 * m, 1) };
 
             col_varm_col_major_real::<f32>(tmp.as_mut(), mat, col_mean);
             for i in 0..m {
@@ -1717,7 +1717,7 @@ fn col_varm_propagate<E: ComplexField>(
                 )
             };
             let col_mean =
-                unsafe { col::from_raw_parts::<f64>(col_mean.as_ptr() as *const f64, 2 * m, 1) };
+                unsafe { col::from_raw_parts::<f64, _>(col_mean.as_ptr() as *const f64, 2 * m, 1) };
 
             col_varm_col_major_real::<f64>(tmp.as_mut(), mat, col_mean);
             for i in 0..m {

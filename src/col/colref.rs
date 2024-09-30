@@ -179,15 +179,22 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
         let row_stride = self.row_stride();
         unsafe { from_raw_parts(self.as_ptr(), nrows, row_stride) }
     }
-}
 
-impl<'a, E: Entity> ColRef<'a, E> {
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(self) -> ColMut<'a, E, R> {
+        ColMut {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
+    }
+
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
     pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
         assert!(self.row_stride() == 1);
-        let m = self.nrows();
+        let m = self.nrows().unbound();
         E::faer_map(
             self.as_ptr(),
             #[inline(always)]
@@ -205,20 +212,23 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_unchecked(self, row: usize) -> (Self, Self) {
+    pub unsafe fn split_at_unchecked(
+        self,
+        row: R::IdxInc,
+    ) -> (ColRef<'a, E, usize>, ColRef<'a, E, usize>) {
         debug_assert!(row <= self.nrows());
 
         let row_stride = self.row_stride();
-
-        let nrows = self.nrows();
 
         unsafe {
             let top = self.as_ptr();
             let bot = self.overflowing_ptr_at(row);
 
+            let row = row.unbound();
+            let nrows = self.nrows().unbound();
             (
-                Self::__from_raw_parts(top, row, row_stride),
-                Self::__from_raw_parts(bot, nrows - row, row_stride),
+                ColRef::__from_raw_parts(top, row, row_stride),
+                ColRef::__from_raw_parts(bot, nrows - row, row_stride),
             )
         }
     }
@@ -233,7 +243,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at(self, row: usize) -> (Self, Self) {
+    pub fn split_at(self, row: R::IdxInc) -> (ColRef<'a, E, usize>, ColRef<'a, E, usize>) {
         assert!(row <= self.nrows());
         unsafe { self.split_at_unchecked(row) }
     }
@@ -279,6 +289,41 @@ impl<'a, E: Entity> ColRef<'a, E> {
         <Self as ColIndex<RowRange>>::get(self, row)
     }
 
+    /// Returns references to the element at the given index.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_unchecked(self, row: R::Idx) -> Ref<'a, E> {
+        E::faer_map(
+            self.ptr_inbounds_at(row),
+            #[inline(always)]
+            |ptr| &*ptr,
+        )
+    }
+
+    /// Returns references to the element at the given index, with bound checks.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn at(self, row: R::Idx) -> Ref<'a, E> {
+        assert!(row < self.nrows());
+        unsafe { self.at_unchecked(row) }
+    }
+
     /// Reads the value of the element at the given index.
     ///
     /// # Safety
@@ -286,9 +331,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: usize) -> E {
+    pub unsafe fn read_unchecked(&self, row: R::Idx) -> E {
         E::faer_from_units(E::faer_map(
-            self.get_unchecked(row),
+            self.at_unchecked(row),
             #[inline(always)]
             |ptr| *ptr,
         ))
@@ -301,9 +346,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: usize) -> E {
+    pub fn read(&self, row: R::Idx) -> E {
         E::faer_from_units(E::faer_map(
-            self.get(row),
+            self.at(row),
             #[inline(always)]
             |ptr| *ptr,
         ))
@@ -312,21 +357,21 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// Returns a view over the transpose of `self`.
     #[inline(always)]
     #[must_use]
-    pub fn transpose(self) -> RowRef<'a, E> {
+    pub fn transpose(self) -> RowRef<'a, E, R> {
         unsafe { crate::row::from_raw_parts(self.as_ptr(), self.nrows(), self.row_stride()) }
     }
 
     /// Returns a view over the conjugate of `self`.
     #[inline(always)]
     #[must_use]
-    pub fn conjugate(self) -> ColRef<'a, E::Conj>
+    pub fn conjugate(self) -> ColRef<'a, E::Conj, R>
     where
         E: Conjugate,
     {
         unsafe {
             // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
             // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
-            super::from_raw_parts::<'_, E::Conj>(
+            super::from_raw_parts(
                 transmute_unchecked::<
                     GroupFor<E, *const UnitFor<E>>,
                     GroupFor<E::Conj, *const UnitFor<E::Conj>>,
@@ -339,7 +384,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
 
     /// Returns a view over the conjugate transpose of `self`.
     #[inline(always)]
-    pub fn adjoint(self) -> RowRef<'a, E::Conj>
+    pub fn adjoint(self) -> RowRef<'a, E::Conj, R>
     where
         E: Conjugate,
     {
@@ -349,14 +394,14 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// Returns a view over the canonical representation of `self`, as well as a flag declaring
     /// whether `self` is implicitly conjugated or not.
     #[inline(always)]
-    pub fn canonicalize(self) -> (ColRef<'a, E::Canonical>, Conj)
+    pub fn canonicalize(self) -> (ColRef<'a, E::Canonical, R>, Conj)
     where
         E: Conjugate,
     {
         (
             unsafe {
                 // SAFETY: see Self::conjugate
-                super::from_raw_parts::<'_, E::Canonical>(
+                super::from_raw_parts(
                     transmute_unchecked::<
                         GroupFor<E, *const E::Unit>,
                         GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
@@ -380,7 +425,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
         let nrows = self.nrows();
         let row_stride = self.row_stride().wrapping_neg();
 
-        let ptr = unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1)) };
+        let ptr = unsafe { self.ptr_at_unchecked(nrows.unbound().saturating_sub(1)) };
         unsafe { Self::__from_raw_parts(ptr, nrows, row_stride) }
     }
 
@@ -393,13 +438,19 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `nrows <= self.nrows() - row_start`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn subrows_unchecked(self, row_start: usize, nrows: usize) -> Self {
-        debug_assert!(all(
-            row_start <= self.nrows(),
-            nrows <= self.nrows() - row_start
-        ));
+    pub unsafe fn subrows_unchecked<V: Shape>(
+        self,
+        row_start: R::IdxInc,
+        nrows: V,
+    ) -> ColRef<'a, E, V> {
+        debug_assert!(all(row_start <= self.nrows()));
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            debug_assert!(all(nrows <= self.nrows().unbound() - row_start));
+        }
         let row_stride = self.row_stride();
-        unsafe { Self::__from_raw_parts(self.overflowing_ptr_at(row_start), nrows, row_stride) }
+        unsafe { ColRef::__from_raw_parts(self.overflowing_ptr_at(row_start), nrows, row_stride) }
     }
 
     /// Returns a view over the subvector starting at row `row_start`, and with number of rows
@@ -411,11 +462,13 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `nrows <= self.nrows() - row_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
-        assert!(all(
-            row_start <= self.nrows(),
-            nrows <= self.nrows() - row_start
-        ));
+    pub fn subrows<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> ColRef<'a, E, V> {
+        assert!(all(row_start <= self.nrows()));
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            assert!(all(nrows <= self.nrows().unbound() - row_start));
+        }
         unsafe { self.subrows_unchecked(row_start, nrows) }
     }
 
@@ -424,7 +477,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     #[track_caller]
     #[inline(always)]
     pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
-        DiagRef { inner: self }
+        DiagRef {
+            inner: self.as_dyn(),
+        }
     }
 
     /// Returns an owning [`Col`] of the data.
@@ -433,11 +488,12 @@ impl<'a, E: Entity> ColRef<'a, E> {
     where
         E: Conjugate,
     {
+        let this = self.as_dyn();
         let mut mat = Col::new();
         mat.resize_with(
-            self.nrows(),
+            this.nrows(),
             #[inline(always)]
-            |row| unsafe { self.read_unchecked(row).canonicalize() },
+            |row| unsafe { this.read_unchecked(row).canonicalize() },
         );
         mat
     }
@@ -514,7 +570,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
     where
         E: ComplexField,
     {
-        self.as_2d_ref().kron(rhs)
+        self.as_2d().kron(rhs)
     }
 
     /// Returns the column as a contiguous slice if its row stride is equal to `1`.
@@ -525,7 +581,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
     #[inline]
     pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
         if self.row_stride() == 1 {
-            let len = self.nrows();
+            let len = self.nrows().unbound();
             Some(E::faer_map(
                 self.as_ptr(),
                 #[inline(always)]
@@ -538,7 +594,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
 
     /// Returns a view over the matrix.
     #[inline]
-    pub fn as_ref(&self) -> ColRef<'_, E> {
+    pub fn as_ref(&self) -> ColRef<'_, E, R> {
         *self
     }
 
@@ -546,11 +602,12 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// non-empty, otherwise `None`.
     #[inline]
     pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
-        if self.nrows() == 0 {
+        let this = self.as_dyn();
+        if this.nrows() == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_unchecked(1) };
+                let (head, tail) = { this.split_at_unchecked(1) };
                 Some((head.get_unchecked(0), tail))
             }
         }
@@ -560,11 +617,12 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// non-empty, otherwise `None`.
     #[inline]
     pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
-        if self.nrows() == 0 {
+        let this = self.as_dyn();
+        if this.nrows() == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_unchecked(self.nrows() - 1) };
+                let (head, tail) = { this.split_at_unchecked(this.nrows() - 1) };
                 Some((tail.get_unchecked(0), head))
             }
         }
@@ -573,7 +631,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// Returns an iterator over the elements of the column.
     #[inline]
     pub fn iter(self) -> iter::ElemIter<'a, E> {
-        iter::ElemIter { inner: self }
+        iter::ElemIter {
+            inner: self.as_dyn(),
+        }
     }
 
     /// Returns an iterator that provides successive chunks of the elements of this column, with
@@ -583,9 +643,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     pub fn chunks(self, chunk_size: usize) -> iter::ColElemChunks<'a, E> {
         assert!(chunk_size > 0);
         iter::ColElemChunks {
-            inner: self,
+            inner: self.as_dyn(),
             policy: iter::chunks::ChunkSizePolicy::new(
-                self.nrows(),
+                self.nrows().unbound(),
                 iter::chunks::ChunkSize(chunk_size),
             ),
         }
@@ -598,9 +658,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     pub fn partition(self, count: usize) -> iter::ColElemPartition<'a, E> {
         assert!(count > 0);
         iter::ColElemPartition {
-            inner: self,
+            inner: self.as_dyn(),
             policy: iter::chunks::PartitionCountPolicy::new(
-                self.nrows(),
+                self.nrows().unbound(),
                 iter::chunks::PartitionCount(count),
             ),
         }
@@ -618,15 +678,10 @@ impl<'a, E: Entity> ColRef<'a, E> {
         self,
         chunk_size: usize,
     ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, E>> {
-        use crate::utils::DivCeil;
         use rayon::prelude::*;
-
-        assert!(chunk_size > 0);
-        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
-        (0..chunk_count).into_par_iter().map(move |chunk_idx| {
-            let pos = chunk_size * chunk_idx;
-            self.subrows(pos, Ord::min(chunk_size, self.nrows() - pos))
-        })
+        self.as_2d()
+            .par_row_chunks(chunk_size)
+            .map(|chunk| chunk.col(0))
     }
 
     /// Returns an iterator that provides exactly `count` successive chunks of the elements of this
@@ -643,21 +698,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
     ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = ColRef<'a, E>> {
         use rayon::prelude::*;
 
-        assert!(count > 0);
-        (0..count).into_par_iter().map(move |chunk_idx| {
-            let (start, len) =
-                crate::utils::thread::par_split_indices(self.nrows(), chunk_idx, count);
-            self.subrows(start, len)
-        })
-    }
-
-    #[doc(hidden)]
-    #[inline(always)]
-    pub unsafe fn const_cast(self) -> ColMut<'a, E> {
-        ColMut {
-            inner: self.inner,
-            __marker: PhantomData,
-        }
+        self.as_2d()
+            .par_row_partition(count)
+            .map(|chunk| chunk.col(0))
     }
 }
 
@@ -667,11 +710,11 @@ impl<'a, E: Entity> ColRef<'a, E> {
 /// This function has the same safety requirements as
 /// [`mat::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
 #[inline(always)]
-pub unsafe fn from_raw_parts<'a, E: Entity>(
+pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape>(
     ptr: GroupFor<E, *const E::Unit>,
-    nrows: usize,
+    nrows: R,
     row_stride: isize,
-) -> ColRef<'a, E> {
+) -> ColRef<'a, E, R> {
     ColRef::__from_raw_parts(ptr, nrows, row_stride)
 }
 
@@ -708,9 +751,11 @@ impl<E: Entity> As2D<E> for ColRef<'_, E> {
     }
 }
 
-impl<E: Entity> AsColRef<E> for ColRef<'_, E> {
+impl<E: Entity, R: Shape> AsColRef<E> for ColRef<'_, E, R> {
+    type R = R;
+
     #[inline]
-    fn as_col_ref(&self) -> ColRef<'_, E> {
+    fn as_col_ref(&self) -> ColRef<'_, E, R> {
         *self
     }
 }

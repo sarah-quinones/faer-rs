@@ -52,8 +52,11 @@ pub trait MatIndex<RowRange, ColRange>: crate::seal::Seal + Sized {
 /// [`MatRef`], and [`MatMut`], but not for types like [`Col`], [`Row`], or
 /// their families. For a more general trait, see [`As2D`].
 pub trait AsMatRef<E: Entity> {
+    type R: Shape;
+    type C: Shape;
+
     /// Convert to a matrix view.
-    fn as_mat_ref(&self) -> MatRef<'_, E>;
+    fn as_mat_ref(&self) -> MatRef<'_, E, Self::R, Self::C>;
 }
 /// Trait for types that can be converted to a mutable matrix view.
 ///
@@ -62,7 +65,7 @@ pub trait AsMatRef<E: Entity> {
 /// their families. For a more general trait, see [`As2D`].
 pub trait AsMatMut<E: Entity>: AsMatRef<E> {
     /// Convert to a mutable matrix view.
-    fn as_mat_mut(&mut self) -> MatMut<'_, E>;
+    fn as_mat_mut(&mut self) -> MatMut<'_, E, Self::R, Self::C>;
 }
 
 /// Trait for types that can be converted to a 2D matrix view.
@@ -105,18 +108,24 @@ impl<E: Entity, T: As2DMut<E>> As2DMut<E> for &mut T {
 }
 
 impl<E: Entity, T: AsMatRef<E>> AsMatRef<E> for &T {
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
+    type R = T::R;
+    type C = T::C;
+
+    fn as_mat_ref(&self) -> MatRef<'_, E, Self::R, Self::C> {
         (**self).as_mat_ref()
     }
 }
 impl<E: Entity, T: AsMatRef<E>> AsMatRef<E> for &mut T {
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
+    type R = T::R;
+    type C = T::C;
+
+    fn as_mat_ref(&self) -> MatRef<'_, E, Self::R, Self::C> {
         (**self).as_mat_ref()
     }
 }
 
 impl<E: Entity, T: AsMatMut<E>> AsMatMut<E> for &mut T {
-    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+    fn as_mat_mut(&mut self) -> MatMut<'_, E, Self::R, Self::C> {
         (**self).as_mat_mut()
     }
 }

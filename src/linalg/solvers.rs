@@ -2606,7 +2606,10 @@ mod tests {
     use complex_native::*;
 
     #[track_caller]
-    fn check_mat_approx_eq<E: ComplexField>(a: impl AsMatRef<E>, b: impl AsMatRef<E>) {
+    fn check_mat_approx_eq<E: ComplexField>(
+        a: impl AsMatRef<E, R = usize, C = usize>,
+        b: impl AsMatRef<E, R = usize, C = usize>,
+    ) {
         let mut approx_eq = crate::ApproxEq::<E::Real>::eps();
         approx_eq.abs_tol = approx_eq.abs_tol * E::Real::faer_from_f64(128.0);
         approx_eq.rel_tol = approx_eq.rel_tol * E::Real::faer_from_f64(128.0);
@@ -2626,7 +2629,7 @@ mod tests {
         }
     }
 
-    fn test_solver_real(H: impl AsMatRef<f64>, decomp: &dyn SolverCore<f64>) {
+    fn test_solver_real(H: impl AsMatRef<f64, R = usize, C = usize>, decomp: &dyn SolverCore<f64>) {
         let H = H.as_mat_ref();
         let n = H.nrows();
         let k = 2;
@@ -2658,7 +2661,7 @@ mod tests {
         check_mat_approx_eq(H * decomp.inverse(), I);
     }
 
-    fn test_solver(H: impl AsMatRef<c64>, decomp: &dyn SolverCore<c64>) {
+    fn test_solver(H: impl AsMatRef<c64, R = usize, C = usize>, decomp: &dyn SolverCore<c64>) {
         let H = H.as_mat_ref();
         let n = H.nrows();
         let k = 2;
@@ -2690,7 +2693,10 @@ mod tests {
         check_mat_approx_eq(H * decomp.inverse(), I);
     }
 
-    fn test_solver_lstsq(H: impl AsMatRef<c64>, decomp: &dyn SolverLstsqCore<c64>) {
+    fn test_solver_lstsq(
+        H: impl AsMatRef<c64, R = usize, C = usize>,
+        decomp: &dyn SolverLstsqCore<c64>,
+    ) {
         let H = H.as_mat_ref();
 
         let m = H.nrows();
