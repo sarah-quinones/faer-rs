@@ -52,7 +52,9 @@ pub trait MatIndex<RowRange, ColRange>: crate::seal::Seal + Sized {
 /// [`MatRef`], and [`MatMut`], but not for types like [`Col`], [`Row`], or
 /// their families. For a more general trait, see [`As2D`].
 pub trait AsMatRef<E: Entity> {
+    /// Row dimension of the matrix.
     type R: Shape;
+    /// Column dimension of the matrix.
     type C: Shape;
 
     /// Convert to a matrix view.

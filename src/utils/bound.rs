@@ -5,20 +5,28 @@ use crate::{Index, Shape, ShapeIdx, Unbind};
 
 type Invariant<'a> = fn(&'a ()) -> &'a ();
 
+/// Splits a range into two segments.
 #[derive(Copy, Clone)]
 pub struct Partition<'head, 'tail, 'n> {
+    /// Size of the first half.
     pub head: Dim<'head>,
+    /// Size of the second half.
     pub tail: Dim<'tail>,
     __marker: PhantomData<Invariant<'n>>,
 }
 
 impl<'head, 'tail, 'n> Partition<'head, 'tail, 'n> {
+    /// Returns the midpoint of the partition.
     #[inline]
     pub const fn midpoint(&self) -> IdxInc<'n> {
         unsafe { IdxInc::new_unbound(self.head.unbound) }
     }
 }
 
+/// Lifetime branded length
+/// # Safety
+/// The type's safety invariant is that all instances of this type with the same lifetime
+/// correspond to the same length.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Dim<'n> {
@@ -49,6 +57,10 @@ impl Ord for Dim<'_> {
     }
 }
 
+/// Lifetime branded index.
+/// # Safety
+/// The type's safety invariant is that all instances of this type are valid indices for
+/// [`Dim<'n>`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Idx<'n, I: Index = usize> {
@@ -56,6 +68,10 @@ pub struct Idx<'n, I: Index = usize> {
     __marker: PhantomData<Invariant<'n>>,
 }
 
+/// Lifetime branded partition index.
+/// # Safety
+/// The type's safety invariant is that all instances of this type are valid partition places for
+/// [`Dim<'n>`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct IdxInc<'n, I: Index = usize> {
@@ -122,6 +138,9 @@ impl<'n, I: Index> PartialOrd<Dim<'n>> for IdxInc<'n, I> {
 }
 
 impl<'n> Dim<'n> {
+    /// Create new branded value with an arbitrary brand.
+    /// # Safety
+    /// See struct safety invariant.
     #[inline(always)]
     pub const unsafe fn new_unbound(dim: usize) -> Self {
         Self {
@@ -130,6 +149,7 @@ impl<'n> Dim<'n> {
         }
     }
 
+    /// Create new branded value with a unique brand.
     #[inline(always)]
     pub fn new(dim: usize, guard: Guard<'n>) -> Self {
         _ = guard;
@@ -139,11 +159,13 @@ impl<'n> Dim<'n> {
         }
     }
 
+    /// Returns the unconstrained value.
     #[inline(always)]
     pub const fn unbound(self) -> usize {
         self.unbound
     }
 
+    /// Partitions `self` into two segments as specifiedd by the midpoint.
     #[inline]
     pub const fn partition<'head, 'tail>(
         self,
@@ -161,6 +183,7 @@ impl<'n> Dim<'n> {
         }
     }
 
+    /// Returns an iterator over the indices between `0` and `self`.
     #[inline]
     pub fn indices(self) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<'n>> {
         (0..self.unbound).map(|i| unsafe { Idx::new_unbound(i) })
@@ -168,6 +191,9 @@ impl<'n> Dim<'n> {
 }
 
 impl<'n, I: Index> Idx<'n, I> {
+    /// Create new branded value with an arbitrary brand.
+    /// # Safety
+    /// See struct safety invariant.
     #[inline(always)]
     pub const unsafe fn new_unbound(idx: I) -> Self {
         Self {
@@ -176,6 +202,9 @@ impl<'n, I: Index> Idx<'n, I> {
         }
     }
 
+    /// Create new branded value with the same brand as `dim`.
+    /// # Safety
+    /// The behavior is undefined unless `idx < dim`.
     #[inline(always)]
     pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
         equator::debug_assert!(idx.zx() < dim.unbound);
@@ -186,6 +215,9 @@ impl<'n, I: Index> Idx<'n, I> {
         }
     }
 
+    /// Create new branded value with the same brand as `dim`.
+    /// # Panics
+    /// Panics unless `idx < dim`.
     #[inline(always)]
     pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
         equator::assert!(idx.zx() < dim.unbound);
@@ -196,11 +228,13 @@ impl<'n, I: Index> Idx<'n, I> {
         }
     }
 
+    /// Returns the unconstrained value.
     #[inline(always)]
     pub const fn unbound(self) -> I {
         self.unbound
     }
 
+    /// Zero-extends the internal value into a `usize`.
     #[inline(always)]
     pub fn zx(self) -> Idx<'n, usize> {
         Idx {
@@ -210,6 +244,7 @@ impl<'n, I: Index> Idx<'n, I> {
     }
 }
 impl<'n> Idx<'n> {
+    /// Returns the incremented value.
     #[inline(always)]
     pub const fn next(self) -> IdxInc<'n> {
         unsafe { IdxInc::new_unbound(self.unbound + 1) }
@@ -217,6 +252,9 @@ impl<'n> Idx<'n> {
 }
 
 impl<'n, I: Index> IdxInc<'n, I> {
+    /// Create new branded value with an arbitrary brand.
+    /// # Safety
+    /// See struct safety invariant.
     #[inline(always)]
     pub const unsafe fn new_unbound(idx: I) -> Self {
         Self {
@@ -225,6 +263,9 @@ impl<'n, I: Index> IdxInc<'n, I> {
         }
     }
 
+    /// Create new branded value with the same brand as `dim`.
+    /// # Safety
+    /// The behavior is undefined unless `idx <= dim`.
     #[inline(always)]
     pub unsafe fn new_unchecked(idx: I, dim: Dim<'n>) -> Self {
         equator::debug_assert!(idx.zx() <= dim.unbound);
@@ -235,6 +276,9 @@ impl<'n, I: Index> IdxInc<'n, I> {
         }
     }
 
+    /// Create new branded value with the same brand as `dim`.
+    /// # Panics
+    /// Panics unless `idx <= dim`.
     #[inline(always)]
     pub fn new_checked(idx: I, dim: Dim<'n>) -> Self {
         equator::assert!(idx.zx() <= dim.unbound);
@@ -245,11 +289,13 @@ impl<'n, I: Index> IdxInc<'n, I> {
         }
     }
 
+    /// Returns the unconstrained value.
     #[inline(always)]
     pub const fn unbound(self) -> I {
         self.unbound
     }
 
+    /// Zero-extends the internal value into a `usize`.
     #[inline(always)]
     pub fn zx(self) -> IdxInc<'n, usize> {
         IdxInc {
@@ -260,6 +306,7 @@ impl<'n, I: Index> IdxInc<'n, I> {
 }
 
 impl<'n> IdxInc<'n> {
+    /// Returns an iterator over the indices between `self` and `to`.
     #[inline]
     pub fn to(
         self,

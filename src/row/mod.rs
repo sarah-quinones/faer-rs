@@ -25,6 +25,7 @@ pub trait RowIndex<ColRange>: crate::seal::Seal + Sized {
 
 /// Trait for types that can be converted to a row view.
 pub trait AsRowRef<E: Entity> {
+    /// Column dimension of the row.
     type C: Shape;
 
     /// Convert to a row view.

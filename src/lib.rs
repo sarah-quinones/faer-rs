@@ -1802,57 +1802,77 @@ mod tests {
 // #[path = "krylov_schur.rs"]
 // mod krylov_schur_prototype;
 
+/// Sealed trait for types that can be created from "unbound" values, as long as their
+/// struct preconditions are upheld.
 pub trait Unbind<I = usize>: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
+    /// Create new value.
+    /// # Safety
+    /// Safety invariants must be upheld.
     unsafe fn new_unbound(idx: I) -> Self;
+
+    /// Returns the unbound value, unconstrained by safety invariants.
     fn unbound(self) -> I;
 }
 
+/// Type that can be used to index into a range.
 pub type Idx<N, I = usize> = <N as ShapeIdx>::Idx<I>;
+/// Type that can be used to partition a range.
 pub type IdxInc<N, I = usize> = <N as ShapeIdx>::IdxInc<I>;
 
+/// Base trait for [`Shape`].
 pub trait ShapeIdx {
+    /// Type that can be used to index into a range.
     type Idx<I: Index>: Unbind<I> + Ord + Eq;
+    /// Type that can be used to partition a range.
     type IdxInc<I: Index>: Unbind<I> + Ord + Eq + From<Idx<Self, I>>;
 }
 
+/// Matrix dimension.
 pub trait Shape:
     Unbind
     + Ord
     + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>>
 {
-    const COMPTIME: Option<usize> = None;
+    /// Whether the types involved have any safety invariants.
     const IS_BOUND: bool = true;
 
+    /// Bind the current value using a invariant lifetime guard.
     #[inline]
     fn bind<'n>(self, guard: generativity::Guard<'n>) -> utils::bound::Dim<'n> {
         utils::bound::Dim::new(self.unbound(), guard)
     }
 
+    /// Cast a slice of bound values to unbound values.
     #[inline]
     fn cast_idx_slice<I: Index>(slice: &[Idx<Self, I>]) -> &[I] {
         unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
     }
 
+    /// Cast a slice of bound values to unbound values.
     #[inline]
     fn cast_idx_inc_slice<I: Index>(slice: &[IdxInc<Self, I>]) -> &[I] {
         unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
     }
 
+    /// Returns the index `0`, which is always valid.
     #[inline(always)]
     fn start() -> IdxInc<Self> {
         unsafe { IdxInc::<Self>::new_unbound(0) }
     }
 
+    /// Returns the incremented value, as an inclusive index.
     #[inline(always)]
     fn next(idx: Idx<Self>) -> IdxInc<Self> {
         unsafe { IdxInc::<Self>::new_unbound(idx.unbound() + 1) }
     }
 
+    /// Returns the last value, equal to the dimension.
     #[inline(always)]
     fn end(self) -> IdxInc<Self> {
         unsafe { IdxInc::<Self>::new_unbound(self.unbound()) }
     }
 
+    /// Checks if the index is valid, returning `Some(_)` in that case.
     #[inline(always)]
     fn idx(self, idx: usize) -> Option<Idx<Self>> {
         if idx < self.unbound() {
@@ -1862,6 +1882,7 @@ pub trait Shape:
         }
     }
 
+    /// Checks if the index is valid, returning `Some(_)` in that case.
     #[inline(always)]
     fn idx_inc(self, idx: usize) -> Option<IdxInc<Self>> {
         if idx <= self.unbound() {
@@ -1871,30 +1892,39 @@ pub trait Shape:
         }
     }
 
+    /// Checks if the index is valid, and panics otherwise.
     #[inline(always)]
     fn checked_idx(self, idx: usize) -> Idx<Self> {
         equator::assert!(idx < self.unbound());
         unsafe { Idx::<Self>::new_unbound(idx) }
     }
 
+    /// Checks if the index is valid, and panics otherwise.
     #[inline(always)]
     fn checked_idx_inc(self, idx: usize) -> IdxInc<Self> {
         equator::assert!(idx <= self.unbound());
         unsafe { IdxInc::<Self>::new_unbound(idx) }
     }
 
+    /// Assumes the index is valid.
+    /// # Safety
+    /// The index must be valid.
     #[inline(always)]
     unsafe fn unchecked_idx(self, idx: usize) -> Idx<Self> {
         equator::debug_assert!(idx < self.unbound());
         unsafe { Idx::<Self>::new_unbound(idx) }
     }
 
+    /// Assumes the index is valid.
+    /// # Safety
+    /// The index must be valid.
     #[inline(always)]
     unsafe fn unchecked_idx_inc(self, idx: usize) -> IdxInc<Self> {
         equator::debug_assert!(idx <= self.unbound());
         unsafe { IdxInc::<Self>::new_unbound(idx) }
     }
 
+    /// Returns an iterator over the indices between `from` and `to`.
     #[inline(always)]
     fn indices(
         from: IdxInc<Self>,

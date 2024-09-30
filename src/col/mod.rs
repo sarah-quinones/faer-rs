@@ -45,6 +45,7 @@ pub trait ColIndex<RowRange>: crate::seal::Seal + Sized {
 
 /// Trait for types that can be converted to a column view.
 pub trait AsColRef<E: Entity> {
+    /// Row dimension of the column.
     type R: Shape;
 
     /// Convert to a column view.

@@ -56,4 +56,5 @@ pub mod thread;
 /// Vector type for [entities](crate::Entity).
 pub mod vec;
 
+/// Lifetime-branded bound index and dimension types.
 pub mod bound;
