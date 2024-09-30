@@ -27587,7 +27587,7 @@ mod tests {
             perm_inv[*p] = i;
         }
 
-        let P = crate::perm::PermRef::new_checked(perm, perm_inv);
+        let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
         let mut M_orig = Mat::<f32>::zeros(n, n);
         for i in 0..n {
@@ -27653,7 +27653,7 @@ mod tests {
             perm_inv[*p] = i;
         }
 
-        let P = crate::perm::PermRef::new_checked(perm, perm_inv);
+        let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
         let mut M_orig = Mat::<f32>::zeros(n, n);
         for i in 0..n {
@@ -27725,7 +27725,7 @@ mod tests {
             perm_inv[*p] = i;
         }
 
-        let P = crate::perm::PermRef::new_checked(perm, perm_inv);
+        let P = crate::perm::PermRef::new_checked(perm, perm_inv, n);
 
         let mut M_orig = Mat::<f32>::zeros(n, n);
         for i in 0..n {

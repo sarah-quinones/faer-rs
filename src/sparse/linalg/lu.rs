@@ -1935,7 +1935,13 @@ impl<'a, I: Index, E: Entity> LuRef<'a, I, E> {
     /// Returns the row pivoting permutation.
     #[inline]
     pub fn row_perm(self) -> PermRef<'a, I> {
-        unsafe { PermRef::new_unchecked(&self.numeric.row_perm_fwd, &self.numeric.row_perm_inv) }
+        unsafe {
+            PermRef::new_unchecked(
+                &self.numeric.row_perm_fwd,
+                &self.numeric.row_perm_inv,
+                self.symbolic.nrows(),
+            )
+        }
     }
 
     /// Returns the fill reducing column permutation.
@@ -2048,7 +2054,7 @@ impl<I: Index> SymbolicLu<I> {
     /// Returns the fill-reducing column permutation that was computed during symbolic analysis.
     #[inline]
     pub fn col_perm(&self) -> PermRef<'_, I> {
-        unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv, self.ncols()) }
     }
 
     /// Computes the size and alignment of the workspace required to compute the numerical LU
@@ -2239,7 +2245,8 @@ pub fn factorize_symbolic_lu<I: Index>(
             stack.rb_mut(),
         )?;
 
-        let col_perm = ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv), N);
+        let col_perm =
+            ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
 
         let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
         let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);
@@ -2476,7 +2483,7 @@ mod tests {
             col_perm[i] = i;
             col_perm_inv[i] = i;
         }
-        let col_perm = PermRef::<'_, usize>::new_checked(&col_perm, &col_perm_inv);
+        let col_perm = PermRef::<'_, usize>::new_checked(&col_perm, &col_perm_inv, n);
 
         let mut etree = vec![0usize; n];
         let mut min_col = vec![0usize; m];
@@ -2558,7 +2565,7 @@ mod tests {
 
         let mut work = rhs.clone();
         let A_dense = sparse_to_dense(A);
-        let row_perm = PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv);
+        let row_perm = PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv, m);
 
         {
             let mut x = rhs.clone();
@@ -2637,7 +2644,7 @@ mod tests {
             col_perm[i] = i;
             col_perm_inv[i] = i;
         }
-        let col_perm = PermRef::<'_, usize>::new_checked(&col_perm, &col_perm_inv);
+        let col_perm = PermRef::<'_, usize>::new_checked(&col_perm, &col_perm_inv, n);
 
         let mut lu = SimplicialLu::<usize, E>::new();
         factorize_simplicial_numeric_lu(
@@ -2657,7 +2664,7 @@ mod tests {
 
         let mut work = rhs.clone();
         let A_dense = sparse_to_dense(A);
-        let row_perm = PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv);
+        let row_perm = PermRef::<'_, _>::new_checked(&row_perm, &row_perm_inv, m);
 
         {
             let mut x = rhs.clone();

@@ -684,6 +684,7 @@ pub trait Index:
     + Ord
     + Send
     + Sync
+    + Ord
 {
     /// Equally-sized index type with a fixed size (no `usize`).
     type FixedWidth: Index;
@@ -1801,105 +1802,127 @@ mod tests {
 // #[path = "krylov_schur.rs"]
 // mod krylov_schur_prototype;
 
-pub trait Unbind: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
-    unsafe fn new_unbound(idx: usize) -> Self;
-    fn unbound(self) -> usize;
+pub trait Unbind<I = usize>: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
+    unsafe fn new_unbound(idx: I) -> Self;
+    fn unbound(self) -> I;
 }
 
-pub trait Shape: Unbind + Eq {
-    type Idx: Unbind + PartialOrd<Self> + Ord;
-    type IdxInc: Unbind + PartialOrd<Self> + Ord + From<Self::Idx>;
+pub type Idx<N, I = usize> = <N as ShapeIdx>::Idx<I>;
+pub type IdxInc<N, I = usize> = <N as ShapeIdx>::IdxInc<I>;
 
+pub trait ShapeIdx {
+    type Idx<I: Index>: Unbind<I> + Ord + Eq;
+    type IdxInc<I: Index>: Unbind<I> + Ord + Eq + From<Idx<Self, I>>;
+}
+
+pub trait Shape:
+    Unbind
+    + Ord
+    + ShapeIdx<Idx<usize>: Ord + Eq + PartialOrd<Self>, IdxInc<usize>: Ord + Eq + PartialOrd<Self>>
+{
     const COMPTIME: Option<usize> = None;
     const IS_BOUND: bool = true;
 
+    #[inline]
     fn bind<'n>(self, guard: generativity::Guard<'n>) -> utils::bound::Dim<'n> {
         utils::bound::Dim::new(self.unbound(), guard)
     }
 
-    #[inline(always)]
-    fn start() -> Self::IdxInc {
-        unsafe { Self::IdxInc::new_unbound(0) }
+    #[inline]
+    fn cast_idx_slice<I: Index>(slice: &[Idx<Self, I>]) -> &[I] {
+        unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
+    }
+
+    #[inline]
+    fn cast_idx_inc_slice<I: Index>(slice: &[IdxInc<Self, I>]) -> &[I] {
+        unsafe { core::slice::from_raw_parts(slice.as_ptr() as _, slice.len()) }
     }
 
     #[inline(always)]
-    fn next(idx: Self::Idx) -> Self::IdxInc {
-        unsafe { Self::IdxInc::new_unbound(idx.unbound() + 1) }
+    fn start() -> IdxInc<Self> {
+        unsafe { IdxInc::<Self>::new_unbound(0) }
     }
 
     #[inline(always)]
-    fn end(self) -> Self::IdxInc {
-        unsafe { Self::IdxInc::new_unbound(self.unbound()) }
+    fn next(idx: Idx<Self>) -> IdxInc<Self> {
+        unsafe { IdxInc::<Self>::new_unbound(idx.unbound() + 1) }
     }
 
     #[inline(always)]
-    fn idx(self, idx: usize) -> Option<Self::Idx> {
+    fn end(self) -> IdxInc<Self> {
+        unsafe { IdxInc::<Self>::new_unbound(self.unbound()) }
+    }
+
+    #[inline(always)]
+    fn idx(self, idx: usize) -> Option<Idx<Self>> {
         if idx < self.unbound() {
-            Some(unsafe { Self::Idx::new_unbound(idx) })
+            Some(unsafe { Idx::<Self>::new_unbound(idx) })
         } else {
             None
         }
     }
 
     #[inline(always)]
-    fn idx_inc(self, idx: usize) -> Option<Self::IdxInc> {
+    fn idx_inc(self, idx: usize) -> Option<IdxInc<Self>> {
         if idx <= self.unbound() {
-            Some(unsafe { Self::IdxInc::new_unbound(idx) })
+            Some(unsafe { IdxInc::<Self>::new_unbound(idx) })
         } else {
             None
         }
     }
 
     #[inline(always)]
-    fn checked_idx(self, idx: usize) -> Self::Idx {
+    fn checked_idx(self, idx: usize) -> Idx<Self> {
         equator::assert!(idx < self.unbound());
-        unsafe { Self::Idx::new_unbound(idx) }
+        unsafe { Idx::<Self>::new_unbound(idx) }
     }
 
     #[inline(always)]
-    fn checked_idx_inc(self, idx: usize) -> Self::IdxInc {
+    fn checked_idx_inc(self, idx: usize) -> IdxInc<Self> {
         equator::assert!(idx <= self.unbound());
-        unsafe { Self::IdxInc::new_unbound(idx) }
+        unsafe { IdxInc::<Self>::new_unbound(idx) }
     }
 
     #[inline(always)]
-    unsafe fn unchecked_idx(self, idx: usize) -> Self::Idx {
+    unsafe fn unchecked_idx(self, idx: usize) -> Idx<Self> {
         equator::debug_assert!(idx < self.unbound());
-        unsafe { Self::Idx::new_unbound(idx) }
+        unsafe { Idx::<Self>::new_unbound(idx) }
     }
 
     #[inline(always)]
-    unsafe fn unchecked_idx_inc(self, idx: usize) -> Self::IdxInc {
+    unsafe fn unchecked_idx_inc(self, idx: usize) -> IdxInc<Self> {
         equator::debug_assert!(idx <= self.unbound());
-        unsafe { Self::IdxInc::new_unbound(idx) }
+        unsafe { IdxInc::<Self>::new_unbound(idx) }
     }
 
     #[inline(always)]
     fn indices(
-        from: Self::IdxInc,
-        to: Self::IdxInc,
-    ) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Self::Idx> {
+        from: IdxInc<Self>,
+        to: IdxInc<Self>,
+    ) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Idx<Self>> {
         (from.unbound()..to.unbound()).map(
             #[inline(always)]
-            |i| unsafe { Self::Idx::new_unbound(i) },
+            |i| unsafe { Idx::<Self>::new_unbound(i) },
         )
     }
 }
 
-impl Unbind for usize {
+impl<T: Send + Sync + Copy + core::fmt::Debug + seal::Seal> Unbind<T> for T {
     #[inline(always)]
-    unsafe fn new_unbound(idx: usize) -> Self {
+    unsafe fn new_unbound(idx: T) -> Self {
         idx
     }
 
     #[inline(always)]
-    fn unbound(self) -> usize {
+    fn unbound(self) -> T {
         self
     }
 }
-impl Shape for usize {
-    type Idx = usize;
-    type IdxInc = usize;
 
+impl ShapeIdx for usize {
+    type Idx<I: Index> = I;
+    type IdxInc<I: Index> = I;
+}
+impl Shape for usize {
     const IS_BOUND: bool = false;
 }

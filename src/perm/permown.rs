@@ -15,6 +15,7 @@ impl<I: Index> Perm<I> {
         PermRef {
             forward: &self.forward,
             inverse: &self.inverse,
+            __marker: core::marker::PhantomData,
         }
     }
 
@@ -28,7 +29,7 @@ impl<I: Index> Perm<I> {
     #[inline]
     #[track_caller]
     pub fn new_checked(forward: alloc::boxed::Box<[I]>, inverse: alloc::boxed::Box<[I]>) -> Self {
-        PermRef::<'_, I>::new_checked(&forward, &inverse);
+        PermRef::<'_, I>::new_checked(&forward, &inverse, forward.len());
         Self { forward, inverse }
     }
 

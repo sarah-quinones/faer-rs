@@ -964,7 +964,7 @@ pub fn qr_in_place<'out, I: Index, E: ComplexField>(
             }
 
             (n_transpositions, unsafe {
-                PermRef::new_unchecked(col_perm, col_perm_inv)
+                PermRef::new_unchecked(col_perm, col_perm_inv, n)
             })
         }
     }

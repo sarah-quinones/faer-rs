@@ -2,9 +2,14 @@ use super::*;
 use crate::col::{Col, ColMut, ColRef};
 
 /// Diagonal matrix.
-#[derive(Debug)]
 pub struct Diag<E: Entity> {
     pub(crate) inner: Col<E>,
+}
+
+impl<E: Entity> core::fmt::Debug for Diag<E> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.inner.fmt(f)
+    }
 }
 
 impl<E: Entity> Diag<E> {

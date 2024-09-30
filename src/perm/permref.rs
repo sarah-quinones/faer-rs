@@ -1,11 +1,13 @@
 use super::*;
 use crate::assert;
+use core::marker::PhantomData;
 
 /// Immutable permutation matrix view.
 #[derive(Debug)]
-pub struct PermRef<'a, I: Index> {
-    pub(super) forward: &'a [I],
-    pub(super) inverse: &'a [I],
+pub struct PermRef<'a, I: Index, N: Shape = usize> {
+    pub(super) forward: &'a [N::Idx<I>],
+    pub(super) inverse: &'a [N::Idx<I>],
+    pub(super) __marker: PhantomData<N>,
 }
 
 impl<I: Index> Copy for PermRef<'_, I> {}
@@ -41,13 +43,14 @@ impl<'a, I: Index> IntoConst for PermRef<'a, I> {
     }
 }
 
-impl<'a, I: Index> PermRef<'a, I> {
+impl<'a, I: Index, N: Shape> PermRef<'a, I, N> {
     /// Convert `self` to a permutation view.
     #[inline]
-    pub fn as_ref(&self) -> PermRef<'_, I> {
+    pub fn as_ref(&self) -> PermRef<'_, I, N> {
         PermRef {
             forward: self.forward,
             inverse: self.inverse,
+            __marker: PhantomData,
         }
     }
 
@@ -60,13 +63,13 @@ impl<'a, I: Index> PermRef<'a, I> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub fn new_checked(forward: &'a [I], inverse: &'a [I]) -> Self {
+    pub fn new_checked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], n: N) -> Self {
         #[track_caller]
-        fn check<I: Index>(forward: &[I], inverse: &[I]) {
-            let n = forward.len();
+        fn check<I: Index>(forward: &[I], inverse: &[I], n: usize) {
             assert!(all(
-                forward.len() == inverse.len(),
-                n <= I::Signed::MAX.zx()
+                n <= I::Signed::MAX.zx(),
+                forward.len() == n,
+                inverse.len() == n,
             ));
             for (i, &p) in forward.iter().enumerate() {
                 let p = p.to_signed().zx();
@@ -75,8 +78,16 @@ impl<'a, I: Index> PermRef<'a, I> {
             }
         }
 
-        check(I::canonicalize(forward), I::canonicalize(inverse));
-        Self { forward, inverse }
+        check(
+            I::canonicalize(N::cast_idx_slice(forward)),
+            I::canonicalize(N::cast_idx_slice(inverse)),
+            n.unbound(),
+        );
+        Self {
+            forward,
+            inverse,
+            __marker: PhantomData,
+        }
     }
 
     /// Creates a new permutation reference, without checking the validity of the inputs.
@@ -87,18 +98,22 @@ impl<'a, I: Index> PermRef<'a, I> {
     /// `I::Signed::MAX`, be valid permutations, and be inverse permutations of each other.
     #[inline]
     #[track_caller]
-    pub unsafe fn new_unchecked(forward: &'a [I], inverse: &'a [I]) -> Self {
-        let n = forward.len();
+    pub unsafe fn new_unchecked(forward: &'a [Idx<N, I>], inverse: &'a [Idx<N, I>], n: N) -> Self {
         assert!(all(
-            forward.len() == inverse.len(),
-            n <= I::Signed::MAX.zx(),
+            n.unbound() <= I::Signed::MAX.zx(),
+            forward.len() == n.unbound(),
+            inverse.len() == n.unbound(),
         ));
-        Self { forward, inverse }
+        Self {
+            forward,
+            inverse,
+            __marker: PhantomData,
+        }
     }
 
     /// Returns the permutation as an array.
     #[inline]
-    pub fn arrays(self) -> (&'a [I], &'a [I]) {
+    pub fn arrays(self) -> (&'a [Idx<N, I>], &'a [Idx<N, I>]) {
         (self.forward, self.inverse)
     }
 
@@ -114,25 +129,44 @@ impl<'a, I: Index> PermRef<'a, I> {
         Self {
             forward: self.inverse,
             inverse: self.forward,
+            __marker: PhantomData,
         }
     }
 
     /// Cast the permutation to the fixed width index type.
     #[inline(always)]
-    pub fn canonicalized(self) -> PermRef<'a, I::FixedWidth> {
-        PermRef {
-            forward: I::canonicalize(self.forward),
-            inverse: I::canonicalize(self.inverse),
+    pub fn canonicalized(self) -> PermRef<'a, I::FixedWidth, N> {
+        unsafe {
+            PermRef {
+                forward: core::slice::from_raw_parts(
+                    self.forward.as_ptr() as _,
+                    self.forward.len(),
+                ),
+                inverse: core::slice::from_raw_parts(
+                    self.inverse.as_ptr() as _,
+                    self.inverse.len(),
+                ),
+                __marker: PhantomData,
+            }
         }
     }
 
     /// Cast the permutation from the fixed width index type.
     #[inline(always)]
-    pub fn uncanonicalized<J: Index>(self) -> PermRef<'a, J> {
+    pub fn uncanonicalized<J: Index>(self) -> PermRef<'a, J, N> {
         assert!(core::mem::size_of::<J>() == core::mem::size_of::<I>());
-        PermRef {
-            forward: bytemuck::cast_slice(self.forward),
-            inverse: bytemuck::cast_slice(self.inverse),
+        unsafe {
+            PermRef {
+                forward: core::slice::from_raw_parts(
+                    self.forward.as_ptr() as _,
+                    self.forward.len(),
+                ),
+                inverse: core::slice::from_raw_parts(
+                    self.inverse.as_ptr() as _,
+                    self.inverse.len(),
+                ),
+                __marker: PhantomData,
+            }
         }
     }
 }

@@ -66,8 +66,8 @@
 //!     sol.try_reserve_exact(dim)?;
 //!     sol.resize(dim, 0.0f64);
 //!
-//!     let rhs = faer::mat::from_column_major_slice::<f64>(&rhs, dim, 1);
-//!     let mut sol = faer::mat::from_column_major_slice_mut::<f64>(&mut sol, dim, 1);
+//!     let rhs = faer::mat::from_column_major_slice(&rhs, dim, 1);
+//!     let mut sol = faer::mat::from_column_major_slice_mut(&mut sol, dim, 1);
 //!
 //!     // Optional: fill reducing permutation
 //!     let (perm, perm_inv) = {
@@ -90,7 +90,7 @@
 //!         (perm, perm_inv)
 //!     };
 //!
-//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv) };
+//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv, dim) };
 //!
 //!     let A_perm_upper = {
 //!         let mut A_perm_col_ptrs = Vec::new();
@@ -307,8 +307,8 @@
 //!     sol.try_reserve_exact(dim)?;
 //!     sol.resize(dim, 0.0f64);
 //!
-//!     let rhs = faer::mat::from_column_major_slice::<f64>(&rhs, dim, 1);
-//!     let mut sol = faer::mat::from_column_major_slice_mut::<f64>(&mut sol, dim, 1);
+//!     let rhs = faer::mat::from_column_major_slice(&rhs, dim, 1);
+//!     let mut sol = faer::mat::from_column_major_slice_mut(&mut sol, dim, 1);
 //!
 //!     // Optional: fill reducing permutation
 //!     let (perm, perm_inv) = {
@@ -331,7 +331,7 @@
 //!         (perm, perm_inv)
 //!     };
 //!
-//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv) };
+//!     let perm = unsafe { faer::perm::PermRef::new_unchecked(&perm, &perm_inv, dim) };
 //!
 //!     let A_perm_lower = {
 //!         let mut A_perm_col_ptrs = Vec::new();
@@ -493,7 +493,7 @@
 //!         );
 //!
 //!         let piv_perm =
-//!             unsafe { faer::perm::PermRef::new_unchecked(&pivot_perm, &pivot_perm_inv) };
+//!             unsafe { faer::perm::PermRef::new_unchecked(&pivot_perm, &pivot_perm_inv, dim) };
 //!         let lblt = supernodal::SupernodalIntranodeBunchKaufmanRef::<'_, usize, f64>::new(
 //!             &symbolic, &L_values, &subdiag, piv_perm,
 //!         );
@@ -4177,7 +4177,7 @@ impl<I: Index> SymbolicCholesky<I> {
     pub fn perm(&self) -> Option<PermRef<'_, I>> {
         match (&self.perm_fwd, &self.perm_inv) {
             (Some(perm_fwd), Some(perm_inv)) => unsafe {
-                Some(PermRef::new_unchecked(perm_fwd, perm_inv))
+                Some(PermRef::new_unchecked(perm_fwd, perm_inv, self.ncols()))
             },
             _ => None,
         }
@@ -4652,7 +4652,7 @@ impl<I: Index> SymbolicCholesky<I> {
                 self,
                 E::faer_into_const(L_values),
                 E::faer_into_const(subdiag),
-                unsafe { PermRef::<'out, I>::new_unchecked(perm_forward, perm_inverse) },
+                unsafe { PermRef::<'out, I>::new_unchecked(perm_forward, perm_inverse, n) },
             )
         })
     }
@@ -5217,6 +5217,7 @@ pub fn factorize_symbolic_cholesky<I: Index>(
                         PermRef::new_checked(
                             perm_fwd.as_ref().unwrap(),
                             perm_inv.as_ref().unwrap(),
+                            n,
                         ),
                         N,
                     ),
@@ -5886,7 +5887,7 @@ pub(crate) mod tests {
                     &symbolic,
                     values.col_as_slice(0),
                     subdiag.col_as_slice(0),
-                    PermRef::new_checked(&fwd, &inv),
+                    PermRef::new_checked(&fwd, &inv, n),
                 );
                 crate::perm::permute_rows_in_place(
                     x.as_mut(),
@@ -6027,7 +6028,7 @@ pub(crate) mod tests {
                     &symbolic,
                     values.col_as_slice(0),
                     subdiag.col_as_slice(0),
-                    PermRef::new_checked(&fwd, &inv),
+                    PermRef::new_checked(&fwd, &inv, n),
                 );
                 crate::perm::permute_rows_in_place(
                     x.as_mut(),

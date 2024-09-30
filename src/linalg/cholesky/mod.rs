@@ -58,5 +58,5 @@ pub fn compute_cholesky_permutation<'a, E: ComplexField, I: Index>(
         perm_inv_indices[p.to_signed().zx()] = I::from_signed(truncate(i));
     }
 
-    unsafe { PermRef::new_unchecked(perm_indices, perm_inv_indices) }
+    unsafe { PermRef::new_unchecked(perm_indices, perm_inv_indices, n) }
 }

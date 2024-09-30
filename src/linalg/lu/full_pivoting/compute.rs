@@ -1596,8 +1596,8 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
             FullPivLuInfo {
                 transposition_count: n_transpositions,
             },
-            PermRef::new_unchecked(row_perm, row_perm_inv),
-            PermRef::new_unchecked(col_perm, col_perm_inv),
+            PermRef::new_unchecked(row_perm, row_perm_inv, m),
+            PermRef::new_unchecked(col_perm, col_perm_inv, n),
         )
     }
 }

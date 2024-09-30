@@ -340,7 +340,7 @@ impl<E: ComplexField> SpSolverCore<E> for Lblt<E> {
             self.factors.as_ref(),
             self.subdiag.as_ref(),
             conj,
-            unsafe { PermRef::new_unchecked(&self.perm, &self.perm_inv) },
+            unsafe { PermRef::new_unchecked(&self.perm, &self.perm_inv, self.nrows()) },
             rhs,
             parallelism,
             PodStack::new(&mut GlobalPodBuffer::new(
@@ -502,7 +502,7 @@ impl<E: ComplexField> PartialPivLu<E> {
 
     /// Returns the row permutation due to pivoting.
     pub fn row_permutation(&self) -> PermRef<'_, usize> {
-        unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv, self.nrows()) }
     }
 
     /// Returns the number of transpositions that constitute the permutation.
@@ -687,11 +687,11 @@ impl<E: ComplexField> FullPivLu<E> {
 
     /// Returns the row permutation due to pivoting.
     pub fn row_permutation(&self) -> PermRef<'_, usize> {
-        unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.row_perm, &self.row_perm_inv, self.nrows()) }
     }
     /// Returns the column permutation due to pivoting.
     pub fn col_permutation(&self) -> PermRef<'_, usize> {
-        unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv, self.ncols()) }
     }
 
     /// Returns the number of transpositions that constitute the two permutations.
@@ -1121,7 +1121,7 @@ impl<E: ComplexField> ColPivQr<E> {
 
     /// Returns the column permutation matrix $P$ of the QR decomposition.
     pub fn col_permutation(&self) -> PermRef<'_, usize> {
-        unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.col_perm, &self.col_perm_inv, self.ncols()) }
     }
 
     fn blocksize(&self) -> usize {

@@ -880,7 +880,7 @@ pub mod compute {
                 dynamic_regularization_count,
                 transposition_count,
             },
-            unsafe { PermRef::new_unchecked(perm, perm_inv) },
+            unsafe { PermRef::new_unchecked(perm, perm_inv, n) },
         )
     }
 }

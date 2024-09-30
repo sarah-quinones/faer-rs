@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
-    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, zipped, Shape,
-    Unbind,
+    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped,
+    utils::bound::*, zipped, Idx, IdxInc, Shape, Unbind,
 };
+use generativity::make_guard;
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
 ///
@@ -144,7 +145,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: R::IdxInc, col: C::IdxInc) -> PtrConst<E> {
+    pub unsafe fn overflowing_ptr_at(self, row: IdxInc<R>, col: IdxInc<C>) -> PtrConst<E> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
             let offset = (cond as usize).wrapping_neg() as isize
@@ -165,7 +166,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: R::Idx, col: C::Idx) -> PtrConst<E> {
+    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>, col: Idx<C>) -> PtrConst<E> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
         self.ptr_at_unchecked(row.unbound(), col.unbound())
     }
@@ -185,8 +186,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_unchecked(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatRef<'a, E, usize, usize>,
         MatRef<'a, E, usize, usize>,
@@ -242,8 +243,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub fn split_at(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatRef<'a, E, usize, usize>,
         MatRef<'a, E, usize, usize>,
@@ -266,7 +267,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_row_unchecked(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         debug_assert!(row <= self.nrows());
 
@@ -302,7 +303,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_row(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         assert!(row <= self.nrows());
         unsafe { self.split_at_row_unchecked(row) }
@@ -320,7 +321,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_col_unchecked(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         debug_assert!(col <= self.ncols());
 
@@ -356,7 +357,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_col(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         assert!(col <= self.ncols());
         unsafe { self.split_at_col_unchecked(col) }
@@ -460,7 +461,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+    pub unsafe fn at_unchecked(self, row: Idx<R>, col: Idx<C>) -> Ref<'a, E> {
         unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
     }
 
@@ -476,7 +477,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+    pub fn at(self, row: Idx<R>, col: Idx<C>) -> Ref<'a, E> {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
     }
@@ -489,7 +490,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: R::Idx, col: C::Idx) -> E {
+    pub unsafe fn read_unchecked(&self, row: Idx<R>, col: Idx<C>) -> E {
         E::faer_from_units(map!(E, self.at_unchecked(row, col), |(ptr)| { *ptr },))
     }
 
@@ -501,7 +502,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: R::Idx, col: C::Idx) -> E {
+    pub fn read(&self, row: Idx<R>, col: Idx<C>) -> E {
         E::faer_from_units(map!(E, self.at(row, col), |(ptr)| { *ptr },))
     }
 
@@ -597,8 +598,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn submatrix_unchecked<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatRef<'a, E, V, H> {
@@ -658,8 +659,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[inline(always)]
     pub fn submatrix<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatRef<'a, E, V, H> {
@@ -688,7 +689,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subrows_unchecked<V: Shape>(
         self,
-        row_start: R::IdxInc,
+        row_start: IdxInc<R>,
         nrows: V,
     ) -> MatRef<'a, E, V, C> {
         debug_assert!(row_start <= self.nrows());
@@ -737,7 +738,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subrows<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> MatRef<'a, E, V, C> {
+    pub fn subrows<V: Shape>(self, row_start: IdxInc<R>, nrows: V) -> MatRef<'a, E, V, C> {
         assert!(row_start <= self.nrows());
         {
             let nrows = nrows.unbound();
@@ -758,7 +759,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subcols_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> MatRef<'a, E, R, H> {
         debug_assert!(col_start <= self.ncols());
@@ -807,7 +808,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subcols<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> MatRef<'a, E, R, H> {
+    pub fn subcols<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> MatRef<'a, E, R, H> {
         assert!(col_start <= self.ncols());
         {
             let ncols = ncols.unbound();
@@ -824,7 +825,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn row_unchecked(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+    pub unsafe fn row_unchecked(self, row_idx: Idx<R>) -> RowRef<'a, E, C> {
         debug_assert!(row_idx < self.nrows());
         unsafe {
             RowRef::__from_raw_parts(
@@ -842,7 +843,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub fn row(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+    pub fn row(self, row_idx: Idx<R>) -> RowRef<'a, E, C> {
         assert!(row_idx < self.nrows());
         unsafe { self.row_unchecked(row_idx) }
     }
@@ -854,7 +855,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn col_unchecked(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+    pub unsafe fn col_unchecked(self, col_idx: Idx<C>) -> ColRef<'a, E, R> {
         debug_assert!(col_idx < self.ncols());
         unsafe {
             ColRef::__from_raw_parts(
@@ -872,7 +873,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub fn col(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+    pub fn col(self, col_idx: Idx<C>) -> ColRef<'a, E, R> {
         assert!(col_idx < self.ncols());
         unsafe { self.col_unchecked(col_idx) }
     }
@@ -889,7 +890,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
             self.ncols().unbound(),
             #[inline(always)]
             |row, col| unsafe {
-                self.read_unchecked(R::Idx::new_unbound(row), C::Idx::new_unbound(col))
+                self.read_unchecked(Idx::<R>::new_unbound(row), Idx::<C>::new_unbound(col))
                     .canonicalize()
             },
         );
@@ -919,10 +920,28 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
         }
     }
 
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn with_dims<V: Shape, H: Shape>(self, nrows: V, ncols: H) -> MatRef<'a, E, V, H> {
+        assert!(all(
+            nrows.unbound() == self.nrows().unbound(),
+            ncols.unbound() == self.ncols().unbound(),
+        ));
+        unsafe {
+            from_raw_parts(
+                self.as_ptr(),
+                nrows,
+                ncols,
+                self.row_stride(),
+                self.col_stride(),
+            )
+        }
+    }
+
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: C::Idx) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn try_get_contiguous_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
         assert!(self.row_stride() == 1);
         let col = self.col(j);
         let m = col.nrows().unbound();
@@ -1328,21 +1347,23 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
             .par_col_partition(count)
             .map(|chunk| chunk.transpose())
     }
-}
 
-impl<'a, E: Entity> MatRef<'a, E> {
     /// Given a matrix with a single column, returns an object that interprets
     /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
-        assert!(self.ncols() == 1);
-        DiagRef { inner: self.col(0) }
+    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E, R> {
+        assert!(self.ncols().unbound() == 1);
+        DiagRef {
+            inner: self.col(unsafe { Idx::<C>::new_unbound(0) }),
+        }
     }
+}
 
+impl<'a, E: Entity, N: Shape> MatRef<'a, E, N, N> {
     /// Returns the diagonal of the matrix.
     #[inline(always)]
-    pub fn diagonal(self) -> DiagRef<'a, E> {
+    pub fn diagonal(self) -> DiagRef<'a, E, N> {
         let size = self.nrows().min(self.ncols());
         let row_stride = self.row_stride();
         let col_stride = self.col_stride();
@@ -1420,7 +1441,8 @@ impl<E: Entity> As2D<E> for MatRef<'_, E> {
 /// // the column stride is the pointer offset from the address of 1.0 to the address of 2.0,
 /// // which is 1.
 /// let data = [[1.0, 2.0, 3.0, f64::NAN], [4.0, 5.0, 6.0, f64::NAN]];
-/// let matrix = unsafe { mat::from_raw_parts::<f64>(data.as_ptr() as *const f64, 2, 3, 4, 1) };
+/// let matrix =
+///     unsafe { mat::from_raw_parts::<f64, _, _>(data.as_ptr() as *const f64, 2, 3, 4, 1) };
 ///
 /// let expected = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
 /// assert_eq!(expected.as_ref(), matrix);
@@ -1450,7 +1472,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_column_major_slice::<f64>(&slice, 3, 2);
+/// let view = mat::from_column_major_slice(&slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -1493,15 +1515,15 @@ pub fn from_column_major_slice_generic<E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_column_major_slice::<f64>(&slice, 3, 2);
+/// let view = mat::from_column_major_slice(&slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
 /// assert_eq!(expected, view);
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_column_major_slice<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &[E::Unit]>,
+pub fn from_column_major_slice<E: SimpleEntity, R: Shape, C: Shape>(
+    slice: &[E],
     nrows: R,
     ncols: C,
 ) -> MatRef<'_, E, R, C> {
@@ -1522,7 +1544,7 @@ pub fn from_column_major_slice<E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_row_major_slice::<f64>(&slice, 3, 2);
+/// let view = mat::from_row_major_slice(&slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -1551,7 +1573,7 @@ pub fn from_row_major_slice_generic<E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_row_major_slice::<f64>(&slice, 3, 2);
+/// let view = mat::from_row_major_slice(&slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -1633,34 +1655,43 @@ pub fn from_row_major_slice_with_stride<E: SimpleEntity, R: Shape, C: Shape>(
     from_row_major_slice_with_stride_generic(slice, nrows, ncols, row_stride)
 }
 
-impl<'a, E: Entity> core::fmt::Debug for MatRef<'a, E> {
+impl<'a, T: Entity, R: Shape, C: Shape> core::fmt::Debug for MatRef<'a, T, R, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        struct DebugRow<'a, T: Entity>(MatRef<'a, T>);
+        make_guard!(M);
+        make_guard!(N);
+        let M = self.nrows().bind(M);
+        let N = self.ncols().bind(N);
+        let this = self.with_dims(M, N);
 
-        impl<'a, T: Entity> core::fmt::Debug for DebugRow<'a, T> {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                let mut j = 0;
-                f.debug_list()
-                    .entries(core::iter::from_fn(|| {
-                        let ret = if j < self.0.ncols() {
-                            Some(T::faer_from_units(T::faer_deref(self.0.get(0, j))))
-                        } else {
-                            None
-                        };
-                        j += 1;
-                        ret
-                    }))
-                    .finish()
+        fn imp<'M, 'N, T: Entity>(
+            this: MatRef<'_, T, Dim<'M>, Dim<'N>>,
+            f: &mut core::fmt::Formatter<'_>,
+        ) -> core::fmt::Result {
+            struct DebugRow<'a, 'N, T: Entity>(RowRef<'a, T, Dim<'N>>);
+
+            impl<'N, T: Entity> core::fmt::Debug for DebugRow<'_, 'N, T> {
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.debug_list()
+                        .entries(
+                            self.0
+                                .ncols()
+                                .indices()
+                                .map(|j| (T::faer_from_units(T::faer_deref(self.0.at(j))))),
+                        )
+                        .finish()
+                }
             }
+
+            writeln!(f, "[")?;
+            for i in this.nrows().indices() {
+                let row = this.row(i);
+                DebugRow(row).fmt(f)?;
+                f.write_str(",\n")?;
+            }
+            write!(f, "]")
         }
 
-        writeln!(f, "[")?;
-        for i in 0..self.nrows() {
-            let row = self.subrows(i, 1);
-            DebugRow(row).fmt(f)?;
-            f.write_str(",\n")?;
-        }
-        write!(f, "]")
+        imp(this, f)
     }
 }
 

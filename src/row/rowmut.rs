@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    Idx, IdxInc,
     assert,
     col::{ColMut, ColRef},
     debug_assert, iter,
@@ -174,13 +175,13 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: C::IdxInc) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> GroupFor<E, *const E::Unit> {
         self.into_const().overflowing_ptr_at(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(self, col: C::IdxInc) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(self, col: IdxInc<C>) -> GroupFor<E, *mut E::Unit> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -201,7 +202,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: C::Idx) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
         self.into_const().ptr_inbounds_at(col)
     }
 
@@ -213,7 +214,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, col: C::Idx) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, col: Idx<C>) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(col < self.ncols());
         self.ptr_at_mut_unchecked(col.unbound())
     }
@@ -244,7 +245,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_unchecked(self, col: C::IdxInc) -> (RowRef<'a, E>, RowRef<'a, E>) {
+    pub unsafe fn split_at_unchecked(self, col: IdxInc<C>) -> (RowRef<'a, E>, RowRef<'a, E>) {
         self.into_const().split_at_unchecked(col)
     }
 
@@ -258,7 +259,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_mut_unchecked(self, col: C::IdxInc) -> (RowMut<'a, E>, RowMut<'a, E>) {
+    pub unsafe fn split_at_mut_unchecked(self, col: IdxInc<C>) -> (RowMut<'a, E>, RowMut<'a, E>) {
         let (left, right) = self.into_const().split_at_unchecked(col);
         unsafe { (left.const_cast(), right.const_cast()) }
     }
@@ -273,7 +274,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at(self, col: C::IdxInc) -> (RowRef<'a, E>, RowRef<'a, E>) {
+    pub fn split_at(self, col: IdxInc<C>) -> (RowRef<'a, E>, RowRef<'a, E>) {
         self.into_const().split_at(col)
     }
 
@@ -287,7 +288,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at_mut(self, col: C::IdxInc) -> (RowMut<'a, E>, RowMut<'a, E>) {
+    pub fn split_at_mut(self, col: IdxInc<C>) -> (RowMut<'a, E>, RowMut<'a, E>) {
         assert!(col <= self.ncols());
         unsafe { self.split_at_mut_unchecked(col) }
     }
@@ -385,7 +386,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, col: C::Idx) -> Ref<'a, E> {
+    pub fn at(self, col: Idx<C>) -> Ref<'a, E> {
         self.into_const().at(col)
     }
 
@@ -400,7 +401,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at_mut(self, col: C::Idx) -> Mut<'a, E> {
+    pub fn at_mut(self, col: Idx<C>) -> Mut<'a, E> {
         assert!(col < self.ncols());
         unsafe {
             E::faer_map(
@@ -422,7 +423,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, col: C::Idx) -> Ref<'a, E> {
+    pub unsafe fn at_unchecked(self, col: Idx<C>) -> Ref<'a, E> {
         self.into_const().at_unchecked(col)
     }
 
@@ -437,7 +438,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_mut_unchecked(self, col: C::Idx) -> Mut<'a, E> {
+    pub unsafe fn at_mut_unchecked(self, col: Idx<C>) -> Mut<'a, E> {
         unsafe {
             E::faer_map(
                 self.ptr_inbounds_at_mut(col),
@@ -454,7 +455,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, col: C::Idx) -> E {
+    pub unsafe fn read_unchecked(&self, col: Idx<C>) -> E {
         self.rb().read_unchecked(col)
     }
 
@@ -465,7 +466,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, col: C::Idx) -> E {
+    pub fn read(&self, col: Idx<C>) -> E {
         self.rb().read(col)
     }
 
@@ -476,7 +477,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn write_unchecked(&mut self, col: C::Idx, value: E) {
+    pub unsafe fn write_unchecked(&mut self, col: Idx<C>, value: E) {
         let units = value.faer_into_units();
         let zipped = E::faer_zip(units, (*self).rb_mut().ptr_inbounds_at_mut(col));
         E::faer_map(
@@ -493,7 +494,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn write(&mut self, col: C::Idx, value: E) {
+    pub fn write(&mut self, col: Idx<C>, value: E) {
         assert!(col < self.ncols());
         unsafe { self.write_unchecked(col, value) };
     }
@@ -639,7 +640,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     #[inline(always)]
     pub unsafe fn subcols_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> RowRef<'a, E, H> {
         self.into_const().subcols_unchecked(col_start, ncols)
@@ -654,7 +655,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subcols<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> RowRef<'a, E, H> {
+    pub fn subcols<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> RowRef<'a, E, H> {
         self.into_const().subcols(col_start, ncols)
     }
 
@@ -669,7 +670,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     #[inline(always)]
     pub unsafe fn subcols_mut_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> RowMut<'a, E, H> {
         self.into_const()
@@ -686,7 +687,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subcols_mut<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> RowMut<'a, E, H> {
+    pub fn subcols_mut<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> RowMut<'a, E, H> {
         unsafe { self.into_const().subcols(col_start, ncols).const_cast() }
     }
 
@@ -1067,7 +1068,7 @@ impl<E: Entity> As2DMut<E> for RowMut<'_, E> {
     }
 }
 
-impl<'a, E: Entity> core::fmt::Debug for RowMut<'a, E> {
+impl<'a, E: Entity, C: Shape> core::fmt::Debug for RowMut<'a, E, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().fmt(f)
     }

@@ -2167,7 +2167,7 @@ impl<I: Index> SymbolicQr<I> {
     /// Returns the fill-reducing column permutation that was computed during symbolic analysis.
     #[inline]
     pub fn col_perm(&self) -> PermRef<'_, I> {
-        unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv) }
+        unsafe { PermRef::new_unchecked(&self.col_perm_fwd, &self.col_perm_inv, self.ncols()) }
     }
 
     /// Returns the length of the slice needed to store the symbolic indices of the QR
@@ -2402,7 +2402,8 @@ pub fn factorize_symbolic_qr<I: Index>(
             stack.rb_mut(),
         )?;
 
-        let col_perm = ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv), N);
+        let col_perm =
+            ghost::PermRef::new(PermRef::new_checked(&col_perm_fwd, &col_perm_inv, n), N);
 
         let (new_col_ptr, stack) = stack.make_raw::<I>(m + 1);
         let (new_row_ind, mut stack) = stack.make_raw::<I>(A_nnz);

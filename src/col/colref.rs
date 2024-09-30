@@ -4,7 +4,7 @@ use crate::{
     diag::DiagRef,
     iter::{self, chunks::ChunkPolicy},
     row::RowRef,
-    Unbind,
+    Idx, IdxInc, Unbind,
 };
 
 /// Immutable view over a column vector, similar to an immutable reference to a strided
@@ -146,7 +146,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: R::IdxInc) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: IdxInc<R>) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = row != self.nrows();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -167,7 +167,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: R::Idx) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>) -> GroupFor<E, *const E::Unit> {
         debug_assert!(row < self.nrows());
         self.ptr_at_unchecked(row.unbound())
     }
@@ -214,7 +214,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     #[track_caller]
     pub unsafe fn split_at_unchecked(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (ColRef<'a, E, usize>, ColRef<'a, E, usize>) {
         debug_assert!(row <= self.nrows());
 
@@ -243,7 +243,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at(self, row: R::IdxInc) -> (ColRef<'a, E, usize>, ColRef<'a, E, usize>) {
+    pub fn split_at(self, row: IdxInc<R>) -> (ColRef<'a, E, usize>, ColRef<'a, E, usize>) {
         assert!(row <= self.nrows());
         unsafe { self.split_at_unchecked(row) }
     }
@@ -300,7 +300,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row` must be in `[0, self.nrows())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, row: R::Idx) -> Ref<'a, E> {
+    pub unsafe fn at_unchecked(self, row: Idx<R>) -> Ref<'a, E> {
         E::faer_map(
             self.ptr_inbounds_at(row),
             #[inline(always)]
@@ -319,7 +319,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row` must be in `[0, self.nrows())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, row: R::Idx) -> Ref<'a, E> {
+    pub fn at(self, row: Idx<R>) -> Ref<'a, E> {
         assert!(row < self.nrows());
         unsafe { self.at_unchecked(row) }
     }
@@ -331,7 +331,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: R::Idx) -> E {
+    pub unsafe fn read_unchecked(&self, row: Idx<R>) -> E {
         E::faer_from_units(E::faer_map(
             self.at_unchecked(row),
             #[inline(always)]
@@ -346,7 +346,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: R::Idx) -> E {
+    pub fn read(&self, row: Idx<R>) -> E {
         E::faer_from_units(E::faer_map(
             self.at(row),
             #[inline(always)]
@@ -440,7 +440,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     #[inline(always)]
     pub unsafe fn subrows_unchecked<V: Shape>(
         self,
-        row_start: R::IdxInc,
+        row_start: IdxInc<R>,
         nrows: V,
     ) -> ColRef<'a, E, V> {
         debug_assert!(all(row_start <= self.nrows()));
@@ -462,7 +462,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `nrows <= self.nrows() - row_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subrows<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> ColRef<'a, E, V> {
+    pub fn subrows<V: Shape>(self, row_start: IdxInc<R>, nrows: V) -> ColRef<'a, E, V> {
         assert!(all(row_start <= self.nrows()));
         {
             let nrows = nrows.unbound();
@@ -476,10 +476,8 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
-        DiagRef {
-            inner: self.as_dyn(),
-        }
+    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E, R> {
+        DiagRef { inner: self }
     }
 
     /// Returns an owning [`Col`] of the data.
@@ -760,9 +758,11 @@ impl<E: Entity, R: Shape> AsColRef<E> for ColRef<'_, E, R> {
     }
 }
 
-impl<'a, E: Entity> core::fmt::Debug for ColRef<'a, E> {
+impl<'a, E: Entity, R: Shape> core::fmt::Debug for ColRef<'a, E, R> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_2d().fmt(f)
+        f.debug_list()
+            .entries(self.iter().map(|x| E::faer_from_units(E::faer_deref(x))))
+            .finish()
     }
 }
 

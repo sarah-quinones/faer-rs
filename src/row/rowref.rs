@@ -4,7 +4,7 @@ use crate::{
     col::ColRef,
     debug_assert,
     iter::{self, chunks::ChunkPolicy},
-    Shape, Unbind,
+    Idx, IdxInc, Shape, Unbind,
 };
 
 /// Immutable view over a row vector, similar to an immutable reference to a strided [prim@slice].
@@ -145,7 +145,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: C::IdxInc) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -166,7 +166,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: C::Idx) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
         debug_assert!(col < self.ncols());
         self.ptr_at_unchecked(col.unbound())
     }
@@ -200,7 +200,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     #[track_caller]
     pub unsafe fn split_at_unchecked(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (RowRef<'a, E, usize>, RowRef<'a, E, usize>) {
         debug_assert!(col <= self.ncols());
         let col_stride = self.col_stride();
@@ -228,7 +228,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at(self, col: C::IdxInc) -> (RowRef<'a, E, usize>, RowRef<'a, E, usize>) {
+    pub fn split_at(self, col: IdxInc<C>) -> (RowRef<'a, E, usize>, RowRef<'a, E, usize>) {
         assert!(col <= self.ncols());
         unsafe { self.split_at_unchecked(col) }
     }
@@ -286,7 +286,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col` must be contained in `[0, self.nc, Cols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, col: C::Idx) -> Ref<'a, E> {
+    pub unsafe fn at_unchecked(self, col: Idx<C>) -> Ref<'a, E> {
         self.transpose().at_unchecked(col)
     }
 
@@ -302,7 +302,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col` must be contained in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, col: C::Idx) -> Ref<'a, E> {
+    pub fn at(self, col: Idx<C>) -> Ref<'a, E> {
         self.transpose().at(col)
     }
 
@@ -313,7 +313,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, col: C::Idx) -> E {
+    pub unsafe fn read_unchecked(&self, col: Idx<C>) -> E {
         E::faer_from_units(E::faer_map(
             self.at_unchecked(col),
             #[inline(always)]
@@ -328,7 +328,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, col: C::Idx) -> E {
+    pub fn read(&self, col: Idx<C>) -> E {
         E::faer_from_units(E::faer_map(
             self.at(col),
             #[inline(always)]
@@ -422,7 +422,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     #[inline(always)]
     pub unsafe fn subcols_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> RowRef<'a, E, H> {
         debug_assert!(col_start <= self.ncols());
@@ -444,7 +444,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `ncols <= self.ncols() - col_start`.
     #[track_caller]
     #[inline(always)]
-    pub fn subcols<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> RowRef<'a, E, H> {
+    pub fn subcols<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> RowRef<'a, E, H> {
         assert!(col_start <= self.ncols());
         {
             let ncols = ncols.unbound();
@@ -725,9 +725,9 @@ impl<E: Entity, C: Shape> AsRowRef<E> for RowRef<'_, E, C> {
     }
 }
 
-impl<'a, E: Entity> core::fmt::Debug for RowRef<'a, E> {
+impl<'a, E: Entity, C: Shape> core::fmt::Debug for RowRef<'a, E, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        self.as_2d().fmt(f)
+        self.transpose().fmt(f)
     }
 }
 

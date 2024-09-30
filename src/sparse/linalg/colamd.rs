@@ -658,7 +658,7 @@ pub fn order<I: Index>(
     let mut post = alloc::vec![I(0); n];
     let etree = super::qr::col_etree::<I>(
         A,
-        Some(PermRef::<'_, I>::new_checked(perm, perm_inv)),
+        Some(PermRef::<'_, I>::new_checked(perm, perm_inv, n)),
         &mut etree,
         stack.rb_mut(),
     );

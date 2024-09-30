@@ -428,7 +428,7 @@ pub fn lu_in_place<'out, I: Index, E: ComplexField>(
         PartialPivLuInfo {
             transposition_count: n_transpositions,
         },
-        unsafe { PermRef::new_unchecked(perm, perm_inv) },
+        unsafe { PermRef::new_unchecked(perm, perm_inv, m) },
     )
 }
 

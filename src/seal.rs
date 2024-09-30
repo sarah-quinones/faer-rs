@@ -21,5 +21,5 @@ impl Seal for u128 {}
 impl Seal for usize {}
 
 impl Seal for crate::utils::bound::Dim<'_> {}
-impl Seal for crate::utils::bound::Idx<'_> {}
-impl Seal for crate::utils::bound::IdxInc<'_> {}
+impl<I: crate::Index> Seal for crate::utils::bound::Idx<'_, I> {}
+impl<I: crate::Index> Seal for crate::utils::bound::IdxInc<'_, I> {}

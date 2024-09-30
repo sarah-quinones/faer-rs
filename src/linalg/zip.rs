@@ -745,7 +745,7 @@ unsafe impl<
 }
 
 unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColRef<'_, E, R> {
-    type Index = R::Idx;
+    type Index = Idx<R>;
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -764,7 +764,7 @@ unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColRef<'a, E, R> {
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        R::Idx::new_unbound(idx)
+        Idx::<R>::new_unbound(idx)
     }
 
     #[inline(always)]
@@ -816,7 +816,7 @@ unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColRef<'a, E, R> {
 }
 
 unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColMut<'_, E, R> {
-    type Index = R::Idx;
+    type Index = Idx<R>;
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -835,7 +835,7 @@ unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColMut<'a, E, R> {
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        R::Idx::new_unbound(idx)
+        Idx::<R>::new_unbound(idx)
     }
 
     #[inline(always)]
@@ -887,7 +887,7 @@ unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColMut<'a, E, R> {
 }
 
 unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowRef<'_, E, C> {
-    type Index = C::Idx;
+    type Index = Idx<C>;
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -906,7 +906,7 @@ unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowRef<'a, E, C> {
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        C::Idx::new_unbound(idx)
+        Idx::<C>::new_unbound(idx)
     }
 
     #[inline(always)]
@@ -959,7 +959,7 @@ unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowRef<'a, E, C> {
 }
 
 unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowMut<'_, E, C> {
-    type Index = C::Idx;
+    type Index = Idx<C>;
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
@@ -978,7 +978,7 @@ unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowMut<'a, E, C> {
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        C::Idx::new_unbound(idx)
+        Idx::<C>::new_unbound(idx)
     }
 
     #[inline(always)]
@@ -1030,7 +1030,7 @@ unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowMut<'a, E, C> {
 }
 
 unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatRef<'_, E, R, C> {
-    type Index = (R::Idx, C::Idx);
+    type Index = (Idx<R>, Idx<C>);
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = MatLayoutTransform;
 
@@ -1049,7 +1049,7 @@ unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatRef<'a, E, R, C> 
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        (R::Idx::new_unbound(idx.0), C::Idx::new_unbound(idx.1))
+        (Idx::<R>::new_unbound(idx.0), Idx::<C>::new_unbound(idx.1))
     }
 
     #[inline(always)]
@@ -1110,7 +1110,7 @@ unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatRef<'a, E, R, C> 
 }
 
 unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatMut<'_, E, R, C> {
-    type Index = (R::Idx, C::Idx);
+    type Index = (Idx<R>, Idx<C>);
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = MatLayoutTransform;
 
@@ -1130,7 +1130,7 @@ unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatMut<'a, E, R, C> 
 
     #[inline(always)]
     unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
-        (R::Idx::new_unbound(idx.0), C::Idx::new_unbound(idx.1))
+        (Idx::<R>::new_unbound(idx.0), Idx::<C>::new_unbound(idx.1))
     }
 
     #[inline(always)]
@@ -2051,7 +2051,7 @@ impl<
             LayoutTransform = MatLayoutTransform,
             Rows = R,
             Cols = C,
-            Index = (R::Idx, C::Idx),
+            Index = (Idx<R>, Idx<C>),
             Dyn: MatIndex<
                 LayoutTransform = MatLayoutTransform,
                 Item = M::Item,
@@ -2073,7 +2073,7 @@ impl<
     /// Applies `f` to each element of `self`, while passing the indices of the position of the
     /// current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item)) {
         for_each_mat_with_index(self, f);
     }
 
@@ -2085,7 +2085,7 @@ impl<
     pub fn for_each_triangular_lower_with_index(
         self,
         diag: Diag,
-        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
+        f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_lower_with_index(self, diag, f);
     }
@@ -2098,7 +2098,7 @@ impl<
     pub fn for_each_triangular_upper_with_index(
         self,
         diag: Diag,
-        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
+        f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_upper_with_index(self, diag, f);
     }
@@ -2141,7 +2141,7 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item) -> E,
+        f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item) -> E,
     ) -> Mat<E> {
         let (m, n) = (self.nrows(), self.ncols());
         let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
@@ -2165,7 +2165,7 @@ impl<
             LayoutTransform = VecLayoutTransform,
             Rows = (),
             Cols = C,
-            Index = C::Idx,
+            Index = Idx<C>,
             Dyn: MatIndex<
                 LayoutTransform = VecLayoutTransform,
                 Item = M::Item,
@@ -2186,7 +2186,7 @@ impl<
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(C::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<C>, <Self as MatIndex>::Item)) {
         for_each_row_with_index(self, f);
     }
 
@@ -2209,7 +2209,7 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl FnMut(C::Idx, <Self as MatIndex>::Item) -> E,
+        f: impl FnMut(Idx<C>, <Self as MatIndex>::Item) -> E,
     ) -> Row<E> {
         let (_, n) = (self.nrows(), self.ncols());
         let mut out = Row::<E>::with_capacity(n.unbound());
@@ -2230,7 +2230,7 @@ impl<
             LayoutTransform = VecLayoutTransform,
             Rows = R,
             Cols = (),
-            Index = R::Idx,
+            Index = Idx<R>,
             Dyn: MatIndex<
                 LayoutTransform = VecLayoutTransform,
                 Item = M::Item,
@@ -2251,7 +2251,7 @@ impl<
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<R>, <Self as MatIndex>::Item)) {
         for_each_col_with_index(self, f);
     }
 
@@ -2274,7 +2274,7 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl FnMut(R::Idx, <Self as MatIndex>::Item) -> E,
+        f: impl FnMut(Idx<R>, <Self as MatIndex>::Item) -> E,
     ) -> Col<E> {
         let (m, _) = (self.nrows(), self.ncols());
         let mut out = Col::<E>::with_capacity(m.unbound());
@@ -2294,7 +2294,7 @@ impl<
         Head: MatIndex<
             Rows = (),
             Cols = C,
-            Index = C::Idx,
+            Index = Idx<C>,
             LayoutTransform = VecLayoutTransform,
             Dyn: MatIndex<
                 Item = Head::Item,
@@ -2309,7 +2309,7 @@ impl<
         Tail: MatIndex<
             Rows = (),
             Cols = C,
-            Index = C::Idx,
+            Index = Idx<C>,
             LayoutTransform = VecLayoutTransform,
             Dyn: MatIndex<
                 Item = Tail::Item,
@@ -2331,7 +2331,7 @@ impl<
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(C::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<C>, <Self as MatIndex>::Item)) {
         for_each_row_with_index(self, f);
     }
 
@@ -2356,7 +2356,7 @@ impl<
         Head: MatIndex<
             Rows = R,
             Cols = (),
-            Index = R::Idx,
+            Index = Idx<R>,
             LayoutTransform = VecLayoutTransform,
             Dyn: MatIndex<
                 Item = Head::Item,
@@ -2371,7 +2371,7 @@ impl<
         Tail: MatIndex<
             Rows = R,
             Cols = (),
-            Index = R::Idx,
+            Index = Idx<R>,
             LayoutTransform = VecLayoutTransform,
             Dyn: MatIndex<
                 Item = Tail::Item,
@@ -2393,7 +2393,7 @@ impl<
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<R>, <Self as MatIndex>::Item)) {
         for_each_col_with_index(self, f);
     }
 
@@ -2420,7 +2420,7 @@ impl<
             LayoutTransform = MatLayoutTransform,
             Rows = R,
             Cols = C,
-            Index = (R::Idx, C::Idx),
+            Index = (Idx<R>, Idx<C>),
             Dyn: MatIndex<
                 LayoutTransform = MatLayoutTransform,
                 Item = Head::Item,
@@ -2435,7 +2435,7 @@ impl<
             LayoutTransform = MatLayoutTransform,
             Rows = R,
             Cols = C,
-            Index = (R::Idx, C::Idx),
+            Index = (Idx<R>, Idx<C>),
             Dyn: MatIndex<
                 LayoutTransform = MatLayoutTransform,
                 Item = Tail::Item,
@@ -2457,7 +2457,7 @@ impl<
     /// Applies `f` to each element of `self`, while passing the indices of the position of the
     /// current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item)) {
         for_each_mat_with_index(self, f);
     }
 
@@ -2469,7 +2469,7 @@ impl<
     pub fn for_each_triangular_lower_with_index(
         self,
         diag: Diag,
-        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
+        f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_lower_with_index(self, diag, f);
     }
@@ -2482,7 +2482,7 @@ impl<
     pub fn for_each_triangular_upper_with_index(
         self,
         diag: Diag,
-        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
+        f: impl FnMut(Idx<R>, Idx<C>, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_upper_with_index(self, diag, f);
     }

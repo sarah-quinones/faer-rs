@@ -198,6 +198,11 @@ pub mod compute {
             perm_inv[p.zx()] = I::truncate(i);
         }
 
-        unsafe { Ok((PivLltInfo { rank }, PermRef::new_unchecked(perm, perm_inv))) }
+        unsafe {
+            Ok((
+                PivLltInfo { rank },
+                PermRef::new_unchecked(perm, perm_inv, n),
+            ))
+        }
     }
 }

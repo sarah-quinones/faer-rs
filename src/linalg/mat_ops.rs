@@ -3435,7 +3435,7 @@ mod test {
 
         assert!(
             &pl * pl.as_ref().inverse()
-                == PermRef::<'_, usize>::new_checked(&[0, 1, 2, 3, 4, 5], &[0, 1, 2, 3, 4, 5],)
+                == PermRef::<'_, usize>::new_checked(&[0, 1, 2, 3, 4, 5], &[0, 1, 2, 3, 4, 5], 6)
         );
         assert!(&perm_left * &A == &pl * &A);
         assert!(&A * &perm_right == &A * &pr);

@@ -5,7 +5,7 @@ use crate::{
     iter,
     iter::chunks::ChunkPolicy,
     linalg::zip,
-    unzipped, zipped, Unbind,
+    unzipped, zipped, Idx, IdxInc, Unbind,
 };
 
 /// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
@@ -330,8 +330,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[doc(hidden)]
     pub unsafe fn overflowing_ptr_at(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> GroupFor<E, *const E::Unit> {
         self.into_const().overflowing_ptr_at(row, col)
     }
@@ -340,8 +340,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[doc(hidden)]
     pub unsafe fn overflowing_ptr_at_mut(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> GroupFor<E, *mut E::Unit> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
@@ -363,7 +363,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: R::Idx, col: C::Idx) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
         self.into_const().ptr_inbounds_at(row, col)
     }
 
@@ -376,7 +376,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, row: R::Idx, col: C::Idx) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
         self.ptr_at_mut_unchecked(row.unbound(), col.unbound())
     }
@@ -384,14 +384,14 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: C::Idx) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn try_get_contiguous_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
         self.into_const().try_get_contiguous_col(j)
     }
 
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col_mut(self, j: C::Idx) -> GroupFor<E, &'a mut [E::Unit]> {
+    pub fn try_get_contiguous_col_mut(self, j: Idx<C>) -> GroupFor<E, &'a mut [E::Unit]> {
         assert!(self.row_stride() == 1);
         let col = self.col_mut(j);
         let m = col.nrows().unbound();
@@ -419,8 +419,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_unchecked(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatRef<'a, E, usize, usize>,
         MatRef<'a, E, usize, usize>,
@@ -445,8 +445,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatRef<'a, E, usize, usize>,
         MatRef<'a, E, usize, usize>,
@@ -471,8 +471,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_mut_unchecked(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatMut<'a, E, usize, usize>,
         MatMut<'a, E, usize, usize>,
@@ -504,8 +504,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_mut(
         self,
-        row: R::IdxInc,
-        col: C::IdxInc,
+        row: IdxInc<R>,
+        col: IdxInc<C>,
     ) -> (
         MatMut<'a, E, usize, usize>,
         MatMut<'a, E, usize, usize>,
@@ -535,7 +535,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_row_unchecked(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         self.into_const().split_at_row_unchecked(row)
     }
@@ -552,7 +552,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_row(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         self.into_const().split_at_row(row)
     }
@@ -569,7 +569,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_row_mut_unchecked(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatMut<'a, E, usize, C>, MatMut<'a, E, usize, C>) {
         let (top, bot) = self.into_const().split_at_row_unchecked(row);
         (top.const_cast(), bot.const_cast())
@@ -587,7 +587,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_row_mut(
         self,
-        row: R::IdxInc,
+        row: IdxInc<R>,
     ) -> (MatMut<'a, E, usize, C>, MatMut<'a, E, usize, C>) {
         let (top, bot) = self.into_const().split_at_row(row);
         unsafe { (top.const_cast(), bot.const_cast()) }
@@ -605,7 +605,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_col_unchecked(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         self.into_const().split_at_col_unchecked(col)
     }
@@ -622,7 +622,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_col(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         self.into_const().split_at_col(col)
     }
@@ -639,7 +639,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub unsafe fn split_at_col_mut_unchecked(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatMut<'a, E, R, usize>, MatMut<'a, E, R, usize>) {
         let (left, right) = self.into_const().split_at_col_unchecked(col);
         (left.const_cast(), right.const_cast())
@@ -657,7 +657,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     pub fn split_at_col_mut(
         self,
-        col: C::IdxInc,
+        col: IdxInc<C>,
     ) -> (MatMut<'a, E, R, usize>, MatMut<'a, E, R, usize>) {
         let (left, right) = self.into_const().split_at_col(col);
         unsafe { (left.const_cast(), right.const_cast()) }
@@ -771,7 +771,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_unchecked(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+    pub unsafe fn at_unchecked(self, row: Idx<R>, col: Idx<C>) -> Ref<'a, E> {
         unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
     }
 
@@ -787,7 +787,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+    pub fn at(self, row: Idx<R>, col: Idx<C>) -> Ref<'a, E> {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
     }
@@ -804,7 +804,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn at_mut_unchecked(self, row: R::Idx, col: C::Idx) -> Mut<'a, E> {
+    pub unsafe fn at_mut_unchecked(self, row: Idx<R>, col: Idx<C>) -> Mut<'a, E> {
         unsafe { map!(E, self.ptr_inbounds_at_mut(row, col), |(ptr)| &mut *ptr) }
     }
 
@@ -820,7 +820,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col` must be in `[0, self.ncols())`.
     #[inline(always)]
     #[track_caller]
-    pub fn at_mut(self, row: R::Idx, col: C::Idx) -> Mut<'a, E> {
+    pub fn at_mut(self, row: Idx<R>, col: Idx<C>) -> Mut<'a, E> {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { map!(E, self.ptr_inbounds_at_mut(row, col), |(ptr)| &mut *ptr) }
     }
@@ -833,7 +833,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: R::Idx, col: C::Idx) -> E {
+    pub unsafe fn read_unchecked(&self, row: Idx<R>, col: Idx<C>) -> E {
         self.rb().read_unchecked(row, col)
     }
 
@@ -845,7 +845,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn read(&self, row: R::Idx, col: C::Idx) -> E {
+    pub fn read(&self, row: Idx<R>, col: Idx<C>) -> E {
         self.rb().read(row, col)
     }
 
@@ -857,7 +857,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn write_unchecked(&mut self, row: R::Idx, col: C::Idx, value: E) {
+    pub unsafe fn write_unchecked(&mut self, row: Idx<R>, col: Idx<C>, value: E) {
         let units = value.faer_into_units();
         let zipped = E::faer_zip(units, (*self).rb_mut().ptr_inbounds_at_mut(row, col));
         map!(E, zipped, |((unit, ptr))| *ptr = unit,);
@@ -871,7 +871,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn write(&mut self, row: R::Idx, col: C::Idx, value: E) {
+    pub fn write(&mut self, row: Idx<R>, col: Idx<C>, value: E) {
         assert!(all(row < self.nrows(), col < self.ncols()));
         unsafe { self.write_unchecked(row, col, value) };
     }
@@ -1143,8 +1143,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn submatrix_unchecked<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatRef<'a, E, V, H> {
@@ -1165,8 +1165,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn submatrix_mut_unchecked<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatMut<'a, E, V, H> {
@@ -1206,8 +1206,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub fn submatrix<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatRef<'a, E, V, H> {
@@ -1246,8 +1246,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub fn submatrix_mut<V: Shape, H: Shape>(
         self,
-        row_start: R::IdxInc,
-        col_start: C::IdxInc,
+        row_start: IdxInc<R>,
+        col_start: IdxInc<C>,
         nrows: V,
         ncols: H,
     ) -> MatMut<'a, E, V, H> {
@@ -1269,7 +1269,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subrows_unchecked<V: Shape>(
         self,
-        row_start: R::IdxInc,
+        row_start: IdxInc<R>,
         nrows: V,
     ) -> MatRef<'a, E, V, C> {
         self.into_const().subrows_unchecked(row_start, nrows)
@@ -1286,7 +1286,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subrows_mut_unchecked<V: Shape>(
         self,
-        row_start: R::IdxInc,
+        row_start: IdxInc<R>,
         nrows: V,
     ) -> MatMut<'a, E, V, C> {
         self.into_const()
@@ -1321,7 +1321,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subrows<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> MatRef<'a, E, V, C> {
+    pub fn subrows<V: Shape>(self, row_start: IdxInc<R>, nrows: V) -> MatRef<'a, E, V, C> {
         self.into_const().subrows(row_start, nrows)
     }
 
@@ -1352,7 +1352,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subrows_mut<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> MatMut<'a, E, V, C> {
+    pub fn subrows_mut<V: Shape>(self, row_start: IdxInc<R>, nrows: V) -> MatMut<'a, E, V, C> {
         unsafe { self.into_const().subrows(row_start, nrows).const_cast() }
     }
 
@@ -1367,7 +1367,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subcols_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> MatRef<'a, E, R, H> {
         self.into_const().subcols_unchecked(col_start, ncols)
@@ -1384,7 +1384,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub unsafe fn subcols_mut_unchecked<H: Shape>(
         self,
-        col_start: C::IdxInc,
+        col_start: IdxInc<C>,
         ncols: H,
     ) -> MatMut<'a, E, R, H> {
         self.into_const()
@@ -1419,7 +1419,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subcols<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> MatRef<'a, E, R, H> {
+    pub fn subcols<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> MatRef<'a, E, R, H> {
         self.into_const().subcols(col_start, ncols)
     }
 
@@ -1450,7 +1450,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// ```
     #[track_caller]
     #[inline(always)]
-    pub fn subcols_mut<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> MatMut<'a, E, R, H> {
+    pub fn subcols_mut<H: Shape>(self, col_start: IdxInc<C>, ncols: H) -> MatMut<'a, E, R, H> {
         unsafe { self.into_const().subcols(col_start, ncols).const_cast() }
     }
 
@@ -1461,7 +1461,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn row_unchecked(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+    pub unsafe fn row_unchecked(self, row_idx: Idx<R>) -> RowRef<'a, E, C> {
         self.into_const().row_unchecked(row_idx)
     }
 
@@ -1472,7 +1472,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn row_mut_unchecked(self, row_idx: R::Idx) -> RowMut<'a, E, C> {
+    pub unsafe fn row_mut_unchecked(self, row_idx: Idx<R>) -> RowMut<'a, E, C> {
         self.into_const().row_unchecked(row_idx).const_cast()
     }
 
@@ -1483,7 +1483,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub fn row(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+    pub fn row(self, row_idx: Idx<R>) -> RowRef<'a, E, C> {
         self.into_const().row(row_idx)
     }
 
@@ -1494,7 +1494,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `row_idx < self.nrows()`.
     #[track_caller]
     #[inline(always)]
-    pub fn row_mut(self, row_idx: R::Idx) -> RowMut<'a, E, C> {
+    pub fn row_mut(self, row_idx: Idx<R>) -> RowMut<'a, E, C> {
         unsafe { self.into_const().row(row_idx).const_cast() }
     }
 
@@ -1509,8 +1509,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub fn two_rows_mut(
         self,
-        row_idx0: R::Idx,
-        row_idx1: R::Idx,
+        row_idx0: Idx<R>,
+        row_idx1: Idx<R>,
     ) -> (RowMut<'a, E, C>, RowMut<'a, E, C>) {
         assert!(row_idx0 != row_idx1);
         let this = self.into_const();
@@ -1529,7 +1529,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn col_unchecked(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+    pub unsafe fn col_unchecked(self, col_idx: Idx<C>) -> ColRef<'a, E, R> {
         self.into_const().col_unchecked(col_idx)
     }
 
@@ -1540,7 +1540,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub unsafe fn col_mut_unchecked(self, col_idx: C::Idx) -> ColMut<'a, E, R> {
+    pub unsafe fn col_mut_unchecked(self, col_idx: Idx<C>) -> ColMut<'a, E, R> {
         self.into_const().col_unchecked(col_idx).const_cast()
     }
 
@@ -1551,7 +1551,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub fn col(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+    pub fn col(self, col_idx: Idx<C>) -> ColRef<'a, E, R> {
         self.into_const().col(col_idx)
     }
 
@@ -1562,7 +1562,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col_idx < self.ncols()`.
     #[track_caller]
     #[inline(always)]
-    pub fn col_mut(self, col_idx: C::Idx) -> ColMut<'a, E, R> {
+    pub fn col_mut(self, col_idx: Idx<C>) -> ColMut<'a, E, R> {
         unsafe { self.into_const().col(col_idx).const_cast() }
     }
 
@@ -1577,8 +1577,8 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline(always)]
     pub fn two_cols_mut(
         self,
-        col_idx0: C::Idx,
-        col_idx1: C::Idx,
+        col_idx0: Idx<C>,
+        col_idx1: Idx<C>,
     ) -> (ColMut<'a, E, R>, ColMut<'a, E, R>) {
         assert!(col_idx0 != col_idx1);
         let this = self.into_const();
@@ -2038,14 +2038,12 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
             .par_row_partition(count)
             .map(|x| unsafe { x.const_cast() })
     }
-}
 
-impl<'a, E: Entity> MatMut<'a, E> {
     /// Given a matrix with a single column, returns an object that interprets
     /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
+    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E, R> {
         self.into_const().column_vector_as_diagonal()
     }
 
@@ -2053,22 +2051,24 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// the column as a diagonal matrix, whose diagonal elements are values in the column.
     #[track_caller]
     #[inline(always)]
-    pub fn column_vector_as_diagonal_mut(self) -> DiagMut<'a, E> {
-        assert!(self.ncols() == 1);
+    pub fn column_vector_as_diagonal_mut(self) -> DiagMut<'a, E, R> {
+        assert!(self.ncols().unbound() == 1);
         DiagMut {
-            inner: self.col_mut(0),
+            inner: self.col_mut(unsafe { Idx::<C>::new_unbound(0) }),
         }
     }
+}
 
+impl<'a, E: Entity, N: Shape> MatMut<'a, E, N, N> {
     /// Returns the diagonal of the matrix.
     #[inline(always)]
-    pub fn diagonal(self) -> DiagRef<'a, E> {
+    pub fn diagonal(self) -> DiagRef<'a, E, N> {
         self.into_const().diagonal()
     }
 
     /// Returns the diagonal of the matrix.
     #[inline(always)]
-    pub fn diagonal_mut(self) -> DiagMut<'a, E> {
+    pub fn diagonal_mut(self) -> DiagMut<'a, E, N> {
         let size = self.nrows().min(self.ncols());
         let row_stride = self.row_stride();
         let col_stride = self.col_stride();
@@ -2084,16 +2084,16 @@ impl<'a, E: Entity> MatMut<'a, E> {
     }
 }
 
-impl<'a, E: RealField> MatMut<'a, num_complex::Complex<E>> {
+impl<'a, E: RealField, R: Shape, C: Shape> MatMut<'a, num_complex::Complex<E>, R, C> {
     /// Returns the real and imaginary components of `self`.
     #[inline(always)]
-    pub fn real_imag(self) -> num_complex::Complex<MatRef<'a, E>> {
+    pub fn real_imag(self) -> num_complex::Complex<MatRef<'a, E, R, C>> {
         self.into_const().real_imag()
     }
 
     /// Returns the real and imaginary components of `self`.
     #[inline(always)]
-    pub fn real_imag_mut(self) -> num_complex::Complex<MatMut<'a, E>> {
+    pub fn real_imag_mut(self) -> num_complex::Complex<MatMut<'a, E, R, C>> {
         let num_complex::Complex { re, im } = self.into_const().real_imag();
         unsafe {
             num_complex::Complex {
@@ -2169,7 +2169,7 @@ impl<E: Entity, R: Shape, C: Shape> As2DMut<E> for MatMut<'_, E, R, C> {
 /// // which is 1.
 /// let mut data = [[1.0, 2.0, 3.0, f64::NAN], [4.0, 5.0, 6.0, f64::NAN]];
 /// let mut matrix =
-///     unsafe { mat::from_raw_parts_mut::<f64>(data.as_mut_ptr() as *mut f64, 2, 3, 4, 1) };
+///     unsafe { mat::from_raw_parts_mut::<f64, _, _>(data.as_mut_ptr() as *mut f64, 2, 3, 4, 1) };
 ///
 /// let expected = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
 /// assert_eq!(expected.as_ref(), matrix);
@@ -2199,7 +2199,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_column_major_slice_mut::<f64>(&mut slice, 3, 2);
+/// let view = mat::from_column_major_slice_mut(&mut slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -2240,7 +2240,7 @@ pub fn from_column_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_row_major_slice_mut::<f64>(&mut slice, 3, 2);
+/// let view = mat::from_row_major_slice_mut(&mut slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -2309,7 +2309,7 @@ pub fn from_row_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: Shap
 /// use faer::mat;
 ///
 /// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_column_major_slice_mut::<f64>(&mut slice, 3, 2);
+/// let view = mat::from_column_major_slice_mut(&mut slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -2337,7 +2337,7 @@ pub fn from_column_major_slice_mut<E: SimpleEntity, R: Shape, C: Shape>(
 /// use faer::mat;
 ///
 /// let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
-/// let view = mat::from_row_major_slice_mut::<f64>(&mut slice, 3, 2);
+/// let view = mat::from_row_major_slice_mut(&mut slice, 3, 2);
 ///
 /// let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
 /// assert_eq!(expected, view);
@@ -2378,7 +2378,7 @@ pub fn from_row_major_slice_with_stride_mut<E: SimpleEntity, R: Shape, C: Shape>
     from_row_major_slice_with_stride_mut_generic(slice, nrows, ncols, row_stride)
 }
 
-impl<'a, E: Entity> core::fmt::Debug for MatMut<'a, E> {
+impl<'a, E: Entity, R: Shape, C: Shape> core::fmt::Debug for MatMut<'a, E, R, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.rb().fmt(f)
     }
