@@ -759,6 +759,72 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
         <Self as MatIndex<RowRange, ColRange>>::get(self, row, col)
     }
 
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_unchecked(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+        unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
+    }
+
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn at(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+        assert!(all(row < self.nrows(), col < self.ncols()));
+        unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
+    }
+
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_mut_unchecked(self, row: R::Idx, col: C::Idx) -> Mut<'a, E> {
+        unsafe { map!(E, self.ptr_inbounds_at_mut(row, col), |(ptr)| &mut *ptr) }
+    }
+
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn at_mut(self, row: R::Idx, col: C::Idx) -> Mut<'a, E> {
+        assert!(all(row < self.nrows(), col < self.ncols()));
+        unsafe { map!(E, self.ptr_inbounds_at_mut(row, col), |(ptr)| &mut *ptr) }
+    }
+
     /// Reads the value of the element at the given indices.
     ///
     /// # Safety
