@@ -2,7 +2,7 @@ use crate::{
     col::{VecImpl, VecOwnImpl},
     mat::*,
     utils::slice::*,
-    Conj,
+    Conj, Shape,
 };
 use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
@@ -25,28 +25,34 @@ pub trait RowIndex<ColRange>: crate::seal::Seal + Sized {
 
 /// Trait for types that can be converted to a row view.
 pub trait AsRowRef<E: Entity> {
+    type C: Shape;
+
     /// Convert to a row view.
-    fn as_row_ref(&self) -> RowRef<'_, E>;
+    fn as_row_ref(&self) -> RowRef<'_, E, Self::C>;
 }
 /// Trait for types that can be converted to a mutable row view.
 pub trait AsRowMut<E: Entity>: AsRowRef<E> {
     /// Convert to a mutable row view.
-    fn as_row_mut(&mut self) -> RowMut<'_, E>;
+    fn as_row_mut(&mut self) -> RowMut<'_, E, Self::C>;
 }
 
 impl<E: Entity, T: AsRowRef<E>> AsRowRef<E> for &T {
-    fn as_row_ref(&self) -> RowRef<'_, E> {
+    type C = T::C;
+
+    fn as_row_ref(&self) -> RowRef<'_, E, Self::C> {
         (**self).as_row_ref()
     }
 }
 impl<E: Entity, T: AsRowRef<E>> AsRowRef<E> for &mut T {
-    fn as_row_ref(&self) -> RowRef<'_, E> {
+    type C = T::C;
+
+    fn as_row_ref(&self) -> RowRef<'_, E, Self::C> {
         (**self).as_row_ref()
     }
 }
 
 impl<E: Entity, T: AsRowMut<E>> AsRowMut<E> for &mut T {
-    fn as_row_mut(&mut self) -> RowMut<'_, E> {
+    fn as_row_mut(&mut self) -> RowMut<'_, E, Self::C> {
         (**self).as_row_mut()
     }
 }

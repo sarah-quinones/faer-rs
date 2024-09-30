@@ -675,7 +675,10 @@ impl<E: Entity> Row<E> {
     /// Copies the values from `other` into `self`.
     #[inline(always)]
     #[track_caller]
-    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(&mut self, other: impl AsRowRef<ViewE>) {
+    pub fn copy_from<ViewE: Conjugate<Canonical = E>>(
+        &mut self,
+        other: impl AsRowRef<ViewE, C = usize>,
+    ) {
         #[track_caller]
         #[inline(always)]
         fn implementation<E: Entity, ViewE: Conjugate<Canonical = E>>(
@@ -1056,6 +1059,8 @@ impl<E: Entity> As2DMut<E> for Row<E> {
 }
 
 impl<E: Entity> AsRowRef<E> for Row<E> {
+    type C = usize;
+
     #[inline]
     fn as_row_ref(&self) -> RowRef<'_, E> {
         (*self).as_ref()

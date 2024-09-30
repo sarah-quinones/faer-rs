@@ -419,6 +419,43 @@ impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
     #[inline(always)]
     #[track_caller]
     pub fn at_mut(self, row: R::Idx) -> Mut<'a, E> {
+        assert!(row < self.nrows());
+        unsafe {
+            E::faer_map(
+                self.ptr_inbounds_at_mut(row),
+                #[inline(always)]
+                |ptr| &mut *ptr,
+            )
+        }
+    }
+
+    /// Returns references to the element at the given index.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_unchecked(self, row: R::Idx) -> Ref<'a, E> {
+        self.into_const().at_unchecked(row)
+    }
+
+    /// Returns references to the element at the given index.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_mut_unchecked(self, row: R::Idx) -> Mut<'a, E> {
         unsafe {
             E::faer_map(
                 self.ptr_inbounds_at_mut(row),
