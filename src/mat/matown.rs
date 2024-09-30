@@ -188,7 +188,7 @@ impl<E: Entity> Mat<E> {
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr(&self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(&self) -> PtrConst<E> {
         map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| {
             ptr.as_ptr() as *const E::Unit
         })
@@ -196,7 +196,7 @@ impl<E: Entity> Mat<E> {
 
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr_mut(&mut self) -> GroupFor<E, *mut E::Unit> {
+    pub fn as_ptr_mut(&mut self) -> PtrMut<E> {
         map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr())
     }
 
@@ -229,45 +229,37 @@ impl<E: Entity> Mat<E> {
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(&self, row: usize, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_at(row, col)
     }
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at_mut(&mut self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub fn ptr_at_mut(&mut self, row: usize, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_at_mut(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(&self, row: usize, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_at_unchecked(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_mut_unchecked(
-        &mut self,
-        row: usize,
-        col: usize,
-    ) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_at_mut_unchecked(&mut self, row: usize, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_at_mut_unchecked(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(&self, row: usize, col: usize) -> PtrConst<E> {
         self.as_ref().overflowing_ptr_at(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(
-        &mut self,
-        row: usize,
-        col: usize,
-    ) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(&mut self, row: usize, col: usize) -> PtrMut<E> {
         self.as_mut().overflowing_ptr_at_mut(row, col)
     }
 
@@ -280,7 +272,7 @@ impl<E: Entity> Mat<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(&self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(&self, row: usize, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_inbounds_at(row, col)
     }
 
@@ -293,11 +285,7 @@ impl<E: Entity> Mat<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(
-        &mut self,
-        row: usize,
-        col: usize,
-    ) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(&mut self, row: usize, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_inbounds_at_mut(row, col)
     }
 
@@ -484,7 +472,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    pub fn col_as_slice(&self, col: usize) -> GroupFor<E, &[E::Unit]> {
+    pub fn col_as_slice(&self, col: usize) -> Slice<'_, E> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_ref().ptr_at(0, col);
@@ -496,7 +484,7 @@ impl<E: Entity> Mat<E> {
     /// Returns a mutable reference to a slice over the column at the given index.
     #[inline]
     #[track_caller]
-    pub fn col_as_slice_mut(&mut self, col: usize) -> GroupFor<E, &mut [E::Unit]> {
+    pub fn col_as_slice_mut(&mut self, col: usize) -> SliceMut<'_, E> {
         assert!(col < self.ncols());
         let nrows = self.nrows();
         let ptr = self.as_mut().ptr_at_mut(0, col);
@@ -2028,14 +2016,14 @@ impl<E: Entity> Mat<E> {
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(&self, j: usize) -> GroupFor<E, &[E::Unit]> {
+    pub fn try_get_contiguous_col(&self, j: usize) -> Slice<'_, E> {
         self.as_ref().try_get_contiguous_col(j)
     }
 
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col_mut(&mut self, j: usize) -> GroupFor<E, &mut [E::Unit]> {
+    pub fn try_get_contiguous_col_mut(&mut self, j: usize) -> SliceMut<'_, E> {
         self.as_mut().try_get_contiguous_col_mut(j)
     }
 }

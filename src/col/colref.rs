@@ -67,11 +67,7 @@ impl<E: Entity, R: Shape> IntoConst for ColRef<'_, E, R> {
 
 impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     #[inline]
-    pub(crate) unsafe fn __from_raw_parts(
-        ptr: GroupFor<E, *const E::Unit>,
-        nrows: R,
-        row_stride: isize,
-    ) -> Self {
+    pub(crate) unsafe fn __from_raw_parts(ptr: PtrConst<E>, nrows: R, row_stride: isize) -> Self {
         Self {
             inner: VecImpl {
                 ptr: into_copy::<E, _>(E::faer_map(
@@ -99,7 +95,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(self) -> PtrConst<E> {
         E::faer_map(
             from_copy::<E, _>(self.inner.ptr),
             #[inline(always)]
@@ -123,7 +119,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(self, row: usize) -> PtrConst<E> {
         let offset = (row as isize).wrapping_mul(self.inner.stride);
 
         E::faer_map(
@@ -135,7 +131,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(self, row: usize) -> PtrConst<E> {
         let offset = crate::utils::unchecked_mul(row, self.inner.stride);
         E::faer_map(
             self.as_ptr(),
@@ -146,7 +142,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: IdxInc<R>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: IdxInc<R>) -> PtrConst<E> {
         unsafe {
             let cond = row != self.nrows();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -167,7 +163,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>) -> PtrConst<E> {
         debug_assert!(row < self.nrows());
         self.ptr_at_unchecked(row.unbound())
     }
@@ -192,7 +188,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn try_get_contiguous_col(self) -> Slice<'a, E> {
         assert!(self.row_stride() == 1);
         let m = self.nrows().unbound();
         E::faer_map(
@@ -403,7 +399,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
                 // SAFETY: see Self::conjugate
                 super::from_raw_parts(
                     transmute_unchecked::<
-                        GroupFor<E, *const E::Unit>,
+                        PtrConst<E>,
                         GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
                     >(self.as_ptr()),
                     self.nrows(),
@@ -577,7 +573,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
+    pub fn try_as_slice(self) -> Option<Slice<'a, E>> {
         if self.row_stride() == 1 {
             let len = self.nrows().unbound();
             Some(E::faer_map(
@@ -599,7 +595,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// Returns a reference to the first element and a view over the remaining ones if the column is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
+    pub fn split_first(self) -> Option<(Ref<'a, E>, ColRef<'a, E>)> {
         let this = self.as_dyn();
         if this.nrows() == 0 {
             None
@@ -614,7 +610,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     /// Returns a reference to the last element and a view over the remaining ones if the column is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, ColRef<'a, E>)> {
+    pub fn split_last(self) -> Option<(Ref<'a, E>, ColRef<'a, E>)> {
         let this = self.as_dyn();
         if this.nrows() == 0 {
             None
@@ -709,7 +705,7 @@ impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
 /// [`mat::from_raw_parts(ptr, nrows, 1, row_stride, 0)`]
 #[inline(always)]
 pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape>(
-    ptr: GroupFor<E, *const E::Unit>,
+    ptr: PtrConst<E>,
     nrows: R,
     row_stride: isize,
 ) -> ColRef<'a, E, R> {
@@ -719,7 +715,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape>(
 /// Creates a `ColRef` from slice views over the column vector data, The result has the same
 /// number of rows as the length of the input slice.
 #[inline(always)]
-pub fn from_slice_generic<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> ColRef<'_, E> {
+pub fn from_slice_generic<E: Entity>(slice: Slice<'_, E>) -> ColRef<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len();
 
     unsafe {
@@ -800,22 +796,22 @@ impl<E: Conjugate> ColBatch<E> for ColRef<'_, E> {
 
 /// Returns a view over a column with `nrows` rows containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref_generic<E: Entity>(
-    value: GroupFor<E, &E::Unit>,
-    nrows: usize,
-) -> ColRef<'_, E> {
+pub fn from_repeated_ref_generic<E: Entity, R: Shape>(
+    value: Ref<'_, E>,
+    nrows: R,
+) -> ColRef<'_, E, R> {
     unsafe { from_raw_parts(E::faer_map(value, |ptr| ptr as *const E::Unit), nrows, 0) }
 }
 
 /// Returns a view over a column with 1 row containing value as its only element, pointing to
 /// `value`.
-pub fn from_ref_generic<E: Entity>(value: GroupFor<E, &E::Unit>) -> ColRef<'_, E> {
+pub fn from_ref_generic<E: Entity>(value: Ref<'_, E>) -> ColRef<'_, E> {
     from_repeated_ref_generic(value, 1)
 }
 
 /// Returns a view over a column with `nrows` rows containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref<E: SimpleEntity>(value: &E, nrows: usize) -> ColRef<'_, E> {
+pub fn from_repeated_ref<E: SimpleEntity, R: Shape>(value: &E, nrows: R) -> ColRef<'_, E, R> {
     from_repeated_ref_generic(value, nrows)
 }
 

@@ -234,7 +234,7 @@ mod tests {
         crate::dbgf!("6.2?", &sum);
 
         // this converts a &f64 to a MatRef<'_, f64> without allocating
-        assert!(&x + from_repeated_ref::<f64>(&c, x.nrows(), x.ncols()) == sum);
+        assert!(&x + from_repeated_ref(&c, x.nrows(), x.ncols()) == sum);
     }
 
     #[test]

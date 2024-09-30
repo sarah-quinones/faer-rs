@@ -108,7 +108,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> IntoConst for MatMut<'a, E, R, C> {
 impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
-        ptr: GroupFor<E, *mut E::Unit>,
+        ptr: PtrMut<E>,
         nrows: R,
         ncols: C,
         row_stride: isize,
@@ -145,13 +145,13 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(self) -> PtrConst<E> {
         self.into_const().as_ptr()
     }
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr_mut(self) -> GroupFor<E, *mut E::Unit> {
+    pub fn as_ptr_mut(self) -> PtrMut<E> {
         map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr(),)
     }
 
@@ -169,13 +169,13 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(self, row: usize, col: usize) -> PtrConst<E> {
         self.into_const().ptr_at(row, col)
     }
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at_mut(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub fn ptr_at_mut(self, row: usize, col: usize) -> PtrMut<E> {
         let offset = ((row as isize).wrapping_mul(self.inner.row_stride))
             .wrapping_add((col as isize).wrapping_mul(self.inner.col_stride));
         map!(E, self.as_ptr_mut(), |(ptr)| ptr.wrapping_offset(offset),)
@@ -183,13 +183,13 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(self, row: usize, col: usize) -> PtrConst<E> {
         self.into_const().ptr_at_unchecked(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_mut_unchecked(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_at_mut_unchecked(self, row: usize, col: usize) -> PtrMut<E> {
         let offset = crate::utils::unchecked_add(
             crate::utils::unchecked_mul(row, self.inner.row_stride),
             crate::utils::unchecked_mul(col, self.inner.col_stride),
@@ -328,21 +328,13 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(
-        self,
-        row: IdxInc<R>,
-        col: IdxInc<C>,
-    ) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: IdxInc<R>, col: IdxInc<C>) -> PtrConst<E> {
         self.into_const().overflowing_ptr_at(row, col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(
-        self,
-        row: IdxInc<R>,
-        col: IdxInc<C>,
-    ) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(self, row: IdxInc<R>, col: IdxInc<C>) -> PtrMut<E> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
             let offset = (cond as usize).wrapping_neg() as isize
@@ -363,7 +355,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: Idx<R>, col: Idx<C>) -> PtrConst<E> {
         self.into_const().ptr_inbounds_at(row, col)
     }
 
@@ -376,7 +368,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, row: Idx<R>, col: Idx<C>) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, row: Idx<R>, col: Idx<C>) -> PtrMut<E> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
         self.ptr_at_mut_unchecked(row.unbound(), col.unbound())
     }
@@ -384,14 +376,14 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn try_get_contiguous_col(self, j: Idx<C>) -> Slice<'a, E> {
         self.into_const().try_get_contiguous_col(j)
     }
 
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col_mut(self, j: Idx<C>) -> GroupFor<E, &'a mut [E::Unit]> {
+    pub fn try_get_contiguous_col_mut(self, j: Idx<C>) -> SliceMut<'a, E> {
         assert!(self.row_stride() == 1);
         let col = self.col_mut(j);
         let m = col.nrows().unbound();
@@ -2176,7 +2168,7 @@ impl<E: Entity, R: Shape, C: Shape> As2DMut<E> for MatMut<'_, E, R, C> {
 /// ```
 #[inline(always)]
 pub unsafe fn from_raw_parts_mut<'a, E: Entity, R: Shape, C: Shape>(
-    ptr: GroupFor<E, *mut E::Unit>,
+    ptr: PtrMut<E>,
     nrows: R,
     ncols: C,
     row_stride: isize,
@@ -2206,7 +2198,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity, R: Shape, C: Shape>(
 /// ```
 #[track_caller]
 pub fn from_column_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &mut [E::Unit]>,
+    slice: SliceMut<'_, E>,
     nrows: R,
     ncols: C,
 ) -> MatMut<'_, E, R, C> {
@@ -2248,7 +2240,7 @@ pub fn from_column_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
 #[inline(always)]
 #[track_caller]
 pub fn from_row_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &mut [E::Unit]>,
+    slice: SliceMut<'_, E>,
     nrows: R,
     ncols: C,
 ) -> MatMut<'_, E, R, C> {
@@ -2260,7 +2252,7 @@ pub fn from_row_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
 /// columns are separated by `col_stride` elements.
 #[track_caller]
 pub fn from_column_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &mut [E::Unit]>,
+    slice: SliceMut<'_, E>,
     nrows: R,
     ncols: C,
     col_stride: usize,
@@ -2287,7 +2279,7 @@ pub fn from_column_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: S
 /// rows are separated by `row_stride` elements.
 #[track_caller]
 pub fn from_row_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &mut [E::Unit]>,
+    slice: SliceMut<'_, E>,
     nrows: R,
     ncols: C,
     row_stride: usize,
@@ -2480,6 +2472,6 @@ pub fn from_mut<E: SimpleEntity>(value: &mut E) -> MatMut<'_, E> {
 }
 
 /// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
-pub fn from_mut_generic<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> MatMut<'_, E> {
+pub fn from_mut_generic<E: Entity>(value: Mut<'_, E>) -> MatMut<'_, E> {
     unsafe { from_raw_parts_mut(map!(E, value, |(ptr)| ptr as *mut E::Unit), 1, 1, 0, 0) }
 }

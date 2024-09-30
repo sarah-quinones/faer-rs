@@ -5,7 +5,7 @@ use crate::{
     mat::matalloc::{align_for, is_vectorizable, MatUnit, RawMat, RawMatUnit},
     utils::DivCeil,
 };
-use core::mem::{ManuallyDrop, MaybeUninit};
+use core::mem::ManuallyDrop;
 
 /// Heap allocated resizable row vector.
 ///
@@ -133,7 +133,7 @@ impl<E: Entity> Row<E> {
 
     /// Returns a pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr(&self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(&self) -> PtrConst<E> {
         E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| {
             ptr.as_ptr() as *const E::Unit
         })
@@ -141,7 +141,7 @@ impl<E: Entity> Row<E> {
 
     /// Returns a mutable pointer to the data of the matrix.
     #[inline]
-    pub fn as_ptr_mut(&mut self) -> GroupFor<E, *mut E::Unit> {
+    pub fn as_ptr_mut(&mut self) -> PtrMut<E> {
         E::faer_map(from_copy::<E, _>(self.inner.ptr), |ptr| ptr.as_ptr())
     }
 
@@ -173,37 +173,37 @@ impl<E: Entity> Row<E> {
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at(&self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(&self, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_at(col)
     }
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at_mut(&mut self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub fn ptr_at_mut(&mut self, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_at_mut(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(&self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(&self, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_at_unchecked(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_mut_unchecked(&mut self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_at_mut_unchecked(&mut self, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_at_mut_unchecked(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(&self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(&self, col: usize) -> PtrConst<E> {
         self.as_ref().overflowing_ptr_at(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(&mut self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(&mut self, col: usize) -> PtrMut<E> {
         self.as_mut().overflowing_ptr_at_mut(col)
     }
 
@@ -215,7 +215,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(&self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(&self, col: usize) -> PtrConst<E> {
         self.as_ref().ptr_inbounds_at(col)
     }
 
@@ -227,7 +227,7 @@ impl<E: Entity> Row<E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(&mut self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(&mut self, col: usize) -> PtrMut<E> {
         self.as_mut().ptr_inbounds_at_mut(col)
     }
 
@@ -410,7 +410,7 @@ impl<E: Entity> Row<E> {
     /// Returns a reference to a slice over the row.
     #[inline]
     #[track_caller]
-    pub fn as_slice(&self) -> GroupFor<E, &[E::Unit]> {
+    pub fn as_slice(&self) -> Slice<'_, E> {
         let ncols = self.ncols();
         let ptr = self.as_ref().as_ptr();
         E::faer_map(
@@ -423,7 +423,7 @@ impl<E: Entity> Row<E> {
     /// Returns a mutable reference to a slice over the row.
     #[inline]
     #[track_caller]
-    pub fn as_slice_mut(&mut self) -> GroupFor<E, &mut [E::Unit]> {
+    pub fn as_slice_mut(&mut self) -> SliceMut<'_, E> {
         let ncols = self.ncols();
         let ptr = self.as_ptr_mut();
         E::faer_map(
@@ -439,7 +439,7 @@ impl<E: Entity> Row<E> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice(&self) -> Option<GroupFor<E, &[E::Unit]>> {
+    pub fn try_as_slice(&self) -> Option<Slice<'_, E>> {
         Some(self.as_slice())
     }
 
@@ -449,7 +449,7 @@ impl<E: Entity> Row<E> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice_mut(&mut self) -> Option<GroupFor<E, &mut [E::Unit]>> {
+    pub fn try_as_slice_mut(&mut self) -> Option<SliceMut<'_, E>> {
         Some(self.as_slice_mut())
     }
 
@@ -459,9 +459,7 @@ impl<E: Entity> Row<E> {
     /// # Safety
     /// If uninit data is written to the slice, it must not be read at some later point.
     #[inline]
-    pub unsafe fn try_as_uninit_slice_mut(
-        &mut self,
-    ) -> Option<GroupFor<E, &mut [MaybeUninit<E::Unit>]>> {
+    pub unsafe fn try_as_uninit_slice_mut(&mut self) -> Option<UninitSliceMut<'_, E>> {
         Some(self.as_uninit_slice_mut())
     }
 
@@ -470,7 +468,7 @@ impl<E: Entity> Row<E> {
     /// # Safety
     /// If uninit data is written to the slice, it must not be later read.
     #[inline]
-    pub unsafe fn as_uninit_slice_mut(&mut self) -> GroupFor<E, &mut [MaybeUninit<E::Unit>]> {
+    pub unsafe fn as_uninit_slice_mut(&mut self) -> UninitSliceMut<'_, E> {
         let nrows = self.nrows();
         let ptr = self.as_ptr_mut();
         E::faer_map(
@@ -881,28 +879,28 @@ impl<E: Entity> Row<E> {
     /// Returns a reference to the first element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first(&self) -> Option<(GroupFor<E, &'_ E::Unit>, RowRef<'_, E>)> {
+    pub fn split_first(&self) -> Option<(Ref<'_, E>, RowRef<'_, E>)> {
         self.as_ref().split_first()
     }
 
     /// Returns a reference to the last element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last(&self) -> Option<(GroupFor<E, &'_ E::Unit>, RowRef<'_, E>)> {
+    pub fn split_last(&self) -> Option<(Ref<'_, E>, RowRef<'_, E>)> {
         self.as_ref().split_last()
     }
 
     /// Returns a reference to the first element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first_mut(&mut self) -> Option<(GroupFor<E, &'_ mut E::Unit>, RowMut<'_, E>)> {
+    pub fn split_first_mut(&mut self) -> Option<(Mut<'_, E>, RowMut<'_, E>)> {
         self.as_mut().split_first_mut()
     }
 
     /// Returns a reference to the last element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last_mut(&mut self) -> Option<(GroupFor<E, &'_ mut E::Unit>, RowMut<'_, E>)> {
+    pub fn split_last_mut(&mut self) -> Option<(Mut<'_, E>, RowMut<'_, E>)> {
         self.as_mut().split_last_mut()
     }
 

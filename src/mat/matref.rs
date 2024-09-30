@@ -941,7 +941,7 @@ impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[track_caller]
     #[inline(always)]
     #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: Idx<C>) -> GroupFor<E, &'a [E::Unit]> {
+    pub fn try_get_contiguous_col(self, j: Idx<C>) -> Slice<'a, E> {
         assert!(self.row_stride() == 1);
         let col = self.col(j);
         let m = col.nrows().unbound();
@@ -1480,7 +1480,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape, C: Shape>(
 #[track_caller]
 #[inline(always)]
 pub fn from_column_major_slice_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &[E::Unit]>,
+    slice: Slice<'_, E>,
     nrows: R,
     ncols: C,
 ) -> MatRef<'_, E, R, C> {
@@ -1552,7 +1552,7 @@ pub fn from_column_major_slice<E: SimpleEntity, R: Shape, C: Shape>(
 #[track_caller]
 #[inline(always)]
 pub fn from_row_major_slice_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &[E::Unit]>,
+    slice: Slice<'_, E>,
     nrows: R,
     ncols: C,
 ) -> MatRef<'_, E, R, C> {
@@ -1593,7 +1593,7 @@ pub fn from_row_major_slice<E: SimpleEntity, R: Shape, C: Shape>(
 /// columns are separated by `col_stride` elements.
 #[track_caller]
 pub fn from_column_major_slice_with_stride_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &[E::Unit]>,
+    slice: Slice<'_, E>,
     nrows: R,
     ncols: C,
     col_stride: usize,
@@ -1621,7 +1621,7 @@ pub fn from_column_major_slice_with_stride_generic<E: Entity, R: Shape, C: Shape
 /// rows are separated by `row_stride` elements.
 #[track_caller]
 pub fn from_row_major_slice_with_stride_generic<E: Entity, R: Shape, C: Shape>(
-    slice: GroupFor<E, &[E::Unit]>,
+    slice: Slice<'_, E>,
     nrows: R,
     ncols: C,
     row_stride: usize,
@@ -1775,11 +1775,11 @@ impl<E: Conjugate> RowBatch<E> for MatRef<'_, E> {
 
 /// Returns a view over an `nrows×ncols` matrix containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref_generic<E: Entity>(
-    value: GroupFor<E, &E::Unit>,
-    nrows: usize,
-    ncols: usize,
-) -> MatRef<'_, E> {
+pub fn from_repeated_ref_generic<E: Entity, R: Shape, C: Shape>(
+    value: Ref<'_, E>,
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     unsafe {
         from_raw_parts(
             map!(E, value, |(ptr)| { ptr as *const E::Unit }),
@@ -1793,19 +1793,29 @@ pub fn from_repeated_ref_generic<E: Entity>(
 
 /// Returns a view over an `nrows×ncols` matrix containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref<E: SimpleEntity>(value: &E, nrows: usize, ncols: usize) -> MatRef<'_, E> {
+pub fn from_repeated_ref<E: SimpleEntity, R: Shape, C: Shape>(
+    value: &E,
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     from_repeated_ref_generic(value, nrows, ncols)
 }
 
 /// Returns a view over a matrix containing `col` repeated `ncols` times.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_col<E: Entity>(col: ColRef<'_, E>, ncols: usize) -> MatRef<'_, E> {
+pub fn from_repeated_col<E: Entity, C: Shape>(
+    col: ColRef<'_, E>,
+    ncols: C,
+) -> MatRef<'_, E, usize, C> {
     unsafe { from_raw_parts(col.as_ptr(), col.nrows(), ncols, col.row_stride(), 0) }
 }
 
 /// Returns a view over a matrix containing `row` repeated `nrows` times.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_row<E: Entity>(row: RowRef<'_, E>, nrows: usize) -> MatRef<'_, E> {
+pub fn from_repeated_row<E: Entity, R: Shape>(
+    row: RowRef<'_, E>,
+    nrows: R,
+) -> MatRef<'_, E, R, usize> {
     unsafe { from_raw_parts(row.as_ptr(), nrows, row.ncols(), 0, row.col_stride()) }
 }
 
@@ -1815,6 +1825,6 @@ pub fn from_ref<E: SimpleEntity>(value: &E) -> MatRef<'_, E> {
 }
 
 /// Returns a view over a `1×1` matrix containing value as its only element, pointing to `value`.
-pub fn from_ref_generic<E: Entity>(value: GroupFor<E, &E::Unit>) -> MatRef<'_, E> {
+pub fn from_ref_generic<E: Entity>(value: Ref<'_, E>) -> MatRef<'_, E> {
     from_repeated_ref_generic(value, 1, 1)
 }

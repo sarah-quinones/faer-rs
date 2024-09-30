@@ -1,13 +1,11 @@
 use super::*;
 use crate::{
-    Idx, IdxInc,
     assert,
     col::{ColMut, ColRef},
     debug_assert, iter,
     iter::chunks::ChunkPolicy,
-    mat, unzipped, zipped, Shape, Unbind,
+    mat, unzipped, zipped, Idx, IdxInc, Shape, Unbind,
 };
-use core::mem::MaybeUninit;
 
 /// Mutable view over a row vector, similar to a mutable reference to a strided [prim@slice].
 ///
@@ -72,11 +70,7 @@ impl<'a, E: Entity, C: Shape> IntoConst for RowMut<'a, E, C> {
 
 impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     #[inline]
-    pub(crate) unsafe fn __from_raw_parts(
-        ptr: GroupFor<E, *mut E::Unit>,
-        ncols: C,
-        col_stride: isize,
-    ) -> Self {
+    pub(crate) unsafe fn __from_raw_parts(ptr: PtrMut<E>, ncols: C, col_stride: isize) -> Self {
         Self {
             inner: VecImpl {
                 ptr: into_copy::<E, _>(E::faer_map(
@@ -104,13 +98,13 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(self) -> PtrConst<E> {
         self.into_const().as_ptr()
     }
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr_mut(self) -> GroupFor<E, *mut E::Unit> {
+    pub fn as_ptr_mut(self) -> PtrMut<E> {
         E::faer_map(
             from_copy::<E, _>(self.inner.ptr),
             #[inline(always)]
@@ -140,13 +134,13 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(self, col: usize) -> PtrConst<E> {
         self.into_const().ptr_at(col)
     }
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at_mut(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub fn ptr_at_mut(self, col: usize) -> PtrMut<E> {
         let offset = (col as isize).wrapping_mul(self.inner.stride);
 
         E::faer_map(
@@ -158,13 +152,13 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(self, col: usize) -> PtrConst<E> {
         self.into_const().ptr_at_unchecked(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_mut_unchecked(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_at_mut_unchecked(self, col: usize) -> PtrMut<E> {
         let offset = crate::utils::unchecked_mul(col, self.inner.stride);
         E::faer_map(
             self.as_ptr_mut(),
@@ -175,13 +169,13 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> PtrConst<E> {
         self.into_const().overflowing_ptr_at(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(self, col: IdxInc<C>) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(self, col: IdxInc<C>) -> PtrMut<E> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -202,7 +196,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> PtrConst<E> {
         self.into_const().ptr_inbounds_at(col)
     }
 
@@ -214,7 +208,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, col: Idx<C>) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, col: Idx<C>) -> PtrMut<E> {
         debug_assert!(col < self.ncols());
         self.ptr_at_mut_unchecked(col.unbound())
     }
@@ -781,7 +775,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
+    pub fn try_as_slice(self) -> Option<Slice<'a, E>> {
         self.into_const().try_as_slice()
     }
 
@@ -791,7 +785,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice_mut(self) -> Option<GroupFor<E, &'a mut [E::Unit]>> {
+    pub fn try_as_slice_mut(self) -> Option<SliceMut<'a, E>> {
         if self.col_stride() == 1 {
             let len = self.ncols().unbound();
             Some(E::faer_map(
@@ -809,9 +803,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     ///
     /// # Safety
     /// If uninit data is written to the slice, it must not be read at some later point.
-    pub unsafe fn try_as_uninit_slice_mut(
-        self,
-    ) -> Option<GroupFor<E, &'a mut [MaybeUninit<E::Unit>]>> {
+    pub unsafe fn try_as_uninit_slice_mut(self) -> Option<UninitSliceMut<'a, E>> {
         if self.col_stride() == 1 {
             let len = self.ncols().unbound();
             Some(E::faer_map(
@@ -839,21 +831,21 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// Returns a reference to the first element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+    pub fn split_first(self) -> Option<(Ref<'a, E>, RowRef<'a, E>)> {
         self.into_const().split_first()
     }
 
     /// Returns a reference to the last element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+    pub fn split_last(self) -> Option<(Ref<'a, E>, RowRef<'a, E>)> {
         self.into_const().split_last()
     }
 
     /// Returns a reference to the first element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first_mut(self) -> Option<(GroupFor<E, &'a mut E::Unit>, RowMut<'a, E>)> {
+    pub fn split_first_mut(self) -> Option<(Mut<'a, E>, RowMut<'a, E>)> {
         let this = self.as_dyn_mut();
         if this.ncols() == 0 {
             None
@@ -868,7 +860,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     /// Returns a reference to the last element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last_mut(self) -> Option<(GroupFor<E, &'a mut E::Unit>, RowMut<'a, E>)> {
+    pub fn split_last_mut(self) -> Option<(Mut<'a, E>, RowMut<'a, E>)> {
         let this = self.as_dyn_mut();
         if this.ncols() == 0 {
             None
@@ -1021,7 +1013,7 @@ impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
 /// [`mat::from_raw_parts_mut(ptr, 1, ncols, 0, col_stride)`]
 #[inline(always)]
 pub unsafe fn from_raw_parts_mut<'a, E: Entity, C: Shape>(
-    ptr: GroupFor<E, *mut E::Unit>,
+    ptr: PtrMut<E>,
     ncols: C,
     col_stride: isize,
 ) -> RowMut<'a, E, C> {
@@ -1031,7 +1023,7 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity, C: Shape>(
 /// Creates a `RowMut` from slice views over the row vector data, The result has the same
 /// number of columns as the length of the input slice.
 #[inline(always)]
-pub fn from_slice_mut_generic<E: Entity>(slice: GroupFor<E, &mut [E::Unit]>) -> RowMut<'_, E> {
+pub fn from_slice_mut_generic<E: Entity>(slice: SliceMut<'_, E>) -> RowMut<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len();
 
     unsafe {
@@ -1134,7 +1126,7 @@ impl<E: Conjugate> RowBatchMut<E> for RowMut<'_, E> {}
 
 /// Returns a view over a row with 1 column containing value as its only element, pointing to
 /// `value`.
-pub fn from_mut_generic<E: Entity>(value: GroupFor<E, &mut E::Unit>) -> RowMut<'_, E> {
+pub fn from_mut_generic<E: Entity>(value: Mut<'_, E>) -> RowMut<'_, E> {
     unsafe { from_raw_parts_mut(E::faer_map(value, |ptr| ptr as *mut E::Unit), 1, 1) }
 }
 

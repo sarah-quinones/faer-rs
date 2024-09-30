@@ -173,6 +173,7 @@ pub type Ref<'a, E> = GroupFor<E, &'a <E as Entity>::Unit>;
 pub type Mut<'a, E> = GroupFor<E, &'a mut <E as Entity>::Unit>;
 pub type Slice<'a, E> = GroupFor<E, &'a [<E as Entity>::Unit]>;
 pub type SliceMut<'a, E> = GroupFor<E, &'a mut [<E as Entity>::Unit]>;
+pub type UninitSliceMut<'a, E> = GroupFor<E, &'a mut [core::mem::MaybeUninit<<E as Entity>::Unit>]>;
 
 pub type GroupFor<E, T> = <<E as Entity>::Group as ForType>::FaerOf<T>;
 pub type GroupCopyFor<E, T> = <<E as Entity>::Group as ForCopyType>::FaerOfCopy<T>;

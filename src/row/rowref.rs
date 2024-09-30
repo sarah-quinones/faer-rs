@@ -66,11 +66,7 @@ impl<E: Entity, C: Shape> IntoConst for RowRef<'_, E, C> {
 }
 
 impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
-    pub(crate) unsafe fn __from_raw_parts(
-        ptr: GroupFor<E, *const E::Unit>,
-        ncols: C,
-        col_stride: isize,
-    ) -> Self {
+    pub(crate) unsafe fn __from_raw_parts(ptr: PtrConst<E>, ncols: C, col_stride: isize) -> Self {
         Self {
             inner: VecImpl {
                 ptr: into_copy::<E, _>(E::faer_map(
@@ -98,7 +94,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(self) -> PtrConst<E> {
         E::faer_map(
             from_copy::<E, _>(self.inner.ptr),
             #[inline(always)]
@@ -122,7 +118,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     /// Returns raw pointers to the element at the given index.
     #[inline(always)]
-    pub fn ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(self, col: usize) -> PtrConst<E> {
         let offset = (col as isize).wrapping_mul(self.inner.stride);
 
         E::faer_map(
@@ -134,7 +130,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(self, col: usize) -> PtrConst<E> {
         let offset = crate::utils::unchecked_mul(col, self.inner.stride);
         E::faer_map(
             self.as_ptr(),
@@ -145,7 +141,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: IdxInc<C>) -> PtrConst<E> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
@@ -166,7 +162,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: Idx<C>) -> PtrConst<E> {
         debug_assert!(col < self.ncols());
         self.ptr_at_unchecked(col.unbound())
     }
@@ -385,7 +381,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
                 // SAFETY: see Self::conjugate
                 super::from_raw_parts(
                     transmute_unchecked::<
-                        GroupFor<E, *const E::Unit>,
+                        PtrConst<E>,
                         GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
                     >(self.as_ptr()),
                     self.ncols(),
@@ -544,7 +540,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// The values pointed to by the references are expected to be initialized, even if the
     /// pointed-to value is not read, otherwise the behavior is undefined.
     #[inline]
-    pub fn try_as_slice(self) -> Option<GroupFor<E, &'a [E::Unit]>> {
+    pub fn try_as_slice(self) -> Option<Slice<'a, E>> {
         if self.col_stride() == 1 {
             let len = self.ncols().unbound();
             Some(E::faer_map(
@@ -566,7 +562,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// Returns a reference to the first element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_first(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+    pub fn split_first(self) -> Option<(Ref<'a, E>, RowRef<'a, E>)> {
         let this = self.as_dyn();
         if this.ncols() == 0 {
             None
@@ -581,7 +577,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     /// Returns a reference to the last element and a view over the remaining ones if the row is
     /// non-empty, otherwise `None`.
     #[inline]
-    pub fn split_last(self) -> Option<(GroupFor<E, &'a E::Unit>, RowRef<'a, E>)> {
+    pub fn split_last(self) -> Option<(Ref<'a, E>, RowRef<'a, E>)> {
         let this = self.as_dyn();
         if this.ncols() == 0 {
             None
@@ -676,7 +672,7 @@ impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
 /// [`mat::from_raw_parts(ptr, 1, ncols, 0, col_stride)`]
 #[inline(always)]
 pub unsafe fn from_raw_parts<'a, E: Entity, C: Shape>(
-    ptr: GroupFor<E, *const E::Unit>,
+    ptr: PtrConst<E>,
     ncols: C,
     col_stride: isize,
 ) -> RowRef<'a, E, C> {
@@ -686,7 +682,7 @@ pub unsafe fn from_raw_parts<'a, E: Entity, C: Shape>(
 /// Creates a `RowRef` from slice views over the row vector data, The result has the same
 /// number of columns as the length of the input slice.
 #[inline(always)]
-pub fn from_slice_generic<E: Entity>(slice: GroupFor<E, &[E::Unit]>) -> RowRef<'_, E> {
+pub fn from_slice_generic<E: Entity>(slice: Slice<'_, E>) -> RowRef<'_, E> {
     let nrows = SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len();
 
     unsafe {
@@ -776,15 +772,12 @@ pub fn from_ref<E: SimpleEntity>(value: &E) -> RowRef<'_, E> {
 
 /// Returns a view over a row with `ncols` columns containing `value` repeated for all elements.
 #[doc(alias = "broadcast")]
-pub fn from_repeated_ref_generic<E: Entity>(
-    value: GroupFor<E, &E::Unit>,
-    ncols: usize,
-) -> RowRef<'_, E> {
+pub fn from_repeated_ref_generic<E: Entity>(value: Ref<'_, E>, ncols: usize) -> RowRef<'_, E> {
     unsafe { from_raw_parts(E::faer_map(value, |ptr| ptr as *const E::Unit), ncols, 0) }
 }
 
 /// Returns a view over a row with 1 column containing value as its only element, pointing to
 /// `value`.
-pub fn from_ref_generic<E: Entity>(value: GroupFor<E, &E::Unit>) -> RowRef<'_, E> {
+pub fn from_ref_generic<E: Entity>(value: Ref<'_, E>) -> RowRef<'_, E> {
     from_repeated_ref_generic(value, 1)
 }
