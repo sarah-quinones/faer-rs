@@ -52,7 +52,7 @@ unsafe fn accum_lower<E: ComplexField>(
             zipped!(dst, src).for_each_triangular_lower(
                 if skip_diag { Diag::Skip } else { Diag::Include },
                 |unzipped!(mut dst, src)| {
-                    dst.write(alpha.faer_mul(dst.read().faer_add(src.read())))
+                    dst.write(alpha.faer_mul(dst.read()).faer_add(src.read()))
                 },
             );
         }
