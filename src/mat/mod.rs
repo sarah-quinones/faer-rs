@@ -1,14 +1,14 @@
-use crate::{assert, col::*, row::*, utils::slice::*, Conj};
+use crate::{assert, col::*, row::*, utils::slice::*, Conj, Shape};
 use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
 
 #[repr(C)]
-struct MatImpl<E: Entity> {
+struct MatImpl<E: Entity, R: Shape = usize, C: Shape = usize> {
     ptr: GroupCopyFor<E, NonNull<E::Unit>>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: isize,
     col_stride: isize,
 }
@@ -19,13 +19,13 @@ struct MatOwnImpl<E: Entity> {
     ncols: usize,
 }
 
-unsafe impl<E: Entity> Sync for MatImpl<E> {}
-unsafe impl<E: Entity> Send for MatImpl<E> {}
+unsafe impl<E: Entity, R: Shape, C: Shape> Sync for MatImpl<E, R, C> {}
+unsafe impl<E: Entity, R: Shape, C: Shape> Send for MatImpl<E, R, C> {}
 unsafe impl<E: Entity> Sync for MatOwnImpl<E> {}
 unsafe impl<E: Entity> Send for MatOwnImpl<E> {}
 
-impl<E: Entity> Copy for MatImpl<E> {}
-impl<E: Entity> Clone for MatImpl<E> {
+impl<E: Entity, R: Shape, C: Shape> Copy for MatImpl<E, R, C> {}
+impl<E: Entity, R: Shape, C: Shape> Clone for MatImpl<E, R, C> {
     #[inline(always)]
     fn clone(&self) -> Self {
         *self

@@ -110,6 +110,7 @@ unsafe impl Entity for c64conj {
 }
 
 unsafe impl Conjugate for c64conj {
+    const IS_CANONICAL: bool = false;
     type Conj = c64;
     type Canonical = c64;
 

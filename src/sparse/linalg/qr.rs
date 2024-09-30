@@ -813,7 +813,7 @@ pub mod supernodal {
                             ..H_symbolic.col_ptrs_for_values[s + 1].zx(),
                     );
 
-                    let s_H = crate::mat::from_column_major_slice_generic::<'_, E>(
+                    let s_H = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                         s_H.into_inner(),
                         s_h_row_full_end - s_h_row_begin,
                         s_ncols
@@ -822,7 +822,7 @@ pub mod supernodal {
                     );
                     let s_tau = tau.subslice(tau_begin..tau_end);
                     let max_blocksize = H_symbolic.max_blocksize[s].zx();
-                    let s_tau = crate::mat::from_column_major_slice_generic::<'_, E>(
+                    let s_tau = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                         s_tau.into_inner(),
                         max_blocksize,
                         Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin),
@@ -1161,7 +1161,7 @@ pub mod supernodal {
             let (c_H, s_H) = s_H.split_at(H_symbolic.col_ptrs_for_values[s].zx());
             let c_H = c_H.into_const();
 
-            let mut s_H = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
+            let mut s_H = crate::mat::from_column_major_slice_mut_generic::<'_, E, _, _>(
                 s_H.into_inner(),
                 s_h_row_full_end - s_h_row_begin,
                 s_ncols + s_pattern.len(),
@@ -1235,7 +1235,7 @@ pub mod supernodal {
                     H_symbolic.col_ptrs_for_values[child].zx()
                         ..H_symbolic.col_ptrs_for_values[child + 1].zx(),
                 );
-                let c_H = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let c_H = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     c_H.into_inner(),
                     H_symbolic.col_ptrs_for_row_indices[child + 1].zx() - c_h_row_begin,
                     c_ncols + c_pattern.len(),
@@ -1299,7 +1299,7 @@ pub mod supernodal {
                 let s_L = L_values.rb_mut().subslice(L_begin..L_end);
 
                 let max_blocksize = H_symbolic.max_blocksize[s].zx();
-                let mut s_tau = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
+                let mut s_tau = crate::mat::from_column_major_slice_mut_generic::<'_, E, _, _>(
                     s_tau.into_inner(),
                     max_blocksize,
                     Ord::min(s_H.ncols(), s_h_row_full_end - s_h_row_begin),
@@ -1376,7 +1376,7 @@ pub mod supernodal {
                     }
                 }
 
-                let mut s_L = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
+                let mut s_L = crate::mat::from_column_major_slice_mut_generic::<'_, E, _, _>(
                     s_L.into_inner(),
                     s_pattern.len() + s_ncols,
                     s_ncols,

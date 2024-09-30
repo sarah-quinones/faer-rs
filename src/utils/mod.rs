@@ -55,3 +55,5 @@ pub mod slice;
 pub mod thread;
 /// Vector type for [entities](crate::Entity).
 pub mod vec;
+
+pub mod bound;

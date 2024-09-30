@@ -1,5 +1,11 @@
 use super::*;
-use crate::{assert, col::ColRef, debug_assert, iter, iter::chunks::ChunkPolicy};
+use crate::{
+    assert,
+    col::ColRef,
+    debug_assert,
+    iter::{self, chunks::ChunkPolicy},
+    Shape, Unbind,
+};
 
 /// Immutable view over a row vector, similar to an immutable reference to a strided [prim@slice].
 ///
@@ -11,19 +17,19 @@ use crate::{assert, col::ColRef, debug_assert, iter, iter::chunks::ChunkPolicy};
 /// through [`RowRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
 #[repr(C)]
-pub struct RowRef<'a, E: Entity> {
-    pub(super) inner: VecImpl<E>,
+pub struct RowRef<'a, E: Entity, C: Shape = usize> {
+    pub(super) inner: VecImpl<E, C>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
-impl<E: Entity> Clone for RowRef<'_, E> {
+impl<E: Entity, C: Shape> Clone for RowRef<'_, E, C> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<E: Entity> Copy for RowRef<'_, E> {}
+impl<E: Entity, C: Shape> Copy for RowRef<'_, E, C> {}
 
 impl<E: Entity> Default for RowRef<'_, E> {
     #[inline]
@@ -32,8 +38,8 @@ impl<E: Entity> Default for RowRef<'_, E> {
     }
 }
 
-impl<'short, E: Entity> Reborrow<'short> for RowRef<'_, E> {
-    type Target = RowRef<'short, E>;
+impl<'short, E: Entity, C: Shape> Reborrow<'short> for RowRef<'_, E, C> {
+    type Target = RowRef<'short, E, C>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -41,8 +47,8 @@ impl<'short, E: Entity> Reborrow<'short> for RowRef<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for RowRef<'_, E> {
-    type Target = RowRef<'short, E>;
+impl<'short, E: Entity, C: Shape> ReborrowMut<'short> for RowRef<'_, E, C> {
+    type Target = RowRef<'short, E, C>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -50,7 +56,7 @@ impl<'short, E: Entity> ReborrowMut<'short> for RowRef<'_, E> {
     }
 }
 
-impl<E: Entity> IntoConst for RowRef<'_, E> {
+impl<E: Entity, C: Shape> IntoConst for RowRef<'_, E, C> {
     type Target = Self;
 
     #[inline]
@@ -59,10 +65,10 @@ impl<E: Entity> IntoConst for RowRef<'_, E> {
     }
 }
 
-impl<'a, E: Entity> RowRef<'a, E> {
+impl<'a, E: Entity, C: Shape> RowRef<'a, E, C> {
     pub(crate) unsafe fn __from_raw_parts(
         ptr: GroupFor<E, *const E::Unit>,
-        ncols: usize,
+        ncols: C,
         col_stride: isize,
     ) -> Self {
         Self {
@@ -86,7 +92,7 @@ impl<'a, E: Entity> RowRef<'a, E> {
     }
     /// Returns the number of columns of the row.
     #[inline(always)]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.inner.len
     }
 
@@ -108,7 +114,7 @@ impl<'a, E: Entity> RowRef<'a, E> {
 
     /// Returns `self` as a matrix view.
     #[inline(always)]
-    pub fn as_2d(self) -> MatRef<'a, E> {
+    pub fn as_2d(self) -> MatRef<'a, E, usize, C> {
         let ncols = self.ncols();
         let col_stride = self.col_stride();
         unsafe { crate::mat::from_raw_parts(self.as_ptr(), 1, ncols, isize::MAX, col_stride) }
@@ -139,11 +145,11 @@ impl<'a, E: Entity> RowRef<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: C::IdxInc) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
-                & (col as isize).wrapping_mul(self.inner.stride);
+                & (col.unbound() as isize).wrapping_mul(self.inner.stride);
             E::faer_map(
                 self.as_ptr(),
                 #[inline(always)]
@@ -160,11 +166,21 @@ impl<'a, E: Entity> RowRef<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: C::Idx) -> GroupFor<E, *const E::Unit> {
         debug_assert!(col < self.ncols());
-        self.ptr_at_unchecked(col)
+        self.ptr_at_unchecked(col.unbound())
     }
 
+    /// Returns a view over the row.
+    #[inline]
+    pub fn as_dyn(self) -> RowRef<'a, E> {
+        let ncols = self.ncols().unbound();
+        let col_stride = self.col_stride();
+        unsafe { from_raw_parts(self.as_ptr(), ncols, col_stride) }
+    }
+}
+
+impl<'a, E: Entity> RowRef<'a, E> {
     /// Splits the column vector at the given index into two parts and
     /// returns an array of each subvector, in the following order:
     /// * left.

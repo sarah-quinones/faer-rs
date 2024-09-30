@@ -3,9 +3,8 @@ use crate::{
     diag::{DiagMut, DiagRef},
     iter,
     iter::chunks::ChunkPolicy,
-    mat,
     row::{RowMut, RowRef},
-    unzipped, zipped,
+    unzipped, zipped, Unbind,
 };
 use core::mem::MaybeUninit;
 
@@ -22,8 +21,8 @@ use core::mem::MaybeUninit;
 /// # Move semantics
 /// See [`faer::Mat`](crate::Mat) for information about reborrowing when using this type.
 #[repr(C)]
-pub struct ColMut<'a, E: Entity> {
-    pub(super) inner: VecImpl<E>,
+pub struct ColMut<'a, E: Entity, R: Shape = usize> {
+    pub(super) inner: VecImpl<E, R>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
@@ -34,8 +33,8 @@ impl<E: Entity> Default for ColMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> Reborrow<'short> for ColMut<'_, E> {
-    type Target = ColRef<'short, E>;
+impl<'short, E: Entity, R: Shape> Reborrow<'short> for ColMut<'_, E, R> {
+    type Target = ColRef<'short, E, R>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -46,8 +45,8 @@ impl<'short, E: Entity> Reborrow<'short> for ColMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for ColMut<'_, E> {
-    type Target = ColMut<'short, E>;
+impl<'short, E: Entity, R: Shape> ReborrowMut<'short> for ColMut<'_, E, R> {
+    type Target = ColMut<'short, E, R>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -58,8 +57,8 @@ impl<'short, E: Entity> ReborrowMut<'short> for ColMut<'_, E> {
     }
 }
 
-impl<'a, E: Entity> IntoConst for ColMut<'a, E> {
-    type Target = ColRef<'a, E>;
+impl<'a, E: Entity, R: Shape> IntoConst for ColMut<'a, E, R> {
+    type Target = ColRef<'a, E, R>;
 
     #[inline]
     fn into_const(self) -> Self::Target {
@@ -70,11 +69,11 @@ impl<'a, E: Entity> IntoConst for ColMut<'a, E> {
     }
 }
 
-impl<'a, E: Entity> ColMut<'a, E> {
+impl<'a, E: Entity, R: Shape> ColMut<'a, E, R> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
         ptr: GroupFor<E, *mut E::Unit>,
-        nrows: usize,
+        nrows: R,
         row_stride: isize,
     ) -> Self {
         Self {
@@ -91,29 +90,9 @@ impl<'a, E: Entity> ColMut<'a, E> {
         }
     }
 
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
-        self.into_const().try_get_contiguous_col()
-    }
-
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col_mut(self) -> GroupFor<E, &'a mut [E::Unit]> {
-        assert!(self.row_stride() == 1);
-        let m = self.nrows();
-        E::faer_map(
-            self.as_ptr_mut(),
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
-        )
-    }
-
     /// Returns the number of rows of the column.
     #[inline(always)]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.inner.len
     }
     /// Returns the number of columns of the column. This is always equal to `1`.
@@ -146,16 +125,14 @@ impl<'a, E: Entity> ColMut<'a, E> {
 
     /// Returns `self` as a matrix view.
     #[inline(always)]
-    pub fn as_2d(self) -> MatRef<'a, E> {
+    pub fn as_2d(self) -> MatRef<'a, E, R> {
         self.into_const().as_2d()
     }
 
     /// Returns `self` as a mutable matrix view.
     #[inline(always)]
-    pub fn as_2d_mut(self) -> MatMut<'a, E> {
-        let nrows = self.nrows();
-        let row_stride = self.row_stride();
-        unsafe { mat::from_raw_parts_mut(self.as_ptr_mut(), nrows, 1, row_stride, isize::MAX) }
+    pub fn as_2d_mut(self) -> MatMut<'a, E, R> {
+        unsafe { self.into_const().as_2d().const_cast() }
     }
 
     /// Returns raw pointers to the element at the given index.
@@ -195,17 +172,17 @@ impl<'a, E: Entity> ColMut<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: R::IdxInc) -> GroupFor<E, *const E::Unit> {
         self.into_const().overflowing_ptr_at(row)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(self, row: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(self, row: R::IdxInc) -> GroupFor<E, *mut E::Unit> {
         unsafe {
             let cond = row != self.nrows();
             let offset = (cond as usize).wrapping_neg() as isize
-                & (row as isize).wrapping_mul(self.inner.stride);
+                & (row.unbound() as isize).wrapping_mul(self.inner.stride);
             E::faer_map(
                 self.as_ptr_mut(),
                 #[inline(always)]
@@ -222,7 +199,7 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: R::Idx) -> GroupFor<E, *const E::Unit> {
         self.into_const().ptr_inbounds_at(row)
     }
 
@@ -234,9 +211,47 @@ impl<'a, E: Entity> ColMut<'a, E> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, row: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, row: R::Idx) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(row < self.nrows());
-        self.ptr_at_mut_unchecked(row)
+        self.ptr_at_mut_unchecked(row.unbound())
+    }
+
+    /// Returns a view over the column.
+    #[inline]
+    pub fn as_dyn(self) -> ColRef<'a, E> {
+        let nrows = self.nrows().unbound();
+        let row_stride = self.row_stride();
+        unsafe { from_raw_parts(self.as_ptr(), nrows, row_stride) }
+    }
+
+    /// Returns a view over the column.
+    #[inline]
+    pub fn as_dyn_mut(self) -> ColMut<'a, E> {
+        let nrows = self.nrows().unbound();
+        let row_stride = self.row_stride();
+        unsafe { from_raw_parts_mut(self.as_ptr_mut(), nrows, row_stride) }
+    }
+}
+
+impl<'a, E: Entity> ColMut<'a, E> {
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
+        self.into_const().try_get_contiguous_col()
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col_mut(self) -> GroupFor<E, &'a mut [E::Unit]> {
+        assert!(self.row_stride() == 1);
+        let m = self.nrows();
+        E::faer_map(
+            self.as_ptr_mut(),
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts_mut(ptr, m) },
+        )
     }
 
     /// Splits the column vector at the given index into two parts and
@@ -954,11 +969,11 @@ impl<'a, E: Entity> ColMut<'a, E> {
 /// This function has the same safety requirements as
 /// [`mat::from_raw_parts_mut(ptr, nrows, 1, row_stride, 0)`]
 #[inline(always)]
-pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
+pub unsafe fn from_raw_parts_mut<'a, E: Entity, R: Shape>(
     ptr: GroupFor<E, *mut E::Unit>,
-    nrows: usize,
+    nrows: R,
     row_stride: isize,
-) -> ColMut<'a, E> {
+) -> ColMut<'a, E, R> {
     ColMut::__from_raw_parts(ptr, nrows, row_stride)
 }
 

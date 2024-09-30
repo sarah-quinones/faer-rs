@@ -1,13 +1,13 @@
-use crate::{mat::*, utils::slice::*, Conj};
+use crate::{mat::*, utils::slice::*, Conj, Shape};
 use coe::Coerce;
 use core::{marker::PhantomData, ptr::NonNull};
 use faer_entity::*;
 use reborrow::*;
 
 #[repr(C)]
-pub(crate) struct VecImpl<E: Entity> {
+pub(crate) struct VecImpl<E: Entity, N: Shape = usize> {
     pub(crate) ptr: GroupCopyFor<E, NonNull<E::Unit>>,
-    pub(crate) len: usize,
+    pub(crate) len: N,
     pub(crate) stride: isize,
 }
 #[repr(C)]
@@ -16,16 +16,16 @@ pub(crate) struct VecOwnImpl<E: Entity> {
     pub(crate) len: usize,
 }
 
-impl<E: Entity> Copy for VecImpl<E> {}
-impl<E: Entity> Clone for VecImpl<E> {
+impl<E: Entity, N: Shape> Copy for VecImpl<E, N> {}
+impl<E: Entity, N: Shape> Clone for VecImpl<E, N> {
     #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-unsafe impl<E: Entity> Sync for VecImpl<E> {}
-unsafe impl<E: Entity> Send for VecImpl<E> {}
+unsafe impl<E: Entity, N: Shape> Sync for VecImpl<E, N> {}
+unsafe impl<E: Entity, N: Shape> Send for VecImpl<E, N> {}
 unsafe impl<E: Entity> Sync for VecOwnImpl<E> {}
 unsafe impl<E: Entity> Send for VecOwnImpl<E> {}
 

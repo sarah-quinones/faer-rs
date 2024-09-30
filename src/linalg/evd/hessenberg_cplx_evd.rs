@@ -1567,7 +1567,7 @@ fn move_bulge<E: ComplexField>(
             [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
-        let mut vt = unsafe { crate::col::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1) };
+        let mut vt = unsafe { crate::col::from_raw_parts_mut::<'_, E, _>(vt_ptr, 3, 1) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);

@@ -490,7 +490,7 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
                     let slice = E::faer_map(slice.rb_mut().into_inner(), |slice| {
                         bytemuck::cast_slice_mut::<SimdUnitFor<E, S>, E::Unit>(slice)
                     });
-                    crate::mat::from_column_major_slice_with_stride_mut_generic::<E>(
+                    crate::mat::from_column_major_slice_with_stride_mut_generic::<E, _, _>(
                         slice,
                         n,
                         n,
@@ -615,7 +615,7 @@ pub(crate) fn new_cholesky<E: ComplexField, P: ProcessDiag<E>>(
                         bytemuck::cast_slice_mut::<SimdUnitFor<E, S>, E::Unit>(slice)
                     });
                     A.copy_from(
-                        crate::mat::from_column_major_slice_with_stride_mut_generic::<E>(
+                        crate::mat::from_column_major_slice_with_stride_mut_generic::<E, _, _>(
                             slice,
                             n,
                             n,

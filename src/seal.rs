@@ -19,3 +19,7 @@ impl Seal for u32 {}
 impl Seal for u64 {}
 impl Seal for u128 {}
 impl Seal for usize {}
+
+impl Seal for crate::utils::bound::Dim<'_> {}
+impl Seal for crate::utils::bound::Idx<'_> {}
+impl Seal for crate::utils::bound::IdxInc<'_> {}

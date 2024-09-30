@@ -1,5 +1,11 @@
 use super::*;
-use crate::{assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, row::RowRef};
+use crate::{
+    assert, debug_assert,
+    diag::DiagRef,
+    iter::{self, chunks::ChunkPolicy},
+    row::RowRef,
+    Unbind,
+};
 
 /// Immutable view over a column vector, similar to an immutable reference to a strided
 /// [prim@slice].
@@ -12,19 +18,19 @@ use crate::{assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy
 /// through [`ColRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
 #[repr(C)]
-pub struct ColRef<'a, E: Entity> {
-    pub(super) inner: VecImpl<E>,
+pub struct ColRef<'a, E: Entity, R: Shape = usize> {
+    pub(super) inner: VecImpl<E, R>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
-impl<E: Entity> Clone for ColRef<'_, E> {
+impl<E: Entity, R: Shape> Clone for ColRef<'_, E, R> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<E: Entity> Copy for ColRef<'_, E> {}
+impl<E: Entity, R: Shape> Copy for ColRef<'_, E, R> {}
 
 impl<E: Entity> Default for ColRef<'_, E> {
     #[inline]
@@ -32,8 +38,8 @@ impl<E: Entity> Default for ColRef<'_, E> {
         from_slice_generic::<E>(E::faer_map(E::UNIT, |()| &[] as &[E::Unit]))
     }
 }
-impl<'short, E: Entity> Reborrow<'short> for ColRef<'_, E> {
-    type Target = ColRef<'short, E>;
+impl<'short, E: Entity, R: Shape> Reborrow<'short> for ColRef<'_, E, R> {
+    type Target = ColRef<'short, E, R>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -41,8 +47,8 @@ impl<'short, E: Entity> Reborrow<'short> for ColRef<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for ColRef<'_, E> {
-    type Target = ColRef<'short, E>;
+impl<'short, E: Entity, R: Shape> ReborrowMut<'short> for ColRef<'_, E, R> {
+    type Target = ColRef<'short, E, R>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -50,7 +56,7 @@ impl<'short, E: Entity> ReborrowMut<'short> for ColRef<'_, E> {
     }
 }
 
-impl<E: Entity> IntoConst for ColRef<'_, E> {
+impl<E: Entity, R: Shape> IntoConst for ColRef<'_, E, R> {
     type Target = Self;
 
     #[inline]
@@ -59,11 +65,11 @@ impl<E: Entity> IntoConst for ColRef<'_, E> {
     }
 }
 
-impl<'a, E: Entity> ColRef<'a, E> {
+impl<'a, E: Entity, R: Shape> ColRef<'a, E, R> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
         ptr: GroupFor<E, *const E::Unit>,
-        nrows: usize,
+        nrows: R,
         row_stride: isize,
     ) -> Self {
         Self {
@@ -80,22 +86,9 @@ impl<'a, E: Entity> ColRef<'a, E> {
         }
     }
 
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
-        assert!(self.row_stride() == 1);
-        let m = self.nrows();
-        E::faer_map(
-            self.as_ptr(),
-            #[inline(always)]
-            |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
-        )
-    }
-
     /// Returns the number of rows of the column.
     #[inline(always)]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.inner.len
     }
     /// Returns the number of columns of the column. This is always equal to `1`.
@@ -122,7 +115,7 @@ impl<'a, E: Entity> ColRef<'a, E> {
 
     /// Returns `self` as a matrix view.
     #[inline(always)]
-    pub fn as_2d(self) -> MatRef<'a, E> {
+    pub fn as_2d(self) -> MatRef<'a, E, R, usize> {
         let nrows = self.nrows();
         let row_stride = self.row_stride();
         unsafe { crate::mat::from_raw_parts(self.as_ptr(), nrows, 1, row_stride, isize::MAX) }
@@ -153,11 +146,11 @@ impl<'a, E: Entity> ColRef<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: R::IdxInc) -> GroupFor<E, *const E::Unit> {
         unsafe {
             let cond = row != self.nrows();
             let offset = (cond as usize).wrapping_neg() as isize
-                & (row as isize).wrapping_mul(self.inner.stride);
+                & (row.unbound() as isize).wrapping_mul(self.inner.stride);
             E::faer_map(
                 self.as_ptr(),
                 #[inline(always)]
@@ -174,9 +167,32 @@ impl<'a, E: Entity> ColRef<'a, E> {
     /// * `row < self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: R::Idx) -> GroupFor<E, *const E::Unit> {
         debug_assert!(row < self.nrows());
-        self.ptr_at_unchecked(row)
+        self.ptr_at_unchecked(row.unbound())
+    }
+
+    /// Returns a view over the column.
+    #[inline]
+    pub fn as_dyn(self) -> ColRef<'a, E> {
+        let nrows = self.nrows().unbound();
+        let row_stride = self.row_stride();
+        unsafe { from_raw_parts(self.as_ptr(), nrows, row_stride) }
+    }
+}
+
+impl<'a, E: Entity> ColRef<'a, E> {
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col(self) -> GroupFor<E, &'a [E::Unit]> {
+        assert!(self.row_stride() == 1);
+        let m = self.nrows();
+        E::faer_map(
+            self.as_ptr(),
+            #[inline(always)]
+            |ptr| unsafe { core::slice::from_raw_parts(ptr, m) },
+        )
     }
 
     /// Splits the column vector at the given index into two parts and

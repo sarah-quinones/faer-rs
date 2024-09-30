@@ -59,9 +59,9 @@ impl<E: Entity> ViewMut for &mut Row<E> {
     }
 }
 
-impl<E: Entity> ViewMut for RowRef<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for RowRef<'_, E, C> {
     type Target<'a>
-        = RowRef<'a, E>
+        = RowRef<'a, E, C>
     where
         Self: 'a;
 
@@ -70,9 +70,9 @@ impl<E: Entity> ViewMut for RowRef<'_, E> {
         *self
     }
 }
-impl<E: Entity> ViewMut for RowMut<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for RowMut<'_, E, C> {
     type Target<'a>
-        = RowMut<'a, E>
+        = RowMut<'a, E, C>
     where
         Self: 'a;
 
@@ -81,9 +81,9 @@ impl<E: Entity> ViewMut for RowMut<'_, E> {
         (*self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &mut RowRef<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for &mut RowRef<'_, E, C> {
     type Target<'a>
-        = RowRef<'a, E>
+        = RowRef<'a, E, C>
     where
         Self: 'a;
 
@@ -92,9 +92,9 @@ impl<E: Entity> ViewMut for &mut RowRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &mut RowMut<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for &mut RowMut<'_, E, C> {
     type Target<'a>
-        = RowMut<'a, E>
+        = RowMut<'a, E, C>
     where
         Self: 'a;
 
@@ -103,9 +103,9 @@ impl<E: Entity> ViewMut for &mut RowMut<'_, E> {
         (**self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &RowRef<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for &RowRef<'_, E, C> {
     type Target<'a>
-        = RowRef<'a, E>
+        = RowRef<'a, E, C>
     where
         Self: 'a;
 
@@ -114,9 +114,9 @@ impl<E: Entity> ViewMut for &RowRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &RowMut<'_, E> {
+impl<E: Entity, C: Shape> ViewMut for &RowMut<'_, E, C> {
     type Target<'a>
-        = RowRef<'a, E>
+        = RowRef<'a, E, C>
     where
         Self: 'a;
 
@@ -160,9 +160,9 @@ impl<E: Entity> ViewMut for &mut Col<E> {
     }
 }
 
-impl<E: Entity> ViewMut for ColRef<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for ColRef<'_, E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -171,9 +171,9 @@ impl<E: Entity> ViewMut for ColRef<'_, E> {
         *self
     }
 }
-impl<E: Entity> ViewMut for ColMut<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for ColMut<'_, E, R> {
     type Target<'a>
-        = ColMut<'a, E>
+        = ColMut<'a, E, R>
     where
         Self: 'a;
 
@@ -182,9 +182,9 @@ impl<E: Entity> ViewMut for ColMut<'_, E> {
         (*self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &mut ColRef<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for &mut ColRef<'_, E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -193,9 +193,9 @@ impl<E: Entity> ViewMut for &mut ColRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &mut ColMut<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for &mut ColMut<'_, E, R> {
     type Target<'a>
-        = ColMut<'a, E>
+        = ColMut<'a, E, R>
     where
         Self: 'a;
 
@@ -204,9 +204,9 @@ impl<E: Entity> ViewMut for &mut ColMut<'_, E> {
         (**self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &ColRef<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for &ColRef<'_, E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -215,9 +215,9 @@ impl<E: Entity> ViewMut for &ColRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &ColMut<'_, E> {
+impl<E: Entity, R: Shape> ViewMut for &ColMut<'_, E, R> {
     type Target<'a>
-        = ColRef<'a, E>
+        = ColRef<'a, E, R>
     where
         Self: 'a;
 
@@ -261,9 +261,9 @@ impl<E: Entity> ViewMut for &mut Mat<E> {
     }
 }
 
-impl<E: Entity> ViewMut for MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for MatRef<'_, E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -272,9 +272,9 @@ impl<E: Entity> ViewMut for MatRef<'_, E> {
         *self
     }
 }
-impl<E: Entity> ViewMut for MatMut<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for MatMut<'_, E, R, C> {
     type Target<'a>
-        = MatMut<'a, E>
+        = MatMut<'a, E, R, C>
     where
         Self: 'a;
 
@@ -283,9 +283,9 @@ impl<E: Entity> ViewMut for MatMut<'_, E> {
         (*self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &mut MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &mut MatRef<'_, E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -294,9 +294,9 @@ impl<E: Entity> ViewMut for &mut MatRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &mut MatMut<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &mut MatMut<'_, E, R, C> {
     type Target<'a>
-        = MatMut<'a, E>
+        = MatMut<'a, E, R, C>
     where
         Self: 'a;
 
@@ -305,9 +305,9 @@ impl<E: Entity> ViewMut for &mut MatMut<'_, E> {
         (**self).rb_mut()
     }
 }
-impl<E: Entity> ViewMut for &MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &MatRef<'_, E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -316,9 +316,9 @@ impl<E: Entity> ViewMut for &MatRef<'_, E> {
         **self
     }
 }
-impl<E: Entity> ViewMut for &MatMut<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &MatMut<'_, E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -440,21 +440,26 @@ pub unsafe trait MaybeContiguous: MatShape {
 }
 
 /// Zipped matrix views.
-pub unsafe trait MatIndex<'a, _Outlives = &'a Self>: MaybeContiguous {
+pub unsafe trait MatIndex: MaybeContiguous {
     /// Item produced by the zipped views.
     type Item;
+    /// Matrix type with type erased dimensions.
+    type Dyn: MatIndex;
+
+    /// Converts a type erased index back to its original representation.
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index;
 
     /// Get the item at the given index, skipping bound checks.
-    unsafe fn get_unchecked(&'a mut self, index: Self::Index) -> Self::Item;
+    unsafe fn get_unchecked(&mut self, index: Self::Index) -> Self::Item;
     /// Get the item at the given slice position, skipping bound checks.
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item;
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item;
 
     /// Checks if the zipped matrices are contiguous.
     fn is_contiguous(&self) -> bool;
     /// Computes the preferred iteration layout of the matrices.
     fn preferred_layout(&self) -> Self::LayoutTransform;
     /// Applies the layout transformation to the matrices.
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self;
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn;
 }
 
 /// Single element.
@@ -538,8 +543,8 @@ impl<
     }
 }
 
-impl<E: Entity> MatShape for ColRef<'_, E> {
-    type Rows = usize;
+impl<E: Entity, R: Shape> MatShape for ColRef<'_, E, R> {
+    type Rows = R;
     type Cols = ();
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {
@@ -549,8 +554,8 @@ impl<E: Entity> MatShape for ColRef<'_, E> {
     fn ncols(&self) -> Self::Cols {}
 }
 
-impl<E: Entity> MatShape for ColMut<'_, E> {
-    type Rows = usize;
+impl<E: Entity, R: Shape> MatShape for ColMut<'_, E, R> {
+    type Rows = R;
     type Cols = ();
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {
@@ -560,9 +565,9 @@ impl<E: Entity> MatShape for ColMut<'_, E> {
     fn ncols(&self) -> Self::Cols {}
 }
 
-impl<E: Entity> MatShape for RowRef<'_, E> {
+impl<E: Entity, C: Shape> MatShape for RowRef<'_, E, C> {
     type Rows = ();
-    type Cols = usize;
+    type Cols = C;
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {}
     #[inline(always)]
@@ -570,9 +575,9 @@ impl<E: Entity> MatShape for RowRef<'_, E> {
         (*self).ncols()
     }
 }
-impl<E: Entity> MatShape for RowMut<'_, E> {
+impl<E: Entity, C: Shape> MatShape for RowMut<'_, E, C> {
     type Rows = ();
-    type Cols = usize;
+    type Cols = C;
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {}
     #[inline(always)]
@@ -581,9 +586,9 @@ impl<E: Entity> MatShape for RowMut<'_, E> {
     }
 }
 
-impl<E: Entity> MatShape for MatRef<'_, E> {
-    type Rows = usize;
-    type Cols = usize;
+impl<E: Entity, R: Shape, C: Shape> MatShape for MatRef<'_, E, R, C> {
+    type Rows = R;
+    type Cols = C;
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {
         (*self).nrows()
@@ -594,9 +599,9 @@ impl<E: Entity> MatShape for MatRef<'_, E> {
     }
 }
 
-impl<E: Entity> MatShape for MatMut<'_, E> {
-    type Rows = usize;
-    type Cols = usize;
+impl<E: Entity, R: Shape, C: Shape> MatShape for MatMut<'_, E, R, C> {
+    type Rows = R;
+    type Cols = C;
     #[inline(always)]
     fn nrows(&self) -> Self::Rows {
         (*self).nrows()
@@ -623,22 +628,27 @@ unsafe impl<
 }
 
 unsafe impl<
-        'a,
         Rows: Copy + Eq + core::fmt::Debug,
         Cols: Copy + Eq + core::fmt::Debug,
-        Mat: MatIndex<'a, Rows = Rows, Cols = Cols>,
-    > MatIndex<'a> for LastEq<Rows, Cols, Mat>
+        Mat: MatIndex<Rows = Rows, Cols = Cols>,
+    > MatIndex for LastEq<Rows, Cols, Mat>
 {
     type Item = Last<Mat::Item>;
+    type Dyn = LastEq<<Mat::Dyn as MatShape>::Rows, <Mat::Dyn as MatShape>::Cols, Mat::Dyn>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, index: Self::Index) -> Self::Item {
+    unsafe fn get_unchecked(&mut self, index: Self::Index) -> Self::Item {
         Last(self.0.get_unchecked(index))
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        Last(Mat::get_from_slice_unchecked(&mut slice.0, idx))
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        Mat::from_dyn_idx(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        Last(Mat::next_unchecked(&mut slice.0))
     }
 
     #[inline(always)]
@@ -650,8 +660,8 @@ unsafe impl<
         self.0.preferred_layout()
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
-        Self(self.0.with_layout(layout))
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
+        LastEq(self.0.with_layout(layout))
     }
 }
 
@@ -680,31 +690,43 @@ unsafe impl<
 }
 
 unsafe impl<
-        'a,
         Rows: Copy + Eq + core::fmt::Debug,
         Cols: Copy + Eq + core::fmt::Debug,
-        Head: MatIndex<'a, Rows = Rows, Cols = Cols>,
+        Head: MatIndex<Rows = Rows, Cols = Cols, Dyn: MatIndex<Dyn = Head::Dyn>>,
         Tail: MatIndex<
-            'a,
             Rows = Rows,
             Cols = Cols,
+            Dyn: MatIndex<
+                Rows = <Head::Dyn as MatShape>::Rows,
+                Cols = <Head::Dyn as MatShape>::Cols,
+                Index = <Head::Dyn as MaybeContiguous>::Index,
+                LayoutTransform = <Head::Dyn as MaybeContiguous>::LayoutTransform,
+                Dyn = Tail::Dyn,
+            >,
             Index = Head::Index,
             LayoutTransform = Head::LayoutTransform,
         >,
-    > MatIndex<'a> for ZipEq<Rows, Cols, Head, Tail>
+    > MatIndex for ZipEq<Rows, Cols, Head, Tail>
 {
     type Item = Zip<Head::Item, Tail::Item>;
+    type Dyn =
+        ZipEq<<Head::Dyn as MatShape>::Rows, <Head::Dyn as MatShape>::Cols, Head::Dyn, Tail::Dyn>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, index: Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        Head::from_dyn_idx(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, index: Self::Index) -> Self::Item {
         Zip(self.0.get_unchecked(index), self.1.get_unchecked(index))
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
         Zip(
-            Head::get_from_slice_unchecked(&mut slice.0, idx),
-            Tail::get_from_slice_unchecked(&mut slice.1, idx),
+            Head::next_unchecked(&mut slice.0),
+            Tail::next_unchecked(&mut slice.1),
         )
     }
 
@@ -717,30 +739,36 @@ unsafe impl<
         self.0.preferred_layout()
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         ZipEq(self.0.with_layout(layout), self.1.with_layout(layout))
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for ColRef<'_, E> {
-    type Index = (usize, ());
+unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColRef<'_, E, R> {
+    type Index = R::Idx;
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline(always)]
-    unsafe fn get_slice_unchecked(&mut self, (i, _): Self::Index, n_elems: usize) -> Self::Slice {
+    unsafe fn get_slice_unchecked(&mut self, i: Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb().ptr_at(i),
+            (*self).rb().ptr_inbounds_at(i),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts(ptr as *const MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
-unsafe impl<'a, E: Entity> MatIndex<'a> for ColRef<'_, E> {
+unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColRef<'a, E, R> {
     type Item = Read<'a, E>;
+    type Dyn = ColRef<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (i, _): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        R::Idx::new_unbound(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, i: Self::Index) -> Self::Item {
         Read {
             ptr: E::faer_map(
                 self.rb().ptr_inbounds_at(i),
@@ -751,15 +779,14 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for ColRef<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb(E::faer_as_ref(slice));
-        Read {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked(idx),
-            ),
-        }
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        Read { ptr: head }
     }
 
     #[inline(always)]
@@ -769,43 +796,50 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for ColRef<'_, E> {
     #[inline(always)]
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let rs = self.row_stride();
-        if self.nrows() > 1 && rs == 1 {
+        let nrows = self.nrows().unbound();
+        if nrows > 1 && rs == 1 {
             VecLayoutTransform::None
-        } else if self.nrows() > 1 && rs == -1 {
+        } else if nrows > 1 && rs == -1 {
             VecLayoutTransform::Reverse
         } else {
             VecLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use VecLayoutTransform::*;
         match layout {
-            None => self,
-            Reverse => self.reverse_rows(),
+            None => self.as_dyn(),
+            Reverse => self.as_dyn().reverse_rows(),
         }
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for ColMut<'_, E> {
-    type Index = (usize, ());
+unsafe impl<E: Entity, R: Shape> MaybeContiguous for ColMut<'_, E, R> {
+    type Index = R::Idx;
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline(always)]
-    unsafe fn get_slice_unchecked(&mut self, (i, _): Self::Index, n_elems: usize) -> Self::Slice {
+    unsafe fn get_slice_unchecked(&mut self, i: Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb_mut().ptr_at_mut(i),
+            (*self).rb_mut().ptr_inbounds_at_mut(i),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
-unsafe impl<'a, E: Entity> MatIndex<'a> for ColMut<'_, E> {
+unsafe impl<'a, E: Entity, R: Shape> MatIndex for ColMut<'a, E, R> {
     type Item = ReadWrite<'a, E>;
+    type Dyn = ColMut<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (i, _): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        R::Idx::new_unbound(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, i: Self::Index) -> Self::Item {
         ReadWrite {
             ptr: E::faer_map(
                 self.rb_mut().ptr_inbounds_at_mut(i),
@@ -816,15 +850,14 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for ColMut<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb_mut(E::faer_as_mut(slice));
-        ReadWrite {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked_mut(idx),
-            ),
-        }
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first_mut().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        ReadWrite { ptr: head }
     }
 
     #[inline(always)]
@@ -834,43 +867,50 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for ColMut<'_, E> {
     #[inline(always)]
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let rs = self.row_stride();
-        if self.nrows() > 1 && rs == 1 {
+        let nrows = self.nrows().unbound();
+        if nrows > 1 && rs == 1 {
             VecLayoutTransform::None
-        } else if self.nrows() > 1 && rs == -1 {
+        } else if nrows > 1 && rs == -1 {
             VecLayoutTransform::Reverse
         } else {
             VecLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use VecLayoutTransform::*;
         match layout {
-            None => self,
-            Reverse => self.reverse_rows_mut(),
+            None => self.as_dyn_mut(),
+            Reverse => self.as_dyn_mut().reverse_rows_mut(),
         }
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for RowRef<'_, E> {
-    type Index = ((), usize);
+unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowRef<'_, E, C> {
+    type Index = C::Idx;
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline(always)]
-    unsafe fn get_slice_unchecked(&mut self, (_, j): Self::Index, n_elems: usize) -> Self::Slice {
+    unsafe fn get_slice_unchecked(&mut self, j: Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb().ptr_at(j),
+            (*self).rb().ptr_inbounds_at(j),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts(ptr as *const MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
-unsafe impl<'a, E: Entity> MatIndex<'a> for RowRef<'_, E> {
+unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowRef<'a, E, C> {
     type Item = Read<'a, E>;
+    type Dyn = RowRef<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (_, j): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        C::Idx::new_unbound(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, j: Self::Index) -> Self::Item {
         Read {
             ptr: E::faer_map(
                 self.rb().ptr_inbounds_at(j),
@@ -881,15 +921,14 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for RowRef<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb(E::faer_as_ref(slice));
-        Read {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked(idx),
-            ),
-        }
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        Read { ptr: head }
     }
 
     #[inline(always)]
@@ -899,43 +938,62 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for RowRef<'_, E> {
     #[inline(always)]
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let cs = self.col_stride();
-        if self.ncols() > 1 && cs == 1 {
+        let ncols = self.ncols().unbound();
+
+        if ncols > 1 && cs == 1 {
             VecLayoutTransform::None
-        } else if self.ncols() > 1 && cs == -1 {
+        } else if ncols > 1 && cs == -1 {
             VecLayoutTransform::Reverse
         } else {
             VecLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use VecLayoutTransform::*;
         match layout {
-            None => self,
-            Reverse => self.reverse_cols(),
+            None => self.as_dyn(),
+            Reverse => self.as_dyn().reverse_cols(),
         }
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for RowMut<'_, E> {
-    type Index = ((), usize);
+unsafe impl<E: Entity, C: Shape> MaybeContiguous for RowMut<'_, E, C> {
+    type Index = C::Idx;
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = VecLayoutTransform;
 
     #[inline(always)]
-    unsafe fn get_slice_unchecked(&mut self, (_, j): Self::Index, n_elems: usize) -> Self::Slice {
+    unsafe fn get_slice_unchecked(&mut self, j: Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb_mut().ptr_at_mut(j),
+            (*self).rb_mut().ptr_inbounds_at_mut(j),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
-unsafe impl<'a, E: Entity> MatIndex<'a> for RowMut<'_, E> {
+unsafe impl<'a, E: Entity, C: Shape> MatIndex for RowMut<'a, E, C> {
     type Item = ReadWrite<'a, E>;
+    type Dyn = RowMut<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (_, j): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        C::Idx::new_unbound(idx)
+    }
+
+    #[inline(always)]
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first_mut().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        ReadWrite { ptr: head }
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, j: Self::Index) -> Self::Item {
         ReadWrite {
             ptr: E::faer_map(
                 self.rb_mut().ptr_inbounds_at_mut(j),
@@ -946,61 +1004,56 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for RowMut<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb_mut(E::faer_as_mut(slice));
-        ReadWrite {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked_mut(idx),
-            ),
-        }
-    }
-
-    #[inline(always)]
     fn is_contiguous(&self) -> bool {
         self.col_stride() == 1
     }
     #[inline(always)]
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let cs = self.col_stride();
-        if self.ncols() > 1 && cs == 1 {
+        let ncols = self.ncols().unbound();
+        if ncols > 1 && cs == 1 {
             VecLayoutTransform::None
-        } else if self.ncols() > 1 && cs == -1 {
+        } else if ncols > 1 && cs == -1 {
             VecLayoutTransform::Reverse
         } else {
             VecLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use VecLayoutTransform::*;
         match layout {
-            None => self,
-            Reverse => self.reverse_cols_mut(),
+            None => self.as_dyn_mut(),
+            Reverse => self.as_dyn_mut().reverse_cols_mut(),
         }
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for MatRef<'_, E> {
-    type Index = (usize, usize);
+unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatRef<'_, E, R, C> {
+    type Index = (R::Idx, C::Idx);
     type Slice = GroupFor<E, &'static [MaybeUninit<E::Unit>]>;
     type LayoutTransform = MatLayoutTransform;
 
     #[inline(always)]
     unsafe fn get_slice_unchecked(&mut self, (i, j): Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb().overflowing_ptr_at(i, j),
+            (*self).rb().ptr_inbounds_at(i.into(), j.into()),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts(ptr as *const MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
-unsafe impl<'a, E: Entity> MatIndex<'a> for MatRef<'_, E> {
+unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatRef<'a, E, R, C> {
     type Item = Read<'a, E>;
+    type Dyn = MatRef<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (i, j): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        (R::Idx::new_unbound(idx.0), C::Idx::new_unbound(idx.1))
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, (i, j): Self::Index) -> Self::Item {
         Read {
             ptr: E::faer_map(
                 self.rb().ptr_inbounds_at(i, j),
@@ -1011,15 +1064,14 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for MatRef<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb(E::faer_as_ref(slice));
-        Read {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked(idx),
-            ),
-        }
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        Read { ptr: head }
     }
 
     #[inline(always)]
@@ -1030,50 +1082,59 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for MatRef<'_, E> {
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let rs = self.row_stride();
         let cs = self.col_stride();
-        if self.nrows() > 1 && rs == 1 {
+        let nrows = self.nrows().unbound();
+        let ncols = self.ncols().unbound();
+
+        if nrows > 1 && rs == 1 {
             MatLayoutTransform::None
-        } else if self.nrows() > 1 && rs == -1 {
+        } else if nrows > 1 && rs == -1 {
             MatLayoutTransform::ReverseRows
-        } else if self.ncols() > 1 && cs == 1 {
+        } else if ncols > 1 && cs == 1 {
             MatLayoutTransform::Transpose
-        } else if self.ncols() > 1 && cs == -1 {
+        } else if ncols > 1 && cs == -1 {
             MatLayoutTransform::TransposeReverseRows
         } else {
             MatLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use MatLayoutTransform::*;
         match layout {
-            None => self,
-            ReverseRows => self.reverse_rows(),
-            Transpose => self.transpose(),
-            TransposeReverseRows => self.transpose().reverse_rows(),
+            None => self.as_dyn(),
+            ReverseRows => self.as_dyn().reverse_rows(),
+            Transpose => self.as_dyn().transpose(),
+            TransposeReverseRows => self.as_dyn().transpose().reverse_rows(),
         }
     }
 }
 
-unsafe impl<E: Entity> MaybeContiguous for MatMut<'_, E> {
-    type Index = (usize, usize);
+unsafe impl<E: Entity, R: Shape, C: Shape> MaybeContiguous for MatMut<'_, E, R, C> {
+    type Index = (R::Idx, C::Idx);
     type Slice = GroupFor<E, &'static mut [MaybeUninit<E::Unit>]>;
     type LayoutTransform = MatLayoutTransform;
 
     #[inline(always)]
     unsafe fn get_slice_unchecked(&mut self, (i, j): Self::Index, n_elems: usize) -> Self::Slice {
         E::faer_map(
-            (*self).rb().overflowing_ptr_at(i, j),
+            (*self).rb().ptr_inbounds_at(i, j),
             #[inline(always)]
             |ptr| core::slice::from_raw_parts_mut(ptr as *mut MaybeUninit<E::Unit>, n_elems),
         )
     }
 }
 
-unsafe impl<'a, E: Entity> MatIndex<'a> for MatMut<'_, E> {
+unsafe impl<'a, E: Entity, R: Shape, C: Shape> MatIndex for MatMut<'a, E, R, C> {
     type Item = ReadWrite<'a, E>;
+    type Dyn = MatMut<'a, E>;
 
     #[inline(always)]
-    unsafe fn get_unchecked(&'a mut self, (i, j): Self::Index) -> Self::Item {
+    unsafe fn from_dyn_idx(idx: <Self::Dyn as MaybeContiguous>::Index) -> Self::Index {
+        (R::Idx::new_unbound(idx.0), C::Idx::new_unbound(idx.1))
+    }
+
+    #[inline(always)]
+    unsafe fn get_unchecked(&mut self, (i, j): Self::Index) -> Self::Item {
         ReadWrite {
             ptr: E::faer_map(
                 self.rb_mut().ptr_inbounds_at_mut(i, j),
@@ -1084,15 +1145,14 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for MatMut<'_, E> {
     }
 
     #[inline(always)]
-    unsafe fn get_from_slice_unchecked(slice: &'a mut Self::Slice, idx: usize) -> Self::Item {
-        let slice = E::faer_rb_mut(E::faer_as_mut(slice));
-        ReadWrite {
-            ptr: E::faer_map(
-                slice,
-                #[inline(always)]
-                |slice| slice.get_unchecked_mut(idx),
-            ),
-        }
+    unsafe fn next_unchecked(slice: &mut Self::Slice) -> Self::Item {
+        let (head, tail) = E::faer_unzip(E::faer_map(
+            E::faer_as_mut(slice),
+            #[inline(always)]
+            |slice| core::mem::take(slice).split_first_mut().unwrap_unchecked(),
+        ));
+        *slice = tail;
+        ReadWrite { ptr: head }
     }
 
     #[inline(always)]
@@ -1103,46 +1163,53 @@ unsafe impl<'a, E: Entity> MatIndex<'a> for MatMut<'_, E> {
     fn preferred_layout(&self) -> Self::LayoutTransform {
         let rs = self.row_stride();
         let cs = self.col_stride();
-        if self.nrows() > 1 && rs == 1 {
+        let nrows = self.nrows().unbound();
+        let ncols = self.ncols().unbound();
+
+        if nrows > 1 && rs == 1 {
             MatLayoutTransform::None
-        } else if self.nrows() > 1 && rs == -1 {
+        } else if nrows > 1 && rs == -1 {
             MatLayoutTransform::ReverseRows
-        } else if self.ncols() > 1 && cs == 1 {
+        } else if ncols > 1 && cs == 1 {
             MatLayoutTransform::Transpose
-        } else if self.ncols() > 1 && cs == -1 {
+        } else if ncols > 1 && cs == -1 {
             MatLayoutTransform::TransposeReverseRows
         } else {
             MatLayoutTransform::None
         }
     }
     #[inline(always)]
-    fn with_layout(self, layout: Self::LayoutTransform) -> Self {
+    fn with_layout(self, layout: Self::LayoutTransform) -> Self::Dyn {
         use MatLayoutTransform::*;
         match layout {
-            None => self,
-            ReverseRows => self.reverse_rows_mut(),
-            Transpose => self.transpose_mut(),
-            TransposeReverseRows => self.transpose_mut().reverse_rows_mut(),
+            None => self.as_dyn_mut(),
+            ReverseRows => self.as_dyn_mut().reverse_rows_mut(),
+            Transpose => self.as_dyn_mut().transpose_mut(),
+            TransposeReverseRows => self.as_dyn_mut().transpose_mut().reverse_rows_mut(),
         }
     }
 }
 
 #[inline(always)]
-fn annotate_noalias_mat<Z: for<'a> MatIndex<'a>>(
-    f: &mut impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+fn annotate_noalias_mat<Z: MatIndex>(
+    f: &mut impl FnMut(<Z as MatIndex>::Item),
     mut slice: Z::Slice,
     i_begin: usize,
     i_end: usize,
     _j: usize,
 ) {
-    for i in i_begin..i_end {
-        unsafe { f(Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+    for _ in i_begin..i_end {
+        unsafe { f(Z::next_unchecked(&mut slice)) };
     }
 }
 
 #[inline(always)]
-fn annotate_noalias_mat_with_index<Z: for<'a> MatIndex<'a>>(
-    f: &mut impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+fn annotate_noalias_mat_with_index<
+    Z: MatIndex<Index = (RowIdx, ColIdx), Dyn: MatIndex<Index = (usize, usize)>>,
+    RowIdx,
+    ColIdx,
+>(
+    f: &mut impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
     mut slice: Z::Slice,
     i_begin: usize,
     i_end: usize,
@@ -1153,32 +1220,32 @@ fn annotate_noalias_mat_with_index<Z: for<'a> MatIndex<'a>>(
     if !transpose {
         if !reverse_rows {
             for i in i_begin..i_end {
-                unsafe { f(i, j, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+                unsafe {
+                    let (ii, jj) = Z::from_dyn_idx((i, j));
+                    f(ii, jj, Z::next_unchecked(&mut slice))
+                };
             }
         } else {
             for i in i_begin..i_end {
                 unsafe {
-                    f(
-                        i_begin + (i_end - i - 1),
-                        j,
-                        Z::get_from_slice_unchecked(&mut slice, i - i_begin),
-                    )
+                    let (ii, jj) = Z::from_dyn_idx((i_begin + (i_end - i - 1), j));
+                    f(ii, jj, Z::next_unchecked(&mut slice))
                 };
             }
         }
     } else {
         if !reverse_rows {
             for i in i_begin..i_end {
-                unsafe { f(j, i, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+                unsafe {
+                    let (ii, jj) = Z::from_dyn_idx((j, i));
+                    f(ii, jj, Z::next_unchecked(&mut slice))
+                };
             }
         } else {
             for i in i_begin..i_end {
                 unsafe {
-                    f(
-                        j,
-                        i_begin + (i_end - i - 1),
-                        Z::get_from_slice_unchecked(&mut slice, i - i_begin),
-                    )
+                    let (ii, jj) = Z::from_dyn_idx((j, i_begin + (i_end - i - 1)));
+                    f(ii, jj, Z::next_unchecked(&mut slice))
                 };
             }
         }
@@ -1186,20 +1253,23 @@ fn annotate_noalias_mat_with_index<Z: for<'a> MatIndex<'a>>(
 }
 
 #[inline(always)]
-fn annotate_noalias_col<Z: for<'a> MatIndex<'a>>(
-    f: &mut impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+fn annotate_noalias_col<Z: MatIndex>(
+    f: &mut impl FnMut(<Z as MatIndex>::Item),
     mut slice: Z::Slice,
     i_begin: usize,
     i_end: usize,
 ) {
-    for i in i_begin..i_end {
-        unsafe { f(Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+    for _ in i_begin..i_end {
+        unsafe { f(Z::next_unchecked(&mut slice)) };
     }
 }
 
 #[inline(always)]
-fn annotate_noalias_col_with_index<Z: for<'a> MatIndex<'a>>(
-    f: &mut impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+fn annotate_noalias_col_with_index<
+    Z: MatIndex<Index = Idx, Dyn: MatIndex<Item = Z::Item, Index = usize>>,
+    Idx,
+>(
+    f: &mut impl FnMut(Idx, <Z as MatIndex>::Item),
     mut slice: Z::Slice,
     i_begin: usize,
     i_end: usize,
@@ -1207,24 +1277,35 @@ fn annotate_noalias_col_with_index<Z: for<'a> MatIndex<'a>>(
 ) {
     if !reverse {
         for i in i_begin..i_end {
-            unsafe { f(i, Z::get_from_slice_unchecked(&mut slice, i - i_begin)) };
+            unsafe {
+                let ii = Z::from_dyn_idx(i);
+                f(ii, Z::next_unchecked(&mut slice))
+            };
         }
     } else {
         for i in i_begin..i_end {
             unsafe {
-                f(
-                    i_begin + (i_end - i - 1),
-                    Z::get_from_slice_unchecked(&mut slice, i - i_begin),
-                )
+                let ii = Z::from_dyn_idx(i_begin + (i_end - i - 1));
+                f(ii, Z::next_unchecked(&mut slice))
             };
         }
     }
 }
 
 #[inline(always)]
-fn for_each_mat<Z: for<'a> MatIndex<'a, Rows = usize, Cols = usize, Index = (usize, usize)>>(
+fn for_each_mat<
+    Z: MatIndex<
+        Dyn: MatIndex<
+            Item = Z::Item,
+            Slice = Z::Slice,
+            Rows = usize,
+            Cols = usize,
+            Index = (usize, usize),
+        >,
+    >,
+>(
     z: Z,
-    mut f: impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(<Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1238,7 +1319,7 @@ fn for_each_mat<Z: for<'a> MatIndex<'a, Rows = usize, Cols = usize, Index = (usi
     unsafe {
         if z.is_contiguous() {
             for j in 0..n {
-                annotate_noalias_mat::<Z>(&mut f, z.get_slice_unchecked((0, j), m), 0, m, j);
+                annotate_noalias_mat::<Z::Dyn>(&mut f, z.get_slice_unchecked((0, j), m), 0, m, j);
             }
         } else {
             for j in 0..n {
@@ -1255,16 +1336,22 @@ fn for_each_mat<Z: for<'a> MatIndex<'a, Rows = usize, Cols = usize, Index = (usi
 
 #[inline(always)]
 fn for_each_mat_with_index<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = usize,
-        Cols = usize,
-        Index = (usize, usize),
+    RowIdx,
+    ColIdx,
+    Z: MatIndex<
+        Index = (RowIdx, ColIdx),
+        Dyn: MatIndex<
+            Rows = usize,
+            Cols = usize,
+            Index = (usize, usize),
+            Slice = Z::Slice,
+            Item = Z::Item,
+        >,
         LayoutTransform = MatLayoutTransform,
     >,
 >(
     z: Z,
-    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1279,7 +1366,7 @@ fn for_each_mat_with_index<
         MatLayoutTransform::None => unsafe {
             if z.is_contiguous() {
                 for j in 0..n {
-                    annotate_noalias_mat_with_index::<Z>(
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((0, j), m),
                         0,
@@ -1292,7 +1379,8 @@ fn for_each_mat_with_index<
             } else {
                 for j in 0..n {
                     for i in 0..m {
-                        f(i, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((i, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1300,7 +1388,7 @@ fn for_each_mat_with_index<
         MatLayoutTransform::ReverseRows => unsafe {
             if z.is_contiguous() {
                 for j in 0..n {
-                    annotate_noalias_mat_with_index::<Z>(
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((0, j), m),
                         0,
@@ -1313,7 +1401,8 @@ fn for_each_mat_with_index<
             } else {
                 for j in 0..n {
                     for i in 0..m {
-                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((m - i - 1, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1321,7 +1410,7 @@ fn for_each_mat_with_index<
         MatLayoutTransform::Transpose => unsafe {
             if z.is_contiguous() {
                 for j in 0..n {
-                    annotate_noalias_mat_with_index::<Z>(
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((0, j), m),
                         0,
@@ -1334,7 +1423,8 @@ fn for_each_mat_with_index<
             } else {
                 for j in 0..n {
                     for i in 0..m {
-                        f(j, i, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, i));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1342,7 +1432,7 @@ fn for_each_mat_with_index<
         MatLayoutTransform::TransposeReverseRows => unsafe {
             if z.is_contiguous() {
                 for j in 0..n {
-                    annotate_noalias_mat_with_index::<Z>(
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((0, j), m),
                         0,
@@ -1355,7 +1445,8 @@ fn for_each_mat_with_index<
             } else {
                 for j in 0..n {
                     for i in 0..m {
-                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, m - i - 1));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1365,17 +1456,23 @@ fn for_each_mat_with_index<
 
 #[inline(always)]
 fn for_each_mat_triangular_lower_with_index<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = usize,
-        Cols = usize,
-        Index = (usize, usize),
+    RowIdx,
+    ColIdx,
+    Z: MatIndex<
+        Index = (RowIdx, ColIdx),
+        Dyn: MatIndex<
+            Rows = usize,
+            Cols = usize,
+            Index = (usize, usize),
+            Item = Z::Item,
+            Slice = Z::Slice,
+        >,
         LayoutTransform = MatLayoutTransform,
     >,
 >(
     z: Z,
     diag: Diag,
-    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1398,7 +1495,10 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = j + strict;
                     let end = m;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         start,
@@ -1412,8 +1512,12 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = j + strict;
                     let end = m;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(i, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((i, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1423,7 +1527,10 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..Ord::min(m, n) {
                     let start = 0;
                     let end = m - j - strict;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         j + strict + start,
@@ -1437,8 +1544,12 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..Ord::min(m, n) {
                     let start = 0;
                     let end = m - j - strict;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((m - i - 1, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1448,7 +1559,10 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = Ord::min(m, j + (1 - strict));
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((0, j), end - start),
                         start,
@@ -1462,8 +1576,12 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = Ord::min(m, j + (1 - strict));
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(j, i, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, i));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1473,7 +1591,10 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = m - Ord::min(j + (1 - strict) as usize, m);
                     let end = m;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         0,
@@ -1487,8 +1608,12 @@ fn for_each_mat_triangular_lower_with_index<
                 for j in 0..n {
                     let start = m - Ord::min(j + (1 - strict) as usize, m);
                     let end = m;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, m - i - 1));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1498,17 +1623,23 @@ fn for_each_mat_triangular_lower_with_index<
 
 #[inline(always)]
 fn for_each_mat_triangular_upper_with_index<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = usize,
-        Cols = usize,
-        Index = (usize, usize),
+    RowIdx,
+    ColIdx,
+    Z: MatIndex<
+        Index = (RowIdx, ColIdx),
+        Dyn: MatIndex<
+            Rows = usize,
+            Cols = usize,
+            Index = (usize, usize),
+            Item = Z::Item,
+            Slice = Z::Slice,
+        >,
         LayoutTransform = MatLayoutTransform,
     >,
 >(
     z: Z,
     diag: Diag,
-    mut f: impl for<'a> FnMut(usize, usize, <Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(RowIdx, ColIdx, <Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1531,8 +1662,11 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = Ord::min(m, j + (1 - strict));
+                    if start == end {
+                        continue;
+                    }
 
-                    annotate_noalias_mat_with_index::<Z>(
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         start,
@@ -1546,8 +1680,12 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = Ord::min(m, j + (1 - strict));
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(i, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((i, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1557,7 +1695,10 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..Ord::min(m, n) {
                     let start = m - Ord::min(j + (1 - strict) as usize, m);
                     let end = m;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         0,
@@ -1571,8 +1712,12 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..Ord::min(m, n) {
                     let start = m - Ord::min(j + (1 - strict) as usize, m);
                     let end = m;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(m - i - 1, j, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((m - i - 1, j));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1582,7 +1727,10 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = j + strict;
                     let end = m;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         start,
@@ -1596,8 +1744,12 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = j + strict;
                     let end = m;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(j, i, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, i));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1607,7 +1759,10 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = m - j - strict;
-                    annotate_noalias_mat_with_index::<Z>(
+                    if start == end {
+                        continue;
+                    }
+                    annotate_noalias_mat_with_index::<Z, _, _>(
                         &mut f,
                         z.get_slice_unchecked((start, j), end - start),
                         j + strict,
@@ -1621,8 +1776,12 @@ fn for_each_mat_triangular_upper_with_index<
                 for j in 0..n {
                     let start = 0;
                     let end = m - j - strict;
+                    if start == end {
+                        continue;
+                    }
                     for i in start..end {
-                        f(j, m - i - 1, z.get_unchecked((i, j)))
+                        let (ii, jj) = Z::from_dyn_idx((j, m - i - 1));
+                        f(ii, jj, z.get_unchecked((i, j)))
                     }
                 }
             }
@@ -1632,25 +1791,30 @@ fn for_each_mat_triangular_upper_with_index<
 
 #[inline(always)]
 fn for_each_mat_triangular_lower<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = usize,
-        Cols = usize,
-        Index = (usize, usize),
+    Z: MatIndex<
         LayoutTransform = MatLayoutTransform,
+        Dyn: MatIndex<
+            LayoutTransform = MatLayoutTransform,
+            Item = Z::Item,
+            Slice = Z::Slice,
+            Rows = usize,
+            Cols = usize,
+            Index = (usize, usize),
+            Dyn = Z::Dyn,
+        >,
     >,
 >(
     z: Z,
     diag: Diag,
     transpose: bool,
-    mut f: impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(<Z as MatIndex>::Item),
 ) {
     use MatLayoutTransform::*;
 
     let z = if transpose {
         z.with_layout(MatLayoutTransform::Transpose)
     } else {
-        z
+        z.with_layout(MatLayoutTransform::None)
     };
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1681,8 +1845,11 @@ fn for_each_mat_triangular_lower<
                 };
 
                 let len = end - start;
+                if start == end {
+                    continue;
+                }
 
-                annotate_noalias_mat::<Z>(
+                annotate_noalias_mat::<Z::Dyn>(
                     &mut f,
                     z.get_slice_unchecked((start, j), len),
                     start,
@@ -1698,6 +1865,9 @@ fn for_each_mat_triangular_lower<
                     Transpose => (0, (j + !strict as usize).min(m)),
                     TransposeReverseRows => (m - ((j + !strict as usize).min(m)), m),
                 };
+                if start == end {
+                    continue;
+                }
 
                 for i in start..end {
                     f(z.get_unchecked((i, j)))
@@ -1708,9 +1878,13 @@ fn for_each_mat_triangular_lower<
 }
 
 #[inline(always)]
-fn for_each_col<Z: for<'a> MatIndex<'a, Rows = usize, Cols = (), Index = (usize, ())>>(
+fn for_each_col<
+    Z: MatIndex<
+        Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
+    >,
+>(
     z: Z,
-    mut f: impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(<Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1722,10 +1896,10 @@ fn for_each_col<Z: for<'a> MatIndex<'a, Rows = usize, Cols = (), Index = (usize,
 
     unsafe {
         if z.is_contiguous() {
-            annotate_noalias_col::<Z>(&mut f, z.get_slice_unchecked((0, ()), m), 0, m);
+            annotate_noalias_col::<Z::Dyn>(&mut f, z.get_slice_unchecked(0, m), 0, m);
         } else {
             for i in 0..m {
-                f(z.get_unchecked((i, ())))
+                f(z.get_unchecked(i))
             }
         }
     }
@@ -1733,16 +1907,15 @@ fn for_each_col<Z: for<'a> MatIndex<'a, Rows = usize, Cols = (), Index = (usize,
 
 #[inline(always)]
 fn for_each_col_with_index<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = usize,
-        Cols = (),
-        Index = (usize, ()),
+    Idx,
+    Z: MatIndex<
         LayoutTransform = VecLayoutTransform,
+        Index = Idx,
+        Dyn: MatIndex<Rows = usize, Cols = (), Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
-    mut f: impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(Idx, <Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1756,31 +1929,31 @@ fn for_each_col_with_index<
         match layout {
             VecLayoutTransform::None => {
                 if z.is_contiguous() {
-                    annotate_noalias_col_with_index::<Z>(
+                    annotate_noalias_col_with_index::<Z, _>(
                         &mut f,
-                        z.get_slice_unchecked((0, ()), m),
+                        z.get_slice_unchecked(0, m),
                         0,
                         m,
                         false,
                     );
                 } else {
                     for i in 0..m {
-                        f(i, z.get_unchecked((i, ())))
+                        f(Z::from_dyn_idx(i), z.get_unchecked(i))
                     }
                 }
             }
             VecLayoutTransform::Reverse => {
                 if z.is_contiguous() {
-                    annotate_noalias_col_with_index::<Z>(
+                    annotate_noalias_col_with_index::<Z, _>(
                         &mut f,
-                        z.get_slice_unchecked((0, ()), m),
+                        z.get_slice_unchecked(0, m),
                         0,
                         m,
                         true,
                     );
                 } else {
                     for i in 0..m {
-                        f(m - i - 1, z.get_unchecked((i, ())))
+                        f(Z::from_dyn_idx(m - i - 1), z.get_unchecked(i))
                     }
                 }
             }
@@ -1790,16 +1963,15 @@ fn for_each_col_with_index<
 
 #[inline(always)]
 fn for_each_row_with_index<
-    Z: for<'a> MatIndex<
-        'a,
-        Rows = (),
-        Cols = usize,
-        Index = ((), usize),
+    Idx,
+    Z: MatIndex<
         LayoutTransform = VecLayoutTransform,
+        Index = Idx,
+        Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
     >,
 >(
     z: Z,
-    mut f: impl for<'a> FnMut(usize, <Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(Idx, <Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1813,31 +1985,31 @@ fn for_each_row_with_index<
         match layout {
             VecLayoutTransform::None => {
                 if z.is_contiguous() {
-                    annotate_noalias_col_with_index::<Z>(
+                    annotate_noalias_col_with_index::<Z, _>(
                         &mut f,
-                        z.get_slice_unchecked(((), 0), n),
+                        z.get_slice_unchecked(0, n),
                         0,
                         n,
                         false,
                     );
                 } else {
                     for i in 0..n {
-                        f(i, z.get_unchecked(((), i)))
+                        f(Z::from_dyn_idx(i), z.get_unchecked(i))
                     }
                 }
             }
             VecLayoutTransform::Reverse => {
                 if z.is_contiguous() {
-                    annotate_noalias_col_with_index::<Z>(
+                    annotate_noalias_col_with_index::<Z, _>(
                         &mut f,
-                        z.get_slice_unchecked(((), 0), n),
+                        z.get_slice_unchecked(0, n),
                         0,
                         n,
                         true,
                     );
                 } else {
                     for i in 0..n {
-                        f(n - i - 1, z.get_unchecked(((), i)))
+                        f(Z::from_dyn_idx(n - i - 1), z.get_unchecked(i))
                     }
                 }
             }
@@ -1845,9 +2017,13 @@ fn for_each_row_with_index<
     }
 }
 #[inline(always)]
-fn for_each_row<Z: for<'a> MatIndex<'a, Rows = (), Cols = usize, Index = ((), usize)>>(
+fn for_each_row<
+    Z: MatIndex<
+        Dyn: MatIndex<Rows = (), Cols = usize, Index = usize, Item = Z::Item, Slice = Z::Slice>,
+    >,
+>(
     z: Z,
-    mut f: impl for<'a> FnMut(<Z as MatIndex<'a>>::Item),
+    mut f: impl FnMut(<Z as MatIndex>::Item),
 ) {
     let layout = z.preferred_layout();
     let mut z = z.with_layout(layout);
@@ -1859,38 +2035,45 @@ fn for_each_row<Z: for<'a> MatIndex<'a, Rows = (), Cols = usize, Index = ((), us
 
     unsafe {
         if z.is_contiguous() {
-            annotate_noalias_col::<Z>(&mut f, z.get_slice_unchecked(((), 0), n), 0, n);
+            annotate_noalias_col::<Z::Dyn>(&mut f, z.get_slice_unchecked(0, n), 0, n);
         } else {
             for j in 0..n {
-                f(z.get_unchecked(((), j)))
+                f(z.get_unchecked(j))
             }
         }
     }
 }
 
 impl<
-        M: for<'a> MatIndex<
-            'a,
-            Rows = usize,
-            Cols = usize,
-            Index = (usize, usize),
+        R: Shape,
+        C: Shape,
+        M: MatIndex<
             LayoutTransform = MatLayoutTransform,
+            Rows = R,
+            Cols = C,
+            Index = (R::Idx, C::Idx),
+            Dyn: MatIndex<
+                LayoutTransform = MatLayoutTransform,
+                Item = M::Item,
+                Slice = M::Slice,
+                Rows = usize,
+                Cols = usize,
+                Index = (usize, usize),
+                Dyn = M::Dyn,
+            >,
         >,
-    > LastEq<usize, usize, M>
+    > LastEq<R, C, M>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing the indices of the position of the
     /// current element.
     #[inline(always)]
-    pub fn for_each_with_index(
-        self,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item)) {
         for_each_mat_with_index(self, f);
     }
 
@@ -1902,7 +2085,7 @@ impl<
     pub fn for_each_triangular_lower_with_index(
         self,
         diag: Diag,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_lower_with_index(self, diag, f);
     }
@@ -1915,7 +2098,7 @@ impl<
     pub fn for_each_triangular_upper_with_index(
         self,
         diag: Diag,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_upper_with_index(self, diag, f);
     }
@@ -1924,11 +2107,7 @@ impl<
     ///
     /// `diag` specifies whether the diagonal should be included or excluded.
     #[inline(always)]
-    pub fn for_each_triangular_lower(
-        self,
-        diag: Diag,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_triangular_lower(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat_triangular_lower(self, diag, false, f);
     }
 
@@ -1936,31 +2115,25 @@ impl<
     ///
     /// `diag` specifies whether the diagonal should be included or excluded.
     #[inline(always)]
-    pub fn for_each_triangular_upper(
-        self,
-        diag: Diag,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_triangular_upper(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat_triangular_lower(self, diag, true, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Mat<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E> {
         let (m, n) = (self.nrows(), self.ncols());
-        let mut out = Mat::<E>::with_capacity(m, n);
+        let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
         let cs = out.col_stride();
-        let out_view = unsafe { mat::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, n, rs, cs) };
+        let out_view =
+            unsafe { mat::from_raw_parts_mut::<'_, E, _, _>(out.as_ptr_mut(), m, n, rs, cs) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_dims(m, n) };
+        unsafe { out.set_dims(m.unbound(), n.unbound()) };
         out
     }
 
@@ -1968,60 +2141,67 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item) -> E,
+        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item) -> E,
     ) -> Mat<E> {
         let (m, n) = (self.nrows(), self.ncols());
-        let mut out = Mat::<E>::with_capacity(m, n);
+        let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
         let cs = out.col_stride();
-        let out_view = unsafe { mat::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, n, rs, cs) };
+        let out_view =
+            unsafe { mat::from_raw_parts_mut::<'_, E, _, _>(out.as_ptr_mut(), m, n, rs, cs) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each_with_index(
             #[inline(always)]
             |i, j, Zip(mut out, item)| out.write(f(i, j, item)),
         );
-        unsafe { out.set_dims(m, n) };
+        unsafe { out.set_dims(m.unbound(), n.unbound()) };
         out
     }
 }
 
 impl<
-        M: for<'a> MatIndex<
-            'a,
-            Rows = (),
-            Cols = usize,
-            Index = ((), usize),
+        C: Shape,
+        M: MatIndex<
             LayoutTransform = VecLayoutTransform,
+            Rows = (),
+            Cols = C,
+            Index = C::Idx,
+            Dyn: MatIndex<
+                LayoutTransform = VecLayoutTransform,
+                Item = M::Item,
+                Slice = M::Slice,
+                Rows = (),
+                Cols = usize,
+                Index = usize,
+                Dyn = M::Dyn,
+            >,
         >,
-    > LastEq<(), usize, M>
+    > LastEq<(), C, M>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_row(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(C::Idx, <Self as MatIndex>::Item)) {
         for_each_row_with_index(self, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Row<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E> {
         let (_, n) = (self.nrows(), self.ncols());
-        let mut out = Row::<E>::with_capacity(n);
-        let out_view = unsafe { row::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), n, 1) };
+        let mut out = Row::<E>::with_capacity(n.unbound());
+        let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_ncols(n) };
+        unsafe { out.set_ncols(n.unbound()) };
         out
     }
 
@@ -2029,58 +2209,64 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item) -> E,
+        f: impl FnMut(C::Idx, <Self as MatIndex>::Item) -> E,
     ) -> Row<E> {
         let (_, n) = (self.nrows(), self.ncols());
-        let mut out = Row::<E>::with_capacity(n);
-        let out_view = unsafe { row::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), n, 1) };
+        let mut out = Row::<E>::with_capacity(n.unbound());
+        let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each_with_index(
             #[inline(always)]
             |j, Zip(mut out, item)| out.write(f(j, item)),
         );
-        unsafe { out.set_ncols(n) };
+        unsafe { out.set_ncols(n.unbound()) };
         out
     }
 }
 
 impl<
-        M: for<'a> MatIndex<
-            'a,
-            Rows = usize,
-            Cols = (),
-            Index = (usize, ()),
+        R: Shape,
+        M: MatIndex<
             LayoutTransform = VecLayoutTransform,
+            Rows = R,
+            Cols = (),
+            Index = R::Idx,
+            Dyn: MatIndex<
+                LayoutTransform = VecLayoutTransform,
+                Item = M::Item,
+                Slice = M::Slice,
+                Rows = usize,
+                Cols = (),
+                Index = usize,
+                Dyn = M::Dyn,
+            >,
         >,
-    > LastEq<usize, (), M>
+    > LastEq<R, (), M>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_col(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, <Self as MatIndex>::Item)) {
         for_each_col_with_index(self, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Col<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E> {
         let (m, _) = (self.nrows(), self.ncols());
-        let mut out = Col::<E>::with_capacity(m);
-        let out_view = unsafe { col::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, 1) };
+        let mut out = Col::<E>::with_capacity(m.unbound());
+        let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_nrows(m) };
+        unsafe { out.set_nrows(m.unbound()) };
         out
     }
 
@@ -2088,147 +2274,190 @@ impl<
     #[inline(always)]
     pub fn map_with_index<E: Entity>(
         self,
-        f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item) -> E,
+        f: impl FnMut(R::Idx, <Self as MatIndex>::Item) -> E,
     ) -> Col<E> {
         let (m, _) = (self.nrows(), self.ncols());
-        let mut out = Col::<E>::with_capacity(m);
-        let out_view = unsafe { col::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, 1) };
+        let mut out = Col::<E>::with_capacity(m.unbound());
+        let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each_with_index(
             #[inline(always)]
             |i, Zip(mut out, item)| out.write(f(i, item)),
         );
-        unsafe { out.set_nrows(m) };
+        unsafe { out.set_nrows(m.unbound()) };
         out
     }
 }
 
 impl<
-        Head: for<'a> MatIndex<
-            'a,
+        C: Shape,
+        Head: MatIndex<
             Rows = (),
-            Cols = usize,
-            Index = ((), usize),
+            Cols = C,
+            Index = C::Idx,
             LayoutTransform = VecLayoutTransform,
+            Dyn: MatIndex<
+                Item = Head::Item,
+                Slice = Head::Slice,
+                Rows = (),
+                Cols = usize,
+                Index = usize,
+                LayoutTransform = VecLayoutTransform,
+                Dyn = Head::Dyn,
+            >,
         >,
-        Tail: for<'a> MatIndex<
-            'a,
+        Tail: MatIndex<
             Rows = (),
-            Cols = usize,
-            Index = ((), usize),
+            Cols = C,
+            Index = C::Idx,
             LayoutTransform = VecLayoutTransform,
+            Dyn: MatIndex<
+                Item = Tail::Item,
+                Slice = Tail::Slice,
+                Rows = (),
+                Cols = usize,
+                Index = usize,
+                LayoutTransform = VecLayoutTransform,
+                Dyn = Tail::Dyn,
+            >,
         >,
-    > ZipEq<(), usize, Head, Tail>
+    > ZipEq<(), C, Head, Tail>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_row(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(C::Idx, <Self as MatIndex>::Item)) {
         for_each_row_with_index(self, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new row.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Row<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Row<E> {
         let (_, n) = (self.nrows(), self.ncols());
-        let mut out = Row::<E>::with_capacity(n);
-        let out_view = unsafe { row::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), n, 1) };
+        let mut out = Row::<E>::with_capacity(n.unbound());
+        let out_view = unsafe { row::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), n, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_ncols(n) };
+        unsafe { out.set_ncols(n.unbound()) };
         out
     }
 }
 
 impl<
-        Head: for<'a> MatIndex<
-            'a,
-            Rows = usize,
+        R: Shape,
+        Head: MatIndex<
+            Rows = R,
             Cols = (),
-            Index = (usize, ()),
+            Index = R::Idx,
             LayoutTransform = VecLayoutTransform,
+            Dyn: MatIndex<
+                Item = Head::Item,
+                Slice = Head::Slice,
+                Rows = usize,
+                Cols = (),
+                Index = usize,
+                LayoutTransform = VecLayoutTransform,
+                Dyn = Head::Dyn,
+            >,
         >,
-        Tail: for<'a> MatIndex<
-            'a,
-            Rows = usize,
+        Tail: MatIndex<
+            Rows = R,
             Cols = (),
-            Index = (usize, ()),
+            Index = R::Idx,
             LayoutTransform = VecLayoutTransform,
+            Dyn: MatIndex<
+                Item = Tail::Item,
+                Slice = Tail::Slice,
+                Rows = usize,
+                Cols = (),
+                Index = usize,
+                LayoutTransform = VecLayoutTransform,
+                Dyn = Tail::Dyn,
+            >,
         >,
-    > ZipEq<usize, (), Head, Tail>
+    > ZipEq<R, (), Head, Tail>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_col(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing in the index of the current element.
     #[inline(always)]
-    pub fn for_each_with_index(self, f: impl for<'a> FnMut(usize, <Self as MatIndex<'a>>::Item)) {
+    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, <Self as MatIndex>::Item)) {
         for_each_col_with_index(self, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new column.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Col<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Col<E> {
         let (m, _) = (self.nrows(), self.ncols());
-        let mut out = Col::<E>::with_capacity(m);
-        let out_view = unsafe { col::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, 1) };
+        let mut out = Col::<E>::with_capacity(m.unbound());
+        let out_view = unsafe { col::from_raw_parts_mut::<'_, E, _>(out.as_ptr_mut(), m, 1) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_nrows(m) };
+        unsafe { out.set_nrows(m.unbound()) };
         out
     }
 }
 
 impl<
-        Head: for<'a> MatIndex<
-            'a,
-            Rows = usize,
-            Cols = usize,
-            Index = (usize, usize),
+        R: Shape,
+        C: Shape,
+        Head: MatIndex<
             LayoutTransform = MatLayoutTransform,
+            Rows = R,
+            Cols = C,
+            Index = (R::Idx, C::Idx),
+            Dyn: MatIndex<
+                LayoutTransform = MatLayoutTransform,
+                Item = Head::Item,
+                Slice = Head::Slice,
+                Rows = usize,
+                Cols = usize,
+                Index = (usize, usize),
+                Dyn = Head::Dyn,
+            >,
         >,
-        Tail: for<'a> MatIndex<
-            'a,
-            Rows = usize,
-            Cols = usize,
-            Index = (usize, usize),
+        Tail: MatIndex<
             LayoutTransform = MatLayoutTransform,
+            Rows = R,
+            Cols = C,
+            Index = (R::Idx, C::Idx),
+            Dyn: MatIndex<
+                LayoutTransform = MatLayoutTransform,
+                Item = Tail::Item,
+                Slice = Tail::Slice,
+                Rows = usize,
+                Cols = usize,
+                Index = (usize, usize),
+                Dyn = Tail::Dyn,
+            >,
         >,
-    > ZipEq<usize, usize, Head, Tail>
+    > ZipEq<R, C, Head, Tail>
 {
     /// Applies `f` to each element of `self`.
     #[inline(always)]
-    pub fn for_each(self, f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item)) {
+    pub fn for_each(self, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat(self, f);
     }
 
     /// Applies `f` to each element of `self`, while passing the indices of the position of the
     /// current element.
     #[inline(always)]
-    pub fn for_each_with_index(
-        self,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_with_index(self, f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item)) {
         for_each_mat_with_index(self, f);
     }
 
@@ -2240,7 +2469,7 @@ impl<
     pub fn for_each_triangular_lower_with_index(
         self,
         diag: Diag,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_lower_with_index(self, diag, f);
     }
@@ -2253,7 +2482,7 @@ impl<
     pub fn for_each_triangular_upper_with_index(
         self,
         diag: Diag,
-        f: impl for<'a> FnMut(usize, usize, <Self as MatIndex<'a>>::Item),
+        f: impl FnMut(R::Idx, C::Idx, <Self as MatIndex>::Item),
     ) {
         for_each_mat_triangular_upper_with_index(self, diag, f);
     }
@@ -2262,11 +2491,7 @@ impl<
     ///
     /// `diag` specifies whether the diagonal should be included or excluded.
     #[inline(always)]
-    pub fn for_each_triangular_lower(
-        self,
-        diag: Diag,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_triangular_lower(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat_triangular_lower(self, diag, false, f);
     }
 
@@ -2274,31 +2499,25 @@ impl<
     ///
     /// `diag` specifies whether the diagonal should be included or excluded.
     #[inline(always)]
-    pub fn for_each_triangular_upper(
-        self,
-        diag: Diag,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item),
-    ) {
+    pub fn for_each_triangular_upper(self, diag: Diag, f: impl FnMut(<Self as MatIndex>::Item)) {
         for_each_mat_triangular_lower(self, diag, true, f);
     }
 
     /// Applies `f` to each element of `self` and collect its result into a new matrix.
     #[inline(always)]
-    pub fn map<E: Entity>(
-        self,
-        f: impl for<'a> FnMut(<Self as MatIndex<'a>>::Item) -> E,
-    ) -> Mat<E> {
+    pub fn map<E: Entity>(self, f: impl FnMut(<Self as MatIndex>::Item) -> E) -> Mat<E> {
         let (m, n) = (self.nrows(), self.ncols());
-        let mut out = Mat::<E>::with_capacity(m, n);
+        let mut out = Mat::<E>::with_capacity(m.unbound(), n.unbound());
         let rs = 1;
         let cs = out.col_stride();
-        let out_view = unsafe { mat::from_raw_parts_mut::<'_, E>(out.as_ptr_mut(), m, n, rs, cs) };
+        let out_view =
+            unsafe { mat::from_raw_parts_mut::<'_, E, _, _>(out.as_ptr_mut(), m, n, rs, cs) };
         let mut f = f;
         ZipEq::new(out_view, self).for_each(
             #[inline(always)]
             |Zip(mut out, item)| out.write(f(item)),
         );
-        unsafe { out.set_dims(m, n) };
+        unsafe { out.set_dims(m.unbound(), n.unbound()) };
         out
     }
 }

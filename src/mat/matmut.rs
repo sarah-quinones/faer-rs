@@ -5,7 +5,7 @@ use crate::{
     iter,
     iter::chunks::ChunkPolicy,
     linalg::zip,
-    unzipped, zipped,
+    unzipped, zipped, Unbind,
 };
 
 /// Mutable view over a matrix, similar to a mutable reference to a 2D strided [prim@slice].
@@ -53,15 +53,15 @@ use crate::{
 /// // view is still usable here
 /// ```
 #[repr(C)]
-pub struct MatMut<'a, E: Entity> {
-    pub(super) inner: MatImpl<E>,
+pub struct MatMut<'a, E: Entity, R: Shape = usize, C: Shape = usize> {
+    pub(super) inner: MatImpl<E, R, C>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
 impl<E: Entity> Default for MatMut<'_, E> {
     #[inline]
     fn default() -> Self {
-        from_column_major_slice_mut_generic::<E>(
+        from_column_major_slice_mut_generic(
             map!(E, E::UNIT, |(())| &mut [] as &mut [E::Unit]),
             0,
             0,
@@ -69,8 +69,8 @@ impl<E: Entity> Default for MatMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> Reborrow<'short> for MatMut<'_, E> {
-    type Target = MatRef<'short, E>;
+impl<'short, E: Entity, R: Shape, C: Shape> Reborrow<'short> for MatMut<'_, E, R, C> {
+    type Target = MatRef<'short, E, R, C>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -81,8 +81,8 @@ impl<'short, E: Entity> Reborrow<'short> for MatMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for MatMut<'_, E> {
-    type Target = MatMut<'short, E>;
+impl<'short, E: Entity, R: Shape, C: Shape> ReborrowMut<'short> for MatMut<'_, E, R, C> {
+    type Target = MatMut<'short, E, R, C>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -93,8 +93,8 @@ impl<'short, E: Entity> ReborrowMut<'short> for MatMut<'_, E> {
     }
 }
 
-impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
-    type Target = MatRef<'a, E>;
+impl<'a, E: Entity, R: Shape, C: Shape> IntoConst for MatMut<'a, E, R, C> {
+    type Target = MatRef<'a, E, R, C>;
 
     #[inline]
     fn into_const(self) -> Self::Target {
@@ -105,12 +105,12 @@ impl<'a, E: Entity> IntoConst for MatMut<'a, E> {
     }
 }
 
-impl<'a, E: Entity> MatMut<'a, E> {
+impl<'a, E: Entity, R: Shape, C: Shape> MatMut<'a, E, R, C> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
         ptr: GroupFor<E, *mut E::Unit>,
-        nrows: usize,
-        ncols: usize,
+        nrows: R,
+        ncols: C,
         row_stride: isize,
         col_stride: isize,
     ) -> Self {
@@ -126,43 +126,20 @@ impl<'a, E: Entity> MatMut<'a, E> {
         }
     }
 
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
-        self.into_const().try_get_contiguous_col(j)
-    }
-
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col_mut(self, j: usize) -> GroupFor<E, &'a mut [E::Unit]> {
-        assert!(self.row_stride() == 1);
-        let col = self.col_mut(j);
-        if col.nrows() == 0 {
-            map!(E, E::UNIT, |(())| &mut [] as &mut [E::Unit],)
-        } else {
-            let m = col.nrows();
-            map!(E, col.as_ptr_mut(), |(ptr)| unsafe {
-                core::slice::from_raw_parts_mut(ptr, m)
-            },)
-        }
-    }
-
     /// Returns the number of rows of the matrix.
     #[inline(always)]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.inner.nrows
     }
     /// Returns the number of columns of the matrix.
     #[inline(always)]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.inner.ncols
     }
 
     /// Returns the number of rows and columns of the matrix.
     #[inline]
-    pub fn shape(&self) -> (usize, usize) {
+    pub fn shape(&self) -> (R, C) {
         (self.nrows(), self.ncols())
     }
 
@@ -220,9 +197,142 @@ impl<'a, E: Entity> MatMut<'a, E> {
         map!(E, self.as_ptr_mut(), |(ptr)| ptr.offset(offset),)
     }
 
+    /// Returns a view over the transpose of `self`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let transpose = view.transpose();
+    ///
+    /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+    /// assert_eq!(expected.as_ref(), transpose);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn transpose(self) -> MatRef<'a, E, C, R> {
+        self.into_const().transpose()
+    }
+
+    /// Returns a view over the transpose of `self`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let mut matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_mut();
+    /// let transpose = view.transpose_mut();
+    ///
+    /// let mut expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+    /// assert_eq!(expected.as_mut(), transpose);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn transpose_mut(self) -> MatMut<'a, E, C, R> {
+        unsafe {
+            super::from_raw_parts_mut(
+                map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr(),),
+                self.ncols(),
+                self.nrows(),
+                self.col_stride(),
+                self.row_stride(),
+            )
+        }
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate(self) -> MatRef<'a, E::Conj, R, C>
+    where
+        E: Conjugate,
+    {
+        self.into_const().conjugate()
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate_mut(self) -> MatMut<'a, E::Conj, R, C>
+    where
+        E: Conjugate,
+    {
+        unsafe { self.into_const().conjugate().const_cast() }
+    }
+
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn adjoint(self) -> MatRef<'a, E::Conj, C, R>
+    where
+        E: Conjugate,
+    {
+        self.into_const().adjoint()
+    }
+
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn adjoint_mut(self) -> MatMut<'a, E::Conj, C, R>
+    where
+        E: Conjugate,
+    {
+        self.transpose_mut().conjugate_mut()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize(self) -> (MatRef<'a, E::Canonical, R, C>, Conj)
+    where
+        E: Conjugate,
+    {
+        self.into_const().canonicalize()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize_mut(self) -> (MatMut<'a, E::Canonical, R, C>, Conj)
+    where
+        E: Conjugate,
+    {
+        let (canonical, conj) = self.into_const().canonicalize();
+        unsafe { (canonical.const_cast(), conj) }
+    }
+
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn as_dyn(self) -> MatRef<'a, E> {
+        let nrows = self.nrows().unbound();
+        let ncols = self.ncols().unbound();
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe { from_raw_parts(self.as_ptr(), nrows, ncols, row_stride, col_stride) }
+    }
+
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn as_dyn_mut(self) -> MatMut<'a, E> {
+        let nrows = self.nrows().unbound();
+        let ncols = self.ncols().unbound();
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe { from_raw_parts_mut(self.as_ptr_mut(), nrows, ncols, row_stride, col_stride) }
+    }
+
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(
+        self,
+        row: R::IdxInc,
+        col: C::IdxInc,
+    ) -> GroupFor<E, *const E::Unit> {
         self.into_const().overflowing_ptr_at(row, col)
     }
 
@@ -230,15 +340,15 @@ impl<'a, E: Entity> MatMut<'a, E> {
     #[doc(hidden)]
     pub unsafe fn overflowing_ptr_at_mut(
         self,
-        row: usize,
-        col: usize,
+        row: R::IdxInc,
+        col: C::IdxInc,
     ) -> GroupFor<E, *mut E::Unit> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
             let offset = (cond as usize).wrapping_neg() as isize
                 & (isize::wrapping_add(
-                    (row as isize).wrapping_mul(self.inner.row_stride),
-                    (col as isize).wrapping_mul(self.inner.col_stride),
+                    (row.unbound() as isize).wrapping_mul(self.inner.row_stride),
+                    (col.unbound() as isize).wrapping_mul(self.inner.col_stride),
                 ));
             map!(E, self.as_ptr_mut(), |(ptr)| ptr.offset(offset),)
         }
@@ -253,7 +363,7 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: R::Idx, col: C::Idx) -> GroupFor<E, *const E::Unit> {
         self.into_const().ptr_inbounds_at(row, col)
     }
 
@@ -266,9 +376,34 @@ impl<'a, E: Entity> MatMut<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, row: usize, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, row: R::Idx, col: C::Idx) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
-        self.ptr_at_mut_unchecked(row, col)
+        self.ptr_at_mut_unchecked(row.unbound(), col.unbound())
+    }
+}
+
+impl<'a, E: Entity> MatMut<'a, E> {
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col(self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
+        self.into_const().try_get_contiguous_col(j)
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col_mut(self, j: usize) -> GroupFor<E, &'a mut [E::Unit]> {
+        assert!(self.row_stride() == 1);
+        let col = self.col_mut(j);
+        if col.nrows() == 0 {
+            map!(E, E::UNIT, |(())| &mut [] as &mut [E::Unit],)
+        } else {
+            let m = col.nrows();
+            map!(E, col.as_ptr_mut(), |(ptr)| unsafe {
+                core::slice::from_raw_parts_mut(ptr, m)
+            },)
+        }
     }
 
     /// Splits the matrix horizontally and vertically at the given indices into four corners and
@@ -760,115 +895,6 @@ impl<'a, E: Entity> MatMut<'a, E> {
             #[inline(always)]
             |unzipped!(mut x)| x.write(constant),
         );
-    }
-
-    /// Returns a view over the transpose of `self`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_ref();
-    /// let transpose = view.transpose();
-    ///
-    /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
-    /// assert_eq!(expected.as_ref(), transpose);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn transpose(self) -> MatRef<'a, E> {
-        self.into_const().transpose()
-    }
-
-    /// Returns a view over the transpose of `self`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let mut matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_mut();
-    /// let transpose = view.transpose_mut();
-    ///
-    /// let mut expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
-    /// assert_eq!(expected.as_mut(), transpose);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn transpose_mut(self) -> Self {
-        unsafe {
-            super::from_raw_parts_mut(
-                map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| ptr.as_ptr(),),
-                self.ncols(),
-                self.nrows(),
-                self.col_stride(),
-                self.row_stride(),
-            )
-        }
-    }
-
-    /// Returns a view over the conjugate of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn conjugate(self) -> MatRef<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        self.into_const().conjugate()
-    }
-
-    /// Returns a view over the conjugate of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn conjugate_mut(self) -> MatMut<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        unsafe { self.into_const().conjugate().const_cast() }
-    }
-
-    /// Returns a view over the conjugate transpose of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn adjoint(self) -> MatRef<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        self.into_const().conjugate()
-    }
-
-    /// Returns a view over the conjugate transpose of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn adjoint_mut(self) -> MatMut<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        self.transpose_mut().conjugate_mut()
-    }
-
-    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
-    /// whether `self` is implicitly conjugated or not.
-    #[inline(always)]
-    #[must_use]
-    pub fn canonicalize(self) -> (MatRef<'a, E::Canonical>, Conj)
-    where
-        E: Conjugate,
-    {
-        self.into_const().canonicalize()
-    }
-
-    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
-    /// whether `self` is implicitly conjugated or not.
-    #[inline(always)]
-    #[must_use]
-    pub fn canonicalize_mut(self) -> (MatMut<'a, E::Canonical>, Conj)
-    where
-        E: Conjugate,
-    {
-        let (canonical, conj) = self.into_const().canonicalize();
-        unsafe { (canonical.const_cast(), conj) }
     }
 
     /// Returns a view over the `self`, with the rows in reversed order.
@@ -2023,13 +2049,13 @@ impl<E: Entity> As2DMut<E> for MatMut<'_, E> {
 /// assert_eq!(expected.as_ref(), matrix);
 /// ```
 #[inline(always)]
-pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
+pub unsafe fn from_raw_parts_mut<'a, E: Entity, R: Shape, C: Shape>(
     ptr: GroupFor<E, *mut E::Unit>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: isize,
     col_stride: isize,
-) -> MatMut<'a, E> {
+) -> MatMut<'a, E, R, C> {
     MatMut::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride)
 }
 
@@ -2053,14 +2079,14 @@ pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
 /// assert_eq!(expected, view);
 /// ```
 #[track_caller]
-pub fn from_column_major_slice_mut_generic<E: Entity>(
+pub fn from_column_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &mut [E::Unit]>,
-    nrows: usize,
-    ncols: usize,
-) -> MatMut<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatMut<'_, E, R, C> {
     from_slice_assert(
-        nrows,
-        ncols,
+        nrows.unbound(),
+        ncols.unbound(),
         SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len(),
     );
     unsafe {
@@ -2069,7 +2095,7 @@ pub fn from_column_major_slice_mut_generic<E: Entity>(
             nrows,
             ncols,
             1,
-            nrows as isize,
+            nrows.unbound() as isize,
         )
     }
 }
@@ -2095,11 +2121,11 @@ pub fn from_column_major_slice_mut_generic<E: Entity>(
 /// ```
 #[inline(always)]
 #[track_caller]
-pub fn from_row_major_slice_mut_generic<E: Entity>(
+pub fn from_row_major_slice_mut_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &mut [E::Unit]>,
-    nrows: usize,
-    ncols: usize,
-) -> MatMut<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatMut<'_, E, R, C> {
     from_column_major_slice_mut_generic(slice, ncols, nrows).transpose_mut()
 }
 
@@ -2107,15 +2133,15 @@ pub fn from_row_major_slice_mut_generic<E: Entity>(
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride_mut_generic<E: Entity>(
+pub fn from_column_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &mut [E::Unit]>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     col_stride: usize,
-) -> MatMut<'_, E> {
+) -> MatMut<'_, E, R, C> {
     from_strided_column_major_slice_mut_assert(
-        nrows,
-        ncols,
+        nrows.unbound(),
+        ncols.unbound(),
         col_stride,
         SliceGroup::<'_, E>::new(E::faer_rb(E::faer_as_ref(&slice))).len(),
     );
@@ -2134,14 +2160,13 @@ pub fn from_column_major_slice_with_stride_mut_generic<E: Entity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride_mut_generic<E: Entity>(
+pub fn from_row_major_slice_with_stride_mut_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &mut [E::Unit]>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: usize,
-) -> MatMut<'_, E> {
-    from_column_major_slice_with_stride_mut_generic::<E>(slice, ncols, nrows, row_stride)
-        .transpose_mut()
+) -> MatMut<'_, E, R, C> {
+    from_column_major_slice_with_stride_mut_generic(slice, ncols, nrows, row_stride).transpose_mut()
 }
 
 /// Creates a `MatMut` from slice views over the matrix data, and the matrix dimensions.
@@ -2164,11 +2189,11 @@ pub fn from_row_major_slice_with_stride_mut_generic<E: Entity>(
 /// assert_eq!(expected, view);
 /// ```
 #[track_caller]
-pub fn from_column_major_slice_mut<E: SimpleEntity>(
+pub fn from_column_major_slice_mut<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &mut [E],
-    nrows: usize,
-    ncols: usize,
-) -> MatMut<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatMut<'_, E, R, C> {
     from_column_major_slice_mut_generic(slice, nrows, ncols)
 }
 
@@ -2193,11 +2218,11 @@ pub fn from_column_major_slice_mut<E: SimpleEntity>(
 /// ```
 #[inline(always)]
 #[track_caller]
-pub fn from_row_major_slice_mut<E: SimpleEntity>(
+pub fn from_row_major_slice_mut<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &mut [E],
-    nrows: usize,
-    ncols: usize,
-) -> MatMut<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatMut<'_, E, R, C> {
     from_row_major_slice_mut_generic(slice, nrows, ncols)
 }
 
@@ -2205,12 +2230,12 @@ pub fn from_row_major_slice_mut<E: SimpleEntity>(
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride_mut<E: SimpleEntity>(
+pub fn from_column_major_slice_with_stride_mut<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &mut [E],
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     col_stride: usize,
-) -> MatMut<'_, E> {
+) -> MatMut<'_, E, R, C> {
     from_column_major_slice_with_stride_mut_generic(slice, nrows, ncols, col_stride)
 }
 
@@ -2218,12 +2243,12 @@ pub fn from_column_major_slice_with_stride_mut<E: SimpleEntity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride_mut<E: SimpleEntity>(
+pub fn from_row_major_slice_with_stride_mut<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &mut [E],
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: usize,
-) -> MatMut<'_, E> {
+) -> MatMut<'_, E, R, C> {
     from_row_major_slice_with_stride_mut_generic(slice, nrows, ncols, row_stride)
 }
 

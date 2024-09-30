@@ -257,7 +257,7 @@ macro_rules! stack_mat {
             });
 
         let mut $name = unsafe {
-            $crate::mat::from_raw_parts_mut::<'_, $ty>(__data, __nrows, __ncols, 1isize, $max_nrows as isize)
+            $crate::mat::from_raw_parts_mut::<'_, $ty, _, _>(__data, __nrows, __ncols, 1isize, $max_nrows as isize)
         };
 
         if __cs.unsigned_abs() < __rs.unsigned_abs() {
@@ -1172,7 +1172,7 @@ mod tests {
     #[test]
     fn basic_slice() {
         let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let slice = unsafe { mat::from_raw_parts::<'_, f64>(data.as_ptr(), 2, 3, 3, 1) };
+        let slice = unsafe { mat::from_raw_parts::<'_, f64, _, _>(data.as_ptr(), 2, 3, 3, 1) };
 
         assert!(slice.get(0, 0) == &1.0);
         assert!(slice.get(0, 1) == &2.0);
@@ -1599,15 +1599,15 @@ mod tests {
         let mut slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0_f64];
 
         let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
-        let view = mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
+        let view = mat::from_column_major_slice_generic::<'_, f64, _, _>(&slice, 3, 2);
         assert_eq!(expected, view);
-        let view = mat::from_column_major_slice_generic::<'_, f64>(&mut slice, 3, 2);
+        let view = mat::from_column_major_slice_generic::<'_, f64, _, _>(&mut slice, 3, 2);
         assert_eq!(expected, view);
 
         let expected = mat![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
-        let view = mat::from_row_major_slice_generic::<'_, f64>(&slice, 3, 2);
+        let view = mat::from_row_major_slice_generic::<'_, f64, _, _>(&slice, 3, 2);
         assert_eq!(expected, view);
-        let view = mat::from_row_major_slice_generic::<'_, f64>(&mut slice, 3, 2);
+        let view = mat::from_row_major_slice_generic::<'_, f64, _, _>(&mut slice, 3, 2);
         assert_eq!(expected, view);
     }
 
@@ -1615,14 +1615,14 @@ mod tests {
     #[should_panic]
     fn from_slice_too_big() {
         let slice = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0_f64];
-        mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
+        mat::from_column_major_slice_generic::<'_, f64, _, _>(&slice, 3, 2);
     }
 
     #[test]
     #[should_panic]
     fn from_slice_too_small() {
         let slice = [1.0, 2.0, 3.0, 4.0, 5.0_f64];
-        mat::from_column_major_slice_generic::<'_, f64>(&slice, 3, 2);
+        mat::from_column_major_slice_generic::<'_, f64, _, _>(&slice, 3, 2);
     }
 
     #[test]
@@ -1800,3 +1800,106 @@ mod tests {
 
 // #[path = "krylov_schur.rs"]
 // mod krylov_schur_prototype;
+
+pub trait Unbind: Send + Sync + Copy + core::fmt::Debug + seal::Seal {
+    unsafe fn new_unbound(idx: usize) -> Self;
+    fn unbound(self) -> usize;
+}
+
+pub trait Shape: Unbind + Eq {
+    type Idx: Unbind + PartialOrd<Self> + Ord;
+    type IdxInc: Unbind + PartialOrd<Self> + Ord + From<Self::Idx>;
+
+    const COMPTIME: Option<usize> = None;
+    const IS_BOUND: bool = true;
+
+    fn bind<'n>(self, guard: generativity::Guard<'n>) -> utils::bound::Dim<'n> {
+        utils::bound::Dim::new(self.unbound(), guard)
+    }
+
+    #[inline(always)]
+    fn start() -> Self::IdxInc {
+        unsafe { Self::IdxInc::new_unbound(0) }
+    }
+
+    #[inline(always)]
+    fn next(idx: Self::Idx) -> Self::IdxInc {
+        unsafe { Self::IdxInc::new_unbound(idx.unbound() + 1) }
+    }
+
+    #[inline(always)]
+    fn end(self) -> Self::IdxInc {
+        unsafe { Self::IdxInc::new_unbound(self.unbound()) }
+    }
+
+    #[inline(always)]
+    fn idx(self, idx: usize) -> Option<Self::Idx> {
+        if idx < self.unbound() {
+            Some(unsafe { Self::Idx::new_unbound(idx) })
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    fn idx_inc(self, idx: usize) -> Option<Self::IdxInc> {
+        if idx <= self.unbound() {
+            Some(unsafe { Self::IdxInc::new_unbound(idx) })
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    fn checked_idx(self, idx: usize) -> Self::Idx {
+        equator::assert!(idx < self.unbound());
+        unsafe { Self::Idx::new_unbound(idx) }
+    }
+
+    #[inline(always)]
+    fn checked_idx_inc(self, idx: usize) -> Self::IdxInc {
+        equator::assert!(idx <= self.unbound());
+        unsafe { Self::IdxInc::new_unbound(idx) }
+    }
+
+    #[inline(always)]
+    unsafe fn unchecked_idx(self, idx: usize) -> Self::Idx {
+        equator::debug_assert!(idx < self.unbound());
+        unsafe { Self::Idx::new_unbound(idx) }
+    }
+
+    #[inline(always)]
+    unsafe fn unchecked_idx_inc(self, idx: usize) -> Self::IdxInc {
+        equator::debug_assert!(idx <= self.unbound());
+        unsafe { Self::IdxInc::new_unbound(idx) }
+    }
+
+    #[inline(always)]
+    fn indices(
+        from: Self::IdxInc,
+        to: Self::IdxInc,
+    ) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = Self::Idx> {
+        (from.unbound()..to.unbound()).map(
+            #[inline(always)]
+            |i| unsafe { Self::Idx::new_unbound(i) },
+        )
+    }
+}
+
+impl Unbind for usize {
+    #[inline(always)]
+    unsafe fn new_unbound(idx: usize) -> Self {
+        idx
+    }
+
+    #[inline(always)]
+    fn unbound(self) -> usize {
+        self
+    }
+}
+impl Shape for usize {
+    type Idx = usize;
+    type IdxInc = usize;
+
+    const IS_BOUND: bool = false;
+}

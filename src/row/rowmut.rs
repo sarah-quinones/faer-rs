@@ -4,7 +4,7 @@ use crate::{
     col::{ColMut, ColRef},
     debug_assert, iter,
     iter::chunks::ChunkPolicy,
-    mat, unzipped, zipped,
+    mat, unzipped, zipped, Shape, Unbind,
 };
 use core::mem::MaybeUninit;
 
@@ -21,8 +21,8 @@ use core::mem::MaybeUninit;
 /// # Move semantics
 /// See [`faer::Mat`](crate::Mat) for information about reborrowing when using this type.
 #[repr(C)]
-pub struct RowMut<'a, E: Entity> {
-    pub(super) inner: VecImpl<E>,
+pub struct RowMut<'a, E: Entity, C: Shape = usize> {
+    pub(super) inner: VecImpl<E, C>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
@@ -33,8 +33,8 @@ impl<E: Entity> Default for RowMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> Reborrow<'short> for RowMut<'_, E> {
-    type Target = RowRef<'short, E>;
+impl<'short, E: Entity, C: Shape> Reborrow<'short> for RowMut<'_, E, C> {
+    type Target = RowRef<'short, E, C>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -45,8 +45,8 @@ impl<'short, E: Entity> Reborrow<'short> for RowMut<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for RowMut<'_, E> {
-    type Target = RowMut<'short, E>;
+impl<'short, E: Entity, C: Shape> ReborrowMut<'short> for RowMut<'_, E, C> {
+    type Target = RowMut<'short, E, C>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -57,8 +57,8 @@ impl<'short, E: Entity> ReborrowMut<'short> for RowMut<'_, E> {
     }
 }
 
-impl<'a, E: Entity> IntoConst for RowMut<'a, E> {
-    type Target = RowRef<'a, E>;
+impl<'a, E: Entity, C: Shape> IntoConst for RowMut<'a, E, C> {
+    type Target = RowRef<'a, E, C>;
 
     #[inline]
     fn into_const(self) -> Self::Target {
@@ -69,11 +69,11 @@ impl<'a, E: Entity> IntoConst for RowMut<'a, E> {
     }
 }
 
-impl<'a, E: Entity> RowMut<'a, E> {
+impl<'a, E: Entity, C: Shape> RowMut<'a, E, C> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
         ptr: GroupFor<E, *mut E::Unit>,
-        ncols: usize,
+        ncols: C,
         col_stride: isize,
     ) -> Self {
         Self {
@@ -89,6 +89,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
             __marker: PhantomData,
         }
     }
+
     /// Returns the number of rows of the row. This is always equal to `1`.
     #[inline(always)]
     pub fn nrows(&self) -> usize {
@@ -96,7 +97,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
     }
     /// Returns the number of columns of the row.
     #[inline(always)]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.inner.len
     }
 
@@ -124,13 +125,13 @@ impl<'a, E: Entity> RowMut<'a, E> {
 
     /// Returns `self` as a matrix view.
     #[inline(always)]
-    pub fn as_2d(self) -> MatRef<'a, E> {
+    pub fn as_2d(self) -> MatRef<'a, E, usize, C> {
         self.into_const().as_2d()
     }
 
     /// Returns `self` as a mutable matrix view.
     #[inline(always)]
-    pub fn as_2d_mut(self) -> MatMut<'a, E> {
+    pub fn as_2d_mut(self) -> MatMut<'a, E, usize, C> {
         let ncols = self.ncols();
         let col_stride = self.col_stride();
         unsafe { mat::from_raw_parts_mut(self.as_ptr_mut(), 1, ncols, isize::MAX, col_stride) }
@@ -173,17 +174,17 @@ impl<'a, E: Entity> RowMut<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, col: C::IdxInc) -> GroupFor<E, *const E::Unit> {
         self.into_const().overflowing_ptr_at(col)
     }
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at_mut(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn overflowing_ptr_at_mut(self, col: C::IdxInc) -> GroupFor<E, *mut E::Unit> {
         unsafe {
             let cond = col != self.ncols();
             let offset = (cond as usize).wrapping_neg() as isize
-                & (col as isize).wrapping_mul(self.inner.stride);
+                & (col.unbound() as isize).wrapping_mul(self.inner.stride);
             E::faer_map(
                 self.as_ptr_mut(),
                 #[inline(always)]
@@ -200,7 +201,7 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, col: C::Idx) -> GroupFor<E, *const E::Unit> {
         self.into_const().ptr_inbounds_at(col)
     }
 
@@ -212,11 +213,29 @@ impl<'a, E: Entity> RowMut<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at_mut(self, col: usize) -> GroupFor<E, *mut E::Unit> {
+    pub unsafe fn ptr_inbounds_at_mut(self, col: C::Idx) -> GroupFor<E, *mut E::Unit> {
         debug_assert!(col < self.ncols());
-        self.ptr_at_mut_unchecked(col)
+        self.ptr_at_mut_unchecked(col.unbound())
     }
 
+    /// Returns a view over the row.
+    #[inline]
+    pub fn as_dyn(self) -> RowRef<'a, E> {
+        let ncols = self.ncols().unbound();
+        let col_stride = self.col_stride();
+        unsafe { from_raw_parts(self.as_ptr(), ncols, col_stride) }
+    }
+
+    /// Returns a view over the row.
+    #[inline]
+    pub fn as_dyn_mut(self) -> RowMut<'a, E> {
+        let ncols = self.ncols().unbound();
+        let col_stride = self.col_stride();
+        unsafe { from_raw_parts_mut(self.as_ptr_mut(), ncols, col_stride) }
+    }
+}
+
+impl<'a, E: Entity> RowMut<'a, E> {
     /// Splits the column vector at the given index into two parts and
     /// returns an array of each subvector, in the following order:
     /// * left.
@@ -918,11 +937,11 @@ impl<'a, E: Entity> RowMut<'a, E> {
 /// This function has the same safety requirements as
 /// [`mat::from_raw_parts_mut(ptr, 1, ncols, 0, col_stride)`]
 #[inline(always)]
-pub unsafe fn from_raw_parts_mut<'a, E: Entity>(
+pub unsafe fn from_raw_parts_mut<'a, E: Entity, C: Shape>(
     ptr: GroupFor<E, *mut E::Unit>,
-    ncols: usize,
+    ncols: C,
     col_stride: isize,
-) -> RowMut<'a, E> {
+) -> RowMut<'a, E, C> {
     RowMut::__from_raw_parts(ptr, ncols, col_stride)
 }
 

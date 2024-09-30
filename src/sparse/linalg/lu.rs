@@ -285,7 +285,7 @@ pub mod supernodal {
                     .l_val
                     .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
-                let L = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let L = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
@@ -353,7 +353,7 @@ pub mod supernodal {
                     .l_val
                     .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
-                let L = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let L = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
@@ -425,7 +425,7 @@ pub mod supernodal {
                     .l_val
                     .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
-                let L = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let L = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
@@ -434,7 +434,7 @@ pub mod supernodal {
                     .ut_val
                     .as_slice()
                     .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
-                let U_right = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let U_right = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     U.into_inner(),
                     s_col_index_count,
                     s_size,
@@ -505,7 +505,7 @@ pub mod supernodal {
                     .l_val
                     .as_slice()
                     .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
-                let L = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let L = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     L.into_inner(),
                     s_row_index_count,
                     s_size,
@@ -514,7 +514,7 @@ pub mod supernodal {
                     .ut_val
                     .as_slice()
                     .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
-                let U_right = crate::mat::from_column_major_slice_generic::<'_, E>(
+                let U_right = crate::mat::from_column_major_slice_generic::<'_, E, _, _>(
                     U.into_inner(),
                     s_col_index_count,
                     s_size,
@@ -797,7 +797,7 @@ pub mod supernodal {
         let work_to_mat_mut = |v: &mut GroupFor<E, alloc::vec::Vec<MaybeUninit<E::Unit>>>,
                                nrows: usize,
                                ncols: usize| unsafe {
-            crate::mat::from_raw_parts_mut::<'_, E>(
+            crate::mat::from_raw_parts_mut::<'_, E, _, _>(
                 E::faer_map(E::faer_as_mut(v), |v| v.as_mut_ptr() as *mut E::Unit),
                 nrows,
                 ncols,
@@ -901,7 +901,7 @@ pub mod supernodal {
                 .l_val
                 .as_slice_mut()
                 .subslice(lu.l_col_ptr_for_val[s].zx()..lu.l_col_ptr_for_val[s + 1].zx());
-            let mut s_L = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
+            let mut s_L = crate::mat::from_column_major_slice_mut_generic::<'_, E, _, _>(
                 s_L.into_inner(),
                 s_row_index_count,
                 s_size,
@@ -1102,7 +1102,7 @@ pub mod supernodal {
                 .ut_val
                 .as_slice_mut()
                 .subslice(lu.ut_col_ptr_for_val[s].zx()..lu.ut_col_ptr_for_val[s + 1].zx());
-            let mut s_U = crate::mat::from_column_major_slice_mut_generic::<'_, E>(
+            let mut s_U = crate::mat::from_column_major_slice_mut_generic::<'_, E, _, _>(
                 s_U.into_inner(),
                 s_col_index_count,
                 s_size,

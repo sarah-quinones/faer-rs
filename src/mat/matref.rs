@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
-    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, zipped,
+    assert, debug_assert, diag::DiagRef, iter, iter::chunks::ChunkPolicy, unzipped, zipped, Shape,
+    Unbind,
 };
 
 /// Immutable view over a matrix, similar to an immutable reference to a 2D strided [prim@slice].
@@ -13,29 +14,29 @@ use crate::{
 /// through [`MatRef::read`], or indirectly through any of the numerical library routines, unless
 /// it is explicitly permitted.
 #[repr(C)]
-pub struct MatRef<'a, E: Entity> {
-    pub(super) inner: MatImpl<E>,
+pub struct MatRef<'a, E: Entity, R: Shape = usize, C: Shape = usize> {
+    pub(super) inner: MatImpl<E, R, C>,
     pub(super) __marker: PhantomData<&'a E>,
 }
 
-impl<E: Entity> Clone for MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> Clone for MatRef<'_, E, R, C> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<E: Entity> Copy for MatRef<'_, E> {}
+impl<E: Entity, R: Shape, C: Shape> Copy for MatRef<'_, E, R, C> {}
 
 impl<E: Entity> Default for MatRef<'_, E> {
     #[inline]
     fn default() -> Self {
-        from_column_major_slice_generic::<E>(map!(E, E::UNIT, |(())| { &[] as &[E::Unit] }), 0, 0)
+        from_column_major_slice_generic(map!(E, E::UNIT, |(())| { &[] as &[E::Unit] }), 0, 0)
     }
 }
 
-impl<'short, E: Entity> Reborrow<'short> for MatRef<'_, E> {
-    type Target = MatRef<'short, E>;
+impl<'short, E: Entity, R: Shape, C: Shape> Reborrow<'short> for MatRef<'_, E, R, C> {
+    type Target = MatRef<'short, E, R, C>;
 
     #[inline]
     fn rb(&'short self) -> Self::Target {
@@ -43,8 +44,8 @@ impl<'short, E: Entity> Reborrow<'short> for MatRef<'_, E> {
     }
 }
 
-impl<'short, E: Entity> ReborrowMut<'short> for MatRef<'_, E> {
-    type Target = MatRef<'short, E>;
+impl<'short, E: Entity, R: Shape, C: Shape> ReborrowMut<'short> for MatRef<'_, E, R, C> {
+    type Target = MatRef<'short, E, R, C>;
 
     #[inline]
     fn rb_mut(&'short mut self) -> Self::Target {
@@ -52,7 +53,7 @@ impl<'short, E: Entity> ReborrowMut<'short> for MatRef<'_, E> {
     }
 }
 
-impl<E: Entity> IntoConst for MatRef<'_, E> {
+impl<E: Entity, R: Shape, C: Shape> IntoConst for MatRef<'_, E, R, C> {
     type Target = Self;
 
     #[inline]
@@ -61,12 +62,12 @@ impl<E: Entity> IntoConst for MatRef<'_, E> {
     }
 }
 
-impl<'a, E: Entity> MatRef<'a, E> {
+impl<'a, E: Entity, R: Shape, C: Shape> MatRef<'a, E, R, C> {
     #[inline]
     pub(crate) unsafe fn __from_raw_parts(
-        ptr: GroupFor<E, *const E::Unit>,
-        nrows: usize,
-        ncols: usize,
+        ptr: PtrConst<E>,
+        nrows: R,
+        ncols: C,
         row_stride: isize,
         col_stride: isize,
     ) -> Self {
@@ -84,25 +85,9 @@ impl<'a, E: Entity> MatRef<'a, E> {
         }
     }
 
-    #[track_caller]
-    #[inline(always)]
-    #[doc(hidden)]
-    pub fn try_get_contiguous_col(self, j: usize) -> GroupFor<E, &'a [E::Unit]> {
-        assert!(self.row_stride() == 1);
-        let col = self.col(j);
-        if col.nrows() == 0 {
-            map!(E, E::UNIT, |(())| { &[] as &[E::Unit] },)
-        } else {
-            let m = col.nrows();
-            map!(E, col.as_ptr(), |(ptr)| {
-                unsafe { core::slice::from_raw_parts(ptr, m) }
-            },)
-        }
-    }
-
     /// Returns pointers to the matrix data.
     #[inline(always)]
-    pub fn as_ptr(self) -> GroupFor<E, *const E::Unit> {
+    pub fn as_ptr(self) -> PtrConst<E> {
         map!(E, from_copy::<E, _>(self.inner.ptr), |(ptr)| {
             ptr.as_ptr() as *const E::Unit
         },)
@@ -110,19 +95,19 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> usize {
+    pub fn nrows(&self) -> R {
         self.inner.nrows
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> usize {
+    pub fn ncols(&self) -> C {
         self.inner.ncols
     }
 
     /// Returns the number of rows and columns of the matrix.
     #[inline]
-    pub fn shape(&self) -> (usize, usize) {
+    pub fn shape(&self) -> (R, C) {
         (self.nrows(), self.ncols())
     }
 
@@ -140,7 +125,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns raw pointers to the element at the given indices.
     #[inline(always)]
-    pub fn ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub fn ptr_at(self, row: usize, col: usize) -> PtrConst<E> {
         let offset = ((row as isize).wrapping_mul(self.inner.row_stride))
             .wrapping_add((col as isize).wrapping_mul(self.inner.col_stride));
 
@@ -149,7 +134,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn ptr_at_unchecked(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_at_unchecked(self, row: usize, col: usize) -> PtrConst<E> {
         let offset = crate::utils::unchecked_add(
             crate::utils::unchecked_mul(row, self.inner.row_stride),
             crate::utils::unchecked_mul(col, self.inner.col_stride),
@@ -159,13 +144,13 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     #[inline(always)]
     #[doc(hidden)]
-    pub unsafe fn overflowing_ptr_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn overflowing_ptr_at(self, row: R::IdxInc, col: C::IdxInc) -> PtrConst<E> {
         unsafe {
             let cond = (row != self.nrows()) & (col != self.ncols());
             let offset = (cond as usize).wrapping_neg() as isize
                 & (isize::wrapping_add(
-                    (row as isize).wrapping_mul(self.inner.row_stride),
-                    (col as isize).wrapping_mul(self.inner.col_stride),
+                    (row.unbound() as isize).wrapping_mul(self.inner.row_stride),
+                    (col.unbound() as isize).wrapping_mul(self.inner.col_stride),
                 ));
             map!(E, self.as_ptr(), |(ptr)| { ptr.offset(offset) },)
         }
@@ -180,9 +165,9 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col < self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn ptr_inbounds_at(self, row: usize, col: usize) -> GroupFor<E, *const E::Unit> {
+    pub unsafe fn ptr_inbounds_at(self, row: R::Idx, col: C::Idx) -> PtrConst<E> {
         debug_assert!(all(row < self.nrows(), col < self.ncols()));
-        self.ptr_at_unchecked(row, col)
+        self.ptr_at_unchecked(row.unbound(), col.unbound())
     }
 
     /// Splits the matrix horizontally and vertically at the given indices into four corners and
@@ -198,7 +183,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_unchecked(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
+    pub unsafe fn split_at_unchecked(
+        self,
+        row: R::IdxInc,
+        col: C::IdxInc,
+    ) -> (
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+    ) {
         debug_assert!(all(row <= self.nrows(), col <= self.ncols()));
 
         let row_stride = self.row_stride();
@@ -208,16 +202,27 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let ncols = self.ncols();
 
         unsafe {
-            let top_left = self.overflowing_ptr_at(0, 0);
-            let top_right = self.overflowing_ptr_at(0, col);
-            let bot_left = self.overflowing_ptr_at(row, 0);
+            let top_left = self.overflowing_ptr_at(R::start(), C::start());
+            let top_right = self.overflowing_ptr_at(R::start(), col);
+            let bot_left = self.overflowing_ptr_at(row, C::start());
             let bot_right = self.overflowing_ptr_at(row, col);
 
+            let row = row.unbound();
+            let nrows = nrows.unbound();
+            let col = col.unbound();
+            let ncols = ncols.unbound();
+
             (
-                Self::__from_raw_parts(top_left, row, col, row_stride, col_stride),
-                Self::__from_raw_parts(top_right, row, ncols - col, row_stride, col_stride),
-                Self::__from_raw_parts(bot_left, nrows - row, col, row_stride, col_stride),
-                Self::__from_raw_parts(bot_right, nrows - row, ncols - col, row_stride, col_stride),
+                MatRef::__from_raw_parts(top_left, row, col, row_stride, col_stride),
+                MatRef::__from_raw_parts(top_right, row, ncols - col, row_stride, col_stride),
+                MatRef::__from_raw_parts(bot_left, nrows - row, col, row_stride, col_stride),
+                MatRef::__from_raw_parts(
+                    bot_right,
+                    nrows - row,
+                    ncols - col,
+                    row_stride,
+                    col_stride,
+                ),
             )
         }
     }
@@ -235,7 +240,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at(self, row: usize, col: usize) -> (Self, Self, Self, Self) {
+    pub fn split_at(
+        self,
+        row: R::IdxInc,
+        col: C::IdxInc,
+    ) -> (
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+        MatRef<'a, E, usize, usize>,
+    ) {
         assert!(all(row <= self.nrows(), col <= self.ncols()));
         unsafe { self.split_at_unchecked(row, col) }
     }
@@ -250,7 +264,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_row_unchecked(self, row: usize) -> (Self, Self) {
+    pub unsafe fn split_at_row_unchecked(
+        self,
+        row: R::IdxInc,
+    ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         debug_assert!(row <= self.nrows());
 
         let row_stride = self.row_stride();
@@ -260,12 +277,15 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let ncols = self.ncols();
 
         unsafe {
-            let top_right = self.overflowing_ptr_at(0, 0);
-            let bot_right = self.overflowing_ptr_at(row, 0);
+            let top_right = self.overflowing_ptr_at(R::start(), C::start());
+            let bot_right = self.overflowing_ptr_at(row, C::start());
+
+            let row = row.unbound();
+            let nrows = nrows.unbound();
 
             (
-                Self::__from_raw_parts(top_right, row, ncols, row_stride, col_stride),
-                Self::__from_raw_parts(bot_right, nrows - row, ncols, row_stride, col_stride),
+                MatRef::__from_raw_parts(top_right, row, ncols, row_stride, col_stride),
+                MatRef::__from_raw_parts(bot_right, nrows - row, ncols, row_stride, col_stride),
             )
         }
     }
@@ -280,7 +300,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `row <= self.nrows()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at_row(self, row: usize) -> (Self, Self) {
+    pub fn split_at_row(
+        self,
+        row: R::IdxInc,
+    ) -> (MatRef<'a, E, usize, C>, MatRef<'a, E, usize, C>) {
         assert!(row <= self.nrows());
         unsafe { self.split_at_row_unchecked(row) }
     }
@@ -295,7 +318,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub unsafe fn split_at_col_unchecked(self, col: usize) -> (Self, Self) {
+    pub unsafe fn split_at_col_unchecked(
+        self,
+        col: C::IdxInc,
+    ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         debug_assert!(col <= self.ncols());
 
         let row_stride = self.row_stride();
@@ -305,12 +331,15 @@ impl<'a, E: Entity> MatRef<'a, E> {
         let ncols = self.ncols();
 
         unsafe {
-            let bot_left = self.overflowing_ptr_at(0, 0);
-            let bot_right = self.overflowing_ptr_at(0, col);
+            let bot_left = self.overflowing_ptr_at(R::start(), C::start());
+            let bot_right = self.overflowing_ptr_at(R::start(), col);
+
+            let col = col.unbound();
+            let ncols = ncols.unbound();
 
             (
-                Self::__from_raw_parts(bot_left, nrows, col, row_stride, col_stride),
-                Self::__from_raw_parts(bot_right, nrows, ncols - col, row_stride, col_stride),
+                MatRef::__from_raw_parts(bot_left, nrows, col, row_stride, col_stride),
+                MatRef::__from_raw_parts(bot_right, nrows, ncols - col, row_stride, col_stride),
             )
         }
     }
@@ -325,9 +354,585 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// * `col <= self.ncols()`.
     #[inline(always)]
     #[track_caller]
-    pub fn split_at_col(self, col: usize) -> (Self, Self) {
+    pub fn split_at_col(
+        self,
+        col: C::IdxInc,
+    ) -> (MatRef<'a, E, R, usize>, MatRef<'a, E, R, usize>) {
         assert!(col <= self.ncols());
         unsafe { self.split_at_col_unchecked(col) }
+    }
+
+    /// Returns a view over the transpose of `self`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let transpose = view.transpose();
+    ///
+    /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
+    /// assert_eq!(expected.as_ref(), transpose);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn transpose(self) -> MatRef<'a, E, C, R> {
+        unsafe {
+            MatRef::__from_raw_parts(
+                self.as_ptr(),
+                self.ncols(),
+                self.nrows(),
+                self.col_stride(),
+                self.row_stride(),
+            )
+        }
+    }
+
+    /// Returns a view over the conjugate of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn conjugate(self) -> MatRef<'a, E::Conj, R, C>
+    where
+        E: Conjugate,
+    {
+        unsafe {
+            // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
+            // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
+            MatRef::__from_raw_parts(
+                transmute_unchecked::<
+                    GroupFor<E, *const UnitFor<E>>,
+                    GroupFor<E::Conj, *const UnitFor<E::Conj>>,
+                >(self.as_ptr()),
+                self.nrows(),
+                self.ncols(),
+                self.row_stride(),
+                self.col_stride(),
+            )
+        }
+    }
+
+    /// Returns a view over the conjugate transpose of `self`.
+    #[inline(always)]
+    #[must_use]
+    pub fn adjoint(self) -> MatRef<'a, E::Conj, C, R>
+    where
+        E: Conjugate,
+    {
+        self.transpose().conjugate()
+    }
+
+    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
+    /// whether `self` is implicitly conjugated or not.
+    #[inline(always)]
+    #[must_use]
+    pub fn canonicalize(self) -> (MatRef<'a, E::Canonical, R, C>, Conj)
+    where
+        E: Conjugate,
+    {
+        (
+            unsafe {
+                // SAFETY: see Self::conjugate
+                MatRef::__from_raw_parts(
+                    transmute_unchecked::<
+                        PtrConst<E>,
+                        GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
+                    >(self.as_ptr()),
+                    self.nrows(),
+                    self.ncols(),
+                    self.row_stride(),
+                    self.col_stride(),
+                )
+            },
+            if E::IS_CANONICAL { Conj::No } else { Conj::Yes },
+        )
+    }
+
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn at_unchecked(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+        unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
+    }
+
+    /// Returns references to the element at the given indices.
+    ///
+    /// # Note
+    /// The values pointed to by the references are expected to be initialized, even if the
+    /// pointed-to value is not read, otherwise the behavior is undefined.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row` must be in `[0, self.nrows())`.
+    /// * `col` must be in `[0, self.ncols())`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn at(self, row: R::Idx, col: C::Idx) -> Ref<'a, E> {
+        assert!(all(row < self.nrows(), col < self.ncols()));
+        unsafe { map!(E, self.ptr_inbounds_at(row, col), |(ptr)| &*ptr) }
+    }
+
+    /// Reads the value of the element at the given indices.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row < self.nrows()`.
+    /// * `col < self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub unsafe fn read_unchecked(&self, row: R::Idx, col: C::Idx) -> E {
+        E::faer_from_units(map!(E, self.at_unchecked(row, col), |(ptr)| { *ptr },))
+    }
+
+    /// Reads the value of the element at the given indices, with bound checks.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row < self.nrows()`.
+    /// * `col < self.ncols()`.
+    #[inline(always)]
+    #[track_caller]
+    pub fn read(&self, row: R::Idx, col: C::Idx) -> E {
+        E::faer_from_units(map!(E, self.at(row, col), |(ptr)| { *ptr },))
+    }
+
+    /// Returns a view over the `self`, with the rows in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed_rows = view.reverse_rows();
+    ///
+    /// let expected = mat![[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]];
+    /// assert_eq!(expected.as_ref(), reversed_rows);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = self.row_stride().wrapping_neg();
+        let col_stride = self.col_stride();
+
+        let ptr = unsafe { self.ptr_at_unchecked(nrows.unbound().saturating_sub(1), 0) };
+        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    /// Returns a view over the `self`, with the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed_cols = view.reverse_cols();
+    ///
+    /// let expected = mat![[3.0, 2.0, 1.0], [6.0, 5.0, 4.0]];
+    /// assert_eq!(expected.as_ref(), reversed_cols);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride().wrapping_neg();
+        let ptr = unsafe { self.ptr_at_unchecked(0, ncols.unbound().saturating_sub(1)) };
+        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    /// Returns a view over the `self`, with the rows and the columns in reversed order.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+    /// let view = matrix.as_ref();
+    /// let reversed = view.reverse_rows_and_cols();
+    ///
+    /// let expected = mat![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]];
+    /// assert_eq!(expected.as_ref(), reversed);
+    /// ```
+    #[inline(always)]
+    #[must_use]
+    pub fn reverse_rows_and_cols(self) -> Self {
+        let nrows = self.nrows();
+        let ncols = self.ncols();
+        let row_stride = -self.row_stride();
+        let col_stride = -self.col_stride();
+
+        let ptr = unsafe {
+            self.ptr_at_unchecked(
+                nrows.unbound().saturating_sub(1),
+                ncols.unbound().saturating_sub(1),
+            )
+        };
+        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn submatrix_unchecked<V: Shape, H: Shape>(
+        self,
+        row_start: R::IdxInc,
+        col_start: C::IdxInc,
+        nrows: V,
+        ncols: H,
+    ) -> MatRef<'a, E, V, H> {
+        debug_assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            let ncols = ncols.unbound();
+            let col_start = col_start.unbound();
+            debug_assert!(all(
+                nrows <= self.nrows().unbound() - row_start,
+                ncols <= self.ncols().unbound() - col_start,
+            ));
+        }
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+
+        unsafe {
+            MatRef::__from_raw_parts(
+                self.overflowing_ptr_at(row_start, col_start),
+                nrows,
+                ncols,
+                row_stride,
+                col_stride,
+            )
+        }
+    }
+
+    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
+    /// dimensions `(nrows, ncols)`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `col_start <= self.ncols()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let submatrix = view.submatrix(2, 1, 2, 2);
+    ///
+    /// let expected = mat![[7.0, 11.0], [8.0, 12.0f64]];
+    /// assert_eq!(expected.as_ref(), submatrix);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn submatrix<V: Shape, H: Shape>(
+        self,
+        row_start: R::IdxInc,
+        col_start: C::IdxInc,
+        nrows: V,
+        ncols: H,
+    ) -> MatRef<'a, E, V, H> {
+        assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            let ncols = ncols.unbound();
+            let col_start = col_start.unbound();
+            assert!(all(
+                nrows <= self.nrows().unbound() - row_start,
+                ncols <= self.ncols().unbound() - col_start,
+            ));
+        }
+        unsafe { self.submatrix_unchecked(row_start, col_start, nrows, ncols) }
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subrows_unchecked<V: Shape>(
+        self,
+        row_start: R::IdxInc,
+        nrows: V,
+    ) -> MatRef<'a, E, V, C> {
+        debug_assert!(row_start <= self.nrows());
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            debug_assert!(nrows <= self.nrows().unbound() - row_start);
+        }
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe {
+            MatRef::__from_raw_parts(
+                self.overflowing_ptr_at(row_start, C::start()),
+                nrows,
+                self.ncols(),
+                row_stride,
+                col_stride,
+            )
+        }
+    }
+
+    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
+    /// `nrows`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_start <= self.nrows()`.
+    /// * `nrows <= self.nrows() - row_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let subrows = view.subrows(1, 2);
+    ///
+    /// let expected = mat![[2.0, 6.0, 10.0], [3.0, 7.0, 11.0],];
+    /// assert_eq!(expected.as_ref(), subrows);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subrows<V: Shape>(self, row_start: R::IdxInc, nrows: V) -> MatRef<'a, E, V, C> {
+        assert!(row_start <= self.nrows());
+        {
+            let nrows = nrows.unbound();
+            let row_start = row_start.unbound();
+            assert!(nrows <= self.nrows().unbound() - row_start);
+        }
+        unsafe { self.subrows_unchecked(row_start, nrows) }
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn subcols_unchecked<H: Shape>(
+        self,
+        col_start: C::IdxInc,
+        ncols: H,
+    ) -> MatRef<'a, E, R, H> {
+        debug_assert!(col_start <= self.ncols());
+        {
+            let ncols = ncols.unbound();
+            let col_start = col_start.unbound();
+            debug_assert!(ncols <= self.ncols().unbound() - col_start);
+        }
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe {
+            MatRef::__from_raw_parts(
+                self.overflowing_ptr_at(R::start(), col_start),
+                self.nrows(),
+                ncols,
+                row_stride,
+                col_stride,
+            )
+        }
+    }
+
+    /// Returns a view over the submatrix starting at column `col_start`, and with number of
+    /// columns `ncols`.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_start <= self.ncols()`.
+    /// * `ncols <= self.ncols() - col_start`.
+    ///
+    /// # Example
+    /// ```
+    /// use faer::mat;
+    ///
+    /// let matrix = mat![
+    ///     [1.0, 5.0, 9.0],
+    ///     [2.0, 6.0, 10.0],
+    ///     [3.0, 7.0, 11.0],
+    ///     [4.0, 8.0, 12.0f64],
+    /// ];
+    ///
+    /// let view = matrix.as_ref();
+    /// let subcols = view.subcols(2, 1);
+    ///
+    /// let expected = mat![[9.0], [10.0], [11.0], [12.0f64]];
+    /// assert_eq!(expected.as_ref(), subcols);
+    /// ```
+    #[track_caller]
+    #[inline(always)]
+    pub fn subcols<H: Shape>(self, col_start: C::IdxInc, ncols: H) -> MatRef<'a, E, R, H> {
+        assert!(col_start <= self.ncols());
+        {
+            let ncols = ncols.unbound();
+            let col_start = col_start.unbound();
+            assert!(ncols <= self.ncols().unbound() - col_start);
+        }
+        unsafe { self.subcols_unchecked(col_start, ncols) }
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Safety
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn row_unchecked(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+        debug_assert!(row_idx < self.nrows());
+        unsafe {
+            RowRef::__from_raw_parts(
+                self.overflowing_ptr_at(row_idx.into(), C::start()),
+                self.ncols(),
+                self.col_stride(),
+            )
+        }
+    }
+
+    /// Returns a view over the row at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `row_idx < self.nrows()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn row(self, row_idx: R::Idx) -> RowRef<'a, E, C> {
+        assert!(row_idx < self.nrows());
+        unsafe { self.row_unchecked(row_idx) }
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Safety
+    /// The behavior is undefined if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn col_unchecked(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+        debug_assert!(col_idx < self.ncols());
+        unsafe {
+            ColRef::__from_raw_parts(
+                self.overflowing_ptr_at(R::start(), col_idx.into()),
+                self.nrows(),
+                self.row_stride(),
+            )
+        }
+    }
+
+    /// Returns a view over the column at the given index.
+    ///
+    /// # Panics
+    /// The function panics if any of the following conditions are violated:
+    /// * `col_idx < self.ncols()`.
+    #[track_caller]
+    #[inline(always)]
+    pub fn col(self, col_idx: C::Idx) -> ColRef<'a, E, R> {
+        assert!(col_idx < self.ncols());
+        unsafe { self.col_unchecked(col_idx) }
+    }
+
+    /// Returns an owning [`Mat`] of the data.
+    #[inline]
+    pub fn to_owned(&self) -> Mat<E::Canonical>
+    where
+        E: Conjugate,
+    {
+        let mut mat = Mat::new();
+        mat.resize_with(
+            self.nrows().unbound(),
+            self.ncols().unbound(),
+            #[inline(always)]
+            |row, col| unsafe {
+                self.read_unchecked(R::Idx::new_unbound(row), C::Idx::new_unbound(col))
+                    .canonicalize()
+            },
+        );
+        mat
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub unsafe fn const_cast(self) -> MatMut<'a, E, R, C> {
+        MatMut {
+            inner: self.inner,
+            __marker: PhantomData,
+        }
+    }
+
+    /// Returns a view over the matrix.
+    #[inline]
+    pub fn as_dyn(self) -> MatRef<'a, E> {
+        unsafe {
+            from_raw_parts(
+                self.as_ptr(),
+                self.nrows().unbound(),
+                self.ncols().unbound(),
+                self.row_stride(),
+                self.col_stride(),
+            )
+        }
+    }
+
+    #[track_caller]
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn try_get_contiguous_col(self, j: C::Idx) -> GroupFor<E, &'a [E::Unit]> {
+        assert!(self.row_stride() == 1);
+        let col = self.col(j);
+        let m = col.nrows().unbound();
+        if m == 0 {
+            map!(E, E::UNIT, |(())| { &[] as &[E::Unit] },)
+        } else {
+            map!(E, col.as_ptr(), |(ptr)| {
+                unsafe { core::slice::from_raw_parts(ptr, m) }
+            },)
+        }
     }
 
     /// Returns references to the element at the given indices, or submatrices if either `row`
@@ -378,484 +983,6 @@ impl<'a, E: Entity> MatRef<'a, E> {
         <Self as MatIndex<RowRange, ColRange>>::get(self, row, col)
     }
 
-    /// Reads the value of the element at the given indices.
-    ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
-    #[inline(always)]
-    #[track_caller]
-    pub unsafe fn read_unchecked(&self, row: usize, col: usize) -> E {
-        E::faer_from_units(map!(E, self.get_unchecked(row, col), |(ptr)| { *ptr },))
-    }
-
-    /// Reads the value of the element at the given indices, with bound checks.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `row < self.nrows()`.
-    /// * `col < self.ncols()`.
-    #[inline(always)]
-    #[track_caller]
-    pub fn read(&self, row: usize, col: usize) -> E {
-        E::faer_from_units(map!(E, self.get(row, col), |(ptr)| { *ptr },))
-    }
-
-    /// Returns a view over the transpose of `self`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_ref();
-    /// let transpose = view.transpose();
-    ///
-    /// let expected = mat![[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]];
-    /// assert_eq!(expected.as_ref(), transpose);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn transpose(self) -> Self {
-        unsafe {
-            Self::__from_raw_parts(
-                self.as_ptr(),
-                self.ncols(),
-                self.nrows(),
-                self.col_stride(),
-                self.row_stride(),
-            )
-        }
-    }
-
-    /// Returns a view over the conjugate of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn conjugate(self) -> MatRef<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        unsafe {
-            // SAFETY: Conjugate requires that E::Unit and E::Conj::Unit have the same layout
-            // and that GroupCopyFor<E,X> == E::Conj::GroupCopy<X>
-            MatRef::<'_, E::Conj>::__from_raw_parts(
-                transmute_unchecked::<
-                    GroupFor<E, *const UnitFor<E>>,
-                    GroupFor<E::Conj, *const UnitFor<E::Conj>>,
-                >(self.as_ptr()),
-                self.nrows(),
-                self.ncols(),
-                self.row_stride(),
-                self.col_stride(),
-            )
-        }
-    }
-
-    /// Returns a view over the conjugate transpose of `self`.
-    #[inline(always)]
-    #[must_use]
-    pub fn adjoint(self) -> MatRef<'a, E::Conj>
-    where
-        E: Conjugate,
-    {
-        self.transpose().conjugate()
-    }
-
-    /// Returns a view over the canonical representation of `self`, as well as a flag declaring
-    /// whether `self` is implicitly conjugated or not.
-    #[inline(always)]
-    #[must_use]
-    pub fn canonicalize(self) -> (MatRef<'a, E::Canonical>, Conj)
-    where
-        E: Conjugate,
-    {
-        (
-            unsafe {
-                // SAFETY: see Self::conjugate
-                MatRef::<'_, E::Canonical>::__from_raw_parts(
-                    transmute_unchecked::<
-                        GroupFor<E, *const E::Unit>,
-                        GroupFor<E::Canonical, *const UnitFor<E::Canonical>>,
-                    >(self.as_ptr()),
-                    self.nrows(),
-                    self.ncols(),
-                    self.row_stride(),
-                    self.col_stride(),
-                )
-            },
-            if coe::is_same::<E, E::Canonical>() {
-                Conj::No
-            } else {
-                Conj::Yes
-            },
-        )
-    }
-
-    /// Returns a view over the `self`, with the rows in reversed order.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_ref();
-    /// let reversed_rows = view.reverse_rows();
-    ///
-    /// let expected = mat![[4.0, 5.0, 6.0], [1.0, 2.0, 3.0]];
-    /// assert_eq!(expected.as_ref(), reversed_rows);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn reverse_rows(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = self.row_stride().wrapping_neg();
-        let col_stride = self.col_stride();
-
-        let ptr = unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1), 0) };
-        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a view over the `self`, with the columns in reversed order.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_ref();
-    /// let reversed_cols = view.reverse_cols();
-    ///
-    /// let expected = mat![[3.0, 2.0, 1.0], [6.0, 5.0, 4.0]];
-    /// assert_eq!(expected.as_ref(), reversed_cols);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn reverse_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = self.row_stride();
-        let col_stride = self.col_stride().wrapping_neg();
-        let ptr = unsafe { self.ptr_at_unchecked(0, ncols.saturating_sub(1)) };
-        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a view over the `self`, with the rows and the columns in reversed order.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
-    /// let view = matrix.as_ref();
-    /// let reversed = view.reverse_rows_and_cols();
-    ///
-    /// let expected = mat![[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]];
-    /// assert_eq!(expected.as_ref(), reversed);
-    /// ```
-    #[inline(always)]
-    #[must_use]
-    pub fn reverse_rows_and_cols(self) -> Self {
-        let nrows = self.nrows();
-        let ncols = self.ncols();
-        let row_stride = -self.row_stride();
-        let col_stride = -self.col_stride();
-
-        let ptr =
-            unsafe { self.ptr_at_unchecked(nrows.saturating_sub(1), ncols.saturating_sub(1)) };
-        unsafe { Self::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride) }
-    }
-
-    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
-    /// dimensions `(nrows, ncols)`.
-    ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
-    /// * `row_start <= self.nrows()`.
-    /// * `col_start <= self.ncols()`.
-    /// * `nrows <= self.nrows() - row_start`.
-    /// * `ncols <= self.ncols() - col_start`.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn submatrix_unchecked(
-        self,
-        row_start: usize,
-        col_start: usize,
-        nrows: usize,
-        ncols: usize,
-    ) -> Self {
-        debug_assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
-        debug_assert!(all(
-            nrows <= self.nrows() - row_start,
-            ncols <= self.ncols() - col_start,
-        ));
-        let row_stride = self.row_stride();
-        let col_stride = self.col_stride();
-
-        unsafe {
-            Self::__from_raw_parts(
-                self.overflowing_ptr_at(row_start, col_start),
-                nrows,
-                ncols,
-                row_stride,
-                col_stride,
-            )
-        }
-    }
-
-    /// Returns a view over the submatrix starting at indices `(row_start, col_start)`, and with
-    /// dimensions `(nrows, ncols)`.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `row_start <= self.nrows()`.
-    /// * `col_start <= self.ncols()`.
-    /// * `nrows <= self.nrows() - row_start`.
-    /// * `ncols <= self.ncols() - col_start`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![
-    ///     [1.0, 5.0, 9.0],
-    ///     [2.0, 6.0, 10.0],
-    ///     [3.0, 7.0, 11.0],
-    ///     [4.0, 8.0, 12.0f64],
-    /// ];
-    ///
-    /// let view = matrix.as_ref();
-    /// let submatrix = view.submatrix(2, 1, 2, 2);
-    ///
-    /// let expected = mat![[7.0, 11.0], [8.0, 12.0f64]];
-    /// assert_eq!(expected.as_ref(), submatrix);
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn submatrix(self, row_start: usize, col_start: usize, nrows: usize, ncols: usize) -> Self {
-        assert!(all(row_start <= self.nrows(), col_start <= self.ncols()));
-        assert!(all(
-            nrows <= self.nrows() - row_start,
-            ncols <= self.ncols() - col_start,
-        ));
-        unsafe { self.submatrix_unchecked(row_start, col_start, nrows, ncols) }
-    }
-
-    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
-    /// `nrows`.
-    ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
-    /// * `row_start <= self.nrows()`.
-    /// * `nrows <= self.nrows() - row_start`.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn subrows_unchecked(self, row_start: usize, nrows: usize) -> Self {
-        debug_assert!(row_start <= self.nrows());
-        debug_assert!(nrows <= self.nrows() - row_start);
-        let row_stride = self.row_stride();
-        let col_stride = self.col_stride();
-        unsafe {
-            Self::__from_raw_parts(
-                self.overflowing_ptr_at(row_start, 0),
-                nrows,
-                self.ncols(),
-                row_stride,
-                col_stride,
-            )
-        }
-    }
-
-    /// Returns a view over the submatrix starting at row `row_start`, and with number of rows
-    /// `nrows`.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `row_start <= self.nrows()`.
-    /// * `nrows <= self.nrows() - row_start`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![
-    ///     [1.0, 5.0, 9.0],
-    ///     [2.0, 6.0, 10.0],
-    ///     [3.0, 7.0, 11.0],
-    ///     [4.0, 8.0, 12.0f64],
-    /// ];
-    ///
-    /// let view = matrix.as_ref();
-    /// let subrows = view.subrows(1, 2);
-    ///
-    /// let expected = mat![[2.0, 6.0, 10.0], [3.0, 7.0, 11.0],];
-    /// assert_eq!(expected.as_ref(), subrows);
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn subrows(self, row_start: usize, nrows: usize) -> Self {
-        assert!(row_start <= self.nrows());
-        assert!(nrows <= self.nrows() - row_start);
-        unsafe { self.subrows_unchecked(row_start, nrows) }
-    }
-
-    /// Returns a view over the submatrix starting at column `col_start`, and with number of
-    /// columns `ncols`.
-    ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
-    /// * `col_start <= self.ncols()`.
-    /// * `ncols <= self.ncols() - col_start`.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn subcols_unchecked(self, col_start: usize, ncols: usize) -> Self {
-        debug_assert!(col_start <= self.ncols());
-        debug_assert!(ncols <= self.ncols() - col_start);
-        let row_stride = self.row_stride();
-        let col_stride = self.col_stride();
-        unsafe {
-            Self::__from_raw_parts(
-                self.overflowing_ptr_at(0, col_start),
-                self.nrows(),
-                ncols,
-                row_stride,
-                col_stride,
-            )
-        }
-    }
-
-    /// Returns a view over the submatrix starting at column `col_start`, and with number of
-    /// columns `ncols`.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `col_start <= self.ncols()`.
-    /// * `ncols <= self.ncols() - col_start`.
-    ///
-    /// # Example
-    /// ```
-    /// use faer::mat;
-    ///
-    /// let matrix = mat![
-    ///     [1.0, 5.0, 9.0],
-    ///     [2.0, 6.0, 10.0],
-    ///     [3.0, 7.0, 11.0],
-    ///     [4.0, 8.0, 12.0f64],
-    /// ];
-    ///
-    /// let view = matrix.as_ref();
-    /// let subcols = view.subcols(2, 1);
-    ///
-    /// let expected = mat![[9.0], [10.0], [11.0], [12.0f64]];
-    /// assert_eq!(expected.as_ref(), subcols);
-    /// ```
-    #[track_caller]
-    #[inline(always)]
-    pub fn subcols(self, col_start: usize, ncols: usize) -> Self {
-        debug_assert!(col_start <= self.ncols());
-        debug_assert!(ncols <= self.ncols() - col_start);
-        unsafe { self.subcols_unchecked(col_start, ncols) }
-    }
-
-    /// Returns a view over the row at the given index.
-    ///
-    /// # Safety
-    /// The function panics if any of the following conditions are violated:
-    /// * `row_idx < self.nrows()`.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn row_unchecked(self, row_idx: usize) -> RowRef<'a, E> {
-        debug_assert!(row_idx < self.nrows());
-        unsafe {
-            crate::row::from_raw_parts(
-                self.overflowing_ptr_at(row_idx, 0),
-                self.ncols(),
-                self.col_stride(),
-            )
-        }
-    }
-
-    /// Returns a view over the row at the given index.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `row_idx < self.nrows()`.
-    #[track_caller]
-    #[inline(always)]
-    pub fn row(self, row_idx: usize) -> RowRef<'a, E> {
-        assert!(row_idx < self.nrows());
-        unsafe { self.row_unchecked(row_idx) }
-    }
-
-    /// Returns a view over the column at the given index.
-    ///
-    /// # Safety
-    /// The behavior is undefined if any of the following conditions are violated:
-    /// * `col_idx < self.ncols()`.
-    #[track_caller]
-    #[inline(always)]
-    pub unsafe fn col_unchecked(self, col_idx: usize) -> ColRef<'a, E> {
-        debug_assert!(col_idx < self.ncols());
-        unsafe {
-            crate::col::from_raw_parts(
-                self.ptr_at_unchecked(0, col_idx),
-                self.nrows(),
-                self.row_stride(),
-            )
-        }
-    }
-
-    /// Returns a view over the column at the given index.
-    ///
-    /// # Panics
-    /// The function panics if any of the following conditions are violated:
-    /// * `col_idx < self.ncols()`.
-    #[track_caller]
-    #[inline(always)]
-    pub fn col(self, col_idx: usize) -> ColRef<'a, E> {
-        assert!(col_idx < self.ncols());
-        unsafe { self.col_unchecked(col_idx) }
-    }
-
-    /// Given a matrix with a single column, returns an object that interprets
-    /// the column as a diagonal matrix, whose diagonal elements are values in the column.
-    #[track_caller]
-    #[inline(always)]
-    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
-        assert!(self.ncols() == 1);
-        DiagRef { inner: self.col(0) }
-    }
-
-    /// Returns the diagonal of the matrix.
-    #[inline(always)]
-    pub fn diagonal(self) -> DiagRef<'a, E> {
-        let size = self.nrows().min(self.ncols());
-        let row_stride = self.row_stride();
-        let col_stride = self.col_stride();
-        unsafe {
-            DiagRef {
-                inner: crate::col::from_raw_parts(self.as_ptr(), size, row_stride + col_stride),
-            }
-        }
-    }
-
-    /// Returns an owning [`Mat`] of the data.
-    #[inline]
-    pub fn to_owned(&self) -> Mat<E::Canonical>
-    where
-        E: Conjugate,
-    {
-        let mut mat = Mat::new();
-        mat.resize_with(
-            self.nrows(),
-            self.ncols(),
-            #[inline(always)]
-            |row, col| unsafe { self.read_unchecked(row, col).canonicalize() },
-        );
-        mat
-    }
-
     /// Returns `true` if any of the elements is NaN, otherwise returns `false`.
     #[inline]
     pub fn has_nan(&self) -> bool
@@ -888,7 +1015,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        crate::linalg::reductions::norm_max::norm_max((*self).rb())
+        crate::linalg::reductions::norm_max::norm_max(self.as_dyn())
     }
 
     /// Returns the L1 norm of `self`.
@@ -897,7 +1024,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        crate::linalg::reductions::norm_l1::norm_l1((*self).rb())
+        crate::linalg::reductions::norm_l1::norm_l1(self.as_dyn())
     }
 
     /// Returns the L2 norm of `self`.
@@ -906,7 +1033,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        crate::linalg::reductions::norm_l2::norm_l2((*self).rb())
+        crate::linalg::reductions::norm_l2::norm_l2(self.as_dyn())
     }
 
     /// Returns the squared L2 norm of `self`.
@@ -915,7 +1042,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        let norm = crate::linalg::reductions::norm_l2::norm_l2((*self).rb());
+        let norm = crate::linalg::reductions::norm_l2::norm_l2(self.as_dyn());
         norm.faer_mul(norm)
     }
 
@@ -925,7 +1052,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        crate::linalg::reductions::sum::sum((*self).rb())
+        crate::linalg::reductions::sum::sum(self.as_dyn())
     }
 
     /// Kronecker product of `self` and `rhs`.
@@ -938,7 +1065,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     where
         E: ComplexField,
     {
-        let lhs = (*self).rb();
+        let lhs = self.as_dyn();
         let rhs = rhs.as_2d_ref();
         let mut dst = Mat::new();
         dst.resize_with(
@@ -952,20 +1079,21 @@ impl<'a, E: Entity> MatRef<'a, E> {
 
     /// Returns a view over the matrix.
     #[inline]
-    pub fn as_ref(&self) -> MatRef<'_, E> {
+    pub fn as_ref(&self) -> MatRef<'_, E, R, C> {
         *self
     }
 
     /// Returns a reference to the first column and a view over the remaining ones if the matrix has
     /// at least one column, otherwise `None`.
     #[inline]
-    pub fn split_first_col(self) -> Option<(ColRef<'a, E>, MatRef<'a, E>)> {
-        if self.ncols() == 0 {
+    pub fn split_first_col(self) -> Option<(ColRef<'a, E, R>, MatRef<'a, E, R, usize>)> {
+        if self.ncols().unbound() == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_col_unchecked(1) };
-                Some((head.get_unchecked(.., 0), tail))
+                let (head, tail) =
+                    { self.split_at_col_unchecked(self.ncols().unchecked_idx_inc(1)) };
+                Some((head.col_unchecked(0), tail))
             }
         }
     }
@@ -973,14 +1101,15 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// Returns a reference to the last column and a view over the remaining ones if the matrix has
     /// at least one column,  otherwise `None`.
     #[inline]
-    pub fn split_last_col(self) -> Option<(ColRef<'a, E>, MatRef<'a, E>)> {
-        let ncols = self.ncols();
+    pub fn split_last_col(self) -> Option<(ColRef<'a, E, R>, MatRef<'a, E, R, usize>)> {
+        let ncols = self.ncols().unbound();
         if ncols == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_col_unchecked(ncols - 1) };
-                Some((tail.get_unchecked(.., 0), head))
+                let (head, tail) =
+                    { self.split_at_col_unchecked(self.ncols().unchecked_idx_inc(ncols - 1)) };
+                Some((tail.col_unchecked(0), head))
             }
         }
     }
@@ -988,13 +1117,14 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// Returns a reference to the first row and a view over the remaining ones if the matrix has
     /// at least one row, otherwise `None`.
     #[inline]
-    pub fn split_first_row(self) -> Option<(RowRef<'a, E>, MatRef<'a, E>)> {
-        if self.nrows() == 0 {
+    pub fn split_first_row(self) -> Option<(RowRef<'a, E, C>, MatRef<'a, E, usize, C>)> {
+        if self.nrows().unbound() == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_row_unchecked(1) };
-                Some((head.get_unchecked(0, ..), tail))
+                let (head, tail) =
+                    { self.split_at_row_unchecked(self.nrows().unchecked_idx_inc(1)) };
+                Some((head.row_unchecked(0), tail))
             }
         }
     }
@@ -1002,14 +1132,15 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// Returns a reference to the last row and a view over the remaining ones if the matrix has
     /// at least one row,  otherwise `None`.
     #[inline]
-    pub fn split_last_row(self) -> Option<(RowRef<'a, E>, MatRef<'a, E>)> {
-        let nrows = self.nrows();
+    pub fn split_last_row(self) -> Option<(RowRef<'a, E, C>, MatRef<'a, E, usize, C>)> {
+        let nrows = self.nrows().unbound();
         if nrows == 0 {
             None
         } else {
             unsafe {
-                let (head, tail) = { self.split_at_row_unchecked(nrows - 1) };
-                Some((tail.get_unchecked(0, ..), head))
+                let (head, tail) =
+                    { self.split_at_row_unchecked(self.nrows().unchecked_idx_inc(nrows - 1)) };
+                Some((tail.row_unchecked(0), head))
             }
         }
     }
@@ -1017,21 +1148,16 @@ impl<'a, E: Entity> MatRef<'a, E> {
     /// Returns an iterator over the columns of the matrix.
     #[inline]
     pub fn col_iter(self) -> iter::ColIter<'a, E> {
-        iter::ColIter { inner: self }
+        iter::ColIter {
+            inner: self.as_dyn(),
+        }
     }
 
     /// Returns an iterator over the rows of the matrix.
     #[inline]
     pub fn row_iter(self) -> iter::RowIter<'a, E> {
-        iter::RowIter { inner: self }
-    }
-
-    #[doc(hidden)]
-    #[inline(always)]
-    pub unsafe fn const_cast(self) -> MatMut<'a, E> {
-        MatMut {
-            inner: self.inner,
-            __marker: PhantomData,
+        iter::RowIter {
+            inner: self.as_dyn(),
         }
     }
 
@@ -1044,9 +1170,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[track_caller]
     pub fn col_chunks(self, chunk_size: usize) -> iter::ColChunks<'a, E> {
         assert!(chunk_size > 0);
-        let ncols = self.ncols();
+        let this = self.as_dyn();
+        let ncols = this.ncols();
         iter::ColChunks {
-            inner: self,
+            inner: this,
             policy: iter::chunks::ChunkSizePolicy::new(ncols, iter::chunks::ChunkSize(chunk_size)),
         }
     }
@@ -1060,9 +1187,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[track_caller]
     pub fn col_partition(self, count: usize) -> iter::ColPartition<'a, E> {
         assert!(count > 0);
-        let ncols = self.ncols();
+        let this = self.as_dyn();
+        let ncols = this.ncols();
         iter::ColPartition {
-            inner: self,
+            inner: this,
             policy: iter::chunks::PartitionCountPolicy::new(
                 ncols,
                 iter::chunks::PartitionCount(count),
@@ -1079,9 +1207,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[track_caller]
     pub fn row_chunks(self, chunk_size: usize) -> iter::RowChunks<'a, E> {
         assert!(chunk_size > 0);
-        let nrows = self.nrows();
+        let this = self.as_dyn();
+        let nrows = this.nrows();
         iter::RowChunks {
-            inner: self,
+            inner: this,
             policy: iter::chunks::ChunkSizePolicy::new(nrows, iter::chunks::ChunkSize(chunk_size)),
         }
     }
@@ -1095,9 +1224,10 @@ impl<'a, E: Entity> MatRef<'a, E> {
     #[track_caller]
     pub fn row_partition(self, count: usize) -> iter::RowPartition<'a, E> {
         assert!(count > 0);
-        let nrows = self.nrows();
+        let this = self.as_dyn();
+        let nrows = this.nrows();
         iter::RowPartition {
-            inner: self,
+            inner: this,
             policy: iter::chunks::PartitionCountPolicy::new(
                 nrows,
                 iter::chunks::PartitionCount(count),
@@ -1119,15 +1249,17 @@ impl<'a, E: Entity> MatRef<'a, E> {
     pub fn par_col_chunks(
         self,
         chunk_size: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
-        use crate::utils::DivCeil;
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E, R, usize>> {
         use rayon::prelude::*;
 
+        let this = self.as_dyn();
+
         assert!(chunk_size > 0);
-        let chunk_count = self.ncols().msrv_div_ceil(chunk_size);
+        let chunk_count = this.ncols().div_ceil(chunk_size);
         (0..chunk_count).into_par_iter().map(move |chunk_idx| {
             let pos = chunk_size * chunk_idx;
-            self.subcols(pos, Ord::min(chunk_size, self.ncols() - pos))
+            let out = this.subcols(pos, Ord::min(chunk_size, this.ncols() - pos));
+            out.submatrix(0, 0, unsafe { R::new_unbound(out.nrows()) }, out.ncols())
         })
     }
 
@@ -1142,14 +1274,17 @@ impl<'a, E: Entity> MatRef<'a, E> {
     pub fn par_col_partition(
         self,
         count: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E, R, usize>> {
         use rayon::prelude::*;
+
+        let this = self.as_dyn();
 
         assert!(count > 0);
         (0..count).into_par_iter().map(move |chunk_idx| {
             let (start, len) =
-                crate::utils::thread::par_split_indices(self.ncols(), chunk_idx, count);
-            self.subcols(start, len)
+                crate::utils::thread::par_split_indices(this.ncols(), chunk_idx, count);
+            let out = this.subcols(start, len);
+            out.submatrix(0, 0, unsafe { R::new_unbound(out.nrows()) }, out.ncols())
         })
     }
 
@@ -1167,7 +1302,7 @@ impl<'a, E: Entity> MatRef<'a, E> {
     pub fn par_row_chunks(
         self,
         chunk_size: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E, usize, C>> {
         use rayon::prelude::*;
 
         self.transpose()
@@ -1186,22 +1321,43 @@ impl<'a, E: Entity> MatRef<'a, E> {
     pub fn par_row_partition(
         self,
         count: usize,
-    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E>> {
+    ) -> impl 'a + rayon::iter::IndexedParallelIterator<Item = MatRef<'a, E, usize, C>> {
         use rayon::prelude::*;
 
-        assert!(count > 0);
-        (0..count).into_par_iter().map(move |chunk_idx| {
-            let (start, len) =
-                crate::utils::thread::par_split_indices(self.nrows(), chunk_idx, count);
-            self.subrows(start, len)
-        })
+        self.transpose()
+            .par_col_partition(count)
+            .map(|chunk| chunk.transpose())
     }
 }
 
-impl<'a, E: RealField> MatRef<'a, num_complex::Complex<E>> {
+impl<'a, E: Entity> MatRef<'a, E> {
+    /// Given a matrix with a single column, returns an object that interprets
+    /// the column as a diagonal matrix, whose diagonal elements are values in the column.
+    #[track_caller]
+    #[inline(always)]
+    pub fn column_vector_as_diagonal(self) -> DiagRef<'a, E> {
+        assert!(self.ncols() == 1);
+        DiagRef { inner: self.col(0) }
+    }
+
+    /// Returns the diagonal of the matrix.
+    #[inline(always)]
+    pub fn diagonal(self) -> DiagRef<'a, E> {
+        let size = self.nrows().min(self.ncols());
+        let row_stride = self.row_stride();
+        let col_stride = self.col_stride();
+        unsafe {
+            DiagRef {
+                inner: crate::col::from_raw_parts(self.as_ptr(), size, row_stride + col_stride),
+            }
+        }
+    }
+}
+
+impl<'a, E: RealField, R: Shape, C: Shape> MatRef<'a, num_complex::Complex<E>, R, C> {
     /// Returns the real and imaginary components of `self`.
     #[inline(always)]
-    pub fn real_imag(self) -> num_complex::Complex<MatRef<'a, E>> {
+    pub fn real_imag(self) -> num_complex::Complex<MatRef<'a, E, R, C>> {
         let row_stride = self.row_stride();
         let col_stride = self.col_stride();
         let nrows = self.nrows();
@@ -1267,13 +1423,13 @@ impl<E: Entity> As2D<E> for MatRef<'_, E> {
 /// assert_eq!(expected.as_ref(), matrix);
 /// ```
 #[inline(always)]
-pub unsafe fn from_raw_parts<'a, E: Entity>(
-    ptr: GroupFor<E, *const E::Unit>,
-    nrows: usize,
-    ncols: usize,
+pub unsafe fn from_raw_parts<'a, E: Entity, R: Shape, C: Shape>(
+    ptr: PtrConst<E>,
+    nrows: R,
+    ncols: C,
     row_stride: isize,
     col_stride: isize,
-) -> MatRef<'a, E> {
+) -> MatRef<'a, E, R, C> {
     MatRef::__from_raw_parts(ptr, nrows, ncols, row_stride, col_stride)
 }
 
@@ -1298,14 +1454,14 @@ pub unsafe fn from_raw_parts<'a, E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_column_major_slice_generic<E: Entity>(
+pub fn from_column_major_slice_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &[E::Unit]>,
-    nrows: usize,
-    ncols: usize,
-) -> MatRef<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     from_slice_assert(
-        nrows,
-        ncols,
+        nrows.unbound(),
+        ncols.unbound(),
         SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len(),
     );
 
@@ -1315,7 +1471,7 @@ pub fn from_column_major_slice_generic<E: Entity>(
             nrows,
             ncols,
             1,
-            nrows as isize,
+            nrows.unbound() as isize,
         )
     }
 }
@@ -1341,11 +1497,11 @@ pub fn from_column_major_slice_generic<E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_column_major_slice<E: Entity>(
+pub fn from_column_major_slice<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &[E::Unit]>,
-    nrows: usize,
-    ncols: usize,
-) -> MatRef<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     from_column_major_slice_generic(slice, nrows, ncols)
 }
 
@@ -1370,11 +1526,11 @@ pub fn from_column_major_slice<E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_row_major_slice_generic<E: Entity>(
+pub fn from_row_major_slice_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &[E::Unit]>,
-    nrows: usize,
-    ncols: usize,
-) -> MatRef<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     from_column_major_slice_generic(slice, ncols, nrows).transpose()
 }
 
@@ -1399,11 +1555,11 @@ pub fn from_row_major_slice_generic<E: Entity>(
 /// ```
 #[track_caller]
 #[inline(always)]
-pub fn from_row_major_slice<E: SimpleEntity>(
+pub fn from_row_major_slice<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &[E],
-    nrows: usize,
-    ncols: usize,
-) -> MatRef<'_, E> {
+    nrows: R,
+    ncols: C,
+) -> MatRef<'_, E, R, C> {
     from_column_major_slice_generic(slice, ncols, nrows).transpose()
 }
 
@@ -1411,15 +1567,15 @@ pub fn from_row_major_slice<E: SimpleEntity>(
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride_generic<E: Entity>(
+pub fn from_column_major_slice_with_stride_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &[E::Unit]>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     col_stride: usize,
-) -> MatRef<'_, E> {
+) -> MatRef<'_, E, R, C> {
     from_strided_column_major_slice_assert(
-        nrows,
-        ncols,
+        nrows.unbound(),
+        ncols.unbound(),
         col_stride,
         SliceGroup::<'_, E>::new(E::faer_copy(&slice)).len(),
     );
@@ -1430,7 +1586,7 @@ pub fn from_column_major_slice_with_stride_generic<E: Entity>(
             nrows,
             ncols,
             1,
-            col_stride as isize,
+            col_stride.unbound() as isize,
         )
     }
 }
@@ -1439,25 +1595,25 @@ pub fn from_column_major_slice_with_stride_generic<E: Entity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride_generic<E: Entity>(
+pub fn from_row_major_slice_with_stride_generic<E: Entity, R: Shape, C: Shape>(
     slice: GroupFor<E, &[E::Unit]>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: usize,
-) -> MatRef<'_, E> {
-    from_column_major_slice_with_stride_generic::<E>(slice, ncols, nrows, row_stride).transpose()
+) -> MatRef<'_, E, R, C> {
+    from_column_major_slice_with_stride_generic(slice, ncols, nrows, row_stride).transpose()
 }
 
 /// Creates a `MatRef` from slice views over the matrix data, and the matrix dimensions.
 /// The data is interpreted in a column-major format, where the beginnings of two consecutive
 /// columns are separated by `col_stride` elements.
 #[track_caller]
-pub fn from_column_major_slice_with_stride<E: SimpleEntity>(
+pub fn from_column_major_slice_with_stride<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &[E],
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     col_stride: usize,
-) -> MatRef<'_, E> {
+) -> MatRef<'_, E, R, C> {
     from_column_major_slice_with_stride_generic(slice, nrows, ncols, col_stride)
 }
 
@@ -1465,12 +1621,12 @@ pub fn from_column_major_slice_with_stride<E: SimpleEntity>(
 /// The data is interpreted in a row-major format, where the beginnings of two consecutive
 /// rows are separated by `row_stride` elements.
 #[track_caller]
-pub fn from_row_major_slice_with_stride<E: SimpleEntity>(
+pub fn from_row_major_slice_with_stride<E: SimpleEntity, R: Shape, C: Shape>(
     slice: &[E],
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
     row_stride: usize,
-) -> MatRef<'_, E> {
+) -> MatRef<'_, E, R, C> {
     from_row_major_slice_with_stride_generic(slice, nrows, ncols, row_stride)
 }
 

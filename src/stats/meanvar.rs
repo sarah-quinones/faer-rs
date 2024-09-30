@@ -1684,7 +1684,7 @@ fn col_varm_propagate<E: ComplexField>(
             let col_mean: ColRef<'_, c32> = col_mean.coerce();
 
             let mat = unsafe {
-                mat::from_raw_parts::<f32>(
+                mat::from_raw_parts::<f32, _, _>(
                     mat.as_ptr() as *const f32,
                     2 * m,
                     mat.ncols(),
@@ -1708,7 +1708,7 @@ fn col_varm_propagate<E: ComplexField>(
             let col_mean: ColRef<'_, c64> = col_mean.coerce();
 
             let mat = unsafe {
-                mat::from_raw_parts::<f64>(
+                mat::from_raw_parts::<f64, _, _>(
                     mat.as_ptr() as *const f64,
                     2 * m,
                     mat.ncols(),

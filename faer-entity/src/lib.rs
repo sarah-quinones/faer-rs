@@ -167,6 +167,13 @@ impl<Group: ForType> ForType for ComplexGroup<Group> {
     type FaerOf<T> = Complex<Group::FaerOf<T>>;
 }
 
+pub type PtrConst<E> = GroupFor<E, *const <E as Entity>::Unit>;
+pub type PtrMut<E> = GroupFor<E, *mut <E as Entity>::Unit>;
+pub type Ref<'a, E> = GroupFor<E, &'a <E as Entity>::Unit>;
+pub type Mut<'a, E> = GroupFor<E, &'a mut <E as Entity>::Unit>;
+pub type Slice<'a, E> = GroupFor<E, &'a [<E as Entity>::Unit]>;
+pub type SliceMut<'a, E> = GroupFor<E, &'a mut [<E as Entity>::Unit]>;
+
 pub type GroupFor<E, T> = <<E as Entity>::Group as ForType>::FaerOf<T>;
 pub type GroupCopyFor<E, T> = <<E as Entity>::Group as ForCopyType>::FaerOfCopy<T>;
 pub type GroupDebugFor<E, T> = <<E as Entity>::Group as ForDebugType>::FaerOfDebug<T>;
@@ -377,6 +384,8 @@ pub unsafe trait Entity: Copy + Pod + PartialEq + Send + Sync + Debug + 'static 
 /// # Safety
 /// The associated types and functions must fulfill their respective contracts.
 pub unsafe trait Conjugate: Entity {
+    const IS_CANONICAL: bool = true;
+
     /// Must have the same layout as `Self`, and `Conj::Unit` must have the same layout as `Unit`.
     type Conj: Entity + Conjugate<Conj = Self, Canonical = Self::Canonical>;
     /// Must have the same layout as `Self`, and `Canonical::Unit` must have the same layout as
@@ -2714,6 +2723,8 @@ unsafe impl<E: Entity + ComplexField> Conjugate for Complex<E> {
 }
 
 unsafe impl<E: Entity + ComplexField> Conjugate for ComplexConj<E> {
+    const IS_CANONICAL: bool = false;
+
     type Conj = Complex<E>;
     type Canonical = Complex<E>;
 

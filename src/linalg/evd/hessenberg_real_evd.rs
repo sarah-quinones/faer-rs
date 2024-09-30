@@ -388,7 +388,7 @@ fn lasy2<E: RealField>(
         [zero, zero, zero, zero]
     });
     let mut btmp = unsafe {
-        crate::mat::from_raw_parts_mut::<'_, E>(
+        crate::mat::from_raw_parts_mut::<'_, E, _, _>(
             E::faer_map(E::faer_as_mut(&mut btmp), |array| array.as_mut_ptr()),
             4,
             1,
@@ -401,7 +401,7 @@ fn lasy2<E: RealField>(
         [zero, zero, zero, zero]
     });
     let mut tmp = unsafe {
-        crate::mat::from_raw_parts_mut::<'_, E>(
+        crate::mat::from_raw_parts_mut::<'_, E, _, _>(
             E::faer_map(E::faer_as_mut(&mut tmp), |array| array.as_mut_ptr()),
             4,
             1,
@@ -417,7 +417,7 @@ fn lasy2<E: RealField>(
         ]
     });
     let mut t16 = unsafe {
-        crate::mat::from_raw_parts_mut::<'_, E>(
+        crate::mat::from_raw_parts_mut::<'_, E, _, _>(
             E::faer_map(E::faer_as_mut(&mut t16), |array| array.as_mut_ptr()),
             4,
             4,
@@ -732,7 +732,7 @@ pub fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
-        let mut b = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(b_ptr, 3, 2, 1, 3) };
+        let mut b = unsafe { crate::mat::from_raw_parts_mut::<'_, E, _, _>(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j0, j1));
         b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j0, j0)));
@@ -876,7 +876,7 @@ pub fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero]
         });
         let b_ptr = E::faer_map(E::faer_as_mut(&mut b_storage), |array| array.as_mut_ptr());
-        let mut b = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(b_ptr, 3, 2, 1, 3) };
+        let mut b = unsafe { crate::mat::from_raw_parts_mut::<'_, E, _, _>(b_ptr, 3, 2, 1, 3) };
 
         b.write(0, 0, a.read(j1, j2));
         b.write(1, 0, a.read(j1, j1).faer_sub(a.read(j2, j2)));
@@ -1019,7 +1019,7 @@ pub fn schur_swap<E: RealField>(
             ]
         });
         let d_ptr = E::faer_map(E::faer_as_mut(&mut d_storage), |array| array.as_mut_ptr());
-        let mut d = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(d_ptr, 4, 4, 1, 4) };
+        let mut d = unsafe { crate::mat::from_raw_parts_mut::<'_, E, _, _>(d_ptr, 4, 4, 1, 4) };
 
         let ad_slice = a.rb().submatrix(j0, j0, 4, 4);
         d.copy_from(ad_slice);
@@ -1037,7 +1037,7 @@ pub fn schur_swap<E: RealField>(
             [zero, zero, zero, zero, zero, zero, zero, zero]
         });
         let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
-        let mut v = unsafe { crate::mat::from_raw_parts_mut::<'_, E>(v_ptr, 4, 2, 1, 4) };
+        let mut v = unsafe { crate::mat::from_raw_parts_mut::<'_, E, _, _>(v_ptr, 4, 2, 1, 4) };
 
         let mut x = v.rb_mut().submatrix_mut(0, 0, 2, 2);
         let (tl, b, _, tr) = d.rb().split_at(2, 2);
@@ -1936,7 +1936,7 @@ fn move_bulge<E: RealField>(
             [zero_unit, zero_unit, zero_unit]
         });
         let vt_ptr = E::faer_map(E::faer_as_mut(&mut vt_storage), |array| array.as_mut_ptr());
-        let mut vt = unsafe { crate::col::from_raw_parts_mut::<'_, E>(vt_ptr, 3, 1) };
+        let mut vt = unsafe { crate::col::from_raw_parts_mut::<'_, E, _>(vt_ptr, 3, 1) };
 
         let h2 = h.rb().submatrix(1, 1, 3, 3);
         lahqr_shiftcolumn(h2, vt.rb_mut(), s1, s2);
@@ -3565,7 +3565,7 @@ pub fn lahqr<E: RealField>(
         [zero_unit, zero_unit, zero_unit]
     });
     let v_ptr = E::faer_map(E::faer_as_mut(&mut v_storage), |array| array.as_mut_ptr());
-    let mut v = unsafe { crate::col::from_raw_parts_mut::<'_, E>(v_ptr, 3, 1) };
+    let mut v = unsafe { crate::col::from_raw_parts_mut::<'_, E, _>(v_ptr, 3, 1) };
     for iter in 0..itmax + 1 {
         if iter == itmax {
             return istop as isize;
