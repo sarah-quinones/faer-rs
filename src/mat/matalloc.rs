@@ -119,11 +119,17 @@ impl<E: Entity> Drop for RawMat<E> {
 
 impl<T> MatUnit<T> {
     #[cold]
-    pub fn do_reserve_exact(&mut self, mut new_row_capacity: usize, mut new_col_capacity: usize) {
+    pub fn do_reserve_exact(
+        &mut self,
+        mut new_row_capacity: usize,
+        mut new_col_capacity: usize,
+        can_realloc: bool,
+    ) {
         new_row_capacity = self.raw.row_capacity.max(new_row_capacity);
         new_col_capacity = self.raw.col_capacity.max(new_col_capacity);
 
-        let new_ptr = if self.raw.row_capacity == new_row_capacity
+        let new_ptr = if can_realloc
+            && self.raw.row_capacity == new_row_capacity
             && self.raw.row_capacity != 0
             && self.raw.col_capacity != 0
         {

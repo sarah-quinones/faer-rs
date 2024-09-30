@@ -13,16 +13,16 @@ struct MatImpl<E: Entity, R: Shape = usize, C: Shape = usize> {
     col_stride: isize,
 }
 #[repr(C)]
-struct MatOwnImpl<E: Entity> {
+struct MatOwnImpl<E: Entity, R: Shape = usize, C: Shape = usize> {
     ptr: GroupCopyFor<E, NonNull<E::Unit>>,
-    nrows: usize,
-    ncols: usize,
+    nrows: R,
+    ncols: C,
 }
 
 unsafe impl<E: Entity, R: Shape, C: Shape> Sync for MatImpl<E, R, C> {}
 unsafe impl<E: Entity, R: Shape, C: Shape> Send for MatImpl<E, R, C> {}
-unsafe impl<E: Entity> Sync for MatOwnImpl<E> {}
-unsafe impl<E: Entity> Send for MatOwnImpl<E> {}
+unsafe impl<E: Entity, R: Shape, C: Shape> Sync for MatOwnImpl<E, R, C> {}
+unsafe impl<E: Entity, R: Shape, C: Shape> Send for MatOwnImpl<E, R, C> {}
 
 impl<E: Entity, R: Shape, C: Shape> Copy for MatImpl<E, R, C> {}
 impl<E: Entity, R: Shape, C: Shape> Clone for MatImpl<E, R, C> {
