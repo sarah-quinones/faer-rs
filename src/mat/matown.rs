@@ -2113,16 +2113,16 @@ impl<E: Entity> Mat<E> {
     }
 }
 
-impl<E: RealField> Mat<num_complex::Complex<E>> {
+impl<E: RealField, R: Shape, C: Shape> Mat<num_complex::Complex<E>, R, C> {
     /// Returns the real and imaginary components of `self`.
     #[inline(always)]
-    pub fn real_imag(&self) -> num_complex::Complex<MatRef<'_, E>> {
+    pub fn real_imag(&self) -> num_complex::Complex<MatRef<'_, E, R, C>> {
         self.as_ref().real_imag()
     }
 
     /// Returns the real and imaginary components of `self`.
     #[inline(always)]
-    pub fn real_imag_mut(&mut self) -> num_complex::Complex<MatMut<'_, E>> {
+    pub fn real_imag_mut(&mut self) -> num_complex::Complex<MatMut<'_, E, R, C>> {
         self.as_mut().real_imag_mut()
     }
 }
@@ -2134,60 +2134,79 @@ impl<E: Entity> Default for Mat<E> {
     }
 }
 
-impl<E: Entity> Clone for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> Clone for Mat<E, R, C> {
     fn clone(&self) -> Self {
         let this = self.as_ref();
         unsafe {
             Self::from_fn(self.nrows(), self.ncols(), |i, j| {
-                E::faer_from_units(E::faer_deref(this.get_unchecked(i, j)))
+                E::faer_from_units(E::faer_deref(this.as_ref().at_unchecked(i, j)))
             })
         }
     }
 
     fn clone_from(&mut self, other: &Self) {
-        let (rows, cols) = other.shape();
-        self.resize_with(0, 0, |_, _| E::zeroed());
-        self.resize_with(
-            rows,
-            cols,
-            #[inline(always)]
-            |row, col| unsafe { other.read_unchecked(row, col) },
-        );
+        #[track_caller]
+        #[inline(always)]
+        fn implementation<R: Shape, C: Shape, E: Entity>(
+            this: &mut Mat<E, R, C>,
+            other: MatRef<'_, E, R, C>,
+        ) {
+            let (rows, cols) = other.shape();
+            if this.shape() == other.shape() {
+                crate::zipped!(this, other)
+                    .for_each(|crate::unzipped!(mut dst, src)| dst.write(src.read()));
+            } else {
+                if !R::IS_BOUND {
+                    this.truncate(unsafe { R::new_unbound(0) }, cols);
+                } else if !C::IS_BOUND {
+                    this.truncate(rows, unsafe { C::new_unbound(0) });
+                } else {
+                    panic!();
+                }
+                this.resize_with(
+                    rows,
+                    cols,
+                    #[inline(always)]
+                    |row, col| unsafe { other.read_unchecked(row, col) },
+                );
+            }
+        }
+        implementation(self, other.as_ref());
     }
 }
 
-impl<E: Entity> AsMatRef<E> for Mat<E> {
-    type R = usize;
-    type C = usize;
+impl<E: Entity, R: Shape, C: Shape> AsMatRef<E> for Mat<E, R, C> {
+    type R = R;
+    type C = C;
 
     #[inline]
-    fn as_mat_ref(&self) -> MatRef<'_, E> {
+    fn as_mat_ref(&self) -> MatRef<'_, E, R, C> {
         (*self).as_ref()
     }
 }
 
-impl<E: Entity> AsMatMut<E> for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> AsMatMut<E> for Mat<E, R, C> {
     #[inline]
-    fn as_mat_mut(&mut self) -> MatMut<'_, E> {
+    fn as_mat_mut(&mut self) -> MatMut<'_, E, R, C> {
         (*self).as_mut()
     }
 }
 
-impl<E: Entity> As2D<E> for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> As2D<E> for Mat<E, R, C> {
     #[inline]
     fn as_2d_ref(&self) -> MatRef<'_, E> {
-        (*self).as_ref()
+        (*self).as_ref().as_dyn()
     }
 }
 
-impl<E: Entity> As2DMut<E> for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> As2DMut<E> for Mat<E, R, C> {
     #[inline]
     fn as_2d_mut(&mut self) -> MatMut<'_, E> {
-        (*self).as_mut()
+        (*self).as_mut().as_dyn_mut()
     }
 }
 
-impl<E: Entity> core::fmt::Debug for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> core::fmt::Debug for Mat<E, R, C> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_ref().fmt(f)
     }

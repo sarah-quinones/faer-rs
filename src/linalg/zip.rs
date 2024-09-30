@@ -227,9 +227,9 @@ impl<E: Entity, R: Shape> ViewMut for &ColMut<'_, E, R> {
     }
 }
 
-impl<E: Entity> ViewMut for Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for Mat<E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -238,9 +238,9 @@ impl<E: Entity> ViewMut for Mat<E> {
         this.as_ref()
     }
 }
-impl<E: Entity> ViewMut for &Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &Mat<E, R, C> {
     type Target<'a>
-        = MatRef<'a, E>
+        = MatRef<'a, E, R, C>
     where
         Self: 'a;
 
@@ -249,9 +249,9 @@ impl<E: Entity> ViewMut for &Mat<E> {
         (*this).as_ref()
     }
 }
-impl<E: Entity> ViewMut for &mut Mat<E> {
+impl<E: Entity, R: Shape, C: Shape> ViewMut for &mut Mat<E, R, C> {
     type Target<'a>
-        = MatMut<'a, E>
+        = MatMut<'a, E, R, C>
     where
         Self: 'a;
 

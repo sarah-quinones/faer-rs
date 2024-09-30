@@ -312,7 +312,7 @@ impl<E: Entity> Row<E> {
             });
 
             E::faer_map(E::faer_as_mut(&mut this_group), |mat_unit| {
-                mat_unit.do_reserve_exact(new_col_capacity, 1);
+                mat_unit.do_reserve_exact(new_col_capacity, 1, E::N_COMPONENTS <= 1);
             });
 
             let this_group = E::faer_map(this_group, ManuallyDrop::new);
