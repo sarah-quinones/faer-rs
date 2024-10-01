@@ -26,7 +26,7 @@ use crate::{
     perm::PermRef,
     sparse::{SparseColMatRef, SymbolicSparseColMatRef},
     unzipped,
-    utils::{constrained::Size, slice::*},
+    utils::{constrained::Dim, slice::*},
     zipped, Conj, MatMut, Parallelism, SignedIndex,
 };
 use core::iter::zip;
@@ -151,8 +151,8 @@ pub(crate) fn ghost_column_counts_aat<'m, 'n, I: Index>(
     post: &Array<'m, Idx<'m, I>>,
     stack: &mut PodStack,
 ) {
-    let M: Size<'m> = A.nrows();
-    let N: Size<'n> = A.ncols();
+    let M: Dim<'m> = A.nrows();
+    let N: Dim<'n> = A.ncols();
     let n = *N;
     let m = *M;
 
@@ -559,8 +559,8 @@ pub mod supernodal {
 
     fn ghost_factorize_supernodal_householder_symbolic<'m, 'n, I: Index>(
         L_symbolic: &SymbolicSupernodalCholesky<I>,
-        M: Size<'m>,
-        N: Size<'n>,
+        M: Dim<'m>,
+        N: Dim<'n>,
         min_col: &Array<'m, MaybeIdx<'n, I>>,
         etree: &Array<'n, MaybeIdx<'n, I>>,
         stack: &mut PodStack,

@@ -17,7 +17,7 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
     /// dimensions tied to `('nrows, 'ncols)`.
     #[inline]
     #[track_caller]
-    pub fn new(inner: mat::MatRef<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
+    pub fn new(inner: mat::MatRef<'a, E>, nrows: Dim<'nrows>, ncols: Dim<'ncols>) -> Self {
         assert!(all(
             inner.nrows() == nrows.unbound(),
             inner.ncols() == ncols.unbound(),
@@ -33,14 +33,14 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatRef<'nrows, 'ncols, 'a, E> {
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
+    pub fn nrows(&self) -> Dim<'nrows> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
+    pub fn ncols(&self) -> Dim<'ncols> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     /// Returns the unconstrained matrix.
@@ -62,7 +62,7 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
     /// dimensions tied to `('nrows, 'ncols)`.
     #[inline]
     #[track_caller]
-    pub fn new(inner: mat::MatMut<'a, E>, nrows: Size<'nrows>, ncols: Size<'ncols>) -> Self {
+    pub fn new(inner: mat::MatMut<'a, E>, nrows: Dim<'nrows>, ncols: Dim<'ncols>) -> Self {
         assert!(all(
             inner.nrows() == nrows.unbound(),
             inner.ncols() == ncols.unbound(),
@@ -78,14 +78,14 @@ impl<'nrows, 'ncols, 'a, E: Entity> MatMut<'nrows, 'ncols, 'a, E> {
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
+    pub fn nrows(&self) -> Dim<'nrows> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
+    pub fn ncols(&self) -> Dim<'ncols> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     /// Returns the unconstrained matrix.

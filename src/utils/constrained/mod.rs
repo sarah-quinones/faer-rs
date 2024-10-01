@@ -11,7 +11,7 @@ struct Branded<'a, T: ?Sized> {
     inner: T,
 }
 
-pub(crate) type Size<'n> = crate::utils::bound::Dim<'n>;
+pub(crate) type Dim<'n> = crate::utils::bound::Dim<'n>;
 pub(crate) type Idx<'n, I> = crate::utils::bound::Idx<'n, I>;
 pub(crate) type IdxInclusive<'n, I> = crate::utils::bound::IdxInc<'n, I>;
 pub(crate) type MaybeIdx<'n, I> = crate::utils::bound::MaybeIdx<'n, I>;
@@ -100,7 +100,7 @@ impl<'n, 'a, E: Entity> ArrayGroupMut<'n, 'a, E> {
     /// Returns an array group with length after checking that its length matches
     /// the value tied to `'n`.
     #[inline]
-    pub fn new(slice: GroupFor<E, &'a mut [E::Unit]>, len: Size<'n>) -> Self {
+    pub fn new(slice: GroupFor<E, &'a mut [E::Unit]>, len: Dim<'n>) -> Self {
         let slice = slice::SliceGroupMut::<'_, E>::new(slice);
         assert!(slice.rb().len() == len.unbound());
         ArrayGroupMut(Branded {
@@ -145,7 +145,7 @@ impl<'n, 'a, E: Entity> ArrayGroup<'n, 'a, E> {
     /// Returns an array group with length after checking that its length matches
     /// the value tied to `'n`.
     #[inline]
-    pub fn new(slice: GroupFor<E, &'a [E::Unit]>, len: Size<'n>) -> Self {
+    pub fn new(slice: GroupFor<E, &'a [E::Unit]>, len: Dim<'n>) -> Self {
         let slice = slice::SliceGroup::<'_, E>::new(slice);
         assert!(slice.rb().len() == len.unbound());
         ArrayGroup(Branded {
@@ -181,7 +181,7 @@ impl<'n, T> Array<'n, T> {
     /// Returns a constrained array after checking that its length matches `size`.
     #[inline]
     #[track_caller]
-    pub fn from_ref<'a>(slice: &'a [T], size: Size<'n>) -> &'a Self {
+    pub fn from_ref<'a>(slice: &'a [T], size: Dim<'n>) -> &'a Self {
         assert!(slice.len() == size.unbound());
         unsafe { &*(slice as *const [T] as *const Self) }
     }
@@ -189,7 +189,7 @@ impl<'n, T> Array<'n, T> {
     /// Returns a constrained array after checking that its length matches `size`.
     #[inline]
     #[track_caller]
-    pub fn from_mut<'a>(slice: &'a mut [T], size: Size<'n>) -> &'a mut Self {
+    pub fn from_mut<'a>(slice: &'a mut [T], size: Dim<'n>) -> &'a mut Self {
         assert!(slice.len() == size.unbound());
         unsafe { &mut *(slice as *mut [T] as *mut Self) }
     }
@@ -210,8 +210,8 @@ impl<'n, T> Array<'n, T> {
 
     /// Returns the length of `self`.
     #[inline]
-    pub fn len(&self) -> Size<'n> {
-        unsafe { Size::new_unbound(self.0.inner.len()) }
+    pub fn len(&self) -> Dim<'n> {
+        unsafe { Dim::new_unbound(self.0.inner.len()) }
     }
 }
 

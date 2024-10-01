@@ -1452,7 +1452,7 @@ pub mod simplicial {
 
         #[inline]
         #[track_caller]
-        pub(crate) fn ghost_inner<'n>(self, N: ghost::Size<'n>) -> &'a Array<'n, MaybeIdx<'n, I>> {
+        pub(crate) fn ghost_inner<'n>(self, N: ghost::Dim<'n>) -> &'a Array<'n, MaybeIdx<'n, I>> {
             assert!(self.inner.len() == *N);
             unsafe { Array::from_ref(MaybeIdx::from_slice_ref_unchecked(self.inner), N) }
         }

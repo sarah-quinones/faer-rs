@@ -26,8 +26,8 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
     #[inline]
     pub fn new(
         inner: crate::sparse::SymbolicSparseColMatRef<'a, I>,
-        nrows: Size<'nrows>,
-        ncols: Size<'ncols>,
+        nrows: Dim<'nrows>,
+        ncols: Dim<'ncols>,
     ) -> Self {
         assert!(all(
             inner.nrows() == nrows.unbound(),
@@ -50,14 +50,14 @@ impl<'nrows, 'ncols, 'a, I: Index> SymbolicSparseColMatRef<'nrows, 'ncols, 'a, I
 
     /// Returns the number of rows of the matrix.
     #[inline]
-    pub fn nrows(&self) -> Size<'nrows> {
-        unsafe { Size::new_unbound(self.0.inner.inner.nrows()) }
+    pub fn nrows(&self) -> Dim<'nrows> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.nrows()) }
     }
 
     /// Returns the number of columns of the matrix.
     #[inline]
-    pub fn ncols(&self) -> Size<'ncols> {
-        unsafe { Size::new_unbound(self.0.inner.inner.ncols()) }
+    pub fn ncols(&self) -> Dim<'ncols> {
+        unsafe { Dim::new_unbound(self.0.inner.inner.ncols()) }
     }
 
     #[inline]
@@ -103,8 +103,8 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatRef<'nrows, 'ncols, 'a
     /// dimensions tied to `('nrows, 'ncols)`.
     pub fn new(
         inner: crate::sparse::SparseColMatRef<'a, I, E>,
-        nrows: Size<'nrows>,
-        ncols: Size<'ncols>,
+        nrows: Dim<'nrows>,
+        ncols: Dim<'ncols>,
     ) -> Self {
         assert!(all(
             inner.nrows() == nrows.unbound(),
@@ -144,8 +144,8 @@ impl<'nrows, 'ncols, 'a, I: Index, E: Entity> SparseColMatMut<'nrows, 'ncols, 'a
     /// dimensions tied to `('nrows, 'ncols)`.
     pub fn new(
         inner: crate::sparse::SparseColMatMut<'a, I, E>,
-        nrows: Size<'nrows>,
-        ncols: Size<'ncols>,
+        nrows: Dim<'nrows>,
+        ncols: Dim<'ncols>,
     ) -> Self {
         assert!(all(
             inner.nrows() == nrows.unbound(),

@@ -9,7 +9,7 @@ impl<'n, 'a, I: Index> PermRef<'n, 'a, I> {
     /// Returns a new permutation after checking that it matches the size tied to `'n`.
     #[inline]
     #[track_caller]
-    pub fn new(perm: perm::PermRef<'a, I>, size: Size<'n>) -> Self {
+    pub fn new(perm: perm::PermRef<'a, I>, size: Dim<'n>) -> Self {
         let (fwd, inv) = perm.arrays();
         assert!(all(
             fwd.len() == size.unbound(),
@@ -49,8 +49,8 @@ impl<'n, 'a, I: Index> PermRef<'n, 'a, I> {
 
     /// Returns the length of the permutation.
     #[inline]
-    pub fn len(&self) -> Size<'n> {
-        unsafe { Size::new_unbound(self.into_inner().len()) }
+    pub fn len(&self) -> Dim<'n> {
+        unsafe { Dim::new_unbound(self.into_inner().len()) }
     }
 }
 

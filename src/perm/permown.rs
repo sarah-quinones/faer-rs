@@ -32,8 +32,12 @@ impl<I: Index, N: Shape> Perm<I, N> {
         assert!(self.len().unbound() == dim.unbound());
 
         Perm {
-            forward: unsafe { Box::from_raw(Box::into_raw(self.forward) as _) },
-            inverse: unsafe { Box::from_raw(Box::into_raw(self.inverse) as _) },
+            forward: unsafe {
+                alloc::boxed::Box::from_raw(alloc::boxed::Box::into_raw(self.forward) as _)
+            },
+            inverse: unsafe {
+                alloc::boxed::Box::from_raw(alloc::boxed::Box::into_raw(self.inverse) as _)
+            },
         }
     }
 

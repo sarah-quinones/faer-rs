@@ -245,7 +245,7 @@ mod ghost {
     pub const NONE_BYTE: u8 = u8::MAX;
 
     #[inline]
-    pub fn fill_zero<'n, 'a, I: Index>(slice: &'a mut [I], size: Size<'n>) -> &'a mut [Idx<'n, I>] {
+    pub fn fill_zero<'n, 'a, I: Index>(slice: &'a mut [I], size: Dim<'n>) -> &'a mut [Idx<'n, I>] {
         let len = slice.len();
         if len > 0 {
             assert!(*size > 0);
@@ -259,7 +259,7 @@ mod ghost {
     #[inline]
     pub fn fill_none<'n, 'a, I: Index>(
         slice: &'a mut [I::Signed],
-        size: Size<'n>,
+        size: Dim<'n>,
     ) -> &'a mut [MaybeIdx<'n, I>] {
         let _ = size;
         let len = slice.len();
